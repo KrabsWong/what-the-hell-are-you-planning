@@ -1,0 +1,25 @@
+[package]
+name = "what-the-hell-are-you-planning"
+version = "0.1.0"
+edition = "2024"
+
+[features]
+qa = ["gpui-kit/test-support"]
+
+[dependencies]
+gpui-kit = "=0.8.1"
+serde = { version = "1", features = ["derive"] }
+serde_json = "1"
+libc = "0.2"
+chrono = "0.4"
+sha2 = "0.10"
+rusqlite = { version = "0.38", features = ["bundled"] }
+
+[dev-dependencies]
+gpui-kit = { version = "=0.8.1", features = ["test-support"] }
+
+[profile.dev]
+debug = 0
+
+[profile.dev.package."*"]
+opt-level = 1

@@ -1,0 +1,14 @@
+/target/
+/.cargo-cache/
+/.local/
+.DS_Store
+
+# Local credentials and workspace data
+.env
+.env.*
+!.env.example
+*.sqlite
+*.sqlite3
+*.sqlite3-wal
+*.sqlite3-shm
+*.log

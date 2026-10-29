@@ -4,6 +4,11 @@ A local-first desktop workspace for turning research questions into actionable p
 
 Define what you want to understand, let an agent propose a plan, and decide which tasks should move forward. Follow the work from evidence collection through analysis to a final report, with the sources, materials, and execution history available when you need them.
 
+<img width="600" alt="image" src="https://github.com/user-attachments/assets/2fab456d-7186-4c67-9ba9-928dd3022f68" />
+<img width="600" alt="image" src="https://github.com/user-attachments/assets/b14f3ea7-c752-41c9-bf52-29b2308ef7a1" />
+<img width="600" alt="image" src="https://github.com/user-attachments/assets/3101a059-8e4c-4795-9485-eba9e1578122" />
+
+
 ## Plan with an agent, stay in control
 
 - **Projects and research goals.** Organize related questions into projects and break each goal into evidence collection, analysis, and reporting tasks.

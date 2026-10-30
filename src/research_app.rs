@@ -409,9 +409,8 @@ impl TaskApp {
             self.selected = Some(id);
             self.reveal_task_project(id);
             self.detail_scroll.set_offset(point(px(0.), px(0.)));
-            if !self.tabs.contains(&id) {
-                self.tabs.push(id);
-            }
+            self.tabs.retain(|task| *task != id);
+            self.tabs.push(id);
         }
         // Persist the parsed result and generated tasks before another external side effect.
         self.persist_if_changed(true);

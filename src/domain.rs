@@ -529,6 +529,26 @@ impl Store {
             self.task_is_archived(run.task_id)
         }
     }
+    /// Count tasks, not attempts: current work and saved completed results.
+    pub fn progress_result_task_count(&self) -> usize {
+        let mut latest = std::collections::HashSet::new();
+        let mut included = std::collections::HashSet::new();
+        for run in self.runs.iter().rev().filter(|run| {
+            run.project_plan.is_none()
+                && run.research_kind != Some(crate::research::ResearchKind::Goal)
+                && self.task(run.task_id).is_some()
+                && !self.run_is_archived(run)
+        }) {
+            let is_latest = latest.insert(run.task_id);
+            let in_progress = is_latest && matches!(run.status.as_str(),
+                "Queued" | "Running" | "Recovering" | "Cancelling");
+            let has_result = run.status == "Succeeded" && !run.output.trim().is_empty();
+            if in_progress || has_result {
+                included.insert(run.task_id);
+            }
+        }
+        included.len()
+    }
     pub fn task(&self, id: u64) -> Option<&Task> {
         self.tasks.iter().find(|t| t.id == id)
     }
@@ -1011,6 +1031,63 @@ fn matches_term(task: &Task, term: &str) -> bool {
 #[cfg(test)]
 mod tests {
     use super::*;
+    #[test]
+    fn progress_count_tracks_tasks_instead_of_attempts() {
+        let mut store = Store::mock();
+        store.runs.clear();
+        store.projects[0].directory = "/tmp/test-project".into();
+        for policy in &mut store.policies {
+            policy.agent = "OpenCode".into();
+            policy.model = "test/model".into();
+        }
+        store.set_stage(1, Stage::InProgress).unwrap();
+        let template = store.prepare_run(1).unwrap();
+        for index in 0..8 {
+            let id = store.create_task(&format!("Step {index}"), 1, Stage::InProgress, None).unwrap();
+            let mut run = template.clone();
+            run.task_id = id;
+            run.status = "Failed".into();
+            store.runs.push(run.clone());
+            run.status = if index == 7 { "Running" } else { "Succeeded" }.into();
+            if index != 7 { run.output = "Saved result".into(); }
+            store.runs.push(run);
+        }
+        assert_eq!(store.runs.len(), 16);
+        assert_eq!(store.progress_result_task_count(), 8);
+        let mut planning = template.clone();
+        planning.research_kind = Some(crate::research::ResearchKind::Goal);
+        store.runs.push(planning);
+        let mut planning = template.clone();
+        planning.project_plan = Some(1);
+        store.runs.push(planning);
+        assert_eq!(store.progress_result_task_count(), 8);
+
+        // Retrying a task with a saved result must not count it twice.
+        let mut retry = store.runs[1].clone();
+        retry.status = "Running".into();
+        retry.output.clear();
+        store.runs.push(retry);
+        assert_eq!(store.progress_result_task_count(), 8);
+        // A later failure supersedes an old running record, but keeps saved results.
+        let mut failed = store.runs[15].clone();
+        failed.status = "Failed".into();
+        store.runs.push(failed);
+        assert_eq!(store.progress_result_task_count(), 7);
+        let id = store.runs[1].task_id;
+        store.task_mut(id).unwrap().archived = true;
+        assert_eq!(store.progress_result_task_count(), 6);
+
+        for status in ["Failed", "Blocked", "Interrupted", "Cancelled", "Succeeded"] {
+            let mut run = template.clone();
+            run.status = status.into();
+            store.runs.push(run);
+            assert_eq!(store.progress_result_task_count(), 6);
+        }
+        for status in ["Queued", "Running", "Recovering", "Cancelling"] {
+            store.runs.last_mut().unwrap().status = status.into();
+            assert_eq!(store.progress_result_task_count(), 7);
+        }
+    }
     #[test]
     fn explicit_topic_creation_never_leaves_an_intermediate_topic() {
         let mut store = Store::empty();

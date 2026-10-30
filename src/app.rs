@@ -597,9 +597,8 @@ impl TaskApp {
         }
         self.task_result_context = None;
         self.clear_navigation_overlays();
-        if !self.tabs.contains(&id) {
-            self.tabs.push(id);
-        }
+        self.tabs.retain(|task| *task != id);
+        self.tabs.push(id);
         self.show_task_details = false;
         self.expanded_request_brief = None;
         self.show_task_activity = false;

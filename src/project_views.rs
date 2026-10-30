@@ -14,11 +14,9 @@ impl TaskApp {
         let entity = cx.entity().downgrade();
         row()
             .gap_1()
-            .child(button("new-topic", "New topic").on_click(
-                cx.listener(move |a, _, w, cx| a.open_topic_editor(project, None, w, cx)),
-            ))
             .child(
                 primary_button("plan-project", "New research")
+                    .tooltip("Describe a research question to automatically create its topic and plan.")
                     .on_click(cx.listener(move |a, _, w, cx| a.open_project_plan(project, w, cx))),
             )
             .child(self.todo_batch_action(project, cx))

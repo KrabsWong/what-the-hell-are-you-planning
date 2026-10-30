@@ -627,7 +627,7 @@ impl TaskApp {
                 "runs",
                 "Progress & results",
                 Scope::Runs,
-                self.store.runs.iter().filter(|r| !self.store.run_is_archived(r)).count(),
+                self.store.progress_result_task_count(),
                 cx,
             ))
             .child(div().flex_1())
@@ -716,7 +716,9 @@ impl TaskApp {
         button(id, "")
             .ghost()
             .accessibility_label(title.to_string())
-            .tooltip(title.to_string())
+            .tooltip(if scope == Scope::Runs {
+                "Tasks in progress or with saved results, counted once each. Planning and retry history do not add to this number.".to_string()
+            } else { title.to_string() })
             .w_full()
             .h_8()
             .px_3()
@@ -944,11 +946,11 @@ impl TaskApp {
             let entity = cx.entity().downgrade();
             let selected = self.selected;
             header = header.child(
-                quiet_button("open-tasks-menu", format!("Open tasks · {}", options.len()))
+                quiet_button("open-tasks-menu", "Recently opened")
                     .dropdown_caret(true)
                     .flex_shrink_0()
                     .text_color(rgb(colors.muted))
-                    .tooltip("Open a task; Back returns to the page you are viewing now")
+                    .tooltip("Switch between recently opened task pages. This list does not indicate whether tasks are running or completed.")
                     .dropdown_menu_with_anchor(Anchor::TopRight, move |mut menu, _, _| {
                         for (id, title) in &options {
                             let entity = entity.clone();

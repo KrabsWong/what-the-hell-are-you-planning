@@ -75,14 +75,10 @@ pub fn run() {
     .unwrap();
     let topic = cx
         .update_window(handle, |_, w, cx| {
-            w.render_frame(cx);
-            w.click("new-topic", cx);
-            w.render_frame(cx);
-            w.click("topic-name", cx);
-            w.input("英伟达 NVIDIA", cx);
-            w.click("save-topic", cx);
-            let id = app.read(cx).store.topics.last().unwrap().id;
-            assert_eq!(app.read(cx).scope, Scope::Topic(id));
+            // Seed the grouping fixture; new topics are created through research intake.
+            let id = app.update(cx, |a, _| {
+                a.store.create_topic(1, "英伟达 NVIDIA").unwrap()
+            });
             app.update(cx, |a, cx| {
                 a.open_task(goal, w, cx);
                 a.show_task_details = true;

@@ -227,14 +227,93 @@ pub fn parse_plan(text: &str) -> Result<Plan, String> {
 }
 
 impl Store {
+    pub fn owning_research_goal(&self, id: u64) -> Option<u64> {
+        let mut task = self.task(id)?;
+        let mut visited = Vec::new();
+        loop {
+            if visited.contains(&task.id) { return None; }
+            visited.push(task.id);
+            if let Some(research) = &task.research { return Some(research.goal_id); }
+            task = self.task(task.parent_id?)?;
+        }
+    }
     pub fn research_pending_approval(&self, id: u64) -> bool {
-        self.task(id)
-            .and_then(|t| t.research.as_ref())
-            .and_then(|r| self.task(r.goal_id))
-            .is_some_and(|goal| {
-                goal.stage == Stage::Backlog
-                    && goal.research.as_ref().is_some_and(|r| r.requires_approval)
-            })
+        self.owning_research_goal(id).is_some_and(|goal| !self.goal_execution_approved(goal))
+    }
+    /// Approval covers research scope and the complete task graph, not transient run state.
+    pub fn goal_plan_signature(&self, id: u64) -> Option<String> {
+        let goal = self.task(id)?;
+        if goal.research.as_ref()?.kind != ResearchKind::Goal { return None; }
+        let mut tasks: Vec<_> = self.tasks.iter().filter(|t| t.id != id && self.owning_research_goal(t.id) == Some(id)).collect();
+        tasks.sort_by_key(|t| t.id);
+        let content: Vec<_> = tasks.iter().map(|t| serde_json::json!([t.id, t.title, t.description, t.comments, t.attachments, t.parent_id, t.archived, t.research.as_ref().map(|r| (r.kind, &r.depends_on))])).collect();
+        serde_json::to_string(&(&goal.title, &goal.description, &goal.comments, &goal.attachments, goal.project_id, content)).ok()
+    }
+    pub fn goal_execution_approved(&self, id: u64) -> bool {
+        let Some(goal) = self.task(id) else { return false; };
+        let Some(research) = &goal.research else { return false; };
+        if research.kind != ResearchKind::Goal || goal.archived || matches!(goal.stage, Stage::Backlog | Stage::Cancelled) { return false; }
+        !research.requires_approval || goal.approved_plan.as_ref().is_some_and(|approved| Some(approved) == self.goal_plan_signature(id).as_ref())
+    }
+    pub fn reconcile_goal_approvals(&mut self) {
+        let changed: Vec<_> = self.tasks.iter().filter(|t| t.research.as_ref().is_some_and(|r| r.kind == ResearchKind::Goal && r.requires_approval) && !t.archived && !matches!(t.stage, Stage::Backlog | Stage::Cancelled) && t.approved_plan != self.goal_plan_signature(t.id)).map(|t| t.id).collect();
+        for id in changed {
+            let task = self.task_mut(id).unwrap();
+            task.approved_plan = None;
+            task.stage = Stage::Backlog;
+            task.activity.push(crate::domain::activity_event("Research plan changed · review before execution"));
+        }
+    }
+    pub fn validate_goal_dependencies(&self, goal: u64) -> Result<(), String> {
+        let children = self.research_children(goal);
+        if self.has_research_plan(goal) && self.task(goal).is_some_and(|t| t.research.as_ref().is_some_and(|r| r.requires_approval))
+            && !children.iter().any(|id| self.task(*id).and_then(|t| t.research.as_ref()).is_some_and(|r| r.kind == ResearchKind::Advise)) {
+            return Err("Keep an active final report step in the research goal.".into());
+        }
+        for id in &children {
+            let mut pending = vec![(*id, Vec::new())];
+            while let Some((current, mut path)) = pending.pop() {
+                if path.contains(&current) { return Err("Research dependencies contain a cycle.".into()); }
+                if !children.contains(&current) { return Err("Research dependencies must remain inside this goal and refer to active steps.".into()); }
+                path.push(current);
+                let task = self.task(current).ok_or("A research dependency is missing.")?;
+                for dep in &task.research.as_ref().ok_or("A research dependency is not a research step.")?.depends_on {
+                    pending.push((*dep, path.clone()));
+                }
+            }
+        }
+        Ok(())
+    }
+    pub fn sync_goal_progress(&mut self, goal: u64) {
+        if !self.goal_execution_approved(goal) { return; }
+        let children = self.research_children(goal);
+        let complete = !children.is_empty() && self.validate_goal_dependencies(goal).is_ok()
+            && children.iter().all(|id| self.task(*id).is_some_and(|t| t.stage == Stage::Done) && self.research_result(*id).is_some())
+            && self.tasks.iter().filter(|t| !t.archived && t.research.is_none() && self.owning_research_goal(t.id) == Some(goal)).all(|t| t.stage == Stage::Done);
+        if complete {
+            let task = self.task_mut(goal).unwrap();
+            if task.stage != Stage::Done {
+                task.stage = Stage::Done;
+                task.activity.push(crate::domain::activity_event("All research steps completed"));
+            }
+        }
+    }
+    /// Apply a fully reviewed schema as an unapproved proposal; no work is launched.
+    pub fn apply_proposed_research_plan(&mut self, goal: u64, text: &str) -> Result<Vec<u64>, String> {
+        let mut candidate = self.clone();
+        let task = candidate.task_mut(goal).ok_or("Research goal not found.")?;
+        if task.archived { return Err("Restore the archived goal first.".into()); }
+        let research = task.research.as_mut().ok_or("Not a research goal.")?;
+        if research.kind != ResearchKind::Goal { return Err("Not a research goal.".into()); }
+        research.requires_approval = false;
+        task.stage = Stage::Planned;
+        let ids = candidate.apply_research_plan(goal, text)?;
+        let task = candidate.task_mut(goal).unwrap();
+        task.research.as_mut().unwrap().requires_approval = true;
+        task.stage = Stage::Backlog;
+        task.approved_plan = None;
+        *self = candidate;
+        Ok(ids)
     }
     pub fn create_research_goal(
         &mut self,
@@ -264,7 +343,7 @@ impl Store {
     pub fn apply_research_plan(&mut self, goal_id: u64, text: &str) -> Result<Vec<u64>, String> {
         if self.research_pending_approval(goal_id) {
             return Err(
-                "Approve this research topic in Kanban before generating its steps.".into(),
+                "Approve this research goal in Kanban before generating its steps.".into(),
             );
         }
         let plan = parse_plan(text)?;
@@ -400,7 +479,7 @@ impl Store {
     }
     pub fn next_research_task(&self, goal: u64) -> Result<Option<u64>, String> {
         if self.research_pending_approval(goal) {
-            return Err("Approve this research topic in Kanban before running its tasks.".into());
+            return Err("Approve this research goal in Kanban before running its tasks.".into());
         }
         if self
             .task(goal)
@@ -408,6 +487,7 @@ impl Store {
         {
             return Err("Restore or reopen the research goal before continuing.".into());
         }
+        self.validate_goal_dependencies(goal)?;
         let children = self.research_children(goal);
         if children.is_empty() {
             return Err("Generate the research plan first.".into());
@@ -436,13 +516,14 @@ impl Store {
 
 pub fn prepare_run(store: &Store, id: u64) -> Result<AgentRun, String> {
     if store.research_pending_approval(id) {
-        return Err("Approve this research topic in Kanban before running it.".into());
+        return Err("Approve this research goal in Kanban before running it.".into());
     }
     let task = store.task(id).ok_or("Task not found.")?;
     let research = task.research.as_ref().ok_or("Not a research task.")?;
     if task.archived || task.stage == Stage::Cancelled {
         return Err("Restore or reopen this task before running.".into());
     }
+    store.validate_goal_dependencies(research.goal_id)?;
     let goal = store
         .task(research.goal_id)
         .filter(|t| !t.archived && t.stage != Stage::Cancelled)
@@ -692,6 +773,103 @@ mod tests {
         assert!(parse_report(r#"{"status":"complete","report":"x","sources":[{"title":"x","url":"file:///private","published_at":"unknown"}]}"#,ResearchKind::Collect).is_err());
     }
     #[test]
+    fn proposed_plan_is_atomic_and_entire_goal_requires_approval() {
+        let (mut store, goal) = workspace();
+        let before = store.clone();
+        assert!(store.apply_proposed_research_plan(goal, r#"{"tasks":[]}"#).is_err());
+        assert_eq!(store, before);
+        let children = store.apply_proposed_research_plan(goal, PLAN).unwrap();
+        assert_eq!(store.task(goal).unwrap().stage, Stage::Backlog);
+        assert!(children.iter().all(|id| store.task(*id).unwrap().stage == Stage::Planned));
+        assert!(store.runs.is_empty());
+        store.set_stage(children[0], Stage::Planned).unwrap();
+        assert!(!store.goal_execution_approved(goal));
+        assert!(store.prepare_run(children[0]).is_err());
+        store.set_stage(goal, Stage::Planned).unwrap();
+        assert!(store.goal_execution_approved(goal));
+        assert!(store.prepare_run(children[0]).is_ok());
+        assert!(store.runs.is_empty());
+    }
+
+    #[test]
+    fn changed_plan_requires_reapproval_and_keeps_existing_runs() {
+        let (mut store, goal) = workspace();
+        let children = store.apply_proposed_research_plan(goal, PLAN).unwrap();
+        store.set_stage(goal, Stage::Planned).unwrap();
+        let mut run = store.prepare_run(children[0]).unwrap();
+        run.status = "Succeeded".into(); run.output = "Evidence".into();
+        store.runs.push(run);
+        store.task_mut(children[1]).unwrap().description.push_str(" Expanded scope");
+        assert!(!store.goal_execution_approved(goal));
+        assert!(store.prepare_run(children[0]).is_err());
+        store.reconcile_goal_approvals();
+        assert_eq!(store.task(goal).unwrap().stage, Stage::Backlog);
+        assert_eq!(store.runs.len(), 1);
+        store.set_stage(goal, Stage::Planned).unwrap();
+        assert!(store.goal_execution_approved(goal));
+        assert!(store.research_result(children[0]).is_some());
+    }
+
+    #[test]
+    fn comments_and_materials_are_part_of_the_approved_plan() {
+        let (mut store, goal) = workspace();
+        let children = store.apply_proposed_research_plan(goal, PLAN).unwrap();
+        store.set_stage(goal, Stage::Planned).unwrap();
+        store.add_comment(goal, "Also research competitors and export restrictions").unwrap();
+        assert!(!store.goal_execution_approved(goal));
+        store.reconcile_goal_approvals();
+        assert_eq!(store.task(goal).unwrap().stage, Stage::Backlog);
+        store.set_stage(goal, Stage::Planned).unwrap();
+        store.add_comment(children[0], "Collect additional industry data").unwrap();
+        assert!(!store.goal_execution_approved(goal));
+        store.reconcile_goal_approvals();
+        assert_eq!(store.task(goal).unwrap().stage, Stage::Backlog);
+        store.set_stage(goal, Stage::Planned).unwrap();
+        store.task_mut(goal).unwrap().attachments.push(crate::attachments::Attachment {
+            name: "Additional scope.pdf".into(), relative_path: "attachments/additional.pdf".into(), media_type: "application/pdf".into(), size: 123,
+        });
+        assert!(!store.goal_execution_approved(goal));
+        store.reconcile_goal_approvals();
+        assert_eq!(store.task(goal).unwrap().stage, Stage::Backlog);
+    }
+
+    #[test]
+    fn goal_approval_rejects_cross_goal_dependencies_and_cycles() {
+        let (mut store, goal) = workspace();
+        let children = store.apply_proposed_research_plan(goal, PLAN).unwrap();
+        let other = store.create_research_goal("Other".into(), "Other scope".into(), store.task(goal).unwrap().project_id).unwrap();
+        let other_children = store.apply_research_plan(other, PLAN).unwrap();
+        store.task_mut(children[1]).unwrap().research.as_mut().unwrap().depends_on = vec![other_children[0]];
+        assert!(store.set_stage(goal, Stage::Planned).is_err());
+        store.task_mut(children[1]).unwrap().research.as_mut().unwrap().depends_on = vec![children[0]];
+        store.task_mut(children[0]).unwrap().research.as_mut().unwrap().depends_on = vec![children[1]];
+        assert!(store.set_stage(goal, Stage::Planned).is_err());
+    }
+
+    #[test]
+    fn goal_done_aggregates_valid_results_and_not_blocked_reports() {
+        let (mut store, goal) = workspace();
+        let children = store.apply_proposed_research_plan(goal, PLAN).unwrap();
+        store.set_stage(goal, Stage::Planned).unwrap();
+        for (index, id) in children.iter().enumerate() {
+            let mut run = store.prepare_run(*id).unwrap();
+            run.status = if index == 2 { "Blocked" } else { "Succeeded" }.into();
+            run.output = "Evidence and analysis".into();
+            store.runs.push(run);
+            if index != 2 { store.set_stage(*id, Stage::Done).unwrap(); }
+        }
+        store.sync_goal_progress(goal);
+        assert_ne!(store.task(goal).unwrap().stage, Stage::Done);
+        store.runs.last_mut().unwrap().status = "Succeeded".into();
+        store.sync_goal_progress(goal);
+        assert_ne!(store.task(goal).unwrap().stage, Stage::Done, "Raw subprocess success is not a validated report");
+        store.set_stage(*children.last().unwrap(), Stage::Done).unwrap();
+        store.sync_goal_progress(goal);
+        assert_eq!(store.task(goal).unwrap().stage, Stage::Done);
+        assert!(store.goal_execution_approved(goal));
+    }
+
+    #[test]
     fn cancelled_goal_blocks_children_and_invalidates_an_inflight_signature() {
         let (mut store, goal) = workspace();
         let ids = store.apply_research_plan(goal, PLAN).unwrap();
@@ -723,6 +901,8 @@ mod tests {
         assert!(store.prepare_run(goal).is_ok());
         assert!(store.runs.is_empty(), "Approving never launches a model");
         let ids = store.apply_research_plan(goal, PLAN).unwrap();
+        assert!(store.next_research_task(goal).is_err());
+        store.set_stage(goal, Stage::Planned).unwrap();
         assert_eq!(store.next_research_task(goal).unwrap(), Some(ids[0]));
         assert!(store.prepare_run(ids[0]).is_ok());
         store.set_stage(goal, Stage::Backlog).unwrap();

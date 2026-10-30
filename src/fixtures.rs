@@ -201,7 +201,7 @@ impl Store {
                     18 => "Each workflow stage has its own agent and model configuration. Preserve a snapshot of the policy when creating a run so later configuration changes do not alter its history.\n\n先选择阶段，再设置 agent 与模型。真实模型列表由后续适配器提供。".into(),
                     _ => format!("{}\n\nImplement the interaction in the local workspace and verify that list, board and detail views stay consistent.\n\n完成后检查键盘操作、中文输入与空状态。", title),
                 },
-                project_id, stage, priority, labels: vec![label.into()],
+                project_id, topic_id: None, approved_plan: None, stage, priority, labels: vec![label.into()],
                 cycle: if i % 4 != 2 { Some("Cycle 1".into()) } else { None },
                 bucket: if i % 3 == 0 { "Now" } else if i % 3 == 1 { "Next" } else { "Later" }.into(),
                 due_date: if i % 5 == 0 { "2026-10-27" } else if i % 3 == 0 { "2026-10-30" } else { "" }.into(),
@@ -209,9 +209,11 @@ impl Store {
                 activity: vec!["Sample task created · 27 Oct".into(), format!("Sample status: {}", stage.label())], archived: false, attachments: vec![], research: None,
             }
         }).collect();
-        Self {
+        let mut store = Self {
             tasks,
             projects,
+            topics: vec![],
+            research_requests: vec![],
             policies: Store::empty().policies,
             runs: vec![],
             next_id: 23,
@@ -219,7 +221,9 @@ impl Store {
             default_model: String::new(),
             research_config: Default::default(),
             appearance: crate::appearance::Appearance::Dark,
-        }
+        };
+        store.normalize_topics();
+        store
     }
     #[cfg(test)]
     pub fn simulate_run(&mut self, id: u64) -> Result<(), String> {

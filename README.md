@@ -11,16 +11,17 @@ Define what you want to understand, let an agent propose a plan, and decide whic
 
 ## Plan with an agent, stay in control
 
-- **Projects and research goals.** Organize related questions into projects and break each goal into evidence collection, analysis, and reporting tasks.
-- **Review before execution.** Agent-generated project topics land in **Backlog**. Move the topics you approve to **Todo**, then start their research when you are ready.
-- **Editable plans.** Refine task descriptions, scope, dependencies, and supporting materials before running the next step.
-- **Project-wide execution.** Start the current project's approved Todo work in one action. Existing valid results are reused, and dependent steps wait for their prerequisites.
+- **Start with one sentence.** Use **New research** in a Project or Topic. The original request and submission time are saved before planning; failed or interrupted planning can be retried from **Market research → Saved research requests**. Relative dates stay anchored to the original request.
+- **Required Topics.** The structure is Project → Topic → Goal → research steps. An explicit Topic is reused; otherwise the planner proposes a new Topic. Older unclassified roots move into **待归类** without losing results. Topics organize content and do not automatically share research context.
+- **Complete plans before approval.** The planner expands the request into an objective, deliverable, scope, assumptions, facts to verify, and independent Goals with complete dependency plans. Goals enter **Backlog**. Planning never starts the research.
+- **Goal-wide review.** The board groups Goal cards by Topic. Internal steps appear inside Goals, not as separate approval cards. Move a Goal to **Todo** to approve its current plan, then click **Run goal** or **Run / resume**. Dragging alone never executes work.
+- **Versioned approval.** Changes to research scope, step instructions, dependencies, comments or materials return approved research to Backlog. Existing runs remain available; reapproval and an explicit start reuse valid evidence and refresh affected downstream results.
 
 ## Execute through local OpenCode
 
 The application uses your locally installed and configured **OpenCode** to plan and execute tasks. It discovers the models available in your OpenCode configuration and lets you choose a global default or override the model for individual stages.
 
-Independent tasks can run concurrently, with up to three execution slots. Tasks sharing a research goal, browser Space, or overlapping working directory are queued to avoid conflicting changes. Queue messages explain what a task is waiting for.
+Dependency-ready steps can run concurrently, with up to three execution slots. New request-generated Goals use separate step folders and browser Spaces. Shared sessions, Spaces and overlapping folders remain serialized; legacy research preserves its existing workspace. A failed branch blocks its dependents while independent approved work can continue.
 
 Interrupted or unsuccessful work can reuse an eligible existing OpenCode session when started again. Resumption depends on compatible execution settings and working directory; a restart does not blindly replay all pending work. Run history retains the model, session, inputs, logs, and outputs for each attempt.
 
@@ -28,8 +29,8 @@ Interrupted or unsuccessful work can reuse an eligible existing OpenCode session
 
 The research workflow is designed for questions such as industry trends, market developments, and investment opportunities:
 
-1. Define a research goal and its scope.
-2. Generate and review the research steps.
+1. Capture a research request in one sentence.
+2. Review the complete plan in Backlog, approve selected Goals into Todo, then explicitly start them.
 3. Gather evidence using the local **ego(lite)** browser integration.
 4. Analyze the findings and produce a final report.
 5. Review the report, inspect sources, and add information for a follow-up run.
@@ -48,7 +49,7 @@ Extracted text is sent to the selected model provider. OCR and text extraction h
 
 ## A workspace built around tasks
 
-- **List and board views** with status filters, project grouping, and colored board cards.
+- **Goal list and board views** with status filters, Topic grouping, and colored Goal cards.
 - **Expandable project trees** with research goals and their related steps, plus identifiers that distinguish goals, evidence, analysis, and reports.
 - **Resizable navigation panels** and structural breadcrumbs for moving between projects, tasks, and results.
 - **Priorities, labels, due dates, comments, activity history, and archiving.**
@@ -61,7 +62,7 @@ Extracted text is sent to the selected model provider. OCR and text extraction h
 
 On first launch, choose a workspace root before continuing. Projects and their generated artifacts are managed underneath that root, so agent runs have an explicit working directory.
 
-Structured application data is stored locally in **SQLite**. Attachments and generated research files remain ordinary files alongside the database. The workspace preserves projects, tasks, configuration, dependencies, run history, and source records. A small application preference records the workspace location.
+Structured application data is stored locally in **SQLite**. Attachments and generated research files remain ordinary files alongside the database. The workspace preserves projects, Topics, original requests, structured plans, approval snapshots, tasks, dependencies, run history, and source records. After an app restart, explicitly resume approved work; unapproved plans never run automatically. Local research pauses when the computer is asleep or offline. A small application preference records the workspace location.
 
 For a complete backup, quit the application and copy the entire workspace root, not just the database. There is no built-in cloud synchronization. OpenCode authentication and browser profiles are managed by those tools separately, so moving the workspace alone does not transfer their credentials or environments.
 

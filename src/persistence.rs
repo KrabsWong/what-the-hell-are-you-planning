@@ -72,7 +72,9 @@ impl Storage {
             .is_some_and(|extension| extension == "sqlite3")
         {
             if self.path.exists() {
-                return crate::sqlite_storage::load(&self.path);
+                let mut loaded = crate::sqlite_storage::load(&self.path)?;
+                if let Some(store) = &mut loaded { store.normalize_topics(); }
+                return Ok(loaded);
             }
             let legacy = Storage::new(self.path.with_file_name("workspace.json"));
             let Some(store) = legacy.load()? else {
@@ -140,6 +142,7 @@ impl Storage {
                 }
             }
         }
+        file.workspace.normalize_topics();
         Ok(Some(file.workspace))
     }
 
@@ -367,6 +370,27 @@ mod tests {
     }
 
     #[test]
+    fn sqlite_topics_open_legacy_schema_and_roundtrip_membership() {
+        let directory = TestDirectory::new();
+        let database = Storage::new(directory.0.join("workspace.sqlite3"));
+        let mut original = Store::empty();
+        let goal = original.create_research_goal("Quarterly review".into(), "Analyze earnings".into(), 1).unwrap();
+        original.normalize_topics();
+        database.save(&original).unwrap();
+        let db = rusqlite::Connection::open(database.path()).unwrap();
+        db.execute("UPDATE workspace SET payload=json_remove(payload, '$.topics')", []).unwrap();
+        db.execute("UPDATE tasks SET payload=json_remove(payload, '$.topic_id')", []).unwrap();
+        drop(db);
+        let mut loaded = database.load().unwrap().unwrap();
+        assert_eq!(loaded, original);
+        let topic = loaded.create_topic(1, "Company research").unwrap();
+        loaded.set_goal_topic(goal, Some(topic)).unwrap();
+        loaded.set_topic_archived(topic, true).unwrap();
+        database.save(&loaded).unwrap();
+        assert_eq!(database.load().unwrap(), Some(loaded));
+    }
+
+    #[test]
     fn sqlite_failed_write_rolls_back_all_tables() {
         let directory = TestDirectory::new();
         let database = Storage::new(directory.0.join("workspace.sqlite3"));
@@ -540,7 +564,13 @@ mod tests {
         assert_eq!(store.projects[0].id, 3);
         assert_eq!(store.next_id, next_id);
         assert_eq!(store.policies[0].model, "user/configured-model");
-        assert_eq!(storage.load().unwrap(), Some(store.clone()));
+        // Loading upgrades approval metadata, while cleanup itself preserves the real task exactly.
+        let mut expected_loaded = store.clone();
+        expected_loaded.normalize_topics();
+        let loaded = storage.load().unwrap().unwrap();
+        assert_eq!(loaded, expected_loaded);
+        assert_eq!(loaded.task(real_id).unwrap().stage, store.task(real_id).unwrap().stage);
+        assert!(loaded.goal_execution_approved(real_id));
         assert_eq!(
             storage
                 .remove_reviewed_demo(&mut store, &(1..=22).collect::<Vec<_>>())
@@ -699,10 +729,16 @@ mod tests {
             .as_object_mut()
             .unwrap()
             .remove("requires_approval");
+        file["workspace"]["tasks"][0].as_object_mut().unwrap().remove("approved_plan");
         fs::create_dir_all(storage.path().parent().unwrap()).unwrap();
-        fs::write(storage.path(), serde_json::to_vec(&file).unwrap()).unwrap();
+        let original_bytes = serde_json::to_vec(&file).unwrap();
+        fs::write(storage.path(), &original_bytes).unwrap();
         let loaded = storage.load().unwrap().unwrap();
+        original.normalize_topics();
         assert_eq!(loaded, original);
+        assert_eq!(fs::read(storage.path()).unwrap(), original_bytes, "Loading must not rewrite the legacy source");
+        assert!(loaded.task(goal).unwrap().research.as_ref().unwrap().requires_approval);
+        assert!(loaded.task(goal).unwrap().approved_plan.is_some());
         assert!(!loaded.research_pending_approval(goal));
         storage.save(&loaded).unwrap();
         let saved: serde_json::Value =

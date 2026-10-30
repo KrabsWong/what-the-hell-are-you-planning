@@ -26,13 +26,13 @@ fn title_key(title: &str) -> String {
 pub fn parse_plan(text: &str) -> Result<ProjectPlan, String> {
     if text.len() > 128_000 {
         return Err(
-            "The project plan is too large. Ask for up to 8 focused research topics.".into(),
+            "The project plan is too large. Ask for up to 8 focused research goals.".into(),
         );
     }
     let mut plan: ProjectPlan = serde_json::from_str(research::response_json(text)?)
         .map_err(|e| format!("The model did not return the required project plan JSON: {e}"))?;
     if !(1..=8).contains(&plan.tasks.len()) {
-        return Err("A project plan must contain 1–8 independent research topics.".into());
+        return Err("A project plan must contain 1–8 independent research goals.".into());
     }
     let mut titles = HashSet::new();
     for (index, task) in plan.tasks.iter_mut().enumerate() {
@@ -44,12 +44,12 @@ pub fn parse_plan(text: &str) -> Result<ProjectPlan, String> {
             || task.brief.len() > 12_000
         {
             return Err(format!(
-                "Topic {} needs a title of up to 160 characters and a non-empty brief of up to 12,000 bytes.",
+                "Goal {} needs a title of up to 160 characters and a non-empty brief of up to 12,000 bytes.",
                 index + 1
             ));
         }
         if !titles.insert(title_key(&task.title)) {
-            return Err("The project plan contains duplicate research topics. Retry with distinct questions.".into());
+            return Err("The project plan contains duplicate research goals. Retry with distinct questions.".into());
         }
     }
     Ok(plan)
@@ -118,7 +118,7 @@ impl Store {
         }
         if project.directory.is_empty() || !std::path::Path::new(&project.directory).is_dir() {
             return Err(
-                "Set an existing working folder for this project before generating topics.".into(),
+                "Set an existing working folder for this project before generating goals.".into(),
             );
         }
         let existing: Vec<_> = self
@@ -159,7 +159,7 @@ impl Store {
             id: self.runs.iter().map(|r| r.id).max().unwrap_or(0) + 1,
             task_id: 0,
             project_plan: Some(project.id),
-            task_title: format!("Project topics · {}", project.name),
+            task_title: format!("Project goals · {}", project.name),
             directory: project.directory.clone(),
             prompt,
             queued_at: String::new(), workspace_source: None, started_at: crate::opencode::timestamp(),
@@ -211,7 +211,7 @@ impl Store {
             .iter()
             .any(|t| existing.contains(&title_key(&t.title)))
         {
-            return Err("A proposed title duplicates an existing task in this project. Retry with distinct topics.".into());
+            return Err("A proposed title duplicates an existing task in this project. Retry with distinct goals.".into());
         }
         self.next_id
             .checked_add(plan.tasks.len() as u64)

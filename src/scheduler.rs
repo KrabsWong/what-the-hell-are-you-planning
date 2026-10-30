@@ -8,6 +8,17 @@ use std::path::{Path, PathBuf};
 pub const MAX_CONCURRENT_RUNS: usize = 3;
 
 impl Store {
+    /// New one-sentence plans isolate each step; legacy goals retain their shared workspace.
+    pub fn uses_step_workspace(&self, task_id: u64) -> bool {
+        self.task(task_id).and_then(|t| t.research.as_ref()).is_some_and(|r| {
+            r.kind != ResearchKind::Goal && self.research_requests.iter().any(|request| request.goal_ids.contains(&r.goal_id))
+        })
+    }
+
+    pub fn research_space(&self, task_id: u64) -> Option<String> {
+        let research = self.task(task_id)?.research.as_ref()?;
+        Some(if self.uses_step_workspace(task_id) { format!("{} · step {task_id}", research.space_name) } else { research.space_name.clone() })
+    }
     /// Keep an existing research workspace stable; isolate new goals from one another.
     pub fn previous_execution_directory(&self, task_id: u64) -> Result<PathBuf, String> {
         let task = self.task(task_id).ok_or("Task not found.")?;
@@ -22,6 +33,12 @@ impl Store {
         let Some(research) = &task.research else {
             return Ok(PathBuf::from(&project.directory));
         };
+        if self.uses_step_workspace(task_id) {
+            if let Some(run) = self.runs.iter().rev().find(|r| r.task_id == task_id && r.project_plan.is_none() && r.status != "Simulated" && !r.directory.is_empty()) {
+                return Ok(PathBuf::from(run.workspace_source.as_ref().unwrap_or(&run.directory)));
+            }
+            return self.execution_directory(task_id);
+        }
         let same_goal = |run: &&AgentRun| {
             run.project_plan.is_none()
                 && run.status != "Simulated"
@@ -59,7 +76,10 @@ impl Store {
         let project = self.projects.iter().find(|p| p.id == task.project_id).ok_or("Project not found.")?;
         if project.directory.is_empty() { return Err("Set this project's working folder before running.".into()); }
         Ok(match &task.research {
-            Some(research) => PathBuf::from(&project.directory).join(".research").join(format!("goal-{}", research.goal_id)),
+            Some(research) => {
+                let directory = PathBuf::from(&project.directory).join(".research").join(format!("goal-{}", research.goal_id));
+                if self.uses_step_workspace(task_id) { directory.join(format!("step-{task_id}")) } else { directory }
+            },
             None => PathBuf::from(&project.directory),
         })
     }
@@ -114,8 +134,8 @@ impl Store {
                 self.task(candidate.task_id).and_then(|t| t.research.as_ref()),
                 self.task(active.task_id).and_then(|t| t.research.as_ref()),
             ) {
-                if a.goal_id == b.goal_id { return Some("same research goal"); }
-                if !a.space_name.is_empty() && a.space_name == b.space_name { return Some("same browser Space"); }
+                if a.goal_id == b.goal_id && !(self.uses_step_workspace(candidate.task_id) && self.uses_step_workspace(active.task_id)) { return Some("same research goal"); }
+                if !a.space_name.is_empty() && self.research_space(candidate.task_id) == self.research_space(active.task_id) { return Some("same browser Space"); }
             }
         }
         let overlaps = |a: &str, b: &str| {
@@ -187,6 +207,27 @@ mod tests {
             .into_owned();
         run
     }
+    #[test]
+    fn request_steps_have_independent_resources_and_keep_retry_paths() {
+        let (mut store, goal, _) = setup();
+        let steps = store.apply_research_plan(goal, r#"{"tasks":[{"title":"Official","instructions":"Find filings","kind":"collect","depends_on":[]},{"title":"Market","instructions":"Find market evidence","kind":"collect","depends_on":[]},{"title":"Analyze","instructions":"Compare","kind":"analyze","depends_on":[0,1]},{"title":"Report","instructions":"Conclude","kind":"advise","depends_on":[2]}]}"#).unwrap();
+        let request_id = store.create_research_request(1, None, "Analyze earnings").unwrap();
+        store.research_requests.iter_mut().find(|r| r.id == request_id).unwrap().goal_ids.push(goal);
+        let first = request(&store, steps[0]);
+        let second = request(&store, steps[1]);
+        assert_ne!(first.directory, second.directory);
+        assert_ne!(store.research_space(steps[0]), store.research_space(steps[1]));
+        assert!(!store.run_conflicts(&first, &second));
+        assert_eq!(store.workspace_source(steps[0]).unwrap(), None);
+        let mut failed = first.clone();
+        failed.status = "Failed".into();
+        failed.session_id = Some("isolated-retry".into());
+        store.runs.push(failed);
+        assert_eq!(store.previous_execution_directory(steps[0]).unwrap(), PathBuf::from(&first.directory));
+        assert_eq!(store.resume_candidate(&first).unwrap().session_id.as_deref(), Some("isolated-retry"));
+        assert!(!store.run_conflicts(&first, &second));
+    }
+
     #[test]
     fn legacy_migration_waits_for_source_then_allows_independent_goals() {
         let (mut store, a, b) = setup();

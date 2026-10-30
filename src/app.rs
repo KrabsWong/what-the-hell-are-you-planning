@@ -21,6 +21,7 @@ type Discovery = Result<(String, Vec<String>), String>;
 pub enum Scope {
     All,
     Project(u64),
+    Topic(u64),
     Cycle(String),
     Due,
     DueDate(String),
@@ -133,7 +134,11 @@ pub struct TaskApp {
     pub focus: FocusHandle,
     pub modal_focus: FocusHandle,
     pub new_project: Option<Entity<InputState>>,
+    pub topic_editor: Option<(u64, Option<u64>, Entity<InputState>)>,
+    pub collapsed_sidebar_topics: Vec<u64>,
+    pub research_topic: Option<u64>,
     pub planning_project: Option<u64>,
+    pub planning_topic: Option<u64>,
     pub project_brief: Entity<TextareaState>,
     pub storage: Option<Storage>,
     pub workspace_required: bool,
@@ -407,11 +412,15 @@ impl TaskApp {
             focus,
             modal_focus: cx.focus_handle(),
             new_project: None,
+            topic_editor: None,
+            collapsed_sidebar_topics: vec![],
+            research_topic: None,
             planning_project: None,
+            planning_topic: None,
             project_brief: cx.new(|cx| {
                 TextareaState::new(window, cx)
                     .rows(5)
-                    .placeholder("Optional: markets, time horizon, questions, exclusions…")
+                    .placeholder("Required: what do you want to research? One sentence is enough…")
             }),
             research_title: cx.new(|cx| {
                 InputState::new(window, cx)
@@ -505,6 +514,7 @@ impl TaskApp {
         self.error.clear();
         self.query.clear();
         self.search.update(cx, |s, cx| s.set_value("", window, cx));
+        if matches!(self.scope, Scope::Topic(_)) { window.focus(&self.focus, cx); }
         cx.notify();
     }
     pub fn open_collection_project(
@@ -523,6 +533,7 @@ impl TaskApp {
             .unwrap_or_else(|| self.scope.clone())
     }
     pub(crate) fn reveal_task_project(&mut self, id: u64) {
+        if let Some(topic) = self.store.task_topic(id) { self.collapsed_sidebar_topics.retain(|t| *t != topic.id); }
         if let Some(research) = self.store.task(id).and_then(|t| t.research.as_ref()) {
             self.collapsed_sidebar_goals
                 .retain(|goal| *goal != research.goal_id);
@@ -569,6 +580,7 @@ impl TaskApp {
                 .find(|p| p.id == *id)
                 .map(|p| p.name.clone())
                 .unwrap_or_default(),
+            Scope::Topic(id) => self.store.topics.iter().find(|t| t.id == *id).map(|t| t.display_name()).unwrap_or_default(),
             Scope::Cycle(c) => c.clone(),
             Scope::Due => "Due this week".into(),
             Scope::DueDate(date) => format!("Due on {date}"),
@@ -587,6 +599,7 @@ impl TaskApp {
         match &self.scope {
             Scope::All => self.all_status.matches(t.stage),
             Scope::Project(id) => t.project_id == *id,
+            Scope::Topic(id) => self.store.task_topic(t.id).is_some_and(|topic| topic.id == *id),
             Scope::Cycle(c) => t.cycle.as_ref() == Some(c),
             Scope::DueDate(date) => t.due_date == *date,
             Scope::Due => {
@@ -609,7 +622,7 @@ impl TaskApp {
             .tasks
             .iter()
             .filter(|t| {
-                self.matches_scope(t)
+                t.parent_id.is_none() && self.matches_scope(t)
                     && self.store.matches_query(t, &self.query)
                     && (self.scope == Scope::All || self.show_done || !t.stage.is_closed())
             })
@@ -621,6 +634,9 @@ impl TaskApp {
         list
     }
     pub fn change_stage(&mut self, id: u64, stage: Stage, cx: &mut Context<Self>) {
+        if self.store.task(id).is_some_and(|t| t.parent_id.is_some() && t.research.is_some()) {
+            self.error = "Review and approve the complete goal; steps inherit its approval.".into(); cx.notify(); return;
+        }
         if self.store.task(id).is_some_and(|t| t.stage == stage) {
             return;
         }
@@ -643,6 +659,7 @@ impl TaskApp {
             .or_else(|| parent.and_then(|id| self.store.task(id).map(|t| t.project_id)))
             .unwrap_or(match self.scope {
                 Scope::Project(id) => id,
+                Scope::Topic(id) => self.store.topics.iter().find(|t| t.id == id).map(|t| t.project_id).unwrap_or(0),
                 _ => self.store.projects.first().map(|p| p.id).unwrap_or(0),
             });
         let title = cx.new(|cx| {
@@ -816,6 +833,7 @@ impl TaskApp {
             {
                 self.scope = Scope::All;
             }
+            if let Scope::Topic(id) = self.scope { if !self.store.topics.iter().any(|t| t.id == id) { self.scope = Scope::All; } }
             self.draft = None;
             self.editing = false;
             self.property = None;
@@ -855,6 +873,7 @@ impl TaskApp {
                 self._storage_lock = Some(lock);
                 self.store = store.unwrap_or_else(Store::empty);
                 self.store.recover_interrupted_runs();
+                self.store.reconcile_goal_approvals();
                 let project = self.store.projects.first().map(|p| p.id).unwrap_or(0);
                 self.connection_project = project;
                 self.research_project = project;
@@ -886,6 +905,7 @@ impl TaskApp {
     }
     // Every notified domain mutation is saved. Streaming runs are coalesced to two writes/second.
     pub(crate) fn persist_if_changed(&mut self, force: bool) -> bool {
+        self.store.reconcile_goal_approvals();
         let Some(storage) = &self.storage else {
             return false;
         };
@@ -1018,6 +1038,7 @@ impl TaskApp {
         true
     }
     pub fn start_run(&mut self, id: u64, cx: &mut Context<Self>) {
+        self.store.reconcile_goal_approvals();
         self.error.clear();
         self.task_start_feedback = None;
         if self.task_running(id) {
@@ -1065,6 +1086,7 @@ impl TaskApp {
         if self.store.runs.iter().any(|r| {
             r.task_id == run.task_id
                 && r.project_plan == run.project_plan
+                && (run.project_plan.is_none() || self.store.request_for_run(r.id).map(|q| q.id) == self.store.request_for_run(run.id).map(|q| q.id))
                 && matches!(r.status.as_str(), "Queued" | "Running" | "Cancelling")
         }) {
             return;
@@ -1169,7 +1191,9 @@ impl TaskApp {
             let index = self.store.runs.iter().position(|r| r.id == id).unwrap();
             let run = &self.store.runs[index];
             // Queued requests are snapshots. Never execute stale approvals or evidence.
-            let valid = if let Some(project) = run.project_plan {
+            let valid = if let Some(request) = self.store.request_for_run(run.id) {
+                self.store.request_plan_signature(request.id).ok().as_ref() == Some(&run.input_signature)
+            } else if let Some(project) = run.project_plan {
                 self.store.project_plan_signature(project).ok().as_ref()
                     == Some(&run.input_signature)
             } else if run.research_kind.is_some() {

@@ -79,6 +79,36 @@ fn section(title: &str, cx: &App) -> Div {
 }
 
 impl TaskApp {
+    pub(crate) fn layout_switch(&self, cx: &mut Context<Self>) -> AnyElement {
+        let colors = palette(cx);
+        row()
+            .gap_0()
+            .p(px(2.))
+            .rounded(px(7.))
+            .bg(rgb(colors.side))
+            .child(
+                quiet_button("list-view", "List")
+                    .icon(assets::IconName::Menu)
+                    .selected(self.layout == Layout::List)
+                    .when(self.layout == Layout::List, |b| b.bg(rgb(colors.panel)))
+                    .on_click(cx.listener(|this, _, _, cx| {
+                        this.layout = Layout::List;
+                        cx.notify();
+                    })),
+            )
+            .child(
+                quiet_button("board-view", "Board")
+                    .icon(assets::IconName::LayoutDashboard)
+                    .selected(self.layout == Layout::Board)
+                    .when(self.layout == Layout::Board, |b| b.bg(rgb(colors.panel)))
+                    .on_click(cx.listener(|this, _, _, cx| {
+                        this.layout = Layout::Board;
+                        cx.notify();
+                    })),
+            )
+            .into_any_element()
+    }
+
     fn task_location_label(&self, task: &Task) -> String {
         let id = self.store.identifier(task);
         match task.research.as_ref().map(|r| r.kind) {
@@ -224,7 +254,7 @@ impl TaskApp {
                 .tasks
                 .iter()
                 .filter(|t| {
-                    !t.archived
+                    !t.archived && t.parent_id.is_none()
                         && match scope {
                             Scope::All => true,
                             Scope::Due => {
@@ -288,7 +318,7 @@ impl TaskApp {
                 .tasks
                 .iter()
                 .filter(|t| {
-                    !t.archived
+                    !t.archived && t.parent_id.is_none()
                         && t.project_id == project.id
                         && !matches!(t.stage, Stage::Done | Stage::Cancelled)
                 })
@@ -364,7 +394,7 @@ impl TaskApp {
                     ),
             );
             if expanded {
-                let tasks: Vec<_> = self
+                let project_tasks: Vec<_> = self
                     .store
                     .tasks
                     .iter()
@@ -376,155 +406,151 @@ impl TaskApp {
                     .pl_2()
                     .border_l_1()
                     .border_color(rgb(colors.line));
-                if tasks.is_empty() {
-                    list = list.child(div().px_2().py_2().child(label("No tasks yet", cx)));
-                }
-                // Group research steps under their goal, independent of creation order.
-                let mut ordered = Vec::new();
-                for task in &tasks {
-                    let group = task.research.as_ref().map(|r| r.goal_id);
-                    let nested = group
-                        .is_some_and(|goal| goal != task.id && tasks.iter().any(|t| t.id == goal));
-                    if nested {
-                        continue;
+                let mut groups: Vec<_> = self.store.topics.iter().filter(|t| t.project_id == pid && !t.archived).map(|t| Some(t.id)).collect();
+                groups.push(None);
+                for topic_id in groups {
+                    let tasks: Vec<_> = project_tasks.iter().copied().filter(|t| self.store.task_topic(t.id).map(|topic| topic.id) == topic_id).collect();
+                    if let Some(topic) = topic_id.and_then(|id| self.store.topics.iter().find(|t| t.id == id)) {
+                        list = list.child(self.topic_sidebar_row(topic, cx));
+                        if self.collapsed_sidebar_topics.contains(&topic.id) { continue; }
                     }
-                    ordered.push((*task, false));
-                    if !self.collapsed_sidebar_goals.contains(&task.id) {
-                        ordered.extend(
-                            tasks
-                                .iter()
-                                .filter(|t| {
-                                    t.id != task.id
-                                        && t.research.as_ref().is_some_and(|r| r.goal_id == task.id)
-                                })
-                                .map(|t| (*t, true)),
+                    if tasks.is_empty() && topic_id.is_none() && self.store.topics.iter().all(|t| t.project_id != pid) {
+                        list = list.child(div().px_2().py_2().child(label("No tasks yet", cx)));
+                    }
+                    // Preserve the parent tree for research steps and manually added subtasks.
+                    let mut pending: Vec<_> = tasks.iter().rev().filter(|t| t.parent_id.is_none_or(|id| !tasks.iter().any(|p| p.id == id))).map(|t| (*t, 0usize)).collect();
+                    let mut ordered = Vec::new();
+                    let mut visited = std::collections::BTreeSet::new();
+                    while let Some((task, depth)) = pending.pop() {
+                        if !visited.insert(task.id) { continue; }
+                        ordered.push((task, depth));
+                        if !self.collapsed_sidebar_goals.contains(&task.id) {
+                            pending.extend(tasks.iter().rev().filter(|t| t.parent_id == Some(task.id)).map(|t| (*t, depth + 1)));
+                        }
+                    }
+                    for (task, depth) in ordered {
+                        let nested = depth > 0;
+                        let tid = task.id;
+                        let has_steps = tasks.iter().any(|t| t.parent_id == Some(tid));
+                        let hint = format!(
+                            "{} · {}\n{}",
+                            self.store.identifier(task),
+                            task.stage.label(),
+                            task.title
+                        );
+                        let hint = hint
+                            .chars()
+                            .collect::<Vec<_>>()
+                            .chunks(32)
+                            .map(|chunk| chunk.iter().collect::<String>())
+                            .collect::<Vec<_>>()
+                            .join("\n");
+                        let task_button = quiet_button(format!("sidebar-task-{tid}"), "")
+                            .custom(
+                                gpui_kit::component::button::ButtonCustomVariant::new(cx)
+                                    .foreground(rgb(colors.text).into())
+                                    .hover(
+                                        rgb(
+                                            if self.selected.or(self.task_result_context) == Some(tid) {
+                                                colors.accent_surface
+                                            } else {
+                                                colors.accent_hover
+                                            },
+                                        )
+                                        .into(),
+                                    )
+                                    .active(
+                                        rgb(
+                                            if self.selected.or(self.task_result_context) == Some(tid) {
+                                                colors.accent_surface
+                                            } else {
+                                                colors.accent_hover
+                                            },
+                                        )
+                                        .into(),
+                                    ),
+                            )
+                            .flex_1()
+                            .min_w_0()
+                            .h_8()
+                            .px_2()
+                            .tooltip(hint)
+                            .accessibility_label(format!("{} · {}", task.title, task.stage.label()))
+                            .when(
+                                self.selected.or(self.task_result_context) == Some(tid),
+                                |b| {
+                                    b.bg(rgb(colors.accent_surface))
+                                        .text_color(rgb(colors.accent))
+                                },
+                            )
+                            .child(
+                                row()
+                                    .w_full()
+                                    .min_w_0()
+                                    .gap_2()
+                                    .child(
+                                        div()
+                                            .w_4()
+                                            .flex_shrink_0()
+                                            .text_color(rgb(stage_color(task.stage, cx)))
+                                            .child(task.stage.symbol()),
+                                    )
+                                    .child(single_line_text(
+                                        format!("sidebar-task-title-{tid}"),
+                                        format!(
+                                            "{} · {}",
+                                            if nested {
+                                                self.store
+                                                    .identifier(task)
+                                                    .rsplit('-')
+                                                    .next()
+                                                    .unwrap_or("")
+                                                    .to_string()
+                                            } else {
+                                                self.store.identifier(task)
+                                            },
+                                            task.title
+                                        ),
+                                    )),
+                            )
+                            .on_click(cx.listener(move |a, _, w, cx| {
+                                a.navigate(Scope::Project(pid), w, cx);
+                                a.open_task(tid, w, cx);
+                            }));
+                        list = list.child(
+                            row()
+                                .gap_0()
+                                .min_w_0()
+                                .ml(px((depth as f32 + if topic_id.is_some() { 1. } else { 0. }) * 12.))
+                                .when(nested, |d| d.pl_1().border_l_1().border_color(rgb(colors.line)))
+                                .when(has_steps, |d| d.mt_2())
+                                .child(task_button)
+                                .when(has_steps, |d| {
+                                    d.child(
+                                        tool_icon(
+                                            format!("sidebar-goal-toggle-{tid}"),
+                                            if self.collapsed_sidebar_goals.contains(&tid) {
+                                                assets::IconName::ChevronRight
+                                            } else {
+                                                assets::IconName::ChevronDown
+                                            },
+                                            "Expand or collapse research steps",
+                                        )
+                                        .flex_shrink_0()
+                                        .on_click(cx.listener(
+                                            move |a, _, _, cx| {
+                                                if a.collapsed_sidebar_goals.contains(&tid) {
+                                                    a.collapsed_sidebar_goals.retain(|id| *id != tid);
+                                                } else {
+                                                    a.collapsed_sidebar_goals.push(tid);
+                                                }
+                                                cx.notify();
+                                            },
+                                        )),
+                                    )
+                                }),
                         );
                     }
-                }
-                for (task, nested) in ordered {
-                    let tid = task.id;
-                    let has_steps = tasks.iter().any(|t| {
-                        t.id != tid && t.research.as_ref().is_some_and(|r| r.goal_id == tid)
-                    });
-                    let hint = format!(
-                        "{} · {}\n{}",
-                        self.store.identifier(task),
-                        task.stage.label(),
-                        task.title
-                    );
-                    let hint = hint
-                        .chars()
-                        .collect::<Vec<_>>()
-                        .chunks(32)
-                        .map(|chunk| chunk.iter().collect::<String>())
-                        .collect::<Vec<_>>()
-                        .join("\n");
-                    let task_button = quiet_button(format!("sidebar-task-{tid}"), "")
-                        .custom(
-                            gpui_kit::component::button::ButtonCustomVariant::new(cx)
-                                .foreground(rgb(colors.text).into())
-                                .hover(
-                                    rgb(
-                                        if self.selected.or(self.task_result_context) == Some(tid) {
-                                            colors.accent_surface
-                                        } else {
-                                            colors.accent_hover
-                                        },
-                                    )
-                                    .into(),
-                                )
-                                .active(
-                                    rgb(
-                                        if self.selected.or(self.task_result_context) == Some(tid) {
-                                            colors.accent_surface
-                                        } else {
-                                            colors.accent_hover
-                                        },
-                                    )
-                                    .into(),
-                                ),
-                        )
-                        .flex_1()
-                        .min_w_0()
-                        .h_8()
-                        .px_2()
-                        .tooltip(hint)
-                        .accessibility_label(format!("{} · {}", task.title, task.stage.label()))
-                        .when(
-                            self.selected.or(self.task_result_context) == Some(tid),
-                            |b| {
-                                b.bg(rgb(colors.accent_surface))
-                                    .text_color(rgb(colors.accent))
-                            },
-                        )
-                        .child(
-                            row()
-                                .w_full()
-                                .min_w_0()
-                                .gap_2()
-                                .child(
-                                    div()
-                                        .w_4()
-                                        .flex_shrink_0()
-                                        .text_color(rgb(stage_color(task.stage, cx)))
-                                        .child(task.stage.symbol()),
-                                )
-                                .child(single_line_text(
-                                    format!("sidebar-task-title-{tid}"),
-                                    format!(
-                                        "{} · {}",
-                                        if nested {
-                                            self.store
-                                                .identifier(task)
-                                                .rsplit('-')
-                                                .next()
-                                                .unwrap_or("")
-                                                .to_string()
-                                        } else {
-                                            self.store.identifier(task)
-                                        },
-                                        task.title
-                                    ),
-                                )),
-                        )
-                        .on_click(cx.listener(move |a, _, w, cx| {
-                            a.navigate(Scope::Project(pid), w, cx);
-                            a.open_task(tid, w, cx);
-                        }));
-                    list = list.child(
-                        row()
-                            .gap_0()
-                            .min_w_0()
-                            .when(nested, |d| {
-                                d.ml_3().pl_1().border_l_1().border_color(rgb(colors.line))
-                            })
-                            .when(has_steps, |d| d.mt_2())
-                            .child(task_button)
-                            .when(has_steps, |d| {
-                                d.child(
-                                    tool_icon(
-                                        format!("sidebar-goal-toggle-{tid}"),
-                                        if self.collapsed_sidebar_goals.contains(&tid) {
-                                            assets::IconName::ChevronRight
-                                        } else {
-                                            assets::IconName::ChevronDown
-                                        },
-                                        "Expand or collapse research steps",
-                                    )
-                                    .flex_shrink_0()
-                                    .on_click(cx.listener(
-                                        move |a, _, _, cx| {
-                                            if a.collapsed_sidebar_goals.contains(&tid) {
-                                                a.collapsed_sidebar_goals.retain(|id| *id != tid);
-                                            } else {
-                                                a.collapsed_sidebar_goals.push(tid);
-                                            }
-                                            cx.notify();
-                                        },
-                                    )),
-                                )
-                            }),
-                    );
                 }
                 side = side.child(list);
             }
@@ -655,7 +681,7 @@ impl TaskApp {
             Scope::All => assets::IconName::Layers,
             Scope::Due | Scope::DueDate(_) => assets::IconName::CalendarDays,
             Scope::Overdue => assets::IconName::Clock,
-            Scope::Project(_) => assets::IconName::Folder,
+            Scope::Project(_) | Scope::Topic(_) => assets::IconName::Folder,
             Scope::Cycle(_) => assets::IconName::RefreshCw,
             Scope::Archive => assets::IconName::Archive,
             Scope::Workflow => assets::IconName::Workflow,
@@ -748,6 +774,9 @@ impl TaskApp {
                     CrumbTarget::View(Scope::Project(project.id)),
                 ));
             }
+            if let Some(topic) = self.store.task_topic(task.id) {
+                links.push(("location-topic".into(), topic.display_name(), CrumbTarget::View(Scope::Topic(topic.id))));
+            }
             let mut ancestors = vec![];
             let mut seen = vec![task.id];
             let mut parent = task.parent_id;
@@ -789,6 +818,10 @@ impl TaskApp {
                 CrumbTarget::View(Scope::Project(project.id)),
             ));
             current = "Project planning".into();
+        } else if let Scope::Topic(id) = self.scope {
+            if let Some(project) = self.store.topics.iter().find(|t| t.id == id).and_then(|t| self.store.projects.iter().find(|p| p.id == t.project_id)) {
+                links.push(("location-project".into(), project.name.clone(), CrumbTarget::View(Scope::Project(project.id))));
+            }
         } else if self.scope == Scope::Workflow
             || (self.scope == Scope::Research && self.show_research_settings)
         {
@@ -943,23 +976,23 @@ impl TaskApp {
                                 .tasks
                                 .iter()
                                 .filter(|t| {
-                                    t.project_id == id
+                                    t.project_id == id && t.parent_id.is_none()
                                         && !t.archived
                                         && self.store.research_pending_approval(t.id)
                                 })
                                 .count();
                             if pending > 0 {
-                                format!("{count} tasks · {pending} awaiting approval")
+                                format!("{count} goals · {pending} awaiting approval")
                             } else {
-                                format!("{count} tasks")
+                                format!("{count} goals")
                             }
                         } else {
                             format!(
-                                "{count} tasks · {}",
+                                "{count} goals · {}",
                                 if self.layout == Layout::List {
                                     "grouped by project"
                                 } else {
-                                    "project names on cards"
+                                    "grouped by topic"
                                 }
                             )
                         },
@@ -969,15 +1002,15 @@ impl TaskApp {
             .when_some(project, |d, id| {
                 d.child(self.project_toolbar_actions(id, cx))
             })
-            .child(
-                button("new-task", "New task")
+            .when(project.is_none(), |d| d.child(
+                button("new-task", "New research")
                     .icon(assets::IconName::Plus)
                     .when(project.is_some(), |b| b.ghost())
                     .when(project.is_none(), |b| b.primary())
                     .on_click(cx.listener(|this, _, w, cx| {
-                        this.begin_draft(None, None, Stage::Backlog, w, cx)
+                        this.open_research_intake(w, cx)
                     })),
-            )
+            ))
             .into_any_element()
     }
     fn all_status_control(&self, cx: &mut Context<Self>) -> AnyElement {
@@ -1028,31 +1061,7 @@ impl TaskApp {
                         .child(Input::new(&self.search).id("task-search")),
                 )
                 .child(
-                    row()
-                        .gap_0()
-                        .p(px(2.))
-                        .rounded(px(7.))
-                        .bg(rgb(colors.side))
-                        .child(
-                            quiet_button("list-view", "List")
-                                .icon(assets::IconName::Menu)
-                                .selected(self.layout == Layout::List)
-                                .when(self.layout == Layout::List, |b| b.bg(rgb(colors.panel)))
-                                .on_click(cx.listener(|this, _, _, cx| {
-                                    this.layout = Layout::List;
-                                    cx.notify();
-                                })),
-                        )
-                        .child(
-                            quiet_button("board-view", "Board")
-                                .icon(assets::IconName::LayoutDashboard)
-                                .selected(self.layout == Layout::Board)
-                                .when(self.layout == Layout::Board, |b| b.bg(rgb(colors.panel)))
-                                .on_click(cx.listener(|this, _, _, cx| {
-                                    this.layout = Layout::Board;
-                                    cx.notify();
-                                })),
-                        ),
+                    self.layout_switch(cx),
                 )
                 .child(
                     tool_icon("display", assets::IconName::Settings2, "Display options")
@@ -1064,6 +1073,9 @@ impl TaskApp {
                 ),
         );
         if let Scope::Project(id) = self.scope {
+            main = main.child(self.topic_directory(id, cx));
+            let pending = self.store.research_requests.iter().filter(|r| r.project_id == id && r.goal_ids.is_empty()).count();
+            if pending > 0 { main = main.child(row().px_6().pb_2().child(label(format!("{pending} saved requests awaiting a plan"), cx)).child(button("saved-requests", "Open requests").on_click(cx.listener(|a, _, w, cx| a.navigate(Scope::Research, w, cx))))); }
             main = main.child(self.todo_batch_bar(Some(id), cx));
         }
         if self.query.ends_with("status:") || self.query.ends_with("stage:") {
@@ -1218,7 +1230,7 @@ impl TaskApp {
                                                 )
                                                 .font_weight(FontWeight::SEMIBOLD),
                                             )
-                                            .child(label(format!("{count} tasks"), cx)),
+                                            .child(label(format!("{count} goals"), cx)),
                                     )
                                     .on_click(cx.listener(move |this, _, w, cx| {
                                         this.open_collection_project(id, w, cx)
@@ -1407,7 +1419,7 @@ impl TaskApp {
             .map(|element| self.task_context(element, id, cx))
             .into_any_element()
     }
-    fn board(&self, tasks: &[Task], cx: &mut Context<Self>) -> AnyElement {
+    pub(crate) fn board(&self, tasks: &[Task], cx: &mut Context<Self>) -> AnyElement {
         let colors = palette(cx);
         row()
             .id("board-scroll")
@@ -1420,7 +1432,7 @@ impl TaskApp {
             .overflow_x_scroll()
             .restrict_scroll_to_axis()
             .children(Stage::ALL.into_iter().map(|stage| {
-                let cards: Vec<_> = tasks.iter().filter(|t| t.stage == stage).cloned().collect();
+                let cards: Vec<_> = tasks.iter().filter(|t| t.parent_id.is_none() && t.stage == stage).cloned().collect();
                 col()
                     .id(format!("column-{}", stage.key()))
                     .w(px(292.))
@@ -1449,11 +1461,11 @@ impl TaskApp {
                                 tool_icon(
                                     format!("add-{}", stage.key()),
                                     assets::IconName::Plus,
-                                    format!("Add task to {}", stage.label()),
+                                    "New research starts in Backlog",
                                 )
                                 .on_click(cx.listener(
                                     move |this, _, w, cx| {
-                                        this.begin_draft(None, None, stage, w, cx)
+                                        this.open_research_intake(w, cx)
                                     },
                                 )),
                             ),
@@ -1466,7 +1478,7 @@ impl TaskApp {
                             .flex_1()
                             .min_h_0()
                             .gap_3()
-                            .children(cards.iter().map(|t| self.task_card(t, cx)))
+                            .children(self.topic_grouped_cards(&cards, stage, cx))
                             .when(cards.is_empty(), |d| {
                                 d.child(
                                     div()
@@ -1477,7 +1489,7 @@ impl TaskApp {
                                         .flex()
                                         .items_center()
                                         .justify_center()
-                                        .child(label("Drop a task here", cx)),
+                                        .child(label("Drop a goal here", cx)),
                                 )
                             }),
                     )
@@ -1485,7 +1497,7 @@ impl TaskApp {
             }))
             .into_any_element()
     }
-    fn task_card(&self, t: &Task, cx: &mut Context<Self>) -> AnyElement {
+    pub(crate) fn goal_card(&self, t: &Task, cx: &mut Context<Self>) -> AnyElement {
         let colors = palette(cx);
         // Keep each status recognizable even when a card is hovered.
         let dark = gpui_kit::component::Theme::global(cx).is_dark();
@@ -1581,6 +1593,14 @@ impl TaskApp {
                     ),
             )
             .child(div().line_height(relative(1.4)).child(t.title.clone()))
+            .when_some(self.store.research_requests.iter().find(|r| r.goal_ids.contains(&id)).and_then(|r| r.brief.as_ref()), |d, brief| {
+                d.child(label(format!("Output · {}", brief.deliverable), cx))
+            })
+            .when(t.research.is_some(), |d| {
+                let steps = self.store.research_children(id);
+                let complete = steps.iter().filter(|id| self.store.research_result(**id).is_some()).count();
+                d.child(label(format!("{complete}/{} steps · one approval for this plan", steps.len()), cx))
+            })
             .when(!metadata.is_empty(), |d| {
                 d.child(
                     div()
@@ -1621,7 +1641,7 @@ impl TaskApp {
                     quiet_button(
                         format!("approve-topic-{id}"),
                         if t.parent_id.is_some() {
-                            "Approve parent topic →"
+                            "Approve parent goal →"
                         } else {
                             "Approve research →"
                         },
@@ -1885,6 +1905,7 @@ impl TaskApp {
                         t.description.clone()
                     }),
             )
+            .when(is_goal, |d| d.child(self.request_brief_view(id, cx)))
             .child(self.materials_panel(id, cx))
             .when(t.research.is_some(), |d| {
                 d.child(self.research_task_panel(id, cx))
@@ -1906,13 +1927,13 @@ impl TaskApp {
                         ),
                         cx,
                     ))
-                    .child(
+                    .when(t.research.is_none(), |d| d.child(
                         button("add-subtask", "+  Add subtask")
                             .disabled(t.archived || self.task_running(id))
                             .on_click(cx.listener(move |this, _, w, cx| {
                                 this.begin_draft(None, Some(id), Stage::Backlog, w, cx)
                             })),
-                    ),
+                    )),
             );
         let mut subtask_list = col().gap_1();
         for child in children {
@@ -2053,7 +2074,7 @@ impl TaskApp {
         });
         let needs_refresh = previously_completed && !has_result && t.research.as_ref()
             .is_some_and(|r| r.kind != crate::research::ResearchKind::Goal);
-        if !goal_has_plan {
+        if !goal_has_plan && t.research.is_none() && t.parent_id.is_none() {
             properties = properties.child(
                 button(
                     "execute-task",
@@ -2177,6 +2198,13 @@ impl TaskApp {
                 .text_color(rgb(colors.text))
                 .child("Task"),
         );
+        if t.parent_id.is_none() {
+            properties = properties.child(
+                row().justify_between().min_w_0()
+                    .child(label("Topic", cx))
+                    .child(self.topic_picker(Some(id), t.project_id, cx)),
+            );
+        }
         for (prop, name, value) in [
             (Property::Stage, "Stage", stage_text(t.stage)),
             (Property::Priority, "Priority", t.priority.label().into()),
@@ -2213,6 +2241,7 @@ impl TaskApp {
                     .unwrap_or("No parent".into()),
             ),
         ] {
+            if t.parent_id.is_some() && t.research.is_some() && prop == Property::Stage { continue; }
             if !self.show_task_details
                 && matches!(prop, Property::Cycle | Property::Bucket | Property::Parent)
             {
@@ -2307,55 +2336,37 @@ impl TaskApp {
             properties = properties
                 .child(div().h_2().border_b_1().border_color(rgb(colors.line)))
                 .child(
-                    row()
-                        .items_start()
-                        .child(
-                            div()
-                                .w(px(70.))
-                                .flex_shrink_0()
-                                .pt_1()
-                                .child(label("Labels", cx)),
-                        )
-                        .child(
-                            row()
-                                .flex_1()
-                                .min_w_0()
-                                .justify_end()
-                                .flex_wrap()
-                                .gap_1()
-                                .children(t.labels.iter().map(|name| {
-                                    div()
-                                        .px_2()
-                                        .py_1()
-                                        .rounded_sm()
-                                        .bg(rgb(colors.panel))
-                                        .text_sm()
-                                        .child(name.clone())
-                                }))
-                                .when(t.labels.is_empty(), |d| d.child(label("No labels", cx)))
-                                .child(
-                                    tool_icon(
-                                        "edit-labels",
-                                        assets::IconName::Pencil,
-                                        "Edit labels",
-                                    )
-                                    .disabled(t.archived || self.task_running(id))
-                                    .on_click(cx.listener(
-                                        move |this, _, w, cx| {
-                                            this.begin_draft(Some(id), None, Stage::Backlog, w, cx)
-                                        },
-                                    )),
-                                ),
-                        ),
+                    row().justify_between()
+                        .child(div().text_sm().font_weight(FontWeight::SEMIBOLD).child("Labels"))
+                        .child(tool_icon("edit-labels", assets::IconName::Pencil, "Edit labels")
+                            .disabled(t.archived || self.task_running(id))
+                            .on_click(cx.listener(move |this, _, w, cx| {
+                                this.begin_draft(Some(id), None, Stage::Backlog, w, cx)
+                            }))),
                 )
-                .child(label("Execution settings", cx));
+                .child(row().flex_wrap().gap_1()
+                    .children(t.labels.iter().map(|name| {
+                        div().px_2().py_0p5().rounded_sm().bg(rgb(colors.tag_surface))
+                            .text_xs().text_color(rgb(colors.tag_text)).child(name.clone())
+                    }))
+                    .when(t.labels.is_empty(), |d| d.child(label("No labels", cx))))
+                .child(div().pt_2().text_sm().font_weight(FontWeight::SEMIBOLD).child("Execution settings"));
+            let execution_field = |name: &str, value: String| {
+                row().items_start().min_w_0()
+                    .child(div().w(px(88.)).flex_shrink_0().child(label(name.to_string(), cx)))
+                    .child(div().flex_1().min_w_0().text_sm().text_color(rgb(colors.text))
+                        .whitespace_normal().overflow_hidden().child(value))
+            };
+            let model_fields = |model: &str| {
+                let effective = self.store.effective_model(model);
+                col().gap_2()
+                    .child(execution_field("Model source", if model.is_empty() { "Global default" } else { "Stage override" }.into()))
+                    .child(execution_field("Model", if effective.is_empty() { "Not configured".into() } else { effective.to_string() }))
+            };
             if let Some(r) = &t.research {
                 properties = properties
-                    .child(label(
-                        self.model_source_label(&self.store.research_config.models[r.kind.index()]),
-                        cx,
-                    ))
-                    .child(label(format!("Browser Space: {}", r.space_name), cx))
+                    .child(model_fields(&self.store.research_config.models[r.kind.index()]))
+                    .child(execution_field("Browser space", self.store.research_space(id).unwrap_or_else(|| r.space_name.clone())))
                     .child(button("configure-research", "Research settings…").on_click(
                         cx.listener(|this, _, w, cx| {
                             this.navigate(Scope::Research, w, cx);
@@ -2363,24 +2374,20 @@ impl TaskApp {
                         }),
                     ));
             } else if let Some(p) = self.store.policies.iter().find(|p| p.stage == t.stage) {
-                properties = properties
-                    .child(label(format!("Agent: {}", p.agent), cx))
-                    .child(label(
-                        if p.agent == "Manual" {
-                            "No agent execution".into()
-                        } else {
-                            self.model_source_label(&p.model)
+                properties = properties.child(execution_field("Agent", p.agent.clone()));
+                if p.agent == "Manual" {
+                    properties = properties.child(execution_field("Execution", "Manual".into()));
+                } else {
+                    properties = properties.child(model_fields(&p.model));
+                }
+                properties = properties.child(
+                    button("configure-stage", "Stage rules…").on_click(cx.listener(
+                        move |this, _, w, cx| {
+                            this.navigate(Scope::Workflow, w, cx);
+                            this.select_policy(t.stage, w, cx);
                         },
-                        cx,
-                    ))
-                    .child(
-                        button("configure-stage", "Stage rules…").on_click(cx.listener(
-                            move |this, _, w, cx| {
-                                this.navigate(Scope::Workflow, w, cx);
-                                this.select_policy(t.stage, w, cx);
-                            },
-                        )),
-                    );
+                    )),
+                );
             }
             properties = properties.child(button("task-folder", "Working folder…").on_click(
                 cx.listener(move |this, _, w, cx| this.open_directory(t.project_id, w, cx)),
@@ -2977,6 +2984,7 @@ impl Render for TaskApp {
             self.detail(id, cx)
         } else {
             match self.scope {
+                Scope::Topic(id) => self.topic_view(id, cx),
                 Scope::Workflow => self.workflow(cx),
                 Scope::Runs => self.runs(cx),
                 Scope::Research => self.research_view(cx),
@@ -3017,10 +3025,11 @@ impl Render for TaskApp {
                     this.draft = None;
                     this.editing = false;
                     this.new_project = None;
+                    this.topic_editor = None;
                     this.planning_project = None;
                     if matches!(
                         this.scope,
-                        Scope::Workflow | Scope::Runs | Scope::Research | Scope::Settings
+                        Scope::Workflow | Scope::Runs | Scope::Research | Scope::Settings | Scope::Topic(_)
                     ) {
                         this.scope = Scope::All;
                     }
@@ -3030,19 +3039,21 @@ impl Render for TaskApp {
                     && event.keystroke.key == "["
                     && this.draft.is_none()
                     && this.new_project.is_none()
+                    && this.topic_editor.is_none()
                     && this.planning_project.is_none()
                     && this.directory_project.is_none()
                 {
                     this.go_back(w, cx);
                     cx.stop_propagation();
                 } else if event.keystroke.modifiers.platform && event.keystroke.key == "n" {
-                    this.begin_draft(None, None, Stage::Backlog, w, cx);
+                    this.open_research_intake(w, cx);
                 } else if event.keystroke.key == "escape" {
                     this.save_feedback = None;
                     this.draft = None;
                     this.editing = false;
                     this.property = None;
                     this.new_project = None;
+                    this.topic_editor = None;
                     this.planning_project = None;
                     this.directory_project = None;
                     this.error.clear();
@@ -3115,7 +3126,7 @@ impl Render for TaskApp {
                                         this.undo_change(w, cx);
                                     })),
                             )
-                            .child(label("⌘K Search    ⌘N New task", cx)),
+                            .child(label("⌘K Search    ⌘N New research", cx)),
                     ),
             );
         if self.editing {
@@ -3127,6 +3138,7 @@ impl Render for TaskApp {
         if self.directory_project.is_some() {
             root = root.child(self.directory_overlay(cx));
         }
+        if self.topic_editor.is_some() { root = root.child(self.topic_editor_view(cx)); }
         if let Some(input) = &self.new_project {
             let input = input.clone();
             root = root.child(
@@ -3147,6 +3159,7 @@ impl Render for TaskApp {
                             .rounded_lg()
                             .child(div().text_lg().child("New project"))
                             .child(Input::new(&input).id("project-name"))
+                            .child(muted("Create a project to organize topics. You can add research requests later.", cx))
                             .when(!self.error.is_empty(), |d| {
                                 d.child(
                                     div()
@@ -3194,7 +3207,8 @@ impl Render for TaskApp {
                                                     research_brief: String::new(),
                                                 });
                                                 this.new_project = None;
-                                                this.open_project_plan(id, w, cx);
+                                                this.navigate(Scope::Project(id), w, cx);
+                                                this.confirm_save("Project created · add a topic or start a research request", cx);
                                             })),
                                     ),
                             ),

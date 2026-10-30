@@ -15,6 +15,9 @@ mod ego;
 #[cfg(feature = "qa")]
 mod material_qa;
 mod navigation;
+mod topic_views;
+#[cfg(feature = "qa")]
+mod topic_qa;
 mod opencode;
 mod persistence;
 mod workspace;
@@ -22,6 +25,10 @@ mod workspace;
 mod workspace_qa;
 mod project_app;
 mod project_planning;
+mod request_planning;
+mod intake_views;
+#[cfg(feature = "qa")]
+mod intake_qa;
 #[cfg(feature = "qa")]
 mod project_qa;
 mod project_views;
@@ -48,6 +55,10 @@ use gpui_kit::*;
 actions!(task_manager, [Quit]);
 
 fn main() {
+    #[cfg(feature = "qa")]
+    if std::env::args().any(|arg| arg == "--qa-intake") { intake_qa::run(); return; }
+    #[cfg(feature = "qa")]
+    if std::env::args().any(|arg| arg == "--qa-topics") { topic_qa::run(); return; }
     #[cfg(feature = "qa")]
     if std::env::args().any(|arg| arg == "--qa-calendar") { workspace_qa::calendar(); return; }
     #[cfg(feature = "qa")]

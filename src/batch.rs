@@ -20,98 +20,74 @@ pub struct TodoBatch {
     pub run_ids: std::collections::BTreeMap<u64, u64>,
     pub done_items: Vec<u64>,
     pub failed_items: Vec<u64>,
+    pub failed_tasks: Vec<u64>,
 }
 
 impl Store {
     pub fn todo_batch_items(&self, project: u64) -> Vec<u64> {
-        let mut items: Vec<_> = self
-            .tasks
-            .iter()
-            .filter(|task| {
-                if task.project_id != project || task.archived || task.stage != Stage::Planned {
-                    return false;
+        self.tasks.iter().filter(|task| {
+            task.project_id == project && !task.archived
+                && match &task.research {
+                    Some(research) => matches!(task.stage, Stage::Planned | Stage::InProgress)
+                        && research.kind == ResearchKind::Goal
+                        && self.goal_execution_approved(task.id)
+                        && (!self.has_research_plan(task.id) || self.next_research_task(task.id) != Ok(None)),
+                    None => task.stage == Stage::Planned && task.parent_id.is_none(),
                 }
-                if let Some(research) = &task.research {
-                    if self.research_pending_approval(task.id) {
-                        return false;
-                    }
-                    if research.kind == ResearchKind::Goal {
-                        return !self.has_research_plan(task.id)
-                            || self.next_research_task(task.id) != Ok(None);
-                    }
-                    if self.task(research.goal_id).is_none_or(|goal| {
-                        goal.archived || matches!(goal.stage, Stage::Backlog | Stage::Cancelled)
-                    }) {
-                        return false;
-                    }
-                    if self.research_result(task.id).is_some() {
-                        return false;
-                    }
-                    // One goal owns its whole chain; do not enqueue its steps again.
-                    if self.task(research.goal_id).is_some_and(|goal| {
-                        !goal.archived && goal.project_id == project && goal.stage == Stage::Planned
-                    }) {
-                        return false;
-                    }
-                }
-                true
-            })
-            .map(|task| task.id)
-            .collect();
-        // Validated plans create dependencies before their consumers.
-        items.sort_unstable();
-        items
+        }).map(|task| task.id).collect()
+    }
+
+    pub fn goal_tasks_complete(&self, goal: u64) -> bool {
+        self.has_research_plan(goal)
+            && self.research_children(goal).iter().all(|id| self.task(*id).is_some_and(|t| t.stage == Stage::Done) && self.research_result(*id).is_some())
+            && self.tasks.iter().filter(|t| !t.archived && t.research.is_none() && self.owning_research_goal(t.id) == Some(goal)).all(|t| t.stage == Stage::Done)
+    }
+
+    /// Internal steps inherit approval from their goal; they are never queue items themselves.
+    pub fn ready_research_tasks(&self, goal: u64) -> Result<Vec<u64>, String> {
+        if !self.goal_execution_approved(goal) {
+            return Err("Review this goal's complete plan and move it to Todo before executing.".into());
+        }
+        let children = self.research_children(goal);
+        if children.is_empty() { return Ok(vec![goal]); }
+        Ok(children.into_iter().filter(|id| {
+            let task = self.task(*id).unwrap();
+            task.stage != Stage::Cancelled && self.research_result(*id).is_none()
+                && task.research.as_ref().unwrap().depends_on.iter().all(|dep| {
+                    self.task(*dep).is_some_and(|t| !t.archived && t.stage == Stage::Done && t.research.as_ref().is_some_and(|r| r.goal_id == goal))
+                        && self.research_result(*dep).is_some()
+                })
+        }).collect())
     }
 
     pub fn next_todo_batch_task(&self, project: u64, item: u64) -> Result<Option<u64>, String> {
-        let task = self.task(item).ok_or("A queued task was removed.")?;
-        if !task.archived
-            && task.project_id == project
-            && task.stage == Stage::Done
-            && self.research_result(item).is_some()
-        {
-            return Ok(None);
+        let task = self.task(item).ok_or("A queued goal was removed.")?;
+        if task.archived || task.project_id != project {
+            return Err("The queued goal is no longer available in this project.".into());
         }
-        if task.archived || task.project_id != project || task.stage != Stage::Planned {
-            return Err(format!(
-                "{} is no longer in this project's Todo. Restore it to Todo or cancel the batch.",
-                self.identifier(task)
-            ));
-        }
-        if self.research_pending_approval(item) {
-            return Err(
-                "Research approval was withdrawn. Approve the topic before continuing.".into(),
-            );
-        }
-        if let Some(r) = &task.research
-            && self.task(r.goal_id).is_none_or(|goal| {
-                goal.archived || matches!(goal.stage, Stage::Backlog | Stage::Cancelled)
-            })
-        {
-            return Err("The research goal is no longer approved or available.".into());
-        }
-        let next = match &task.research {
-            Some(r) if r.kind == ResearchKind::Goal && self.has_research_plan(item) => {
-                self.next_research_task(item)?
+        if let Some(research) = &task.research {
+            if research.kind != ResearchKind::Goal {
+                return Err("Execute the parent goal, not an individual research step.".into());
             }
-            Some(r) if r.kind != ResearchKind::Goal && self.research_result(item).is_some() => None,
-            _ => Some(item),
-        };
-        if let Some(id) = next {
-            let step = self.task(id).ok_or("A research step was removed.")?;
-            // A selected goal authorizes refreshing stale Done results, but not Backlog steps.
-            if step.project_id != project
-                || step.archived
-                || !matches!(step.stage, Stage::Planned | Stage::Done)
-            {
-                return Err(format!(
-                    "Move {} to Todo before continuing this research chain.",
-                    self.identifier(step)
-                ));
+            if !self.goal_execution_approved(item) {
+                return Err("Research approval was withdrawn. Review the goal and move it to Todo.".into());
             }
+            if self.goal_tasks_complete(item) {
+                return Ok(None);
+            }
+            if task.stage != Stage::Planned && task.stage != Stage::InProgress {
+                return Err("Move the goal to Todo before continuing.".into());
+            }
+            let ready = self.ready_research_tasks(item)?;
+            return ready.first().copied().map(Some).ok_or_else(|| "Waiting for research dependencies or a blocked step. Review the goal's progress.".into());
         }
-        Ok(next)
+        if task.stage == Stage::Done { return Ok(None); }
+        if task.stage != Stage::Planned || task.parent_id.is_some() {
+            return Err("Only approved root tasks and goals can be executed from Todo.".into());
+        }
+        Ok(Some(item))
     }
+
 }
 
 #[cfg(test)]
@@ -148,7 +124,6 @@ mod tests {
             .create_research_goal("Other".into(), "Scope".into(), p)
             .unwrap();
         s.task_mut(other).unwrap().project_id = p + 1;
-        s.tasks.reverse();
         assert_eq!(s.todo_batch_items(p), vec![goal, ordinary]);
         assert_eq!(s.next_todo_batch_task(p, goal), Ok(Some(steps[0])));
     }
@@ -172,7 +147,7 @@ mod tests {
         let (mut s, p, goal) = setup();
         let ids = s.apply_research_plan(goal, PLAN).unwrap();
         s.task_mut(ids[0]).unwrap().stage = Stage::Backlog;
-        assert!(s.next_todo_batch_task(p, goal).is_err());
+        assert_eq!(s.next_todo_batch_task(p, goal), Ok(Some(ids[0])));
         s.task_mut(goal).unwrap().stage = Stage::Backlog;
         assert!(s.next_todo_batch_task(p, goal).is_err());
         s.task_mut(goal).unwrap().stage = Stage::Planned;
@@ -180,15 +155,47 @@ mod tests {
         assert!(s.next_todo_batch_task(p, goal).is_err());
     }
     #[test]
-    fn standalone_steps_keep_dependency_order() {
+    fn internal_steps_never_become_independent_todo_items() {
         let (mut s, p, goal) = setup();
         let ids = s.apply_research_plan(goal, PLAN).unwrap();
         s.task_mut(goal).unwrap().stage = Stage::InProgress;
-        s.tasks.reverse();
-        assert_eq!(s.todo_batch_items(p), ids);
+        assert_eq!(s.todo_batch_items(p), vec![goal]);
+        assert!(s.next_todo_batch_task(p, ids[0]).is_err());
+        s.task_mut(goal).unwrap().stage = Stage::Planned;
+        assert_eq!(s.todo_batch_items(p), vec![goal]);
+        assert_eq!(s.ready_research_tasks(goal).unwrap(), vec![ids[0]]);
         complete(&mut s, ids[0]);
-        assert_eq!(s.next_todo_batch_task(p, ids[0]), Ok(None));
-        assert_eq!(s.todo_batch_items(p), ids[1..]);
-        assert!(s.prepare_run(ids[1]).is_ok());
+        assert_eq!(s.ready_research_tasks(goal).unwrap(), vec![ids[1]]);
+    }
+    #[test]
+    fn interrupted_goal_remains_resumable_but_unvalidated_output_cannot_release_dependents() {
+        let (mut s, p, goal) = setup();
+        let ids = s.apply_research_plan(goal, PLAN).unwrap();
+        s.set_stage(goal, Stage::InProgress).unwrap();
+        assert_eq!(s.todo_batch_items(p), vec![goal]);
+        let mut run = s.prepare_run(ids[0]).unwrap();
+        run.status = "Succeeded".into();
+        run.output = "Unparsed output awaiting validation".into();
+        s.runs.push(run);
+        s.set_stage(ids[0], Stage::InProgress).unwrap();
+        assert!(s.ready_research_tasks(goal).unwrap().is_empty());
+        assert!(!s.goal_tasks_complete(goal));
+        s.set_stage(ids[0], Stage::Done).unwrap();
+        assert_eq!(s.ready_research_tasks(goal).unwrap(), vec![ids[1]]);
+        s.set_stage(goal, Stage::Backlog).unwrap();
+        assert!(s.todo_batch_items(p).is_empty());
+    }
+
+    #[test]
+    fn independent_sources_are_ready_together_but_analysis_waits() {
+        let (mut s, _, goal) = setup();
+        let ids = s.apply_research_plan(goal, r#"{"tasks":[{"title":"Official","instructions":"Official filings","kind":"collect","depends_on":[]},{"title":"Market","instructions":"Market evidence","kind":"collect","depends_on":[]},{"title":"Analyze","instructions":"Compare","kind":"analyze","depends_on":[0,1]},{"title":"Report","instructions":"Conclude","kind":"advise","depends_on":[2]}]}"#).unwrap();
+        assert_eq!(s.ready_research_tasks(goal).unwrap(), ids[..2]);
+        complete(&mut s, ids[0]);
+        assert_eq!(s.ready_research_tasks(goal).unwrap(), vec![ids[1]]);
+        complete(&mut s, ids[1]);
+        assert_eq!(s.ready_research_tasks(goal).unwrap(), vec![ids[2]]);
+        s.task_mut(goal).unwrap().stage = Stage::Backlog;
+        assert!(s.ready_research_tasks(goal).is_err());
     }
 }

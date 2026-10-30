@@ -881,7 +881,7 @@ fn render_variants(root: &Path, store: &Store, first: u64, second: u64, ordinary
             let app = app.unwrap();
             let handle = window.into();
             screenshot(&mut cx, handle, &dir, "idle.png");
-            cx.update_window(handle,|_,w,cx|app.update(cx,|a,cx|{a.todo_batch=Some(TodoBatch{project_id:1,items:vec![first,second,ordinary],completed:1,runs_completed:2,state:BatchState::Paused("Paused after the current task. Resume to run the remaining Todo items.".into()),run_ids:Default::default(),done_items:vec![first],failed_items:vec![]});a.navigate(Scope::Runs,w,cx);a.selected_run=a.store.runs.last().map(|r|r.id);a.show_run_result=true;})).unwrap();
+            cx.update_window(handle,|_,w,cx|app.update(cx,|a,cx|{a.todo_batch=Some(TodoBatch{failed_tasks:vec![],project_id:1,items:vec![first,second,ordinary],completed:1,runs_completed:2,state:BatchState::Paused("Paused after the current task. Resume to run the remaining Todo items.".into()),run_ids:Default::default(),done_items:vec![first],failed_items:vec![]});a.navigate(Scope::Runs,w,cx);a.selected_run=a.store.runs.last().map(|r|r.id);a.show_run_result=true;})).unwrap();
             screenshot(&mut cx, handle, &dir, "paused.png");
             cx.update_window(handle, |_, _, cx| {
                 app.update(cx, |a, cx| {

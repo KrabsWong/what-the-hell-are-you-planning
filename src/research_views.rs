@@ -169,18 +169,21 @@ impl TaskApp {
             .child(label("Pages open in a local Space. Use the browser's Space menu to watch or take over. First launch must be completed in ego(lite).", cx))
             .child(primary_button("save-research-settings", "Save research settings").on_click(cx.listener(|this,_,_,cx|this.save_research_settings(cx))));
         let composer=col().w_full().max_w(px(850.)).min_w_0().gap_4()
-            .child(div().text_2xl().font_weight(FontWeight::SEMIBOLD).child("New research goal"))
-            .child(muted("Set a research goal. Let your agent break it down, add context to any step, then collect evidence and build the analysis.", cx))
+            .child(div().text_2xl().font_weight(FontWeight::SEMIBOLD).child("Start with one sentence"))
+            .child(muted("Describe what you want to understand and the output you need. We will draft a complete plan in Backlog for your review.", cx))
             .child(label("RESEARCH QUESTION", cx))
             .child(Input::new(&self.research_title).id("research-title"))
-            .child(label("SCOPE & CONTEXT", cx))
+            .child(label("EXTRA CONTEXT · OPTIONAL", cx))
             .child(div().id("research-brief").child(Textarea::new(&self.research_brief)).map(observed))
             .child(label("PROJECT", cx))
-            .child(row().flex_wrap().children(self.store.projects.iter().map(|p|{let id=p.id;select_button(format!("research-project-{id}"),p.name.clone(),self.research_project==id).on_click(cx.listener(move|this,_,_,cx|{this.research_project=id;cx.notify();}))})))
-            .child(row().flex_wrap().child(button("research-folder","Set working folder…").on_click(cx.listener(|this,_,w,cx|this.open_directory(this.research_project,w,cx)))).child(primary_button("create-research", "Create research goal").on_click(cx.listener(|this,_,w,cx|this.create_research(w,cx)))))
-            .child(label("Create the goal first to attach PDFs or screenshots before generating tasks.", cx))
+            .child(row().flex_wrap().children(self.store.projects.iter().map(|p|{let id=p.id;select_button(format!("research-project-{id}"),p.name.clone(),self.research_project==id).on_click(cx.listener(move|this,_,_,cx|{this.research_project=id;this.research_topic=None;cx.notify();}))})))
+            .child(label("TOPIC", cx))
+            .child(self.topic_picker(None, self.research_project, cx))
+            .child(row().flex_wrap().child(button("research-folder","Set working folder…").on_click(cx.listener(|this,_,w,cx|this.open_directory(this.research_project,w,cx)))).child(primary_button("create-research", "Generate research plan").on_click(cx.listener(|this,_,w,cx|this.create_research(w,cx)))))
+            .child(label("Your request is saved first. Planning does not run the research. Move selected goals to Todo, then click Run.", cx))
             .child(div().h_4()).child(row().child(div().font_weight(FontWeight::SEMIBOLD).child("Your research goals")))
-            .child(goals);
+            .child(goals)
+            .child(self.request_history(None, cx));
         col()
             .size_full()
             .child(
@@ -289,15 +292,7 @@ impl TaskApp {
         let colors = palette(cx);
         let task = self.store.task(id).unwrap();
         let research = task.research.as_ref().unwrap();
-        if self.store.research_pending_approval(id) {
-            let goal = research.goal_id;
-            return col().p_4().gap_3().rounded_md().bg(rgb(colors.panel))
-                .child(chip("AWAITING APPROVAL", colors.accent, cx))
-                .child(muted("Review the scope and add materials. Approving moves this topic to Todo; it does not start the model.", cx))
-                .child(primary_button("approve-research-topic", "Approve research →").disabled(task.archived)
-                    .on_click(cx.listener(move |this, _, _, cx| this.approve_research_topic(goal, cx))))
-                .into_any_element();
-        }
+        let pending_approval = self.store.research_pending_approval(id);
         let children = self.store.research_children(id);
         let complete = !children.is_empty()
             && children
@@ -307,6 +302,16 @@ impl TaskApp {
             .tooltip("Opens the browser app. Select the research Space in ego(lite).")
             .on_click(cx.listener(|this, _, _, cx| this.open_ego(cx)));
         let mut panel = col().gap_2();
+        if pending_approval {
+            let goal = research.goal_id;
+            panel = panel.child(col().p_4().gap_3().rounded_md().bg(rgb(colors.panel))
+                .child(chip("AWAITING GOAL APPROVAL", colors.accent, cx))
+                .child(muted("Review the complete plan and expected output. Move the goal to Todo to approve all its steps; click Run to execute.", cx))
+                .when(research.kind == ResearchKind::Goal, |d| d.child(primary_button("approve-research-topic", "Move goal to Todo").disabled(task.archived)
+                    .on_click(cx.listener(move |a, _, _, cx| a.approve_research_topic(goal, cx)))))
+                .when(research.kind != ResearchKind::Goal, |d| d.child(button("review-parent-goal", "Review parent goal").on_click(cx.listener(move |a, _, w, cx| a.open_task(goal, w, cx))))));
+        }
+
         if research.kind == ResearchKind::Goal {
             let completed = children
                 .iter()
@@ -329,15 +334,8 @@ impl TaskApp {
                         !children.is_empty() && !complete,
                         |d| {
                             d.child(
-                                quiet_button("research-next", "Run one step")
-                                    .disabled(task.archived)
-                                    .on_click(cx.listener(move |this, _, _, cx| {
-                                        this.run_research_next(id, false, cx)
-                                    })),
-                            )
-                            .child(
-                                primary_button("research-all", "Continue research")
-                                    .disabled(task.archived)
+                                primary_button("research-all", "Run goal")
+                                    .disabled(task.archived || !self.store.goal_execution_approved(id))
                                     .on_click(cx.listener(move |this, _, _, cx| {
                                         this.run_research_next(id, true, cx)
                                     })),

@@ -83,58 +83,34 @@ impl TaskApp {
         cx.notify();
     }
     pub fn create_research(&mut self, w: &mut Window, cx: &mut Context<Self>) {
-        let title = self.research_title.read(cx).value().to_string();
-        let brief = self.research_brief.read(cx).value().to_string();
-        self.snapshot();
-        match self
-            .store
-            .create_research_goal(title, brief, self.research_project)
-        {
-            Ok(id) => {
-                self.research_title
-                    .update(cx, |s, cx| s.set_value("", w, cx));
-                self.research_brief
-                    .update(cx, |s, cx| s.set_value("", w, cx));
-                self.open_task(id, w, cx);
-                self.toast = "Goal created · add materials, then generate its tasks".into();
-            }
-            Err(e) => {
-                self.undo.pop();
-                self.error = e;
-            }
+        let title = self.research_title.read(cx).value().trim().to_string();
+        let brief = self.research_brief.read(cx).value().trim().to_string();
+        let input = if brief.is_empty() { title } else if title.is_empty() { brief } else { format!("{title}\n\n{brief}") };
+        if self.submit_research_request(self.research_project, self.research_topic, input, cx) {
+            self.research_title.update(cx, |s, cx| s.set_value("", w, cx));
+            self.research_brief.update(cx, |s, cx| s.set_value("", w, cx));
         }
         cx.notify();
     }
     pub fn run_research_next(&mut self, goal: u64, continuous: bool, cx: &mut Context<Self>) {
         self.error.clear();
         self.task_start_feedback = None;
-        if self.goal_busy(goal) {
-            self.task_start_feedback = Some((goal, "A step in this goal is already running or queued. Wait for it to finish, or open its progress. Other independent goals can still start.".into()));
-            cx.notify();
+        if continuous {
+            self.start_goal_batch(goal, cx);
             return;
         }
-        match self.store.next_research_task(goal) {
-            Ok(Some(id)) => {
-                if continuous {
-                    self.research_sequences.insert(goal);
+        match self.store.ready_research_tasks(goal) {
+            Ok(ids) => {
+                if let Some(id) = ids.into_iter().find(|id| !self.task_running(*id)) {
+                    self.start_run(id, cx);
+                } else {
+                    self.store.sync_goal_progress(goal);
+                    self.toast = if self.goal_busy(goal) { "Research is running" } else { "No ready steps. Check results and dependencies." }.into();
                 }
-                self.start_run(id, cx);
-                if !self.task_running(id) {
-                    self.research_sequences.remove(&goal);
-                }
             }
-            Ok(None) => {
-                self.toast = "All research tasks have completed".into();
-                self.research_sequences.remove(&goal);
-            }
-            Err(e) => {
-                self.error = e;
-                self.research_sequences.remove(&goal);
-            }
+            Err(error) => { self.error = error; }
         }
-        if !self.error.is_empty() {
-            self.task_start_feedback = Some((goal, self.error.clone()));
-        }
+        if !self.error.is_empty() { self.task_start_feedback = Some((goal, self.error.clone())); }
         cx.notify();
     }
     pub fn data_dir(&self) -> Result<PathBuf, String> {
@@ -279,7 +255,7 @@ impl TaskApp {
             let goal = self.store.task(r.goal_id).ok_or("Goal not found.")?;
             run.prompt.push_str(&ego::instructions(
                 &self.store.research_config.ego_path,
-                &r.space_name,
+                &self.store.research_space(id).unwrap_or_else(|| r.space_name.clone()),
                 &goal.title,
             )?);
         }
@@ -337,6 +313,7 @@ impl TaskApp {
         // Completed steps are already Done; unsuccessful runs and planning return
         // to their original stage, without overriding a user's manual stage change.
         self.store.restore_research_stage(run_id);
+        if let Some(goal) = self.run_goal(run_id) { self.store.sync_goal_progress(goal); }
     }
     fn finalize_research_result(&mut self, run_id: u64) {
         let Some(index) = self.store.runs.iter().position(|r| r.id == run_id) else {
@@ -438,6 +415,14 @@ impl TaskApp {
         }
         // Persist the parsed result and generated tasks before another external side effect.
         self.persist_if_changed(true);
+        if self.storage_error.is_empty()
+            && let Some(request) = self.store.request_plan_auto_repair(run_id)
+        {
+            self.retry_research_request(request, cx);
+            self.toast = "Plan format incomplete · repairing once before review".into();
+            cx.notify();
+            return;
+        }
         if self.complete_todo_batch_run(run_id, cx) {
             cx.notify();
             return;

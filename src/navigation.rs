@@ -20,7 +20,9 @@ impl TaskApp {
         self.editing = false;
         self.property = None;
         self.new_project = None;
+        self.topic_editor = None;
         self.planning_project = None;
+        self.planning_topic = None;
         self.directory_project = None;
         self.error.clear();
     }

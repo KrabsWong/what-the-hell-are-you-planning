@@ -231,7 +231,7 @@ impl TaskApp {
                 let detail = run.logs.iter().rev().find(|line| {
                     ["[error]", "[blocked]", "[interrupted]", "[workspace]", "[stream error]"].iter()
                         .any(|prefix| line.starts_with(prefix))
-                }).map(|line| line.chars().take(600).collect::<String>());
+                }).map(|line| crate::run_errors::user_message(line));
                 if let Some(detail) = detail {
                     panel = panel.child(div().text_sm().text_color(rgb(colors.danger)).child(detail));
                 }

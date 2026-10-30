@@ -41,6 +41,7 @@ mod research_app;
 mod research_qa;
 mod research_views;
 mod run_views;
+mod run_errors;
 mod scheduler;
 #[cfg(feature = "qa")]
 mod settings_qa;

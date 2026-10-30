@@ -1,7 +1,7 @@
 //! Local OpenCode CLI adapter. The worker owns the child; GPUI only drains typed events.
 use serde_json::Value;
 use std::{
-    io::{BufRead, BufReader, Read},
+    io::{BufRead, BufReader, Read, Seek, SeekFrom},
     path::{Path, PathBuf},
     process::{Child, Command, Stdio},
     sync::{
@@ -500,21 +500,26 @@ pub(crate) fn capture(
     directory: &Path,
     args: &[&str],
 ) -> Result<String, String> {
+    // OpenCode can exit before flushing large piped exports. A regular file
+    // makes stdout writes synchronous; unlink it immediately to keep transcripts private.
+    use std::os::unix::fs::OpenOptionsExt;
+    let path = std::env::temp_dir().join(format!("task-manager-capture-{}", new_session_id()));
+    let mut out = std::fs::OpenOptions::new()
+        .read(true)
+        .write(true)
+        .create_new(true)
+        .mode(0o600)
+        .open(&path)
+        .map_err(|e| format!("Cannot capture OpenCode output: {e}"))?;
+    std::fs::remove_file(&path).map_err(|e| e.to_string())?;
     let mut child = command(executable)
         .current_dir(directory)
         .env("PWD", directory)
         .args(args)
+        .stdout(Stdio::from(out.try_clone().map_err(|e| e.to_string())?))
         .spawn()
         .map_err(|e| format!("Cannot start OpenCode: {e}"))?;
-    let mut out = child.stdout.take().unwrap();
     let mut err = child.stderr.take().unwrap();
-    let stdout = thread::spawn(move || {
-        let mut text = String::new();
-        let _ = Read::by_ref(&mut out)
-            .take(2 * 1024 * 1024)
-            .read_to_string(&mut text);
-        text
-    });
     let stderr = thread::spawn(move || {
         let mut text = String::new();
         let _ = Read::by_ref(&mut err)
@@ -540,18 +545,49 @@ pub(crate) fn capture(
         }
     };
     kill_group(child.id());
-    let out = finish_reader(stdout).ok_or("Local command output did not close.")?;
     let err = finish_reader(stderr).ok_or("Local command diagnostics did not close.")?;
     let status = result?;
     if !status.success() {
         return Err(format!("Local command failed: {}", clip(err.trim(), 1000)));
     }
-    Ok(out)
+    const MAX_OUTPUT: u64 = 32 * 1024 * 1024;
+    if out.metadata().map_err(|e| e.to_string())?.len() > MAX_OUTPUT {
+        return Err("Local command output exceeds the 32 MiB capture limit.".into());
+    }
+    out.seek(SeekFrom::Start(0)).map_err(|e| e.to_string())?;
+    let mut text = String::new();
+    out.take(MAX_OUTPUT + 1)
+        .read_to_string(&mut text)
+        .map_err(|e| format!("Cannot read OpenCode output: {e}"))?;
+    if text.len() as u64 > MAX_OUTPUT {
+        return Err("Local command output exceeds the 32 MiB capture limit.".into());
+    }
+    Ok(text)
 }
 
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn capture_preserves_large_unicode_json_using_file_stdout() {
+        let output = capture(
+            Path::new("/bin/sh"),
+            &std::env::temp_dir(),
+            &["-c", r#"test -f /dev/stdout || exit 9; printf '{"text":"'; awk 'BEGIN { for (i=0; i<100000; i++) printf "研究结果" }'; printf '"}'"#],
+        ).unwrap();
+        let value: Value = serde_json::from_str(&output).unwrap();
+        assert_eq!(value["text"].as_str().unwrap(), "研究结果".repeat(100000));
+        assert!(
+            capture(
+                Path::new("/bin/sh"),
+                &std::env::temp_dir(),
+                &["-c", "printf 'export failed' >&2; exit 3"]
+            )
+            .unwrap_err()
+            .contains("export failed")
+        );
+    }
 
     #[test]
     fn browser_permission_handoff_is_detected_only_in_tool_results() {
@@ -818,4 +854,26 @@ mod tests {
     fn truncation_preserves_unicode() {
         assert_eq!(clip("测试完成", 2), "测试\n… [truncated]");
     }
+}
+
+/// Stop only the associated session, including work surviving the app process.
+pub(crate) fn interrupt_session(executable: &Path, run: &crate::domain::AgentRun) -> Result<(), String> {
+    let session = run.session_id.as_ref().ok_or("Run has no session")?;
+    let response = capture(executable, Path::new(&run.directory),
+        &["api", "session.interrupt", "--param", &format!("sessionID={session}"), "--param", "resume=false"])?;
+    let value: serde_json::Value = serde_json::from_str(&response).map_err(|e| e.to_string())?;
+    let data = value.get("data").unwrap_or(&value);
+    let interrupted = data.get("interrupted").and_then(|v| v.as_bool())
+        .ok_or("OpenCode did not acknowledge interruption")?;
+    if !interrupted {
+        // An idle server does not prove a detached CLI process has stopped.
+        let request = Request {
+            executable: executable.into(),
+            directory: Path::new(&run.directory).canonicalize().map_err(|e| e.to_string())?,
+            model: String::new(), prompt: String::new(), title: String::new(),
+            files: vec![], session_id: Some(session.clone()),
+        };
+        let _lease = lock_session(&request)?;
+    }
+    Ok(())
 }

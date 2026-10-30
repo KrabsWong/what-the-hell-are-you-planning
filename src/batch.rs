@@ -26,7 +26,7 @@ pub struct TodoBatch {
 impl Store {
     pub fn todo_batch_items(&self, project: u64) -> Vec<u64> {
         self.tasks.iter().filter(|task| {
-            task.project_id == project && !task.archived
+            task.project_id == project && !self.task_is_archived(task.id)
                 && match &task.research {
                     Some(research) => matches!(task.stage, Stage::Planned | Stage::InProgress)
                         && research.kind == ResearchKind::Goal
@@ -45,6 +45,9 @@ impl Store {
 
     /// Internal steps inherit approval from their goal; they are never queue items themselves.
     pub fn ready_research_tasks(&self, goal: u64) -> Result<Vec<u64>, String> {
+        if self.task_is_archived(goal) {
+            return Err("Restore the archived topic or goal before executing.".into());
+        }
         if !self.goal_execution_approved(goal) {
             return Err("Review this goal's complete plan and move it to Todo before executing.".into());
         }
@@ -62,7 +65,7 @@ impl Store {
 
     pub fn next_todo_batch_task(&self, project: u64, item: u64) -> Result<Option<u64>, String> {
         let task = self.task(item).ok_or("A queued goal was removed.")?;
-        if task.archived || task.project_id != project {
+        if self.task_is_archived(item) || task.project_id != project {
             return Err("The queued goal is no longer available in this project.".into());
         }
         if let Some(research) = &task.research {

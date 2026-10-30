@@ -23,6 +23,12 @@ time.sleep(30)
 "#;
 
 pub fn run() {
+    run_checks(false);
+}
+pub fn result_layout() {
+    run_checks(true);
+}
+fn run_checks(layout_only: bool) {
     let root = std::env::current_dir()
         .unwrap()
         .join(format!(".local/simplify-qa/{}", std::process::id()));
@@ -50,7 +56,7 @@ pub fn run() {
             for task in &steps {
                 let mut run = store.prepare_run(*task).unwrap();
                 run.status = "Succeeded".into();
-                run.output = REPORT.into();
+                run.output = if layout_only { REPORT.repeat(12) } else { REPORT.into() };
                 run.session_id = Some("ses_UI_QA_TECHNICAL_METADATA".into());
                 run.logs = vec!["[fixture] RAW_LOG_SENTINEL, local UI acceptance only".into()];
                 run.sources = vec![Source {
@@ -96,6 +102,47 @@ pub fn run() {
                 .unwrap()
                 .into();
             let app = entity.unwrap();
+            if layout_only {
+                screenshot(&mut cx, handle, &directory, "compact-result.png");
+                cx.update_window(handle, |_, w, cx| {
+                    assert!(w.find("research-result-scroll").visible());
+                    assert!(w.try_find("run-technical-panel").is_none());
+                    assert_eq!(app.read(cx).store.runs.len(), store.runs.len());
+                    let viewport = w.find("research-result-viewport").bounds();
+                    let source_top = w.find("toggle-result-sources").bounds().top();
+                    w.scroll("research-result-scroll", ScrollDelta::Pixels(point(px(0.), px(-400.))), cx);
+                    w.render_frame(cx);
+                    assert!(app.read(cx).result_scroll.offset().y < px(-300.));
+                    assert!(w.find("toggle-result-sources").bounds().top() < source_top);
+                    assert_eq!(w.find("research-result-viewport").bounds(), viewport);
+                    w.scroll("research-result-scroll", ScrollDelta::Pixels(point(px(0.), px(-100000.))), cx);
+                    w.render_frame(cx);
+                    assert!(w.find("toggle-result-sources").visible());
+                    assert_eq!(w.find("research-result-viewport").bounds(), viewport);
+
+                })
+                .unwrap();
+                screenshot(&mut cx, handle, &directory, "result-scrolled-bottom.png");
+                cx.update_window(handle, |_, w, cx| {
+                    app.update(cx, |a, cx| a.open_task(steps[1], w, cx));
+                    w.render_frame(cx);
+                    assert!(w.find("step-run").visible());
+                    assert!(w.find("step-open-goal").visible());
+                    assert!(w.find("step-attempt-details").visible());
+                }).unwrap();
+                screenshot(&mut cx, handle, &directory, "completed-step-actions.png");
+                for step in &steps {
+                    cx.update_window(handle, |_, w, cx| {
+                        app.update(cx, |a, cx| a.open_task(*step, w, cx));
+                        w.render_frame(cx);
+                        assert!(w.try_find("task-children-heading").is_none());
+                        assert!(w.find("add-attachments").visible());
+                    }).unwrap();
+                }
+                screenshot(&mut cx, handle, &directory, "report-materials.png");
+                cx.update(|cx| cx.quit());
+                continue;
+            }
             navigation_checks(&mut cx, handle, &app, goal, steps[0], report_id, &directory);
             screenshot(&mut cx, handle, &directory, "01-result.png");
             cx.update_window(handle, |_, w, cx| {
@@ -1035,7 +1082,12 @@ pub fn run() {
         }
     }
     println!(
-        "Simplified UI acceptance passed; screenshots: {}",
+        "{}; screenshots: {}",
+        if layout_only {
+            "Result layout QA passed (wide/narrow, light/dark)"
+        } else {
+            "Simplified UI acceptance passed"
+        },
         root.display()
     );
 }

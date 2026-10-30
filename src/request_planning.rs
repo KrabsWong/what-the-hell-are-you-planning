@@ -249,7 +249,8 @@ impl Store {
     pub fn request_plan_auto_repair(&self, run_id: u64) -> Option<u64> {
         let request = self.request_for_run(run_id)?;
         let run = self.runs.iter().find(|r| r.id == run_id)?;
-        (request.goal_ids.is_empty()
+        (!self.request_is_archived(request)
+            && request.goal_ids.is_empty()
             && run.status == "Failed"
             && run.exit_code == Some(0)
             && !run.logs.iter().any(|line| line.starts_with("[plan repair]"))
@@ -266,6 +267,9 @@ impl Store {
             .iter()
             .find(|r| r.id == id)
             .ok_or("Research request not found.")?;
+        if self.request_is_archived(request) {
+            return Err("Restore the archived topic before planning.".into());
+        }
         if !request.goal_ids.is_empty() {
             return Err(
                 "This request already has a plan. Review its goals or submit a new request.".into(),
@@ -393,8 +397,7 @@ impl Store {
                 item.brief, summary, request.submitted_at, request.input
             );
             let goal =
-                staged.create_research_goal(item.title.clone(), brief, request.project_id)?;
-            staged.set_goal_topic(goal, Some(topic))?;
+                staged.create_research_goal_in_topic(item.title.clone(), brief, request.project_id, Some(topic))?;
             staged.apply_proposed_research_plan(goal, &item.plan_json()?)?;
             let task = staged.task_mut(goal).unwrap();
             task.stage = Stage::Backlog;

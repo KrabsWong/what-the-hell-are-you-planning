@@ -62,6 +62,7 @@ fn status_label(status: &str) -> &str {
         "Blocked" => "Needs your attention",
         "Stale" => "Needs updating",
         "Cancelling" => "Stopping…",
+        "Recovering" => "Running in background",
         "Cancelled" => "Stopped",
         other => other,
     }
@@ -92,7 +93,7 @@ struct RunProject<'a> {
 }
 fn run_projects(store: &Store) -> Vec<RunProject<'_>> {
     let mut groups: Vec<RunProject<'_>> = vec![];
-    for run in store.runs.iter().rev() {
+    for run in store.runs.iter().rev().filter(|r| !store.run_is_archived(r)) {
         let task = store.task(run.task_id);
         let project = run.project_plan.or_else(|| task.map(|t| t.project_id));
         let goal = if run.project_plan.is_some() {
@@ -184,7 +185,8 @@ impl TaskApp {
         let selected = self
             .selected_run
             .and_then(|id| self.store.runs.iter().find(|r| r.id == id))
-            .or_else(|| self.store.runs.last());
+            .filter(|r| self.task_result_context.is_some() || !self.store.run_is_archived(r))
+            .or_else(|| self.store.runs.iter().rev().find(|r| !self.store.run_is_archived(r)));
         if self.task_result_context.is_some()
             && let Some(run) = selected
         {
@@ -237,13 +239,32 @@ impl TaskApp {
                     (p.id, name, run.id)
                 })
                 .collect();
+            let actual_topic = topic_task.and_then(|t| self.store.task_topic(t.id));
+            let selected_topic = actual_topic.map(|t| t.id);
+            let mut topic_filters = Vec::new();
+            for group in &project.topics {
+                if let Some(t) = group.id.and_then(|id| self.store.task_topic(id)) {
+                    if !topic_filters.iter().any(|(id, _, _)| *id == t.id) {
+                        topic_filters.push((t.id, t.display_name(), group.runs[0].id));
+                    }
+                }
+            }
+            let planning_options: Vec<_> = project.topics.iter().flat_map(|group| group.runs.iter())
+                .filter(|run| run.project_plan.is_some()
+                    || (topic.id.is_some() && run.task_id == topic.id.unwrap()
+                        && run.research_kind == Some(ResearchKind::Goal)))
+                .map(|run| (run.id, format!("{} · {} · {}", if run.project_plan.is_some() { "Project plan" } else { "Goal plan" },
+                    if run.started_at.is_empty() { &run.queued_at } else { &run.started_at }, status_label(&run.status))))
+                .collect();
+            let planning_entity = cx.entity().downgrade();
             let topic_options: Vec<_> = project
                 .topics
                 .iter()
+                .filter(|t| t.id.is_some() && t.id.and_then(|id| self.store.task_topic(id)).map(|t| t.id) == selected_topic)
                 .map(|t| {
                     let name =
                         t.id.and_then(|id| self.store.task(id))
-                            .map(|task| task.title.clone())
+                            .map(|task| format!("{} · {}", self.store.identifier(task), task.title))
                             .unwrap_or_else(|| {
                                 if t.id.is_none() {
                                     "Project planning".into()
@@ -272,140 +293,74 @@ impl TaskApp {
             let tid = topic.id;
             let entity = cx.entity().downgrade();
             let topic_entity = entity.clone();
+            let filter_entity = entity.clone();
+            let goal_title = topic_task.map(|t| format!("{} · {}", self.store.identifier(t), t.title))
+                .unwrap_or(topic_title);
             history = history.child(
-                col()
-                    .flex_shrink_0()
-                    .px_4()
-                    .py_2()
-                    .gap_1()
-                    .border_b_1()
-                    .border_color(rgb(colors.line))
-                    .child(
-                        quiet_button("run-project-picker", name.clone())
-                            .w_full()
-                            .justify_start()
-                            .px_0()
-                            .dropdown_caret(true)
-                            .font_weight(FontWeight::MEDIUM)
-                            .tooltip(format!("Switch project: {name}"))
-                            .dropdown_menu_with_anchor(Anchor::TopLeft, move |mut menu, _, _| {
-                                for (id, name, rid) in &project_options {
-                                    let entity = entity.clone();
-                                    let rid = *rid;
-                                    menu = menu.item(
-                                        task_menu_item(name.clone()).checked(*id == pid).on_click(
-                                            move |_, _, cx| {
-                                                let _ = entity
-                                                    .update(cx, |a, cx| a.select_run(rid, cx));
-                                            },
-                                        ),
-                                    );
-                                }
-                                menu
-                            }),
+                col().flex_shrink_0().px_3().py_3().gap_2()
+                    .border_b_1().border_color(rgb(colors.line))
+                    .child(label("Project", cx).text_xs())
+                    .child(button("run-project-picker", name.clone()).w_full()
+                        .dropdown_caret(true).tooltip("Choose project")
+                        .dropdown_menu_with_anchor(Anchor::TopLeft, move |mut menu, _, _| {
+                            for (id, name, rid) in &project_options {
+                                let entity = entity.clone(); let rid = *rid;
+                                menu = menu.item(task_menu_item(name.clone()).checked(*id == pid)
+                                    .on_click(move |_, _, cx| { let _ = entity.update(cx, |a, cx| a.select_run(rid, cx)); }));
+                            }
+                            menu
+                        }))
+                    .child(label("Topic", cx).text_xs())
+                    .child(gpui_kit::component::button::Button::new("run-topic-filter")
+                        .w_full().h_auto().py_2().px_2().dropdown_caret(true)
+                        .disabled(topic_filters.is_empty())
+                        .child(div().flex_1().min_w_0().text_left().whitespace_normal()
+                            .child(actual_topic.map(|t| t.display_name()).unwrap_or_else(|| "Choose topic".into())))
+                        .dropdown_menu_with_anchor(Anchor::TopLeft, move |mut menu, _, _| {
+                            for (id, name, rid) in &topic_filters {
+                                let entity = filter_entity.clone(); let rid = *rid;
+                                menu = menu.item(task_menu_item(name.clone()).checked(Some(*id) == selected_topic)
+                                    .on_click(move |_, _, cx| { let _ = entity.update(cx, |a, cx| a.select_run(rid, cx)); }));
+                            }
+                            menu
+                        }))
+                    .when(topic_task.is_some(), |d| d
+                    .child(label(if research { "Goal" } else { "Activity" }, cx).text_xs())
+                    .child(gpui_kit::component::button::Button::new("run-topic-picker")
+                        .w_full().h_auto().py_2().px_2().dropdown_caret(true)
+                        .child(div().flex_1().min_w_0().text_left().whitespace_normal()
+                            .text_sm().line_height(relative(1.4)).child(goal_title))
+                        .tooltip("Choose goal or planning activity")
+                        .dropdown_menu_with_anchor(Anchor::TopLeft, move |mut menu, _, _| {
+                            for (id, name, rid) in &topic_options {
+                                let entity = topic_entity.clone(); let rid = *rid;
+                                menu = menu.item(task_menu_item(name.clone()).checked(*id == tid)
+                                    .on_click(move |_, _, cx| { let _ = entity.update(cx, |a, cx| a.select_run(rid, cx)); }));
+                            }
+                            menu
+                        }))
                     )
-                    .child(
-                        col()
-                            .gap_1()
-                            .child(
-                                row()
-                                    .justify_between()
-                                    .child(label(
-                                        if research {
-                                            "Research goal"
-                                        } else {
-                                            "Activity"
-                                        },
-                                        cx,
-                                    ))
-                                    .when(topic_options.len() > 1, |d| {
-                                        d.child(
-                                            quiet_button("run-topic-picker", "Switch")
-                                                .h_6()
-                                                .px_1()
-                                                .text_xs()
-                                                .dropdown_caret(true)
-                                                .tooltip("Switch research goal or activity")
-                                                .dropdown_menu_with_anchor(
-                                                    Anchor::TopRight,
-                                                    move |mut menu, _, _| {
-                                                        for (id, name, rid) in &topic_options {
-                                                            let entity = topic_entity.clone();
-                                                            let rid = *rid;
-                                                            menu = menu.item(
-                                                                task_menu_item(name.clone())
-                                                                    .checked(*id == tid)
-                                                                    .on_click(move |_, _, cx| {
-                                                                        let _ = entity.update(
-                                                                            cx,
-                                                                            |a, cx| {
-                                                                                a.select_run(
-                                                                                    rid, cx,
-                                                                                )
-                                                                            },
-                                                                        );
-                                                                    }),
-                                                            );
-                                                        }
-                                                        menu
-                                                    },
-                                                ),
-                                        )
-                                    }),
-                            )
-                            .child(if let Some(task) = topic_task {
-                                let id = task.id;
-                                quiet_button("open-run-goal", "")
-                                    .w_full()
-                                    .h_auto()
-                                    .px_0()
-                                    .py_1()
-                                    .text_color(rgb(colors.text))
-                                    .tooltip("View scope, questions, subtasks and materials")
-                                    .accessibility_label("View research goal details")
-                                    .child(
-                                        row()
-                                            .w_full()
-                                            .items_start()
-                                            .gap_2()
-                                            .child(
-                                                div()
-                                                    .flex_1()
-                                                    .min_w_0()
-                                                    .whitespace_normal()
-                                                    .text_sm()
-                                                    .line_height(relative(1.4))
-                                                    .font_weight(FontWeight::MEDIUM)
-                                                    .child(topic_title)
-                                                    .child(
-                                                        div()
-                                                            .mt_1()
-                                                            .text_xs()
-                                                            .text_color(rgb(colors.accent))
-                                                            .child("View goal details"),
-                                                    ),
-                                            )
-                                            .child(
-                                                gpui_kit::component::Icon::new(
-                                                    assets::IconName::ChevronRight,
-                                                )
-                                                .size_4()
-                                                .mt_1()
-                                                .flex_shrink_0(),
-                                            ),
-                                    )
-                                    .on_click(
-                                        cx.listener(move |a, _, w, cx| a.open_task(id, w, cx)),
-                                    )
-                                    .into_any_element()
-                            } else {
-                                div()
-                                    .text_sm()
-                                    .font_weight(FontWeight::MEDIUM)
-                                    .child(topic_title)
-                                    .into_any_element()
-                            }),
-                    ),
+                    .child(row().flex_wrap().gap_3()
+                        .when_some(topic_task, |d, task| {
+                            let id = task.id;
+                            d.child(quiet_button("open-run-goal", "Goal details →")
+                                .h_6().px_0().text_xs().text_color(rgb(colors.accent))
+                                .on_click(cx.listener(move |a, _, w, cx| a.open_task(id, w, cx))))
+                        })
+                        .when(!planning_options.is_empty(), |d| d.child(
+                            quiet_button("run-project-planning", "Planning history")
+                                .h_6().px_0().text_xs().text_color(rgb(colors.accent)).dropdown_caret(true)
+                                .tooltip("Project and current goal planning records")
+                                .dropdown_menu_with_anchor(Anchor::TopLeft, move |mut menu, _, _| {
+                                    for (rid, title) in &planning_options {
+                                        let entity = planning_entity.clone(); let rid = *rid;
+                                        menu = menu.item(task_menu_item(title.clone()).on_click(move |_, _, cx| {
+                                            let _ = entity.update(cx, |a, cx| a.select_run(rid, cx));
+                                        }));
+                                    }
+                                    menu
+                                })
+                        ))),
             );
 
             let mut latest: Vec<&AgentRun> = vec![];
@@ -450,7 +405,7 @@ impl TaskApp {
             }
             if !tasks.is_empty() {
                 entries = entries.child(
-                    label(format!("Research steps · {}", tasks.len()), cx)
+                    label(format!("Steps with activity · {}", tasks.len()), cx)
                         .px_2()
                         .pt_2()
                         .pb_1(),
@@ -473,38 +428,9 @@ impl TaskApp {
                     .pb_3(),
                 );
             }
-            if !planning.is_empty() {
-                entries = entries.child(
-                    col()
-                        .mx_4()
-                        .py_3()
-                        .border_t_1()
-                        .border_color(rgb(colors.line))
-                        .child(
-                            quiet_button("run-planning-toggle", "Planning activity")
-                                .w_full()
-                                .justify_start()
-                                .px_0()
-                                .text_xs()
-                                .text_color(rgb(colors.muted))
-                                .icon(if self.show_planning_activity {
-                                    assets::IconName::ChevronDown
-                                } else {
-                                    assets::IconName::ChevronRight
-                                })
-                                .on_click(cx.listener(|a, _, _, cx| {
-                                    a.show_planning_activity = !a.show_planning_activity;
-                                    cx.notify();
-                                })),
-                        )
-                        .when(self.show_planning_activity, |d| {
-                            d.children(
-                                planning
-                                    .iter()
-                                    .map(|r| self.run_history_entry(r, selected, cx)),
-                            )
-                        }),
-                );
+            if self.show_planning_activity && !planning.is_empty() {
+                entries = entries.child(label("Planning records", cx).px_2().py_2())
+                    .children(planning.iter().map(|r| self.run_history_entry(r, selected, cx)));
             }
             history = history.child(entries.map(observed));
         }
@@ -533,8 +459,8 @@ impl TaskApp {
                         .with_state(&self.results_split)
                         .child(
                             resizable_panel()
-                                .size(px(320.))
-                                .size_range(px(240.)..px(520.))
+                                .size(px(260.))
+                                .size_range(px(200.)..px(520.))
                                 .fixed()
                                 .visible(selected.is_some())
                                 .child(history.map(observed)),
@@ -663,7 +589,14 @@ impl TaskApp {
         let caption = format!(
             "{} · {}",
             if latest { "Latest" } else { "Earlier version" },
-            (if run.started_at.is_empty() { &run.queued_at } else { &run.started_at }).chars().take(16).collect::<String>()
+            (if run.started_at.is_empty() {
+                &run.queued_at
+            } else {
+                &run.started_at
+            })
+            .chars()
+            .take(16)
+            .collect::<String>()
         );
         if attempts.len() < 2 {
             return label(caption, cx).into_any_element();
@@ -678,7 +611,14 @@ impl TaskApp {
                     format!(
                         "{}{} · {}",
                         if i == 0 { "Latest · " } else { "" },
-                        (if r.started_at.is_empty() { &r.queued_at } else { &r.started_at }).chars().take(19).collect::<String>(),
+                        (if r.started_at.is_empty() {
+                            &r.queued_at
+                        } else {
+                            &r.started_at
+                        })
+                        .chars()
+                        .take(19)
+                        .collect::<String>(),
                         status_label(&r.status)
                     ),
                 )
@@ -732,6 +672,14 @@ impl TaskApp {
                 activity_label(run),
                 "You can leave this page. The result will appear here when this step finishes.",
             ),
+            "Recovering" => (
+                "Previous session is still running",
+                "OpenCode is continuing this task in the background. The app checks its status and imports the result when it finishes; no duplicate run is started.",
+            ),
+            "Interrupted" => (
+                "No completed result for this attempt",
+                "The previous attempt was interrupted. Open the task to check its session and retry; completed prerequisite results will be reused.",
+            ),
             "Cancelling" => (
                 "Stopping this task",
                 "Waiting for the current process to stop.",
@@ -783,7 +731,9 @@ impl TaskApp {
                                     .map(|t| self.store.identifier(t))
                                     .unwrap_or_default(),
                                 r.task_title,
-                                self.store.run_conflict_reason(run, r).unwrap_or("resource busy")
+                                self.store
+                                    .run_conflict_reason(run, r)
+                                    .unwrap_or("resource busy")
                             )
                         })
                 })
@@ -803,6 +753,12 @@ impl TaskApp {
             } else {
                 "Queued · preparing to start automatically.".into()
             }
+        } else if let Some(crate::recovery::SessionCheck::Unknown(error)) =
+            self.recovery.checks.get(&run.id)
+        {
+            format!(
+                "Session check failed: {error}. Use Check progress in Paused projects to retry the check."
+            )
         } else {
             explanation.to_string()
         };
@@ -912,7 +868,7 @@ impl TaskApp {
                     )
                     .child(actions),
             )
-            .when(run.status != "Succeeded" || planning, |d| {
+            .when((run.status != "Succeeded" || planning) && (readable || self.show_run_details), |d| {
                 d.child(label(queue_explanation.clone(), cx))
             })
             .map(observed);
@@ -983,15 +939,16 @@ impl TaskApp {
             .flex_1()
             .min_w_0()
             .h_full()
-            .gap_2()
-            .px_5()
-            .py_3()
+            .gap_1()
+            .px_4()
+            .py_2()
             .child(
                 col().flex_shrink_0().gap_2().child(
                     div()
-                        .text_xl()
+                        .text_lg()
                         .font_weight(FontWeight::SEMIBOLD)
                         .line_height(relative(1.3))
+                        .line_clamp(2)
                         .child(run.task_title.clone()),
                 ),
             )
@@ -1019,6 +976,11 @@ impl TaskApp {
                                 .font_weight(FontWeight::MEDIUM)
                                 .child(headline),
                         )
+                        .child(label(queue_explanation.clone(), cx))
+                        .when(!active && can_open && project_plan.is_none(), |d| {
+                            d.child(primary_button("run-resolve-task", "Open task & resolve").self_start()
+                                .on_click(cx.listener(move |a, _, w, cx| a.open_task(id, w, cx))))
+                        })
                         .when(active, |d| d.child(stages))
                         .when(active, |d| {
                             d.child(label(
@@ -1063,9 +1025,25 @@ impl TaskApp {
                     .child(label(
                         format!(
                             "Queued: {} · Started: {} · Finished: {}",
-                            if run.queued_at.is_empty() { "Not recorded" } else { &run.queued_at },
-                            if run.status == "Queued" || run.started_at.is_empty() { "Not started" } else { &run.started_at },
-                            run.ended_at.as_deref().unwrap_or(if run.status == "Queued" { "—" } else if run.status == "Running" { "In progress" } else { "Not recorded" })
+                            if run.queued_at.is_empty() {
+                                "Not recorded"
+                            } else {
+                                &run.queued_at
+                            },
+                            if run.status == "Queued" || run.started_at.is_empty() {
+                                "Not started"
+                            } else {
+                                &run.started_at
+                            },
+                            run.ended_at
+                                .as_deref()
+                                .unwrap_or(if run.status == "Queued" {
+                                    "—"
+                                } else if run.status == "Running" {
+                                    "In progress"
+                                } else {
+                                    "Not recorded"
+                                })
                         ),
                         cx,
                     ))

@@ -31,42 +31,89 @@ impl TaskApp {
     }
 
     pub fn start_goal_batch(&mut self, goal: u64, cx: &mut Context<Self>) {
-        if self.todo_batch.as_ref().is_some_and(|b| b.state != BatchState::Finished) {
-            self.error = "Continue or stop the current execution batch before starting another goal.".into();
+        if self.store.task_is_archived(goal) {
+            self.error = "Restore the archived topic or goal before executing.".into();
             self.task_start_feedback = Some((goal, self.error.clone()));
-            cx.notify(); return;
+            cx.notify();
+            return;
         }
-        if !self.ready_to_run(cx) { return; }
-        let Some(task) = self.store.task(goal) else { return; };
+        if self.todo_batch.as_ref().is_some_and(|b|
+            b.items == vec![goal] && matches!(b.state, BatchState::Paused(_)))
+        {
+            self.resume_todo_batch(cx);
+            return;
+        }
+        if self
+            .todo_batch
+            .as_ref()
+            .is_some_and(|b| b.state != BatchState::Finished)
+        {
+            self.error =
+                "Continue or stop the current execution batch before starting another goal.".into();
+            self.task_start_feedback = Some((goal, self.error.clone()));
+            cx.notify();
+            return;
+        }
+        if !self.ready_to_run(cx) {
+            return;
+        }
+        let Some(task) = self.store.task(goal) else {
+            return;
+        };
         let project = task.project_id;
         if let Err(error) = self.store.ready_research_tasks(goal) {
-            self.error = error.clone(); self.task_start_feedback = Some((goal, error)); cx.notify(); return;
+            self.error = error.clone();
+            self.task_start_feedback = Some((goal, error));
+            cx.notify();
+            return;
         }
         self.begin_goal_batch(project, vec![goal], cx);
     }
 
-    fn begin_goal_batch(&mut self, project: u64, items: Vec<u64>, cx: &mut Context<Self>) {
+    pub(crate) fn begin_goal_batch(
+        &mut self,
+        project: u64,
+        items: Vec<u64>,
+        cx: &mut Context<Self>,
+    ) {
         // This transition follows an explicit Run action, never a board drag.
         for id in &items {
-            if self.store.task(*id).and_then(|t| t.research.as_ref()).is_some_and(|r| r.kind == ResearchKind::Goal) {
+            if self
+                .store
+                .task(*id)
+                .and_then(|t| t.research.as_ref())
+                .is_some_and(|r| r.kind == ResearchKind::Goal)
+            {
                 if !self.store.goal_execution_approved(*id) {
-                    self.error = "Review the goal and move it to Todo before executing.".into(); cx.notify(); return;
+                    self.error = "Review the goal and move it to Todo before executing.".into();
+                    cx.notify();
+                    return;
                 }
                 if !self.store.goal_tasks_complete(*id) {
-                    if let Err(error) = self.store.set_stage(*id, crate::domain::Stage::InProgress) {
-                        self.error = error; cx.notify(); return;
+                    if let Err(error) = self.store.set_stage(*id, crate::domain::Stage::InProgress)
+                    {
+                        self.error = error;
+                        cx.notify();
+                        return;
                     }
                 }
             }
         }
         self.todo_batch = Some(TodoBatch {
-            project_id: project, items, completed: 0, runs_completed: 0,
-            state: BatchState::Running, run_ids: Default::default(),
-            done_items: vec![], failed_items: vec![], failed_tasks: vec![],
+            project_id: project,
+            items,
+            completed: 0,
+            runs_completed: 0,
+            state: BatchState::Running,
+            run_ids: Default::default(),
+            done_items: vec![],
+            failed_items: vec![],
+            failed_tasks: vec![],
         });
         self.advance_todo_batch(cx);
     }
     pub fn pause_todo_batch(&mut self, cx: &mut Context<Self>) {
+        self.stop_recovery_queue();
         if let Some(batch) = &mut self.todo_batch {
             if batch.state == BatchState::Running {
                 batch.state = BatchState::Paused(
@@ -130,6 +177,7 @@ impl TaskApp {
         self.advance_todo_batch(cx);
     }
     pub fn cancel_todo_batch(&mut self, cx: &mut Context<Self>) {
+        self.stop_recovery_queue();
         // Detach first: cancellation callbacks must not schedule replacement work.
         if let Some(batch) = self.todo_batch.take() {
             for id in batch.run_ids.keys() {
@@ -140,23 +188,46 @@ impl TaskApp {
         cx.notify();
     }
     fn advance_todo_batch(&mut self, cx: &mut Context<Self>) {
-        let Some(batch) = &self.todo_batch else { return; };
-        if batch.state != BatchState::Running { return; }
+        let Some(batch) = &self.todo_batch else {
+            return;
+        };
+        if batch.state != BatchState::Running {
+            return;
+        }
         let project = batch.project_id;
         let items = batch.items.clone();
         for item in items {
-            let Some(batch) = &self.todo_batch else { break; };
-            if batch.done_items.contains(&item) || batch.failed_items.contains(&item) { continue; }
-            if self.store.task(item).is_none_or(|task| task.project_id != project || task.archived || !matches!(task.stage, crate::domain::Stage::Planned | crate::domain::Stage::InProgress | crate::domain::Stage::Done)) {
+            let Some(batch) = &self.todo_batch else {
+                break;
+            };
+            if batch.done_items.contains(&item) || batch.failed_items.contains(&item) {
+                continue;
+            }
+            if self.store.task(item).is_none_or(|task| {
+                task.project_id != project
+                    || self.store.task_is_archived(task.id)
+                    || !matches!(
+                        task.stage,
+                        crate::domain::Stage::Planned
+                            | crate::domain::Stage::InProgress
+                            | crate::domain::Stage::Done
+                    )
+            }) {
                 self.error = "A selected goal left this project's execution scope. Review it before continuing.".into();
                 self.todo_batch.as_mut().unwrap().failed_items.push(item);
                 continue;
             }
-            let research_goal = self.store.task(item).and_then(|t| t.research.as_ref()).is_some_and(|r| r.kind == ResearchKind::Goal);
+            let research_goal = self
+                .store
+                .task(item)
+                .and_then(|t| t.research.as_ref())
+                .is_some_and(|r| r.kind == ResearchKind::Goal);
             let next = if research_goal {
                 self.store.ready_research_tasks(item)
             } else {
-                self.store.next_todo_batch_task(project, item).map(|id| id.into_iter().collect())
+                self.store
+                    .next_todo_batch_task(project, item)
+                    .map(|id| id.into_iter().collect())
             };
             let candidates = match next {
                 Ok(ids) => ids,
@@ -168,20 +239,35 @@ impl TaskApp {
             };
             let finished = if research_goal {
                 self.store.goal_tasks_complete(item)
-            } else { candidates.is_empty() };
+            } else {
+                candidates.is_empty()
+            };
             if finished {
-                if research_goal { self.store.sync_goal_progress(item); }
+                if research_goal {
+                    self.store.sync_goal_progress(item);
+                }
                 let batch = self.todo_batch.as_mut().unwrap();
-                batch.done_items.push(item); batch.completed = batch.done_items.len();
+                batch.done_items.push(item);
+                batch.completed = batch.done_items.len();
                 continue;
             }
             for id in candidates {
-                if self.task_running(id) || self.todo_batch.as_ref().unwrap().failed_tasks.contains(&id) { continue; }
+                if self.task_running(id)
+                    || self.todo_batch.as_ref().unwrap().failed_tasks.contains(&id)
+                {
+                    continue;
+                }
                 let before = self.store.runs.len();
                 self.start_run(id, cx);
-                let submitted = self.store.runs.get(before).map(|r| (r.id, r.status.clone()));
+                let submitted = self
+                    .store
+                    .runs
+                    .get(before)
+                    .map(|r| (r.id, r.status.clone()));
                 let batch = self.todo_batch.as_mut().unwrap();
-                if let Some((run_id, _)) = submitted.filter(|(_, status)| matches!(status.as_str(), "Queued" | "Running")) {
+                if let Some((run_id, _)) =
+                    submitted.filter(|(_, status)| matches!(status.as_str(), "Queued" | "Running"))
+                {
                     batch.run_ids.insert(run_id, item);
                 } else {
                     batch.failed_tasks.push(id);
@@ -192,8 +278,14 @@ impl TaskApp {
             if batch.done_items.len() == batch.items.len() {
                 batch.state = BatchState::Finished;
                 self.toast = "Research completed · final reports saved locally".into();
-            } else if batch.run_ids.is_empty() && self.active_runs.is_empty() && self.queued_runs.is_empty() {
-                batch.state = BatchState::Paused(format!("{} goals need attention. Review failed steps or missing dependencies, then continue.", batch.items.len() - batch.done_items.len()));
+            } else if batch.run_ids.is_empty()
+                && self.active_runs.is_empty()
+                && self.queued_runs.is_empty()
+            {
+                batch.state = BatchState::Paused(format!(
+                    "{} goals need attention. Review failed steps or missing dependencies, then continue.",
+                    batch.items.len() - batch.done_items.len()
+                ));
             }
         }
         cx.notify();
@@ -228,7 +320,9 @@ impl TaskApp {
                 .and_then(|t| t.research.as_ref())
                 .is_some_and(|r| r.kind == ResearchKind::Goal);
             if !goal || self.store.next_todo_batch_task(batch.project_id, item) == Ok(None) {
-                if !batch.done_items.contains(&item) { batch.done_items.push(item); }
+                if !batch.done_items.contains(&item) {
+                    batch.done_items.push(item);
+                }
                 batch.completed = batch.done_items.len();
             }
         } else {

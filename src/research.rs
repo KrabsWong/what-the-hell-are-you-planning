@@ -1,6 +1,15 @@
 //! Market research goals, validated plans and dependency-aware execution context.
 use crate::domain::{AgentRun, Stage, Store};
 use serde::{Deserialize, Serialize};
+use std::collections::HashMap;
+
+// One validation walk shares dependency results and goal approval checks.
+// The cache never survives the call, so changed inputs are always revalidated.
+#[derive(Default)]
+struct Validation<'a> {
+    results: HashMap<u64, Option<&'a AgentRun>>,
+    approvals: HashMap<u64, bool>,
+}
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(rename_all = "snake_case")]
@@ -252,7 +261,7 @@ impl Store {
     pub fn goal_execution_approved(&self, id: u64) -> bool {
         let Some(goal) = self.task(id) else { return false; };
         let Some(research) = &goal.research else { return false; };
-        if research.kind != ResearchKind::Goal || goal.archived || matches!(goal.stage, Stage::Backlog | Stage::Cancelled) { return false; }
+        if research.kind != ResearchKind::Goal || self.task_is_archived(goal.id) || matches!(goal.stage, Stage::Backlog | Stage::Cancelled) { return false; }
         !research.requires_approval || goal.approved_plan.as_ref().is_some_and(|approved| Some(approved) == self.goal_plan_signature(id).as_ref())
     }
     pub fn reconcile_goal_approvals(&mut self) {
@@ -321,10 +330,19 @@ impl Store {
         brief: String,
         project: u64,
     ) -> Result<u64, String> {
+        self.create_research_goal_in_topic(title, brief, project, None)
+    }
+    pub fn create_research_goal_in_topic(
+        &mut self,
+        title: String,
+        brief: String,
+        project: u64,
+        topic: Option<u64>,
+    ) -> Result<u64, String> {
         if brief.trim().is_empty() {
             return Err("Describe the research scope and questions first.".into());
         }
-        let id = self.create_task(title, project, Stage::Planned, None)?;
+        let id = self.create_task_in_topic(title, project, Stage::Planned, None, topic)?;
         let task = self.task_mut(id).unwrap();
         task.description = brief;
         task.labels = vec!["Research".into()];
@@ -348,7 +366,7 @@ impl Store {
         }
         let plan = parse_plan(text)?;
         let goal = self.task(goal_id).ok_or("Research goal not found.")?;
-        if goal.archived
+        if self.task_is_archived(goal_id)
             || goal
                 .research
                 .as_ref()
@@ -389,29 +407,34 @@ impl Store {
         Ok(ids)
     }
     pub fn research_result(&self, id: u64) -> Option<&AgentRun> {
-        self.research_result_checked(id, &mut vec![])
+        self.research_result_checked(id, &mut vec![], &mut Validation::default())
     }
-    fn research_result_checked(&self, id: u64, visiting: &mut Vec<u64>) -> Option<&AgentRun> {
-        if visiting.contains(&id) {
-            return None;
-        }
-        visiting.push(id);
-        let result = self
-            .runs
-            .iter()
-            .rev()
+    fn research_result_checked<'a>(&'a self, id: u64, visiting: &mut Vec<u64>, cache: &mut Validation<'a>) -> Option<&'a AgentRun> {
+        if visiting.contains(&id) { return None; }
+        if let Some(result) = cache.results.get(&id) { return *result; }
+        let result = self.runs.iter().rev()
             .find(|r| r.task_id == id && r.status != "Simulated")
             .filter(|r| r.status == "Succeeded" && !r.output.trim().is_empty());
-        let signature = self.research_signature_checked(id, visiting);
+        // Pending/failed runs cannot be reused, regardless of their ancestors.
+        let Some(result) = result else {
+            cache.results.insert(id, None);
+            return None;
+        };
+        visiting.push(id);
+        let signature = self.research_signature_checked(id, visiting, cache);
         visiting.pop();
-        result.filter(|r| signature.as_ref() == Some(&r.input_signature))
+        let result = (signature.as_ref() == Some(&result.input_signature)).then_some(result);
+        cache.results.insert(id, result);
+        result
     }
     pub fn research_signature(&self, id: u64) -> Option<String> {
-        self.research_signature_checked(id, &mut vec![id])
+        self.research_signature_checked(id, &mut vec![id], &mut Validation::default())
     }
-    fn research_signature_checked(&self, id: u64, visiting: &mut Vec<u64>) -> Option<String> {
-        if self.research_pending_approval(id) {
-            return None;
+    fn research_signature_checked<'a>(&'a self, id: u64, visiting: &mut Vec<u64>, cache: &mut Validation<'a>) -> Option<String> {
+        if let Some(goal) = self.owning_research_goal(id) {
+            let approved = *cache.approvals.entry(goal)
+                .or_insert_with(|| self.goal_execution_approved(goal));
+            if !approved { return None; }
         }
         let task = self
             .task(id)
@@ -440,7 +463,7 @@ impl Store {
         }
         let mut dependencies = vec![];
         for dep in &research.depends_on {
-            let r = self.research_result_checked(*dep, visiting)?;
+            let r = self.research_result_checked(*dep, visiting, cache)?;
             dependencies.push(r.id);
         }
         let directory = &self
@@ -520,7 +543,7 @@ pub fn prepare_run(store: &Store, id: u64) -> Result<AgentRun, String> {
     }
     let task = store.task(id).ok_or("Task not found.")?;
     let research = task.research.as_ref().ok_or("Not a research task.")?;
-    if task.archived || task.stage == Stage::Cancelled {
+    if store.task_is_archived(id) || task.stage == Stage::Cancelled {
         return Err("Restore or reopen this task before running.".into());
     }
     store.validate_goal_dependencies(research.goal_id)?;
@@ -640,6 +663,27 @@ mod tests {
             .unwrap();
         (s, id)
     }
+    #[test]
+    fn shared_dependency_validation_is_scoped_to_one_walk() {
+        let (mut store, goal) = workspace();
+        let ids = store.apply_research_plan(goal, PLAN).unwrap();
+        // The final report references both analysis and its evidence.
+        store.task_mut(ids[2]).unwrap().research.as_mut().unwrap().depends_on = vec![ids[0], ids[1]];
+        for id in &ids {
+            let mut run = store.prepare_run(*id).unwrap();
+            run.status = "Succeeded".into();
+            run.output = "Verified result".into();
+            store.runs.push(run);
+        }
+        let mut cache = Validation::default();
+        assert!(store.research_result_checked(ids[2], &mut vec![], &mut cache).is_some());
+        assert_eq!(cache.results.len(), 3);
+        assert_eq!(cache.approvals.len(), 1);
+        drop(cache);
+        store.task_mut(ids[0]).unwrap().description.push_str(" changed");
+        assert!(store.research_result(ids[2]).is_none());
+    }
+
     #[test]
     fn plan_validation_is_atomic_and_preserves_manual_work() {
         let (mut s, id) = workspace();

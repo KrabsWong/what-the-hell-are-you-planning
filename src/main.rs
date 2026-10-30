@@ -1,6 +1,9 @@
 #[cfg(feature = "qa")]
+mod render_qa;
+#[cfg(feature = "qa")]
 mod affordance_qa;
 mod app;
+mod archive_app;
 mod appearance;
 mod attachments;
 mod batch;
@@ -12,28 +15,26 @@ mod concurrency_qa;
 mod controls;
 mod domain;
 mod ego;
+mod goal_steps;
+#[cfg(feature = "qa")]
+mod intake_qa;
+mod intake_views;
 #[cfg(feature = "qa")]
 mod material_qa;
 mod navigation;
-mod topic_views;
-#[cfg(feature = "qa")]
-mod topic_qa;
 mod opencode;
 mod persistence;
-mod workspace;
-#[cfg(feature = "qa")]
-mod workspace_qa;
 mod project_app;
 mod project_planning;
-mod request_planning;
-mod intake_views;
-#[cfg(feature = "qa")]
-mod intake_qa;
 #[cfg(feature = "qa")]
 mod project_qa;
 mod project_views;
 #[cfg(feature = "qa")]
 mod qa;
+mod recovery;
+#[cfg(feature = "qa")]
+mod recovery_qa;
+mod request_planning;
 mod research;
 mod research_app;
 #[cfg(feature = "qa")]
@@ -47,8 +48,14 @@ mod settings_views;
 #[cfg(feature = "qa")]
 mod simplify_qa;
 mod sqlite_storage;
+#[cfg(feature = "qa")]
+mod topic_qa;
+mod topic_views;
 mod ui_assets;
 mod views;
+mod workspace;
+#[cfg(feature = "qa")]
+mod workspace_qa;
 
 use gpui_kit::*;
 
@@ -56,13 +63,37 @@ actions!(task_manager, [Quit]);
 
 fn main() {
     #[cfg(feature = "qa")]
-    if std::env::args().any(|arg| arg == "--qa-intake") { intake_qa::run(); return; }
+    if std::env::args().any(|arg| arg == "--qa-render-perf") { render_qa::run(); return; }
     #[cfg(feature = "qa")]
-    if std::env::args().any(|arg| arg == "--qa-topics") { topic_qa::run(); return; }
+    if std::env::args().any(|arg| arg == "--qa-result-layout") {
+        simplify_qa::result_layout();
+        return;
+    }
     #[cfg(feature = "qa")]
-    if std::env::args().any(|arg| arg == "--qa-calendar") { workspace_qa::calendar(); return; }
+    if std::env::args().any(|arg| arg == "--qa-recovery") {
+        recovery_qa::run();
+        return;
+    }
     #[cfg(feature = "qa")]
-    if std::env::args().any(|arg| arg == "--qa-onboarding") { workspace_qa::run(); return; }
+    if std::env::args().any(|arg| arg == "--qa-intake") {
+        intake_qa::run();
+        return;
+    }
+    #[cfg(feature = "qa")]
+    if std::env::args().any(|arg| arg == "--qa-topics") {
+        topic_qa::run();
+        return;
+    }
+    #[cfg(feature = "qa")]
+    if std::env::args().any(|arg| arg == "--qa-calendar") {
+        workspace_qa::calendar();
+        return;
+    }
+    #[cfg(feature = "qa")]
+    if std::env::args().any(|arg| arg == "--qa-onboarding") {
+        workspace_qa::run();
+        return;
+    }
     #[cfg(feature = "qa")]
     if std::env::args().any(|arg| arg == "--qa-concurrency") {
         concurrency_qa::run();

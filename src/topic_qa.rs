@@ -58,11 +58,21 @@ pub fn run() {
         w.click("create-project", cx);
         let project = app.read(cx).store.projects.last().unwrap().id;
         assert_eq!(app.read(cx).scope, Scope::Project(project));
-        assert!(app.read(cx).planning_project.is_none(), "Creating a project must not launch research intake");
-        assert!(!app.read(cx).store.tasks.iter().any(|t| t.project_id == project));
+        assert!(
+            app.read(cx).planning_project.is_none(),
+            "Creating a project must not launch research intake"
+        );
+        assert!(
+            !app.read(cx)
+                .store
+                .tasks
+                .iter()
+                .any(|t| t.project_id == project)
+        );
         assert!(app.read(cx).store.research_requests.is_empty());
         app.update(cx, |a, cx| a.navigate(Scope::Project(1), w, cx));
-    }).unwrap();
+    })
+    .unwrap();
     let topic = cx
         .update_window(handle, |_, w, cx| {
             w.render_frame(cx);
@@ -118,13 +128,18 @@ pub fn run() {
         w.click("board-view", cx);
         assert!(app.read(cx).layout == crate::app::Layout::Board);
         w.render_frame(cx);
-    }).unwrap();
-    cx.capture_screenshot(handle).unwrap().save(root.join("topic-board.png")).unwrap();
+    })
+    .unwrap();
+    cx.capture_screenshot(handle)
+        .unwrap()
+        .save(root.join("topic-board.png"))
+        .unwrap();
     cx.update_window(handle, |_, w, cx| {
         w.click("list-view", cx);
         assert!(app.read(cx).layout == crate::app::Layout::List);
         w.render_frame(cx);
-    }).unwrap();
+    })
+    .unwrap();
     cx.capture_screenshot(handle)
         .unwrap()
         .save(root.join("topic-light.png"))
@@ -135,8 +150,102 @@ pub fn run() {
         let (crumbs, _) = app.read(cx).navigation_path();
         assert!(crumbs.iter().any(|(_, name, _)| name == "#英伟达 NVIDIA"));
         w.render_frame(cx);
-    }).unwrap();
-    cx.capture_screenshot(handle).unwrap().save(root.join("topic-property.png")).unwrap();
+    })
+    .unwrap();
+    cx.update_window(handle, |_, w, cx| {
+        w.click("goal-steps-tab", cx);
+        w.render_frame(cx);
+        assert!(w.try_find("goal-steps-board").is_some());
+        w.click("steps-list-view", cx);
+        w.render_frame(cx);
+        assert!(w.try_find("goal-steps-list").is_some());
+        let child = app.read(cx).store.research_children(goal)[0];
+        let before = app.read(cx).store.runs.len();
+        w.click(format!("goal-step-{child}"), cx);
+        assert_eq!(app.read(cx).selected, Some(child));
+        w.render_frame(cx);
+        w.click("navigation-back", cx);
+        w.render_frame(cx);
+        assert!(w.try_find("goal-steps-list").is_some());
+        app.update(cx, |a, cx| {
+            a.navigate(Scope::All, w, cx);
+            a.layout = crate::app::Layout::Board;
+        });
+        w.render_frame(cx);
+        w.click(format!("goal-progress-{goal}"), cx);
+        w.render_frame(cx);
+        assert_eq!(app.read(cx).selected, Some(goal));
+        assert!(w.try_find("goal-steps-board").is_some());
+        assert_eq!(
+            app.read(cx).store.runs.len(),
+            before,
+            "Viewing steps never executes work"
+        );
+    })
+    .unwrap();
+    cx.capture_screenshot(handle)
+        .unwrap()
+        .save(root.join("goal-steps-board.png"))
+        .unwrap();
+    // Isolated display fixtures, no scheduler or external processes are started.
+    let mut fixture = cx.update(|cx| app.read(cx).store.clone());
+    fixture.default_model = "fixture/model".into();
+    fixture.projects[0].directory = root.to_string_lossy().into_owned();
+    fixture
+        .set_stage(goal, crate::domain::Stage::Planned)
+        .unwrap();
+    let children = fixture.research_children(goal);
+    let mut running = fixture.prepare_run(children[0]).unwrap();
+    running.id = 1;
+    running.status = "Running".into();
+    let mut failed = running.clone();
+    failed.id = 2;
+    failed.task_id = children[1];
+    failed.status = "Failed".into();
+    fixture.runs.extend([running, failed]);
+    fixture.task_mut(children[0]).unwrap().title =
+        "收集官方财报与投资者电话会：核实收入、毛利率、现金流及未来季度指引，保留完整来源".into();
+    fixture
+        .create_task(
+            "等待人工补充材料",
+            1,
+            crate::domain::Stage::Planned,
+            Some(goal),
+        )
+        .unwrap();
+    steps_screenshot(
+        &fixture,
+        goal,
+        1720.,
+        false,
+        false,
+        &root.join("steps-all-colors-light.png"),
+    );
+    steps_screenshot(
+        &fixture,
+        goal,
+        1720.,
+        true,
+        false,
+        &root.join("steps-all-colors-dark.png"),
+    );
+    steps_screenshot(
+        &fixture,
+        goal,
+        900.,
+        false,
+        true,
+        &root.join("steps-list-narrow.png"),
+    );
+    cx.update_window(handle, |_, w, cx| {
+        w.click("goal-overview-tab", cx);
+        w.render_frame(cx);
+    })
+    .unwrap();
+    cx.capture_screenshot(handle)
+        .unwrap()
+        .save(root.join("topic-property.png"))
+        .unwrap();
     cx.update_window(handle, |_, w, cx| {
         app.update(cx, |a, cx| {
             a.show_task_details = true;
@@ -145,8 +254,12 @@ pub fn run() {
             cx.notify();
         });
         w.render_frame(cx);
-    }).unwrap();
-    cx.capture_screenshot(handle).unwrap().save(root.join("task-execution-settings.png")).unwrap();
+    })
+    .unwrap();
+    cx.capture_screenshot(handle)
+        .unwrap()
+        .save(root.join("task-execution-settings.png"))
+        .unwrap();
     cx.update_window(handle, |_, w, cx| {
         w.click("navigation-back", cx);
         assert_eq!(app.read(cx).scope, Scope::Topic(topic));
@@ -183,6 +296,17 @@ pub fn run() {
                 .archived
         );
         assert!(!app.read(cx).store.task(goal).unwrap().archived);
+        app.update(cx, |a, cx| {
+            a.scope = Scope::All;
+            assert!(!a.visible_tasks().iter().any(|t| t.id == goal));
+            a.scope = Scope::Archive;
+            assert!(a.visible_tasks().iter().any(|t| t.id == goal));
+            cx.notify();
+        });
+        w.render_frame(cx);
+        w.click(SharedString::from(format!("topic-link-{topic}")), cx);
+        assert_eq!(app.read(cx).scope, Scope::Topic(topic));
+
         w.render_frame(cx);
         w.click("archive-topic", cx);
         assert!(
@@ -240,4 +364,74 @@ pub fn run() {
     );
     assert_eq!(saved.task(goal).unwrap().topic_id, Some(topic));
     println!("Topic QA passed; screenshots: {}", root.display());
+}
+
+fn steps_screenshot(
+    store: &Store,
+    goal: u64,
+    width: f32,
+    dark: bool,
+    list: bool,
+    path: &std::path::Path,
+) {
+    let mut cx = HeadlessAppContext::with_platform(
+        platform::current_platform(true).text_system(),
+        Arc::new(crate::ui_assets::AppAssets),
+        platform::current_headless_renderer,
+    );
+    cx.update(|cx| {
+        init(cx);
+    });
+    let mut app = None;
+    let window = cx
+        .open_window(size(px(width), px(800.)), |w, cx| {
+            let view = cx.new(|cx| TaskApp::new_mock(w, cx));
+            view.update(cx, |a, cx| {
+                a.store = store.clone();
+                a.open_goal_steps(goal, w, cx);
+                if list {
+                    a.steps_layout = crate::app::Layout::List;
+                }
+                crate::appearance::apply(
+                    if dark {
+                        crate::appearance::Appearance::Dark
+                    } else {
+                        crate::appearance::Appearance::Light
+                    },
+                    Some(w),
+                    cx,
+                );
+            });
+            app = Some(view.clone());
+            cx.new(|cx| base::Root::new(view, w, cx))
+        })
+        .unwrap();
+    let handle = window.into();
+    for _ in 0..3 {
+        cx.run_until_parked();
+        cx.update_window(handle, |_, w, cx| w.render_frame(cx))
+            .unwrap();
+    }
+    if list {
+        let app = app.unwrap();
+        for step in store.research_children(goal) {
+            cx.update_window(handle, |_, w, cx| {
+                app.update(cx, |a, cx| {
+                    a.store.runs[0].task_id = step;
+                    a.store.runs[0].status = "Running".into();
+                    a.open_task(step, w, cx);
+                });
+                w.render_frame(cx);
+                w.click("task-progress", cx);
+                assert_eq!(app.read(cx).selected, Some(goal));
+                assert_eq!(app.read(cx).goal_steps_tab, Some(goal));
+                assert!(app.read(cx).steps_layout == crate::app::Layout::List);
+                w.render_frame(cx);
+                assert!(w.try_find("goal-steps-list").is_some());
+            }).unwrap();
+        }
+        app.update(&mut cx, |a, cx| { a.store = store.clone(); cx.notify(); });
+        cx.update_window(handle, |_, w, cx| w.render_frame(cx)).unwrap();
+    }
+    cx.capture_screenshot(handle).unwrap().save(path).unwrap();
 }

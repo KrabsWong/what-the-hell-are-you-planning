@@ -23,12 +23,10 @@ pub enum Scope {
     Project(u64),
     Topic(u64),
     Cycle(String),
-    Due,
-    DueDate(String),
-    Overdue,
     Archive,
     Workflow,
     Runs,
+    Recovery,
     Research,
     Settings,
 }
@@ -121,7 +119,6 @@ pub struct TaskApp {
     pub save_feedback: Option<Result<String, String>>,
     pub show_display: bool,
     pub show_done: bool,
-    pub calendar_week_offset: i64,
     pub sort_priority: bool,
     pub compact: bool,
     pub collapsed: Vec<u64>,
@@ -179,10 +176,14 @@ pub struct TaskApp {
     pub research_model_picker: Option<usize>,
     pub research_sequences: std::collections::BTreeSet<u64>,
     pub todo_batch: Option<crate::batch::TodoBatch>,
+    pub(crate) recovery: crate::recovery::Recovery,
     pub attachment_import: Option<mpsc::Receiver<AttachmentImport>>,
     pub show_run_result: bool,
     pub show_run_details: bool,
     pub show_task_details: bool,
+    pub expanded_request_brief: Option<u64>,
+    pub goal_steps_tab: Option<u64>,
+    pub steps_layout: Layout,
     pub show_task_activity: bool,
     pub show_research_settings: bool,
     pub _subscriptions: Vec<Subscription>,
@@ -197,26 +198,46 @@ impl TaskApp {
         match crate::workspace::configured() {
             Ok(Some(root)) => {
                 app.workspace_root = Some(root.clone());
-                app.attach_storage(Storage::new(root.join("workspace/workspace.sqlite3")), window, cx);
+                app.attach_storage(
+                    Storage::new(root.join("workspace/workspace.sqlite3")),
+                    window,
+                    cx,
+                );
                 app.workspace_required = app.storage.is_none() || !app.storage_error.is_empty();
             }
-            Ok(None) => {},
+            Ok(None) => {}
             Err(e) => app.storage_error = e,
         }
         app
     }
     pub fn choose_workspace(&mut self, cx: &mut Context<Self>) {
-        let paths = cx.prompt_for_paths(PathPromptOptions { files: false, directories: true, multiple: false, prompt: Some("Choose workspace".into()) });
-        cx.spawn(async move |this, cx| {
-            match paths.await {
-                Ok(Ok(Some(paths))) => { let _ = this.update(cx, |this, cx| { this.workspace_choice = paths.into_iter().next(); cx.notify(); }); }
-                Ok(Ok(None)) => {},
-                other => { let _ = this.update(cx, |this, cx| { this.storage_error = format!("Cannot select workspace: {other:?}"); cx.notify(); }); }
+        let paths = cx.prompt_for_paths(PathPromptOptions {
+            files: false,
+            directories: true,
+            multiple: false,
+            prompt: Some("Choose workspace".into()),
+        });
+        cx.spawn(async move |this, cx| match paths.await {
+            Ok(Ok(Some(paths))) => {
+                let _ = this.update(cx, |this, cx| {
+                    this.workspace_choice = paths.into_iter().next();
+                    cx.notify();
+                });
             }
-        }).detach();
+            Ok(Ok(None)) => {}
+            other => {
+                let _ = this.update(cx, |this, cx| {
+                    this.storage_error = format!("Cannot select workspace: {other:?}");
+                    cx.notify();
+                });
+            }
+        })
+        .detach();
     }
     pub fn setup_workspace(&mut self, cx: &mut Context<Self>) {
-        if self.workspace_setup.is_some() { return; }
+        if self.workspace_setup.is_some() {
+            return;
+        }
         let root = PathBuf::from(self.directory_input.read(cx).value().trim());
         self.storage_error.clear();
         let (tx, rx) = mpsc::channel();
@@ -233,23 +254,39 @@ impl TaskApp {
         });
         cx.spawn(async move |this, cx| {
             loop {
-                cx.background_executor().timer(Duration::from_millis(100)).await;
-                let pending = this.update(cx, |this, cx| { cx.notify(); this.workspace_setup.is_some() }).unwrap_or(false);
-                if !pending { break; }
+                cx.background_executor()
+                    .timer(Duration::from_millis(100))
+                    .await;
+                let pending = this
+                    .update(cx, |this, cx| {
+                        cx.notify();
+                        this.workspace_setup.is_some()
+                    })
+                    .unwrap_or(false);
+                if !pending {
+                    break;
+                }
             }
-        }).detach();
+        })
+        .detach();
         cx.notify();
     }
     pub fn managed_project_directory(&self, id: u64) -> Result<String, String> {
         match &self.workspace_root {
             Some(root) => crate::workspace::project_directory(&root.join("workspace"), id),
-            None if self.workspace_required => Err("Set up a workspace before creating projects.".into()),
+            None if self.workspace_required => {
+                Err("Set up a workspace before creating projects.".into())
+            }
             None => Ok(String::new()), // Isolated QA stores configure their own directories.
         }
     }
     fn check_workspace_directory(&self, path: &std::path::Path) -> Result<(), String> {
-        if self.workspace_required { return Err("Set up your workspace before running tasks.".into()); }
-        if let Some(root) = &self.workspace_root { crate::workspace::check_directory(&root.join("workspace/projects"), path)?; }
+        if self.workspace_required {
+            return Err("Set up your workspace before running tasks.".into());
+        }
+        if let Some(root) = &self.workspace_root {
+            crate::workspace::check_directory(&root.join("workspace/projects"), path)?;
+        }
         Ok(())
     }
     #[cfg(feature = "qa")]
@@ -392,7 +429,6 @@ impl TaskApp {
             save_feedback: None,
             show_display: false,
             show_done: true,
-            calendar_week_offset: 0,
             sort_priority: false,
             compact: false,
             collapsed: vec![],
@@ -441,10 +477,14 @@ impl TaskApp {
             research_model_picker: None,
             research_sequences: Default::default(),
             todo_batch: None,
+            recovery: Default::default(),
             attachment_import: None,
             show_run_result: true,
             show_run_details: false,
             show_task_details: false,
+            expanded_request_brief: None,
+            goal_steps_tab: None,
+            steps_layout: Layout::Board,
             show_task_activity: false,
             show_research_settings: false,
             _subscriptions: subscriptions,
@@ -514,7 +554,9 @@ impl TaskApp {
         self.error.clear();
         self.query.clear();
         self.search.update(cx, |s, cx| s.set_value("", window, cx));
-        if matches!(self.scope, Scope::Topic(_)) { window.focus(&self.focus, cx); }
+        if matches!(self.scope, Scope::Topic(_)) {
+            window.focus(&self.focus, cx);
+        }
         cx.notify();
     }
     pub fn open_collection_project(
@@ -533,7 +575,9 @@ impl TaskApp {
             .unwrap_or_else(|| self.scope.clone())
     }
     pub(crate) fn reveal_task_project(&mut self, id: u64) {
-        if let Some(topic) = self.store.task_topic(id) { self.collapsed_sidebar_topics.retain(|t| *t != topic.id); }
+        if let Some(topic) = self.store.task_topic(id) {
+            self.collapsed_sidebar_topics.retain(|t| *t != topic.id);
+        }
         if let Some(research) = self.store.task(id).and_then(|t| t.research.as_ref()) {
             self.collapsed_sidebar_goals
                 .retain(|goal| *goal != research.goal_id);
@@ -557,6 +601,7 @@ impl TaskApp {
             self.tabs.push(id);
         }
         self.show_task_details = false;
+        self.expanded_request_brief = None;
         self.show_task_activity = false;
         self.selected = Some(id);
         self.reveal_task_project(id);
@@ -580,20 +625,24 @@ impl TaskApp {
                 .find(|p| p.id == *id)
                 .map(|p| p.name.clone())
                 .unwrap_or_default(),
-            Scope::Topic(id) => self.store.topics.iter().find(|t| t.id == *id).map(|t| t.display_name()).unwrap_or_default(),
+            Scope::Topic(id) => self
+                .store
+                .topics
+                .iter()
+                .find(|t| t.id == *id)
+                .map(|t| t.display_name())
+                .unwrap_or_default(),
             Scope::Cycle(c) => c.clone(),
-            Scope::Due => "Due this week".into(),
-            Scope::DueDate(date) => format!("Due on {date}"),
-            Scope::Overdue => "Overdue".into(),
             Scope::Archive => "Archive".into(),
             Scope::Workflow => "Stage workflow".into(),
             Scope::Runs => "Progress & results".into(),
+            Scope::Recovery => "Paused projects".into(),
             Scope::Research => "Market research".into(),
             Scope::Settings => "Settings".into(),
         }
     }
     pub fn matches_scope(&self, t: &Task) -> bool {
-        if t.archived != (self.scope == Scope::Archive) {
+        if self.store.task_is_archived(t.id) != (self.scope == Scope::Archive) {
             return false;
         }
         match &self.scope {
@@ -601,18 +650,6 @@ impl TaskApp {
             Scope::Project(id) => t.project_id == *id,
             Scope::Topic(id) => self.store.task_topic(t.id).is_some_and(|topic| topic.id == *id),
             Scope::Cycle(c) => t.cycle.as_ref() == Some(c),
-            Scope::DueDate(date) => t.due_date == *date,
-            Scope::Due => {
-                !t.due_date.is_empty()
-                    && t.due_date >= week_start()
-                    && t.due_date <= week_end()
-                    && !t.stage.is_closed()
-            }
-            Scope::Overdue => {
-                !t.due_date.is_empty()
-                    && t.due_date < chrono::Local::now().format("%Y-%m-%d").to_string()
-                    && !t.stage.is_closed()
-            }
             _ => true,
         }
     }
@@ -622,7 +659,8 @@ impl TaskApp {
             .tasks
             .iter()
             .filter(|t| {
-                t.parent_id.is_none() && self.matches_scope(t)
+                t.parent_id.is_none()
+                    && self.matches_scope(t)
                     && self.store.matches_query(t, &self.query)
                     && (self.scope == Scope::All || self.show_done || !t.stage.is_closed())
             })
@@ -634,8 +672,14 @@ impl TaskApp {
         list
     }
     pub fn change_stage(&mut self, id: u64, stage: Stage, cx: &mut Context<Self>) {
-        if self.store.task(id).is_some_and(|t| t.parent_id.is_some() && t.research.is_some()) {
-            self.error = "Review and approve the complete goal; steps inherit its approval.".into(); cx.notify(); return;
+        if self
+            .store
+            .task(id)
+            .is_some_and(|t| t.parent_id.is_some() && t.research.is_some())
+        {
+            self.error = "Review and approve the complete goal; steps inherit its approval.".into();
+            cx.notify();
+            return;
         }
         if self.store.task(id).is_some_and(|t| t.stage == stage) {
             return;
@@ -659,7 +703,13 @@ impl TaskApp {
             .or_else(|| parent.and_then(|id| self.store.task(id).map(|t| t.project_id)))
             .unwrap_or(match self.scope {
                 Scope::Project(id) => id,
-                Scope::Topic(id) => self.store.topics.iter().find(|t| t.id == id).map(|t| t.project_id).unwrap_or(0),
+                Scope::Topic(id) => self
+                    .store
+                    .topics
+                    .iter()
+                    .find(|t| t.id == id)
+                    .map(|t| t.project_id)
+                    .unwrap_or(0),
                 _ => self.store.projects.first().map(|p| p.id).unwrap_or(0),
             });
         let title = cx.new(|cx| {
@@ -746,7 +796,7 @@ impl TaskApp {
             Ok(id)
         } else {
             self.store
-                .create_task(title.clone(), project, stage, parent)
+                .create_task_in_topic(title.clone(), project, stage, parent, match self.scope { Scope::Topic(id) => Some(id), _ => None })
         };
         match result {
             Ok(id) => {
@@ -833,7 +883,11 @@ impl TaskApp {
             {
                 self.scope = Scope::All;
             }
-            if let Scope::Topic(id) = self.scope { if !self.store.topics.iter().any(|t| t.id == id) { self.scope = Scope::All; } }
+            if let Scope::Topic(id) = self.scope {
+                if !self.store.topics.iter().any(|t| t.id == id) {
+                    self.scope = Scope::All;
+                }
+            }
             self.draft = None;
             self.editing = false;
             self.property = None;
@@ -846,18 +900,7 @@ impl TaskApp {
         }
     }
     pub fn archive_task(&mut self, id: u64, w: &mut Window, cx: &mut Context<Self>) {
-        if self.task_running(id) {
-            self.error = "Cancel or finish this task's run before archiving.".into();
-            cx.notify();
-            return;
-        }
-        self.snapshot();
-        let result = self.store.archive(id);
-        if result.is_ok() && self.selected == Some(id) {
-            self.close_current_task(w, cx);
-        }
-        self.tabs.retain(|t| *t != id);
-        self.finish(result, "Task archived · undo is available", cx);
+        self.request_archive(crate::archive_app::ArchiveTarget::Task(id), w, cx);
     }
     pub fn attach_storage(
         &mut self,
@@ -896,6 +939,7 @@ impl TaskApp {
                     Err(e) => self.storage_error = e,
                 }
                 self.storage = Some(storage);
+                self.check_interrupted_sessions(cx);
             }
             Err(e) => {
                 self.storage_error = e;
@@ -937,7 +981,10 @@ impl TaskApp {
         self.store.runs.iter().any(|r| {
             r.project_plan.is_none()
                 && r.task_id == id
-                && matches!(r.status.as_str(), "Queued" | "Running" | "Cancelling")
+                && matches!(
+                    r.status.as_str(),
+                    "Queued" | "Running" | "Cancelling" | "Recovering"
+                )
         })
     }
     pub fn goal_busy(&self, goal: u64) -> bool {
@@ -979,7 +1026,10 @@ impl TaskApp {
         let Ok(path) = path.canonicalize() else {
             return;
         };
-        if let Err(error) = self.check_workspace_directory(&path) { self.show_save_error(&error, cx); return; }
+        if let Err(error) = self.check_workspace_directory(&path) {
+            self.show_save_error(&error, cx);
+            return;
+        }
         self.snapshot();
         if let Some(project) = self
             .store
@@ -1023,7 +1073,11 @@ impl TaskApp {
         cx.notify();
     }
     pub(crate) fn ready_to_run(&mut self, cx: &mut Context<Self>) -> bool {
-        if self.workspace_required { self.error = "Set up your workspace first.".into(); cx.notify(); return false; }
+        if self.workspace_required {
+            self.error = "Set up your workspace first.".into();
+            cx.notify();
+            return false;
+        }
         if self.attachment_import.is_some() {
             self.error = "Wait for materials to finish importing before running.".into();
             cx.notify();
@@ -1041,7 +1095,13 @@ impl TaskApp {
         self.store.reconcile_goal_approvals();
         self.error.clear();
         self.task_start_feedback = None;
-        if self.task_running(id) {
+        if self.store.task_is_archived(id) {
+            self.error = "Restore the archived topic or goal before executing.".into();
+        } else if self.recovery_blocks_task(id) {
+            self.error =
+                "Check this task’s previous session in Paused projects before starting again."
+                    .into();
+        } else if self.task_running(id) {
             self.error =
                 "This task is already running or queued. Open View progress to follow it.".into();
         } else {
@@ -1080,13 +1140,29 @@ impl TaskApp {
         files: Vec<PathBuf>,
         cx: &mut Context<Self>,
     ) {
+        if self.store.run_is_archived(&run) {
+            self.error = "Restore the archived topic or goal before executing.".into();
+            cx.notify();
+            return;
+        }
+        if self.recovery_blocks_run(&run) {
+            self.error =
+                "Check the previous session in Paused projects before starting again.".into();
+            cx.notify();
+            return;
+        }
         if let Err(error) = self.check_workspace_directory(std::path::Path::new(&run.directory)) {
-            self.error = error.clone(); self.task_start_feedback = Some((run.task_id, error)); cx.notify(); return;
+            self.error = error.clone();
+            self.task_start_feedback = Some((run.task_id, error));
+            cx.notify();
+            return;
         }
         if self.store.runs.iter().any(|r| {
             r.task_id == run.task_id
                 && r.project_plan == run.project_plan
-                && (run.project_plan.is_none() || self.store.request_for_run(r.id).map(|q| q.id) == self.store.request_for_run(run.id).map(|q| q.id))
+                && (run.project_plan.is_none()
+                    || self.store.request_for_run(r.id).map(|q| q.id)
+                        == self.store.request_for_run(run.id).map(|q| q.id))
                 && matches!(r.status.as_str(), "Queued" | "Running" | "Cancelling")
         }) {
             return;
@@ -1094,12 +1170,24 @@ impl TaskApp {
         if run.project_plan.is_none() {
             run.workspace_source = match self.store.workspace_source(run.task_id) {
                 Ok(source) => source,
-                Err(error) => { self.error = error; cx.notify(); return; }
+                Err(error) => {
+                    self.error = error;
+                    cx.notify();
+                    return;
+                }
             };
             match self.store.execution_directory(run.task_id) {
                 Ok(path) => {
-                    if let Err(error) = self.check_workspace_directory(&path) { self.error = error; cx.notify(); return; }
-                    if let Err(e) = if run.workspace_source.is_none() { std::fs::create_dir_all(&path) } else { Ok(()) } {
+                    if let Err(error) = self.check_workspace_directory(&path) {
+                        self.error = error;
+                        cx.notify();
+                        return;
+                    }
+                    if let Err(e) = if run.workspace_source.is_none() {
+                        std::fs::create_dir_all(&path)
+                    } else {
+                        Ok(())
+                    } {
                         self.error = format!("Cannot create task working folder: {e}");
                         cx.notify();
                         return;
@@ -1139,10 +1227,16 @@ impl TaskApp {
             std::fs::read_to_string(PathBuf::from(&run.directory).join(".workspace-migrated")).ok()
         });
         if let Some(source) = &legacy_source {
-            run.prompt = format!("Workspace migration: prior files have been copied from {source} to {}. Your current working directory is {}. Continue the existing session here. Treat old absolute paths in conversation history as legacy references: use the corresponding copied files in the current directory. Do not write to the legacy folder or other goals' folders.\n\n{}", run.directory, run.directory, run.prompt);
+            run.prompt = format!(
+                "Workspace migration: prior files have been copied from {source} to {}. Your current working directory is {}. Continue the existing session here. Treat old absolute paths in conversation history as legacy references: use the corresponding copied files in the current directory. Do not write to the legacy folder or other goals' folders.\n\n{}",
+                run.directory, run.directory, run.prompt
+            );
         }
         if self.workspace_root.is_some() {
-            run.prompt = format!("Workspace rule: the approved working directory is {}. Store all generated files here. Previous absolute paths in session history may refer to the old workspace; use the copied files in this directory. Do not write outputs outside this workspace.\n\n{}", run.directory, run.prompt);
+            run.prompt = format!(
+                "Workspace rule: the approved working directory is {}. Store all generated files here. Previous absolute paths in session history may refer to the old workspace; use the copied files in this directory. Do not write outputs outside this workspace.\n\n{}",
+                run.directory, run.prompt
+            );
         }
         run.queued_at = opencode::timestamp();
         run.started_at.clear();
@@ -1158,10 +1252,13 @@ impl TaskApp {
         self.queued_runs.push((run_id, files));
         self.undo.clear();
         self.error.clear();
-        self.selected = None;
-        self.scope = Scope::Runs;
-        self.selected_run = Some(run_id);
-        self.reveal_selected_run();
+        // Keep the recovery overview visible while its queue submits each next step.
+        if self.scope != Scope::Recovery || self.selected.is_some() {
+            self.selected = None;
+            self.scope = Scope::Runs;
+            self.selected_run = Some(run_id);
+            self.reveal_selected_run();
+        }
         self.follow_logs = true;
         self.show_run_result = true;
         self.show_run_details = false;
@@ -1173,16 +1270,36 @@ impl TaskApp {
         if !self.storage_error.is_empty() {
             return;
         }
-        while self.active_runs.len() < crate::scheduler::MAX_CONCURRENT_RUNS {
+        while self.active_runs.len()
+            + self
+                .store
+                .runs
+                .iter()
+                .filter(|r| r.status == "Recovering" && self.store.is_recovery_candidate(r))
+                .count()
+            < crate::scheduler::MAX_CONCURRENT_RUNS
+        {
             let next = self.queued_runs.iter().position(|(id, _)| {
                 let candidate = self.store.runs.iter().find(|r| r.id == *id).unwrap();
-                !self.active_runs.iter().any(|a| {
-                    self.store
-                        .runs
-                        .iter()
-                        .find(|r| r.id == a.id)
-                        .is_some_and(|running| self.store.run_conflicts(candidate, running))
-                })
+                !self
+                    .store
+                    .runs
+                    .iter()
+                    .filter(|r| {
+                        self.store.is_recovery_candidate(r)
+                            && !matches!(
+                                self.recovery.checks.get(&r.id),
+                                Some(crate::recovery::SessionCheck::Stopped)
+                            )
+                    })
+                    .any(|running| self.store.run_conflicts(candidate, running))
+                    && !self.active_runs.iter().any(|a| {
+                        self.store
+                            .runs
+                            .iter()
+                            .find(|r| r.id == a.id)
+                            .is_some_and(|running| self.store.run_conflicts(candidate, running))
+                    })
             });
             let Some(index) = next else {
                 break;
@@ -1192,7 +1309,8 @@ impl TaskApp {
             let run = &self.store.runs[index];
             // Queued requests are snapshots. Never execute stale approvals or evidence.
             let valid = if let Some(request) = self.store.request_for_run(run.id) {
-                self.store.request_plan_signature(request.id).ok().as_ref() == Some(&run.input_signature)
+                self.store.request_plan_signature(request.id).ok().as_ref()
+                    == Some(&run.input_signature)
             } else if let Some(project) = run.project_plan {
                 self.store.project_plan_signature(project).ok().as_ref()
                     == Some(&run.input_signature)
@@ -1207,7 +1325,7 @@ impl TaskApp {
                     .task(run.task_id)
                     .is_some_and(|t| !t.archived && t.stage == run.stage)
             };
-            if !valid {
+            if !valid || self.store.run_is_archived(run) {
                 self.store.runs[index].status = "Stale".into();
                 self.store.runs[index].ended_at = Some(opencode::timestamp());
                 self.store.runs[index].logs.push(
@@ -1217,9 +1335,11 @@ impl TaskApp {
                 self.complete_research_run(id, cx);
                 continue;
             }
-            if let Err(error) = self.check_workspace_directory(std::path::Path::new(&run.directory)) {
+            if let Err(error) = self.check_workspace_directory(std::path::Path::new(&run.directory))
+            {
                 let run = &mut self.store.runs[index];
-                run.status = "Blocked".into(); run.ended_at = Some(opencode::timestamp());
+                run.status = "Blocked".into();
+                run.ended_at = Some(opencode::timestamp());
                 run.logs.push(format!("[workspace] {error}"));
                 self.task_start_feedback = Some((run.task_id, error));
                 self.complete_research_run(id, cx);
@@ -1333,6 +1453,7 @@ impl TaskApp {
     }
     pub fn poll_runtime(&mut self, cx: &mut Context<Self>) -> bool {
         self.poll_research_io(cx);
+        self.poll_recovery(cx);
         let discovery = self.discovery.as_ref().and_then(|rx| rx.try_recv().ok());
         if let Some(result) = discovery {
             self.discovery = None;
@@ -1393,7 +1514,8 @@ impl TaskApp {
             || !self.queued_runs.is_empty()
             || self.discovery.is_some()
             || self.ego_probe.is_some()
-            || self.attachment_import.is_some();
+            || self.attachment_import.is_some()
+            || self.recovery_pending();
         if !keep {
             self.pumping = false;
         }
@@ -1410,7 +1532,7 @@ impl TaskApp {
                         "[warning] Process cleanup timed out after requesting termination.".into(),
                     );
                 }
-                if !finished && run.status != "Blocked" {
+                if (!finished || run.status == "Cancelled") && run.status != "Blocked" {
                     run.status = "Interrupted".into();
                     run.ended_at = Some(opencode::timestamp());
                     run.logs.push("[interrupted] Application closed before a final result was received; process termination was requested.".into());
@@ -1501,21 +1623,6 @@ pub fn valid_date(s: &str) -> bool {
         _ => 0,
     };
     y > 0 && d > 0 && d <= days
-}
-
-fn week_start() -> String {
-    use chrono::Datelike;
-    let today = chrono::Local::now().date_naive();
-    (today - chrono::Duration::days(today.weekday().num_days_from_monday() as i64))
-        .format("%Y-%m-%d")
-        .to_string()
-}
-fn week_end() -> String {
-    use chrono::Datelike;
-    let today = chrono::Local::now().date_naive();
-    (today + chrono::Duration::days(6 - today.weekday().num_days_from_monday() as i64))
-        .format("%Y-%m-%d")
-        .to_string()
 }
 
 #[cfg(test)]

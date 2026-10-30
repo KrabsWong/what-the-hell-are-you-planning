@@ -177,14 +177,7 @@ pub fn run() {
         w.click("task-row-16", cx);
         w.click("add-subtask", cx);
         w.input("Adapter child", cx);
-        w.click("draft-due", cx);
-        w.input("2026-02-30", cx);
-        w.click("save-task", cx);
-        assert!(app.read(cx).editing);
-        assert!(!app.read(cx).error.is_empty());
-        w.click("draft-due", cx);
-        w.press("cmd-a", cx);
-        w.press("backspace", cx);
+        assert!(w.try_find("draft-due").is_none());
         w.click("save-task", cx);
         let id = app.read(cx).selected.unwrap();
         assert_eq!(app.read(cx).store.task(id).unwrap().project_id, 2);

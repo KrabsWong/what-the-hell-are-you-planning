@@ -19,7 +19,7 @@ impl TaskApp {
             .tasks
             .iter()
             .filter(|t| {
-                !t.archived
+                !self.store.task_is_archived(t.id)
                     && t.research
                         .as_ref()
                         .is_some_and(|r| r.kind == ResearchKind::Goal)
@@ -231,7 +231,7 @@ impl TaskApp {
         let task = self.store.task(id).unwrap();
         let mut panel=col().id("task-materials").p_4().gap_3().rounded_md().border_1().border_color(rgb(colors.line))
             .on_drop(cx.listener(move|this,paths:&ExternalPaths,_,cx|this.import_attachments(id,paths.paths().to_vec(),cx)))
-            .child(row().justify_between().child(muted(format!("Materials · {}",task.attachments.len()), cx)).child(button("add-attachments","+ Add files").disabled(task.archived||self.attachment_import.is_some()).on_click(cx.listener(move|this,_,_,cx|this.choose_attachments(id,cx)))))
+            .child(row().justify_between().child(muted(format!("Materials · {}",task.attachments.len()), cx)).child(quiet_button("add-attachments","+ Add Files").h_7().px_1().text_sm().disabled(task.archived||self.attachment_import.is_some()).on_click(cx.listener(move|this,_,_,cx|this.choose_attachments(id,cx)))))
             .child(label("Add PDFs or screenshots for the next run · up to 25 MB each. Extracted text is shared with your model; verify charts and images yourself.", cx));
         for (index, a) in task.attachments.iter().enumerate() {
             let a = a.clone();
@@ -331,16 +331,8 @@ impl TaskApp {
                     .gap_2()
                     .child(muted(status, cx))
                     .child(row().flex_wrap().gap_2().child(browser).when(
-                        !children.is_empty() && !complete,
-                        |d| {
-                            d.child(
-                                primary_button("research-all", "Run goal")
-                                    .disabled(task.archived || !self.store.goal_execution_approved(id))
-                                    .on_click(cx.listener(move |this, _, _, cx| {
-                                        this.run_research_next(id, true, cx)
-                                    })),
-                            )
-                        },
+                        !children.is_empty(),
+                        |d| d.child(self.goal_run_button(id, "research-all", cx)),
                     )),
             );
         } else {
@@ -415,52 +407,61 @@ impl TaskApp {
             )
             .child(
                 col()
-                    .id("research-result-scroll")
-                    .track_scroll(&self.result_scroll)
-                    .vertical_scrollbar(&self.result_scroll)
+                    .id("research-result-viewport")
+                    .relative()
                     .flex_1()
                     .min_h_0()
-                    .overflow_y_scroll()
-                    .gap_4()
-                    .p_5()
-                    .bg(rgb(colors.panel))
-                    .rounded_md()
+                    .overflow_hidden()
                     .child(
-                        gpui_kit::base::text::TextView::markdown(
-                            format!("result-{}", run.id),
-                            if output.is_empty() {
-                                "The result will appear here when the model responds.".into()
-                            } else {
-                                output
-                            },
+                        col()
+                        .id("research-result-scroll")
+                        .track_scroll(&self.result_scroll)
+                        .flex_1()
+                        .min_h_0()
+                        .overflow_y_scroll()
+                        .gap_3()
+                        .p_4()
+                        .bg(rgb(colors.panel))
+                        .rounded_md()
+                        .child(
+                            gpui_kit::base::text::TextView::markdown(
+                                format!("result-{}", run.id),
+                                if output.is_empty() {
+                                    "The result will appear here when the model responds.".into()
+                                } else {
+                                    output
+                                },
+                            )
+                            .w_full()
+                            .flex_shrink_0()
+                            .on_link_click(|url, _, _, cx| {
+                                if url.starts_with("https://") || url.starts_with("http://") {
+                                    cx.open_url(url);
+                                }
+                            }),
                         )
-                        .w_full()
-                        .flex_shrink_0()
-                        .on_link_click(|url, _, _, cx| {
-                            if url.starts_with("https://") || url.starts_with("http://") {
-                                cx.open_url(url);
-                            }
-                        }),
+                        .when(!run.sources.is_empty(), |d| d.child(
+                            col().flex_shrink_0().border_t_1().border_color(rgb(colors.line)).pt_3()
+                                .child(quiet_button("toggle-result-sources", format!("Sources · {}", run.sources.len()))
+                                    .self_start().px_0().text_color(rgb(colors.muted))
+                                    .icon(if sources_open { assets::IconName::ChevronDown } else { assets::IconName::ChevronRight })
+                                    .tooltip(if sources_open { "Hide source links" } else { "Show source links and publication dates" })
+                                    .on_click(cx.listener(move |a, _, _, cx| {
+                                        a.expanded_run_sources = if sources_open { None } else { Some(run_id) }; cx.notify();
+                                    })))
+                                .when(sources_open, |d| d.child(col().id("result-sources").gap_3().pt_2()
+                                    .children(run.sources.iter().enumerate().map(|(i, source)| {
+                                        let url = source.url.clone();
+                                        col().flex_shrink_0().gap_1()
+                                            .child(link_button(format!("result-source-{i}"), format!("{} ↗", source.title))
+                                                .justify_start().on_click(move |_, _, cx| cx.open_url(&url)))
+                                            .child(label(source.url.clone(), cx))
+                                            .child(label(format!("Published: {}", source.published_at), cx))
+                                    })).map(observed)))
+                        ))
+                        .map(observed),
                     )
-                    .when(!run.sources.is_empty(), |d| d.child(
-                        col().flex_shrink_0().border_t_1().border_color(rgb(colors.line)).pt_3()
-                            .child(quiet_button("toggle-result-sources", format!("Sources · {}", run.sources.len()))
-                                .self_start().px_0().text_color(rgb(colors.muted))
-                                .icon(if sources_open { assets::IconName::ChevronDown } else { assets::IconName::ChevronRight })
-                                .tooltip(if sources_open { "Hide source links" } else { "Show source links and publication dates" })
-                                .on_click(cx.listener(move |a, _, _, cx| {
-                                    a.expanded_run_sources = if sources_open { None } else { Some(run_id) }; cx.notify();
-                                })))
-                            .when(sources_open, |d| d.child(col().id("result-sources").gap_3().pt_2()
-                                .children(run.sources.iter().enumerate().map(|(i, source)| {
-                                    let url = source.url.clone();
-                                    col().flex_shrink_0().gap_1()
-                                        .child(link_button(format!("result-source-{i}"), format!("{} ↗", source.title))
-                                            .justify_start().on_click(move |_, _, cx| cx.open_url(&url)))
-                                        .child(label(source.url.clone(), cx))
-                                        .child(label(format!("Published: {}", source.published_at), cx))
-                                })).map(observed)))
-                    ))
+                    .vertical_scrollbar(&self.result_scroll)
                     .map(observed),
             )
             .into_any_element()

@@ -135,7 +135,9 @@ pub struct Comment {
     pub created_at: String,
 }
 const LEGACY_APPROVAL_MARKER: &str = "legacy-approval-needs-migration";
-fn legacy_approved_plan() -> Option<String> { Some(LEGACY_APPROVAL_MARKER.into()) }
+fn legacy_approved_plan() -> Option<String> {
+    Some(LEGACY_APPROVAL_MARKER.into())
+}
 
 #[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
 pub struct Task {
@@ -316,28 +318,62 @@ impl Store {
             appearance: Default::default(),
         }
     }
-    pub fn ensure_inbox_topic(&mut self, project: u64) -> Result<u64, String> {
-        if let Some(topic) = self.topics.iter().find(|t| t.project_id == project && t.name == "待归类" && !t.archived) {
-            return Ok(topic.id);
-        }
-        self.create_topic(project, "待归类")
-    }
     /// Older workspaces acquire a topic without rewriting research content or results.
     pub fn normalize_topics(&mut self) {
-        let roots: Vec<_> = self.tasks.iter().filter(|t| t.parent_id.is_none()).map(|t| (t.id, t.project_id, t.topic_id)).collect();
+        let roots: Vec<_> = self
+            .tasks
+            .iter()
+            .filter(|t| t.parent_id.is_none())
+            .map(|t| (t.id, t.project_id, t.topic_id))
+            .collect();
         for (id, project, topic) in roots {
-            if !self.topics.iter().any(|t| Some(t.id) == topic && t.project_id == project) {
-                if let Ok(topic) = self.ensure_inbox_topic(project) {
+            if !self
+                .topics
+                .iter()
+                .any(|t| Some(t.id) == topic && t.project_id == project)
+            {
+                if let Ok(topic) = self.create_topic(project, self.task(id).unwrap().title.clone()) {
                     self.task_mut(id).unwrap().topic_id = Some(topic);
                 }
             }
         }
+        // Remove only unreferenced legacy placeholders. Never drop a populated topic.
+        self.topics.retain(|topic| {
+            !matches!(topic.name.as_str(), "待归类" | "未归类")
+                || self.tasks.iter().any(|t| t.topic_id == Some(topic.id))
+                || self.research_requests.iter().any(|r| r.topic_id == Some(topic.id))
+        });
         // Missing fields in old files differ from explicit None in a current, unapproved plan.
         // Only migration from the old format or an unmanaged legacy Goal can establish approval.
-        let goals: Vec<_> = self.tasks.iter().filter_map(|t| t.research.as_ref().filter(|r| r.kind == crate::research::ResearchKind::Goal).map(|r| (t.id, !r.requires_approval, t.approved_plan.as_deref() == Some(LEGACY_APPROVAL_MARKER)))).collect();
+        let goals: Vec<_> = self
+            .tasks
+            .iter()
+            .filter_map(|t| {
+                t.research
+                    .as_ref()
+                    .filter(|r| r.kind == crate::research::ResearchKind::Goal)
+                    .map(|r| {
+                        (
+                            t.id,
+                            !r.requires_approval,
+                            t.approved_plan.as_deref() == Some(LEGACY_APPROVAL_MARKER),
+                        )
+                    })
+            })
+            .collect();
         for (id, unmanaged, legacy) in goals {
-            self.task_mut(id).unwrap().research.as_mut().unwrap().requires_approval = true;
-            if (unmanaged || legacy) && !matches!(self.task(id).unwrap().stage, Stage::Backlog | Stage::Cancelled) {
+            self.task_mut(id)
+                .unwrap()
+                .research
+                .as_mut()
+                .unwrap()
+                .requires_approval = true;
+            if (unmanaged || legacy)
+                && !matches!(
+                    self.task(id).unwrap().stage,
+                    Stage::Backlog | Stage::Cancelled
+                )
+            {
                 let signature = self.goal_plan_signature(id);
                 self.task_mut(id).unwrap().approved_plan = signature;
             } else if legacy {
@@ -345,7 +381,9 @@ impl Store {
             }
         }
         for task in &mut self.tasks {
-            if task.approved_plan.as_deref() == Some(LEGACY_APPROVAL_MARKER) { task.approved_plan = None; }
+            if task.approved_plan.as_deref() == Some(LEGACY_APPROVAL_MARKER) {
+                task.approved_plan = None;
+            }
         }
     }
     pub fn create_topic(&mut self, project: u64, name: impl Into<String>) -> Result<u64, String> {
@@ -357,7 +395,12 @@ impl Store {
             return Err("Choose an existing project.".into());
         }
         let id = self.topics.iter().map(|t| t.id).max().unwrap_or(0) + 1;
-        self.topics.push(Topic { id, project_id: project, name, archived: false });
+        self.topics.push(Topic {
+            id,
+            project_id: project,
+            name,
+            archived: false,
+        });
         Ok(id)
     }
     pub fn rename_topic(&mut self, id: u64, name: impl Into<String>) -> Result<(), String> {
@@ -365,29 +408,47 @@ impl Store {
         if name.is_empty() {
             return Err("Enter a topic name.".into());
         }
-        let topic = self.topics.iter_mut().find(|t| t.id == id).ok_or("Topic not found.")?;
+        let topic = self
+            .topics
+            .iter_mut()
+            .find(|t| t.id == id)
+            .ok_or("Topic not found.")?;
         topic.name = name;
         Ok(())
     }
     pub fn set_topic_archived(&mut self, id: u64, archived: bool) -> Result<(), String> {
-        let topic = self.topics.iter_mut().find(|t| t.id == id).ok_or("Topic not found.")?;
+        let topic = self
+            .topics
+            .iter_mut()
+            .find(|t| t.id == id)
+            .ok_or("Topic not found.")?;
         topic.archived = archived;
         Ok(())
     }
     pub fn set_goal_topic(&mut self, goal: u64, topic_id: Option<u64>) -> Result<(), String> {
         let task = self.task(goal).ok_or("Research goal not found.")?;
-        if task.research.as_ref().is_none_or(|r| r.kind != crate::research::ResearchKind::Goal) {
+        if task
+            .research
+            .as_ref()
+            .is_none_or(|r| r.kind != crate::research::ResearchKind::Goal)
+        {
             return Err("Only research goals can belong to a topic.".into());
         }
         if task.archived {
             return Err("Restore the archived goal before changing its topic.".into());
         }
-        if topic_id.is_none() { return Err("Choose a topic for this goal.".into()); }
+        if topic_id.is_none() {
+            return Err("Choose a topic for this goal.".into());
+        }
         if task.topic_id == topic_id {
             return Ok(());
         }
         if let Some(id) = topic_id {
-            let topic = self.topics.iter().find(|t| t.id == id).ok_or("Topic not found.")?;
+            let topic = self
+                .topics
+                .iter()
+                .find(|t| t.id == id)
+                .ok_or("Topic not found.")?;
             if topic.archived || topic.project_id != task.project_id {
                 return Err("Choose an active topic in the same project.".into());
             }
@@ -399,8 +460,14 @@ impl Store {
     }
     pub fn set_root_topic(&mut self, id: u64, topic: u64) -> Result<(), String> {
         let task = self.task(id).ok_or("Task not found.")?;
-        if task.parent_id.is_some() || task.archived { return Err("Choose an active root goal or task.".into()); }
-        if !self.topics.iter().any(|t| t.id == topic && t.project_id == task.project_id && !t.archived) {
+        if task.parent_id.is_some() || task.archived {
+            return Err("Choose an active root goal or task.".into());
+        }
+        if !self
+            .topics
+            .iter()
+            .any(|t| t.id == topic && t.project_id == task.project_id && !t.archived)
+        {
             return Err("Choose an active topic in the same project.".into());
         }
         self.task_mut(id).unwrap().topic_id = Some(topic);
@@ -426,8 +493,40 @@ impl Store {
             } else if let Some(parent) = task.parent_id {
                 task = self.task(parent)?;
             } else {
-                return self.topics.iter().find(|t| Some(t.id) == task.topic_id && t.project_id == project);
+                return self
+                    .topics
+                    .iter()
+                    .find(|t| Some(t.id) == task.topic_id && t.project_id == project);
             }
+        }
+    }
+    /// Archive visibility is inherited without changing descendants' saved flags.
+    pub fn task_is_archived(&self, id: u64) -> bool {
+        if self.task_topic(id).is_some_and(|topic| topic.archived) {
+            return true;
+        }
+        let mut current = Some(id);
+        let mut visited = Vec::new();
+        while let Some(id) = current {
+            if visited.contains(&id) { break; }
+            visited.push(id);
+            let Some(task) = self.task(id) else { break; };
+            if task.archived { return true; }
+            current = task.parent_id.or_else(|| task.research.as_ref()
+                .filter(|r| r.goal_id != id).map(|r| r.goal_id));
+        }
+        false
+    }
+    pub fn request_is_archived(&self, request: &crate::request_planning::ResearchRequest) -> bool {
+        self.topics.iter().any(|t| Some(t.id) == request.topic_id && t.archived)
+            || (!request.goal_ids.is_empty()
+                && request.goal_ids.iter().all(|id| self.task_is_archived(*id)))
+    }
+    pub fn run_is_archived(&self, run: &AgentRun) -> bool {
+        if run.project_plan.is_some() {
+            self.request_for_run(run.id).is_some_and(|r| self.request_is_archived(r))
+        } else {
+            self.task_is_archived(run.task_id)
         }
     }
     pub fn task(&self, id: u64) -> Option<&Task> {
@@ -474,6 +573,16 @@ impl Store {
         stage: Stage,
         parent_id: Option<u64>,
     ) -> Result<u64, String> {
+        self.create_task_in_topic(title, project_id, stage, parent_id, None)
+    }
+    pub fn create_task_in_topic(
+        &mut self,
+        title: impl Into<String>,
+        project_id: u64,
+        stage: Stage,
+        parent_id: Option<u64>,
+        topic: Option<u64>,
+    ) -> Result<u64, String> {
         let title = title.into().trim().to_string();
         if title.is_empty() {
             return Err("Enter a task title.".into());
@@ -489,7 +598,19 @@ impl Store {
                 return Err("Choose an active parent in the same project.".into());
             }
         }
-        let topic_id = if parent_id.is_none() { Some(self.ensure_inbox_topic(project_id)?) } else { None };
+        let topic_id = if parent_id.is_none() {
+            Some(match topic {
+                Some(id) => {
+                    if !self.topics.iter().any(|t| t.id == id && t.project_id == project_id && !t.archived) {
+                        return Err("Choose an active topic in the same project.".into());
+                    }
+                    id
+                }
+                None => self.create_topic(project_id, title.clone())?,
+            })
+        } else {
+            None
+        };
         let id = self.next_id;
         self.next_id += 1;
         self.tasks.push(Task {
@@ -547,7 +668,7 @@ impl Store {
             }
             cursor += 1;
         }
-        let topic = self.ensure_inbox_topic(project)?;
+        let topic = self.create_topic(project, self.task(id).unwrap().title.clone())?;
         for task in self.tasks.iter_mut().filter(|t| ids.contains(&t.id)) {
             task.project_id = project;
             task.topic_id = if task.id == id { Some(topic) } else { None };
@@ -559,16 +680,38 @@ impl Store {
         Ok(())
     }
     pub fn set_stage(&mut self, id: u64, stage: Stage) -> Result<(), String> {
-        if stage == Stage::Done && self.task(id).is_some_and(|t| t.research.as_ref().is_some_and(|r| r.kind == crate::research::ResearchKind::Goal && r.requires_approval)) {
+        if stage == Stage::Done
+            && self.task(id).is_some_and(|t| {
+                t.research.as_ref().is_some_and(|r| {
+                    r.kind == crate::research::ResearchKind::Goal && r.requires_approval
+                })
+            })
+        {
             let children = self.research_children(id);
-            if children.is_empty() || self.validate_goal_dependencies(id).is_err() || children.iter().any(|child| self.task(*child).is_none_or(|t| t.stage != Stage::Done) || self.research_result(*child).is_none()) {
-                return Err("Complete this goal's research steps and final report before marking it Done.".into());
+            if children.is_empty()
+                || self.validate_goal_dependencies(id).is_err()
+                || children.iter().any(|child| {
+                    self.task(*child).is_none_or(|t| t.stage != Stage::Done)
+                        || self.research_result(*child).is_none()
+                })
+            {
+                return Err(
+                    "Complete this goal's research steps and final report before marking it Done."
+                        .into(),
+                );
             }
         }
-        let approval = if stage == Stage::Planned && self.task(id).is_some_and(|t| t.research.as_ref().is_some_and(|r| r.kind == crate::research::ResearchKind::Goal)) {
+        let approval = if stage == Stage::Planned
+            && self.task(id).is_some_and(|t| {
+                t.research
+                    .as_ref()
+                    .is_some_and(|r| r.kind == crate::research::ResearchKind::Goal)
+            }) {
             self.validate_goal_dependencies(id)?;
             self.goal_plan_signature(id)
-        } else { None };
+        } else {
+            None
+        };
         let task = self.task_mut(id).ok_or("Task not found.")?;
         if task.archived {
             return Err("Restore the archived task before changing its stage.".into());
@@ -579,8 +722,12 @@ impl Store {
         {
             return Err("Approve this research topic by moving it to Todo first.".into());
         }
-        if approval.is_some() { task.approved_plan = approval; }
-        if matches!(stage, Stage::Backlog | Stage::Cancelled) { task.approved_plan = None; }
+        if approval.is_some() {
+            task.approved_plan = approval;
+        }
+        if matches!(stage, Stage::Backlog | Stage::Cancelled) {
+            task.approved_plan = None;
+        }
         if task.stage != stage {
             task.activity.push(activity_event(&format!(
                 "{} → {}",
@@ -595,6 +742,7 @@ impl Store {
     pub fn set_parent(&mut self, id: u64, parent_id: Option<u64>) -> Result<(), String> {
         let task = self.task(id).ok_or("Task not found.")?;
         let project_id = task.project_id;
+        if task.parent_id == parent_id { return Ok(()); }
         if let Some(r) = &task.research {
             let required = if r.kind == crate::research::ResearchKind::Goal {
                 None
@@ -621,7 +769,11 @@ impl Store {
             }
             cursor = parent.parent_id;
         }
-        let topic = if parent_id.is_none() { Some(self.ensure_inbox_topic(project_id)?) } else { None };
+        let topic = if parent_id.is_none() {
+            Some(self.create_topic(project_id, self.task(id).unwrap().title.clone())?)
+        } else {
+            None
+        };
         let task = self.task_mut(id).unwrap();
         if task.parent_id != parent_id {
             task.parent_id = parent_id;
@@ -653,12 +805,16 @@ impl Store {
         Ok(())
     }
     pub fn prepare_run(&self, id: u64) -> Result<AgentRun, String> {
-        if self.research_pending_approval(id) { return Err("Approve the complete research goal in Todo before running its steps.".into()); }
+        if self.research_pending_approval(id) {
+            return Err(
+                "Approve the complete research goal in Todo before running its steps.".into(),
+            );
+        }
         if self.task(id).is_some_and(|t| t.research.is_some()) {
             return crate::research::prepare_run(self, id);
         }
         let task = self.task(id).ok_or("Task not found.")?;
-        if task.archived || task.stage == Stage::Cancelled {
+        if self.task_is_archived(id) || task.stage == Stage::Cancelled {
             return Err("Restore or reopen this task before running.".into());
         }
         let policy = self
@@ -753,7 +909,10 @@ impl Store {
             if run.id == 0 {
                 run.id = (i + 1) as u64;
             }
-            if matches!(run.status.as_str(), "Queued" | "Running" | "Cancelling") {
+            if matches!(
+                run.status.as_str(),
+                "Queued" | "Running" | "Cancelling" | "Recovering"
+            ) {
                 interrupted.push(run.id);
                 run.status = "Interrupted".into();
                 run.ended_at = Some(crate::opencode::timestamp());
@@ -853,12 +1012,58 @@ fn matches_term(task: &Task, term: &str) -> bool {
 mod tests {
     use super::*;
     #[test]
+    fn explicit_topic_creation_never_leaves_an_intermediate_topic() {
+        let mut store = Store::empty();
+        let topic = store.create_topic(1, "Earnings").unwrap();
+        let goal = store.create_research_goal_in_topic(
+            "Intel earnings".into(), "Review financials".into(), 1, Some(topic),
+        ).unwrap();
+        assert_eq!(store.topics.len(), 1);
+        assert_eq!(store.task_topic(goal).unwrap().id, topic);
+        store.set_parent(goal, None).unwrap();
+        assert_eq!(store.topics.len(), 1);
+        assert_eq!(store.task_topic(goal).unwrap().id, topic);
+        assert!(store.create_research_goal_in_topic(
+            "Invalid".into(), "Scope".into(), 1, Some(999),
+        ).is_err());
+        assert_eq!(store.tasks.len(), 1);
+        assert_eq!(store.topics.len(), 1);
+    }
+
+    #[test]
+    fn placeholder_cleanup_preserves_referenced_topics_and_is_idempotent() {
+        let mut store = Store::empty();
+        let populated = store.create_topic(1, "待归类").unwrap();
+        store.create_research_goal_in_topic("Legacy".into(), "Scope".into(), 1, Some(populated)).unwrap();
+        let requested = store.create_topic(1, "未归类").unwrap();
+        store.create_research_request(1, Some(requested), "Review earnings").unwrap();
+        let empty = store.create_topic(1, "待归类").unwrap();
+        store.set_topic_archived(empty, true).unwrap();
+        let named_empty = store.create_topic(1, "My next research").unwrap();
+        let tasks = store.tasks.clone();
+        store.normalize_topics();
+        assert!(!store.topics.iter().any(|t| t.id == empty));
+        for id in [populated, requested, named_empty] {
+            assert!(store.topics.iter().any(|t| t.id == id));
+        }
+        assert_eq!(store.tasks[0].title, tasks[0].title);
+        assert_eq!(store.tasks[0].topic_id, tasks[0].topic_id);
+        let normalized = store.clone();
+        store.normalize_topics();
+        assert_eq!(store, normalized);
+    }
+
+    #[test]
     fn topic_membership_is_required_and_inherited_by_research_steps() {
         let mut store = Store::empty();
         let project = store.projects[0].id;
         let topic = store.create_topic(project, "  NVIDIA  ").unwrap();
-        let goal = store.create_research_goal("Earnings".into(), "Review earnings".into(), project).unwrap();
-        let step = store.create_task("Evidence", project, Stage::Planned, Some(goal)).unwrap();
+        let goal = store
+            .create_research_goal("Earnings".into(), "Review earnings".into(), project)
+            .unwrap();
+        let step = store
+            .create_task("Evidence", project, Stage::Planned, Some(goal))
+            .unwrap();
         store.task_mut(step).unwrap().research = Some(crate::research::ResearchTask {
             requires_approval: false,
             kind: crate::research::ResearchKind::Collect,
@@ -866,7 +1071,7 @@ mod tests {
             depends_on: vec![],
             space_name: String::new(),
         });
-        assert_eq!(store.task_topic(goal).unwrap().name, "待归类");
+        assert_eq!(store.task_topic(goal).unwrap().name, "Earnings");
         let signature = store.research_signature(step);
         assert!(signature.is_some());
         store.set_goal_topic(goal, Some(topic)).unwrap();
@@ -874,7 +1079,9 @@ mod tests {
         assert_eq!(store.task(step).unwrap().topic_id, None);
         assert_eq!(store.research_signature(step), signature);
         assert!(store.set_goal_topic(step, Some(topic)).is_err());
-        let ordinary = store.create_task("Ordinary", project, Stage::Planned, None).unwrap();
+        let ordinary = store
+            .create_task("Ordinary", project, Stage::Planned, None)
+            .unwrap();
         assert!(store.set_goal_topic(ordinary, Some(topic)).is_err());
         assert!(store.set_goal_topic(goal, None).is_err());
         assert_eq!(store.task_topic(step).unwrap().id, topic);
@@ -885,17 +1092,23 @@ mod tests {
         let mut store = Store::empty();
         let project = store.projects[0].id;
         let topic = store.create_topic(project, "NVIDIA").unwrap();
-        let goal = store.create_research_goal("Earnings".into(), "Review earnings".into(), project).unwrap();
+        let goal = store
+            .create_research_goal("Earnings".into(), "Review earnings".into(), project)
+            .unwrap();
         store.set_goal_topic(goal, Some(topic)).unwrap();
-        let child = store.create_task("Follow up", project, Stage::Planned, Some(goal)).unwrap();
-        let descendant = store.create_task("Read appendix", project, Stage::Planned, Some(child)).unwrap();
+        let child = store
+            .create_task("Follow up", project, Stage::Planned, Some(goal))
+            .unwrap();
+        let descendant = store
+            .create_task("Read appendix", project, Stage::Planned, Some(child))
+            .unwrap();
         assert_eq!(store.task_topic(child).unwrap().id, topic);
         assert_eq!(store.task_topic(descendant).unwrap().id, topic);
         assert_eq!(store.task(descendant).unwrap().topic_id, None);
         store.set_topic_archived(topic, true).unwrap();
         assert!(store.task_topic(descendant).unwrap().archived);
         store.set_parent(child, None).unwrap();
-        assert_eq!(store.task_topic(descendant).unwrap().name, "待归类");
+        assert_eq!(store.task_topic(descendant).unwrap().name, "Follow up");
         // Older or externally edited workspaces must not hang on invalid ancestry.
         store.task_mut(child).unwrap().parent_id = Some(descendant);
         assert!(store.task_topic(descendant).is_none());
@@ -906,13 +1119,17 @@ mod tests {
         let mut store = Store::empty();
         let project = store.projects[0].id;
         let topic = store.create_topic(project, "NVIDIA").unwrap();
-        let goal = store.create_research_goal("Earnings".into(), "Review earnings".into(), project).unwrap();
+        let goal = store
+            .create_research_goal("Earnings".into(), "Review earnings".into(), project)
+            .unwrap();
         store.set_goal_topic(goal, Some(topic)).unwrap();
         let tasks = store.tasks.clone();
         store.set_topic_archived(topic, true).unwrap();
         assert_eq!(store.tasks, tasks);
         assert!(store.task_topic(goal).unwrap().archived);
-        let second = store.create_research_goal("Valuation".into(), "Review valuation".into(), project).unwrap();
+        let second = store
+            .create_research_goal("Valuation".into(), "Review valuation".into(), project)
+            .unwrap();
         assert!(store.set_goal_topic(second, Some(topic)).is_err());
         store.set_topic_archived(topic, false).unwrap();
         store.set_goal_topic(second, Some(topic)).unwrap();
@@ -922,14 +1139,16 @@ mod tests {
     }
 
     #[test]
-    fn topic_membership_cannot_cross_projects_and_moves_to_destination_inbox() {
+    fn topic_membership_cannot_cross_projects_and_moves_to_named_destination_topic() {
         let mut store = Store::empty();
         let project = store.projects[0].id;
         let mut other = store.projects[0].clone();
         other.id = project + 1;
         store.projects.push(other);
         let topic = store.create_topic(project, "NVIDIA").unwrap();
-        let goal = store.create_research_goal("Earnings".into(), "Review earnings".into(), project).unwrap();
+        let goal = store
+            .create_research_goal("Earnings".into(), "Review earnings".into(), project)
+            .unwrap();
         let foreign_topic = store.create_topic(project + 1, "Other").unwrap();
         assert!(store.set_goal_topic(goal, Some(foreign_topic)).is_err());
         assert!(store.set_goal_topic(goal, Some(999)).is_err());
@@ -938,7 +1157,7 @@ mod tests {
         store.set_goal_topic(goal, Some(topic)).unwrap();
         store.move_project(goal, project + 1).unwrap();
         assert_eq!(store.task_topic(goal).unwrap().project_id, project + 1);
-        assert_eq!(store.task_topic(goal).unwrap().name, "待归类");
+        assert_eq!(store.task_topic(goal).unwrap().name, "Earnings");
         store.set_goal_topic(goal, Some(foreign_topic)).unwrap();
     }
 
@@ -946,7 +1165,9 @@ mod tests {
     fn legacy_workspaces_load_without_topics_and_membership_roundtrips() {
         let mut store = Store::empty();
         let project = store.projects[0].id;
-        let goal = store.create_research_goal("Earnings".into(), "Review earnings".into(), project).unwrap();
+        let goal = store
+            .create_research_goal("Earnings".into(), "Review earnings".into(), project)
+            .unwrap();
         let mut legacy = serde_json::to_value(&store).unwrap();
         legacy.as_object_mut().unwrap().remove("topics");
         for task in legacy["tasks"].as_array_mut().unwrap() {
@@ -964,12 +1185,25 @@ mod tests {
     #[test]
     fn legacy_topic_normalization_preserves_content_and_is_idempotent() {
         let mut store = Store::mock();
-        let before: Vec<_> = store.tasks.iter().map(|t| (t.id, t.title.clone(), t.description.clone(), t.stage)).collect();
+        let before: Vec<_> = store
+            .tasks
+            .iter()
+            .map(|t| (t.id, t.title.clone(), t.description.clone(), t.stage))
+            .collect();
         store.topics.clear();
-        for task in &mut store.tasks { task.topic_id = None; }
+        for task in &mut store.tasks {
+            task.topic_id = None;
+        }
         store.normalize_topics();
         assert!(store.tasks.iter().all(|t| store.task_topic(t.id).is_some()));
-        assert_eq!(before, store.tasks.iter().map(|t| (t.id, t.title.clone(), t.description.clone(), t.stage)).collect::<Vec<_>>());
+        assert_eq!(
+            before,
+            store
+                .tasks
+                .iter()
+                .map(|t| (t.id, t.title.clone(), t.description.clone(), t.stage))
+                .collect::<Vec<_>>()
+        );
         let normalized = store.clone();
         store.normalize_topics();
         assert_eq!(store, normalized);
@@ -978,33 +1212,61 @@ mod tests {
     #[test]
     fn loaded_legacy_goals_gain_versioned_approval_without_permanent_exemption() {
         let mut store = Store::empty();
-        let goal = store.create_research_goal("Legacy".into(), "Review earnings".into(), 1).unwrap();
+        let goal = store
+            .create_research_goal("Legacy".into(), "Review earnings".into(), 1)
+            .unwrap();
         let stage = store.task(goal).unwrap().stage;
         store.normalize_topics();
-        assert!(store.task(goal).unwrap().research.as_ref().unwrap().requires_approval);
+        assert!(
+            store
+                .task(goal)
+                .unwrap()
+                .research
+                .as_ref()
+                .unwrap()
+                .requires_approval
+        );
         assert_eq!(store.task(goal).unwrap().stage, stage);
         assert!(store.goal_execution_approved(goal));
         store.add_comment(goal, "Expand research scope").unwrap();
         store.normalize_topics();
-        assert!(!store.goal_execution_approved(goal), "Repeated migration must not approve changes");
+        assert!(
+            !store.goal_execution_approved(goal),
+            "Repeated migration must not approve changes"
+        );
         store.reconcile_goal_approvals();
         assert_eq!(store.task(goal).unwrap().stage, Stage::Backlog);
         store.task_mut(goal).unwrap().stage = Stage::Planned;
         store.normalize_topics();
-        assert!(!store.goal_execution_approved(goal), "Explicit missing current approval cannot be inferred from Todo");
+        assert!(
+            !store.goal_execution_approved(goal),
+            "Explicit missing current approval cannot be inferred from Todo"
+        );
     }
 
     #[test]
     fn missing_legacy_approval_field_migrates_once_but_explicit_null_does_not() {
         let mut store = Store::empty();
-        let goal = store.create_research_goal("Legacy".into(), "Review earnings".into(), 1).unwrap();
-        store.task_mut(goal).unwrap().research.as_mut().unwrap().requires_approval = true;
+        let goal = store
+            .create_research_goal("Legacy".into(), "Review earnings".into(), 1)
+            .unwrap();
+        store
+            .task_mut(goal)
+            .unwrap()
+            .research
+            .as_mut()
+            .unwrap()
+            .requires_approval = true;
         let mut value = serde_json::to_value(&store).unwrap();
-        value["tasks"][0].as_object_mut().unwrap().remove("approved_plan");
+        value["tasks"][0]
+            .as_object_mut()
+            .unwrap()
+            .remove("approved_plan");
         let mut legacy: Store = serde_json::from_value(value).unwrap();
         legacy.normalize_topics();
         assert!(legacy.goal_execution_approved(goal));
-        let mut current: Store = serde_json::from_value(serde_json::to_value(&store).unwrap()).unwrap();
+        let mut current: Store =
+            serde_json::from_value(serde_json::to_value(&store).unwrap()).unwrap();
         current.normalize_topics();
         assert!(!current.goal_execution_approved(goal));
     }

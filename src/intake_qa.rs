@@ -284,6 +284,36 @@ pub fn run() {
     let loaded = Storage::new(path).load().unwrap().unwrap();
     assert_eq!(loaded.research_requests.len(), 2);
     assert_eq!(loaded.task(goal).unwrap().stage, Stage::Done);
+    // Compact display fixture: check navigation order and disclosure interaction.
+    cx.update_window(handle, |_, w, cx| {
+        app.update(cx, |a, cx| {
+            a.store.task_mut(goal).unwrap().description = "解释财报后的市场反应，交付有来源的研究报告。".into();
+            a.open_task(goal, w, cx);
+        });
+        w.render_frame(cx);
+        assert!(w.try_find("request-brief-content").is_none());
+        assert!(w.try_find("request-brief-toggle").is_some());
+        let tabs = w.try_find("goal-steps-tab").unwrap().bounds();
+        let badge = w.try_find("task-kind-badge").unwrap().bounds();
+        assert!(tabs.origin.x < badge.origin.x, "page tabs must precede the type badge");
+    }).unwrap();
+    screenshot(&mut cx, handle, &root, "03-overview-collapsed.png");
+    cx.update_window(handle, |_, w, cx| {
+        w.click("request-brief-toggle", cx);
+        w.render_frame(cx);
+        assert!(w.try_find("request-brief-content").is_some());
+    }).unwrap();
+    screenshot(&mut cx, handle, &root, "04-overview-expanded.png");
+    cx.update_window(handle, |_, w, cx| {
+        w.click("request-brief-toggle", cx);
+        w.render_frame(cx);
+        assert!(w.try_find("request-brief-content").is_none());
+        app.update(cx, |a, cx| a.open_task(children[0], w, cx));
+        w.render_frame(cx);
+        assert!(w.try_find("task-kind-badge").is_some());
+        assert!(w.try_find("goal-overview-tab").is_none());
+    }).unwrap();
+    screenshot(&mut cx, handle, &root, "05-evidence-header.png");
     println!(
         "INTAKE QA PASSED: saved failure/retry, missing-field auto repair, complete plan, required Topic, Goal-only drag approval, peak concurrency {peak}, final report, reapproval and selective rerun, repeated request, blocked branch/resume, persistence. {}",
         root.display()

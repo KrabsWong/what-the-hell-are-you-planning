@@ -13,6 +13,9 @@ impl TaskApp {
         stage: Stage,
         cx: &mut Context<Self>,
     ) -> Vec<AnyElement> {
+        if matches!(self.scope, Scope::Topic(_)) {
+            return cards.iter().map(|t| self.goal_card(t, cx)).collect();
+        }
         let mut result = Vec::new();
         for topic in &self.store.topics {
             let goals: Vec<_> = cards
@@ -32,7 +35,8 @@ impl TaskApp {
                     format!("board-topic-{}-{id}", stage.key()),
                     topic.display_name(),
                 )
-                .px_0().self_start()
+                .px_0()
+                .self_start()
                 .on_click(cx.listener(move |a, _, w, cx| a.navigate(Scope::Topic(id), w, cx)))
                 .into_any_element(),
             );
@@ -60,7 +64,7 @@ impl TaskApp {
             .research_requests
             .iter()
             .rev()
-            .filter(|r| project.is_none_or(|id| r.project_id == id))
+            .filter(|r| project.is_none_or(|id| r.project_id == id) && !self.store.request_is_archived(r))
         {
             let id = request.id;
             let project = request.project_id;
@@ -152,38 +156,59 @@ impl TaskApp {
             return div().into_any_element();
         };
         let colors = palette(cx);
+        let expanded = self.expanded_request_brief == Some(goal);
         col()
-            .gap_3()
-            .p_4()
-            .border_1()
-            .border_color(rgb(colors.line))
-            .rounded_md()
-            .child(label(
-                format!("ORIGINAL REQUEST · {}", request.submitted_at),
-                cx,
-            ))
-            .child(div().child(request.input.clone()))
-            .child(label("EXPECTED OUTPUT", cx))
-            .child(div().child(brief.deliverable.clone()))
-            .child(label("OBJECTIVE & SCOPE", cx))
-            .child(div().child(brief.objective.clone()))
-            .child(div().child(brief.scope.clone()))
-            .when(!brief.assumptions.is_empty(), |d| {
-                d.child(label("PLANNING ASSUMPTIONS", cx)).children(
-                    brief
-                        .assumptions
-                        .iter()
-                        .map(|s| div().child(format!("• {s}"))),
+            .gap_2()
+            .child(
+                quiet_button("request-brief-toggle", "Original request & planning brief")
+                    .self_start()
+                    .icon(if expanded {
+                        assets::IconName::ChevronDown
+                    } else {
+                        assets::IconName::ChevronRight
+                    })
+                    .on_click(cx.listener(move |a, _, _, cx| {
+                        a.expanded_request_brief = if expanded { None } else { Some(goal) };
+                        cx.notify();
+                    })),
+            )
+            .when(expanded, |d| {
+                d.child(
+                    col()
+                        .id("request-brief-content")
+                        .gap_3()
+                        .pl_4()
+                        .border_l_1()
+                        .border_color(rgb(colors.line))
+                        .child(label(
+                            format!("ORIGINAL REQUEST · {}", request.submitted_at),
+                            cx,
+                        ))
+                        .child(div().child(request.input.clone()))
+                        .child(label("EXPECTED OUTPUT", cx))
+                        .child(div().child(brief.deliverable.clone()))
+                        .child(label("OBJECTIVE & SCOPE", cx))
+                        .child(div().child(brief.objective.clone()))
+                        .child(div().child(brief.scope.clone()))
+                        .when(!brief.assumptions.is_empty(), |d| {
+                            d.child(label("PLANNING ASSUMPTIONS", cx)).children(
+                                brief
+                                    .assumptions
+                                    .iter()
+                                    .map(|s| div().child(format!("• {s}"))),
+                            )
+                        })
+                        .when(!brief.facts_to_verify.is_empty(), |d| {
+                            d.child(label("FACTS TO VERIFY DURING RESEARCH", cx))
+                                .children(
+                                    brief
+                                        .facts_to_verify
+                                        .iter()
+                                        .map(|s| div().child(format!("• {s}"))),
+                                )
+                        })
+                        .map(observed),
                 )
-            })
-            .when(!brief.facts_to_verify.is_empty(), |d| {
-                d.child(label("FACTS TO VERIFY DURING RESEARCH", cx))
-                    .children(
-                        brief
-                            .facts_to_verify
-                            .iter()
-                            .map(|s| div().child(format!("• {s}"))),
-                    )
             })
             .into_any_element()
     }

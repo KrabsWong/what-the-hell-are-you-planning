@@ -8,6 +8,7 @@ use gpui_kit::{
     base::FocusTrapElement,
     component::{
         Disableable,
+        button::ButtonVariants,
         input::{Input, InputState},
         menu::{DropdownMenu, PopupMenuItem},
     },
@@ -91,9 +92,15 @@ impl TaskApp {
             });
         let title = selected
             .and_then(|id| self.store.topics.iter().find(|t| t.id == id))
-            .map(|t| format!("{}{}", t.display_name(), if t.archived { " (archived)" } else { "" }))
+            .map(|t| {
+                format!(
+                    "{}{}",
+                    t.display_name(),
+                    if t.archived { " (archived)" } else { "" }
+                )
+            })
             .unwrap_or(if goal.is_some() {
-                "#待归类".into()
+                "Choose a topic".into()
             } else {
                 "Propose a new topic".into()
             });
@@ -164,15 +171,17 @@ impl TaskApp {
                 .is_some_and(|t| t.id == id);
         row()
             .gap_0()
-            .mt_2()
+            .mt_1()
             .min_w_0()
             .rounded_md()
-            .when(active, |d| d.font_weight(FontWeight::SEMIBOLD))
+            .hover(|d| d.bg(rgb(palette(cx).hover)))
             .child(
                 quiet_button(format!("topic-{id}"), "")
+                    .custom(sidebar_variant(active, cx))
+                    .when(active, |b| b.font_weight(FontWeight::SEMIBOLD))
                     .flex_1()
                     .min_w_0()
-                    .h_9()
+                    .h_8()
                     .child(single_line_text(
                         format!("topic-name-{id}"),
                         topic.display_name(),
@@ -189,6 +198,8 @@ impl TaskApp {
                     },
                     "Expand or collapse topic",
                 )
+                .custom(sidebar_variant(active, cx))
+                .h_8()
                 .on_click(cx.listener(move |a, _, _, cx| {
                     if a.collapsed_sidebar_topics.contains(&id) {
                         a.collapsed_sidebar_topics.retain(|t| *t != id);
@@ -201,12 +212,13 @@ impl TaskApp {
             .into_any_element()
     }
 
-    pub(crate) fn topic_directory(&self, project: u64, cx: &mut Context<Self>) -> AnyElement {
+    pub(crate) fn topic_directory(&self, project: Option<u64>, cx: &mut Context<Self>) -> AnyElement {
         let topics: Vec<_> = self
             .store
             .topics
             .iter()
-            .filter(|t| t.project_id == project)
+            .filter(|t| project.is_none_or(|id| t.project_id == id)
+                && t.archived == project.is_none())
             .collect();
         if topics.is_empty() {
             return div().into_any_element();
@@ -220,9 +232,14 @@ impl TaskApp {
                 let id = t.id;
                 quiet_button(
                     format!("topic-link-{id}"),
-                    format!("{}{}", t.display_name(), if t.archived { " · Archived" } else { "" }),
+                    format!(
+                        "{}{}",
+                        t.display_name(),
+                        if t.archived { " · Archived" } else { "" }
+                    ),
                 )
-                .px_0().self_start()
+                .px_0()
+                .self_start()
                 .on_click(cx.listener(move |a, _, w, cx| a.navigate(Scope::Topic(id), w, cx)))
             }))
             .into_any_element()
@@ -238,7 +255,7 @@ impl TaskApp {
             .store
             .tasks
             .iter()
-            .filter(|t| t.topic_id == Some(id))
+            .filter(|t| t.topic_id == Some(id) && (archived || !self.store.task_is_archived(t.id)))
             .collect();
         let mut list = col().gap_1();
         for goal in &goals {
@@ -260,45 +277,82 @@ impl TaskApp {
                 })
                 .copied();
             let title = format!("{} · {}", self.store.identifier(goal), goal.title);
-            let hint = title.chars().collect::<Vec<_>>().chunks(36)
-                .map(|chunk| chunk.iter().collect::<String>()).collect::<Vec<_>>().join("\n");
+            let hint = title
+                .chars()
+                .collect::<Vec<_>>()
+                .chunks(36)
+                .map(|chunk| chunk.iter().collect::<String>())
+                .collect::<Vec<_>>()
+                .join("\n");
             list = list.child(
-                row().min_w_0().gap_1()
+                row()
+                    .min_w_0()
+                    .gap_1()
                     .child(
                         quiet_button(format!("topic-goal-{goal_id}"), "")
-                            .flex_1().min_w_0().h_9().px_2()
-                            .tooltip(hint).accessibility_label(title.clone())
+                            .flex_1()
+                            .min_w_0()
+                            .h_8()
+                            .px_2()
+                            .tooltip(hint)
+                            .accessibility_label(title.clone())
                             .on_click(cx.listener(move |a, _, w, cx| a.open_task(goal_id, w, cx)))
-                            .child(row().w_full().min_w_0()
-                                .child(div().w_4().flex_shrink_0()
-                                    .text_color(rgb(stage_color(goal.stage, cx)))
-                                    .child(goal.stage.symbol()))
-                                .child(single_line_text(format!("topic-goal-title-{goal_id}"), title))
-                                .when(goal.archived, |d| d.child(label("Archived", cx)))
-                                .child(div().flex_shrink_0().child(label(
-                                    if children.is_empty() { "Not planned".into() }
-                                    else { format!("{complete}/{} steps", children.len()) }, cx)))
-                                .child(div().flex_shrink_0().child(label("Open ›", cx)))),
+                            .child(
+                                row()
+                                    .w_full()
+                                    .min_w_0()
+                                    .child(
+                                        div()
+                                            .w_4()
+                                            .flex_shrink_0()
+                                            .text_color(rgb(stage_color(goal.stage, cx)))
+                                            .child(goal.stage.symbol()),
+                                    )
+                                    .child(single_line_text(
+                                        format!("topic-goal-title-{goal_id}"),
+                                        title,
+                                    ))
+                                    .when(goal.archived, |d| d.child(label("Archived", cx)))
+                                    .child(div().flex_shrink_0().child(label(
+                                        if children.is_empty() {
+                                            "Not planned".into()
+                                        } else {
+                                            format!("{complete}/{} steps", children.len())
+                                        },
+                                        cx,
+                                    )))
+                                    .child(div().flex_shrink_0().child(label("Open ›", cx))),
+                            ),
                     )
                     .when_some(report, |d, report| {
-                        d.child(quiet_button(format!("topic-report-{goal_id}"), "Report ›")
-                            .h_9().px_2().on_click(cx.listener(move |a, _, _, cx| a.view_task_result(report, cx))))
+                        d.child(
+                            quiet_button(format!("topic-report-{goal_id}"), "Report ›")
+                                .h_8()
+                                .px_2()
+                                .on_click(
+                                    cx.listener(move |a, _, _, cx| a.view_task_result(report, cx)),
+                                ),
+                        )
                     }),
             );
         }
-        col().size_full().p_6().gap_4()
-            .child(row().flex_wrap().child(div().flex_1().text_2xl().font_weight(FontWeight::SEMIBOLD).child(topic.display_name()))
+        col().size_full()
+            .child(row().px_6().pt_4().pb_2().flex_wrap().child(div().flex_1().min_w_0().text_lg().font_weight(FontWeight::SEMIBOLD).child(topic.display_name()))
                 .child(button("rename-topic", "Rename").on_click(cx.listener(move |a, _, w, cx| a.open_topic_editor(project, Some(id), w, cx))))
-                .child(button("archive-topic", if archived { "Restore topic" } else { "Archive topic" }).on_click(cx.listener(move |a, _, _, cx| {
-                    a.snapshot(); let result = a.store.set_topic_archived(id, !archived); a.finish(result, if archived { "Topic restored" } else { "Topic archived · goals and results retained" }, cx);
+                .child(button("archive-topic", if archived { "Restore topic" } else { "Archive topic" }).on_click(cx.listener(move |a, _, w, cx| {
+                    if archived {
+                        a.snapshot(); let result = a.store.set_topic_archived(id, false); a.finish(result, "Topic restored", cx);
+                    } else {
+                        a.request_archive(crate::archive_app::ArchiveTarget::Topic(id), w, cx);
+                    }
                 })))
                 .child(primary_button("topic-new-goal", "New research").disabled(archived).on_click(cx.listener(move |a, _, w, cx| {
                     a.open_project_plan(project, w, cx); a.planning_topic = Some(id); cx.notify();
                 }))))
-            .child(muted(format!("{} research goal{}{}", goals.len(), if goals.len() == 1 { "" } else { "s" }, if archived { " · Archived topic. Existing goals and results remain available." } else { " · Open a goal to explore its steps and materials." }), cx))
-            .child(row().justify_end().child(self.layout_switch(cx)))
+            .child(label(format!("{} research goal{}{}", goals.len(), if goals.len() == 1 { "" } else { "s" }, if archived { " · Archived topic. Existing goals and results remain available." } else { " · Open a goal to explore its steps and materials." }), cx).px_6())
+            .child(row().px_6().pt_2().pb_3().justify_end().child(self.layout_switch(cx)))
             .when(self.layout == Layout::Board, |d| d.child(self.board(&goals.iter().map(|t| (*t).clone()).collect::<Vec<_>>(), cx)))
-            .when(self.layout == Layout::List, |d| d.child(col().id("topic-goals").overflow_y_scroll().flex_1().min_h_0()
+            .when(self.layout == Layout::List, |d| d.child(col().id("topic-goals").px_6().pb_5().overflow_y_scroll().flex_1().min_h_0()
                 .when(goals.is_empty(), |d| d.child(muted("No research goals yet. Create one here or assign an existing goal using its Topic property.", cx)))
                 .child(list)))
             .into_any_element()

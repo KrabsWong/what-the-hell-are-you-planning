@@ -21,10 +21,9 @@ pub fn run() {
     println!("Workspace onboarding screenshots: {}", root.display());
 }
 
-/// Isolated calendar navigation and due-date filtering, without live agent calls.
+/// Verify the deferred date features have no visible entry points.
 pub fn calendar() {
-    use crate::{app::Scope, appearance::Appearance};
-    use chrono::Datelike;
+    use crate::{domain::Stage, appearance::Appearance};
     let mut cx = HeadlessAppContext::with_platform(platform::current_platform(true).text_system(), Arc::new(assets::Assets), platform::current_headless_renderer);
     cx.update(init);
     let mut app = None;
@@ -37,23 +36,20 @@ pub fn calendar() {
     let handle = window.into();
     cx.update_window(handle, |_, w, cx| {
         w.render_frame(cx);
-        w.click("calendar-prev", cx);
-        assert_eq!(app.read(cx).calendar_week_offset, -1);
-        w.click("calendar-next", cx);
-        assert_eq!(app.read(cx).calendar_week_offset, 0);
-        w.click("calendar-next", cx);
-        let today = chrono::Local::now().date_naive();
-        let monday = today - chrono::Duration::days(today.weekday().num_days_from_monday().into()) + chrono::Duration::weeks(1);
-        app.update(cx, |a, _| {
-            for task in &mut a.store.tasks { task.due_date.clear(); }
-            a.store.task_mut(1).unwrap().due_date = monday.to_string();
+        for id in ["due", "overdue", "research", "calendar-prev", "calendar-today", "calendar-day-0"] {
+            assert!(w.try_find(id).is_none(), "Hidden navigation still visible: {id}");
+        }
+        app.update(cx, |a, cx| {
+            a.store.task_mut(1).unwrap().due_date = "2026-12-31".into();
+            a.open_task(1, w, cx);
         });
-        w.click("calendar-day-0", cx);
-        assert_eq!(app.read(cx).scope, Scope::DueDate(monday.to_string()));
-        assert_eq!(app.read(cx).visible_tasks().iter().map(|t| t.id).collect::<Vec<_>>(), vec![1]);
-        w.click("calendar-today", cx);
-        assert_eq!(app.read(cx).calendar_week_offset, 0);
-        assert_eq!(app.read(cx).scope, Scope::DueDate(today.to_string()));
+        w.render_frame(cx);
+        assert!(w.try_find("edit-date").is_none());
+        app.update(cx, |a, cx| a.begin_draft(Some(1), None, Stage::Backlog, w, cx));
+        w.render_frame(cx);
+        assert!(w.try_find("draft-due").is_none());
+        w.click("save-task", cx);
+        assert_eq!(app.read(cx).store.task(1).unwrap().due_date, "2026-12-31");
     }).unwrap();
     std::fs::create_dir_all(".local/calendar-qa").unwrap();
     for appearance in [Appearance::Light, Appearance::Dark] {
@@ -63,5 +59,5 @@ pub fn calendar() {
         }).unwrap();
         cx.capture_screenshot(handle).unwrap().save(format!(".local/calendar-qa/{appearance:?}.png")).unwrap();
     }
-    println!("Calendar navigation and filtering passed");
+    println!("Hidden date controls and preserved existing dates passed");
 }

@@ -13,4 +13,18 @@ while IFS= read -r app_pid; do
     kill "$app_pid"
   fi
 done < <(pgrep -f '^\./target/debug/what-the-hell-are-you-planning$' || true)
-exec "$app_binary"
+if [[ "$(uname -s)" == "Darwin" ]]; then
+  app_bundle="$PWD/target/debug/Planning.app"
+  bundled_binary="$app_bundle/Contents/MacOS/what-the-hell-are-you-planning"
+  while IFS= read -r app_pid; do
+    [[ -z "$app_pid" ]] || kill "$app_pid"
+  done < <(pgrep -f "^${bundled_binary}$" || true)
+  mkdir -p "$app_bundle/Contents/MacOS" "$app_bundle/Contents/Resources"
+  cp "$app_binary" "$bundled_binary"
+  cp assets/brand/macos/Info.plist "$app_bundle/Contents/Info.plist"
+  cp assets/brand/macos/Planning.icns "$app_bundle/Contents/Resources/Planning.icns"
+  /usr/bin/plutil -lint "$app_bundle/Contents/Info.plist"
+  /usr/bin/open -n "$app_bundle"
+else
+  exec "$app_binary"
+fi

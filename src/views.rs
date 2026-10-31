@@ -277,22 +277,7 @@ impl TaskApp {
                     .min_h(px(60.))
                     .px_2()
                     .gap_3()
-                    .child(
-                        div()
-                            .size_8()
-                            .flex_shrink_0()
-                            .rounded_md()
-                            .bg(rgb(colors.accent_surface))
-                            .flex()
-                            .items_center()
-                            .justify_center()
-                            .child(
-                                svg()
-                                    .path("brand/planning.svg")
-                                    .size(px(26.))
-                                    .text_color(rgb(colors.accent)),
-                            ),
-                    )
+                    .child(crate::brand::sidebar_logo(colors.accent))
                     .child(
                         div()
                             .flex_1()
@@ -1363,15 +1348,8 @@ impl TaskApp {
                         row()
                             .flex_1()
                             .min_w_0()
-                            .items_start()
-                            .child(
-                                quiet_button(format!("task-status-{id}"), "")
-                                    .child(self.store.execution_status(id, self.todo_batch.as_ref()).icon_view(cx))
-                                    .w_5().h_5().p_0().flex_shrink_0()
-                                    .text_color(rgb(self.store.execution_status(id, self.todo_batch.as_ref()).color(cx)))
-                                    .accessibility_label(self.store.execution_status(id, self.todo_batch.as_ref()).label())
-                                    .tooltip(format!("{} · {}", self.store.execution_status(id, self.todo_batch.as_ref()).label(), self.store.execution_status(id, self.todo_batch.as_ref()).hint())),
-                            )
+                            .items_center()
+                            .child(self.execution_indicator(id, cx))
                             .child(
                                 single_line_text(format!("task-title-{id}"), t.title.clone())
                                     .when(matches!(t.stage, Stage::Done | Stage::Cancelled), |d| {

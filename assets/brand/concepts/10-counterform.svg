@@ -1,0 +1,12 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="128" height="128" viewBox="0 0 128 128" fill="none" style="color:var(--logo-ink,#c7a36b)" role="img" aria-label="合证">
+<title>合证 · COUNTERFORM</title><desc>两组证据相向靠拢，结论藏在中间的留白里。两片结构展开、合拢；中心菱形始终可辨。</desc>
+<style>
+@keyframes counter-left{0%,15%,85%,100%{transform:translateX(0)}40%,55%{transform:translateX(-6px)}}
+@keyframes counter-right{0%,15%,85%,100%{transform:translateX(0)}40%,55%{transform:translateX(6px)}}
+.counter-left{animation:counter-left 7s cubic-bezier(.65,0,.25,1) infinite}.counter-right{animation:counter-right 7s cubic-bezier(.65,0,.25,1) infinite}
+
+@media(prefers-reduced-motion:reduce){svg *{animation:none!important}}</style>
+
+<g fill="currentColor"><path class="counter-left" d="m55 18 16 16-30 30 30 30-16 16L9 64Z"/>
+<path class="counter-right" d="m73 18 46 46-46 46-16-16 30-30-30-30Z"/></g>
+</svg>

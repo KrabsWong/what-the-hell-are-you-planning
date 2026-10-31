@@ -215,14 +215,21 @@ impl crate::app::TaskApp {
         parts.join(" · ")
     }
 
-    pub(crate) fn execution_indicator(&self, id: u64, cx: &gpui_kit::App) -> gpui_kit::component::button::Button {
+    pub(crate) fn execution_indicator(&self, id: u64, cx: &gpui_kit::App) -> gpui_kit::AnyElement {
         use gpui_kit::*;
         let status = self.store.execution_status(id, self.todo_batch.as_ref());
-        crate::controls::quiet_button(format!("execution-status-{id}"), "")
-            .w(px(20.)).h(px(20.)).p_0().flex_shrink_0()
+        // A status is not an action: no button label slot, content gap or hover fill.
+        // Reserve a non-shrinking 24px box for the shared 16px icon in cards and list rows.
+        div().id(format!("execution-status-{id}"))
+            .aria_label(status.label())
+            .size(px(24.)).flex_shrink_0()
+            .flex().items_center().justify_center()
             .child(status.icon_view(cx))
-            .accessibility_label(status.label())
-            .tooltip(format!("{} · {}", status.label(), status.hint()))
+            .tooltip(move |window, cx| {
+                component::tooltip::Tooltip::new(format!("{} · {}", status.label(), status.hint()))
+                    .build(window, cx)
+            })
+            .into_any_element()
     }
 
 }

@@ -1,0 +1,272 @@
+<!doctype html><html lang="zh-CN"><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>Planning — Animated logo explorations</title><style>
+:root{color-scheme:dark;--bg:#111314;--panel:#191c1e;--text:#eeeae2;--muted:#9b9e9f;--line:#313536}*{box-sizing:border-box}body{margin:0;background:var(--bg);color:var(--text);font-family:-apple-system,BlinkMacSystemFont,"Segoe UI",sans-serif}main{max-width:1280px;margin:auto;padding:48px 40px}header{display:flex;align-items:end;justify-content:space-between;gap:24px;margin-bottom:32px}.eyebrow{font-size:11px;letter-spacing:3px;color:#c7a36b}h1{font-size:36px;font-weight:550;letter-spacing:-1px;margin:14px 0}header p{color:var(--muted);font-size:14px;line-height:1.7;margin:0}.controls{display:flex;gap:8px;flex-shrink:0}button{border:1px solid var(--line);background:var(--panel);color:var(--text);padding:10px 14px;border-radius:8px;cursor:pointer}button:focus-visible,a:focus-visible{outline:2px solid #c7a36b;outline-offset:4px}.grid{display:grid;grid-template-columns:1fr 1fr;gap:20px}article{background:var(--panel);border:1px solid var(--line);border-radius:16px;padding:22px 26px}.cardtop{display:flex;justify-content:space-between;align-items:center;font-size:10px;letter-spacing:1.8px;color:var(--muted)}a{color:#c7a36b;text-decoration:none;letter-spacing:0;font-size:12px}.hero{height:210px;display:flex;align-items:center;justify-content:center}.hero svg{width:150px;height:150px}h2{font-size:20px;margin:0 0 8px;font-weight:550}article p{font-size:13px;color:var(--muted);margin:0;line-height:1.7}.motion-note{font-size:11px;color:var(--muted);margin-top:8px;line-height:1.7}.samples{border-top:1px solid var(--line);margin-top:20px;padding-top:16px;display:flex;align-items:center;gap:14px;min-height:64px}.samples>span{font-size:10px;color:var(--muted)}.s24 svg{width:24px;height:24px}.s32 svg{width:32px;height:32px}.s48 svg{width:48px;height:48px}.appmark{margin-left:auto;display:flex;align-items:center;gap:8px}.appmark svg{width:32px;height:32px;border-radius:7px;background:#c7a36b12}.appmark b{font-size:10px;font-weight:550;line-height:1.4}footer{font-size:12px;color:var(--muted);line-height:1.8;margin-top:24px}.light{color-scheme:light;--bg:#f1eee6;--panel:#fcfaf5;--text:#272a29;--muted:#6e736f;--line:#deddd5}.paused svg *{animation-play-state:paused!important}@media(max-width:760px){main{padding:24px 16px}header{align-items:start;flex-direction:column}.grid{grid-template-columns:1fr}.appmark{display:none}h1{font-size:28px}}@media(prefers-reduced-motion:reduce){svg *{animation:none!important}}
+.hero svg{width:144px;height:144px}.mono{--logo-ink:#eeeae2}.mono.light{--logo-ink:#252928}.light{--logo-ink:#a47c43}article{border-radius:8px}.sources{margin-top:24px;border-top:1px solid var(--line);padding-top:20px}.sources a{margin-right:18px}.sources p{font-size:12px;color:var(--muted);line-height:1.8}header .controls{flex-wrap:wrap;max-width:300px}
+</style><body class="mono"><main><header><div><div class="eyebrow">WHAT THE HELL ARE YOU PLANNING?</div><h1>四个新的品牌方向。</h1><p>设计案例研究后重做 · 单色优先 · 几何留白 · 有停顿的循环动画</p></div><div class="controls"><button id="ink" aria-pressed="true">暖金配色</button><button id="pause" aria-pressed="false">暂停动画</button><button id="theme" aria-pressed="false">浅色背景</button></div></header><section class="grid"><article><div class="cardtop"><span>09 / QUERY / CUT</span><a href="09-query-cut.svg" download>下载 SVG ↗</a></div><div class="hero"><svg xmlns="http://www.w3.org/2000/svg" width="128" height="128" viewBox="0 0 128 128" fill="none" style="color:var(--logo-ink,#c7a36b)" role="img" aria-label="断问">
+<title>断问 · QUERY / CUT</title><desc>把产品名字里的追问，压缩成一个有棱角的记号。横切模块归位，问号的落点轻旋后停住。</desc>
+<style>
+@keyframes query-register{0%,15%,85%,100%{transform:translateX(0)}35%,50%{transform:translateX(5px)}65%{transform:translateX(0)}}
+@keyframes query-stop{0%,50%,100%{transform:rotate(0)}65%,85%{transform:rotate(90deg)}}
+.query-register{animation:query-register 7.2s cubic-bezier(.65,0,.25,1) infinite}.query-stop{transform-origin:65px 105px;animation:query-stop 7.2s cubic-bezier(.65,0,.25,1) infinite}
+
+@media(prefers-reduced-motion:reduce){svg *{animation:none!important}}</style>
+
+<g fill="currentColor"><path class="query-register" d="M24 50V18h82v48L76 84v6H54V72l30-18V40H46v10Z"/>
+<rect class="query-stop" x="54" y="94" width="22" height="22"/></g>
+</svg>
+</div><h2>断问</h2><p>把产品名字里的追问，压缩成一个有棱角的记号。</p><div class="motion-note">横切模块归位，问号的落点轻旋后停住。</div><div class="samples"><span>实际尺寸</span><div class="s24"><svg xmlns="http://www.w3.org/2000/svg" width="128" height="128" viewBox="0 0 128 128" fill="none" style="color:var(--logo-ink,#c7a36b)" role="img" aria-label="断问">
+<title>断问 · QUERY / CUT</title><desc>把产品名字里的追问，压缩成一个有棱角的记号。横切模块归位，问号的落点轻旋后停住。</desc>
+<style>
+@keyframes query-register{0%,15%,85%,100%{transform:translateX(0)}35%,50%{transform:translateX(5px)}65%{transform:translateX(0)}}
+@keyframes query-stop{0%,50%,100%{transform:rotate(0)}65%,85%{transform:rotate(90deg)}}
+.query-register{animation:query-register 7.2s cubic-bezier(.65,0,.25,1) infinite}.query-stop{transform-origin:65px 105px;animation:query-stop 7.2s cubic-bezier(.65,0,.25,1) infinite}
+
+@media(prefers-reduced-motion:reduce){svg *{animation:none!important}}</style>
+
+<g fill="currentColor"><path class="query-register" d="M24 50V18h82v48L76 84v6H54V72l30-18V40H46v10Z"/>
+<rect class="query-stop" x="54" y="94" width="22" height="22"/></g>
+</svg>
+</div><div class="s32"><svg xmlns="http://www.w3.org/2000/svg" width="128" height="128" viewBox="0 0 128 128" fill="none" style="color:var(--logo-ink,#c7a36b)" role="img" aria-label="断问">
+<title>断问 · QUERY / CUT</title><desc>把产品名字里的追问，压缩成一个有棱角的记号。横切模块归位，问号的落点轻旋后停住。</desc>
+<style>
+@keyframes query-register{0%,15%,85%,100%{transform:translateX(0)}35%,50%{transform:translateX(5px)}65%{transform:translateX(0)}}
+@keyframes query-stop{0%,50%,100%{transform:rotate(0)}65%,85%{transform:rotate(90deg)}}
+.query-register{animation:query-register 7.2s cubic-bezier(.65,0,.25,1) infinite}.query-stop{transform-origin:65px 105px;animation:query-stop 7.2s cubic-bezier(.65,0,.25,1) infinite}
+
+@media(prefers-reduced-motion:reduce){svg *{animation:none!important}}</style>
+
+<g fill="currentColor"><path class="query-register" d="M24 50V18h82v48L76 84v6H54V72l30-18V40H46v10Z"/>
+<rect class="query-stop" x="54" y="94" width="22" height="22"/></g>
+</svg>
+</div><div class="s48"><svg xmlns="http://www.w3.org/2000/svg" width="128" height="128" viewBox="0 0 128 128" fill="none" style="color:var(--logo-ink,#c7a36b)" role="img" aria-label="断问">
+<title>断问 · QUERY / CUT</title><desc>把产品名字里的追问，压缩成一个有棱角的记号。横切模块归位，问号的落点轻旋后停住。</desc>
+<style>
+@keyframes query-register{0%,15%,85%,100%{transform:translateX(0)}35%,50%{transform:translateX(5px)}65%{transform:translateX(0)}}
+@keyframes query-stop{0%,50%,100%{transform:rotate(0)}65%,85%{transform:rotate(90deg)}}
+.query-register{animation:query-register 7.2s cubic-bezier(.65,0,.25,1) infinite}.query-stop{transform-origin:65px 105px;animation:query-stop 7.2s cubic-bezier(.65,0,.25,1) infinite}
+
+@media(prefers-reduced-motion:reduce){svg *{animation:none!important}}</style>
+
+<g fill="currentColor"><path class="query-register" d="M24 50V18h82v48L76 84v6H54V72l30-18V40H46v10Z"/>
+<rect class="query-stop" x="54" y="94" width="22" height="22"/></g>
+</svg>
+</div><div class="appmark"><svg xmlns="http://www.w3.org/2000/svg" width="128" height="128" viewBox="0 0 128 128" fill="none" style="color:var(--logo-ink,#c7a36b)" role="img" aria-label="断问">
+<title>断问 · QUERY / CUT</title><desc>把产品名字里的追问，压缩成一个有棱角的记号。横切模块归位，问号的落点轻旋后停住。</desc>
+<style>
+@keyframes query-register{0%,15%,85%,100%{transform:translateX(0)}35%,50%{transform:translateX(5px)}65%{transform:translateX(0)}}
+@keyframes query-stop{0%,50%,100%{transform:rotate(0)}65%,85%{transform:rotate(90deg)}}
+.query-register{animation:query-register 7.2s cubic-bezier(.65,0,.25,1) infinite}.query-stop{transform-origin:65px 105px;animation:query-stop 7.2s cubic-bezier(.65,0,.25,1) infinite}
+
+@media(prefers-reduced-motion:reduce){svg *{animation:none!important}}</style>
+
+<g fill="currentColor"><path class="query-register" d="M24 50V18h82v48L76 84v6H54V72l30-18V40H46v10Z"/>
+<rect class="query-stop" x="54" y="94" width="22" height="22"/></g>
+</svg>
+<b>What the hell<br>are you planning?</b></div></div></article><article><div class="cardtop"><span>10 / COUNTERFORM</span><a href="10-counterform.svg" download>下载 SVG ↗</a></div><div class="hero"><svg xmlns="http://www.w3.org/2000/svg" width="128" height="128" viewBox="0 0 128 128" fill="none" style="color:var(--logo-ink,#c7a36b)" role="img" aria-label="合证">
+<title>合证 · COUNTERFORM</title><desc>两组证据相向靠拢，结论藏在中间的留白里。两片结构展开、合拢；中心菱形始终可辨。</desc>
+<style>
+@keyframes counter-left{0%,15%,85%,100%{transform:translateX(0)}40%,55%{transform:translateX(-6px)}}
+@keyframes counter-right{0%,15%,85%,100%{transform:translateX(0)}40%,55%{transform:translateX(6px)}}
+.counter-left{animation:counter-left 7s cubic-bezier(.65,0,.25,1) infinite}.counter-right{animation:counter-right 7s cubic-bezier(.65,0,.25,1) infinite}
+
+@media(prefers-reduced-motion:reduce){svg *{animation:none!important}}</style>
+
+<g fill="currentColor"><path class="counter-left" d="m55 18 16 16-30 30 30 30-16 16L9 64Z"/>
+<path class="counter-right" d="m73 18 46 46-46 46-16-16 30-30-30-30Z"/></g>
+</svg>
+</div><h2>合证</h2><p>两组证据相向靠拢，结论藏在中间的留白里。</p><div class="motion-note">两片结构展开、合拢；中心菱形始终可辨。</div><div class="samples"><span>实际尺寸</span><div class="s24"><svg xmlns="http://www.w3.org/2000/svg" width="128" height="128" viewBox="0 0 128 128" fill="none" style="color:var(--logo-ink,#c7a36b)" role="img" aria-label="合证">
+<title>合证 · COUNTERFORM</title><desc>两组证据相向靠拢，结论藏在中间的留白里。两片结构展开、合拢；中心菱形始终可辨。</desc>
+<style>
+@keyframes counter-left{0%,15%,85%,100%{transform:translateX(0)}40%,55%{transform:translateX(-6px)}}
+@keyframes counter-right{0%,15%,85%,100%{transform:translateX(0)}40%,55%{transform:translateX(6px)}}
+.counter-left{animation:counter-left 7s cubic-bezier(.65,0,.25,1) infinite}.counter-right{animation:counter-right 7s cubic-bezier(.65,0,.25,1) infinite}
+
+@media(prefers-reduced-motion:reduce){svg *{animation:none!important}}</style>
+
+<g fill="currentColor"><path class="counter-left" d="m55 18 16 16-30 30 30 30-16 16L9 64Z"/>
+<path class="counter-right" d="m73 18 46 46-46 46-16-16 30-30-30-30Z"/></g>
+</svg>
+</div><div class="s32"><svg xmlns="http://www.w3.org/2000/svg" width="128" height="128" viewBox="0 0 128 128" fill="none" style="color:var(--logo-ink,#c7a36b)" role="img" aria-label="合证">
+<title>合证 · COUNTERFORM</title><desc>两组证据相向靠拢，结论藏在中间的留白里。两片结构展开、合拢；中心菱形始终可辨。</desc>
+<style>
+@keyframes counter-left{0%,15%,85%,100%{transform:translateX(0)}40%,55%{transform:translateX(-6px)}}
+@keyframes counter-right{0%,15%,85%,100%{transform:translateX(0)}40%,55%{transform:translateX(6px)}}
+.counter-left{animation:counter-left 7s cubic-bezier(.65,0,.25,1) infinite}.counter-right{animation:counter-right 7s cubic-bezier(.65,0,.25,1) infinite}
+
+@media(prefers-reduced-motion:reduce){svg *{animation:none!important}}</style>
+
+<g fill="currentColor"><path class="counter-left" d="m55 18 16 16-30 30 30 30-16 16L9 64Z"/>
+<path class="counter-right" d="m73 18 46 46-46 46-16-16 30-30-30-30Z"/></g>
+</svg>
+</div><div class="s48"><svg xmlns="http://www.w3.org/2000/svg" width="128" height="128" viewBox="0 0 128 128" fill="none" style="color:var(--logo-ink,#c7a36b)" role="img" aria-label="合证">
+<title>合证 · COUNTERFORM</title><desc>两组证据相向靠拢，结论藏在中间的留白里。两片结构展开、合拢；中心菱形始终可辨。</desc>
+<style>
+@keyframes counter-left{0%,15%,85%,100%{transform:translateX(0)}40%,55%{transform:translateX(-6px)}}
+@keyframes counter-right{0%,15%,85%,100%{transform:translateX(0)}40%,55%{transform:translateX(6px)}}
+.counter-left{animation:counter-left 7s cubic-bezier(.65,0,.25,1) infinite}.counter-right{animation:counter-right 7s cubic-bezier(.65,0,.25,1) infinite}
+
+@media(prefers-reduced-motion:reduce){svg *{animation:none!important}}</style>
+
+<g fill="currentColor"><path class="counter-left" d="m55 18 16 16-30 30 30 30-16 16L9 64Z"/>
+<path class="counter-right" d="m73 18 46 46-46 46-16-16 30-30-30-30Z"/></g>
+</svg>
+</div><div class="appmark"><svg xmlns="http://www.w3.org/2000/svg" width="128" height="128" viewBox="0 0 128 128" fill="none" style="color:var(--logo-ink,#c7a36b)" role="img" aria-label="合证">
+<title>合证 · COUNTERFORM</title><desc>两组证据相向靠拢，结论藏在中间的留白里。两片结构展开、合拢；中心菱形始终可辨。</desc>
+<style>
+@keyframes counter-left{0%,15%,85%,100%{transform:translateX(0)}40%,55%{transform:translateX(-6px)}}
+@keyframes counter-right{0%,15%,85%,100%{transform:translateX(0)}40%,55%{transform:translateX(6px)}}
+.counter-left{animation:counter-left 7s cubic-bezier(.65,0,.25,1) infinite}.counter-right{animation:counter-right 7s cubic-bezier(.65,0,.25,1) infinite}
+
+@media(prefers-reduced-motion:reduce){svg *{animation:none!important}}</style>
+
+<g fill="currentColor"><path class="counter-left" d="m55 18 16 16-30 30 30 30-16 16L9 64Z"/>
+<path class="counter-right" d="m73 18 46 46-46 46-16-16 30-30-30-30Z"/></g>
+</svg>
+<b>What the hell<br>are you planning?</b></div></div></article><article><div class="cardtop"><span>11 / FOLIO / P</span><a href="11-folio-p.svg" download>下载 SVG ↗</a></div><div class="hero"><svg xmlns="http://www.w3.org/2000/svg" width="128" height="128" viewBox="0 0 128 128" fill="none" style="color:var(--logo-ink,#c7a36b)" role="img" aria-label="折页 P">
+<title>折页 P · FOLIO / P</title><desc>Planning 的字母骨架，融入研究资料的折页。圆弧向书脊归位，页角随之轻轻折起。</desc>
+<style>
+@keyframes folio-fit{0%,15%,85%,100%{transform:translateX(0)}38%,53%{transform:translateX(7px)}}
+@keyframes folio-fold{0%,20%,100%{transform:rotate(0)}50%,70%{transform:rotate(-12deg)}}
+.folio-fit{animation:folio-fit 7.5s cubic-bezier(.65,0,.25,1) infinite}.folio-fold{transform-origin:53px 80px;animation:folio-fold 7.5s cubic-bezier(.65,0,.25,1) infinite}
+
+@media(prefers-reduced-motion:reduce){svg *{animation:none!important}}</style>
+
+<g fill="currentColor"><path d="M25 20h22v88H25Z"/>
+<path class="folio-fit" d="M53 20h24c19 0 30 10 30 27S96 74 77 74H53V54h23c7 0 10-2 10-7s-3-7-10-7H53Z"/>
+<path class="folio-fold" d="M53 80h28l-28 28Z"/></g>
+</svg>
+</div><h2>折页 P</h2><p>Planning 的字母骨架，融入研究资料的折页。</p><div class="motion-note">圆弧向书脊归位，页角随之轻轻折起。</div><div class="samples"><span>实际尺寸</span><div class="s24"><svg xmlns="http://www.w3.org/2000/svg" width="128" height="128" viewBox="0 0 128 128" fill="none" style="color:var(--logo-ink,#c7a36b)" role="img" aria-label="折页 P">
+<title>折页 P · FOLIO / P</title><desc>Planning 的字母骨架，融入研究资料的折页。圆弧向书脊归位，页角随之轻轻折起。</desc>
+<style>
+@keyframes folio-fit{0%,15%,85%,100%{transform:translateX(0)}38%,53%{transform:translateX(7px)}}
+@keyframes folio-fold{0%,20%,100%{transform:rotate(0)}50%,70%{transform:rotate(-12deg)}}
+.folio-fit{animation:folio-fit 7.5s cubic-bezier(.65,0,.25,1) infinite}.folio-fold{transform-origin:53px 80px;animation:folio-fold 7.5s cubic-bezier(.65,0,.25,1) infinite}
+
+@media(prefers-reduced-motion:reduce){svg *{animation:none!important}}</style>
+
+<g fill="currentColor"><path d="M25 20h22v88H25Z"/>
+<path class="folio-fit" d="M53 20h24c19 0 30 10 30 27S96 74 77 74H53V54h23c7 0 10-2 10-7s-3-7-10-7H53Z"/>
+<path class="folio-fold" d="M53 80h28l-28 28Z"/></g>
+</svg>
+</div><div class="s32"><svg xmlns="http://www.w3.org/2000/svg" width="128" height="128" viewBox="0 0 128 128" fill="none" style="color:var(--logo-ink,#c7a36b)" role="img" aria-label="折页 P">
+<title>折页 P · FOLIO / P</title><desc>Planning 的字母骨架，融入研究资料的折页。圆弧向书脊归位，页角随之轻轻折起。</desc>
+<style>
+@keyframes folio-fit{0%,15%,85%,100%{transform:translateX(0)}38%,53%{transform:translateX(7px)}}
+@keyframes folio-fold{0%,20%,100%{transform:rotate(0)}50%,70%{transform:rotate(-12deg)}}
+.folio-fit{animation:folio-fit 7.5s cubic-bezier(.65,0,.25,1) infinite}.folio-fold{transform-origin:53px 80px;animation:folio-fold 7.5s cubic-bezier(.65,0,.25,1) infinite}
+
+@media(prefers-reduced-motion:reduce){svg *{animation:none!important}}</style>
+
+<g fill="currentColor"><path d="M25 20h22v88H25Z"/>
+<path class="folio-fit" d="M53 20h24c19 0 30 10 30 27S96 74 77 74H53V54h23c7 0 10-2 10-7s-3-7-10-7H53Z"/>
+<path class="folio-fold" d="M53 80h28l-28 28Z"/></g>
+</svg>
+</div><div class="s48"><svg xmlns="http://www.w3.org/2000/svg" width="128" height="128" viewBox="0 0 128 128" fill="none" style="color:var(--logo-ink,#c7a36b)" role="img" aria-label="折页 P">
+<title>折页 P · FOLIO / P</title><desc>Planning 的字母骨架，融入研究资料的折页。圆弧向书脊归位，页角随之轻轻折起。</desc>
+<style>
+@keyframes folio-fit{0%,15%,85%,100%{transform:translateX(0)}38%,53%{transform:translateX(7px)}}
+@keyframes folio-fold{0%,20%,100%{transform:rotate(0)}50%,70%{transform:rotate(-12deg)}}
+.folio-fit{animation:folio-fit 7.5s cubic-bezier(.65,0,.25,1) infinite}.folio-fold{transform-origin:53px 80px;animation:folio-fold 7.5s cubic-bezier(.65,0,.25,1) infinite}
+
+@media(prefers-reduced-motion:reduce){svg *{animation:none!important}}</style>
+
+<g fill="currentColor"><path d="M25 20h22v88H25Z"/>
+<path class="folio-fit" d="M53 20h24c19 0 30 10 30 27S96 74 77 74H53V54h23c7 0 10-2 10-7s-3-7-10-7H53Z"/>
+<path class="folio-fold" d="M53 80h28l-28 28Z"/></g>
+</svg>
+</div><div class="appmark"><svg xmlns="http://www.w3.org/2000/svg" width="128" height="128" viewBox="0 0 128 128" fill="none" style="color:var(--logo-ink,#c7a36b)" role="img" aria-label="折页 P">
+<title>折页 P · FOLIO / P</title><desc>Planning 的字母骨架，融入研究资料的折页。圆弧向书脊归位，页角随之轻轻折起。</desc>
+<style>
+@keyframes folio-fit{0%,15%,85%,100%{transform:translateX(0)}38%,53%{transform:translateX(7px)}}
+@keyframes folio-fold{0%,20%,100%{transform:rotate(0)}50%,70%{transform:rotate(-12deg)}}
+.folio-fit{animation:folio-fit 7.5s cubic-bezier(.65,0,.25,1) infinite}.folio-fold{transform-origin:53px 80px;animation:folio-fold 7.5s cubic-bezier(.65,0,.25,1) infinite}
+
+@media(prefers-reduced-motion:reduce){svg *{animation:none!important}}</style>
+
+<g fill="currentColor"><path d="M25 20h22v88H25Z"/>
+<path class="folio-fit" d="M53 20h24c19 0 30 10 30 27S96 74 77 74H53V54h23c7 0 10-2 10-7s-3-7-10-7H53Z"/>
+<path class="folio-fold" d="M53 80h28l-28 28Z"/></g>
+</svg>
+<b>What the hell<br>are you planning?</b></div></div></article><article><div class="cardtop"><span>12 / ASSEMBLY</span><a href="12-assembly.svg" download>下载 SVG ↗</a></div><div class="hero"><svg xmlns="http://www.w3.org/2000/svg" width="128" height="128" viewBox="0 0 128 128" fill="none" style="color:var(--logo-ink,#c7a36b)" role="img" aria-label="构序">
+<title>构序 · ASSEMBLY</title><desc>将零散模块组织成有序、可持续运转的系统。四个模块分解后重新拼合，停顿时形成完整标志。</desc>
+<style>
+@keyframes assembly-a{0%,15%,85%,100%{transform:translate(0,0)}40%,55%{transform:translate(-4px,-4px)}}
+@keyframes assembly-b{0%,15%,85%,100%{transform:translate(0,0)}40%,55%{transform:translate(4px,-4px)}}
+@keyframes assembly-c{0%,15%,85%,100%{transform:translate(0,0)}40%,55%{transform:translate(4px,4px)}}
+@keyframes assembly-d{0%,15%,85%,100%{transform:translate(0,0)}40%,55%{transform:translate(-4px,4px)}}
+.assembly-a{animation:assembly-a 8s cubic-bezier(.65,0,.25,1) infinite}.assembly-b{animation:assembly-b 8s cubic-bezier(.65,0,.25,1) infinite}.assembly-c{animation:assembly-c 8s cubic-bezier(.65,0,.25,1) infinite}.assembly-d{animation:assembly-d 8s cubic-bezier(.65,0,.25,1) infinite}
+
+@media(prefers-reduced-motion:reduce){svg *{animation:none!important}}</style>
+
+<g fill="currentColor"><g class="assembly-a"><path d="M46 20h62v18H46Z"/></g>
+<g class="assembly-b"><path transform="rotate(90 64 64)" d="M46 20h62v18H46Z"/></g>
+<g class="assembly-c"><path transform="rotate(180 64 64)" d="M46 20h62v18H46Z"/></g>
+<g class="assembly-d"><path transform="rotate(270 64 64)" d="M46 20h62v18H46Z"/></g></g>
+</svg>
+</div><h2>构序</h2><p>将零散模块组织成有序、可持续运转的系统。</p><div class="motion-note">四个模块分解后重新拼合，停顿时形成完整标志。</div><div class="samples"><span>实际尺寸</span><div class="s24"><svg xmlns="http://www.w3.org/2000/svg" width="128" height="128" viewBox="0 0 128 128" fill="none" style="color:var(--logo-ink,#c7a36b)" role="img" aria-label="构序">
+<title>构序 · ASSEMBLY</title><desc>将零散模块组织成有序、可持续运转的系统。四个模块分解后重新拼合，停顿时形成完整标志。</desc>
+<style>
+@keyframes assembly-a{0%,15%,85%,100%{transform:translate(0,0)}40%,55%{transform:translate(-4px,-4px)}}
+@keyframes assembly-b{0%,15%,85%,100%{transform:translate(0,0)}40%,55%{transform:translate(4px,-4px)}}
+@keyframes assembly-c{0%,15%,85%,100%{transform:translate(0,0)}40%,55%{transform:translate(4px,4px)}}
+@keyframes assembly-d{0%,15%,85%,100%{transform:translate(0,0)}40%,55%{transform:translate(-4px,4px)}}
+.assembly-a{animation:assembly-a 8s cubic-bezier(.65,0,.25,1) infinite}.assembly-b{animation:assembly-b 8s cubic-bezier(.65,0,.25,1) infinite}.assembly-c{animation:assembly-c 8s cubic-bezier(.65,0,.25,1) infinite}.assembly-d{animation:assembly-d 8s cubic-bezier(.65,0,.25,1) infinite}
+
+@media(prefers-reduced-motion:reduce){svg *{animation:none!important}}</style>
+
+<g fill="currentColor"><g class="assembly-a"><path d="M46 20h62v18H46Z"/></g>
+<g class="assembly-b"><path transform="rotate(90 64 64)" d="M46 20h62v18H46Z"/></g>
+<g class="assembly-c"><path transform="rotate(180 64 64)" d="M46 20h62v18H46Z"/></g>
+<g class="assembly-d"><path transform="rotate(270 64 64)" d="M46 20h62v18H46Z"/></g></g>
+</svg>
+</div><div class="s32"><svg xmlns="http://www.w3.org/2000/svg" width="128" height="128" viewBox="0 0 128 128" fill="none" style="color:var(--logo-ink,#c7a36b)" role="img" aria-label="构序">
+<title>构序 · ASSEMBLY</title><desc>将零散模块组织成有序、可持续运转的系统。四个模块分解后重新拼合，停顿时形成完整标志。</desc>
+<style>
+@keyframes assembly-a{0%,15%,85%,100%{transform:translate(0,0)}40%,55%{transform:translate(-4px,-4px)}}
+@keyframes assembly-b{0%,15%,85%,100%{transform:translate(0,0)}40%,55%{transform:translate(4px,-4px)}}
+@keyframes assembly-c{0%,15%,85%,100%{transform:translate(0,0)}40%,55%{transform:translate(4px,4px)}}
+@keyframes assembly-d{0%,15%,85%,100%{transform:translate(0,0)}40%,55%{transform:translate(-4px,4px)}}
+.assembly-a{animation:assembly-a 8s cubic-bezier(.65,0,.25,1) infinite}.assembly-b{animation:assembly-b 8s cubic-bezier(.65,0,.25,1) infinite}.assembly-c{animation:assembly-c 8s cubic-bezier(.65,0,.25,1) infinite}.assembly-d{animation:assembly-d 8s cubic-bezier(.65,0,.25,1) infinite}
+
+@media(prefers-reduced-motion:reduce){svg *{animation:none!important}}</style>
+
+<g fill="currentColor"><g class="assembly-a"><path d="M46 20h62v18H46Z"/></g>
+<g class="assembly-b"><path transform="rotate(90 64 64)" d="M46 20h62v18H46Z"/></g>
+<g class="assembly-c"><path transform="rotate(180 64 64)" d="M46 20h62v18H46Z"/></g>
+<g class="assembly-d"><path transform="rotate(270 64 64)" d="M46 20h62v18H46Z"/></g></g>
+</svg>
+</div><div class="s48"><svg xmlns="http://www.w3.org/2000/svg" width="128" height="128" viewBox="0 0 128 128" fill="none" style="color:var(--logo-ink,#c7a36b)" role="img" aria-label="构序">
+<title>构序 · ASSEMBLY</title><desc>将零散模块组织成有序、可持续运转的系统。四个模块分解后重新拼合，停顿时形成完整标志。</desc>
+<style>
+@keyframes assembly-a{0%,15%,85%,100%{transform:translate(0,0)}40%,55%{transform:translate(-4px,-4px)}}
+@keyframes assembly-b{0%,15%,85%,100%{transform:translate(0,0)}40%,55%{transform:translate(4px,-4px)}}
+@keyframes assembly-c{0%,15%,85%,100%{transform:translate(0,0)}40%,55%{transform:translate(4px,4px)}}
+@keyframes assembly-d{0%,15%,85%,100%{transform:translate(0,0)}40%,55%{transform:translate(-4px,4px)}}
+.assembly-a{animation:assembly-a 8s cubic-bezier(.65,0,.25,1) infinite}.assembly-b{animation:assembly-b 8s cubic-bezier(.65,0,.25,1) infinite}.assembly-c{animation:assembly-c 8s cubic-bezier(.65,0,.25,1) infinite}.assembly-d{animation:assembly-d 8s cubic-bezier(.65,0,.25,1) infinite}
+
+@media(prefers-reduced-motion:reduce){svg *{animation:none!important}}</style>
+
+<g fill="currentColor"><g class="assembly-a"><path d="M46 20h62v18H46Z"/></g>
+<g class="assembly-b"><path transform="rotate(90 64 64)" d="M46 20h62v18H46Z"/></g>
+<g class="assembly-c"><path transform="rotate(180 64 64)" d="M46 20h62v18H46Z"/></g>
+<g class="assembly-d"><path transform="rotate(270 64 64)" d="M46 20h62v18H46Z"/></g></g>
+</svg>
+</div><div class="appmark"><svg xmlns="http://www.w3.org/2000/svg" width="128" height="128" viewBox="0 0 128 128" fill="none" style="color:var(--logo-ink,#c7a36b)" role="img" aria-label="构序">
+<title>构序 · ASSEMBLY</title><desc>将零散模块组织成有序、可持续运转的系统。四个模块分解后重新拼合，停顿时形成完整标志。</desc>
+<style>
+@keyframes assembly-a{0%,15%,85%,100%{transform:translate(0,0)}40%,55%{transform:translate(-4px,-4px)}}
+@keyframes assembly-b{0%,15%,85%,100%{transform:translate(0,0)}40%,55%{transform:translate(4px,-4px)}}
+@keyframes assembly-c{0%,15%,85%,100%{transform:translate(0,0)}40%,55%{transform:translate(4px,4px)}}
+@keyframes assembly-d{0%,15%,85%,100%{transform:translate(0,0)}40%,55%{transform:translate(-4px,4px)}}
+.assembly-a{animation:assembly-a 8s cubic-bezier(.65,0,.25,1) infinite}.assembly-b{animation:assembly-b 8s cubic-bezier(.65,0,.25,1) infinite}.assembly-c{animation:assembly-c 8s cubic-bezier(.65,0,.25,1) infinite}.assembly-d{animation:assembly-d 8s cubic-bezier(.65,0,.25,1) infinite}
+
+@media(prefers-reduced-motion:reduce){svg *{animation:none!important}}</style>
+
+<g fill="currentColor"><g class="assembly-a"><path d="M46 20h62v18H46Z"/></g>
+<g class="assembly-b"><path transform="rotate(90 64 64)" d="M46 20h62v18H46Z"/></g>
+<g class="assembly-c"><path transform="rotate(180 64 64)" d="M46 20h62v18H46Z"/></g>
+<g class="assembly-d"><path transform="rotate(270 64 64)" d="M46 20h62v18H46Z"/></g></g>
+</svg>
+<b>What the hell<br>are you planning?</b></div></div></article></section><div class="sources"><div class="eyebrow">DESIGN RESEARCH / 参考方法，不复用图形</div><p><a href="https://www.pentagram.com/work/intrinsic" target="_blank" rel="noopener">Pentagram · Intrinsic ↗</a><a href="https://variable.io/hebbia-motion-tool/" target="_blank" rel="noopener">Variable · Hebbia ↗</a><a href="https://bpando.org/2026/10/27/andstudio-werf-rotterdam-bar-identity-design/" target="_blank" rel="noopener">BP&O · Werf ↗</a></p><p>提取的方法：用少量几何规则构成标志；让留白保持辨识度；动画采用“展开—归位—停顿”的节奏。四款图形均为此次绘制，未描摹案例 Logo。</p></div><footer>09 更有个性，呼应产品名字；10 更抽象、紧凑；11 字母辨识更直接；12 更偏系统与秩序。<br>独立 SVG · 无外部依赖 · 可切换单色与暖金 · 支持减少动态效果 · 尚未替换应用 Logo。</footer></main><script>
+const ink=document.querySelector('#ink');ink.onclick=()=>{const v=document.body.classList.toggle('mono');ink.textContent=v?'暖金配色':'单色检验';ink.setAttribute('aria-pressed',String(v))};
+const pause=document.querySelector('#pause'),theme=document.querySelector('#theme');pause.onclick=()=>{const v=document.body.classList.toggle('paused');pause.textContent=v?'播放动画':'暂停动画';pause.setAttribute('aria-pressed',String(v))};theme.onclick=()=>{const v=document.body.classList.toggle('light');theme.textContent=v?'深色背景':'浅色背景';theme.setAttribute('aria-pressed',String(v))};
+</script></html>

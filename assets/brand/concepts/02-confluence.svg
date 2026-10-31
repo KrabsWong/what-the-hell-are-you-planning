@@ -1,0 +1,21 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="128" height="128" viewBox="0 0 128 128" fill="none" role="img" aria-label="线索汇聚">
+<title>线索汇聚 · CONFLUENCE</title>
+<desc>把分散的证据，汇成一个清晰的结论。三条线索依次点亮，沿路径汇入右侧结论。</desc>
+<style>
+@keyframes confluence-flow{0%,12%{stroke-dashoffset:100;opacity:0}20%{opacity:1}62%,76%{stroke-dashoffset:0;opacity:1}95%,100%{stroke-dashoffset:-100;opacity:0}}
+@keyframes confluence-core{0%,48%,100%{transform:scale(1)}65%,78%{transform:scale(1.12)}}
+.confluence-trace{stroke-dasharray:100 100;animation:confluence-flow 6s ease-in-out infinite}
+.confluence-two{animation-delay:.22s}.confluence-three{animation-delay:.44s}
+.confluence-core{transform-origin:99px 64px;animation:confluence-core 6s ease-in-out infinite}
+
+@media (prefers-reduced-motion: reduce) { svg * {animation:none!important} }
+</style>
+
+<g fill="none" stroke="#c7a36b" stroke-width="7" stroke-linecap="round" stroke-linejoin="round">
+<path d="M27 29h16c18 0 13 35 36 35h12M27 64h64M27 99h16c18 0 13-35 36-35h12" opacity=".42"/>
+<path class="confluence-trace" pathLength="100" d="M27 29h16c18 0 13 35 36 35h12"/>
+<path class="confluence-trace confluence-two" pathLength="100" d="M27 64h64"/>
+<path class="confluence-trace confluence-three" pathLength="100" d="M27 99h16c18 0 13-35 36-35h12"/>
+</g><g fill="#c7a36b"><rect x="17" y="19" width="20" height="20" rx="6"/><rect x="17" y="54" width="20" height="20" rx="6"/><rect x="17" y="89" width="20" height="20" rx="6"/></g>
+<path class="confluence-core" d="m99 49 15 15-15 15-15-15Z" fill="#86b9a0"/>
+</svg>

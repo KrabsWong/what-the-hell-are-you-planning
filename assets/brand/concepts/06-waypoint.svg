@@ -1,0 +1,15 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="128" height="128" viewBox="0 0 128 128" fill="none" role="img" aria-label="路径 W">
+<title>路径 W · WAYPOINT</title><desc>把模糊的想法，走成可执行的路径。光迹沿 W 行进，在终点短暂停留。</desc>
+<style>
+@keyframes waypoint-trace{0%,8%{stroke-dashoffset:100;opacity:0}15%{opacity:1}70%,82%{stroke-dashoffset:0;opacity:1}100%{stroke-dashoffset:0;opacity:0}}
+@keyframes waypoint-end{0%,62%,100%{transform:scale(1)}76%,84%{transform:scale(1.23)}}
+.waypoint-trace{stroke-dasharray:100 100;animation:waypoint-trace 7s ease-in-out infinite}
+.waypoint-end{transform-origin:103px 35px;animation:waypoint-end 7s ease-in-out infinite}
+
+@media(prefers-reduced-motion:reduce){svg *{animation:none!important}}</style>
+
+<path d="m25 35 19 58 20-38 20 38 19-58" fill="none" stroke="#c7a36b" stroke-width="12" stroke-linecap="round" stroke-linejoin="round"/>
+<path class="waypoint-trace" pathLength="100" d="m25 35 19 58 20-38 20 38 19-58" fill="none" stroke="#f4e4bf" stroke-width="5" stroke-linecap="round" stroke-linejoin="round"/>
+<circle cx="25" cy="35" r="8" fill="#c7a36b"/>
+<path class="waypoint-end" d="m103 24 11 11-11 11-11-11Z" fill="#86b9a0"/>
+</svg>

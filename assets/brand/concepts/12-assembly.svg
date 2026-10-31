@@ -1,0 +1,16 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="128" height="128" viewBox="0 0 128 128" fill="none" style="color:var(--logo-ink,#c7a36b)" role="img" aria-label="构序">
+<title>构序 · ASSEMBLY</title><desc>将零散模块组织成有序、可持续运转的系统。四个模块分解后重新拼合，停顿时形成完整标志。</desc>
+<style>
+@keyframes assembly-a{0%,15%,85%,100%{transform:translate(0,0)}40%,55%{transform:translate(-4px,-4px)}}
+@keyframes assembly-b{0%,15%,85%,100%{transform:translate(0,0)}40%,55%{transform:translate(4px,-4px)}}
+@keyframes assembly-c{0%,15%,85%,100%{transform:translate(0,0)}40%,55%{transform:translate(4px,4px)}}
+@keyframes assembly-d{0%,15%,85%,100%{transform:translate(0,0)}40%,55%{transform:translate(-4px,4px)}}
+.assembly-a{animation:assembly-a 8s cubic-bezier(.65,0,.25,1) infinite}.assembly-b{animation:assembly-b 8s cubic-bezier(.65,0,.25,1) infinite}.assembly-c{animation:assembly-c 8s cubic-bezier(.65,0,.25,1) infinite}.assembly-d{animation:assembly-d 8s cubic-bezier(.65,0,.25,1) infinite}
+
+@media(prefers-reduced-motion:reduce){svg *{animation:none!important}}</style>
+
+<g fill="currentColor"><g class="assembly-a"><path d="M46 20h62v18H46Z"/></g>
+<g class="assembly-b"><path transform="rotate(90 64 64)" d="M46 20h62v18H46Z"/></g>
+<g class="assembly-c"><path transform="rotate(180 64 64)" d="M46 20h62v18H46Z"/></g>
+<g class="assembly-d"><path transform="rotate(270 64 64)" d="M46 20h62v18H46Z"/></g></g>
+</svg>

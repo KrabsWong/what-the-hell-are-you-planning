@@ -1,0 +1,20 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="128" height="128" viewBox="0 0 128 128" fill="none" role="img" aria-label="研究层叠">
+<title>研究层叠 · STRATA</title>
+<desc>Evidence → Analysis → Report，层层构建。三层结构缓慢展开、归拢，保持完整轮廓。</desc>
+<style>
+@keyframes strata-top{0%,100%{transform:translateY(0)}45%,65%{transform:translateY(-5px)}}
+@keyframes strata-bottom{0%,100%{transform:translateY(0)}45%,65%{transform:translateY(5px)}}
+@keyframes strata-glint{0%,100%{opacity:.45}50%{opacity:1}}
+.strata-top{animation:strata-top 6.5s ease-in-out infinite}.strata-bottom{animation:strata-bottom 6.5s ease-in-out infinite}.strata-glint{animation:strata-glint 6.5s ease-in-out infinite}
+
+@media (prefers-reduced-motion: reduce) { svg * {animation:none!important} }
+</style>
+
+<g stroke-linejoin="round" stroke-linecap="round">
+<path class="strata-bottom" d="m23 78 41 25 41-25" fill="none" stroke="#86b9a0" stroke-width="7"/>
+<path d="m23 61 41 25 41-25" fill="none" stroke="#c7a36b" stroke-width="7" opacity=".7"/>
+<g class="strata-top"><path d="m64 22 41 25-41 25-41-25Z" fill="#c7a36b"/>
+<path d="m64 34 21 13-21 13-21-13Z" fill="#f4e4bf" opacity=".85"/>
+<path class="strata-glint" d="m64 43 7 4-7 4-7-4Z" fill="#8b6633"/></g>
+</g>
+</svg>

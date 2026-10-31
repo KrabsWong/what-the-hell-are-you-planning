@@ -1,0 +1,13 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="128" height="128" viewBox="0 0 128 128" fill="none" style="color:var(--logo-ink,#c7a36b)" role="img" aria-label="折页 P">
+<title>折页 P · FOLIO / P</title><desc>Planning 的字母骨架，融入研究资料的折页。圆弧向书脊归位，页角随之轻轻折起。</desc>
+<style>
+@keyframes folio-fit{0%,15%,85%,100%{transform:translateX(0)}38%,53%{transform:translateX(7px)}}
+@keyframes folio-fold{0%,20%,100%{transform:rotate(0)}50%,70%{transform:rotate(-12deg)}}
+.folio-fit{animation:folio-fit 7.5s cubic-bezier(.65,0,.25,1) infinite}.folio-fold{transform-origin:53px 80px;animation:folio-fold 7.5s cubic-bezier(.65,0,.25,1) infinite}
+
+@media(prefers-reduced-motion:reduce){svg *{animation:none!important}}</style>
+
+<g fill="currentColor"><path d="M25 20h22v88H25Z"/>
+<path class="folio-fit" d="M53 20h24c19 0 30 10 30 27S96 74 77 74H53V54h23c7 0 10-2 10-7s-3-7-10-7H53Z"/>
+<path class="folio-fold" d="M53 80h28l-28 28Z"/></g>
+</svg>

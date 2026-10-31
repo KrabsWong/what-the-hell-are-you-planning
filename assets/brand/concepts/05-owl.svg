@@ -1,0 +1,15 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="128" height="128" viewBox="0 0 128 128" fill="none" role="img" aria-label="夜枭">
+<title>夜枭 · OWL</title><desc>保持好奇，也保持审慎。双眼偶尔轻眨，眉羽缓慢抬起。</desc>
+<style>
+@keyframes owl-blink{0%,40%,46%,100%{transform:scaleY(1)}43%{transform:scaleY(.08)}}
+@keyframes owl-brow{0%,100%{transform:translateY(0)}50%{transform:translateY(-3px)}}
+.owl-eyes{transform-origin:64px 61px;animation:owl-blink 7s ease-in-out infinite}.owl-brow{animation:owl-brow 7s ease-in-out infinite}
+
+@media(prefers-reduced-motion:reduce){svg *{animation:none!important}}</style>
+
+<path d="m22 24 23 12h38l23-12-6 53c-3 20-22 32-36 37-14-5-33-17-36-37Z" fill="#c7a36b"/>
+<path d="m64 36 19 0 23-12-6 53c-3 20-22 32-36 37Z" fill="#b58c50"/>
+<g class="owl-eyes" fill="none" stroke="#f3dfb8" stroke-width="7"><circle cx="46" cy="61" r="12"/><circle cx="82" cy="61" r="12"/></g>
+<g class="owl-brow" fill="none" stroke="#79572d" stroke-width="5" stroke-linecap="round"><path d="m32 42 20 5M96 42l-20 5"/></g>
+<path d="m56 80 8 12 8-12Z" fill="#86b9a0"/>
+</svg>

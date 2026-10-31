@@ -1,0 +1,16 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="128" height="128" viewBox="0 0 128 128" fill="none" role="img" aria-label="问号火花">
+<title>问号火花 · INQUIRY</title>
+<desc>保留产品名字里的好奇与一点不羁。问题弧线轻轻呼吸，灵感星芒短暂闪动。</desc>
+<style>
+@keyframes inquiry-arc{0%,100%{transform:rotate(-3deg)}45%,65%{transform:rotate(3deg)}}
+@keyframes inquiry-spark{0%,25%,100%{transform:scale(.84) rotate(-8deg);opacity:.7}48%,63%{transform:scale(1) rotate(8deg);opacity:1}}
+.inquiry-arc{transform-origin:59px 60px;animation:inquiry-arc 7s ease-in-out infinite}
+.inquiry-spark{transform-origin:99px 27px;animation:inquiry-spark 7s ease-in-out infinite}
+
+@media (prefers-reduced-motion: reduce) { svg * {animation:none!important} }
+</style>
+
+<path class="inquiry-arc" d="M33 46c0-16 11-27 27-27 17 0 28 11 28 25 0 12-7 18-18 24-9 5-11 9-11 16" fill="none" stroke="#c7a36b" stroke-width="12" stroke-linecap="round"/>
+<path d="m59 94 10 10-10 10-10-10Z" fill="#86b9a0"/>
+<path class="inquiry-spark" d="m99 13 4 10 10 4-10 4-4 10-4-10-10-4 10-4Z" fill="#e6c993"/>
+</svg>

@@ -1,0 +1,12 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="128" height="128" viewBox="0 0 128 128" fill="none" style="color:var(--logo-ink,#c7a36b)" role="img" aria-label="断问">
+<title>断问 · QUERY / CUT</title><desc>把产品名字里的追问，压缩成一个有棱角的记号。横切模块归位，问号的落点轻旋后停住。</desc>
+<style>
+@keyframes query-register{0%,15%,85%,100%{transform:translateX(0)}35%,50%{transform:translateX(5px)}65%{transform:translateX(0)}}
+@keyframes query-stop{0%,50%,100%{transform:rotate(0)}65%,85%{transform:rotate(90deg)}}
+.query-register{animation:query-register 7.2s cubic-bezier(.65,0,.25,1) infinite}.query-stop{transform-origin:65px 105px;animation:query-stop 7.2s cubic-bezier(.65,0,.25,1) infinite}
+
+@media(prefers-reduced-motion:reduce){svg *{animation:none!important}}</style>
+
+<g fill="currentColor"><path class="query-register" d="M24 50V18h82v48L76 84v6H54V72l30-18V40H46v10Z"/>
+<rect class="query-stop" x="54" y="94" width="22" height="22"/></g>
+</svg>

@@ -1,0 +1,13 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="128" height="128" viewBox="0 0 128 128" fill="none" role="img" aria-label="星火">
+<title>星火 · EMBER</title><desc>让一个问题，点燃持续探索的动力。金色火焰轻轻摇曳，内部嫩芽缓慢生长。</desc>
+<style>
+@keyframes ember-sway{0%,100%{transform:rotate(-3deg) scaleX(.97)}50%{transform:rotate(3deg) scaleX(1.02)}}
+@keyframes ember-seed{0%,100%{transform:scale(.92)}50%{transform:scale(1.06)}}
+.ember-flame{transform-origin:64px 104px;animation:ember-sway 6s ease-in-out infinite}.ember-seed{transform-origin:64px 95px;animation:ember-seed 6s ease-in-out infinite}
+
+@media(prefers-reduced-motion:reduce){svg *{animation:none!important}}</style>
+
+<g class="ember-flame"><path d="M70 15c4 24-21 29-18 49 8-3 15-11 17-20 16 15 30 28 28 43-2 17-16 27-33 27S32 103 31 86c-2-26 31-40 39-71Z" fill="#c7a36b"/>
+<path d="M70 15c4 24-21 29-18 49 8-3 15-11 17-20 8 8 16 15 21 23-11-8-22-8-31 3-18 1-19-17-9-30 8-10 16-19 20-25Z" fill="#e6c993"/>
+<path class="ember-seed" d="M64 96c-14-1-20-12-16-23 13 0 21 9 16 23Zm0 0c-3-14 5-25 19-25 3 13-5 24-19 25Z" fill="#86b9a0"/></g>
+</svg>

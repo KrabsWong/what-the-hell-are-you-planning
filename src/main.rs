@@ -60,6 +60,7 @@ mod sqlite_storage;
 mod topic_qa;
 mod topic_views;
 mod ui_assets;
+mod brand;
 mod views;
 mod workspace;
 #[cfg(feature = "qa")]

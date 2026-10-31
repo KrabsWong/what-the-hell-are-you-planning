@@ -1,0 +1,17 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="128" height="128" viewBox="0 0 128 128" fill="none" role="img" aria-label="探索罗盘">
+<title>探索罗盘 · COMPASS</title>
+<desc>从问题出发，找到有依据的方向。指针轻微校准，轨道上的光点缓慢前行。</desc>
+<style>
+@keyframes compass-turn{0%,100%{transform:rotate(-9deg)}45%,65%{transform:rotate(9deg)}}
+@keyframes compass-orbit{to{transform:rotate(360deg)}}
+.compass-needle{transform-origin:64px 64px;animation:compass-turn 7s ease-in-out infinite}
+.compass-orbit{transform-origin:64px 64px;animation:compass-orbit 18s linear infinite}
+
+@media (prefers-reduced-motion: reduce) { svg * {animation:none!important} }
+</style>
+
+<circle cx="64" cy="64" r="42" stroke="#c7a36b" stroke-width="5" opacity=".3"/>
+<path d="M64 17v9M102 64h9M64 102v9M17 64h9" stroke="#c7a36b" stroke-width="5" stroke-linecap="round"/>
+<g class="compass-needle"><path d="M80 33 73 73 33 80 55 55Z" fill="#c7a36b"/><path d="m80 33-7 40-18-18Z" fill="#e6c993"/><path d="m73 73 22 22-40-22Z" fill="#86b9a0" opacity=".85"/></g>
+<g class="compass-orbit"><circle cx="64" cy="22" r="5" fill="#86b9a0"/></g>
+</svg>

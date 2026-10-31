@@ -633,7 +633,7 @@ impl TaskApp {
                 .unwrap_or_default(),
             Scope::Cycle(c) => c.clone(),
             Scope::Archive => "Archive".into(),
-            Scope::Workflow => "Stage workflow".into(),
+            Scope::Workflow => "Workflow stages".into(),
             Scope::Runs => "Progress & results".into(),
             Scope::Recovery => "Paused projects".into(),
             Scope::Research => "Market research".into(),
@@ -1280,6 +1280,17 @@ impl TaskApp {
         {
             let next = self.queued_runs.iter().position(|(id, _)| {
                 let candidate = self.store.runs.iter().find(|r| r.id == *id).unwrap();
+                if candidate.project_plan.is_none() {
+                    let topic = self.store.execution_topic(candidate.task_id);
+                    if self.active_runs.iter().filter_map(|active| self.store.runs.iter().find(|run| run.id == active.id))
+                        .chain(self.store.runs.iter().filter(|run| run.status == "Recovering" && self.store.is_recovery_candidate(run)))
+                        .any(|run| run.project_plan.is_none() && self.store.execution_topic(run.task_id) != topic)
+                    { return false; }
+                    let front = self.todo_batch.as_ref().and_then(|batch| batch.pending_topics(&self.store).first().copied())
+                        .or_else(|| self.queued_runs.iter().filter_map(|(id, _)| self.store.runs.iter().find(|run| run.id == *id && run.project_plan.is_none()))
+                            .next().map(|run| self.store.execution_topic(run.task_id)));
+                    if front.is_some_and(|front| front != topic) { return false; }
+                }
                 if candidate.auto_retry_attempt > 0 {
                     if candidate.retry_delay_remaining(chrono::Utc::now().timestamp()) > 0 {
                         return false;
@@ -1509,6 +1520,7 @@ impl TaskApp {
         for id in completed {
             self.complete_research_run(id, cx);
         }
+        self.advance_todo_batch(cx);
         self.dispatch_runs(cx);
         if self.queued_runs.iter().any(|(id, _)| self.store.runs.iter()
             .any(|run| run.id == *id && run.auto_retry_attempt > 0)) {

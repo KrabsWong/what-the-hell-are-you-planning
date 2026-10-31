@@ -171,6 +171,14 @@ impl TaskApp {
         if self.store.task_is_archived(goal) {
             return ("Archived", true, "Restore the topic or goal before continuing.");
         }
+        if let Some(batch) = self.todo_batch.as_ref().filter(|b| b.contains_pending(goal)) {
+            if matches!(batch.state, crate::batch::BatchState::Paused(_)) {
+                return ("Resume queue", false, "Continue the paused topic queue.");
+            }
+            if !batch.current_items(&self.store).contains(&goal) {
+                return ("Queued", true, "This topic will start automatically after the current topic finishes.");
+            }
+        }
         if self.goal_busy(goal) {
             return ("Running…", true, "Steps are running or queued. Open Steps to inspect progress or retry a blocked step individually.");
         }
@@ -179,6 +187,9 @@ impl TaskApp {
         }
         if !self.store.goal_execution_approved(goal) {
             return ("Awaiting approval", true, "Review the plan and move this goal to Todo first.");
+        }
+        if self.todo_batch.as_ref().is_some_and(|b| b.state != crate::batch::BatchState::Finished && !b.contains_pending(goal)) {
+            return ("Add to queue", false, "Add this approved goal to the topic queue. No execution slot is needed to queue it.");
         }
         let started = self.store.runs.iter().any(|r| r.project_plan.is_none()
             && self.store.owning_research_goal(r.task_id) == Some(goal));
@@ -300,7 +311,7 @@ impl TaskApp {
         row()
             .gap_1()
             .child(
-                quiet_button("goal-overview-tab", "Overview")
+                quiet_button("goal-overview-tab", "Overview").h(px(28.)).px_2().text_sm()
                     .selected(self.goal_steps_tab != Some(goal))
                     .on_click(cx.listener(|a, _, _, cx| {
                         a.goal_steps_tab = None;
@@ -308,7 +319,7 @@ impl TaskApp {
                     })),
             )
             .child(
-                quiet_button("goal-steps-tab", "Steps")
+                quiet_button("goal-steps-tab", "Steps").h(px(28.)).px_2().text_sm()
                     .selected(self.goal_steps_tab == Some(goal))
                     .on_click(cx.listener(move |a, _, _, cx| {
                         a.goal_steps_tab = Some(goal);
@@ -356,6 +367,7 @@ impl TaskApp {
             let task = self.store.task(id).unwrap();
             let title = format!("{} · {}", self.store.identifier(task), task.title);
             let state = states[&id];
+            let execution = self.store.execution_status(id, self.todo_batch.as_ref());
             let (surface, hover, border) = board_card_colors(state.visual_stage(), cx);
             let dark = gpui_kit::component::Theme::global(cx).is_dark();
             quiet_button(format!("goal-step-{id}"), "")
@@ -377,7 +389,8 @@ impl TaskApp {
                         )
                 })
                 .when(!board, |b| b.h_8().px_2())
-                .accessibility_label(title.clone())
+                .accessibility_label(format!("{} · {}", title, execution.label()))
+                .tooltip(format!("{} · {}", execution.label(), execution.hint()))
                 .on_click(cx.listener(move |a, _, w, cx| a.open_task(id, w, cx)))
                 .child(if board {
                     col()
@@ -399,7 +412,7 @@ impl TaskApp {
                                         .child(self.store.identifier(task)),
                                 )
                                 .child(
-                                    div().text_color(rgb(state.color(cx))).child(state.symbol()),
+                                    self.execution_badge(id, cx),
                                 ),
                         )
                         .child(
@@ -438,18 +451,9 @@ impl TaskApp {
                         .w_full()
                         .min_w_0()
                         .child(
-                            div()
-                                .w_4()
-                                .flex_shrink_0()
-                                .text_color(rgb(state.color(cx)))
-                                .child(state.symbol()),
+                            execution.icon_view(cx),
                         )
                         .child(single_line_text(format!("goal-step-title-{id}"), title))
-                        .child(
-                            div()
-                                .flex_shrink_0()
-                                .child(label(state.label(), cx).text_color(rgb(state.color(cx)))),
-                        )
                         .child(label("Open ›", cx))
                         .into_any_element()
                 })

@@ -849,7 +849,7 @@ impl Store {
             .ok_or("Configure this stage first.")?;
         if policy.agent != "OpenCode" {
             return Err(format!(
-                "This stage uses {}. Select OpenCode in Stage workflow to execute it.",
+                "This stage uses {}. Select OpenCode in Workflow stages to execute it.",
                 policy.agent
             ));
         }

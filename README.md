@@ -20,7 +20,7 @@ Define what you want to understand, let an agent propose a plan, and decide whic
 
 The application uses your locally installed and configured **OpenCode** to plan and execute tasks. It discovers the models available in your OpenCode configuration and lets you choose a global default or override the model for individual stages.
 
-Dependency-ready steps can run concurrently, with up to three execution slots. New request-generated Goals use separate step folders and browser Spaces. Shared sessions, Spaces and overlapping folders remain serialized; legacy research preserves its existing workspace. A failed branch blocks its dependents while independent approved work can continue.
+Approved goals can be added to a FIFO topic queue even when all execution slots are occupied. One topic runs at a time, with up to three dependency-ready steps running concurrently within it. Exhausted retries or blocked goals retain their status while later topics continue. New request-generated Goals use separate step folders and browser Spaces. Shared sessions, Spaces and overlapping folders remain serialized; legacy research preserves its existing workspace. A failed branch blocks its dependents while independent approved work can continue.
 
 Interrupted or unsuccessful work can reuse an eligible existing OpenCode session when started again. Resumption depends on compatible execution settings and working directory; a restart does not blindly replay all pending work. Run history retains the model, session, inputs, logs, and outputs for each attempt.
 

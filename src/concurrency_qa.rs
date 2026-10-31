@@ -264,9 +264,9 @@ pub fn run() {
     cx.update_window(handle, |_, _, cx| {
         let a = app.read(cx);
         let runs: Vec<_> = a.store.runs.iter().filter(|r| r.task_id == task).collect();
-        assert_eq!(runs.len(), 2);
-        assert_eq!(runs[1].status, "Succeeded");
-        assert_eq!(runs[1].session_id.as_deref(), Some(session.as_str()));
+        assert_eq!(runs.len(), 5); // Initial failure, three retries, then explicit recovery.
+        assert_eq!(runs[4].status, "Succeeded");
+        assert_eq!(runs[4].session_id.as_deref(), Some(session.as_str()));
         assert!(a.store.next_research_task(failed).unwrap().is_none());
     })
     .unwrap();
@@ -318,9 +318,12 @@ pub fn run() {
     );
 }
 fn goal(store: &mut Store, title: &str) -> u64 {
+    let topic = store.topics.iter().find(|t| t.name == "Concurrent fixture topic").map(|t| t.id)
+        .unwrap_or_else(|| store.create_topic(1, "Concurrent fixture topic").unwrap());
     let id = store
-        .create_research_goal(title.into(), format!("Isolated concurrency QA. {title}"), 1)
+        .create_research_goal_in_topic(title.into(), format!("Isolated concurrency QA. {title}"), 1, Some(topic))
         .unwrap();
+    store.apply_research_plan(id, PLAN).unwrap();
     store
         .task_mut(id)
         .unwrap()
@@ -328,7 +331,7 @@ fn goal(store: &mut Store, title: &str) -> u64 {
         .as_mut()
         .unwrap()
         .requires_approval = true;
-    store.apply_research_plan(id, PLAN).unwrap();
+    store.set_stage(id, crate::domain::Stage::Planned).unwrap();
     id
 }
 fn idle(cx: &mut HeadlessAppContext, h: AnyWindowHandle, a: &Entity<TaskApp>) {
@@ -352,6 +355,9 @@ fn wait(
         let done = cx
             .update_window(h, |_, _, cx| {
                 a.update(cx, |a, cx| {
+                    for run in &mut a.store.runs {
+                        if run.status == "Queued" && run.auto_retry_attempt > 0 { run.retry_not_before = Some(0); }
+                    }
                     a.poll_runtime(cx);
                     assert!(a.active_runs.len() <= 3, "Concurrency limit exceeded");
                 });

@@ -15,6 +15,7 @@ mod concurrency_qa;
 mod controls;
 mod domain;
 mod ego;
+mod execution_status;
 mod goal_steps;
 #[cfg(feature = "qa")]
 mod intake_qa;
@@ -48,6 +49,8 @@ mod retries;
 #[cfg(feature = "qa")]
 mod retry_qa;
 #[cfg(feature = "qa")]
+mod topic_queue_qa;
+#[cfg(feature = "qa")]
 mod settings_qa;
 mod settings_views;
 #[cfg(feature = "qa")]
@@ -67,6 +70,8 @@ use gpui_kit::*;
 actions!(task_manager, [Quit]);
 
 fn main() {
+    #[cfg(feature = "qa")]
+    if std::env::args().any(|arg| arg == "--qa-topic-queue") { topic_queue_qa::run(); return; }
     #[cfg(feature = "qa")]
     if std::env::args().any(|arg| arg == "--qa-retries") { retry_qa::run(); return; }
     #[cfg(feature = "qa")]

@@ -70,22 +70,9 @@ pub(crate) fn stage_color(stage: Stage, cx: &App) -> u32 {
         Stage::Cancelled => colors.cancelled,
     }
 }
-fn task_state_icon(store: &Store, task: &Task, cx: &App) -> Div {
-    let (symbol, color) = if task
-        .research
-        .as_ref()
-        .is_some_and(|r| r.kind != crate::research::ResearchKind::Goal)
-    {
-        let state = store.step_state(task.id);
-        (state.symbol(), state.color(cx))
-    } else {
-        (task.stage.symbol(), stage_color(task.stage, cx))
-    };
-    div()
-        .w_4()
-        .flex_shrink_0()
-        .text_color(rgb(color))
-        .child(symbol)
+fn task_state_icon(store: &Store, task: &Task, batch: Option<&crate::batch::TodoBatch>, cx: &App) -> Div {
+    let state = store.execution_status(task.id, batch);
+    state.icon_view(cx)
 }
 // All hierarchy levels use the same semantic card surfaces, including hover states.
 pub(crate) fn board_card_colors(stage: Stage, cx: &App) -> (u32, u32, u32) {
@@ -465,6 +452,8 @@ impl TaskApp {
                     .filter(|t| t.project_id == pid && !t.archived)
                     .map(|t| Some(t.id))
                     .collect();
+                // Topic IDs increase monotonically at creation, including legacy topics.
+                groups.sort_by_key(|id| std::cmp::Reverse(*id));
                 groups.push(None);
                 for topic_id in groups {
                     let tasks: Vec<_> = project_tasks
@@ -518,10 +507,11 @@ impl TaskApp {
                         let tid = task.id;
                         let has_steps = tasks.iter().any(|t| t.parent_id == Some(tid));
                         let hint = format!(
-                            "{} · {}\n{}",
+                            "{} · {}\n{}\n{}",
                             self.store.identifier(task),
-                            task.stage.label(),
-                            task.title
+                            self.store.execution_status(tid, self.todo_batch.as_ref()).label(),
+                            task.title,
+                            self.store.execution_status(tid, self.todo_batch.as_ref()).hint()
                         );
                         let hint = hint
                             .chars()
@@ -539,13 +529,13 @@ impl TaskApp {
                             .h_7()
                             .px_2()
                             .tooltip(hint)
-                            .accessibility_label(format!("{} · {}", task.title, task.stage.label()))
+                            .accessibility_label(format!("{} · {}", task.title, self.store.execution_status(tid, self.todo_batch.as_ref()).label()))
                             .child(
                                 row()
                                     .w_full()
                                     .min_w_0()
                                     .gap_2()
-                                    .child(task_state_icon(&self.store, task, cx))
+                                    .child(task_state_icon(&self.store, task, self.todo_batch.as_ref(), cx))
                                     .child(single_line_text(
                                         format!("sidebar-task-title-{tid}"),
                                         format!(
@@ -1247,7 +1237,6 @@ impl TaskApp {
                 .text_color(rgb(colors.muted))
                 .child(div().w(px(156.)).flex_shrink_0().child("PRIORITY / ID"))
                 .child(div().flex_1().min_w_0().child("TASK"))
-                .child(div().w(px(100.)).flex_shrink_0().child("STAGE"))
                 .child(div().w(px(84.)).flex_shrink_0().child("LABELS"))
                 .child(div().w_16().flex_shrink_0().child("DUE"))
                 .child(div().w(px(156.)).flex_shrink_0().child("CREATED")),
@@ -1376,10 +1365,12 @@ impl TaskApp {
                             .min_w_0()
                             .items_start()
                             .child(
-                                div()
-                                    .flex_shrink_0()
-                                    .text_color(rgb(stage_color(t.stage, cx)))
-                                    .child(t.stage.symbol()),
+                                quiet_button(format!("task-status-{id}"), "")
+                                    .child(self.store.execution_status(id, self.todo_batch.as_ref()).icon_view(cx))
+                                    .w_5().h_5().p_0().flex_shrink_0()
+                                    .text_color(rgb(self.store.execution_status(id, self.todo_batch.as_ref()).color(cx)))
+                                    .accessibility_label(self.store.execution_status(id, self.todo_batch.as_ref()).label())
+                                    .tooltip(format!("{} · {}", self.store.execution_status(id, self.todo_batch.as_ref()).label(), self.store.execution_status(id, self.todo_batch.as_ref()).hint())),
                             )
                             .child(
                                 single_line_text(format!("task-title-{id}"), t.title.clone())
@@ -1408,14 +1399,6 @@ impl TaskApp {
                                 })),
                         )
                     }),
-            )
-            .child(
-                div()
-                    .w(px(100.))
-                    .flex_shrink_0()
-                    .text_xs()
-                    .text_color(rgb(stage_color(t.stage, cx)))
-                    .child(t.stage.label()),
             )
             .child(
                 div().w(px(84.)).flex_shrink_0().overflow_hidden().child(
@@ -1478,7 +1461,10 @@ impl TaskApp {
     }
     pub(crate) fn board(&self, tasks: &[Task], cx: &mut Context<Self>) -> AnyElement {
         let colors = palette(cx);
-        row()
+        col().flex_1().min_h_0()
+            .child(div().px_6().pb_2().child(label(
+                "Workflow stages · Columns show the research phase; card status shows what is happening now.", cx)))
+            .child(row()
             .id("board-scroll")
             .items_start()
             .gap_4()
@@ -1553,7 +1539,7 @@ impl TaskApp {
                             }),
                     )
                     .map(observed)
-            }))
+            })))
             .into_any_element()
     }
     pub(crate) fn goal_card(&self, t: &Task, cx: &mut Context<Self>) -> AnyElement {
@@ -1634,13 +1620,12 @@ impl TaskApp {
                             .flex_shrink_0()
                             .text_sm()
                             .text_color(rgb(colors.secondary))
-                            .child(format!(
-                                "{}  {}",
-                                t.stage.symbol(),
-                                priority_symbol(t.priority)
-                            )),
+                            .child(row().gap_2()
+                                .child(self.store.execution_status(id, self.todo_batch.as_ref()).icon_view(cx))
+                                .child(priority_symbol(t.priority))),
                     ),
             )
+            .child(self.execution_badge(id, cx))
             .child(div().line_height(relative(1.4)).child(t.title.clone()))
             .when_some(
                 self.store
@@ -1791,7 +1776,7 @@ impl TaskApp {
                     for stage in Stage::ALL {
                         let target = entity.clone();
                         menu = menu.item(
-                            PopupMenuItem::new(format!("Move to {}", stage.label())).on_click(
+                            PopupMenuItem::new(format!("Set workflow stage: {}", stage.label())).on_click(
                                 move |_, _, cx| {
                                     let _ = target
                                         .update(cx, |this, cx| this.change_stage(id, stage, cx));
@@ -1845,18 +1830,13 @@ impl TaskApp {
                 crate::research::ResearchKind::Advise => "Final report",
             })
             .unwrap_or("Task");
-        let visible = self.ordered_visible_tasks();
-        let position = visible.iter().position(|t| t.id == id);
-        let previous = position
-            .and_then(|i| i.checked_sub(1))
-            .map(|i| visible[i].id);
-        let next = position.and_then(|i| visible.get(i + 1)).map(|t| t.id);
+        let (previous, next) = self.store.detail_task_neighbors(id);
         let task_menu_entity = cx.entity().downgrade();
         let editing_disabled = self.store.task_is_archived(id) || self.task_running(id);
         let archived = t.archived;
         let mut head = row()
-            .min_h(px(40.))
-            .py_1()
+            .min_h(px(44.))
+            .py_2()
             .px_6()
             .flex_wrap()
             .border_b_1()
@@ -1878,8 +1858,8 @@ impl TaskApp {
         head = head.child(
             row()
                 .flex_wrap()
-                .when(is_goal, |d| d.child(self.goal_run_button(id, "goal-resume", cx)))
-                .when(is_goal, |d| d.child(button("goal-export", "Export ZIP")
+                .when(is_goal, |d| d.child(self.goal_run_button(id, "goal-resume", cx).h(px(28.)).px_2().text_sm()))
+                .when(is_goal, |d| d.child(button("goal-export", "Export ZIP").h(px(28.)).px_2().text_sm()
                     .disabled(!self.store.goal_tasks_complete(id) || self.goal_busy(id))
                     .tooltip("Export completed evidence, analysis and reports as a ZIP. All steps must have current results.")
                     .on_click(cx.listener(move |a, _, _, cx| a.export_research_goal(id, cx)))))
@@ -1897,24 +1877,38 @@ impl TaskApp {
                                 "View latest result"
                             },
                         )
+                        .h(px(28.)).px_2().text_sm()
                         .on_click(
                             cx.listener(move |this, _, _, cx| this.view_task_result(target, cx)),
                         ),
                     )
                 })
+                .when(result_target.is_some() || is_goal, |d| d.child(
+                    div().w(px(1.)).h_4().mx_2().flex_shrink_0().bg(rgb(colors.border_strong)),
+                ))
+                .child(tool_icon("previous-task", assets::IconName::ArrowUp, "Previous task")
+                    .h(px(28.)).w(px(28.))
+                    .on_click(cx.listener(move |a, _, w, cx| {
+                        a.open_task(previous, w, cx);
+                    })))
+                .child(tool_icon("next-task", assets::IconName::ArrowDown, "Next task")
+                    .h(px(28.)).w(px(28.))
+                    .on_click(cx.listener(move |a, _, w, cx| {
+                        a.open_task(next, w, cx);
+                    })))
+                .child(div().w(px(1.)).h_4().mx_2().flex_shrink_0().bg(rgb(colors.border_strong)))
                 .child(
                     tool_icon(
                         "task-actions-menu",
                         assets::IconName::Ellipsis,
                         "More task actions",
                     )
+                    .h(px(28.)).w(px(28.))
                     .dropdown_menu_with_anchor(
                         Anchor::TopRight,
                         move |menu, _, _| {
                             let edit = task_menu_entity.clone();
                             let copy = task_menu_entity.clone();
-                            let prev = task_menu_entity.clone();
-                            let following = task_menu_entity.clone();
                             let archive = task_menu_entity.clone();
                             menu.item(
                                 PopupMenuItem::new("Edit task")
@@ -1935,26 +1929,6 @@ impl TaskApp {
                                         cx.notify();
                                     });
                                 }),
-                            )
-                            .separator()
-                            .item(
-                                PopupMenuItem::new("Previous task")
-                                    .disabled(previous.is_none())
-                                    .on_click(move |_, w, cx| {
-                                        if let Some(id) = previous {
-                                            let _ = prev.update(cx, |a, cx| a.open_task(id, w, cx));
-                                        }
-                                    }),
-                            )
-                            .item(
-                                PopupMenuItem::new("Next task")
-                                    .disabled(next.is_none())
-                                    .on_click(move |_, w, cx| {
-                                        if let Some(id) = next {
-                                            let _ = following
-                                                .update(cx, |a, cx| a.open_task(id, w, cx));
-                                        }
-                                    }),
                             )
                             .separator()
                             .item(
@@ -2089,7 +2063,7 @@ impl TaskApp {
                         row()
                             .w_full()
                             .min_w_0()
-                            .child(task_state_icon(&self.store, &child, cx))
+                            .child(task_state_icon(&self.store, &child, self.todo_batch.as_ref(), cx))
                             .child(single_line_text(format!("subtask-title-{cid}"), title))
                             .when(
                                 child.research.is_some()
@@ -2355,6 +2329,15 @@ impl TaskApp {
                 .id("task-properties-heading")
                 .child("Task").map(observed),
         );
+        let execution = self.store.execution_status(id, self.todo_batch.as_ref());
+        properties = properties.child(
+            row().justify_between()
+                .child(label("Execution status", cx))
+                .child(quiet_button("task-execution-status", "")
+                    .child(row().gap_2().child(execution.icon_view(cx)).child(execution.label()))
+                    .h(px(28.)).px_2().text_color(rgb(execution.color(cx)))
+                    .tooltip(execution.hint())),
+        );
         if t.parent_id.is_none() {
             properties = properties.child(
                 row()
@@ -2412,7 +2395,7 @@ impl TaskApp {
                 row()
                     .flex_wrap()
                     .justify_between()
-                    .child(label(name, cx))
+                    .child(label(if prop == Property::Stage { "Workflow stage" } else { name }, cx))
                     .child(
                         quiet_button(format!("property-{name}"), value.clone())
                             .px_2()
@@ -2430,7 +2413,9 @@ impl TaskApp {
                                 }
                                 _ => colors.accent,
                             }))
-                            .tooltip(format!("Change {}: {value}", name.to_lowercase()))
+                            .tooltip(if prop == Property::Stage {
+                                format!("Workflow stage: {value}. In progress means research has started, not necessarily that a task is running. See Execution status for current activity.")
+                            } else { format!("Change {}: {value}", name.to_lowercase()) })
                             .when(self.property == Some(prop), |b| {
                                 b.bg(rgb(colors.accent_surface))
                             })
@@ -2584,7 +2569,7 @@ impl TaskApp {
                 } else {
                     properties = properties.child(model_fields(&p.model));
                 }
-                properties = properties.child(button("configure-stage", "Stage rules…").on_click(
+                properties = properties.child(button("configure-stage", "Workflow rules…").on_click(
                     cx.listener(move |this, _, w, cx| {
                         this.navigate(Scope::Workflow, w, cx);
                         this.select_policy(t.stage, w, cx);
@@ -2917,7 +2902,7 @@ impl TaskApp {
                         .on_click(cx.listener(|this, _, _, cx| this.save_policy(cx))),
                 ),
             );
-        col().size_full().child(row().h_16().px_8().border_b_1().border_color(rgb(colors.line)).child(div().font_weight(FontWeight::SEMIBOLD).child("Stage workflow")))
+        col().size_full().child(row().h_16().px_8().border_b_1().border_color(rgb(colors.line)).child(div().font_weight(FontWeight::SEMIBOLD).child("Workflow stages")))
             .child(col().id("workflow-scroll").flex_1().min_h_0().overflow_y_scroll().p_8().gap_6()
                 .child(col().gap_2().child(div().text_2xl().font_weight(FontWeight::SEMIBOLD).child("The right agent for each stage."))
                     .child(muted("Plan with one model, build with another, and review before shipping.", cx)))
@@ -3045,6 +3030,7 @@ impl TaskApp {
                             .id("draft-description")
                             .child(Textarea::new(&d.description)),
                     )
+                    .child(label("WORKFLOW STAGE", cx))
                     .child(
                         row()
                             .gap_3()

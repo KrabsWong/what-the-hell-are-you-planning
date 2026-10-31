@@ -23,6 +23,42 @@ pub struct TodoBatch {
     pub failed_tasks: Vec<u64>,
 }
 
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub enum ExecutionTopic {
+    Topic(u64),
+    Task(u64),
+}
+
+impl Store {
+    pub fn execution_topic(&self, task: u64) -> ExecutionTopic {
+        self.task_topic(task).map(|topic| ExecutionTopic::Topic(topic.id))
+            .unwrap_or_else(|| ExecutionTopic::Task(self.owning_research_goal(task).unwrap_or(task)))
+    }
+}
+
+impl TodoBatch {
+    pub fn pending_topics(&self, store: &Store) -> Vec<ExecutionTopic> {
+        let mut topics = vec![];
+        for item in &self.items {
+            let topic = store.execution_topic(*item);
+            if !topics.contains(&topic) && self.items.iter().any(|id|
+                self.contains_pending(*id) && store.execution_topic(*id) == topic) { topics.push(topic); }
+        }
+        topics
+    }
+
+    pub fn current_items(&self, store: &Store) -> Vec<u64> {
+        let Some(topic) = self.pending_topics(store).first().copied() else { return vec![]; };
+        self.items.iter().copied().filter(|item|
+            !self.done_items.contains(item) && !self.failed_items.contains(item)
+                && store.execution_topic(*item) == topic).collect()
+    }
+
+    pub fn contains_pending(&self, goal: u64) -> bool {
+        self.items.contains(&goal) && !self.done_items.contains(&goal) && !self.failed_items.contains(&goal)
+    }
+}
+
 impl Store {
     pub fn todo_batch_items(&self, project: u64) -> Vec<u64> {
         self.tasks.iter().filter(|task| {
@@ -96,6 +132,30 @@ impl Store {
 #[cfg(test)]
 mod tests {
     use super::*;
+    #[test]
+    fn queue_groups_goals_by_topic_in_first_submission_order() {
+        let mut store = Store::empty();
+        let a = store.create_topic(1, "Topic A").unwrap();
+        let b = store.create_topic(1, "Topic B").unwrap();
+        let a1 = store.create_research_goal_in_topic("A1".into(), "Scope".into(), 1, Some(a)).unwrap();
+        let b1 = store.create_research_goal_in_topic("B1".into(), "Scope".into(), 1, Some(b)).unwrap();
+        let a2 = store.create_research_goal_in_topic("A2".into(), "Scope".into(), 1, Some(a)).unwrap();
+        let mut batch = TodoBatch {
+            project_id: 1, items: vec![a1, b1, a2], completed: 0, runs_completed: 0,
+            state: BatchState::Running, run_ids: Default::default(), done_items: vec![], failed_items: vec![], failed_tasks: vec![],
+        };
+        assert_eq!(batch.pending_topics(&store), vec![ExecutionTopic::Topic(a), ExecutionTopic::Topic(b)]);
+        assert_eq!(batch.current_items(&store), vec![a1, a2]);
+        batch.done_items.push(a1);
+        assert_eq!(batch.current_items(&store), vec![a2]);
+        batch.failed_items.push(a2);
+        assert_eq!(batch.current_items(&store), vec![b1]);
+        assert!(!batch.contains_pending(a1));
+        assert!(!batch.contains_pending(a2));
+        assert!(batch.contains_pending(b1));
+        batch.done_items.push(b1);
+        assert!(batch.pending_topics(&store).is_empty());
+    }
     const PLAN: &str = r#"{"tasks":[{"title":"Collect","instructions":"Find sources","kind":"collect","depends_on":[]},{"title":"Analyze","instructions":"Analyze evidence","kind":"analyze","depends_on":[0]},{"title":"Report","instructions":"Write report","kind":"advise","depends_on":[1]}]}"#;
     fn setup() -> (Store, u64, u64) {
         let mut store = Store::empty();

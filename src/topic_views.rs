@@ -339,6 +339,9 @@ impl TaskApp {
         col().size_full()
             .child(row().px_6().pt_4().pb_2().flex_wrap().child(div().flex_1().min_w_0().text_lg().font_weight(FontWeight::SEMIBOLD).child(topic.display_name()))
                 .child(button("rename-topic", "Rename").on_click(cx.listener(move |a, _, w, cx| a.open_topic_editor(project, Some(id), w, cx))))
+                .child(button("queue-topic", "Queue topic").disabled(archived)
+                    .tooltip("Queue all approved unfinished goals in this topic. Topics execute one at a time.")
+                    .on_click(cx.listener(move |a, _, _, cx| a.start_topic_batch(id, cx))))
                 .child(button("archive-topic", if archived { "Restore topic" } else { "Archive topic" }).on_click(cx.listener(move |a, _, w, cx| {
                     if archived {
                         a.snapshot(); let result = a.store.set_topic_archived(id, false); a.finish(result, "Topic restored", cx);
@@ -350,6 +353,7 @@ impl TaskApp {
                     a.open_project_plan(project, w, cx); a.planning_topic = Some(id); cx.notify();
                 }))))
             .child(label(format!("{} research goal{}{}", goals.len(), if goals.len() == 1 { "" } else { "s" }, if archived { " · Archived topic. Existing goals and results remain available." } else { " · Open a goal to explore its steps and materials." }), cx).px_6())
+            .child(self.todo_batch_bar(Some(project), cx))
             .child(row().px_6().pt_2().pb_3().justify_end().child(self.layout_switch(cx)))
             .when(self.layout == Layout::Board, |d| d.child(self.board(&goals.iter().map(|t| (*t).clone()).collect::<Vec<_>>(), cx)))
             .when(self.layout == Layout::List, |d| d.child(col().id("topic-goals").px_6().pb_5().overflow_y_scroll().flex_1().min_h_0()

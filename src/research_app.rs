@@ -391,6 +391,8 @@ impl TaskApp {
         }
     }
     pub fn complete_research_run(&mut self, run_id: u64, cx: &mut Context<Self>) {
+        let continuing_goal = self.run_goal(run_id)
+            .filter(|goal| self.research_sequences.contains(goal));
         self.finalize_research_run(run_id);
         if self.scope == Scope::Runs
             && self.selected.is_none()
@@ -414,6 +416,34 @@ impl TaskApp {
         }
         // Persist the parsed result and generated tasks before another external side effect.
         self.persist_if_changed(true);
+        if self.storage_error.is_empty()
+            && let Some(retry) = self.store.prepare_auto_retry(run_id, chrono::Utc::now().timestamp())
+        {
+            let retry_id = retry.id;
+            let attempt = retry.auto_retry_attempt;
+            self.store.runs.push(retry);
+            self.persist_if_changed(true);
+            if self.storage_error.is_empty() {
+                self.queued_runs.push((retry_id, vec![]));
+                if let Some(batch) = &mut self.todo_batch
+                    && let Some(item) = batch.run_ids.remove(&run_id)
+                {
+                    batch.run_ids.insert(retry_id, item);
+                }
+                if let Some(goal) = continuing_goal {
+                    self.research_sequences.insert(goal);
+                }
+                if self.selected_run == Some(run_id) {
+                    self.selected_run = Some(retry_id);
+                }
+                self.error.clear();
+                self.toast = format!("Retry {attempt}/3 scheduled in 30 seconds · Stop task to cancel");
+                self.start_pump(cx);
+                cx.notify();
+                return;
+            }
+            self.store.runs.pop();
+        }
         if self.storage_error.is_empty()
             && let Some(request) = self.store.request_plan_auto_repair(run_id)
         {

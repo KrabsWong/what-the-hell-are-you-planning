@@ -713,7 +713,22 @@ impl TaskApp {
                 "Open the task to check its setup and try again. Technical details contain the error and saved output.",
             ),
         };
-        let queue_explanation = if run.status == "Queued" {
+        let headline = if run.status == "Queued" && run.auto_retry_attempt > 0 {
+            "Waiting to retry"
+        } else { headline };
+        let queue_explanation = if run.status == "Queued" && run.auto_retry_attempt > 0 {
+            if self.todo_batch.as_ref().is_some_and(|batch|
+                batch.run_ids.contains_key(&run.id) && batch.state != crate::batch::BatchState::Running) {
+                format!("Retry {}/3 is paused. Continue the batch to resume, or Stop task to cancel.", run.auto_retry_attempt)
+            } else {
+                let seconds = run.retry_delay_remaining(chrono::Utc::now().timestamp());
+                if seconds > 0 {
+                    format!("This attempt failed. Automatic retry {}/3 starts in {seconds} seconds. Stop task cancels the retry.", run.auto_retry_attempt)
+                } else {
+                    format!("Automatic retry {}/3 is waiting for an execution slot or shared resource. Stop task cancels the retry.", run.auto_retry_attempt)
+                }
+            }
+        } else if run.status == "Queued" {
             let conflicts: Vec<_> = self
                 .active_runs
                 .iter()
@@ -753,6 +768,8 @@ impl TaskApp {
             } else {
                 "Queued · preparing to start automatically.".into()
             }
+        } else if run.status == "Failed" && run.auto_retry_attempt >= crate::retries::MAX_AUTO_RETRIES {
+            "This task still failed after 3 automatic retries. Review the attempt details and fix any setup issues before retrying manually.".into()
         } else if let Some(crate::recovery::SessionCheck::Unknown(error)) =
             self.recovery.checks.get(&run.id)
         {
@@ -862,7 +879,9 @@ impl TaskApp {
                                     } else {
                                         div().child("●").into_any_element()
                                     })
-                                    .child(status_label(&run.status).to_string()),
+                                    .child(if run.auto_retry_attempt > 0 {
+                                        format!("{} · Retry {}/3", status_label(&run.status), run.auto_retry_attempt)
+                                    } else { status_label(&run.status).to_string() }),
                             )
                             .child(self.run_version_picker(run, cx)),
                     )

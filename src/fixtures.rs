@@ -238,6 +238,8 @@ impl Store {
             .ok_or("Configure this workflow stage first.")?;
         let identifier = self.identifier(task);
         let run = AgentRun {
+            auto_retry_attempt: 0,
+            retry_not_before: None,
             project_plan: None,
             id: self.runs.iter().map(|r|r.id).max().unwrap_or(0)+1,
             task_title:task.title.clone(),directory:String::new(),prompt:policy.prompt.clone(),queued_at: String::new(), workspace_source: None, started_at:String::new(),ended_at:None,session_id:None,exit_code:None,

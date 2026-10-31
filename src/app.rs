@@ -1280,6 +1280,16 @@ impl TaskApp {
         {
             let next = self.queued_runs.iter().position(|(id, _)| {
                 let candidate = self.store.runs.iter().find(|r| r.id == *id).unwrap();
+                if candidate.auto_retry_attempt > 0 {
+                    if candidate.retry_delay_remaining(chrono::Utc::now().timestamp()) > 0 {
+                        return false;
+                    }
+                    if self.todo_batch.as_ref().is_some_and(|batch|
+                        batch.run_ids.contains_key(id) && batch.state != crate::batch::BatchState::Running)
+                    {
+                        return false;
+                    }
+                }
                 !self
                     .store
                     .runs
@@ -1500,6 +1510,10 @@ impl TaskApp {
             self.complete_research_run(id, cx);
         }
         self.dispatch_runs(cx);
+        if self.queued_runs.iter().any(|(id, _)| self.store.runs.iter()
+            .any(|run| run.id == *id && run.auto_retry_attempt > 0)) {
+            cx.notify();
+        }
         if changed {
             if self.follow_logs {
                 self.log_scroll.scroll_to_bottom();
@@ -1579,7 +1593,7 @@ fn record_events(run: &mut AgentRun, had_error: &mut bool, events: Vec<opencode:
                 run.ended_at = Some(opencode::timestamp());
                 run.status = if run.status == "Blocked" {
                     "Blocked"
-                } else if cancelled {
+                } else if cancelled || run.status == "Cancelling" {
                     "Cancelled"
                 } else if code == Some(0) && error.is_none() && !*had_error {
                     "Succeeded"
@@ -1627,6 +1641,17 @@ pub fn valid_date(s: &str) -> bool {
 #[cfg(test)]
 mod tests {
     use super::valid_date;
+    #[test]
+    fn requested_cancellation_is_not_a_retryable_failure() {
+        let mut store = crate::domain::Store::mock();
+        store.simulate_run(1).unwrap();
+        let run = &mut store.runs[0];
+        run.status = "Cancelling".into();
+        super::record_events(run, &mut false, vec![crate::opencode::Event::Finished {
+            code: Some(1), cancelled: false, error: None,
+        }]);
+        assert_eq!(run.status, "Cancelled");
+    }
     #[test]
     fn browser_handoff_stays_blocked_after_process_cleanup() {
         let mut store = crate::domain::Store::mock();

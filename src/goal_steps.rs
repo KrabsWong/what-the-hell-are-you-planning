@@ -123,6 +123,9 @@ impl Store {
             return Some("Cancelled · restore this step before continuing".into());
         }
         if let Some(run) = self.runs.iter().rev().find(|r| r.task_id == id && r.project_plan.is_none()) {
+            if run.status == "Failed" && run.auto_retry_attempt >= crate::retries::MAX_AUTO_RETRIES {
+                return Some("This step still failed after 3 automatic retries. Review the attempt details before retrying manually.".into());
+            }
             let reason = match run.status.as_str() {
                 "Interrupted" => Some("Run interrupted · the previous attempt did not finish"),
                 "Failed" => Some("Last attempt failed · review the attempt details and retry this step"),
@@ -212,7 +215,11 @@ impl TaskApp {
         } else if checking {
             "The previous session has not been confirmed stopped. Check its progress before retrying to avoid a duplicate run.".into()
         } else if active {
-            "This step is running or queued. You can inspect its latest attempt below.".into()
+            if let Some(run) = latest.filter(|run| run.status == "Queued" && run.auto_retry_attempt > 0) {
+                format!("Automatic retry {}/3 · waiting at least {} seconds before the next attempt. Open the latest attempt to follow progress or stop the retry.", run.auto_retry_attempt, run.retry_delay_remaining(chrono::Utc::now().timestamp()))
+            } else {
+                "This step is running or queued. You can inspect its latest attempt below.".into()
+            }
         } else if !dependencies.is_empty() {
             "This step needs current results from the prerequisites below. Complete or retry them first.".into()
         } else if state == StepState::Done {

@@ -37,12 +37,16 @@ mod recovery_qa;
 mod request_planning;
 mod research;
 mod research_app;
+mod research_export;
 #[cfg(feature = "qa")]
 mod research_qa;
 mod research_views;
 mod run_views;
 mod run_errors;
 mod scheduler;
+mod retries;
+#[cfg(feature = "qa")]
+mod retry_qa;
 #[cfg(feature = "qa")]
 mod settings_qa;
 mod settings_views;
@@ -63,6 +67,8 @@ use gpui_kit::*;
 actions!(task_manager, [Quit]);
 
 fn main() {
+    #[cfg(feature = "qa")]
+    if std::env::args().any(|arg| arg == "--qa-retries") { retry_qa::run(); return; }
     #[cfg(feature = "qa")]
     if std::env::args().any(|arg| arg == "--qa-render-perf") { render_qa::run(); return; }
     #[cfg(feature = "qa")]

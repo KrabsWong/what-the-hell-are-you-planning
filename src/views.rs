@@ -1879,6 +1879,10 @@ impl TaskApp {
             row()
                 .flex_wrap()
                 .when(is_goal, |d| d.child(self.goal_run_button(id, "goal-resume", cx)))
+                .when(is_goal, |d| d.child(button("goal-export", "Export ZIP")
+                    .disabled(!self.store.goal_tasks_complete(id) || self.goal_busy(id))
+                    .tooltip("Export completed evidence, analysis and reports as a ZIP. All steps must have current results.")
+                    .on_click(cx.listener(move |a, _, _, cx| a.export_research_goal(id, cx)))))
                 .when_some(result_target, |d, target| {
                     d.child(
                         primary_button(

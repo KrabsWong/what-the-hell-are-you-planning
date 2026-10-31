@@ -336,6 +336,8 @@ impl Store {
             logs.push(format!("[plan repair] Correcting saved output from run {} · one automatic repair maximum", previous.id));
         }
         Ok(AgentRun {
+            auto_retry_attempt: 0,
+            retry_not_before: None,
             id: self
                 .runs
                 .iter()

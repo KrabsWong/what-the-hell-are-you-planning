@@ -198,6 +198,11 @@ pub struct StagePolicy {
 }
 #[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
 pub struct AgentRun {
+    /// Automatic retries in this user-started attempt chain (initial run is zero).
+    #[serde(default)]
+    pub auto_retry_attempt: u8,
+    #[serde(default)]
+    pub retry_not_before: Option<i64>,
     /// Project planning is not a task run; legacy task_id is unused (zero) in this case.
     #[serde(default)]
     pub project_plan: Option<u64>,
@@ -872,6 +877,8 @@ impl Store {
             task.description
         );
         Ok(AgentRun {
+            auto_retry_attempt: 0,
+            retry_not_before: None,
             project_plan: None,
             id: self.runs.iter().map(|r| r.id).max().unwrap_or(0) + 1,
             task_id: id,

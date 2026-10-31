@@ -156,6 +156,8 @@ impl Store {
             return Err("Project context is too large. Shorten its scope or existing task titles before planning.".into());
         }
         Ok(AgentRun {
+            auto_retry_attempt: 0,
+            retry_not_before: None,
             id: self.runs.iter().map(|r| r.id).max().unwrap_or(0) + 1,
             task_id: 0,
             project_plan: Some(project.id),

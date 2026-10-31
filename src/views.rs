@@ -1615,17 +1615,11 @@ impl TaskApp {
                                 },
                             ),
                     )
-                    .child(
-                        div()
-                            .flex_shrink_0()
-                            .text_sm()
-                            .text_color(rgb(colors.secondary))
-                            .child(row().gap_2()
-                                .child(self.store.execution_status(id, self.todo_batch.as_ref()).icon_view(cx))
-                                .child(priority_symbol(t.priority))),
-                    ),
+                    .child(self.execution_indicator(id, cx)),
             )
-            .child(self.execution_badge(id, cx))
+            .when(t.priority != Priority::Medium, |d| d.child(
+                label(format!("Priority: {}", t.priority.label()), cx).text_xs(),
+            ))
             .child(div().line_height(relative(1.4)).child(t.title.clone()))
             .when_some(
                 self.store
@@ -1676,7 +1670,7 @@ impl TaskApp {
                                     .text_xs()
                                     .whitespace_normal()
                                     .text_left()
-                                    .child(self.store.step_summary(id)),
+                                    .child(self.execution_summary(id)),
                             )
                             .on_click(cx.listener(move |a, _, w, cx| {
                                 cx.stop_propagation();

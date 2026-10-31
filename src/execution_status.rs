@@ -20,6 +20,16 @@ pub(crate) enum ExecutionStatus {
     Stage(Stage),
 }
 impl ExecutionStatus {
+    pub(crate) const ALL: [Self; 9] = [Self::Running, Self::Queued, Self::Retrying,
+        Self::Waiting, Self::Ready, Self::Paused, Self::Blocked, Self::Approval, Self::Done];
+    pub(crate) fn visual_stage(self) -> Stage {
+        match self {
+            Self::Running | Self::Retrying => Stage::InProgress,
+            Self::Done => Stage::Done, Self::Blocked => Stage::Cancelled,
+            Self::Queued | Self::Paused | Self::Approval => Stage::Review,
+            Self::Waiting | Self::Ready => Stage::Planned, Self::Stage(stage) => stage,
+        }
+    }
     pub(crate) fn label(self) -> &'static str {
         match self {
             Self::Running => "Running",
@@ -194,19 +204,27 @@ impl Store {
     }
 }
 impl crate::app::TaskApp {
-    pub(crate) fn execution_badge(&self, id: u64, cx: &gpui_kit::App) -> gpui_kit::Div {
+    pub(crate) fn execution_summary(&self, goal: u64) -> String {
+        let states: Vec<_> = self.store.goal_step_ids(goal).into_iter()
+            .map(|id| self.store.execution_status(id, self.todo_batch.as_ref())).collect();
+        let mut parts = vec![format!("{} steps", states.len())];
+        for status in ExecutionStatus::ALL.into_iter().chain(Stage::ALL.into_iter().map(ExecutionStatus::Stage)) {
+            let count = states.iter().filter(|state| **state == status).count();
+            if count > 0 { parts.push(format!("{count} {}", status.label().to_lowercase())); }
+        }
+        parts.join(" · ")
+    }
+
+    pub(crate) fn execution_indicator(&self, id: u64, cx: &gpui_kit::App) -> gpui_kit::component::button::Button {
         use gpui_kit::*;
         let status = self.store.execution_status(id, self.todo_batch.as_ref());
-        div()
-            .flex_shrink_0()
-            .px_1()
-            .py(px(1.))
-            .rounded(px(3.))
-            .text_xs()
-            .bg(rgb(crate::appearance::palette(cx).tag_surface))
-            .text_color(rgb(status.color(cx)))
-            .child(status.label())
+        crate::controls::quiet_button(format!("execution-status-{id}"), "")
+            .w(px(20.)).h(px(20.)).p_0().flex_shrink_0()
+            .child(status.icon_view(cx))
+            .accessibility_label(status.label())
+            .tooltip(format!("{} · {}", status.label(), status.hint()))
     }
+
 }
 
 #[cfg(test)]

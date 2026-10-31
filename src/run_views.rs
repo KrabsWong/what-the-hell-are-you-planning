@@ -58,7 +58,7 @@ fn running_indicator(id: &'static str, color: u32) -> AnyElement {
 
 fn status_label(status: &str) -> &str {
     match status {
-        "Succeeded" => "Completed",
+        "Succeeded" => "Done",
         "Blocked" => "Needs your attention",
         "Stale" => "Needs updating",
         "Cancelling" => "Stopping…",
@@ -66,6 +66,23 @@ fn status_label(status: &str) -> &str {
         "Cancelled" => "Stopped",
         other => other,
     }
+}
+
+fn attempt_indicator(run: &AgentRun, cx: &App) -> gpui_kit::component::button::Button {
+    use crate::execution_status::ExecutionStatus as Status;
+    let status = match run.status.as_str() {
+        "Succeeded" => Status::Done,
+        "Running" | "Recovering" | "Cancelling" => Status::Running,
+        "Queued" if run.auto_retry_attempt > 0 => Status::Retrying,
+        "Queued" => Status::Queued,
+        _ => Status::Blocked,
+    };
+    quiet_button(format!("attempt-status-{}", run.id), "")
+        .w(px(20.)).h(px(20.)).p_0().flex_shrink_0()
+        .child(status.icon_view(cx))
+        .accessibility_label(format!("Attempt: {}", status_label(&run.status)))
+        .tooltip(format!("This attempt: {}{}", status_label(&run.status),
+            if run.auto_retry_attempt > 0 { format!(" · Retry {}/3", run.auto_retry_attempt) } else { String::new() }))
 }
 
 fn activity_label(run: &AgentRun) -> &'static str {
@@ -557,20 +574,7 @@ impl TaskApp {
                                     .text_color(rgb(colors.tag_text))
                                     .bg(rgb(colors.tag_surface)),
                             )
-                            .child(
-                                div()
-                                    .px_2()
-                                    .py(px(2.))
-                                    .rounded_sm()
-                                    .bg(rgb(colors.tag_surface))
-                                    .text_xs()
-                                    .text_color(rgb(if run.status == "Succeeded" {
-                                        colors.tag_success
-                                    } else {
-                                        run_color(&run.status, cx)
-                                    }))
-                                    .child(status_label(&run.status).to_string()),
-                            ),
+                            .child(attempt_indicator(run, cx)),
                     ),
             )
             .on_click(cx.listener(move |a, _, _, cx| a.select_run(rid, cx)))
@@ -866,23 +870,7 @@ impl TaskApp {
                         row()
                             .flex_wrap()
                             .gap_3()
-                            .child(
-                                row()
-                                    .gap_1()
-                                    .text_xs()
-                                    .text_color(rgb(run_color(&run.status, cx)))
-                                    .child(if run.status == "Running" {
-                                        running_indicator(
-                                            "run-status-pulse",
-                                            run_color(&run.status, cx),
-                                        )
-                                    } else {
-                                        div().child("●").into_any_element()
-                                    })
-                                    .child(if run.auto_retry_attempt > 0 {
-                                        format!("{} · Retry {}/3", status_label(&run.status), run.auto_retry_attempt)
-                                    } else { status_label(&run.status).to_string() }),
-                            )
+                            .child(attempt_indicator(run, cx))
                             .child(self.run_version_picker(run, cx)),
                     )
                     .child(actions),

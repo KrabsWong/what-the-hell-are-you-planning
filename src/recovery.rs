@@ -584,7 +584,7 @@ impl TaskApp {
                         .child(label(status, cx).pl_1());
                     for child in children {
                         let task = self.store.task(child).unwrap();
-                        let state = self.store.step_state(child);
+                        let state = self.store.execution_status(child, self.todo_batch.as_ref());
                         let title = format!("{} · {}", self.store.identifier(task), task.title);
                         let hint = self
                             .store
@@ -596,11 +596,7 @@ impl TaskApp {
                                 .gap_2()
                                 .min_h(px(28.))
                                 .child(
-                                    div()
-                                        .w_4()
-                                        .flex_shrink_0()
-                                        .text_color(rgb(state.color(cx)))
-                                        .child(state.symbol()),
+                                    state.icon_view(cx),
                                 )
                                 .child(
                                     recovery_title(("recovery-step", child), title, cx)

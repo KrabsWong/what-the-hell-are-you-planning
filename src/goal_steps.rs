@@ -2,6 +2,7 @@
 use crate::{
     app::{Layout, TaskApp},
     domain::{Stage, Store},
+    execution_status::ExecutionStatus,
     views::*,
 };
 use gpui_kit::{
@@ -19,48 +20,6 @@ pub(crate) enum StepState {
     Running,
     Blocked,
     Done,
-}
-impl StepState {
-    const ALL: [Self; 4] = [Self::Waiting, Self::Running, Self::Blocked, Self::Done];
-    pub(crate) fn label(self) -> &'static str {
-        match self {
-            Self::Waiting => "Waiting",
-            Self::Running => "In progress",
-            Self::Blocked => "Blocked",
-            Self::Done => "Done",
-        }
-    }
-    fn visual_stage(self) -> Stage {
-        match self {
-            Self::Waiting => Stage::Planned,
-            Self::Running => Stage::InProgress,
-            Self::Blocked => Stage::Cancelled,
-            Self::Done => Stage::Done,
-        }
-    }
-    pub(crate) fn symbol(self) -> &'static str {
-        match self {
-            Self::Waiting => "○",
-            Self::Running => "◐",
-            Self::Blocked => "!",
-            Self::Done => "✓",
-        }
-    }
-    pub(crate) fn color(self, cx: &App) -> u32 {
-        if self == Self::Blocked {
-            crate::appearance::palette(cx).danger
-        } else {
-            stage_color(self.visual_stage(), cx)
-        }
-    }
-    fn key(self) -> &'static str {
-        match self {
-            Self::Waiting => "waiting",
-            Self::Running => "running",
-            Self::Blocked => "blocked",
-            Self::Done => "done",
-        }
-    }
 }
 impl Store {
     pub(crate) fn step_state(&self, id: u64) -> StepState {
@@ -152,19 +111,7 @@ impl Store {
             .map(|t| t.id)
             .collect()
     }
-    pub(crate) fn step_summary(&self, goal: u64) -> String {
-        let steps = self.goal_step_ids(goal);
-        let states: Vec<_> = steps.iter().map(|id| self.step_state(*id)).collect();
-        let count = |state| states.iter().filter(|value| **value == state).count();
-        format!(
-            "{} steps · {} done · {} running · {} blocked · {} waiting",
-            steps.len(),
-            count(StepState::Done),
-            count(StepState::Running),
-            count(StepState::Blocked),
-            count(StepState::Waiting)
-        )
-    }
+
 }
 impl TaskApp {
     pub(crate) fn goal_run_state(&self, goal: u64) -> (&'static str, bool, &'static str) {
@@ -210,7 +157,7 @@ impl TaskApp {
             return div().into_any_element();
         };
         let goal = research.goal_id;
-        let state = self.store.step_state(id);
+        let state = self.store.execution_status(id, self.todo_batch.as_ref());
         let archived = self.store.task_is_archived(id);
         let pending = self.store.research_pending_approval(id);
         let checking = self.recovery_blocks_task(id);
@@ -231,9 +178,11 @@ impl TaskApp {
             } else {
                 "This step is running or queued. You can inspect its latest attempt below.".into()
             }
+        } else if matches!(state, ExecutionStatus::Queued | ExecutionStatus::Paused) {
+            state.hint().into()
         } else if !dependencies.is_empty() {
             "This step needs current results from the prerequisites below. Complete or retry them first.".into()
-        } else if state == StepState::Done {
+        } else if state == ExecutionStatus::Done {
             "A completed result is available. Run again only if you want a new attempt.".into()
         } else {
             self.store.step_block_reason(id).unwrap_or_else(|| "Prerequisites are ready. Run this step when you are ready.".into())
@@ -244,7 +193,7 @@ impl TaskApp {
             .child(div().text_sm().font_weight(FontWeight::SEMIBOLD)
                 .text_color(rgb(state.color(cx))).child(format!("{} · Execution", state.label())))
             .child(div().id("step-execution-reason").text_sm().text_color(rgb(colors.secondary)).child(reason).map(observed));
-        if state == StepState::Blocked {
+        if state == ExecutionStatus::Blocked {
             if let Some(run) = latest {
                 let detail = run.logs.iter().rev().find(|line| {
                     ["[error]", "[blocked]", "[interrupted]", "[workspace]", "[stream error]"].iter()
@@ -276,7 +225,7 @@ impl TaskApp {
                     a.finish(result, "Step reopened", cx);
                 })));
         }
-        let run_action = if state == StepState::Done {
+        let run_action = if state == ExecutionStatus::Done {
             quiet_button("step-run", "Run again").self_start().h_7().px_1().text_sm()
                 .text_color(rgb(colors.secondary))
         } else {
@@ -332,7 +281,7 @@ impl TaskApp {
         let colors = crate::appearance::palette(cx);
         let ids = self.store.goal_step_ids(goal);
         let states: std::collections::HashMap<_, _> = ids.iter()
-            .map(|id| (*id, self.store.step_state(*id))).collect();
+            .map(|id| (*id, self.store.execution_status(*id, self.todo_batch.as_ref()))).collect();
         let mut content = col().flex_1().min_h_0().child(
             col()
                 .px_6()
@@ -353,7 +302,7 @@ impl TaskApp {
                             div()
                                 .flex_1()
                                 .min_w_0()
-                                .child(label(self.store.step_summary(goal), cx)),
+                                .child(label(self.execution_summary(goal), cx)),
                         )
                         .child(self.layout_switch_for(true, cx)),
                 ),
@@ -412,7 +361,7 @@ impl TaskApp {
                                         .child(self.store.identifier(task)),
                                 )
                                 .child(
-                                    self.execution_badge(id, cx),
+                                    execution.icon_view(cx),
                                 ),
                         )
                         .child(
@@ -483,13 +432,14 @@ impl TaskApp {
                     .px_6()
                     .pb_5()
                     .gap_4()
-                    .children(StepState::ALL.into_iter().map(|state| {
+                    .children(ExecutionStatus::ALL.into_iter().chain(Stage::ALL.into_iter().map(ExecutionStatus::Stage)).filter(|state| matches!(state, ExecutionStatus::Ready | ExecutionStatus::Waiting | ExecutionStatus::Running | ExecutionStatus::Blocked | ExecutionStatus::Done)
+                        || states.values().any(|value| value == state)).map(|state| {
                         let matching: Vec<_> = ids
                             .iter()
                             .filter(|id| states[id] == state)
                             .collect();
                         col()
-                            .id(format!("steps-column-{}", state.key()))
+                            .id(format!("steps-column-{}", state.label()))
                             .w(px(292.))
                             .flex_shrink_0()
                             .h_full()
@@ -498,16 +448,12 @@ impl TaskApp {
                                 row()
                                     .h_9()
                                     .gap_2()
-                                    .child(div().text_color(rgb(state.color(cx))).child(format!(
-                                        "{}  {}",
-                                        state.symbol(),
-                                        state.label()
-                                    )))
+                                    .child(div().text_color(rgb(state.color(cx))).child(state.label()))
                                     .child(label(matching.len().to_string(), cx)),
                             )
                             .child(
                                 col()
-                                    .id(format!("steps-cards-{}", state.key()))
+                                    .id(format!("steps-cards-{}", state.label()))
                                     .flex_1()
                                     .min_h_0()
                                     .overflow_y_scroll()

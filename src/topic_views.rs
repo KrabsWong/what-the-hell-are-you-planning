@@ -336,22 +336,36 @@ impl TaskApp {
                     }),
             );
         }
+        let can_queue = !archived && self.store.todo_batch_items(project).iter().any(|goal|
+            self.store.task_topic(*goal).is_some_and(|topic| topic.id == id)
+                && self.todo_batch.as_ref().is_none_or(|batch| !batch.contains_pending(*goal)));
+        let entity = cx.entity().downgrade();
         col().size_full()
             .child(row().px_6().pt_4().pb_2().flex_wrap().child(div().flex_1().min_w_0().text_lg().font_weight(FontWeight::SEMIBOLD).child(topic.display_name()))
-                .child(button("rename-topic", "Rename").on_click(cx.listener(move |a, _, w, cx| a.open_topic_editor(project, Some(id), w, cx))))
-                .child(button("queue-topic", "Queue topic").disabled(archived)
+                .when(can_queue, |d| d.child(button("queue-topic", "Queue topic")
                     .tooltip("Queue all approved unfinished goals in this topic. Topics execute one at a time.")
-                    .on_click(cx.listener(move |a, _, _, cx| a.start_topic_batch(id, cx))))
-                .child(button("archive-topic", if archived { "Restore topic" } else { "Archive topic" }).on_click(cx.listener(move |a, _, w, cx| {
-                    if archived {
-                        a.snapshot(); let result = a.store.set_topic_archived(id, false); a.finish(result, "Topic restored", cx);
-                    } else {
-                        a.request_archive(crate::archive_app::ArchiveTarget::Topic(id), w, cx);
-                    }
-                })))
+                    .on_click(cx.listener(move |a, _, _, cx| a.start_topic_batch(id, cx)))))
                 .child(primary_button("topic-new-goal", "New research").disabled(archived).on_click(cx.listener(move |a, _, w, cx| {
                     a.open_project_plan(project, w, cx); a.planning_topic = Some(id); cx.notify();
-                }))))
+                })))
+                .child(tool_icon("topic-actions-menu", assets::IconName::Ellipsis, "More topic actions")
+                    .dropdown_menu_with_anchor(Anchor::TopRight, move |menu, _, _| {
+                        let rename = entity.clone();
+                        let archive = entity.clone();
+                        menu.item(PopupMenuItem::new("Rename topic").on_click(move |_, w, cx| {
+                            let _ = rename.update(cx, |a, cx| a.open_topic_editor(project, Some(id), w, cx));
+                        }))
+                        .separator()
+                        .item(PopupMenuItem::new(if archived { "Restore topic" } else { "Archive topic" }).on_click(move |_, w, cx| {
+                            let _ = archive.update(cx, |a, cx| {
+                                if archived {
+                                    a.snapshot(); let result = a.store.set_topic_archived(id, false); a.finish(result, "Topic restored", cx);
+                                } else {
+                                    a.request_archive(crate::archive_app::ArchiveTarget::Topic(id), w, cx);
+                                }
+                            });
+                        }))
+                    })))
             .child(label(format!("{} research goal{}{}", goals.len(), if goals.len() == 1 { "" } else { "s" }, if archived { " · Archived topic. Existing goals and results remain available." } else { " · Open a goal to explore its steps and materials." }), cx).px_6())
             .child(self.todo_batch_bar(Some(project), cx))
             .child(row().px_6().pt_2().pb_3().justify_end().child(self.layout_switch(cx)))

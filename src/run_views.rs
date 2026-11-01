@@ -806,7 +806,10 @@ impl TaskApp {
                 if project_plan.is_some() {
                     "Project details"
                 } else if context_task.is_some() {
-                    "Back to task"
+                    if context_task.and_then(|id| self.store.task(id)).and_then(|t| t.research.as_ref())
+                        .is_some_and(|r| r.kind == ResearchKind::Goal) {
+                        "View original goal"
+                    } else { "View original task" }
                 } else {
                     "Task details"
                 },

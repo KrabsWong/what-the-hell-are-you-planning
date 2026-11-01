@@ -499,9 +499,9 @@ impl TaskApp {
                         let hint = format!(
                             "{} · {}\n{}\n{}",
                             self.store.identifier(task),
-                            self.store.task_status(tid, self.todo_batch.as_ref()).label(),
+                            self.display_task_status(tid).label(),
                             task.title,
-                            self.store.task_status(tid, self.todo_batch.as_ref()).reason
+                            self.display_task_status(tid).reason
                         );
                         let hint = hint
                             .chars()
@@ -519,7 +519,7 @@ impl TaskApp {
                             .h_7()
                             .px_2()
                             .tooltip(hint)
-                            .accessibility_label(format!("{} · {}", task.title, self.store.task_status(tid, self.todo_batch.as_ref()).label()))
+                            .accessibility_label(format!("{} · {}", task.title, self.display_task_status(tid).label()))
                             .child(
                                 row()
                                     .w_full()
@@ -546,7 +546,7 @@ impl TaskApp {
                             )
                             .on_click(cx.listener(move |a, _, w, cx| {
                                 a.navigate(Scope::Project(pid), w, cx);
-                                a.open_task(tid, w, cx);
+                                a.open_sidebar_task(tid, w, cx);
                             }));
                         list = list.child(
                             row()
@@ -1335,7 +1335,7 @@ impl TaskApp {
             .store
             .tasks
             .iter()
-            .filter(|c| c.parent_id == Some(id) && !c.archived && self.store.task_status(c.id, self.todo_batch.as_ref()).phase == Stage::Done)
+            .filter(|c| c.parent_id == Some(id) && !c.archived && self.display_task_status(c.id).phase == Stage::Done)
             .count();
         row()
             .id(format!("task-row-{id}"))
@@ -1406,7 +1406,7 @@ impl TaskApp {
                     }),
             )
             .child(div().w(px(150.)).flex_shrink_0().text_xs()
-                .child(self.store.task_status(id, self.todo_batch.as_ref()).label()))
+                .child(self.display_task_status(id).label()))
             .child(
                 div().w(px(84.)).flex_shrink_0().overflow_hidden().child(
                     row().children(
@@ -1485,7 +1485,7 @@ impl TaskApp {
                 let entity = cx.entity().downgrade();
                 let cards: Vec<_> = tasks
                     .iter()
-                    .filter(|t| t.parent_id.is_none() && self.store.task_status(t.id, self.todo_batch.as_ref()).phase == stage)
+                    .filter(|t| t.parent_id.is_none() && self.display_task_status(t.id).phase == stage)
                     .cloned()
                     .collect();
                 col()
@@ -1516,7 +1516,8 @@ impl TaskApp {
                                             .text_color(rgb(stage_color(stage, cx)))
                                             .child(crate::workflow::phase_label(stage)),
                                     )
-                                    .child(label(cards.len().to_string(), cx)),
+                                    .child(label(cards.len().to_string(), cx))
+                                    .when(stage == Stage::InProgress, |d| d.child(self.execution_status_filter(&cards, cx))),
                             )
                             .child(
                                 tool_icon(
@@ -1529,7 +1530,6 @@ impl TaskApp {
                                 )),
                             ),
                     )
-                    .when(stage == Stage::InProgress, |d| d.child(self.execution_filter_bar(&cards, cx)))
                     .child(
                         col()
                             .id(format!("cards-{}", stage.key()))
@@ -1556,14 +1556,14 @@ impl TaskApp {
                             }),
                     )
                     .map(observed)
-            })))
+            })).map(observed))
             .into_any_element()
     }
     pub(crate) fn goal_card(&self, t: &Task, cx: &mut Context<Self>) -> AnyElement {
         let colors = palette(cx);
         // Keep each status recognizable even when a card is hovered.
         let dark = gpui_kit::component::Theme::global(cx).is_dark();
-        let status = self.store.task_status(t.id, self.todo_batch.as_ref());
+        let status = self.display_task_status(t.id);
         let (surface, hover, border) = board_card_colors(status.phase, cx);
         let mut metadata = t.labels.iter().take(2).cloned().collect::<Vec<_>>();
         if !t.bucket.is_empty() {
@@ -2040,7 +2040,7 @@ impl TaskApp {
                             } else {
                                 "Subtasks"
                             },
-                            children.iter().filter(|t| self.store.task_status(t.id, self.todo_batch.as_ref()).phase == Stage::Done).count(),
+                            children.iter().filter(|t| self.display_task_status(t.id).phase == Stage::Done).count(),
                             children.len()
                         ),
                         cx,
@@ -2349,7 +2349,7 @@ impl TaskApp {
                 .id("task-properties-heading")
                 .child("Task").map(observed),
         );
-        let status = self.store.task_status(id, self.todo_batch.as_ref());
+        let status = self.display_task_status(id);
         let execution = status.execution;
         properties = properties.child(
             row().justify_between()
@@ -3143,6 +3143,9 @@ impl TaskApp {
 }
 impl Render for TaskApp {
     fn render(&mut self, window: &mut Window, cx: &mut Context<Self>) -> impl IntoElement {
+        // A scroll invalidates this view too. Reuse expensive status validation
+        // within this frame only; the next render always sees current domain state.
+        self.render_statuses.borrow_mut().clear();
         let colors = palette(cx);
         if self.workspace_required {
             if let Some(path) = self.workspace_choice.take() {
@@ -3174,25 +3177,14 @@ impl Render for TaskApp {
                         );
                         self.workspace_required =
                             self.storage.is_none() || !self.storage_error.is_empty();
+                        self.check_startup(cx);
                     }
                     Err(error) => self.storage_error = error,
                 }
             }
-            if self.workspace_required {
-                return col().size_full().bg(rgb(colors.canvas)).text_color(rgb(colors.text))
-                    .items_center().justify_center()
-                    .child(col().w_full().max_w(px(680.)).p_8().gap_4()
-                        .child(div().text_2xl().font_weight(FontWeight::SEMIBOLD).child("Choose your workspace"))
-                        .child(div().text_sm().text_color(rgb(colors.muted)).child("Choose a dedicated folder before continuing. Projects, reports, materials and local data will be stored in its workspace subfolder. Existing data will be copied; originals will be preserved."))
-                        .child(row().gap_2()
-                            .child(div().flex_1().min_w_0().child(Input::new(&self.directory_input).id("workspace-root")))
-                            .child(button("browse-workspace", "Choose folder…").disabled(self.workspace_setup.is_some()).on_click(cx.listener(|this, _, _, cx| this.choose_workspace(cx)))))
-                        .child(div().text_sm().text_color(rgb(colors.muted)).child("Enter an existing absolute folder path, for example /Users/you/Documents/Research. Close any previous app instance before importing."))
-                        .child(div().text_sm().text_color(rgb(colors.danger)).child(self.storage_error.clone()))
-                        .child(button("setup-workspace", if self.workspace_setup.is_some() { "Preparing workspace…" } else { "Set workspace and continue" })
-                            .primary().disabled(self.workspace_setup.is_some()).on_click(cx.listener(|this, _, _, cx| this.setup_workspace(cx)))))
-                    .into_any_element();
-            }
+        }
+        if self.workspace_required || self.startup.required {
+            return self.startup_view(cx);
         }
         let content = if let Some(id) = self.selected {
             self.detail(id, cx)

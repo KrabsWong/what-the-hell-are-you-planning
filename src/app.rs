@@ -146,6 +146,7 @@ pub struct TaskApp {
     pub planning_topic: Option<u64>,
     pub project_brief: Entity<TextareaState>,
     pub storage: Option<Storage>,
+    pub startup: crate::startup::Startup,
     pub workspace_required: bool,
     pub workspace_choice: Option<PathBuf>,
     pub workspace_root: Option<PathBuf>,
@@ -196,6 +197,7 @@ pub struct TaskApp {
     pub expanded_request_brief: Option<u64>,
     pub goal_steps_tab: Option<u64>,
     pub steps_layout: Layout,
+    pub render_statuses: std::cell::RefCell<std::collections::HashMap<u64, crate::workflow::TaskStatus>>,
     pub board_execution_filter: Option<crate::workflow::ExecutionGroup>,
     pub show_task_activity: bool,
     pub show_research_settings: bool,
@@ -221,6 +223,14 @@ impl TaskApp {
             Ok(None) => {}
             Err(e) => app.storage_error = e,
         }
+        for input in [&app.executable_input, &app.ego_input] {
+            app._subscriptions.push(cx.subscribe(input, |_, _, event, cx| {
+                if matches!(event, InputEvent::Change) { cx.notify(); }
+            }));
+        }
+        app.startup.required = true;
+        app.startup.silent = !app.workspace_required;
+        app.check_startup(cx);
         app
     }
     pub fn choose_workspace(&mut self, cx: &mut Context<Self>) {
@@ -381,6 +391,7 @@ impl TaskApp {
         Self {
             last_saved: store.clone(),
             storage: None,
+            startup: Default::default(),
             workspace_required: false,
             workspace_choice: None,
             workspace_root: None,
@@ -503,6 +514,7 @@ impl TaskApp {
             expanded_request_brief: None,
             goal_steps_tab: None,
             steps_layout: Layout::Board,
+            render_statuses: Default::default(),
             board_execution_filter: None,
             show_task_activity: false,
             show_research_settings: false,
@@ -1579,6 +1591,7 @@ impl TaskApp {
         .detach();
     }
     pub fn poll_runtime(&mut self, cx: &mut Context<Self>) -> bool {
+        self.poll_startup(cx);
         self.poll_research_io(cx);
         self.poll_recovery(cx);
         let discovery = self.discovery.as_ref().and_then(|rx| rx.try_recv().ok());
@@ -1644,6 +1657,7 @@ impl TaskApp {
         }
         let keep = !self.active_runs.is_empty()
             || !self.queued_runs.is_empty()
+            || self.startup.pending.is_some()
             || self.discovery.is_some()
             || self.ego_probe.is_some()
             || self.attachment_import.is_some()

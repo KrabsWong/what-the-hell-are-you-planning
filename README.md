@@ -78,3 +78,9 @@ The application provides research workflows, not trading or order execution. Gen
 ## License
 
 [GNU General Public License v3.0](LICENSE)
+
+### Local macOS beta package
+
+Run `./script/package_macos.sh` on Apple Silicon to build an optimized release and produce a DMG plus SHA-256 checksum in `target/distribution/`. The disk image includes `Planning.app`, an Applications shortcut, installation instructions, and the license. No workspace or credentials are packaged. OpenCode and ego(lite) remain separate prerequisites.
+
+These beta packages use ad-hoc signing and are **not notarized**. Testers may need to allow the app in macOS Privacy & Security after attempting to open it. For ordinary trusted distribution without this exception, use a Developer ID Application certificate and Apple notarization. The current package is arm64 only; compatibility with older macOS versions has not been fully tested.

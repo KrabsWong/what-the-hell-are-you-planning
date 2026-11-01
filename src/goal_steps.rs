@@ -157,7 +157,7 @@ impl TaskApp {
             return div().into_any_element();
         };
         let goal = research.goal_id;
-        let status = self.store.task_status(id, self.todo_batch.as_ref());
+        let status = self.display_task_status(id);
         let state = status.execution;
         let archived = self.store.task_is_archived(id);
         let pending = self.store.research_pending_approval(id);
@@ -178,7 +178,7 @@ impl TaskApp {
         let mut panel = col().id("step-execution-panel").w_full().min_w_0().gap_2().py_2().pl_3()
             .border_l_2().border_color(rgb(state.color(cx)))
             .child(div().text_sm().font_weight(FontWeight::SEMIBOLD)
-                .text_color(rgb(state.color(cx))).child(self.store.task_status(id, self.todo_batch.as_ref()).label()))
+                .text_color(rgb(state.color(cx))).child(self.display_task_status(id).label()))
             .child(div().id("step-execution-reason").text_sm().text_color(rgb(colors.secondary)).child(reason).map(observed));
         if state == ExecutionStatus::Blocked {
             if let Some(run) = latest {
@@ -301,8 +301,8 @@ impl TaskApp {
         let step = |id: u64, board: bool, cx: &mut Context<Self>| {
             let task = self.store.task(id).unwrap();
             let title = format!("{} · {}", self.store.identifier(task), task.title);
-            let execution = self.store.task_status(id, self.todo_batch.as_ref()).execution;
-            let status = self.store.task_status(id, self.todo_batch.as_ref());
+            let execution = self.display_task_status(id).execution;
+            let status = self.display_task_status(id);
             let (surface, hover, border) = board_card_colors(status.phase, cx);
             let dark = gpui_kit::component::Theme::global(cx).is_dark();
             quiet_button(format!("goal-step-{id}"), "")
@@ -420,17 +420,17 @@ impl TaskApp {
                     .pb_5()
                     .gap_4()
                     .children(Stage::BOARD_ORDER.into_iter().filter(|phase|
-                        matches!(phase, Stage::Planned | Stage::InProgress | Stage::Done) || ids.iter().any(|id| self.store.task_status(*id, self.todo_batch.as_ref()).phase == *phase)
+                        matches!(phase, Stage::Planned | Stage::InProgress | Stage::Done) || ids.iter().any(|id| self.display_task_status(*id).phase == *phase)
                     ).map(|phase| {
                         let matching: Vec<_> = ids.iter().copied().filter(|id|
-                            self.store.task_status(*id, self.todo_batch.as_ref()).phase == phase).collect();
+                            self.display_task_status(*id).phase == phase).collect();
                         let tasks: Vec<_> = matching.iter().filter_map(|id| self.store.task(*id).cloned()).collect();
                         let mut cards = vec![];
                         if phase == Stage::InProgress {
                             for group in crate::workflow::ExecutionGroup::ALL {
                                 if self.board_execution_filter.is_some_and(|filter| filter != group) { continue; }
                                 let group_ids: Vec<_> = matching.iter().copied().filter(|id|
-                                    self.store.task_status(*id, self.todo_batch.as_ref()).group == Some(group)).collect();
+                                    self.display_task_status(*id).group == Some(group)).collect();
                                 if group_ids.is_empty() { continue; }
                                 cards.push(label(format!("{} · {}", group.label(), group_ids.len()), cx).into_any_element());
                                 cards.extend(group_ids.into_iter().map(|id| step(id, true, cx).into_any_element()));
@@ -440,8 +440,8 @@ impl TaskApp {
                             .w(px(if phase == Stage::InProgress { 350. } else { 292. })).flex_shrink_0().h_full().gap_3()
                             .child(row().h_9().gap_2()
                                 .child(div().text_color(rgb(stage_color(phase, cx))).child(crate::workflow::phase_label(phase)))
-                                .child(label(matching.len().to_string(), cx)))
-                            .when(phase == Stage::InProgress, |d| d.child(self.execution_filter_bar(&tasks, cx)))
+                                .child(label(matching.len().to_string(), cx))
+                                .when(phase == Stage::InProgress, |d| d.child(self.execution_status_filter(&tasks, cx))))
                             .child(col().id(format!("steps-cards-{}", crate::workflow::phase_label(phase)))
                                 .flex_1().min_h_0().overflow_y_scroll().gap_3().restrict_scroll_to_axis()
                                 .when(cards.is_empty(), |d| d.child(label("No steps in this category", cx)))

@@ -74,8 +74,10 @@ impl Store {
     }
 
     pub fn goal_tasks_complete(&self, goal: u64) -> bool {
+        let children = self.research_children(goal);
         self.has_research_plan(goal)
-            && self.research_children(goal).iter().all(|id| self.task(*id).is_some_and(|t| t.stage == Stage::Done) && self.research_result(*id).is_some())
+            && children.iter().all(|id| self.task(*id).is_some_and(|t| t.stage == Stage::Done))
+            && self.research_results_current(&children)
             && self.tasks.iter().filter(|t| !t.archived && t.research.is_none() && self.owning_research_goal(t.id) == Some(goal)).all(|t| t.stage == Stage::Done)
     }
 

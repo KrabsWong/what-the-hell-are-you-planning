@@ -1,3 +1,4 @@
+mod startup;
 #[cfg(feature = "qa")]
 mod render_qa;
 #[cfg(feature = "qa")]
@@ -80,6 +81,8 @@ fn main() {
     #[cfg(feature = "qa")]
     if std::env::args().any(|arg| arg == "--qa-display-order") { workflow_qa::display_order(); return; }
     #[cfg(feature = "qa")]
+    if std::env::args().any(|arg| arg == "--qa-board-scroll") { workflow_qa::scroll_benchmark(); return; }
+    #[cfg(feature = "qa")]
     if std::env::args().any(|arg| arg == "--qa-workflow") { workflow_qa::run(); return; }
     #[cfg(feature = "qa")]
     if std::env::args().any(|arg| arg == "--qa-rich-markdown") { rich_markdown::verify_frames(); return; }
@@ -116,6 +119,11 @@ fn main() {
     #[cfg(feature = "qa")]
     if std::env::args().any(|arg| arg == "--qa-topic-migration") {
         topic_qa::run_migration(); return;
+    }
+    #[cfg(feature = "qa")]
+    if std::env::args().any(|arg| arg == "--qa-topic-actions") {
+        topic_qa::goal_actions();
+        return;
     }
     #[cfg(feature = "qa")]
     if std::env::args().any(|arg| arg == "--qa-topics") {

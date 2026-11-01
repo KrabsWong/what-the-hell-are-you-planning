@@ -8,9 +8,14 @@
 
 ## 1. 首次启动与界面
 
+启动时静默检查 **Workspace、OpenCode、ego(lite)**；三项均已就绪时直接进入主界面，无需点击 Continue。缺少工作区或依赖检测失败时才显示设置页。选择工作区并点击 **Set workspace**；OpenCode 会执行 `--version` 检查，ego(lite) 会读取本机 `ego-browser skill` 的完整指南。缺少依赖时可使用安装链接；ego(lite) 安装后还需打开并完成首次设置。可修改两项可执行文件路径，点击 **Check again** 重新检测。三项就绪后 **Continue** 才可用，并保存验证过的路径。检测不调用模型；进入应用后仍需配置模型及服务商。
+
+
 运行 `cargo run`，或打开已构建的 `target/debug/what-the-hell-are-you-planning`。当前真实验证环境是 Apple Silicon macOS，需要已配置提供商的 OpenCode。
 
 新工作区只有一个可配置的 Workspace 项目，没有演示任务、预设模型或模拟运行。已有工作区恢复真实任务和历史。侧栏底部可切换 **Light mode / Dark mode**，偏好自动保存，默认浅色。
+
+侧栏点击已完成的 Goal 会直接显示当前有效的最终报告，已完成 Task 显示自身结果；可通过 **View original goal / View original task** 查看原始任务信息。未完成、失败、阻塞、运行中或结果已失效时仍打开任务详情；手动完成但没有结果的任务也保持详情页。
 
 侧栏启动时只展开上次使用的 Project，显示它的 Topic 列表；其他项目、Topic 内的任务和子步骤默认收起。点击箭头可手动展开，打开具体任务会展开其所在层级。首次使用或上次项目已删除时，所有项目默认收起。
 

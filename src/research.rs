@@ -425,6 +425,11 @@ impl Store {
         ));
         Ok(ids)
     }
+    /// Validate a group against one immutable snapshot, sharing dependency checks.
+    pub(crate) fn research_results_current(&self, ids: &[u64]) -> bool {
+        let mut cache = Validation::default();
+        ids.iter().all(|id| self.research_result_checked(*id, &mut vec![], &mut cache).is_some())
+    }
     pub fn research_result(&self, id: u64) -> Option<&AgentRun> {
         self.research_result_checked(id, &mut vec![], &mut Validation::default())
     }

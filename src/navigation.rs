@@ -3,6 +3,28 @@ use crate::app::{Scope, TaskApp};
 use gpui_kit::*;
 
 impl crate::domain::Store {
+    /// Sidebar defaults only to a current completed result, never a historical attempt.
+    pub(crate) fn completed_sidebar_result(&self, id: u64) -> Option<u64> {
+        use crate::{domain::Stage, research::ResearchKind};
+        let task = self.task(id)?;
+        if task.stage != Stage::Done || self.task_status(id, None).phase != Stage::Done {
+            return None;
+        }
+        match task.research.as_ref().map(|r| r.kind) {
+            Some(ResearchKind::Goal) => {
+                if !self.goal_tasks_complete(id) { return None; }
+                let children = self.research_children(id);
+                children.iter().rev()
+                    .filter(|child| self.task(**child).and_then(|t| t.research.as_ref()).is_some_and(|r| r.kind == ResearchKind::Advise))
+                    .chain(children.iter().rev())
+                    .find_map(|child| self.research_result(*child).map(|r| r.id))
+            }
+            Some(_) => self.research_result(id).map(|r| r.id),
+            None => self.runs.iter().rev().find(|r| r.task_id == id && r.project_plan.is_none())
+                .filter(|r| r.status == "Succeeded" && !r.output.trim().is_empty()).map(|r| r.id),
+        }
+    }
+
     /// Detail navigation follows the project tree, independently of list filters,
     /// task stages and collapsed rows. Wrap at the ends to keep both actions available.
     pub(crate) fn detail_task_neighbors(&self, id: u64) -> (u64, u64) {
@@ -34,6 +56,13 @@ pub(crate) enum CrumbTarget {
     Task(u64),
 }
 impl TaskApp {
+    pub(crate) fn open_sidebar_task(&mut self, id: u64, window: &mut Window, cx: &mut Context<Self>) {
+        let result = if self.task_running(id) || self.goal_busy(id) { None }
+            else { self.store.completed_sidebar_result(id) };
+        self.open_task(id, window, cx);
+        if let Some(run) = result { self.show_task_result(run, cx); }
+    }
+
     pub(crate) fn displayed_run_id(&self) -> Option<u64> {
         self.selected_run
             .filter(|id| self.store.runs.iter().any(|r| r.id == *id))
@@ -76,6 +105,32 @@ impl TaskApp {
 #[cfg(test)]
 mod tests {
     use crate::domain::{Stage, Store};
+
+    #[test]
+    fn sidebar_requires_completion_and_a_successful_latest_result() {
+        let mut store = Store::empty();
+        store.projects[0].directory = std::env::temp_dir().to_string_lossy().into_owned();
+        store.default_model = "test/model".into();
+        let id = store.create_task("Task", 1, Stage::Planned, None).unwrap();
+        let mut run = store.prepare_run(id).unwrap();
+        run.status = "Succeeded".into();
+        run.output = "Final result".into();
+        let run_id = run.id;
+        store.runs.push(run);
+        for stage in [Stage::Backlog, Stage::Planned, Stage::InProgress, Stage::Review, Stage::Cancelled] {
+            store.task_mut(id).unwrap().stage = stage;
+            assert_eq!(store.completed_sidebar_result(id), None);
+        }
+        store.task_mut(id).unwrap().stage = Stage::Done;
+        assert_eq!(store.completed_sidebar_result(id), Some(run_id));
+        for status in ["Failed", "Blocked", "Interrupted", "Cancelled", "Queued", "Running"] {
+            store.runs.last_mut().unwrap().status = status.into();
+            assert_eq!(store.completed_sidebar_result(id), None);
+        }
+        store.runs.last_mut().unwrap().status = "Succeeded".into();
+        store.runs.last_mut().unwrap().output.clear();
+        assert_eq!(store.completed_sidebar_result(id), None);
+    }
 
     #[test]
     fn detail_navigation_includes_completed_steps_and_wraps_across_topics() {

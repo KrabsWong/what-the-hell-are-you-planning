@@ -427,9 +427,19 @@ impl TaskApp {
                                 .h_8()
                                 .px_2()
                                 .on_click(
-                                    cx.listener(move |a, _, _, cx| a.view_task_result(report, cx)),
+                                    cx.listener(move |a, _, w, cx| {
+                                        a.open_task(report, w, cx);
+                                        a.view_task_result(report, cx);
+                                    }),
                                 ),
                         )
+                    })
+                    .when(self.store.goal_tasks_complete(goal_id), |d| {
+                        d.child(quiet_button(format!("topic-export-{goal_id}"), "Export")
+                            .h_8().px_2()
+                            .disabled(self.goal_busy(goal_id))
+                            .tooltip("Save completed evidence, analysis and reports as a ZIP")
+                            .on_click(cx.listener(move |a, _, _, cx| a.export_research_goal(goal_id, cx))))
                     }),
             );
         }

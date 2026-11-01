@@ -86,10 +86,20 @@ print(json.dumps({'type': 'text', 'part': {'text': text}}), flush=True)
         w.drag_to(format!("card-{id}"), "column-todo", cx);
         assert_eq!(app.read(cx).store.runs.len(), 1);
         assert!(app.read(cx).error.contains("submitted"));
-        w.click("execution-filter-running", cx);
+        w.click("execution-status-filter", cx);
+        w.render_frame(cx);
+        assert_eq!(w.find(3usize).label(), Some("Running · 0"));
+        w.click(3usize, cx);
         w.render_frame(cx);
         assert!(w.try_find(format!("card-{id}")).is_none());
-        w.click("execution-filter-all", cx);
+    }).unwrap();
+    cx.update_window(handle, |_, w, cx| {
+        w.render_frame(cx);
+        w.click("execution-status-filter", cx);
+    }).unwrap();
+    cx.update_window(handle, |_, w, cx| {
+        w.render_frame(cx);
+        w.click(0usize, cx);
         app.update(cx, |a, cx| a.change_stage(id, Stage::InProgress, cx));
         assert_eq!(
             app.read(cx).store.runs.len(),
@@ -345,4 +355,58 @@ pub fn display_order() {
     }).unwrap();
     println!("Newest-first sidebar, List, Board and execution-group positions verified.");
     cx.update(|cx| cx.quit());
+}
+
+/// Repeatable horizontal-scroll workload with validated research results, no real agents.
+pub fn scroll_benchmark() {
+    let mut store = Store::empty();
+    store.projects[0].directory = std::env::temp_dir().to_string_lossy().into();
+    store.default_model = "fixture/model".into();
+    for n in 0..24 {
+        let goal = store.create_research_goal(format!("Scroll benchmark {n}"), "Research scope".into(), 1).unwrap();
+        let steps = store.apply_research_plan(goal, r#"{"tasks":[{"title":"Evidence","instructions":"Collect","kind":"collect","depends_on":[]},{"title":"Analysis","instructions":"Analyze","kind":"analyze","depends_on":[0]},{"title":"Report","instructions":"Report","kind":"advise","depends_on":[1]}]}"#).unwrap();
+        for id in steps {
+            let mut run = store.prepare_run(id).unwrap();
+            run.status = "Succeeded".into();
+            run.output = "Completed benchmark result".into();
+            store.runs.push(run);
+            store.task_mut(id).unwrap().stage = Stage::Done;
+        }
+        store.sync_goal_progress(goal);
+    }
+    let mut cx = HeadlessAppContext::with_platform(platform::current_platform(true).text_system(), Arc::new(crate::ui_assets::AppAssets), platform::current_headless_renderer);
+    cx.update(init);
+    let benchmark_goal = store.tasks.first().unwrap().id;
+    let mut view = None;
+    let window = cx.open_window(size(px(1000.), px(720.)), |w, cx| {
+        let app = cx.new(|cx| TaskApp::new_mock(w, cx));
+        app.update(cx, |a, cx| { a.store = store; a.navigate(Scope::All, w, cx); a.layout = Layout::Board; });
+        view = Some(app.clone());
+        cx.new(|cx| base::Root::new(app, w, cx))
+    }).unwrap();
+    let handle = window.into();
+    cx.update_window(handle, |_, w, cx| { w.render_frame(cx); }).unwrap();
+    let initial_left = cx.update_window(handle, |_, w, _| w.find("column-in-progress").bounds().left()).unwrap();
+    let mut elapsed = Vec::new();
+    for n in 0..30 {
+        let start = Instant::now();
+        cx.update_window(handle, |_, w, cx| {
+            w.scroll("board-scroll", ScrollDelta::Pixels(point(px(if n < 15 { -12. } else { 12. }), px(0.))), cx);
+        }).unwrap();
+        elapsed.push(start.elapsed().as_secs_f64() * 1000.);
+        if n == 14 {
+            cx.update_window(handle, |_, w, _| {
+                assert!(w.find("column-in-progress").bounds().left() < initial_left, "Horizontal gesture must move the board");
+            }).unwrap();
+        }
+    }
+    let app = view.unwrap();
+    cx.update_window(handle, |_, w, cx| {
+        assert_eq!(app.read(cx).display_task_status(benchmark_goal).phase, Stage::Done);
+        app.update(cx, |a, cx| { a.store.task_mut(benchmark_goal).unwrap().stage = Stage::Cancelled; cx.notify(); });
+        w.render_frame(cx);
+        assert_eq!(app.read(cx).display_task_status(benchmark_goal).phase, Stage::Cancelled, "Render cache must not retain stale status across frames");
+    }).unwrap();
+    elapsed.sort_by(f64::total_cmp);
+    println!("Board scroll workload: 24 goals / 72 completed steps; median {:.2} ms, p95 {:.2} ms per scroll+render", elapsed[15], elapsed[28]);
 }

@@ -1,45 +1,56 @@
 use crate::{app::TaskApp, domain::Task, views::*, workflow::ExecutionGroup};
-use gpui_kit::{component::Selectable, prelude::FluentBuilder, *};
+use gpui_kit::{component::menu::{DropdownMenu, PopupMenuItem}, prelude::FluentBuilder, *};
 
 impl TaskApp {
-    pub(crate) fn execution_filter_bar(
+    pub(crate) fn display_task_status(&self, id: u64) -> crate::workflow::TaskStatus {
+        if let Some(status) = self.render_statuses.borrow().get(&id) {
+            return status.clone();
+        }
+        let status = self.store.task_status(id, self.todo_batch.as_ref());
+        self.render_statuses.borrow_mut().insert(id, status.clone());
+        status
+    }
+
+    pub(crate) fn execution_status_filter(
         &self,
         tasks: &[Task],
         cx: &mut Context<Self>,
     ) -> AnyElement {
         let groups: Vec<_> = tasks
             .iter()
-            .map(|t| self.store.task_status(t.id, self.todo_batch.as_ref()).group)
+            .map(|t| self.display_task_status(t.id).group)
             .collect();
-        col()
-            .px_1()
-            .gap_2()
-            .child(label("Waiting → Queued → Running → Done", cx))
-            .child(
-                row()
-                    .flex_wrap()
-                    .gap_1()
-                    .child(
-                        quiet_button("execution-filter-all", format!("All {}", tasks.len()))
-                            .selected(self.board_execution_filter.is_none())
-                            .on_click(cx.listener(|a, _, _, cx| {
-                                a.board_execution_filter = None;
+        let selected = self.board_execution_filter;
+        let mut options = vec![(None, format!("All statuses · {}", tasks.len()))];
+        options.extend(ExecutionGroup::ALL.into_iter().map(|group| {
+            let count = groups.iter().filter(|value| **value == Some(group)).count();
+            (Some(group), format!("{} · {count}", group.label()))
+        }));
+        let title = match selected {
+            None => "All statuses",
+            Some(ExecutionGroup::Waiting) => "Waiting",
+            Some(group) => group.label(),
+        };
+        let entity = cx.entity().downgrade();
+        button("execution-status-filter", title)
+            .h(px(28.)).px_2().text_xs().flex_shrink_0()
+            .dropdown_caret(true)
+            .tooltip("Filter execution status")
+            .dropdown_menu_with_anchor(Anchor::TopLeft, move |mut menu, _, _| {
+                for (group, title) in &options {
+                    let group = *group;
+                    let entity = entity.clone();
+                    menu = menu.item(PopupMenuItem::new(title.clone())
+                        .checked(group == selected)
+                        .on_click(move |_, _, cx| {
+                            let _ = entity.update(cx, |a, cx| {
+                                a.board_execution_filter = group;
                                 cx.notify();
-                            })),
-                    )
-                    .children(ExecutionGroup::ALL.into_iter().map(|group| {
-                        let count = groups.iter().filter(|value| **value == Some(group)).count();
-                        quiet_button(
-                            format!("execution-filter-{}", group.key()),
-                            format!("{} {count}", group.label()),
-                        )
-                        .selected(self.board_execution_filter == Some(group))
-                        .on_click(cx.listener(move |a, _, _, cx| {
-                            a.board_execution_filter = Some(group);
-                            cx.notify();
-                        }))
-                    })),
-            )
+                            });
+                        }));
+                }
+                menu
+            })
             .into_any_element()
     }
 
@@ -59,8 +70,7 @@ impl TaskApp {
             let matching: Vec<_> = cards
                 .iter()
                 .filter(|task| {
-                    self.store
-                        .task_status(task.id, self.todo_batch.as_ref())
+                    self.display_task_status(task.id)
                         .group
                         == Some(group)
                 })
@@ -78,8 +88,8 @@ impl TaskApp {
                     .into_any_element(),
             );
         }
-        if content.is_empty() {
-            content.push(label("No tasks in this category. Dropping here still submits execution; the scheduler chooses the status.", cx).into_any_element());
+        if content.is_empty() && !cards.is_empty() {
+            content.push(label("No tasks match this status.", cx).into_any_element());
         }
         content
     }

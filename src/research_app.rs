@@ -535,14 +535,17 @@ impl TaskApp {
             .find(|r| r.task_id == id)
             .map(|r| r.id)
         {
-            self.show_run_details = false;
-            self.selected_run = Some(run_id);
-            self.show_run_result = true;
-            self.task_result_context = self.selected;
-            self.selected = None;
-            self.scope = Scope::Runs;
-            self.reveal_selected_run();
-            cx.notify();
+            self.show_task_result(run_id, cx);
         }
+    }
+    pub(crate) fn show_task_result(&mut self, run_id: u64, cx: &mut Context<Self>) {
+        self.show_run_details = false;
+        self.selected_run = Some(run_id);
+        self.show_run_result = true;
+        self.task_result_context = self.selected;
+        self.selected = None;
+        self.scope = Scope::Runs;
+        self.reveal_selected_run();
+        cx.notify();
     }
 }

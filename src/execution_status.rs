@@ -206,7 +206,7 @@ impl Store {
 impl crate::app::TaskApp {
     pub(crate) fn execution_summary(&self, goal: u64) -> String {
         let states: Vec<_> = self.store.goal_step_ids(goal).into_iter()
-            .map(|id| self.store.task_status(id, self.todo_batch.as_ref()).execution).collect();
+            .map(|id| self.display_task_status(id).execution).collect();
         let mut parts = vec![format!("{} steps", states.len())];
         for status in ExecutionStatus::ALL.into_iter().chain(Stage::ALL.into_iter().map(ExecutionStatus::Stage)) {
             let count = states.iter().filter(|state| **state == status).count();
@@ -217,7 +217,7 @@ impl crate::app::TaskApp {
 
     pub(crate) fn execution_indicator(&self, id: u64, cx: &gpui_kit::App) -> gpui_kit::AnyElement {
         use gpui_kit::*;
-        let state = self.store.task_status(id, self.todo_batch.as_ref());
+        let state = self.display_task_status(id);
         let status = state.execution;
         // A status is not an action: no button label slot, content gap or hover fill.
         // Reserve a non-shrinking 24px box for the shared 16px icon in cards and list rows.

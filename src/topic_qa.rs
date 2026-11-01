@@ -655,3 +655,98 @@ pub fn run_migration() {
     }).unwrap();
     println!("Migration modal QA passed: {}", root.display());
 }
+
+
+/// The Topic shortcut must match the report task’s View final report action.
+pub fn goal_actions() {
+    let mut store = Store::empty();
+    store.projects[0].directory = std::env::temp_dir().to_string_lossy().into_owned();
+    store.default_model = "test/model".into();
+    let goal = store.create_research_goal("Completed research".into(), "Scope".into(), 1).unwrap();
+    let steps = store.apply_research_plan(goal, r#"{"tasks":[{"title":"Evidence","instructions":"Collect","kind":"collect","depends_on":[]},{"title":"Analysis","instructions":"Analyze","kind":"analyze","depends_on":[0]},{"title":"Report","instructions":"Report","kind":"advise","depends_on":[1]}]}"#).unwrap();
+    for id in &steps {
+        let mut run = store.prepare_run(*id).unwrap();
+        run.status = "Succeeded".into();
+        run.output = "# Completed result".into();
+        store.runs.push(run);
+        store.task_mut(*id).unwrap().stage = crate::domain::Stage::Done;
+    }
+    store.sync_goal_progress(goal);
+    let topic = store.task(goal).unwrap().topic_id.unwrap();
+    let report = *steps.last().unwrap();
+    assert!(store.research_export(goal).is_ok());
+    let mut cx = HeadlessAppContext::with_platform(
+        platform::current_platform(true).text_system(), Arc::new(crate::ui_assets::AppAssets), platform::current_headless_renderer);
+    cx.update(init);
+    let mut app = None;
+    let window = cx.open_window(size(px(1000.), px(720.)), |w, cx| {
+        let view = cx.new(|cx| TaskApp::new_mock(w, cx));
+        view.update(cx, |a, cx| {
+            a.store = store.clone();
+            a.navigate(Scope::Topic(topic), w, cx);
+        });
+        app = Some(view.clone());
+        cx.new(|cx| base::Root::new(view, w, cx))
+    }).unwrap();
+    let app = app.unwrap();
+    let handle = window.into();
+    cx.update_window(handle, |_, w, cx| {
+        w.render_frame(cx);
+        assert!(w.find(format!("topic-export-{goal}")).visible());
+        app.update(cx, |a, cx| a.open_task(report, w, cx));
+        w.render_frame(cx);
+        w.click("task-view-result", cx);
+        let expected = {
+            let a = app.read(cx);
+            (a.scope.clone(), a.selected, a.selected_run, a.task_result_context,
+                a.show_run_result, a.show_run_details)
+        };
+        app.update(cx, |a, cx| a.navigate(Scope::Topic(topic), w, cx));
+        w.render_frame(cx);
+        w.click(format!("topic-report-{goal}"), cx);
+        let a = app.read(cx);
+        assert_eq!((a.scope.clone(), a.selected, a.selected_run, a.task_result_context,
+            a.show_run_result, a.show_run_details), expected);
+        assert!(a.show_run_result);
+        assert_eq!(a.task_result_context, Some(report));
+        w.render_frame(cx);
+        w.click(format!("sidebar-task-{goal}"), cx);
+        assert_eq!(app.read(cx).selected, None);
+        assert_eq!(app.read(cx).task_result_context, Some(goal));
+        assert_eq!(app.read(cx).selected_run, expected.2);
+        w.render_frame(cx);
+        assert_eq!(w.find("open-run-task").label(), Some("View original goal"));
+        w.click("open-run-task", cx);
+        assert_eq!(app.read(cx).selected, Some(goal));
+        assert_eq!(app.read(cx).task_result_context, None);
+        w.render_frame(cx);
+        w.click(format!("sidebar-task-{report}"), cx);
+        assert_eq!(app.read(cx).task_result_context, Some(report));
+        w.render_frame(cx);
+        assert_eq!(w.find("open-run-task").label(), Some("View original task"));
+        w.click("open-run-task", cx);
+        assert_eq!(app.read(cx).selected, Some(report));
+        // An old successful report is insufficient when the latest attempt failed.
+        app.update(cx, |a, cx| {
+            a.store.runs.last_mut().unwrap().status = "Failed".into();
+            cx.notify();
+        });
+        w.render_frame(cx);
+        w.click(format!("sidebar-task-{report}"), cx);
+        assert_eq!(app.read(cx).selected, Some(report));
+        assert_eq!(app.read(cx).task_result_context, None);
+        w.render_frame(cx);
+        w.click(format!("sidebar-task-{goal}"), cx);
+        assert_eq!(app.read(cx).selected, Some(goal));
+        assert_eq!(app.read(cx).task_result_context, None);
+        app.update(cx, |a, cx| {
+            a.navigate(Scope::Topic(topic), w, cx);
+            a.store.runs.clear();
+            cx.notify();
+        });
+        w.render_frame(cx);
+        assert!(w.try_find(format!("topic-export-{goal}")).is_none());
+        assert!(w.try_find(format!("topic-report-{goal}")).is_none());
+    }).unwrap();
+    println!("Topic report navigation and completed-only export shortcuts passed");
+}

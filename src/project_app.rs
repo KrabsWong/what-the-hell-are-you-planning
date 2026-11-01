@@ -189,6 +189,7 @@ impl TaskApp {
                     && self.selected.is_none()
                     && self.displayed_run_id() == Some(run.id)
                 {
+                    self.remember_active_project(project);
                     self.scope = Scope::Project(project);
                     self.layout = Layout::Board;
                     self.selected = None;

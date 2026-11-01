@@ -561,6 +561,14 @@ impl TaskApp {
         self.show_run_details = false;
         self.show_run_result = true;
         self.show_research_settings = false;
+        let project = match &scope {
+            Scope::Project(id) => Some(*id),
+            Scope::Topic(id) => self.store.topics.iter().find(|t| t.id == *id).map(|t| t.project_id),
+            _ => None,
+        };
+        if let Some(project) = project {
+            self.remember_active_project(project);
+        }
         self.scope = scope;
         self.selected = None;
         self.editing = false;
@@ -589,13 +597,37 @@ impl TaskApp {
             .map(|task| Scope::Project(task.project_id))
             .unwrap_or_else(|| self.scope.clone())
     }
+    pub(crate) fn remember_active_project(&mut self, project: u64) {
+        if self.store.projects.iter().any(|p| p.id == project) {
+            self.store.last_active_project = Some(project);
+        }
+    }
+    pub(crate) fn restore_sidebar(&mut self) {
+        self.expanded_sidebar_projects = self.store.last_active_project
+            .filter(|id| self.store.projects.iter().any(|p| p.id == *id))
+            .into_iter().collect();
+        self.collapsed_sidebar_topics = self.store.topics.iter().map(|t| t.id).collect();
+        self.collapsed_sidebar_goals = self.store.tasks.iter().map(|t| t.id).collect();
+    }
     pub(crate) fn reveal_task_project(&mut self, id: u64) {
+        if let Some(task) = self.store.task(id) {
+            self.remember_active_project(task.project_id);
+        }
         if let Some(topic) = self.store.task_topic(id) {
             self.collapsed_sidebar_topics.retain(|t| *t != topic.id);
         }
         if let Some(research) = self.store.task(id).and_then(|t| t.research.as_ref()) {
             self.collapsed_sidebar_goals
                 .retain(|goal| *goal != research.goal_id);
+        }
+        let mut ancestor = self.store.task(id).and_then(|task| task.parent_id);
+        let mut visited = std::collections::BTreeSet::new();
+        while let Some(parent) = ancestor {
+            if !visited.insert(parent) {
+                break;
+            }
+            self.collapsed_sidebar_goals.retain(|goal| *goal != parent);
+            ancestor = self.store.task(parent).and_then(|task| task.parent_id);
         }
         if let Some(task) = self.store.task(id)
             && !self.expanded_sidebar_projects.contains(&task.project_id)
@@ -919,6 +951,7 @@ impl TaskApp {
             return;
         }
         if let Some(mut store) = self.undo.pop() {
+            store.last_active_project = self.store.last_active_project;
             store.runs = self.store.runs.clone();
             store.next_id = store.next_id.max(self.store.next_id);
             self.store = store;
@@ -967,6 +1000,7 @@ impl TaskApp {
             Ok((lock, store)) => {
                 self._storage_lock = Some(lock);
                 self.store = store.unwrap_or_else(Store::empty);
+                self.restore_sidebar();
                 self.store.recover_interrupted_runs();
                 self.store.reconcile_goal_approvals();
                 let project = self.store.projects.first().map(|p| p.id).unwrap_or(0);

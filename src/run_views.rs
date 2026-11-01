@@ -182,6 +182,12 @@ fn run_location(store: &Store, run: &AgentRun) -> (Option<u64>, Option<u64>) {
 
 impl TaskApp {
     pub fn reveal_selected_run(&mut self) {
+        if let Some(project) = self.displayed_run_id()
+            .and_then(|id| self.store.runs.iter().find(|r| r.id == id))
+            .and_then(|run| run_location(&self.store, run).0)
+        {
+            self.remember_active_project(project);
+        }
         self.result_scroll.set_offset(point(px(0.), px(0.)));
         self.expanded_run_sources = None;
         self.show_planning_activity = self

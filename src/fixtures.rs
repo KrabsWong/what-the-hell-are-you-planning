@@ -221,6 +221,7 @@ impl Store {
             default_model: String::new(),
             research_config: Default::default(),
             appearance: crate::appearance::Appearance::Dark,
+            last_active_project: None,
         };
         store.normalize_topics();
         store

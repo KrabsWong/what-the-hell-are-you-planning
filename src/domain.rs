@@ -268,6 +268,8 @@ pub struct Store {
     pub research_config: crate::research::ResearchConfig,
     #[serde(default)]
     pub appearance: crate::appearance::Appearance,
+    #[serde(default)]
+    pub last_active_project: Option<u64>,
 }
 
 impl Store {
@@ -326,6 +328,7 @@ impl Store {
             default_model: String::new(),
             research_config: Default::default(),
             appearance: Default::default(),
+            last_active_project: None,
         }
     }
     /// Older workspaces acquire a topic without rewriting research content or results.

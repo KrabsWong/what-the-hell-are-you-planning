@@ -414,6 +414,7 @@ impl TaskApp {
                                 a.expanded_sidebar_projects.retain(|id| *id != pid);
                             } else {
                                 a.expanded_sidebar_projects.push(pid);
+                                a.remember_active_project(pid);
                             }
                             cx.notify();
                         })),
@@ -429,8 +430,8 @@ impl TaskApp {
                 project_tasks.sort_by(|a, b| crate::display_order::tasks_newest_first(a, b));
                 let mut list = col()
                     .gap_0()
-                    .ml_5()
-                    .pl_2()
+                    .ml_4()
+                    .pl_1()
                     .border_l_1()
                     .border_color(rgb(colors.line));
                 let mut groups: Vec<_> = self
@@ -552,7 +553,7 @@ impl TaskApp {
                                 .min_w_0()
                                 .ml(px((depth as f32
                                     + if topic_id.is_some() { 1. } else { 0. })
-                                    * 12.))
+                                    * 10.))
                                 .when(nested, |d| {
                                     d.pl_1().border_l_1().border_color(rgb(colors.line))
                                 })

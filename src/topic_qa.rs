@@ -431,3 +431,69 @@ fn steps_screenshot(
     }
     cx.capture_screenshot(handle).unwrap().save(path).unwrap();
 }
+
+/// Startup expansion and last-project persistence, independent of execution workflows.
+pub fn sidebar() {
+    let root = std::env::temp_dir().join(format!("planning-sidebar-qa-{}", std::process::id()));
+    let mut store = Store::mock();
+    let topic = store.create_topic(1, "Startup topic").unwrap();
+    let goal = store.create_research_goal_in_topic(
+        "Startup goal".into(), "Check navigation".into(), 1, Some(topic),
+    ).unwrap();
+    let path = root.join("workspace.sqlite3");
+    Storage::new(path.clone()).save(&store).unwrap();
+    let mut cx = HeadlessAppContext::with_platform(
+        platform::current_platform(true).text_system(),
+        Arc::new(crate::ui_assets::AppAssets),
+        platform::current_headless_renderer,
+    );
+    cx.update(|cx| init(cx));
+    let mut app = None;
+    let window = cx.open_window(size(px(1000.), px(720.)), |w, cx| {
+        let view = cx.new(|cx| TaskApp::new_mock(w, cx));
+        view.update(cx, |a, cx| {
+            a.attach_storage(Storage::new(path.clone()), w, cx);
+            assert!(a.expanded_sidebar_projects.is_empty());
+        });
+        app = Some(view.clone());
+        cx.new(|cx| base::Root::new(view, w, cx))
+    }).unwrap();
+    let app = app.unwrap();
+    let handle = window.into();
+    // Navigation survives a storage reload, while expansion is reset to one project.
+    cx.update_window(handle, |_, w, cx| {
+        app.update(cx, |a, cx| {
+            let other = a.store.projects.last().unwrap().id;
+            a.navigate(Scope::Project(other), w, cx);
+            assert_eq!(a.store.last_active_project, Some(other));
+            a.navigate(Scope::Topic(topic), w, cx);
+            assert_eq!(a.store.last_active_project, Some(1));
+            a.navigate(Scope::All, w, cx);
+            assert_eq!(a.store.last_active_project, Some(1));
+            a.persist_if_changed(true);
+            let loaded = Storage::new(path.clone()).load().unwrap().unwrap();
+            assert_eq!(loaded.last_active_project, Some(1));
+            a.expanded_sidebar_projects = a.store.projects.iter().map(|p| p.id).collect();
+            a.collapsed_sidebar_topics.clear();
+            a.collapsed_sidebar_goals.clear();
+            // Open a persisted copy to exercise startup without sharing the live lock.
+            let reopened = Storage::new(root.join("reopened/workspace.sqlite3"));
+            reopened.save(&loaded).unwrap();
+            a.attach_storage(reopened, w, cx);
+            assert_eq!(a.expanded_sidebar_projects, vec![1]);
+            assert!(a.store.topics.iter().all(|t| a.collapsed_sidebar_topics.contains(&t.id)));
+            assert!(a.collapsed_sidebar_goals.contains(&goal));
+            a.open_task(goal, w, cx);
+            assert!(!a.collapsed_sidebar_topics.contains(&topic));
+            a.store.last_active_project = Some(u64::MAX);
+            a.restore_sidebar();
+            assert!(a.expanded_sidebar_projects.is_empty());
+            a.store.last_active_project = None;
+            a.restore_sidebar();
+            assert!(a.expanded_sidebar_projects.is_empty());
+            a.open_task(goal, w, cx);
+            assert_eq!(a.store.last_active_project, Some(1));
+        });
+    }).unwrap();
+    println!("Sidebar startup QA passed");
+}

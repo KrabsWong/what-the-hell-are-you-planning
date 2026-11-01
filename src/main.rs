@@ -109,6 +109,11 @@ fn main() {
         return;
     }
     #[cfg(feature = "qa")]
+    if std::env::args().any(|arg| arg == "--qa-sidebar") {
+        topic_qa::sidebar();
+        return;
+    }
+    #[cfg(feature = "qa")]
     if std::env::args().any(|arg| arg == "--qa-topics") {
         topic_qa::run();
         return;

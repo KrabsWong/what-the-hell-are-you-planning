@@ -198,7 +198,7 @@ impl TaskApp {
                 let detail = run.logs.iter().rev().find(|line| {
                     ["[error]", "[blocked]", "[interrupted]", "[workspace]", "[stream error]"].iter()
                         .any(|prefix| line.starts_with(prefix))
-                }).map(|line| crate::run_errors::user_message(line));
+                }).map(|line| crate::run_errors::user_message(line).to_owned());
                 if let Some(detail) = detail {
                     panel = panel.child(div().text_sm().text_color(rgb(colors.danger)).child(detail));
                 }
@@ -432,7 +432,7 @@ impl TaskApp {
                     .px_6()
                     .pb_5()
                     .gap_4()
-                    .children(ExecutionStatus::ALL.into_iter().chain(Stage::ALL.into_iter().map(ExecutionStatus::Stage)).filter(|state| matches!(state, ExecutionStatus::Ready | ExecutionStatus::Waiting | ExecutionStatus::Running | ExecutionStatus::Blocked | ExecutionStatus::Done)
+                    .children(ExecutionStatus::BOARD_ORDER.into_iter().filter(|state| matches!(state, ExecutionStatus::Ready | ExecutionStatus::Waiting | ExecutionStatus::Running | ExecutionStatus::Blocked | ExecutionStatus::Done)
                         || states.values().any(|value| value == state)).map(|state| {
                         let matching: Vec<_> = ids
                             .iter()

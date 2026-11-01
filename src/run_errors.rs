@@ -1,6 +1,9 @@
 //! Presentation-only summaries. Keep the original log for technical details.
 
-pub(crate) fn user_message(line: &str) -> &'static str {
+pub(crate) fn user_message(line: &str) -> &str {
+    if let Some(reason) = line.strip_prefix("[error] [validation] ") {
+        return reason;
+    }
     if line.starts_with("[blocked]") {
         return "The research browser needs your attention. Open it to complete any sign-in or confirmation, then retry this step.";
     }

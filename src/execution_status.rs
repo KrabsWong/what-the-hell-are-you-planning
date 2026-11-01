@@ -22,6 +22,15 @@ pub(crate) enum ExecutionStatus {
 impl ExecutionStatus {
     pub(crate) const ALL: [Self; 9] = [Self::Running, Self::Queued, Self::Retrying,
         Self::Waiting, Self::Ready, Self::Paused, Self::Blocked, Self::Approval, Self::Done];
+    /// Shared board order, including fallback stages for manually managed tasks.
+    /// Keep review of a plan before execution and terminal completion last.
+    pub(crate) const BOARD_ORDER: [Self; 15] = [
+        Self::Stage(Stage::Backlog), Self::Approval, Self::Waiting,
+        Self::Stage(Stage::Planned), Self::Ready, Self::Queued,
+        Self::Running, Self::Stage(Stage::InProgress), Self::Retrying,
+        Self::Paused, Self::Blocked, Self::Stage(Stage::Review),
+        Self::Stage(Stage::Cancelled), Self::Stage(Stage::Done), Self::Done,
+    ];
     pub(crate) fn visual_stage(self) -> Stage {
         match self {
             Self::Running | Self::Retrying => Stage::InProgress,

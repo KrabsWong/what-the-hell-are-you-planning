@@ -36,6 +36,11 @@ pub enum Stage {
     Cancelled,
 }
 impl Stage {
+    /// Board columns follow workflow progression, with completion at the far right.
+    pub const BOARD_ORDER: [Self; 6] = [
+        Self::Backlog, Self::Planned, Self::InProgress,
+        Self::Review, Self::Cancelled, Self::Done,
+    ];
     pub const ALL: [Self; 6] = [
         Self::Backlog,
         Self::Planned,

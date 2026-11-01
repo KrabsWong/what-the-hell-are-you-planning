@@ -1391,6 +1391,16 @@ impl TaskApp {
                 self.store.runs[index].workspace_source = None;
                 self.store.runs[index].logs.push("[workspace] Legacy research files copied to the isolated goal folder; original files preserved.".into());
             }
+            if let Err(error) = crate::research::write_dependency_files(&self.store, &self.store.runs[index]) {
+                let run = &mut self.store.runs[index];
+                run.status = "Blocked".into();
+                run.ended_at = Some(opencode::timestamp());
+                run.logs.push(format!("[workspace] {error}"));
+                self.task_start_feedback = Some((run.task_id, error));
+                self.persist_if_changed(true);
+                self.complete_research_run(id, cx);
+                continue;
+            }
             let run = &self.store.runs[index];
             let request = opencode::Request {
                 files,

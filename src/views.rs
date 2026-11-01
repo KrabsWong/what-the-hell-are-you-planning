@@ -1452,7 +1452,7 @@ impl TaskApp {
             .min_h_0()
             .overflow_x_scroll()
             .restrict_scroll_to_axis()
-            .children(Stage::ALL.into_iter().map(|stage| {
+            .children(Stage::BOARD_ORDER.into_iter().map(|stage| {
                 let cards: Vec<_> = tasks
                     .iter()
                     .filter(|t| t.parent_id.is_none() && t.stage == stage)

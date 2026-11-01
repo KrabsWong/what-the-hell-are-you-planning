@@ -22,7 +22,7 @@ The application uses your locally installed and configured **OpenCode** to plan 
 
 Approved goals can be added to a FIFO topic queue even when all execution slots are occupied. One topic runs at a time, with up to three dependency-ready steps running concurrently within it. Exhausted retries or blocked goals retain their status while later topics continue. New request-generated Goals use separate step folders and browser Spaces. Shared sessions, Spaces and overlapping folders remain serialized; legacy research preserves its existing workspace. A failed branch blocks its dependents while independent approved work can continue.
 
-Interrupted or unsuccessful work can reuse an eligible existing OpenCode session when started again. Resumption depends on compatible execution settings and working directory; a restart does not blindly replay all pending work. Run history retains the model, session, inputs, logs, and outputs for each attempt.
+Interrupted or unsuccessful work can reuse an eligible existing OpenCode session when started again. Resumption depends on compatible execution settings and working directory; a restart does not blindly replay all pending work. Run history retains the model, session, inputs, logs, and outputs for each attempt. Report validation failures show the specific reason; automatic retries and manually restarted tasks receive that feedback so the model can correct the rejected output.
 
 ## Research with sources and context
 
@@ -38,17 +38,21 @@ Browser work takes place in a dedicated ego(lite) **Space**, where you can inspe
 
 Final reports are given priority in **Progress & results**. Supporting evidence and analysis remain accessible, while source lists and technical execution details can be expanded on demand. Reports render as readable Markdown with tables and links.
 
+While a research step runs, the progress panel lists the tasks in each phase, their statuses, and completion counts. Task details and the latest attempt's technical details are available beside each task. This outline remains visible when the app reconnects to a session still running in the background; completed attempts open their reports.
+
+Small upstream results are included directly in the next task's prompt. When their combined context exceeds 180,000 bytes, the app instead writes complete Markdown reports and source-record JSON files into the task's `.research-inputs` folder. The prompt lists the files and instructs the agent to read them in bounded sections. This threshold selects a transfer method, not a model context limit; reading files still consumes model context. Original results remain in SQLite. Before dispatch, missing copies are regenerated and existing copies are checked against the saved results; modified copies block execution rather than silently changing the evidence.
+
 ## Bring your own materials
 
 Attach PDFs or screenshots to a goal or a research step. Drag files into Materials, paste an image with ⌘V after clicking the panel, or use Add Files. The application only copies the originals into the workspace; it does not perform local OCR or PDF text extraction. Parent-goal materials and relevant upstream results accompany downstream tasks.
 
 When descriptions, comments, materials, or upstream results change, affected results are marked for refresh. Subsequent execution can update the analysis and final report using the revised context.
 
-Original files are sent to OpenCode with `--file` when a task runs. Choose a model/provider that supports the attached image and PDF formats. Models must report a blocked result if they cannot read a material. Existing attachments remain usable without extraction caches.
+Original files are sent to OpenCode with `--file` when a task runs. Choose a model/provider that supports the attached image and PDF formats. Models must report a blocked result if they cannot read a material. Existing attachments remain usable without extraction caches. Reports cite materials by their original filenames; exact paths of attachments supplied to that run are accepted as local references and kept separate from the HTTP(S) web-source list.
 
 ## A workspace built around tasks
 
-- **Goal list and board views** with status filters, Topic grouping, and colored Goal cards.
+- **Goal list and board views** with status filters, Topic grouping, and colored Goal cards. Board columns progress from pending work toward completion, with **Done** at the far right. Step boards put **Waiting → Ready → Queued → Running** in execution order, with retry, pause, and blocked states shown when applicable.
 - **Expandable project trees** with research goals and their related steps, plus identifiers that distinguish goals, evidence, analysis, and reports.
 - **Resizable navigation panels** and structural breadcrumbs for moving between projects, tasks, and results.
 - **Priorities, labels, due dates, comments, activity history, and archiving.**
@@ -61,7 +65,7 @@ Original files are sent to OpenCode with `--file` when a task runs. Choose a mod
 
 On first launch, choose a workspace root before continuing. Projects and their generated artifacts are managed underneath that root, so agent runs have an explicit working directory.
 
-Structured application data is stored locally in **SQLite**. Attachments and generated research files remain ordinary files alongside the database. The workspace preserves projects, Topics, original requests, structured plans, approval snapshots, tasks, dependencies, run history, and source records. After an app restart, explicitly resume approved work; unapproved plans never run automatically. Local research pauses when the computer is asleep or offline. A small application preference records the workspace location.
+Structured application data is stored locally in **SQLite**. Attachments and generated research files remain ordinary files alongside the database. The workspace preserves projects, Topics, original requests, structured plans, approval snapshots, tasks, dependencies, run history, and source records. After an app restart, sessions still running in OpenCode are monitored and their completed results imported without starting duplicate runs. Other interrupted work requires explicit resumption; unapproved plans never run automatically. Local research pauses when the computer is asleep or offline. A small application preference records the workspace location.
 
 For a complete backup, quit the application and copy the entire workspace root, not just the database. There is no built-in cloud synchronization. OpenCode authentication and browser profiles are managed by those tools separately, so moving the workspace alone does not transfer their credentials or environments.
 

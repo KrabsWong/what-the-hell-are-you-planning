@@ -781,10 +781,38 @@ assert 'Read the attached file directly' in args[-1]
         assert!(w.try_find("research-result-scroll").is_none());
     }).unwrap();
     screenshot(&mut cx, handle, &root, "running-stage-tasks.png");
+    // Restart recovery must retain the outline and per-task actions without a local worker.
+    cx.update_window(handle, |_, w, cx| {
+        app.update(cx, |a, cx| {
+            a.queued_runs.clear();
+            let run_id = a.selected_run.unwrap();
+            a.store.runs.iter_mut().find(|r| r.id == run_id).unwrap().status = "Recovering".into();
+            cx.notify();
+        });
+        w.render_frame(cx);
+        for id in &steps {
+            assert!(w.find(format!("progress-task-{id}")).visible());
+            assert!(w.find(format!("progress-task-details-{id}")).visible());
+        }
+        assert!(w.try_find("open-run-task").is_none());
+        assert!(w.try_find("run-technical-details").is_none());
+        assert!(w.try_find("run-resolve-task").is_none());
+        assert!(w.try_find(format!("progress-technical-details-{}", steps[2])).is_none());
+    }).unwrap();
+    screenshot(&mut cx, handle, &root, "recovering-stage-tasks.png");
+    cx.update_window(handle, |_, w, cx| {
+        w.click(format!("progress-technical-details-{}", steps[0]), cx);
+        assert!(app.read(cx).show_run_details);
+        let selected = app.read(cx).selected_run.unwrap();
+        assert_eq!(app.read(cx).store.runs.iter().find(|r| r.id == selected).unwrap().task_id, steps[0]);
+    }).unwrap();
+
     cx.update_window(handle, |_, w, cx| {
         app.update(cx, |a, cx| {
             a.queued_runs.clear();
             a.selected_run = Some(a.store.runs[0].id);
+            a.show_run_details = false;
+            a.show_run_result = true;
             cx.notify();
         });
         w.render_frame(cx);

@@ -349,7 +349,14 @@ impl TaskApp {
             files.push(path);
         }
         if !materials.is_empty() {
-            run.prompt.push_str("\nMATERIAL ACCEPTANCE REQUIREMENT: The final report MUST have a supplemental materials section listing EVERY exact original attachment filename, page/image reference, observations actually read from the original material, and how it confirms, changes or limits the prior conclusion. Propagate material citations into downstream reports. Do not merely reuse an older report from disk. If a material cannot support a conclusion, explicitly state that limitation alongside its filename. A complete report omitting any filename will be rejected.\n");
+            run.prompt.push_str("\nMATERIAL ACCEPTANCE REQUIREMENT: Keep sources[] for HTTP(S) web references. Cite supplied attachments in the report by original filename and page/image; do not invent web URLs for local files. The final report MUST have a supplemental materials section listing EVERY exact original attachment filename, page/image reference, observations actually read from the original material, and how it confirms, changes or limits the prior conclusion. Propagate material citations into downstream reports. Do not merely reuse an older report from disk. If a material cannot support a conclusion, explicitly state that limitation alongside its filename. A complete report omitting any filename will be rejected.\n");
+        }
+        if let Some(previous) = self.store.runs.iter().rev().find(|r| r.task_id == id) {
+            if previous.status == "Failed" {
+                if let Some(error) = previous.logs.iter().rev().find_map(|line| line.strip_prefix("[error] [validation] ")) {
+                    run.prompt.push_str(&format!("\nAPPLICATION VALIDATION FEEDBACK: {error}\nCorrect the rejected report using existing evidence and return the required JSON.\n"));
+                }
+            }
         }
         run.attachments = materials;
         if run.prompt.len() > 240_000 {
@@ -404,7 +411,10 @@ impl TaskApp {
                     self.toast = format!("Generated {} editable research tasks", ids.len());
                 })
         } else {
-            research::parse_report(&run.output, kind)
+            self.data_dir().and_then(|dir| {
+                let files = run.attachments.iter().map(|a| attachments::resolve(&dir, a)).collect::<Result<Vec<_>, _>>()?;
+                research::parse_report_with_materials(&run.output, kind, &files)
+            })
                 .and_then(|report| {
                     research::validate_material_citations(&report, &run.attachments)?;
                     Ok(report)
@@ -430,7 +440,7 @@ impl TaskApp {
         if let Err(e) = result {
             let run = &mut self.store.runs[index];
             run.status = "Failed".into();
-            run.logs.push(format!("[error] {e}"));
+            run.logs.push(format!("[error] [validation] {e}"));
             self.error = e;
             self.toast = "Research result rejected · review output and retry".into();
             if let Some(goal) = self.run_goal(run_id) {

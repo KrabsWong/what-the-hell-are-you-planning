@@ -68,7 +68,7 @@ fn status_label(status: &str) -> &str {
     }
 }
 
-fn attempt_indicator(run: &AgentRun, cx: &App) -> gpui_kit::component::button::Button {
+fn attempt_indicator(run: &AgentRun, cx: &App) -> AnyElement {
     use crate::execution_status::ExecutionStatus as Status;
     let status = match run.status.as_str() {
         "Succeeded" => Status::Done,
@@ -77,12 +77,17 @@ fn attempt_indicator(run: &AgentRun, cx: &App) -> gpui_kit::component::button::B
         "Queued" => Status::Queued,
         _ => Status::Blocked,
     };
-    quiet_button(format!("attempt-status-{}", run.id), "")
-        .w(px(20.)).h(px(20.)).p_0().flex_shrink_0()
+    let tooltip = format!("This attempt: {}{}", status_label(&run.status),
+        if run.auto_retry_attempt > 0 { format!(" · Retry {}/3", run.auto_retry_attempt) } else { String::new() });
+    // This is a status, not a button. An empty button label still reserves layout
+    // space and clips the custom icon inside its narrow content container.
+    div().id(format!("attempt-status-{}", run.id))
+        .size(px(24.)).flex_shrink_0()
+        .flex().items_center().justify_center()
+        .aria_label(format!("Attempt: {}", status_label(&run.status)))
         .child(status.icon_view(cx))
-        .accessibility_label(format!("Attempt: {}", status_label(&run.status)))
-        .tooltip(format!("This attempt: {}{}", status_label(&run.status),
-            if run.auto_retry_attempt > 0 { format!(" · Retry {}/3", run.auto_retry_attempt) } else { String::new() }))
+        .tooltip(move |w, cx| gpui_kit::component::tooltip::Tooltip::new(tooltip.clone()).build(w, cx))
+        .into_any_element()
 }
 
 fn activity_label(run: &AgentRun) -> &'static str {
@@ -656,6 +661,9 @@ impl TaskApp {
         let colors = palette(cx);
         let active = self.active_runs.iter().any(|a| a.id == run.id)
             || self.queued_runs.iter().any(|(id, _)| *id == run.id);
+        // Recovered OpenCode sessions have no local worker/queue entry, but still
+        // need the same progress outline as runs launched by this app instance.
+        let ongoing = active || matches!(run.status.as_str(), "Running" | "Queued" | "Recovering" | "Cancelling");
         let run_goal = self.run_goal(run.id);
         let id = run.task_id;
         let project_plan = run.project_plan;
@@ -784,7 +792,9 @@ impl TaskApp {
             explanation.to_string()
         };
         let context_task = self.task_result_context;
-        let mut actions = row().flex_wrap().gap_2().child(
+        let inline_task_actions = ongoing && !readable && !self.show_run_details && !planning
+            && run_goal.is_some() && run.research_kind.is_some();
+        let mut actions = row().flex_wrap().gap_2().when(!inline_task_actions, |actions| actions.child(
             quiet_button(
                 "open-run-task",
                 if project_plan.is_some() {
@@ -804,8 +814,8 @@ impl TaskApp {
                     this.open_task(context_task.unwrap_or(id), w, cx);
                 }
             })),
-        );
-        actions = actions.child(
+        ));
+        actions = actions.when(!inline_task_actions, |actions| actions.child(
             quiet_button(
                 if self.show_run_details {
                     "show-result"
@@ -828,7 +838,7 @@ impl TaskApp {
                 this.show_run_result = !this.show_run_details;
                 cx.notify();
             })),
-        );
+        ));
         if browser_blocked || (active && run.research_kind == Some(ResearchKind::Collect)) {
             actions = actions.child(
                 quiet_button("run-open-browser", "Open browser")
@@ -917,8 +927,8 @@ impl TaskApp {
                             .text_sm()
                             .child(
                                 if completed != tasks.len()
-                                    && active
-                                    && run.status == "Running"
+                                    && ongoing
+                                    && matches!(run.status.as_str(), "Running" | "Recovering")
                                     && run.research_kind == Some(kind)
                                 {
                                     running_indicator(
@@ -956,6 +966,8 @@ impl TaskApp {
                 } else { status };
                 let current = task_id == run.task_id;
                 let title = task.title.clone();
+                let latest_run = self.store.runs.iter().rev()
+                    .find(|r| r.task_id == task_id && r.project_plan.is_none()).map(|r| r.id);
                 entries = entries.child(row().id(format!("progress-task-{task_id}"))
                     .min_w_0().gap_2().px_2().h(px(32.)).rounded_md()
                     .when(current, |d| d.bg(rgb(colors.accent_surface)))
@@ -963,7 +975,21 @@ impl TaskApp {
                     .child(status.icon_view(cx))
                     .child(div().flex_1().min_w_0().text_sm().truncate()
                         .text_color(rgb(colors.text)).child(task.title.clone()))
-                    .child(label(status.label(), cx).flex_shrink_0()
+                    .child(row().gap_0p5().flex_shrink_0()
+                        .child(crate::controls::tool_icon(format!("progress-task-details-{task_id}"), assets::IconName::FileText, "Task details")
+                            .h(px(28.)).w(px(28.))
+                            .on_click(cx.listener(move |a, _, w, cx| a.open_task(task_id, w, cx))))
+                        .when_some(latest_run, |actions, run_id| actions.child(
+                            crate::controls::tool_icon(format!("progress-technical-details-{task_id}"), assets::IconName::Code, "Technical details · latest attempt")
+                                .h(px(28.)).w(px(28.))
+                                .on_click(cx.listener(move |a, _, _, cx| {
+                                    a.select_run(run_id, cx);
+                                    a.show_run_details = true;
+                                    a.show_run_result = false;
+                                    cx.notify();
+                                }))))
+                    )
+                    .child(label(status.label(), cx).w(px(64.)).text_right().flex_shrink_0()
                         .text_color(rgb(status.color(cx))))
                     .map(observed));
             }
@@ -1011,12 +1037,12 @@ impl TaskApp {
                                 .child(headline),
                         )
                         .child(label(queue_explanation.clone(), cx))
-                        .when(!active && can_open && project_plan.is_none(), |d| {
+                        .when(!ongoing && can_open && project_plan.is_none(), |d| {
                             d.child(primary_button("run-resolve-task", "Open task & resolve").self_start()
                                 .on_click(cx.listener(move |a, _, w, cx| a.open_task(id, w, cx))))
                         })
-                        .when(active, |d| d.child(stages))
-                        .when(active, |d| {
+                        .when(ongoing, |d| d.child(stages))
+                        .when(ongoing, |d| {
                             d.child(label(
                                 "You can keep working elsewhere while this task runs.",
                                 cx,

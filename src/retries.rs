@@ -51,14 +51,16 @@ impl Store {
         retry.started_at.clear();
         retry.ended_at = None;
         retry.exit_code = None;
+        if let Some(error) = failed.logs.iter().rev().find_map(|line| line.strip_prefix("[error] [validation] ")) {
+            retry.prompt.push_str(&format!("\nAPPLICATION VALIDATION FEEDBACK (attempt {}):\n{}\nCorrect the report using the existing evidence and return the required JSON. Do not repeat the rejected format or invent sources.\n", retry.auto_retry_attempt, error));
+        }
         retry.output.clear();
         retry.sources.clear();
         retry.logs = vec![format!(
             "[retry] Attempt {}/{} scheduled after {} seconds because run {} failed. Stop task cancels this retry.",
             retry.auto_retry_attempt, MAX_AUTO_RETRIES, RETRY_DELAY_SECONDS, failed.id
         )];
-        // The snapshot already contains extracted materials, workspace instructions and
-        // the session identity. No prompt expansion or fresh external action is needed.
+        // Preserve the original evidence and session, with actionable validation feedback.
         Some(retry)
     }
 }
@@ -77,6 +79,19 @@ mod tests {
         run.exit_code = Some(1);
         let id = run.id;
         (store, id)
+    }
+
+    #[test]
+    fn validation_retry_explains_rejection_and_preserves_context() {
+        let (mut store, id) = failed_task();
+        store.runs.last_mut().unwrap().logs.push("[error] [validation] Source 2 has an unsupported URL.".into());
+        let original = store.runs.last().unwrap().clone();
+        let retry = store.prepare_auto_retry(id, 100).unwrap();
+        assert!(retry.prompt.starts_with(&original.prompt));
+        assert!(retry.prompt.contains("Source 2 has an unsupported URL."));
+        assert_eq!(retry.session_id, original.session_id);
+        assert_eq!(retry.attachments, original.attachments);
+        assert_eq!(crate::run_errors::user_message("[error] [validation] Invalid source"), "Invalid source");
     }
 
     #[test]

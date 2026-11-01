@@ -1,6 +1,6 @@
 # macOS application icon
 
-`Planning.icns` contains standard and Retina sizes of the static Assembly mark. `Planning.png` is the 1024px preview. The sidebar uses native animation independently.
+`Planning.icns` contains standard and Retina sizes of the static Assembly mark. `Planning.png` is the 1024px preview. The Dock icon always uses the light palette (tile `#eeeeec`, mark `#795822`), independently of the app theme. The sidebar uses native animation independently, with fractional paint coordinates and display-paced frames in its own view.
 
 Regenerate from the repository root on macOS:
 

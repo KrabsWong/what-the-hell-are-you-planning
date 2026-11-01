@@ -30,10 +30,12 @@ prompt = args[-1]
 files = [args[i + 1] for i, arg in enumerate(args) if arg == '--file']
 assert '--standalone' in args and args[args.index('--format') + 1] == 'json'
 assert pathlib.Path(os.getcwd()).resolve() == pathlib.Path(os.environ['PWD']).resolve()
-assert not files, 'Binary materials must not be sent to a text-only provider'
+assert 'BEGIN LOCAL MATERIAL TEXT' not in prompt
 if 'Attached material:' in prompt:
-    assert 'MEMORY-PDF-7341' in prompt and 'MEMORY-IMAGE-9265' in prompt
-    assert 'PDFKit text' in prompt and 'Vision OCR' in prompt
+    assert files, 'Original files must reach the CLI'
+    assert all(pathlib.Path(f).is_file() for f in files)
+    assert any(pathlib.Path(f).read_bytes().startswith(b'%PDF-') for f in files)
+    assert any(pathlib.Path(f).read_bytes().startswith(b'\x89PNG') for f in files)
 with open('calls.jsonl', 'a', encoding='utf-8') as log:
     log.write(json.dumps({'model': model, 'prompt': prompt, 'files': files}, ensure_ascii=False) + '\n')
 print(json.dumps({'type': 'reasoning', 'sessionID': 'fixture-' + model, 'part': {'text': 'LIVE_MARKER ' + model}}), flush=True)
@@ -171,7 +173,7 @@ pub fn run() {
                 "美股科技新闻研究 · 原生验收"
             );
             app.update(cx, |a, cx| {
-                a.import_attachments(id, vec![pdf.clone(), png.clone()], cx)
+                a.import_attachments(id, vec![pdf.clone()], cx)
             });
             id
         })
@@ -183,6 +185,18 @@ pub fn run() {
         |a| a.attachment_import.is_none(),
         "material import",
     );
+    cx.update_window(handle, |_, w, cx| {
+        cx.write_to_clipboard(ClipboardItem::new_string("ordinary text".into()));
+        app.update(cx, |a, cx| assert!(!a.paste_attachments(goal, cx)));
+        cx.write_to_clipboard(ClipboardItem::new_image(&Image::from_bytes(
+            ImageFormat::Png, std::fs::read(&png).unwrap(),
+        )));
+        click_in(w, cx, "detail-scroll", "material-drop-hint");
+        w.press("cmd-v", cx);
+    }).unwrap();
+    wait_until(&mut cx, handle, &app, |a| a.attachment_import.is_none()
+        && a.store.task(goal).unwrap().attachments.len() == 2, "clipboard image import");
+    assert!(!root.join("material-cache").exists(), "Import must not compile or extract materials");
     std::fs::remove_file(&pdf).unwrap();
     std::fs::remove_file(&png).unwrap();
     cx.update_window(handle, |_, w, cx| {
@@ -346,8 +360,8 @@ pub fn run() {
     .collect();
     assert_eq!(calls.len(), 9);
     assert_eq!(calls[0]["model"], MODELS[0]);
-    assert_eq!(calls[7]["files"].as_array().unwrap().len(), 0);
-    assert!(calls[7]["prompt"].as_str().unwrap().contains("Vision OCR"));
+    assert_eq!(calls[7]["files"].as_array().unwrap().len(), 3);
+    assert!(calls[7]["prompt"].as_str().unwrap().contains("Read the attached file directly"));
     assert!(
         calls[7]["prompt"]
             .as_str()
@@ -634,4 +648,149 @@ fn write_executable(path: &Path, text: &str) {
 
 fn write_png(path: &Path) {
     std::fs::write(path, include_bytes!("test-fixtures/supplement.png")).unwrap();
+}
+
+
+/// Focused acceptance independent of the retired research sidebar navigation.
+pub fn attachments_only() {
+    let root = std::env::current_dir().unwrap().join(format!(".local/attachment-qa/{}", std::process::id()));
+    std::fs::create_dir_all(&root).unwrap();
+    let mut cx = HeadlessAppContext::with_platform(
+        platform::current_platform(true).text_system(), Arc::new(crate::ui_assets::AppAssets), platform::current_headless_renderer,
+    );
+    cx.update(init);
+    let mut app = None;
+    let mut goal = 0;
+    let window = cx.open_window(size(px(1440.), px(1000.)), |w, cx| {
+        let view = cx.new(|cx| TaskApp::new_mock(w, cx));
+        view.update(cx, |a, cx| {
+            a.attach_storage(Storage::new(root.join("workspace.json")), w, cx);
+            a.store.projects[0].directory = root.to_string_lossy().into_owned();
+            a.store.research_config.models = MODELS.map(String::from);
+            goal = a.store.apply_project_plan(1, r#"{"tasks":[{"title":"Attachment QA","brief":"Read supplied materials"}]}"#).unwrap()[0];
+            a.store.set_stage(goal, crate::domain::Stage::Planned).unwrap();
+            a.open_task(goal, w, cx);
+        });
+        app = Some(view.clone());
+        cx.new(|cx| base::Root::new(view, w, cx))
+    }).unwrap();
+    let handle = window.into();
+    let app = app.unwrap();
+    cx.update_window(handle, |_, w, cx| {
+        cx.write_to_clipboard(ClipboardItem::new_string("ordinary text".into()));
+        app.update(cx, |a, cx| assert!(!a.paste_attachments(goal, cx)));
+        cx.write_to_clipboard(ClipboardItem::new_image(&Image::from_bytes(ImageFormat::Png,
+            include_bytes!("test-fixtures/supplement.png").to_vec())));
+        click_in(w, cx, "detail-scroll", "material-drop-hint");
+        w.press("cmd-v", cx);
+    }).unwrap();
+    wait_until(&mut cx, handle, &app, |a| a.attachment_import.is_none()
+        && a.store.task(goal).unwrap().attachments.len() == 1, "paste shortcut");
+    let pdf = root.join("original.pdf");
+    std::fs::write(&pdf, include_bytes!("test-fixtures/blank.pdf")).unwrap();
+    cx.update_window(handle, |_, w, cx| {
+        assert!(w.try_find("paste-attachments").is_none());
+        click_in(w, cx, "detail-scroll", "material-drop-hint");
+        w.press("cmd-v", cx);
+    }).unwrap();
+    wait_until(&mut cx, handle, &app, |a| a.attachment_import.is_none()
+        && a.store.task(goal).unwrap().attachments.len() == 2, "repeat paste shortcut");
+    cx.update_window(handle, |_, w, cx| {
+        click_in(w, cx, "detail-scroll", "material-drop-hint");
+        let position = w.find("material-drop-hint").bounds().center();
+        w.dispatch_event(PlatformInput::FileDrop(FileDropEvent::Entered {
+            position, paths: ExternalPaths(vec![pdf.clone()].into()),
+        }), cx);
+        w.render_frame(cx);
+        w.dispatch_event(PlatformInput::FileDrop(FileDropEvent::Submit { position }), cx);
+    }).unwrap();
+    wait_until(&mut cx, handle, &app, |a| a.attachment_import.is_none(), "file import");
+    let (run, files) = cx.update_window(handle, |_, _, cx| app.update(cx, |a, _| {
+        assert_eq!(a.store.task(goal).unwrap().attachments.len(), 3);
+        a.store.set_stage(goal, crate::domain::Stage::Planned).unwrap();
+        let mut run = a.store.prepare_run(goal).unwrap();
+        let children = a.store.apply_research_plan(goal, PLAN).unwrap();
+        a.store.set_stage(goal, crate::domain::Stage::Planned).unwrap();
+        let files = a.prepare_run_materials(children[1], &mut run).unwrap();
+        assert_eq!(files.len(), 3);
+        assert!(!run.prompt.contains("BEGIN LOCAL MATERIAL TEXT"));
+        assert!(files.iter().any(|p| std::fs::read(p).unwrap() == include_bytes!("test-fixtures/blank.pdf")));
+        assert!(!root.join("material-cache").exists());
+        (run, files)
+    })).unwrap();
+    let cli = root.join("files-cli.py");
+    write_executable(&cli, r#"#!/usr/bin/python3
+import pathlib,sys
+args=sys.argv[1:]
+files=[args[i+1] for i,a in enumerate(args) if a=='--file']
+assert len(files)==3 and all(pathlib.Path(f).is_file() for f in files)
+assert 'Read the attached file directly' in args[-1]
+"#);
+    let running = crate::opencode::start(crate::opencode::Request {
+        executable: cli, directory: root.clone(), model: MODELS[2].into(), prompt: run.prompt,
+        title: "attachment QA".into(), files, session_id: None,
+    }).unwrap();
+    loop {
+        if let crate::opencode::Event::Finished { code, error, .. } = running.events.recv_timeout(Duration::from_secs(10)).unwrap() {
+            assert_eq!(code, Some(0), "{error:?}"); break;
+        }
+    }
+    cx.update_window(handle, |_, w, cx| {
+        app.update(cx, |a, cx| {
+            a.store.task_mut(goal).unwrap().attachments[0].name = "4c9e204e-a566-4569-9d45-88f28b5c403e.png".into();
+            a.store.task_mut(goal).unwrap().attachments[1].name = "很长的截图文件名—用于验证中英文不会截掉半行.png".into();
+            cx.notify();
+        });
+        w.render_frame(cx);
+    }).unwrap();
+    cx.run_until_parked();
+    screenshot(&mut cx, handle, &root, "materials.png");
+    cx.update_window(handle, |_, w, cx| {
+        w.hover("material-card-0", cx);
+        w.render_frame(cx);
+        w.click("material-menu-0", cx);
+    }).unwrap();
+    screenshot(&mut cx, handle, &root, "material-actions.png");
+    cx.update_window(handle, |_, w, cx| {
+        w.press("escape", cx);
+        crate::appearance::apply(crate::appearance::Appearance::Dark, Some(w), cx);
+    }).unwrap();
+    screenshot(&mut cx, handle, &root, "materials-dark.png");
+    // In-flight results show each stage's tasks; completed attempts remain report-first.
+    let steps = cx.update_window(handle, |_, w, cx| app.update(cx, |a, cx| {
+        let steps = a.store.research_children(goal);
+        a.store.set_stage(goal, crate::domain::Stage::Planned).unwrap();
+        let mut completed = a.store.prepare_run(steps[0]).unwrap();
+        completed.status = "Succeeded".into();
+        completed.output = "## Completed evidence\nReadable report fixture.".into();
+        a.store.runs.push(completed);
+        let mut running = a.store.prepare_run(steps[1]).unwrap();
+        running.status = "Running".into();
+        let run_id = running.id;
+        a.store.runs.push(running);
+        a.queued_runs.push((run_id, vec![]));
+        a.selected_run = Some(run_id);
+        a.show_run_details = false;
+        a.show_run_result = true;
+        a.navigate(crate::app::Scope::Runs, w, cx);
+        steps
+    })).unwrap();
+    cx.update_window(handle, |_, w, cx| {
+        w.render_frame(cx);
+        for id in &steps { assert!(w.find(format!("progress-task-{id}")).visible()); }
+        assert!(w.try_find("research-result-scroll").is_none());
+    }).unwrap();
+    screenshot(&mut cx, handle, &root, "running-stage-tasks.png");
+    cx.update_window(handle, |_, w, cx| {
+        app.update(cx, |a, cx| {
+            a.queued_runs.clear();
+            a.selected_run = Some(a.store.runs[0].id);
+            cx.notify();
+        });
+        w.render_frame(cx);
+        assert!(w.find("research-result-scroll").visible());
+        for id in &steps { assert!(w.try_find(format!("progress-task-{id}")).is_none()); }
+    }).unwrap();
+    screenshot(&mut cx, handle, &root, "completed-report.png");
+    println!("ATTACHMENT QA PASSED: paste shortcut, file drop, original bytes, blank PDF, inheritance, CLI --file; no OCR/cache. {}", root.display());
 }

@@ -40,11 +40,11 @@ Final reports are given priority in **Progress & results**. Supporting evidence 
 
 ## Bring your own materials
 
-Attach PDFs or screenshots to a goal or a research step. The application copies the files into the workspace and extracts text locally using PDF extraction and OCR on macOS. Parent-goal materials and relevant upstream results accompany downstream tasks.
+Attach PDFs or screenshots to a goal or a research step. Drag files into Materials, paste an image with ⌘V after clicking the panel, or use Add Files. The application only copies the originals into the workspace; it does not perform local OCR or PDF text extraction. Parent-goal materials and relevant upstream results accompany downstream tasks.
 
 When descriptions, comments, materials, or upstream results change, affected results are marked for refresh. Subsequent execution can update the analysis and final report using the revised context.
 
-Extracted text is sent to the selected model provider. OCR and text extraction have limits, particularly for charts and image-only information; partial extraction is identified rather than treated as a complete reading.
+Original files are sent to OpenCode with `--file` when a task runs. Choose a model/provider that supports the attached image and PDF formats. Models must report a blocked result if they cannot read a material. Existing attachments remain usable without extraction caches.
 
 ## A workspace built around tasks
 

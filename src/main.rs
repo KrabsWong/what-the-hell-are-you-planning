@@ -72,6 +72,10 @@ actions!(task_manager, [Quit]);
 
 fn main() {
     #[cfg(feature = "qa")]
+    if std::env::args().any(|arg| arg == "--qa-brand") { brand::verify_frames(); return; }
+    #[cfg(feature = "qa")]
+    if std::env::args().any(|arg| arg == "--qa-attachments") { research_qa::attachments_only(); return; }
+    #[cfg(feature = "qa")]
     if std::env::args().any(|arg| arg == "--qa-topic-queue") { topic_queue_qa::run(); return; }
     #[cfg(feature = "qa")]
     if std::env::args().any(|arg| arg == "--qa-retries") { retry_qa::run(); return; }

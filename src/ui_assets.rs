@@ -31,6 +31,7 @@ assets::icon_assets!(
         Ellipsis,
         ExternalLink,
         Folder,
+        FileText,
         Layers,
         LayoutDashboard,
         Menu,

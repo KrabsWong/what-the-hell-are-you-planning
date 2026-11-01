@@ -10,21 +10,21 @@ for size in [16, 32, 128, 256, 512] {
     for scale in [1, 2] {
         let pixels = size * scale
         let context = CGContext(data: nil, width: pixels, height: pixels, bitsPerComponent: 8,
-            bytesPerRow: pixels * 4, space: CGColorSpaceCreateDeviceRGB(),
+            bytesPerRow: pixels * 4, space: CGColorSpace(name: CGColorSpace.sRGB)!,
             bitmapInfo: CGImageAlphaInfo.premultipliedLast.rawValue)!
         context.scaleBy(x: CGFloat(pixels) / 1024, y: CGFloat(pixels) / 1024)
         let tile = CGPath(roundedRect: CGRect(x: 96, y: 96, width: 832, height: 832),
             cornerWidth: 184, cornerHeight: 184, transform: nil)
         context.addPath(tile)
-        context.setFillColor(CGColor(red: 0.10, green: 0.115, blue: 0.12, alpha: 1))
+        context.setFillColor(red: 238/255, green: 238/255, blue: 236/255, alpha: 1)
         context.fillPath()
         context.addPath(tile)
-        context.setStrokeColor(CGColor(gray: 1, alpha: 0.13))
+        context.setStrokeColor(CGColor(gray: 0, alpha: 0.10))
         context.setLineWidth(2)
         context.strokePath()
         context.translateBy(x: 160, y: 864)
         context.scaleBy(x: 5.5, y: -5.5)
-        context.setFillColor(CGColor(red: 199/255, green: 163/255, blue: 107/255, alpha: 1))
+        context.setFillColor(red: 121/255, green: 88/255, blue: 34/255, alpha: 1)
         for bar in [CGRect(x: 44, y: 18, width: 66, height: 20),
                     CGRect(x: 90, y: 44, width: 20, height: 66),
                     CGRect(x: 18, y: 90, width: 66, height: 20),

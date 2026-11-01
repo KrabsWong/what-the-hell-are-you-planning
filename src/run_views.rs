@@ -887,7 +887,7 @@ impl TaskApp {
         let children = goal
             .map(|goal| self.store.research_children(goal))
             .unwrap_or_default();
-        let mut stages = col().gap_3();
+        let mut stages = col().gap_2();
         for (kind, name) in [
             (ResearchKind::Collect, "Gather evidence"),
             (ResearchKind::Analyze, "Analyze findings"),
@@ -941,6 +941,33 @@ impl TaskApp {
                     )
                     .child(label(format!("{completed} / {} complete", tasks.len()), cx)),
             );
+            // Only mounted in the active, non-result view below. Completed attempts
+            // continue to open their report without an extra progress outline.
+            let mut entries = col().id(format!("stage-tasks-{}", kind.label()))
+                .ml_2().pl_3().gap_0p5().border_l_1().border_color(rgb(colors.line));
+            for task_id in tasks {
+                let task_id = *task_id;
+                let Some(task) = self.store.task(task_id) else { continue; };
+                use crate::execution_status::ExecutionStatus;
+                let status = self.store.execution_status(task_id, self.todo_batch.as_ref());
+                let status = if self.store.research_result(task_id).is_some()
+                    && !matches!(status, ExecutionStatus::Running | ExecutionStatus::Queued | ExecutionStatus::Retrying) {
+                    ExecutionStatus::Done
+                } else { status };
+                let current = task_id == run.task_id;
+                let title = task.title.clone();
+                entries = entries.child(row().id(format!("progress-task-{task_id}"))
+                    .min_w_0().gap_2().px_2().h(px(32.)).rounded_md()
+                    .when(current, |d| d.bg(rgb(colors.accent_surface)))
+                    .tooltip(move |w, cx| gpui_kit::component::tooltip::Tooltip::new(title.clone()).build(w, cx))
+                    .child(status.icon_view(cx))
+                    .child(div().flex_1().min_w_0().text_sm().truncate()
+                        .text_color(rgb(colors.text)).child(task.title.clone()))
+                    .child(label(status.label(), cx).flex_shrink_0()
+                        .text_color(rgb(status.color(cx))))
+                    .map(observed));
+            }
+            stages = stages.child(entries.map(observed));
         }
         col()
             .flex_1()

@@ -8,10 +8,6 @@ use std::{
     time::{SystemTime, UNIX_EPOCH},
 };
 
-#[path = "materials.rs"]
-mod materials;
-pub use materials::{cached_text, import_material};
-
 pub const MAX_BYTES: u64 = 25 * 1024 * 1024;
 static NEXT_FILE: AtomicU64 = AtomicU64::new(0);
 
@@ -29,18 +25,6 @@ pub fn import_file(data_dir: &Path, source: &Path) -> Result<Attachment, String>
         .and_then(|name| name.to_str())
         .ok_or("Choose a file with a valid UTF-8 name.")?
         .to_string();
-    let extension = source
-        .extension()
-        .and_then(|extension| extension.to_str())
-        .unwrap_or_default()
-        .to_ascii_lowercase();
-    let (extension, media_type) = match extension.as_str() {
-        "pdf" => ("pdf", "application/pdf"),
-        "png" => ("png", "image/png"),
-        "jpg" | "jpeg" => ("jpg", "image/jpeg"),
-        "webp" => ("webp", "image/webp"),
-        _ => return Err("Choose a PDF, PNG, JPEG, or WebP file.".into()),
-    };
     // Inspect first so selecting a FIFO or device cannot block while opening it.
     if !fs::metadata(source)
         .map_err(|e| format!("Cannot inspect attachment: {e}"))?
@@ -63,6 +47,27 @@ pub fn import_file(data_dir: &Path, source: &Path) -> Result<Attachment, String>
         .take(MAX_BYTES + 1)
         .read_to_end(&mut bytes)
         .map_err(|e| format!("Cannot read attachment: {e}"))?;
+    if bytes.len() as u64 > MAX_BYTES {
+        return Err("Attachments must be 25 MiB or smaller.".into());
+    }
+    import_bytes(data_dir, &name, &bytes)
+}
+
+/// Clipboard images use exactly the same validation and private storage as files.
+pub fn import_bytes(data_dir: &Path, name: &str, bytes: &[u8]) -> Result<Attachment, String> {
+    let source = Path::new(name);
+    let extension = source
+        .extension()
+        .and_then(|extension| extension.to_str())
+        .unwrap_or_default()
+        .to_ascii_lowercase();
+    let (extension, media_type) = match extension.as_str() {
+        "pdf" => ("pdf", "application/pdf"),
+        "png" => ("png", "image/png"),
+        "jpg" | "jpeg" => ("jpg", "image/jpeg"),
+        "webp" => ("webp", "image/webp"),
+        _ => return Err("Choose a PDF, PNG, JPEG, or WebP file.".into()),
+    };
     if bytes.len() as u64 > MAX_BYTES {
         return Err("Attachments must be 25 MiB or smaller.".into());
     }
@@ -124,7 +129,7 @@ pub fn import_file(data_dir: &Path, source: &Path) -> Result<Attachment, String>
         .and_then(|folder| folder.sync_all())
         .map_err(|e| format!("Cannot sync attachment folder: {e}"))?;
     Ok(Attachment {
-        name,
+        name: name.into(),
         relative_path: format!("attachments/{filename}"),
         media_type: media_type.into(),
         size: bytes.len() as u64,
@@ -191,6 +196,18 @@ mod tests {
         fn drop(&mut self) {
             let _ = fs::remove_dir_all(&self.0);
         }
+    }
+
+    #[test]
+    fn clipboard_bytes_are_preserved_and_validated() {
+        let temp = Temp::new();
+        let bytes = include_bytes!("test-fixtures/supplement.png");
+        let first = import_bytes(&temp.0, "Pasted image.png", bytes).unwrap();
+        let second = import_bytes(&temp.0, "Pasted image.png", bytes).unwrap();
+        assert_ne!(first.relative_path, second.relative_path);
+        assert_eq!(fs::read(resolve(&temp.0, &first).unwrap()).unwrap(), bytes);
+        assert!(import_bytes(&temp.0, "Pasted image.png", b"invalid").is_err());
+        assert!(!temp.0.join("material-cache").exists());
     }
 
     #[test]

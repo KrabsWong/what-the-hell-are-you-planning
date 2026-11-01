@@ -122,7 +122,7 @@ pub fn run() {
                 assert_eq!(a.store.next_research_task(goal).unwrap(), Some(analysis));
             })
             .unwrap();
-            println!("Imported and extracted {name}; analysis + advice invalidated");
+            println!("Imported original {name}; analysis + advice invalidated");
         }
     }
     cx.update_window(handle, |_,_,cx| app.update(cx, |a,cx| {
@@ -226,7 +226,7 @@ pub fn run() {
     })
     .unwrap();
     println!(
-        "MATERIAL LIVE PASSED: actual PDF/OCR, downstream reruns, preserved upstream, cited final report, themes and persistence."
+        "MATERIAL LIVE PASSED: original PDF/image files, downstream reruns, preserved upstream, cited final report, themes and persistence."
     );
 }
 fn wait(

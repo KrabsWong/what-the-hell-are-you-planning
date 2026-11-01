@@ -81,9 +81,9 @@ Unix 子进程通过独立 process group 启动。取消立即通知该组，wor
 
 附件复制到数据目录 `attachments/`，使用唯一文件名、create_new 和 Unix 0600。默认目录 0700；类型检查为扩展名与 magic，不等于完整文档解码。路径解析限制在受管目录，拒绝越界与目录符号链接。移除引用不删除物理文件，运行快照／撤销不会引用到被自动清理的文件。
 
-底层适配器保留 `--file` 能力；产品材料链路改为后台 PDFKit/Vision 提取、缓存指纹校验，再把带原文件名和页码的文本加入 prompt，不向文本模型传递 PDF／图片二进制。父目标与依赖任务的材料均传入下游，并要求 complete 报告引用每份材料名称。浏览器 Node 环境可能不继承 shell cwd／环境，prompt 要求使用绝对文件路径。
+附件链路直接使用适配器的 `--file`：添加时仅复制原文件，运行时将 PDF/图片交给支持对应格式的模型读取，不执行本地 OCR 或文字提取，不依赖 material-cache。父目标与依赖任务的材料均传入下游，并要求 complete 报告引用每份材料名称；不能读取时必须报告 blocked。
 
-2026-10-28 已完成真实只读研究验收：读取安装版 skill guide，在同一个 ego Space 内实际导航并保存页面截图与 PDF，自动执行搜集 → 分析 → 简报，跨阶段切换模型、传递结果与来源，并验证持久化恢复。最终 Space 已正常 finish。真实模型出现“说明文字 + 单个 JSON 代码块”输出，解析器现在接受这种包装但仍严格校验 JSON、状态与来源；多块或不完整输出仍拒绝。首次解析失败记录保留，重试未重复搜集。真实接管场景尚未单独验证；补充材料通过本地 PDF／OCR 文本转录进入模型，原生读取已单独验证。浏览器源码示例会随版本变化，运行时以 `ego-browser skill` 为准。官方参考：[ego-browser](https://lite.ego.app/document/en/docs/ego-browser)、[当前 Skill](https://github.com/citrolabs/ego-lite/blob/main/skills/ego-browser/SKILL.md)。
+2026-10-28 已完成真实只读研究验收：读取安装版 skill guide，在同一个 ego Space 内实际导航并保存页面截图与 PDF，自动执行搜集 → 分析 → 简报，跨阶段切换模型、传递结果与来源，并验证持久化恢复。最终 Space 已正常 finish。真实模型出现“说明文字 + 单个 JSON 代码块”输出，解析器现在接受这种包装但仍严格校验 JSON、状态与来源；多块或不完整输出仍拒绝。首次解析失败记录保留，重试未重复搜集。真实接管场景尚未单独验证；当时的本地 PDF／OCR 验证属于历史路径；当前已改为传递原始附件。浏览器源码示例会随版本变化，运行时以 `ego-browser skill` 为准。官方参考：[ego-browser](https://lite.ego.app/document/en/docs/ego-browser)、[当前 Skill](https://github.com/citrolabs/ego-lite/blob/main/skills/ego-browser/SKILL.md)。
 
 ## 项目候选题目规划
 

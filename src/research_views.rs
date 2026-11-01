@@ -1,10 +1,10 @@
 use crate::appearance::palette;
 use crate::{app::TaskApp, domain::AgentRun, research::ResearchKind, views::*};
 use gpui_kit::component::scroll::ScrollableElement;
+use gpui_kit::component::menu::{DropdownMenu, PopupMenuItem};
 use gpui_kit::{
     component::{
         Disableable,
-        button::ButtonVariants,
         input::{Input, Textarea},
     },
     prelude::FluentBuilder,
@@ -229,47 +229,112 @@ impl TaskApp {
     pub fn materials_panel(&self, id: u64, cx: &mut Context<Self>) -> AnyElement {
         let colors = palette(cx);
         let task = self.store.task(id).unwrap();
-        let mut panel=col().id("task-materials").p_4().gap_3().rounded_md().border_1().border_color(rgb(colors.line))
-            .on_drop(cx.listener(move|this,paths:&ExternalPaths,_,cx|this.import_attachments(id,paths.paths().to_vec(),cx)))
-            .child(row().justify_between().child(muted(format!("Materials · {}",task.attachments.len()), cx)).child(quiet_button("add-attachments","+ Add Files").h_7().px_1().text_sm().disabled(task.archived||self.attachment_import.is_some()).on_click(cx.listener(move|this,_,_,cx|this.choose_attachments(id,cx)))))
-            .child(label("Add PDFs or screenshots for the next run · up to 25 MB each. Extracted text is shared with your model; verify charts and images yourself.", cx));
-        for (index, a) in task.attachments.iter().enumerate() {
-            let a = a.clone();
-            let open = a.clone();
-            panel = panel.child(
-                row()
-                    .min_w_0()
-                    .child(chip(
-                        if a.media_type == "application/pdf" {
-                            "PDF"
-                        } else {
-                            "IMG"
-                        },
-                        colors.accent,
-                        cx,
-                    ))
-                    .child(
-                        div().flex().flex_1().min_w_0().child(
-                            link_button(format!("attachment-{index}"), format!("{} ↗", a.name))
-                                .tooltip("Open original material")
-                                .justify_start()
-                                .on_click(cx.listener(move |this, _, _, cx| {
-                                    this.open_attachment(&open, cx)
-                                })),
-                        ),
-                    )
-                    .child(label(format!("{:.1} MB", a.size as f64 / 1_048_576.), cx))
-                    .child(
-                        icon_button(format!("remove-attachment-{index}"), "×", "Remove material")
-                            .danger()
-                            .outline()
-                            .disabled(task.archived)
-                            .tooltip("Remove from task; local copy stays for run history and Undo")
-                            .on_click(cx.listener(move |this, _, _, cx| {
-                                this.remove_attachment(id, index, cx)
-                            })),
-                    ),
-            );
+        let busy = self.attachment_import.is_some();
+        let mut panel = col().id("task-materials").p_3().gap_1().rounded_md()
+            .border_1().border_color(rgb(colors.line))
+            .track_focus(&self.materials_focus)
+            .on_mouse_down(MouseButton::Left, cx.listener(|this, _, w, cx| {
+                w.focus(&this.materials_focus, cx);
+            }))
+            .on_key_down(cx.listener(move |this, event: &KeyDownEvent, _, cx| {
+                if event.keystroke.modifiers.platform && event.keystroke.key == "v"
+                    && this.paste_attachments(id, cx) {
+                    cx.stop_propagation();
+                }
+            }))
+            .drag_over::<ExternalPaths>(move |style, _, _, _| style.border_color(rgb(colors.accent)))
+            .on_drop(cx.listener(move |this, paths: &ExternalPaths, _, cx| {
+                this.import_attachments(id, paths.paths().to_vec(), cx)
+            }))
+            .child(row().justify_between()
+                .child(muted(format!("Materials · {}", task.attachments.len()), cx))
+                .child(row().gap_2()
+                    .child(quiet_button("add-attachments", if busy { "Adding…" } else { "+ Add Files" })
+                        .h_7().px_1().text_sm().disabled(task.archived || busy)
+                        .on_click(cx.listener(move |this, _, _, cx| this.choose_attachments(id, cx))))))
+            .child(label(if task.attachments.is_empty() {
+                "Drop PDFs or images here, or click here and press ⌘V to paste · up to 25 MB each"
+            } else {
+                "Drop files or ⌘V to add · click a card to open"
+            }, cx).id("material-drop-hint").map(observed));
+        if busy {
+            let elapsed = self.attachment_started.map(|t| t.elapsed().as_secs()).unwrap_or(0);
+            panel = panel.child(label(format!("{} · {elapsed}s elapsed", self.attachment_status), cx));
+        }
+        let mut cards = div().flex().flex_wrap().gap_2().min_w_0();
+        for (index, attachment) in task.attachments.iter().enumerate() {
+            let open = attachment.clone();
+            let menu_attachment = attachment.clone();
+            let menu_entity = cx.entity().downgrade();
+            let archived = task.archived;
+            let group: SharedString = format!("material-card-{index}").into();
+            let is_pdf = attachment.media_type == "application/pdf";
+            let format = match attachment.media_type.as_str() {
+                "application/pdf" => "PDF",
+                "image/jpeg" => "JPEG",
+                "image/webp" => "WebP",
+                _ => "PNG",
+            };
+            let size = if attachment.size < 1_048_576 {
+                format!("{} KB", attachment.size.div_ceil(1024))
+            } else {
+                format!("{:.1} MB", attachment.size as f64 / 1_048_576.)
+            };
+            let path = self.data_dir().and_then(|root| crate::attachments::resolve(&root, attachment)).ok();
+            let preview = div().w_full().h(px(72.)).p_1().flex().items_center().justify_center()
+                .bg(rgb(colors.panel));
+            let preview = if is_pdf {
+                preview.child(col().items_center().gap_2()
+                    .child(gpui_kit::component::Icon::new(assets::IconName::FileText)
+                        .size(px(28.)).text_color(rgb(colors.accent)))
+                    .child(label("PDF document", cx)))
+            } else if let Some(path) = path {
+                preview.child(img(path).w_full().h_full().object_fit(ObjectFit::Contain)
+                    .with_fallback(move || div().text_xs().text_color(rgb(colors.muted))
+                        .child("Preview unavailable").into_any_element()))
+            } else {
+                preview.child(label("File unavailable", cx))
+            };
+            let full_name = attachment.name.clone();
+            let card = col().id(format!("material-card-{index}"))
+                .group(group.clone()).relative().w(px(176.)).max_w_full().flex_shrink_0()
+                .rounded_lg().border_1().border_color(rgb(colors.line))
+                .bg(rgb(colors.canvas)).hover(|s| s.border_color(rgb(colors.accent)))
+                .child(col().id(format!("attachment-{index}"))
+                    .rounded_lg().overflow_hidden().cursor_pointer()
+                    .tooltip(move |w, cx| gpui_kit::component::tooltip::Tooltip::new(full_name.clone()).build(w, cx))
+                    .on_click(cx.listener(move |this, _, _, cx| this.open_attachment(&open, cx)))
+                    .child(preview)
+                    .child(col().p_2().gap_0()
+                        .child(single_line_text(format!("material-name-{index}"), attachment.name.clone())
+                            .h_4().text_xs().text_color(rgb(colors.text)).flex_none())
+                        .child(label(format!("{format} · {size}"), cx))))
+                .child(div().absolute().top_2().right_2().opacity(0.)
+                    .group_hover(group, |s| s.opacity(1.))
+                    .child(tool_icon(format!("material-menu-{index}"), assets::IconName::Ellipsis, "Material actions")
+                        .bg(rgb(colors.canvas)).border_1().border_color(rgb(colors.line)).rounded_md()
+                        .dropdown_menu_with_anchor(Anchor::TopRight, move |menu, _, _| {
+                            let open_entity = menu_entity.clone();
+                            let remove_entity = menu_entity.clone();
+                            let open_attachment = menu_attachment.clone();
+                            let remove_path = menu_attachment.relative_path.clone();
+                            menu.item(PopupMenuItem::new("Open in default app").on_click(move |_, _, cx| {
+                                let _ = open_entity.update(cx, |this, cx| this.open_attachment(&open_attachment, cx));
+                            })).separator()
+                            .item(PopupMenuItem::new("Remove from goal").disabled(archived)
+                                .on_click(move |_, _, cx| {
+                                    let _ = remove_entity.update(cx, |this, cx| {
+                                        if let Some(index) = this.store.task(id).and_then(|t| t.attachments.iter()
+                                            .position(|a| a.relative_path == remove_path)) {
+                                            this.remove_attachment(id, index, cx);
+                                        }
+                                    });
+                                }))
+                        })));
+            cards = cards.child(card.map(observed));
+        }
+        if !task.attachments.is_empty() {
+            panel = panel.child(cards);
         }
         if let Some(parent) = task.parent_id.and_then(|p| self.store.task(p))
             && !parent.attachments.is_empty()

@@ -277,7 +277,7 @@ impl TaskApp {
                     .min_h(px(60.))
                     .px_2()
                     .gap_3()
-                    .child(crate::brand::sidebar_logo(colors.accent))
+                    .child(self.sidebar_logo.clone())
                     .child(
                         div()
                             .flex_1()

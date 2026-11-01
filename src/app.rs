@@ -14,7 +14,10 @@ pub struct ActiveRun {
     handle: opencode::Running,
     had_error: bool,
 }
-type AttachmentImport = (u64, Vec<Result<crate::attachments::Attachment, String>>);
+pub enum AttachmentImport {
+    Progress(String),
+    Complete(u64, Vec<Result<crate::attachments::Attachment, String>>),
+}
 type Discovery = Result<(String, Vec<String>), String>;
 
 #[derive(Clone, Debug, PartialEq)]
@@ -177,6 +180,10 @@ pub struct TaskApp {
     pub research_sequences: std::collections::BTreeSet<u64>,
     pub todo_batch: Option<crate::batch::TodoBatch>,
     pub(crate) recovery: crate::recovery::Recovery,
+    pub sidebar_logo: Entity<crate::brand::SidebarLogo>,
+    pub materials_focus: FocusHandle,
+    pub attachment_status: String,
+    pub attachment_started: Option<Instant>,
     pub attachment_import: Option<mpsc::Receiver<AttachmentImport>>,
     pub show_run_result: bool,
     pub show_run_details: bool,
@@ -478,6 +485,10 @@ impl TaskApp {
             research_sequences: Default::default(),
             todo_batch: None,
             recovery: Default::default(),
+            sidebar_logo: cx.new(|_| crate::brand::SidebarLogo),
+            materials_focus: cx.focus_handle(),
+            attachment_status: String::new(),
+            attachment_started: None,
             attachment_import: None,
             show_run_result: true,
             show_run_details: false,

@@ -22,8 +22,18 @@ if [[ "$(uname -s)" == "Darwin" ]]; then
   mkdir -p "$app_bundle/Contents/MacOS" "$app_bundle/Contents/Resources"
   cp "$app_binary" "$bundled_binary"
   cp assets/brand/macos/Info.plist "$app_bundle/Contents/Info.plist"
-  cp assets/brand/macos/Planning.icns "$app_bundle/Contents/Resources/Planning.icns"
+  # Give changed artwork a new resource URL so IconServices does not reuse
+  # the old Dock image for this stable development bundle path.
+  icon_digest=$(shasum -a 256 assets/brand/macos/Planning.icns | cut -c1-12)
+  icon_name="Planning-${icon_digest}.icns"
+  cp assets/brand/macos/Planning.icns "$app_bundle/Contents/Resources/$icon_name"
+  /usr/libexec/PlistBuddy -c "Set :CFBundleIconFile $icon_name" "$app_bundle/Contents/Info.plist"
   /usr/bin/plutil -lint "$app_bundle/Contents/Info.plist"
+  # Replacing the executable/resources invalidates the previous bundle seal.
+  /usr/bin/codesign --force --sign - "$app_bundle"
+  /usr/bin/codesign --verify --strict "$app_bundle"
+  touch "$app_bundle"
+  /System/Library/Frameworks/CoreServices.framework/Frameworks/LaunchServices.framework/Support/lsregister -f "$app_bundle"
   /usr/bin/open -n "$app_bundle"
 else
   exec "$app_binary"

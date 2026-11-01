@@ -10,8 +10,11 @@ use std::collections::HashSet;
 pub struct ResearchRequest {
     pub id: u64,
     pub project_id: u64,
-    /// An explicit destination; None asks the planner to propose a new Topic.
+    /// Destination topic; legacy requests may not have one yet.
     pub topic_id: Option<u64>,
+    /// Initial placeholder name, replaced by the planner unless the user renamed it.
+    #[serde(default)]
+    pub provisional_topic_name: Option<String>,
     pub input: String,
     pub submitted_at: String,
     pub planning_run_id: Option<u64>,
@@ -195,10 +198,18 @@ impl Store {
             .unwrap_or(0)
             .checked_add(1)
             .ok_or("No research request identifiers remain.")?;
+        let provisional_topic_name = topic.is_none().then(|| {
+            input.split_whitespace().collect::<Vec<_>>().join(" ").chars().take(80).collect::<String>()
+        });
+        let topic = match topic {
+            Some(id) => id,
+            None => self.create_topic(project, provisional_topic_name.as_ref().unwrap())?,
+        };
         self.research_requests.push(ResearchRequest {
             id,
             project_id: project,
-            topic_id: topic,
+            topic_id: Some(topic),
+            provisional_topic_name,
             input,
             submitted_at: chrono::Local::now().to_rfc3339(),
             planning_run_id: None,
@@ -206,6 +217,20 @@ impl Store {
             brief: None,
         });
         Ok(id)
+    }
+
+    pub fn topic_planning_status(&self, topic: u64) -> Option<&'static str> {
+        let pending: Vec<_> = self.research_requests.iter()
+            .filter(|r| r.topic_id == Some(topic) && r.goal_ids.is_empty()).collect();
+        if pending.is_empty() { return None; }
+        if pending.iter().any(|r| r.planning_run_id.is_some_and(|id| self.runs.iter()
+            .any(|run| run.id == id && matches!(run.status.as_str(), "Queued" | "Running" | "Cancelling")))) {
+            Some("Planning…")
+        } else if pending.iter().any(|r| r.planning_run_id.is_some()) {
+            Some("Planning needs attention")
+        } else {
+            Some("Awaiting planning")
+        }
     }
 
     pub fn request_for_run(&self, run_id: u64) -> Option<&ResearchRequest> {
@@ -306,7 +331,7 @@ impl Store {
         let context = serde_json::json!({
             "request_id": request.id, "submitted_at": request.submitted_at,
             "raw_request": request.input, "project": project.name,
-            "selected_topic": topic.map(|t| &t.name),
+            "selected_topic": topic.filter(|t| request.provisional_topic_name.as_ref() != Some(&t.name)).map(|t| &t.name),
         });
         let mut prompt = format!(
             "You are expanding ONE saved research request into a complete reviewable plan in What the hell are you planning?\n\
@@ -391,6 +416,11 @@ impl Store {
             Some(topic) => topic,
             None => staged.create_topic(request.project_id, &plan.topic_name)?,
         };
+        if staged.topics.iter().find(|t| t.id == topic).is_some_and(|t| {
+            request.provisional_topic_name.as_ref() == Some(&t.name)
+        }) {
+            staged.rename_topic(topic, &plan.topic_name)?;
+        }
         let summary = plan.brief.summary();
         let mut goals = Vec::with_capacity(plan.goals.len());
         for item in &plan.goals {
@@ -415,6 +445,8 @@ impl Store {
             .iter_mut()
             .find(|r| r.id == id)
             .unwrap();
+        saved.topic_id = Some(topic);
+        saved.provisional_topic_name = None;
         saved.goal_ids = goals.clone();
         saved.brief = Some(plan.brief);
         *self = staged;
@@ -432,6 +464,100 @@ mod tests {
         s.projects[0].directory = std::env::temp_dir().to_string_lossy().into();
         s.default_model = "fixture/planner".into();
         s
+    }
+
+    #[test]
+    fn pending_topic_survives_reload_failure_retry_and_is_filled_in_place() {
+        let mut s = store();
+        let id = s.create_research_request(1, None, "分析 Intel 财报").unwrap();
+        let topic = s.research_requests[0].topic_id.unwrap();
+        assert_eq!(s.topics.iter().find(|t| t.id == topic).unwrap().project_id, 1);
+        assert_eq!(s.topic_planning_status(topic), Some("Awaiting planning"));
+        let mut run = s.prepare_request_plan(id).unwrap();
+        run.status = "Queued".into();
+        s.research_requests[0].planning_run_id = Some(run.id);
+        s.runs.push(run);
+        assert_eq!(s.topic_planning_status(topic), Some("Planning…"));
+        let mut s: Store = serde_json::from_str(&serde_json::to_string(&s).unwrap()).unwrap();
+        s.runs[0].status = "Failed".into();
+        assert_eq!(s.topic_planning_status(topic), Some("Planning needs attention"));
+        assert!(s.prepare_request_plan(id).is_ok());
+        let count = s.topics.len();
+        let goals = s.apply_request_plan(id, PLAN).unwrap();
+        assert_eq!(s.topics.len(), count);
+        assert_eq!(s.task(goals[0]).unwrap().topic_id, Some(topic));
+        assert_eq!(s.task_topic(goals[0]).unwrap().name, "Intel");
+        assert_eq!(s.topic_planning_status(topic), None);
+    }
+
+    #[test]
+    fn placeholder_does_not_override_user_name_and_old_requests_still_load() {
+        let mut s = store();
+        let id = s.create_research_request(1, None, "Review Intel").unwrap();
+        let topic = s.research_requests[0].topic_id.unwrap();
+        s.rename_topic(topic, "My topic").unwrap();
+        s.apply_request_plan(id, PLAN).unwrap();
+        assert_eq!(s.topics.iter().find(|t| t.id == topic).unwrap().name, "My topic");
+        let mut old = serde_json::to_value(&s.research_requests[0]).unwrap();
+        old.as_object_mut().unwrap().remove("provisional_topic_name");
+        old["topic_id"] = serde_json::Value::Null;
+        let restored: ResearchRequest = serde_json::from_value(old).unwrap();
+        assert_eq!(restored.provisional_topic_name, None);
+    }
+
+    #[test]
+    fn project_rename_keeps_running_and_queued_plans_valid_without_rewriting_history() {
+        let mut s = store();
+        let mut project_run = s.prepare_project_plan(1).unwrap();
+        project_run.status = "Running".into();
+        s.runs.push(project_run);
+        let request = s.create_research_request(1, None, "Review latest earnings").unwrap();
+        let mut request_run = s.prepare_request_plan(request).unwrap();
+        request_run.status = "Queued".into();
+        s.research_requests[0].planning_run_id = Some(request_run.id);
+        s.runs.push(request_run);
+        let before = s.clone();
+        s.rename_project(1, "  新项目名称  ").unwrap();
+        assert_eq!(s.projects[0].name, "新项目名称");
+        assert_eq!(s.projects[0].id, before.projects[0].id);
+        assert_eq!(s.projects[0].key, before.projects[0].key);
+        assert_eq!(s.projects[0].directory, before.projects[0].directory);
+        assert_eq!(s.tasks, before.tasks);
+        assert_eq!(s.topics, before.topics);
+        assert_eq!(s.research_requests, before.research_requests);
+        assert_eq!(s.runs[0].input_signature, s.project_plan_signature(1).unwrap());
+        assert_eq!(s.runs[1].input_signature, s.request_plan_signature(request).unwrap());
+        for (old, new) in before.runs.iter().zip(&s.runs) {
+            let mut expected = old.clone();
+            expected.input_signature = new.input_signature.clone();
+            assert_eq!(&expected, new, "Only the compatibility signature changes");
+        }
+        s.rename_project(1, "Another name").unwrap();
+        assert_eq!(s.runs[1].input_signature, s.request_plan_signature(request).unwrap());
+        let restored: Store = serde_json::from_str(&serde_json::to_string(&s).unwrap()).unwrap();
+        assert_eq!(restored, s);
+        assert!(s.apply_request_plan(request, PLAN).is_ok());
+    }
+
+    #[test]
+    fn project_rename_does_not_revalidate_stale_plans_or_accept_invalid_names() {
+        let mut s = store();
+        let request = s.create_research_request(1, None, "Original scope").unwrap();
+        let run = s.prepare_request_plan(request).unwrap();
+        s.research_requests[0].planning_run_id = Some(run.id);
+        s.runs.push(run);
+        s.research_requests[0].input = "Changed scope".into();
+        let old_signature = s.runs[0].input_signature.clone();
+        s.rename_project(1, "Renamed").unwrap();
+        assert_eq!(s.runs[0].input_signature, old_signature);
+        assert_ne!(s.runs[0].input_signature, s.request_plan_signature(request).unwrap());
+        let before = s.clone();
+        for name in ["".to_string(), "   ".into(), "字".repeat(161)] {
+            assert!(s.rename_project(1, &name).is_err());
+            assert_eq!(s, before);
+        }
+        assert!(s.rename_project(999, "Missing project").is_err());
+        assert_eq!(s, before);
     }
 
     #[test]

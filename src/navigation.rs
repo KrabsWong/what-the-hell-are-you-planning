@@ -47,6 +47,8 @@ impl TaskApp {
         self.property = None;
         self.new_project = None;
         self.topic_editor = None;
+        self.project_rename = None;
+        self.topic_move = None;
         self.planning_project = None;
         self.planning_topic = None;
         self.directory_project = None;

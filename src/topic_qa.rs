@@ -497,3 +497,161 @@ pub fn sidebar() {
     }).unwrap();
     println!("Sidebar startup QA passed");
 }
+
+/// Isolated migration checks do not depend on unrelated workflow fixtures.
+pub fn run_migration() {
+    let root = std::env::temp_dir().join(format!("planning-migration-qa-{}", std::process::id()));
+    std::fs::create_dir_all(&root).unwrap();
+    let mut store = Store::empty();
+    let goal = store.create_task("Semiconductor research", 1, crate::domain::Stage::Planned, None).unwrap();
+    store.create_task("Review earnings sources", 1, crate::domain::Stage::Planned, Some(goal)).unwrap();
+    let topic = store.task_topic(goal).unwrap().id;
+    let mut cx = HeadlessAppContext::with_platform(
+        platform::current_platform(true).text_system(), Arc::new(crate::ui_assets::AppAssets), platform::current_headless_renderer);
+    cx.update(|cx| { init(cx); Theme::change(ThemeMode::Light, None, cx); });
+    let mut app = None;
+    let window = cx.open_window(size(px(1440.), px(900.)), |w, cx| {
+        let view = cx.new(|cx| TaskApp::new_mock(w, cx));
+        view.update(cx, |a, cx| { a.store = store; a.navigate(Scope::Topic(topic), w, cx); });
+        app = Some(view.clone());
+        cx.new(|cx| base::Root::new(view, w, cx))
+    }).unwrap();
+    let app = app.unwrap();
+    let handle = window.into();
+    // Rename uses the same application modal surface and never mutates on cancel/error.
+    cx.update_window(handle, |_, w, cx| {
+        let before = app.read(cx).store.clone();
+        app.update(cx, |a, cx| { a.navigate(Scope::Project(1), w, cx); });
+        w.render_frame(cx);
+        w.click("project-actions", cx);
+        w.render_frame(cx);
+        w.click(0usize, cx);
+        assert!(app.read(cx).project_rename.is_some());
+        assert!(!w.has_active_prompt());
+        w.render_frame(cx);
+        w.click("cancel-project-rename", cx);
+        assert_eq!(app.read(cx).store, before);
+        app.update(cx, |a, cx| {
+            a.open_project_rename(1, w, cx);
+            let input = a.project_rename.as_ref().unwrap().1.clone();
+            input.update(cx, |s, cx| s.set_value("  ", w, cx));
+        });
+        w.render_frame(cx);
+        w.click("save-project-rename", cx);
+        assert!(app.read(cx).project_rename.is_some());
+        assert_eq!(app.read(cx).store, before);
+        app.update(cx, |a, cx| {
+            let input = a.project_rename.as_ref().unwrap().1.clone();
+            input.update(cx, |s, cx| s.set_value("Renamed research project", w, cx));
+        });
+        w.render_frame(cx);
+    }).unwrap();
+    cx.capture_screenshot(handle).unwrap().save(root.join("project-rename.png")).unwrap();
+    cx.update_window(handle, |_, w, cx| {
+        w.click("save-project-rename", cx);
+        assert!(app.read(cx).project_rename.is_none());
+        assert_eq!(app.read(cx).store.projects[0].name, "Renamed research project");
+        app.update(cx, |a, cx| a.navigate(Scope::Topic(topic), w, cx));
+    }).unwrap();
+    // Exercise the in-app migration modal with enough projects to require search.
+    let before_move = cx.update_window(handle, |_, w, cx| {
+        let before = app.read(cx).store.clone();
+        app.update(cx, |a, cx| {
+            for id in 100..200 {
+                a.store.projects.push(crate::domain::Project {
+                    id, name: format!("Destination {id}"), key: format!("P{id}"),
+                    directory: String::new(), research_brief: String::new(),
+                });
+            }
+            a.request_topic_move(topic, w, cx);
+        });
+        w.render_frame(cx);
+        assert!(app.read(cx).topic_move.is_some());
+        assert!(!w.has_active_prompt());
+        before
+    }).unwrap();
+    cx.capture_screenshot(handle).unwrap().save(root.join("topic-move-dialog.png")).unwrap();
+    cx.update_window(handle, |_, w, cx| {
+        w.click("topic-move-project", cx);
+        w.render_frame(cx);
+    }).unwrap();
+    std::thread::sleep(std::time::Duration::from_millis(300));
+    cx.run_until_parked();
+    cx.update_window(handle, |_, w, cx| w.render_frame(cx)).unwrap();
+    cx.capture_screenshot(handle).unwrap().save(root.join("topic-move-project-list.png")).unwrap();
+    cx.update_window(handle, |_, w, cx| {
+        // Close the popup before clicking the footer, which it overlays.
+        w.press("escape", cx);
+        w.render_frame(cx);
+        if app.read(cx).topic_move.is_some() { w.click("cancel-topic-move", cx); }
+        assert!(app.read(cx).topic_move.is_none());
+        assert_eq!(app.read(cx).store.topics, before_move.topics);
+        app.update(cx, |a, cx| {
+            a.request_topic_move(topic, w, cx);
+            let select = a.topic_move.as_ref().unwrap().projects.clone();
+            select.update(cx, |s, cx| s.set_selected_value(&199, w, cx));
+            cx.notify();
+        });
+        w.render_frame(cx);
+        w.click("confirm-topic-move", cx);
+        assert!(app.read(cx).topic_move.is_none());
+        assert_eq!(app.read(cx).store.task(goal).unwrap().project_id, 199);
+        app.update(cx, |a, cx| {
+            a.store = before_move.clone();
+            a.todo_batch = Some(crate::batch::TodoBatch {
+                project_id: 1, items: vec![goal], completed: 0, runs_completed: 0,
+                state: crate::batch::BatchState::Paused("Paused for QA".into()),
+                run_ids: Default::default(), done_items: vec![], failed_items: vec![], failed_tasks: vec![],
+            });
+            a.request_topic_move(topic, w, cx);
+        });
+        w.render_frame(cx);
+        assert!(!w.has_active_prompt());
+    }).unwrap();
+    cx.capture_screenshot(handle).unwrap().save(root.join("topic-move-blocked.png")).unwrap();
+    cx.update_window(handle, |_, w, cx| {
+        w.click("cancel-topic-move", cx);
+        app.update(cx, |a, cx| { a.store = before_move; a.navigate(Scope::Topic(topic), w, cx); });
+    }).unwrap();
+    let (moved_topic, moved_goal) = cx.update_window(handle, |_, w, cx| {
+        let ids = app.update(cx, |a, cx| {
+            a.todo_batch = None;
+            let mut project = a.store.projects[0].clone();
+            project.id = 2; project.name = "Source project".into();
+            a.store.projects.push(project);
+            let moved_topic = a.store.create_topic(2, "Moved market research topic with a long descriptive title").unwrap();
+            let moved_goal = a.store.create_task_in_topic("Moved goal one", 2, crate::domain::Stage::Planned, None, Some(moved_topic)).unwrap();
+            a.store.create_task_in_topic("Moved goal two", 2, crate::domain::Stage::Planned, None, Some(moved_topic)).unwrap();
+            // A newer goal in the older topic must not split the moved topic's group.
+            a.store.create_task_in_topic("New goal in original topic", 1, crate::domain::Stage::Planned, None, Some(topic)).unwrap();
+            a.store.move_topic_project(moved_topic, 1).unwrap();
+            a.layout = crate::app::Layout::List;
+            a.navigate(Scope::Project(1), w, cx);
+            (moved_topic, moved_goal)
+        });
+        w.render_frame(cx);
+        let moved_header = w.find(format!("collection-topic-{}", ids.0));
+        let original_header = w.find(format!("collection-topic-{topic}"));
+        assert!(moved_header.label().unwrap().contains("2 goals"));
+        assert!(original_header.label().unwrap().contains("2 goals"));
+        assert!(moved_header.bounds().top() < w.find(format!("task-row-{}", ids.1)).bounds().top());
+        assert!(w.find(format!("task-row-{}", ids.1)).bounds().top() < original_header.bounds().top());
+        assert!(original_header.bounds().top() < w.find(format!("task-row-{goal}")).bounds().top());
+        assert!(w.try_find(format!("topic-link-{topic}")).is_none());
+        ids
+    }).unwrap();
+    cx.capture_screenshot(handle).unwrap().save(root.join("project-topic-groups.png")).unwrap();
+    cx.update_window(handle, |_, w, cx| {
+        w.click(format!("collection-topic-{moved_topic}"), cx);
+        assert_eq!(app.read(cx).scope, Scope::Topic(moved_topic));
+        app.update(cx, |a, cx| {
+            a.navigate(Scope::Project(1), w, cx);
+            a.query = "Moved goal one".into(); cx.notify();
+        });
+        w.render_frame(cx);
+        assert!(w.find(format!("collection-topic-{moved_topic}")).label().unwrap().contains("1 goals"));
+        assert!(w.find(format!("task-row-{moved_goal}")).visible());
+        assert!(w.try_find(format!("collection-topic-{topic}")).is_none());
+    }).unwrap();
+    println!("Migration modal QA passed: {}", root.display());
+}

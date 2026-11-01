@@ -114,6 +114,10 @@ fn main() {
         return;
     }
     #[cfg(feature = "qa")]
+    if std::env::args().any(|arg| arg == "--qa-topic-migration") {
+        topic_qa::run_migration(); return;
+    }
+    #[cfg(feature = "qa")]
     if std::env::args().any(|arg| arg == "--qa-topics") {
         topic_qa::run();
         return;

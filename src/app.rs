@@ -137,6 +137,8 @@ pub struct TaskApp {
     pub focus: FocusHandle,
     pub modal_focus: FocusHandle,
     pub new_project: Option<Entity<InputState>>,
+    pub(crate) topic_move: Option<crate::topic_views::TopicMoveDialog>,
+    pub(crate) project_rename: Option<(u64, Entity<InputState>)>,
     pub topic_editor: Option<(u64, Option<u64>, Entity<InputState>)>,
     pub collapsed_sidebar_topics: Vec<u64>,
     pub research_topic: Option<u64>,
@@ -459,6 +461,8 @@ impl TaskApp {
             modal_focus: cx.focus_handle(),
             new_project: None,
             topic_editor: None,
+            project_rename: None,
+            topic_move: None,
             collapsed_sidebar_topics: vec![],
             research_topic: None,
             planning_project: None,
@@ -860,6 +864,10 @@ impl TaskApp {
         let (id, project, stage, parent, cycle) =
             (d.id, d.project, d.stage, d.parent, d.cycle.clone());
         if let Some(id) = id {
+            if self.store.task(id).is_some_and(|t| t.project_id != project) {
+                self.show_save_error("Move the entire topic using its Project property or topic menu, then edit task details.", cx);
+                return;
+            }
             if self.store.task(id).is_some_and(|t| t.stage != stage) {
                 if stage == Stage::InProgress {
                     self.show_save_error("Save task details first, then submit execution from Board or the status menu.", cx);

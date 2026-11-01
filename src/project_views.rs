@@ -2,7 +2,7 @@ use crate::{app::TaskApp, appearance::palette, views::*};
 use gpui_kit::{
     base::FocusTrapElement,
     component::{
-        input::Textarea,
+        input::{Input, InputEvent, InputState, Textarea},
         menu::{DropdownMenu, PopupMenuItem},
     },
     prelude::FluentBuilder,
@@ -10,6 +10,50 @@ use gpui_kit::{
 };
 
 impl TaskApp {
+    pub(crate) fn open_project_rename(&mut self, project: u64, w: &mut Window, cx: &mut Context<Self>) {
+        let Some(name) = self.store.projects.iter().find(|p| p.id == project).map(|p| p.name.clone()) else { return; };
+        self.clear_navigation_overlays();
+        let input = cx.new(|cx| InputState::new(w, cx).placeholder("Project name").default_value(name));
+        cx.subscribe(&input, |a, _, event: &InputEvent, cx| {
+            if matches!(event, InputEvent::Change) && a.project_rename.is_some() {
+                a.error.clear(); cx.notify();
+            }
+        }).detach();
+        input.update(cx, |s, cx| s.focus(w, cx));
+        self.project_rename = Some((project, input));
+        cx.notify();
+    }
+
+    pub(crate) fn save_project_name(&mut self, w: &mut Window, cx: &mut Context<Self>) {
+        let Some((project, input)) = &self.project_rename else { return; };
+        let (project, name) = (*project, input.read(cx).value().to_string());
+        let mut staged = self.store.clone();
+        let result = staged.rename_project(project, &name);
+        if result.is_ok() {
+            if staged != self.store { self.snapshot(); self.store = staged; }
+            self.project_rename = None;
+            w.focus(&self.focus, cx);
+        }
+        self.finish(result, "Project renamed", cx);
+    }
+
+    pub(crate) fn project_rename_view(&self, cx: &mut Context<Self>) -> AnyElement {
+        let (_, input) = self.project_rename.as_ref().unwrap();
+        let colors = palette(cx);
+        div().absolute().inset_0().occlude().bg(rgba(0x00000080)).flex().items_center().justify_center().p_4()
+            .child(col().w(px(460.)).max_w_full().p_6().gap_4().rounded_lg().bg(rgb(colors.panel))
+                .child(div().text_lg().font_weight(FontWeight::SEMIBOLD).child("Rename project"))
+                .child(muted("Change the display name. Existing topics, tasks, files and running work stay connected.", cx))
+                .child(Input::new(input).id("rename-project-name"))
+                .when(!self.error.is_empty(), |d| d.child(div().text_color(rgb(colors.danger)).child(self.error.clone())))
+                .child(row().justify_end()
+                    .child(button("cancel-project-rename", "Cancel").on_click(cx.listener(|a, _, w, cx| {
+                        a.project_rename = None; a.error.clear(); w.focus(&a.focus, cx); cx.notify();
+                    })))
+                    .child(primary_button("save-project-rename", "Save name").on_click(cx.listener(|a, _, w, cx| a.save_project_name(w, cx))))))
+            .focus_trap("project-rename-focus", &self.modal_focus).into_any_element()
+    }
+
     pub fn project_toolbar_actions(&self, project: u64, cx: &mut Context<Self>) -> AnyElement {
         let entity = cx.entity().downgrade();
         row()
@@ -28,7 +72,10 @@ impl TaskApp {
                 )
                 .dropdown_menu_with_anchor(Anchor::TopRight, move |menu, _, _| {
                     let folder = entity.clone();
-                    menu.item(
+                    let rename = entity.clone();
+                    menu.item(PopupMenuItem::new("Rename project…").on_click(move |_, w, cx| {
+                        let _ = rename.update(cx, |a, cx| a.open_project_rename(project, w, cx));
+                    })).item(
                         PopupMenuItem::new("Working folder…").on_click(move |_, w, cx| {
                             let _ = folder.update(cx, |a, cx| a.open_directory(project, w, cx));
                         }),

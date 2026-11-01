@@ -66,7 +66,8 @@ impl TaskApp {
             .research_requests
             .iter()
             .rev()
-            .filter(|r| project.is_none_or(|id| r.project_id == id) && !self.store.request_is_archived(r))
+            .filter(|r| project.is_none_or(|id| r.project_id == id) && !self.store.request_is_archived(r)
+                && match self.scope { Scope::Topic(id) => r.topic_id == Some(id) && r.goal_ids.is_empty(), _ => true })
         {
             let id = request.id;
             let project = request.project_id;

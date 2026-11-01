@@ -63,6 +63,9 @@ impl TaskApp {
             return false;
         }
         self.undo.clear();
+        if !self.expanded_sidebar_projects.contains(&project) {
+            self.expanded_sidebar_projects.push(project);
+        }
         self.planning_project = None;
         self.planning_topic = None;
         self.error.clear();

@@ -669,6 +669,131 @@ impl Store {
         });
         Ok(id)
     }
+    /// A display-name edit preserves planning snapshots that are still valid.
+    /// Do not refresh snapshots already invalidated by scope or destination changes.
+    pub fn rename_project(&mut self, project: u64, name: &str) -> Result<(), String> {
+        let name = name.trim();
+        if name.is_empty() || name.chars().count() > 160 {
+            return Err("Enter a project name between 1 and 160 characters.".into());
+        }
+        let current = self.projects.iter().find(|p| p.id == project).ok_or("Project not found.")?;
+        if current.name == name { return Ok(()); }
+        let valid: Vec<_> = self.runs.iter().filter(|r| r.project_plan == Some(project)).filter_map(|r| {
+            let request = self.request_for_run(r.id).map(|q| q.id);
+            let signature = match request {
+                Some(id) => self.request_plan_signature(id),
+                None => self.project_plan_signature(project),
+            };
+            (signature.as_ref().ok() == Some(&r.input_signature)).then_some((r.id, request))
+        }).collect();
+        self.projects.iter_mut().find(|p| p.id == project).unwrap().name = name.into();
+        for (run, request) in valid {
+            let signature = match request {
+                Some(id) => self.request_plan_signature(id),
+                None => self.project_plan_signature(project),
+            }.expect("Renaming a project cannot invalidate its destination");
+            self.runs.iter_mut().find(|r| r.id == run).unwrap().input_signature = signature;
+        }
+        Ok(())
+    }
+
+    /// Shared preflight for the confirmation dialog and the final mutation guard.
+    pub fn topic_move_blockers(&self, topic: u64, batch: Option<&crate::batch::TodoBatch>) -> Vec<String> {
+        let ids: Vec<_> = self.tasks.iter().filter(|t| self.task_topic(t.id).is_some_and(|t| t.id == topic)).map(|t| t.id).collect();
+        let requests: Vec<_> = self.research_requests.iter().filter(|r|
+            r.topic_id == Some(topic) || r.goal_ids.iter().any(|id| ids.contains(id))).collect();
+        let task_name = |id| self.task(id).map(|t| format!("{} · {}", self.identifier(t), t.title)).unwrap_or_else(|| format!("Task #{id}"));
+        let mut blockers = vec![];
+        for run in &self.runs {
+            let request = requests.iter().find(|r| r.planning_run_id == Some(run.id));
+            if !(run.project_plan.is_none() && ids.contains(&run.task_id) || request.is_some()) { continue; }
+            let action = match run.status.as_str() {
+                "Queued" => "Open Progress and use Stop task to cancel this queued attempt or retry. If its goal is in the batch queue, also use Stop all, or wait for the queue to finish.",
+                "Running" => "Wait for completion, or open Progress and use Stop task. Wait until stopping finishes before moving.",
+                "Recovering" => "Wait for recovery to finish, then finish or stop the task. To abandon recovery, archive the topic and confirm Stop and archive; wait for stopping to finish, then restore it if needed.",
+                "Cancelling" => "A stop has already been requested. Wait until the status changes to Stopped; do not submit another stop.",
+                "Interrupted" if self.is_recovery_candidate(run) => "Resume from Paused projects and finish the work, or archive the topic and confirm Stop and archive to abandon it. Wait for stopping to finish, then restore the topic if needed.",
+                _ => continue,
+            };
+            let name = request.map(|r| format!("Research request #{} · {} (planning)", r.id, r.input))
+                .unwrap_or_else(|| task_name(run.task_id));
+            blockers.push(format!("{name} — {} (run #{})\n  {}", run.status, run.id, action));
+        }
+        if let Some(batch) = batch.filter(|b| b.state != crate::batch::BatchState::Finished) {
+            for id in &batch.items {
+                if !ids.contains(id) || !batch.contains_pending(*id) { continue; }
+                let state = if matches!(batch.state, crate::batch::BatchState::Paused(_)) { "Paused batch queue" } else { "Pending batch queue" };
+                let children: Vec<_> = self.tasks.iter().filter(|t| t.parent_id == Some(*id) && !t.stage.is_closed() && self.research_result(t.id).is_none()).map(|t| task_name(t.id)).collect();
+                let children = if children.is_empty() { String::new() } else { format!("\n  Pending child tasks: {}", children.join("; ")) };
+                blockers.push(format!("{} — {state}{children}\n  Finish the queue, or use Stop all in the queue bar. Stop all affects the entire batch, including other topics; pausing alone does not release it.", task_name(*id)));
+            }
+        }
+        for request in requests {
+            if request.goal_ids.iter().any(|id| !ids.contains(id)) || request.topic_id.is_some_and(|id| id != topic) {
+                let goals: Vec<_> = request.goal_ids.iter().map(|id| task_name(*id)).collect();
+                blockers.push(format!("Research request #{} · {} — links multiple topics\n  Linked goals: {}. Reconcile the request's topic and goal membership before moving; stopping tasks does not repair this relationship.", request.id, request.input, goals.join("; ")));
+            }
+        }
+        for task in &self.tasks {
+            let inside = ids.contains(&task.id);
+            let links = task.parent_id.into_iter().chain(task.research.iter().flat_map(|r|
+                std::iter::once(r.goal_id).chain(r.depends_on.iter().copied())));
+            let mut seen = std::collections::HashSet::new();
+            for id in links.filter(|id| inside != ids.contains(id)) {
+                if seen.insert(id) {
+                    blockers.push(format!("{} → {} — cross-topic relationship\n  Reconcile the parent, goal or dependency relationship so it stays inside the topic. Stopping tasks does not repair this relationship.", task_name(task.id), task_name(id)));
+                }
+            }
+        }
+        blockers
+    }
+
+    /// Move a topic atomically while preserving stable IDs and existing result provenance.
+    pub fn move_topic_project(&mut self, topic: u64, project: u64) -> Result<(), String> {
+        let source = self.topics.iter().find(|t| t.id == topic).ok_or("Topic not found.")?.project_id;
+        if !self.projects.iter().any(|p| p.id == project) { return Err("Project not found.".into()); }
+        if source == project { return Ok(()); }
+        let ids: Vec<_> = self.tasks.iter().filter(|t| self.task_topic(t.id).is_some_and(|t| t.id == topic)).map(|t| t.id).collect();
+        let requests: Vec<_> = self.research_requests.iter().filter(|r|
+            r.topic_id == Some(topic) || r.goal_ids.iter().any(|id| ids.contains(id))).map(|r| r.id).collect();
+        let blockers = self.topic_move_blockers(topic, None);
+        if !blockers.is_empty() { return Err(blockers.join("\n\n")); }
+        let planning_runs: Vec<_> = self.research_requests.iter().filter(|r| requests.contains(&r.id)).filter_map(|r| r.planning_run_id).collect();
+        let approved: Vec<_> = ids.iter().copied().filter(|id| self.goal_execution_approved(*id)).collect();
+        let mut valid: Vec<_> = ids.iter().filter_map(|id| self.research_result(*id).map(|r| (*id, r.id))).collect();
+        let mut staged = self.clone();
+        staged.topics.iter_mut().find(|t| t.id == topic).unwrap().project_id = project;
+        for task in staged.tasks.iter_mut().filter(|t| ids.contains(&t.id)) {
+            task.project_id = project;
+            task.activity.push(activity_event("Topic moved to another project"));
+        }
+        for goal in approved {
+            let signature = staged.goal_plan_signature(goal);
+            staged.task_mut(goal).unwrap().approved_plan = signature;
+        }
+        for request in staged.research_requests.iter_mut().filter(|r| requests.contains(&r.id)) {
+            request.project_id = project;
+            request.topic_id = Some(topic);
+        }
+        for run in staged.runs.iter_mut().filter(|r| planning_runs.contains(&r.id)) {
+            run.project_plan = Some(project);
+        }
+        // Refresh only results that were reusable before the move, in dependency order.
+        // Historical directories, sessions, reports and attachment paths remain intact.
+        while !valid.is_empty() {
+            let before = valid.len();
+            valid.retain(|(task, run)| {
+                if let Some(signature) = staged.research_signature(*task) {
+                    staged.runs.iter_mut().find(|r| r.id == *run).unwrap().input_signature = signature;
+                    false
+                } else { true }
+            });
+            if valid.len() == before { return Err("Could not preserve research dependencies during migration.".into()); }
+        }
+        *self = staged;
+        Ok(())
+    }
+
     /// Move the complete subtree together, detaching a cross-project parent.
     pub fn move_project(&mut self, id: u64, project: u64) -> Result<(), String> {
         if !self.projects.iter().any(|p| p.id == project) {

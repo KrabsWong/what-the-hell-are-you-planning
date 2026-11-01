@@ -32,6 +32,7 @@ use crate::navigation::CrumbTarget;
 
 enum CollectionRow {
     Project(u64, String, usize),
+    Topic(Option<u64>, String, usize),
     Task(Box<Task>),
 }
 
@@ -999,9 +1000,9 @@ impl TaskApp {
                                 })
                                 .count();
                             if pending > 0 {
-                                format!("{count} goals · {pending} awaiting approval")
+                                format!("{count} goals · grouped by topic · {pending} awaiting approval")
                             } else {
-                                format!("{count} goals")
+                                format!("{count} goals · grouped by topic")
                             }
                         } else {
                             format!(
@@ -1092,7 +1093,9 @@ impl TaskApp {
             main = main.child(self.topic_directory(None, cx));
         }
         if let Scope::Project(id) = self.scope {
-            main = main.child(self.topic_directory(Some(id), cx));
+            if self.layout == Layout::Board || tasks.is_empty() {
+                main = main.child(self.topic_directory(Some(id), cx));
+            }
             let pending = self
                 .store
                 .research_requests
@@ -1191,7 +1194,17 @@ impl TaskApp {
         let mut rows = Vec::new();
         let grouped = !matches!(self.scope, Scope::Project(_));
         let mut last_project = None;
+        let mut last_topic = None;
         for task in ordered {
+            if !grouped {
+                let topic = self.store.task_topic(task.id);
+                let topic_id = topic.map(|t| t.id);
+                if last_topic != Some(topic_id) {
+                    let count = tasks.iter().filter(|t| self.store.task_topic(t.id).map(|t| t.id) == topic_id && t.parent_id.is_none()).count();
+                    rows.push(CollectionRow::Topic(topic_id, topic.map(|t| t.display_name()).unwrap_or_else(|| "Unassigned topic".into()), count));
+                    last_topic = Some(topic_id);
+                }
+            }
             if grouped && last_project != Some(task.project_id) {
                 let name = self
                     .store
@@ -1231,6 +1244,23 @@ impl TaskApp {
                     range
                         .map(|i| match &rows[i] {
                             CollectionRow::Task(task) => this.task_row(task, row_height, cx),
+                            CollectionRow::Topic(id, name, count) => {
+                                let id = *id;
+                                let key = id.map(|id| id.to_string()).unwrap_or_else(|| "unassigned".into());
+                                quiet_button(format!("collection-topic-{key}"), "")
+                                    .h(px(row_height)).w_full().px_6().rounded_none()
+                                    .bg(rgb(palette(cx).side))
+                                    .tooltip(name.clone())
+                                    .accessibility_label(format!("{name} · {count} goals · Open topic"))
+                                    .child(row().w_full().min_w_0().gap_3()
+                                        .child(gpui_kit::component::Icon::new(assets::IconName::Folder).size_4().flex_shrink_0())
+                                        .child(single_line_text(format!("collection-topic-title-{key}"), name.clone()).flex_1().min_w_0().font_weight(FontWeight::SEMIBOLD))
+                                        .child(label(format!("{count} goals"), cx).flex_shrink_0())
+                                        .child(gpui_kit::component::Icon::new(assets::IconName::ChevronRight).size_4().flex_shrink_0()))
+                                    .on_click(cx.listener(move |a, _, w, cx| {
+                                        if let Some(id) = id { a.navigate(Scope::Topic(id), w, cx); }
+                                    })).into_any_element()
+                            }
                             CollectionRow::Project(id, name, count) => {
                                 let id = *id;
                                 quiet_button(format!("collection-project-{id}"), "")
@@ -2344,7 +2374,7 @@ impl TaskApp {
             (Property::Priority, "Priority", t.priority.label().into()),
             (
                 Property::Project,
-                "Project",
+                "Topic project",
                 self.store
                     .projects
                     .iter()
@@ -2650,23 +2680,12 @@ impl TaskApp {
                 }
             }
             Property::Project => {
-                for p in &self.store.projects {
-                    let pid = p.id;
-                    options = options.child(
-                        property_choice(
-                            format!("move-project-{pid}"),
-                            p.name.clone(),
-                            None,
-                            self.store.task(id).is_some_and(|t| t.project_id == pid),
-                        )
-                        .on_click(cx.listener(move |this, _, _, cx| {
-                            this.snapshot();
-                            let result = this.store.move_project(id, pid);
-                            this.property = None;
-                            this.finish(result, "Task and subtasks moved", cx);
-                        })),
-                    );
-                }
+                options = options.child(button("move-entire-topic", "Move topic…")
+                    .on_click(cx.listener(move |this, _, w, cx| {
+                        if let Some(topic) = this.store.task_topic(id).map(|t| t.id) {
+                            this.request_topic_move(topic, w, cx);
+                        }
+                    })));
             }
             Property::Cycle => {
                 let cycles: std::collections::BTreeSet<_> = self
@@ -3222,6 +3241,8 @@ impl Render for TaskApp {
                     this.editing = false;
                     this.new_project = None;
                     this.topic_editor = None;
+                    this.project_rename = None;
+                    this.topic_move = None;
                     this.planning_project = None;
                     if matches!(
                         this.scope,
@@ -3241,6 +3262,8 @@ impl Render for TaskApp {
                     && this.draft.is_none()
                     && this.new_project.is_none()
                     && this.topic_editor.is_none()
+                    && this.project_rename.is_none()
+                    && this.topic_move.is_none()
                     && this.planning_project.is_none()
                     && this.directory_project.is_none()
                 {
@@ -3255,6 +3278,8 @@ impl Render for TaskApp {
                     this.property = None;
                     this.new_project = None;
                     this.topic_editor = None;
+                    this.project_rename = None;
+                    this.topic_move = None;
                     this.planning_project = None;
                     this.directory_project = None;
                     this.error.clear();
@@ -3338,6 +3363,12 @@ impl Render for TaskApp {
         }
         if self.directory_project.is_some() {
             root = root.child(self.directory_overlay(cx));
+        }
+        if self.topic_move.is_some() {
+            root = root.child(self.topic_move_view(cx));
+        }
+        if self.project_rename.is_some() {
+            root = root.child(self.project_rename_view(cx));
         }
         if self.topic_editor.is_some() {
             root = root.child(self.topic_editor_view(cx));

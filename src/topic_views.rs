@@ -10,13 +10,109 @@ use gpui_kit::{
         Disableable,
         button::ButtonVariants,
         input::{Input, InputState},
+        select::{Select, SelectState, SelectItem, SelectEvent, SearchableVec},
         menu::{DropdownMenu, PopupMenuItem},
     },
     prelude::FluentBuilder,
     *,
 };
 
+#[derive(Clone)]
+pub(crate) struct ProjectChoice { pub id: u64, pub title: SharedString }
+impl SelectItem for ProjectChoice {
+    type Value = u64;
+    fn title(&self) -> SharedString { self.title.clone() }
+    fn value(&self) -> &u64 { &self.id }
+}
+pub(crate) struct TopicMoveDialog {
+    topic: u64,
+    pub(crate) projects: Entity<SelectState<SearchableVec<ProjectChoice>>>,
+    has_destinations: bool,
+}
+
 impl TaskApp {
+    pub(crate) fn request_topic_move(&mut self, topic: u64, w: &mut Window, cx: &mut Context<Self>) {
+        let Some(current) = self.store.topics.iter().find(|t| t.id == topic) else { return; };
+        let choices: Vec<_> = self.store.projects.iter().filter(|p| p.id != current.project_id)
+            .map(|p| ProjectChoice { id: p.id, title: format!("{} · {} (#{})", p.name, p.key, p.id).into() }).collect();
+        let has_destinations = !choices.is_empty();
+        let projects = cx.new(|cx| SelectState::new(SearchableVec::new(choices), None, w, cx).searchable(true));
+        cx.subscribe(&projects, |_, _, _: &SelectEvent<SearchableVec<ProjectChoice>>, cx| cx.notify()).detach();
+        self.clear_navigation_overlays();
+        self.topic_move = Some(TopicMoveDialog { topic, projects, has_destinations });
+        w.focus(&self.modal_focus, cx);
+        cx.notify();
+    }
+
+    pub(crate) fn confirm_topic_move(&mut self, w: &mut Window, cx: &mut Context<Self>) {
+        let Some(dialog) = &self.topic_move else { return; };
+        let topic = dialog.topic;
+        let Some(project) = dialog.projects.read(cx).selected_value().copied() else { return; };
+        // The modal also renders live blockers; repeat validation at the mutation boundary.
+        let blockers = self.store.topic_move_blockers(topic, self.todo_batch.as_ref());
+        if !blockers.is_empty() { cx.notify(); return; }
+        let mut staged = self.store.clone();
+        let result = staged.move_topic_project(topic, project);
+        if result.is_ok() {
+            self.snapshot();
+            self.store = staged;
+            if self.research_topic == Some(topic) { self.research_project = project; }
+            if self.planning_topic == Some(topic) { self.planning_project = Some(project); }
+            if !self.expanded_sidebar_projects.contains(&project) { self.expanded_sidebar_projects.push(project); }
+            self.topic_move = None;
+            w.focus(&self.focus, cx);
+        }
+        self.finish(result, "Entire topic moved", cx);
+    }
+
+    pub(crate) fn topic_move_view(&self, cx: &mut Context<Self>) -> AnyElement {
+        let dialog = self.topic_move.as_ref().unwrap();
+        let colors = palette(cx);
+        let topic = self.store.topics.iter().find(|t| t.id == dialog.topic);
+        let name = topic.map(|t| t.display_name()).unwrap_or_default();
+        let source = topic.and_then(|t| self.store.projects.iter().find(|p| p.id == t.project_id)).map(|p| p.name.clone()).unwrap_or_default();
+        let count = self.store.tasks.iter().filter(|t| self.store.task_topic(t.id).is_some_and(|t| t.id == dialog.topic)).count();
+        let blockers = self.store.topic_move_blockers(dialog.topic, self.todo_batch.as_ref());
+        let blocked = !blockers.is_empty();
+        let selected = dialog.projects.read(cx).selected_value().copied();
+        let destination = selected.and_then(|id| self.store.projects.iter().find(|p| p.id == id));
+        let mut body = col().id("topic-move-body").min_h_0().max_h(px(360.)).overflow_y_scroll().gap_3()
+            .child(label(format!("{name} · From {source} · {count} tasks"), cx));
+        if blocked {
+            body = body.child(muted(format!("{} blocking items. Resolve these before moving; no tasks will be stopped automatically.", blockers.len()), cx));
+            for (index, blocker) in blockers.iter().enumerate() {
+                let (title, remedy) = blocker.split_once('\n').unwrap_or((blocker, ""));
+                body = body.child(col().p_3().gap_2().rounded_md().bg(rgb(colors.side))
+                    .child(div().font_weight(FontWeight::SEMIBOLD).child(format!("{}. {title}", index + 1)))
+                    .child(muted(remedy.trim().to_string(), cx)));
+            }
+        } else {
+            body = body.child(muted("All goals, child tasks (including archived tasks), research requests and dependencies move together. Existing reports and materials stay at their current file locations.", cx));
+            if dialog.has_destinations {
+                body = body.child(label("Destination project", cx))
+                    .child(Select::new(&dialog.projects).id("topic-move-project").accessibility_label("Destination project").w_full().menu_max_h(px(220.))
+                        .placeholder("Choose a project…").search_placeholder("Search projects…"))
+                    .child(muted(destination.map(|p| format!("Confirm to move the entire topic from {source} to {}.", p.name))
+                        .unwrap_or("Select a destination, then confirm the move below.".into()), cx));
+            } else {
+                body = body.child(muted("No other projects available. Close this dialog and create a project first.", cx));
+            }
+        }
+        if !self.error.is_empty() { body = body.child(div().text_color(rgb(colors.danger)).child(self.error.clone())); }
+        div().absolute().inset_0().occlude().bg(rgba(0x00000080)).flex().items_center().justify_center().p_4()
+            .child(col().w(px(600.)).max_w_full().p_6().gap_4().rounded_lg().bg(rgb(colors.panel))
+                .child(div().text_lg().font_weight(FontWeight::SEMIBOLD).child(if blocked { "Cannot move topic yet" } else { "Move topic" }))
+                .child(body)
+                .child(row().justify_end()
+                    .child(button("cancel-topic-move", if blocked { "Close" } else { "Cancel" }).on_click(cx.listener(|a, _, w, cx| {
+                        a.topic_move = None; a.error.clear(); w.focus(&a.focus, cx); cx.notify();
+                    })))
+                    .when(!blocked, |d| d.child(primary_button("confirm-topic-move", "Move topic")
+                        .disabled(destination.is_none())
+                        .on_click(cx.listener(|a, _, w, cx| a.confirm_topic_move(w, cx)))))))
+            .focus_trap("topic-move-focus", &self.modal_focus).into_any_element()
+    }
+
     pub(crate) fn open_topic_editor(
         &mut self,
         project: u64,
@@ -184,7 +280,7 @@ impl TaskApp {
                     .h_8()
                     .child(single_line_text(
                         format!("topic-name-{id}"),
-                        topic.display_name(),
+                        self.store.topic_planning_status(id).map(|status| format!("{} · {status}", topic.display_name())).unwrap_or_else(|| topic.display_name()),
                     ))
                     .on_click(cx.listener(move |a, _, w, cx| a.navigate(Scope::Topic(id), w, cx))),
             )
@@ -233,9 +329,10 @@ impl TaskApp {
                 quiet_button(
                     format!("topic-link-{id}"),
                     format!(
-                        "{}{}",
+                        "{}{}{}",
                         t.display_name(),
-                        if t.archived { " · Archived" } else { "" }
+                        if t.archived { " · Archived" } else { "" },
+                        self.store.topic_planning_status(id).map(|s| format!(" · {s}")).unwrap_or_default()
                     ),
                 )
                 .px_0()
@@ -350,6 +447,10 @@ impl TaskApp {
                 })))
                 .child(tool_icon("topic-actions-menu", assets::IconName::Ellipsis, "More topic actions")
                     .dropdown_menu_with_anchor(Anchor::TopRight, move |menu, _, _| {
+                        let moving = entity.clone();
+                        let menu = menu.item(PopupMenuItem::new("Move…").on_click(move |_, w, cx| {
+                            let _ = moving.update(cx, |a, cx| a.request_topic_move(id, w, cx));
+                        }));
                         let rename = entity.clone();
                         let archive = entity.clone();
                         menu.item(PopupMenuItem::new("Rename topic").on_click(move |_, w, cx| {
@@ -367,6 +468,12 @@ impl TaskApp {
                         }))
                     })))
             .child(label(format!("{} research goal{}{}", goals.len(), if goals.len() == 1 { "" } else { "s" }, if archived { " · Archived topic. Existing goals and results remain available." } else { " · Open a goal to explore its steps and materials." }), cx).px_6())
+            .when_some(self.store.topic_planning_status(id), |d, status| d.child(
+                col().px_6().py_3().gap_2()
+                    .child(label(status, cx))
+                    .child(muted("Goals and plan details will appear here when planning finishes.", cx))
+                    .child(col().id("topic-planning-requests").max_h(px(260.)).overflow_y_scroll().child(self.request_history(Some(project), cx)))
+            ))
             .child(self.todo_batch_bar(Some(project), cx))
             .child(row().px_6().pt_2().pb_3().justify_end().child(self.layout_switch(cx)))
             .when(self.layout == Layout::Board, |d| d.child(self.board(&goals.iter().map(|t| (*t).clone()).collect::<Vec<_>>(), cx)))

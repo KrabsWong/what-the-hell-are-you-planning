@@ -905,6 +905,162 @@ mod tests {
         assert_eq!(goal_run.model, "test/global");
     }
     #[test]
+    fn project_rename_preserves_research_results_approvals_and_inflight_steps() {
+        let (mut s, goal) = workspace();
+        let ids = s.apply_research_plan(goal, PLAN).unwrap();
+        s.task_mut(goal).unwrap().research.as_mut().unwrap().requires_approval = true;
+        s.task_mut(goal).unwrap().approved_plan = s.goal_plan_signature(goal);
+        let mut completed = s.prepare_run(ids[0]).unwrap();
+        completed.status = "Succeeded".into();
+        completed.output = "Verified report".into();
+        s.runs.push(completed);
+        let mut active = s.prepare_run(ids[1]).unwrap();
+        active.status = "Running".into();
+        s.runs.push(active);
+        let before = s.clone();
+        s.rename_project(1, "New display name").unwrap();
+        assert_eq!(s.tasks, before.tasks);
+        assert_eq!(s.topics, before.topics);
+        assert_eq!(s.runs, before.runs);
+        assert!(s.goal_execution_approved(goal));
+        assert!(s.research_result(ids[0]).is_some());
+        assert_eq!(s.research_signature(ids[1]).unwrap(), s.runs.last().unwrap().input_signature);
+    }
+
+    #[test]
+    fn topic_move_preserves_approved_dependency_results_and_request_links() {
+        let (mut s, goal) = workspace();
+        let topic = s.task_topic(goal).unwrap().id;
+        let ids = s.apply_research_plan(goal, PLAN).unwrap();
+        s.task_mut(goal).unwrap().research.as_mut().unwrap().requires_approval = true;
+        s.task_mut(goal).unwrap().approved_plan = s.goal_plan_signature(goal);
+        for id in &ids {
+            let mut run = s.prepare_run(*id).unwrap();
+            run.status = "Succeeded".into();
+            run.output = "Verified report".into();
+            s.runs.push(run);
+        }
+        let sibling = s.create_research_goal_in_topic("Another goal".into(), "Scope".into(), 1, Some(topic)).unwrap();
+        let archived = s.create_task("Archived task", 1, Stage::Backlog, Some(sibling)).unwrap();
+        s.task_mut(archived).unwrap().archived = true;
+        let request = s.create_research_request(1, Some(topic), "Research both goals").unwrap();
+        let mut planning = s.prepare_request_plan(request).unwrap();
+        planning.status = "Succeeded".into();
+        let planning_id = planning.id;
+        s.research_requests.iter_mut().find(|r| r.id == request).unwrap().planning_run_id = Some(planning_id);
+        s.runs.push(planning);
+        s.research_requests.iter_mut().find(|r| r.id == request).unwrap().goal_ids = vec![goal, sibling];
+        let unrelated = s.create_research_goal("Unrelated".into(), "Stay here".into(), 1).unwrap();
+        let unrelated_before = s.task(unrelated).unwrap().clone();
+        let old_runs = s.runs.clone();
+        let old_topics = s.topics.len();
+        s.move_topic_project(topic, 2).unwrap();
+        assert_eq!(s.topics.len(), old_topics);
+        assert_eq!(s.task(unrelated).unwrap(), &unrelated_before);
+        assert_eq!(s.runs.iter().find(|r| r.id == planning_id).unwrap().project_plan, Some(2));
+        for id in [goal, sibling, archived].into_iter().chain(ids.iter().copied()) {
+            assert_eq!(s.task(id).unwrap().project_id, 2);
+            assert_eq!(s.task_topic(id).unwrap().id, topic);
+        }
+        assert!(s.goal_execution_approved(goal));
+        for id in &ids { assert!(s.research_result(*id).is_some()); }
+        for (before, after) in old_runs.iter().zip(&s.runs) {
+            assert_eq!(before.directory, after.directory);
+            assert_eq!(before.output, after.output);
+            assert_eq!(before.session_id, after.session_id);
+        }
+        assert_eq!(s.research_requests.iter().find(|r| r.id == request).unwrap().project_id, 2);
+        let restored: Store = serde_json::from_str(&serde_json::to_string(&s).unwrap()).unwrap();
+        assert_eq!(restored, s);
+        for id in ids { assert!(restored.research_result(id).is_some()); }
+    }
+
+    #[test]
+    fn topic_move_rejects_active_work_and_cross_topic_requests_atomically() {
+        let (mut s, goal) = workspace();
+        let topic = s.task_topic(goal).unwrap().id;
+        let ids = s.apply_research_plan(goal, PLAN).unwrap();
+        s.task_mut(goal).unwrap().research.as_mut().unwrap().requires_approval = true;
+        s.task_mut(goal).unwrap().approved_plan = s.goal_plan_signature(goal);
+        let run = s.prepare_run(ids[0]).unwrap();
+        s.runs.push(run);
+        s.runs.last_mut().unwrap().status = "Running".into();
+        let before = s.clone();
+        assert!(s.move_topic_project(topic, 2).is_err());
+        assert_eq!(s, before);
+        s.runs.clear();
+        let other = s.create_research_goal("Other topic".into(), "Other scope".into(), 1).unwrap();
+        let request = s.create_research_request(1, Some(topic), "Shared request").unwrap();
+        s.research_requests.iter_mut().find(|r| r.id == request).unwrap().goal_ids = vec![goal, other];
+        let before = s.clone();
+        assert!(s.move_topic_project(topic, 2).is_err());
+        assert_eq!(s, before);
+        assert!(s.move_topic_project(topic, 999).is_err());
+        assert_eq!(s, before);
+    }
+
+    #[test]
+    fn topic_move_preflight_lists_run_states_and_actionable_task_names() {
+        let (mut s, goal) = workspace();
+        let topic = s.task_topic(goal).unwrap().id;
+        let ids = s.apply_research_plan(goal, PLAN).unwrap();
+        let run = s.prepare_run(ids[0]).unwrap();
+        s.runs.push(run);
+        for (status, action) in [("Queued", "Stop task"), ("Running", "Stop task"),
+            ("Recovering", "recovery"), ("Cancelling", "Wait"), ("Interrupted", "Paused projects")] {
+            s.runs.last_mut().unwrap().status = status.into();
+            let blockers = s.topic_move_blockers(topic, None);
+            assert_eq!(blockers.len(), 1, "{status}");
+            assert!(blockers[0].contains(&s.task(ids[0]).unwrap().title));
+            assert!(blockers[0].contains(&s.identifier(s.task(ids[0]).unwrap())));
+            assert!(blockers[0].contains(status));
+            assert!(blockers[0].contains(action));
+            assert!(s.clone().move_topic_project(topic, 2).is_err());
+        }
+        for status in ["Succeeded", "Failed", "Blocked", "Cancelled"] {
+            s.runs.last_mut().unwrap().status = status.into();
+            assert!(s.topic_move_blockers(topic, None).is_empty(), "{status}");
+        }
+        s.runs.last_mut().unwrap().status = "Interrupted".into();
+        let mut newer = s.runs.last().unwrap().clone();
+        newer.id += 1;
+        newer.status = "Cancelled".into();
+        s.runs.push(newer);
+        assert!(s.topic_move_blockers(topic, None).is_empty(), "Superseded interruptions are history");
+        let mut batch = crate::batch::TodoBatch {
+            project_id: 1, items: vec![goal], completed: 0, runs_completed: 0,
+            state: crate::batch::BatchState::Paused("User paused".into()),
+            run_ids: Default::default(), done_items: vec![], failed_items: vec![], failed_tasks: vec![],
+        };
+        let blockers = s.topic_move_blockers(topic, Some(&batch));
+        assert_eq!(blockers.len(), 1);
+        assert!(blockers[0].contains("Paused batch queue"));
+        assert!(blockers[0].contains("Stop all"));
+        assert!(blockers[0].contains("including other topics"));
+        assert!(blockers[0].contains(&s.task(ids[0]).unwrap().title));
+        batch.state = crate::batch::BatchState::Finished;
+        assert!(s.topic_move_blockers(topic, Some(&batch)).is_empty());
+    }
+
+    #[test]
+    fn topic_move_does_not_revalidate_stale_results() {
+        let (mut s, goal) = workspace();
+        let topic = s.task_topic(goal).unwrap().id;
+        let ids = s.apply_research_plan(goal, PLAN).unwrap();
+        s.task_mut(goal).unwrap().research.as_mut().unwrap().requires_approval = true;
+        s.task_mut(goal).unwrap().approved_plan = s.goal_plan_signature(goal);
+        let mut run = s.prepare_run(ids[0]).unwrap();
+        run.status = "Succeeded".into();
+        run.output = "Old report".into();
+        s.runs.push(run);
+        s.add_comment(ids[0], "Changed scope").unwrap();
+        assert!(s.research_result(ids[0]).is_none());
+        s.move_topic_project(topic, 2).unwrap();
+        assert!(s.research_result(ids[0]).is_none());
+        assert!(!s.goal_execution_approved(goal));
+    }
+
+    #[test]
     fn rejects_missing_roles_and_dependency_bypass() {
         assert!(parse_plan(&PLAN.replace("\"analyze\"", "\"collect\"")).is_err());
         assert!(parse_plan(&PLAN.replace("[1]", "[]")).is_err());

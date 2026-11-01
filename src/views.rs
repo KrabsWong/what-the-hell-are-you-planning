@@ -428,7 +428,7 @@ impl TaskApp {
                     .iter()
                     .filter(|t| t.project_id == pid && !self.store.task_is_archived(t.id))
                     .collect();
-                project_tasks.sort_by(|a, b| crate::display_order::tasks_newest_first(a, b));
+                project_tasks.sort_by(|a, b| crate::display_order::tree_siblings_in_display_order(a, b));
                 let mut list = col()
                     .gap_0()
                     .ml_4()
@@ -1986,7 +1986,7 @@ impl TaskApp {
             .filter(|c| c.parent_id == Some(id) && !c.archived)
             .cloned()
             .collect();
-        children.sort_by(crate::display_order::tasks_newest_first);
+        children.sort_by(crate::display_order::siblings_in_display_order);
         let show_children = is_goal || t.research.is_none() || !children.is_empty();
         let mut body = col()
             .flex_1()

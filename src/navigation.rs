@@ -10,7 +10,7 @@ impl crate::domain::Store {
         let archived = self.task_is_archived(id);
         let mut tasks: Vec<_> = self.tasks.iter().filter(|task|
             task.project_id == current.project_id && self.task_is_archived(task.id) == archived).collect();
-        tasks.sort_by(|a, b| crate::display_order::tasks_newest_first(a, b));
+        tasks.sort_by(|a, b| crate::display_order::tree_siblings_in_display_order(a, b));
         let mut roots: Vec<_> = tasks.iter().copied().filter(|task|
             task.parent_id.is_none_or(|parent| !tasks.iter().any(|t| t.id == parent))).collect();
         roots.sort_by(|a, b| self.compare_display_tasks(a, b));
@@ -89,11 +89,11 @@ mod tests {
         store.task_mut(steps[0]).unwrap().stage = Stage::Done;
         store.task_mut(steps[1]).unwrap().stage = Stage::InProgress;
         store.task_mut(steps[2]).unwrap().stage = Stage::Cancelled;
-        assert_eq!(store.detail_task_neighbors(steps[0]), (steps[1], b));
-        assert_eq!(store.detail_task_neighbors(steps[1]), (steps[2], steps[0]));
-        assert_eq!(store.detail_task_neighbors(steps[2]), (a, steps[1]));
-        assert_eq!(store.detail_task_neighbors(b), (steps[0], a));
-        assert_eq!(store.detail_task_neighbors(a), (b, steps[2]));
+        assert_eq!(store.detail_task_neighbors(steps[0]), (a, steps[1]));
+        assert_eq!(store.detail_task_neighbors(steps[1]), (steps[0], steps[2]));
+        assert_eq!(store.detail_task_neighbors(steps[2]), (steps[1], b));
+        assert_eq!(store.detail_task_neighbors(b), (steps[2], a));
+        assert_eq!(store.detail_task_neighbors(a), (b, steps[0]));
     }
 
     #[test]

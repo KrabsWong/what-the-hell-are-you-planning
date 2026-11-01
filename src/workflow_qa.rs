@@ -320,6 +320,29 @@ pub fn display_order() {
         assert!(app.read(cx).store.runs.is_empty());
         assert!(app.read(cx).todo_batch.is_none());
     }).unwrap();
+    cx.update_window(handle, |_, w, cx| {
+        let (goal, steps) = app.update(cx, |a, cx| {
+            let goal = a.store.create_research_goal("Workflow order".into(), "Scope".into(), 1).unwrap();
+            let steps = a.store.apply_research_plan(goal, r#"{"tasks":[{"title":"Evidence","instructions":"Collect","kind":"collect","depends_on":[]},{"title":"Analysis","instructions":"Analyze","kind":"analyze","depends_on":[0]},{"title":"Report","instructions":"Report","kind":"advise","depends_on":[1]}]}"#).unwrap();
+            for (i, id) in steps.iter().enumerate() { a.store.task_mut(*id).unwrap().created_at = format!("2026-11-0{}T10:00:00Z", i + 1); }
+            a.store.tasks.reverse();
+            a.collapsed_sidebar_goals.retain(|id| *id != goal);
+            a.open_task(goal, w, cx);
+            a.goal_steps_tab = Some(goal);
+            a.steps_layout = Layout::List;
+            cx.notify();
+            (goal, steps)
+        });
+        w.render_frame(cx);
+        for pair in steps.windows(2) {
+            assert!(w.find(format!("goal-step-{}", pair[0])).bounds().top() < w.find(format!("goal-step-{}", pair[1])).bounds().top());
+            assert!(w.find(format!("sidebar-task-{}", pair[0])).bounds().top() < w.find(format!("sidebar-task-{}", pair[1])).bounds().top());
+        }
+        assert_eq!(app.read(cx).store.detail_task_neighbors(goal).1, steps[0]);
+        assert_eq!(app.read(cx).store.detail_task_neighbors(steps[0]).1, steps[1]);
+        assert_eq!(app.read(cx).store.detail_task_neighbors(steps[1]).1, steps[2]);
+        assert!(app.read(cx).store.runs.is_empty());
+    }).unwrap();
     println!("Newest-first sidebar, List, Board and execution-group positions verified.");
     cx.update(|cx| cx.quit());
 }

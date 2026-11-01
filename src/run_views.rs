@@ -900,9 +900,10 @@ impl TaskApp {
             .task(id)
             .and_then(|t| t.research.as_ref())
             .map(|r| r.goal_id);
-        let children = goal
+        let mut children = goal
             .map(|goal| self.store.research_children(goal))
             .unwrap_or_default();
+        children.sort_by(|a, b| crate::display_order::siblings_in_display_order(self.store.task(*a).unwrap(), self.store.task(*b).unwrap()));
         let mut stages = col().gap_2();
         for (kind, name) in [
             (ResearchKind::Collect, "Gather evidence"),

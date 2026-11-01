@@ -267,7 +267,7 @@ impl TaskApp {
     pub(crate) fn goal_steps_view(&self, goal: u64, cx: &mut Context<Self>) -> AnyElement {
         let colors = crate::appearance::palette(cx);
         let mut ids = self.store.goal_step_ids(goal);
-        ids.sort_by(|a, b| crate::display_order::tasks_newest_first(self.store.task(*a).unwrap(), self.store.task(*b).unwrap()));
+        ids.sort_by(|a, b| crate::display_order::siblings_in_display_order(self.store.task(*a).unwrap(), self.store.task(*b).unwrap()));
         let mut content = col().flex_1().min_h_0().child(
             col()
                 .px_6()

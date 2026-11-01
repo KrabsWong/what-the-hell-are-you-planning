@@ -8,11 +8,12 @@ impl crate::domain::Store {
     pub(crate) fn detail_task_neighbors(&self, id: u64) -> (u64, u64) {
         let Some(current) = self.task(id) else { return (id, id); };
         let archived = self.task_is_archived(id);
-        let tasks: Vec<_> = self.tasks.iter().filter(|task|
+        let mut tasks: Vec<_> = self.tasks.iter().filter(|task|
             task.project_id == current.project_id && self.task_is_archived(task.id) == archived).collect();
+        tasks.sort_by(|a, b| crate::display_order::tasks_newest_first(a, b));
         let mut roots: Vec<_> = tasks.iter().copied().filter(|task|
             task.parent_id.is_none_or(|parent| !tasks.iter().any(|t| t.id == parent))).collect();
-        roots.sort_by_key(|task| std::cmp::Reverse(self.task_topic(task.id).map(|topic| topic.id)));
+        roots.sort_by(|a, b| self.compare_display_tasks(a, b));
         fn append(tasks: &[&crate::domain::Task], id: u64, ordered: &mut Vec<u64>) {
             if ordered.contains(&id) { return; }
             ordered.push(id);
@@ -86,11 +87,11 @@ mod tests {
         store.task_mut(steps[0]).unwrap().stage = Stage::Done;
         store.task_mut(steps[1]).unwrap().stage = Stage::InProgress;
         store.task_mut(steps[2]).unwrap().stage = Stage::Cancelled;
-        assert_eq!(store.detail_task_neighbors(steps[0]), (a, steps[1]));
-        assert_eq!(store.detail_task_neighbors(steps[1]), (steps[0], steps[2]));
-        assert_eq!(store.detail_task_neighbors(steps[2]), (steps[1], b));
-        assert_eq!(store.detail_task_neighbors(b), (steps[2], a));
-        assert_eq!(store.detail_task_neighbors(a), (b, steps[0]));
+        assert_eq!(store.detail_task_neighbors(steps[0]), (steps[1], b));
+        assert_eq!(store.detail_task_neighbors(steps[1]), (steps[2], steps[0]));
+        assert_eq!(store.detail_task_neighbors(steps[2]), (a, steps[1]));
+        assert_eq!(store.detail_task_neighbors(b), (steps[0], a));
+        assert_eq!(store.detail_task_neighbors(a), (b, steps[2]));
     }
 
     #[test]

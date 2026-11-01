@@ -17,7 +17,9 @@ impl TaskApp {
             return cards.iter().map(|t| self.goal_card(t, cx)).collect();
         }
         let mut result = Vec::new();
-        for topic in &self.store.topics {
+        let mut topics: Vec<_> = self.store.topics.iter().collect();
+        topics.sort_by_key(|topic| (crate::display_order::newest_id(topic.project_id), crate::display_order::newest_id(topic.id)));
+        for topic in topics {
             let goals: Vec<_> = cards
                 .iter()
                 .filter(|t| {

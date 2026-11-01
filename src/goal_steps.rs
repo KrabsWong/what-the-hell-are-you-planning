@@ -157,7 +157,8 @@ impl TaskApp {
             return div().into_any_element();
         };
         let goal = research.goal_id;
-        let state = self.store.execution_status(id, self.todo_batch.as_ref());
+        let status = self.store.task_status(id, self.todo_batch.as_ref());
+        let state = status.execution;
         let archived = self.store.task_is_archived(id);
         let pending = self.store.research_pending_approval(id);
         let checking = self.recovery_blocks_task(id);
@@ -172,26 +173,12 @@ impl TaskApp {
             "This goal's plan needs approval. Review the goal and move it to Todo first.".into()
         } else if checking {
             "The previous session has not been confirmed stopped. Check its progress before retrying to avoid a duplicate run.".into()
-        } else if active {
-            if let Some(run) = latest.filter(|run| run.status == "Queued" && run.auto_retry_attempt > 0) {
-                format!("Automatic retry {}/3 · waiting at least {} seconds before the next attempt. Open the latest attempt to follow progress or stop the retry.", run.auto_retry_attempt, run.retry_delay_remaining(chrono::Utc::now().timestamp()))
-            } else {
-                "This step is running or queued. You can inspect its latest attempt below.".into()
-            }
-        } else if matches!(state, ExecutionStatus::Queued | ExecutionStatus::Paused) {
-            state.hint().into()
-        } else if !dependencies.is_empty() {
-            "This step needs current results from the prerequisites below. Complete or retry them first.".into()
-        } else if state == ExecutionStatus::Done {
-            "A completed result is available. Run again only if you want a new attempt.".into()
-        } else {
-            self.store.step_block_reason(id).unwrap_or_else(|| "Prerequisites are ready. Run this step when you are ready.".into())
-        };
+        } else { status.reason.clone() };
         let colors = crate::appearance::palette(cx);
         let mut panel = col().id("step-execution-panel").w_full().min_w_0().gap_2().py_2().pl_3()
             .border_l_2().border_color(rgb(state.color(cx)))
             .child(div().text_sm().font_weight(FontWeight::SEMIBOLD)
-                .text_color(rgb(state.color(cx))).child(format!("{} · Execution", state.label())))
+                .text_color(rgb(state.color(cx))).child(self.store.task_status(id, self.todo_batch.as_ref()).label()))
             .child(div().id("step-execution-reason").text_sm().text_color(rgb(colors.secondary)).child(reason).map(observed));
         if state == ExecutionStatus::Blocked {
             if let Some(run) = latest {
@@ -279,9 +266,8 @@ impl TaskApp {
     }
     pub(crate) fn goal_steps_view(&self, goal: u64, cx: &mut Context<Self>) -> AnyElement {
         let colors = crate::appearance::palette(cx);
-        let ids = self.store.goal_step_ids(goal);
-        let states: std::collections::HashMap<_, _> = ids.iter()
-            .map(|id| (*id, self.store.execution_status(*id, self.todo_batch.as_ref()))).collect();
+        let mut ids = self.store.goal_step_ids(goal);
+        ids.sort_by(|a, b| crate::display_order::tasks_newest_first(self.store.task(*a).unwrap(), self.store.task(*b).unwrap()));
         let mut content = col().flex_1().min_h_0().child(
             col()
                 .px_6()
@@ -315,9 +301,9 @@ impl TaskApp {
         let step = |id: u64, board: bool, cx: &mut Context<Self>| {
             let task = self.store.task(id).unwrap();
             let title = format!("{} · {}", self.store.identifier(task), task.title);
-            let state = states[&id];
-            let execution = self.store.execution_status(id, self.todo_batch.as_ref());
-            let (surface, hover, border) = board_card_colors(state.visual_stage(), cx);
+            let execution = self.store.task_status(id, self.todo_batch.as_ref()).execution;
+            let status = self.store.task_status(id, self.todo_batch.as_ref());
+            let (surface, hover, border) = board_card_colors(status.phase, cx);
             let dark = gpui_kit::component::Theme::global(cx).is_dark();
             quiet_button(format!("goal-step-{id}"), "")
                 .w_full()
@@ -338,8 +324,8 @@ impl TaskApp {
                         )
                 })
                 .when(!board, |b| b.h_8().px_2())
-                .accessibility_label(format!("{} · {}", title, execution.label()))
-                .tooltip(format!("{} · {}", execution.label(), execution.hint()))
+                .accessibility_label(format!("{} · {}", title, status.label()))
+                .tooltip(format!("{} · {}", status.label(), status.reason))
                 .on_click(cx.listener(move |a, _, w, cx| a.open_task(id, w, cx)))
                 .child(if board {
                     col()
@@ -372,10 +358,10 @@ impl TaskApp {
                                 .line_height(relative(1.4))
                                 .child(task.title.clone()),
                         )
-                        .when_some(self.store.step_block_reason(id), |d, reason| {
-                            d.child(div().text_xs().text_left().whitespace_normal()
-                                .text_color(rgb(colors.danger)).child(reason))
-                        })
+                        .child(div().text_xs().text_left().whitespace_normal()
+                            .text_color(rgb(execution.color(cx))).child(status.label()))
+                        .child(div().text_xs().text_left().whitespace_normal()
+                            .text_color(rgb(colors.secondary)).child(status.reason.clone()))
                         .child(
                             row()
                                 .w_full()
@@ -403,6 +389,7 @@ impl TaskApp {
                             execution.icon_view(cx),
                         )
                         .child(single_line_text(format!("goal-step-title-{id}"), title))
+                        .child(label(status.label(), cx))
                         .child(label("Open ›", cx))
                         .into_any_element()
                 })
@@ -432,48 +419,33 @@ impl TaskApp {
                     .px_6()
                     .pb_5()
                     .gap_4()
-                    .children(ExecutionStatus::BOARD_ORDER.into_iter().filter(|state| matches!(state, ExecutionStatus::Ready | ExecutionStatus::Waiting | ExecutionStatus::Running | ExecutionStatus::Blocked | ExecutionStatus::Done)
-                        || states.values().any(|value| value == state)).map(|state| {
-                        let matching: Vec<_> = ids
-                            .iter()
-                            .filter(|id| states[id] == state)
-                            .collect();
-                        col()
-                            .id(format!("steps-column-{}", state.label()))
-                            .w(px(292.))
-                            .flex_shrink_0()
-                            .h_full()
-                            .gap_3()
-                            .child(
-                                row()
-                                    .h_9()
-                                    .gap_2()
-                                    .child(div().text_color(rgb(state.color(cx))).child(state.label()))
-                                    .child(label(matching.len().to_string(), cx)),
-                            )
-                            .child(
-                                col()
-                                    .id(format!("steps-cards-{}", state.label()))
-                                    .flex_1()
-                                    .min_h_0()
-                                    .overflow_y_scroll()
-                                    .gap_3()
-                                    .restrict_scroll_to_axis()
-                                    .when(matching.is_empty(), |d| {
-                                        d.child(
-                                            div()
-                                                .h_24()
-                                                .border_1()
-                                                .border_color(rgb(colors.line))
-                                                .rounded_md()
-                                                .flex()
-                                                .items_center()
-                                                .justify_center()
-                                                .child(label("No steps", cx)),
-                                        )
-                                    })
-                                    .children(matching.into_iter().map(|id| step(*id, true, cx))),
-                            )
+                    .children(Stage::BOARD_ORDER.into_iter().filter(|phase|
+                        matches!(phase, Stage::Planned | Stage::InProgress | Stage::Done) || ids.iter().any(|id| self.store.task_status(*id, self.todo_batch.as_ref()).phase == *phase)
+                    ).map(|phase| {
+                        let matching: Vec<_> = ids.iter().copied().filter(|id|
+                            self.store.task_status(*id, self.todo_batch.as_ref()).phase == phase).collect();
+                        let tasks: Vec<_> = matching.iter().filter_map(|id| self.store.task(*id).cloned()).collect();
+                        let mut cards = vec![];
+                        if phase == Stage::InProgress {
+                            for group in crate::workflow::ExecutionGroup::ALL {
+                                if self.board_execution_filter.is_some_and(|filter| filter != group) { continue; }
+                                let group_ids: Vec<_> = matching.iter().copied().filter(|id|
+                                    self.store.task_status(*id, self.todo_batch.as_ref()).group == Some(group)).collect();
+                                if group_ids.is_empty() { continue; }
+                                cards.push(label(format!("{} · {}", group.label(), group_ids.len()), cx).into_any_element());
+                                cards.extend(group_ids.into_iter().map(|id| step(id, true, cx).into_any_element()));
+                            }
+                        } else { cards.extend(matching.iter().map(|id| step(*id, true, cx).into_any_element())); }
+                        col().id(format!("steps-column-{}", crate::workflow::phase_label(phase)))
+                            .w(px(if phase == Stage::InProgress { 350. } else { 292. })).flex_shrink_0().h_full().gap_3()
+                            .child(row().h_9().gap_2()
+                                .child(div().text_color(rgb(stage_color(phase, cx))).child(crate::workflow::phase_label(phase)))
+                                .child(label(matching.len().to_string(), cx)))
+                            .when(phase == Stage::InProgress, |d| d.child(self.execution_filter_bar(&tasks, cx)))
+                            .child(col().id(format!("steps-cards-{}", crate::workflow::phase_label(phase)))
+                                .flex_1().min_h_0().overflow_y_scroll().gap_3().restrict_scroll_to_axis()
+                                .when(cards.is_empty(), |d| d.child(label("No steps in this category", cx)))
+                                .children(cards))
                     }))
                     .map(observed),
             );

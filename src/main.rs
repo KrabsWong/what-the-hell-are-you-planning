@@ -14,6 +14,7 @@ mod batch_qa;
 mod concurrency_qa;
 mod controls;
 mod domain;
+mod display_order;
 mod ego;
 mod execution_status;
 mod goal_steps;
@@ -42,6 +43,7 @@ mod research_export;
 #[cfg(feature = "qa")]
 mod research_qa;
 mod research_views;
+mod rich_markdown;
 mod run_views;
 mod run_errors;
 mod scheduler;
@@ -63,6 +65,10 @@ mod ui_assets;
 mod brand;
 mod views;
 mod workspace;
+mod workflow;
+mod workflow_views;
+#[cfg(feature = "qa")]
+mod workflow_qa;
 #[cfg(feature = "qa")]
 mod workspace_qa;
 
@@ -71,6 +77,12 @@ use gpui_kit::*;
 actions!(task_manager, [Quit]);
 
 fn main() {
+    #[cfg(feature = "qa")]
+    if std::env::args().any(|arg| arg == "--qa-display-order") { workflow_qa::display_order(); return; }
+    #[cfg(feature = "qa")]
+    if std::env::args().any(|arg| arg == "--qa-workflow") { workflow_qa::run(); return; }
+    #[cfg(feature = "qa")]
+    if std::env::args().any(|arg| arg == "--qa-rich-markdown") { rich_markdown::verify_frames(); return; }
     #[cfg(feature = "qa")]
     if std::env::args().any(|arg| arg == "--qa-brand") { brand::verify_frames(); return; }
     #[cfg(feature = "qa")]

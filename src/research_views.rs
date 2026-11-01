@@ -497,6 +497,7 @@ impl TaskApp {
                                     output
                                 },
                             )
+                            .markdown_extensions(crate::rich_markdown::extensions())
                             .w_full()
                             .flex_shrink_0()
                             .on_link_click(|url, _, _, cx| {

@@ -43,20 +43,24 @@ pub enum AllStatus {
     All,
     Open,
     Stage(Stage),
+    Execution(crate::workflow::ExecutionGroup),
 }
 impl AllStatus {
     pub fn label(self) -> &'static str {
         match self {
             Self::All => "All statuses",
             Self::Open => "Open",
-            Self::Stage(stage) => stage.label(),
+            Self::Stage(stage) => crate::workflow::phase_label(stage),
+            Self::Execution(group) => group.label(),
         }
     }
-    pub fn matches(self, stage: Stage) -> bool {
+    pub fn matches(self, status: &crate::workflow::TaskStatus) -> bool {
+        let stage = status.phase;
         match self {
             Self::All => true,
             Self::Open => !stage.is_closed(),
             Self::Stage(value) => stage == value,
+            Self::Execution(group) => status.group == Some(group),
         }
     }
 }
@@ -122,7 +126,6 @@ pub struct TaskApp {
     pub save_feedback: Option<Result<String, String>>,
     pub show_display: bool,
     pub show_done: bool,
-    pub sort_priority: bool,
     pub compact: bool,
     pub collapsed: Vec<u64>,
     pub policy_stage: Stage,
@@ -191,6 +194,7 @@ pub struct TaskApp {
     pub expanded_request_brief: Option<u64>,
     pub goal_steps_tab: Option<u64>,
     pub steps_layout: Layout,
+    pub board_execution_filter: Option<crate::workflow::ExecutionGroup>,
     pub show_task_activity: bool,
     pub show_research_settings: bool,
     pub _subscriptions: Vec<Subscription>,
@@ -436,7 +440,6 @@ impl TaskApp {
             save_feedback: None,
             show_display: false,
             show_done: true,
-            sort_priority: false,
             compact: false,
             collapsed: vec![],
             policy_stage: Stage::Planned,
@@ -496,6 +499,7 @@ impl TaskApp {
             expanded_request_brief: None,
             goal_steps_tab: None,
             steps_layout: Layout::Board,
+            board_execution_filter: None,
             show_task_activity: false,
             show_research_settings: false,
             _subscriptions: subscriptions,
@@ -656,7 +660,7 @@ impl TaskApp {
             return false;
         }
         match &self.scope {
-            Scope::All => self.all_status.matches(t.stage),
+            Scope::All => self.all_status.matches(&self.store.task_status(t.id, self.todo_batch.as_ref())),
             Scope::Project(id) => t.project_id == *id,
             Scope::Topic(id) => self.store.task_topic(t.id).is_some_and(|topic| topic.id == *id),
             Scope::Cycle(c) => t.cycle.as_ref() == Some(c),
@@ -672,28 +676,50 @@ impl TaskApp {
                 t.parent_id.is_none()
                     && self.matches_scope(t)
                     && self.store.matches_query(t, &self.query)
-                    && (self.scope == Scope::All || self.show_done || !t.stage.is_closed())
+                    && (self.scope == Scope::All || self.show_done || !self.store.task_status(t.id, self.todo_batch.as_ref()).phase.is_closed())
             })
             .cloned()
             .collect();
-        if self.sort_priority {
-            list.sort_by_key(|t| std::cmp::Reverse(t.priority as u8));
-        }
+        list.sort_by(|a, b| self.store.compare_display_tasks(a, b));
         list
     }
     pub fn change_stage(&mut self, id: u64, stage: Stage, cx: &mut Context<Self>) {
-        if self
-            .store
-            .task(id)
-            .is_some_and(|t| t.parent_id.is_some() && t.research.is_some())
-        {
-            self.error = "Review and approve the complete goal; steps inherit its approval.".into();
+        if let Err(error) = self.store.validate_manual_transition(id, stage, self.todo_batch.as_ref()) {
+            self.error = error;
             cx.notify();
             return;
         }
-        if self.store.task(id).is_some_and(|t| t.stage == stage) {
+        if stage == Stage::InProgress {
+            // Submit through the existing scheduler; never manufacture Running.
+            let scope = self.scope.clone();
+            let selected = self.selected;
+            if self.store.task(id).is_some_and(|t| t.research.is_some()) {
+                self.start_goal_batch(id, cx);
+            } else {
+                // Stage-specific agents must receive the execution policy, not Todo's planning policy.
+                // Roll back the phase if admission fails before a run record is created.
+                let previous = self.store.task(id).cloned().unwrap();
+                let count = self.store.runs.len();
+                if let Err(error) = self.store.set_stage(id, Stage::InProgress) {
+                    self.error = error;
+                } else {
+                    self.start_run(id, cx);
+                    if self.store.runs.len() == count {
+                        if let Some(task) = self.store.task_mut(id) { *task = previous; }
+                        self.persist_if_changed(true);
+                    }
+                }
+            }
+            self.scope = scope;
+            self.selected = selected;
+            if self.error.is_empty() && self.store.task_status(id, self.todo_batch.as_ref()).phase == Stage::InProgress {
+                self.undo.clear();
+                self.toast = format!("Submitted · {}", self.store.task_status(id, self.todo_batch.as_ref()).label());
+            }
+            cx.notify();
             return;
         }
+        if self.store.task(id).is_some_and(|t| t.stage == stage) { return; }
         self.snapshot();
         let result = self.store.set_stage(id, stage);
         self.finish(result, "Task stage updated", cx);
@@ -801,6 +827,21 @@ impl TaskApp {
         }
         let (id, project, stage, parent, cycle) =
             (d.id, d.project, d.stage, d.parent, d.cycle.clone());
+        if let Some(id) = id {
+            if self.store.task(id).is_some_and(|t| t.stage != stage) {
+                if stage == Stage::InProgress {
+                    self.show_save_error("Save task details first, then submit execution from Board or the status menu.", cx);
+                    return;
+                }
+                if let Err(error) = self.store.validate_manual_transition(id, stage, self.todo_batch.as_ref()) {
+                    self.show_save_error(&error, cx);
+                    return;
+                }
+            }
+        } else if !matches!(stage, Stage::Backlog | Stage::Planned) {
+            self.show_save_error("New tasks must start in Backlog or Todo.", cx);
+            return;
+        }
         self.snapshot();
         let result = if let Some(id) = id {
             Ok(id)
@@ -870,9 +911,10 @@ impl TaskApp {
         self.confirm_save("Stage configuration saved to local workspace", cx);
     }
     pub fn undo_change(&mut self, window: &mut Window, cx: &mut Context<Self>) {
-        if !self.active_runs.is_empty() || !self.queued_runs.is_empty() {
+        if !self.active_runs.is_empty() || !self.queued_runs.is_empty()
+            || self.todo_batch.as_ref().is_some_and(|b| b.items.iter().any(|id| b.contains_pending(*id))) {
             self.error =
-                "Wait for queued and running tasks to finish before undoing changes.".into();
+                "Stop or finish submitted work before undoing changes.".into();
             cx.notify();
             return;
         }
@@ -1107,6 +1149,8 @@ impl TaskApp {
         self.task_start_feedback = None;
         if self.store.task_is_archived(id) {
             self.error = "Restore the archived topic or goal before executing.".into();
+        } else if self.store.task(id).is_some_and(|t| t.research.is_none() && t.stage == Stage::Backlog) {
+            self.error = "Move this task to Todo before submitting execution.".into();
         } else if self.recovery_blocks_task(id) {
             self.error =
                 "Check this task’s previous session in Paused projects before starting again."

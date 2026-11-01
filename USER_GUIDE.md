@@ -104,11 +104,21 @@ flowchart LR
 
 ## 4. 执行与检查
 
-**Workflow stage（工作流阶段）**与 **Execution status（当前执行状态）** 是两个维度。In progress 表示研究已经开始但尚未完成，期间可以是 Queued、Waiting 或 Running。详情页同时显示两个字段；侧边栏与 List 以执行状态为准，Board 按工作流阶段分栏、卡片显示当前执行状态。
+Board 按大阶段显示 **Backlog → Todo → Execution → In review → Done**，取消的任务保留在 **Cancelled**。Execution（执行）泳道内按 **Waiting → Queued → Running** 分组，顶部展示顺序、数量和分类筛选；**Paused / Blocked** 放在 **Needs attention**，**Retrying** 放在 Queued 并标明重试次数及等待时间。空分组折叠，筛选只影响显示，不改变执行顺序。流程箭头表示先后关系，不要求所有任务经历全部状态。
 
-任务树和 List 仅显示执行状态图标，悬停可查看状态名称和说明；Goal 和 Step 的 Board 卡片统一在右上角显示相同的 16px 状态图标，不再重复显示文字标签。默认 Medium 优先级不显示，其他优先级使用独立文字。结果页使用同套图标，悬停说明明确对应当前查看的执行记录。步骤详情、步骤看板分组、进度汇总和恢复页的任务图标均使用同一套执行状态判断，Queued 不再计入 Waiting。三处使用同一套执行状态：**Running** 表示实际运行中，**Queued** 表示已入队等待 Topic 或执行名额，**Waiting** 表示等待前置结果，**Retrying** 表示自动重试排队，**Paused** 表示队列暂停，**Ready** 表示条件满足但尚未入队，**Blocked** 表示需要处理失败或阻塞。Goal 根据实际任务和队列汇总状态；Board 的工作流分栏保持不变，卡片图标显示具体执行状态。
+- **Ready**：条件满足但尚未提交，留在 Todo。
+- **Waiting**：前置结果尚未就绪；已提交目标的步骤会在依赖完成后自动排队。未提交目标的步骤仍属于 Todo。
+- **Queued**：已提交，等待 Topic 顺序、重试时间或执行名额。
+- **Running**：存在真实的运行记录。目标按整条任务链汇总，某一步运行时不会因为其他步骤等待而把整个目标显示成 Waiting。
+- **Paused / Blocked**：队列暂停、运行停止或需要处理失败；卡片显示原因和下一步。
 
-侧边栏 Topic 按创建顺序倒序显示，最新创建的在最上面；显示顺序不改变已提交队列的执行顺序。
+将 Todo 卡片拖入 Execution 等同于提交执行：研究目标按依赖顺序执行整条任务链，普通任务使用执行阶段的模型与指令。提交后仍留在 Board；依赖或资源不足时显示等待或排队，不会伪造 Running。即使当前筛选为 Running，拖入仍只提交执行。无效拖放会提示原因，重复提交不会创建重复运行。
+
+不能从 Backlog 直接拖入 Execution，不能将已提交或运行中的任务拖回 Todo，也不能跳过研究依赖把目标标记为 Done。Backlog → Todo 只接纳／审批，不运行；未提交的 Todo 可以退回 Backlog。暂停、继续和停止使用队列或运行操作。普通任务运行成功后进入 In review，审核后可以标记 Done；研究链全部产生有效结果后自动完成。内部研究步骤由调度器管理，不能手动拖动来绕过整体审批或依赖。
+
+Board、List、左侧任务树和右侧详情共用 `Store::task_status` 的阶段、状态、原因；List 显示状态文字并支持大阶段与执行分类筛选，侧边栏用图标和悬停说明。手动拖拽、状态菜单和编辑表单共用 `validate_manual_transition` 校验。运行完成、重试及中断恢复使用内部流转，不受手动回退规则干扰。结果页仍显示所查看的那一次运行状态，历史记录不会被当前状态覆盖。
+
+侧边栏、List、Board 使用同一套新建优先规则：项目和 Topic 按创建 ID 倒序，同组任务按创建时间倒序；时间相同按任务 ID 倒序，旧数据缺少有效时间时放在已知时间之后并按 ID 倒序。父任务仍在子任务之前，执行泳道保留状态分组，各组内部遵循相同规则。优先级仅作为属性显示，不覆盖排序。展示排序不改变依赖关系或已提交队列的执行顺序。
 
 ### 按 Topic 排队执行
 
@@ -197,6 +207,8 @@ flowchart LR
 
 - `cargo run --features qa -- --materials-live`：针对本机已有存储研究补充真实财报 PDF 和截图，并运行真实模型；会产生模型用量。不是普通启动命令。
 - `cargo run --features qa -- --projects-live`：使用已保存的真实 Plan 模型，在独立 `.local/project-live-qa/` 工作区验证项目规划与批准题目的步骤规划；会消耗模型用量，不执行完整市场研究。
+- `cargo run --features qa -- --qa-display-order`：验证侧边栏、List、Board 和执行分组中新内容置顶的实际布局顺序。
+- `cargo run --features qa -- --qa-workflow`：隔离验收拖拽提交、重复提交拦截、非法回退、配置失败回退、完整依赖链自动执行，以及 Board／List／详情／步骤视图截图。
 - `cargo run --features qa -- --qa-projects`：隔离工作区验证项目创建、Kanban 批准／拖拽、未批准拦截、完整测试研究链、失效／失败／取消结果以及重开与双主题。
 - `cargo run --features qa -- --qa-affordance`：隔离工作区验收按钮、链接、禁用状态和键盘交互，输出明暗主题与 1440／1000 宽度截图，不调用真实模型。
 - `cargo run --features qa -- --qa-workspace`：隔离工作区验证空数据、主题和项目选择。
@@ -233,3 +245,31 @@ flowchart LR
 唯一保存在系统应用目录中的配置是 `~/Library/Application Support/What the hell are you planning/workspace-location.json`，只记录所选根目录。OpenCode 自身的账户和会话数据库、ego(lite) 的浏览器配置仍由它们各自管理；临时进程锁保留在系统临时目录。
 
 排队详情显示具体占用资源及阻塞任务，并区分入队和实际开始时间。同一个 Topic 中不同 goal 或步骤在目录、浏览器 Space 和 session 均独立时可并行，最多同时运行 3 个任务；其他 Topic 等待整个当前 Topic 完成或结束失败处理。
+
+
+### 结果中的图表与公式
+
+结果区会在本地渲染 Mermaid 图表和 LaTeX 数学公式，无需额外安装浏览器、Node.js 或 TeX。适合时，研究报告会使用这些格式说明架构、流程和计算关系。
+
+- 图表：使用标记为 `mermaid` 的代码块，支持常见流程图、时序图等。
+- 行内公式：`$E=mc^2$`。
+- 独立公式：使用单独成行的 `$$` 包裹公式，或使用 `math` / `latex` 代码块。
+- 普通代码块不会被当成公式；货币金额中的美元符号可写为 `\$`。
+
+示例：
+
+````markdown
+```mermaid
+flowchart LR
+    A[收集证据] --> B[分析]
+    B --> C[形成结论]
+```
+
+加权平均值为 $\bar{x}=\frac{\sum_i w_i x_i}{\sum_i w_i}$。
+
+$$
+\sigma^2 = \frac{1}{n}\sum_{i=1}^{n}(x_i-\bar{x})^2
+$$
+````
+
+本地渲染器支持常用 Mermaid 和 LaTeX 数学语法，并非完整 TeX 文档引擎。语法不受支持、无效或超出预览大小限制时保留源码，块级内容同时显示错误提示。复制结果和导出 Markdown 均保留原始语法。

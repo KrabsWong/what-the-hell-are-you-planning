@@ -7,7 +7,7 @@ use crate::{
 };
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
-pub(crate) enum ExecutionStatus {
+pub enum ExecutionStatus {
     Running,
     Queued,
     Retrying,
@@ -22,23 +22,6 @@ pub(crate) enum ExecutionStatus {
 impl ExecutionStatus {
     pub(crate) const ALL: [Self; 9] = [Self::Running, Self::Queued, Self::Retrying,
         Self::Waiting, Self::Ready, Self::Paused, Self::Blocked, Self::Approval, Self::Done];
-    /// Shared board order, including fallback stages for manually managed tasks.
-    /// Keep review of a plan before execution and terminal completion last.
-    pub(crate) const BOARD_ORDER: [Self; 15] = [
-        Self::Stage(Stage::Backlog), Self::Approval, Self::Waiting,
-        Self::Stage(Stage::Planned), Self::Ready, Self::Queued,
-        Self::Running, Self::Stage(Stage::InProgress), Self::Retrying,
-        Self::Paused, Self::Blocked, Self::Stage(Stage::Review),
-        Self::Stage(Stage::Cancelled), Self::Stage(Stage::Done), Self::Done,
-    ];
-    pub(crate) fn visual_stage(self) -> Stage {
-        match self {
-            Self::Running | Self::Retrying => Stage::InProgress,
-            Self::Done => Stage::Done, Self::Blocked => Stage::Cancelled,
-            Self::Queued | Self::Paused | Self::Approval => Stage::Review,
-            Self::Waiting | Self::Ready => Stage::Planned, Self::Stage(stage) => stage,
-        }
-    }
     pub(crate) fn label(self) -> &'static str {
         match self {
             Self::Running => "Running",
@@ -104,7 +87,7 @@ impl ExecutionStatus {
             Self::Running | Self::Retrying => p.warning,
             Self::Blocked => p.danger,
             Self::Done => p.success,
-            Self::Queued => p.review,
+            Self::Queued => p.secondary,
             Self::Stage(stage) => crate::views::stage_color(stage, cx),
             _ => p.secondary,
         }
@@ -123,7 +106,7 @@ impl Store {
             .is_some_and(|r| r.kind == ResearchKind::Goal);
         // Goals aggregate real run records, rather than treating their workflow stage as activity.
         let ids = if is_goal {
-            let mut ids = self.research_children(id);
+            let mut ids = self.goal_step_ids(id);
             ids.push(id);
             ids
         } else {
@@ -162,7 +145,7 @@ impl Store {
         if latest.iter().any(|r| r.status == "Queued") {
             return Queued;
         }
-        if pending.is_some_and(|b| !b.current_items(self).contains(&goal)) {
+        if (is_goal || task.research.is_none()) && pending.is_some_and(|b| !b.current_items(self).contains(&goal)) {
             return Queued;
         }
         if is_goal {
@@ -209,13 +192,21 @@ impl Store {
             }
             return if pending.is_some() { Queued } else { Ready };
         }
+        if pending.is_some() { return Queued; }
+        if !task.stage.is_closed() && latest.iter().any(|r| matches!(r.status.as_str(), "Failed" | "Blocked" | "Interrupted" | "Cancelled")) {
+            return Blocked;
+        }
+        if matches!(task.stage, crate::domain::Stage::Planned | crate::domain::Stage::InProgress)
+            && latest.iter().any(|r| r.status == "Succeeded" && r.stage == task.stage) {
+            return Stage(crate::domain::Stage::Review);
+        }
         Stage(task.stage)
     }
 }
 impl crate::app::TaskApp {
     pub(crate) fn execution_summary(&self, goal: u64) -> String {
         let states: Vec<_> = self.store.goal_step_ids(goal).into_iter()
-            .map(|id| self.store.execution_status(id, self.todo_batch.as_ref())).collect();
+            .map(|id| self.store.task_status(id, self.todo_batch.as_ref()).execution).collect();
         let mut parts = vec![format!("{} steps", states.len())];
         for status in ExecutionStatus::ALL.into_iter().chain(Stage::ALL.into_iter().map(ExecutionStatus::Stage)) {
             let count = states.iter().filter(|state| **state == status).count();
@@ -226,16 +217,17 @@ impl crate::app::TaskApp {
 
     pub(crate) fn execution_indicator(&self, id: u64, cx: &gpui_kit::App) -> gpui_kit::AnyElement {
         use gpui_kit::*;
-        let status = self.store.execution_status(id, self.todo_batch.as_ref());
+        let state = self.store.task_status(id, self.todo_batch.as_ref());
+        let status = state.execution;
         // A status is not an action: no button label slot, content gap or hover fill.
         // Reserve a non-shrinking 24px box for the shared 16px icon in cards and list rows.
         div().id(format!("execution-status-{id}"))
-            .aria_label(status.label())
+            .aria_label(state.label())
             .size(px(24.)).flex_shrink_0()
             .flex().items_center().justify_center()
             .child(status.icon_view(cx))
             .tooltip(move |window, cx| {
-                component::tooltip::Tooltip::new(format!("{} · {}", status.label(), status.hint()))
+                component::tooltip::Tooltip::new(format!("{} · {}", state.label(), state.reason))
                     .build(window, cx)
             })
             .into_any_element()
@@ -318,7 +310,7 @@ mod tests {
         );
         assert_eq!(
             s.execution_status(ids[1], Some(&batch)),
-            ExecutionStatus::Queued
+            ExecutionStatus::Waiting
         );
         batch.failed_items.push(first);
         assert_eq!(

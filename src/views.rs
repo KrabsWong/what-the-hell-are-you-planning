@@ -71,7 +71,7 @@ pub(crate) fn stage_color(stage: Stage, cx: &App) -> u32 {
     }
 }
 fn task_state_icon(store: &Store, task: &Task, batch: Option<&crate::batch::TodoBatch>, cx: &App) -> Div {
-    let state = store.execution_status(task.id, batch);
+    let state = store.task_status(task.id, batch).execution;
     state.icon_view(cx)
 }
 // All hierarchy levels use the same semantic card surfaces, including hover states.
@@ -333,7 +333,9 @@ impl TaskApp {
                         })),
                 ),
         );
-        for project in &self.store.projects {
+        let mut projects: Vec<_> = self.store.projects.iter().collect();
+        projects.sort_by_key(|project| crate::display_order::newest_id(project.id));
+        for project in projects {
             let count = self
                 .store
                 .tasks
@@ -418,12 +420,13 @@ impl TaskApp {
                     ),
             );
             if expanded {
-                let project_tasks: Vec<_> = self
+                let mut project_tasks: Vec<_> = self
                     .store
                     .tasks
                     .iter()
                     .filter(|t| t.project_id == pid && !self.store.task_is_archived(t.id))
                     .collect();
+                project_tasks.sort_by(|a, b| crate::display_order::tasks_newest_first(a, b));
                 let mut list = col()
                     .gap_0()
                     .ml_5()
@@ -438,7 +441,7 @@ impl TaskApp {
                     .map(|t| Some(t.id))
                     .collect();
                 // Topic IDs increase monotonically at creation, including legacy topics.
-                groups.sort_by_key(|id| std::cmp::Reverse(*id));
+                groups.sort_by_key(|id| id.map(crate::display_order::newest_id));
                 groups.push(None);
                 for topic_id in groups {
                     let tasks: Vec<_> = project_tasks
@@ -494,9 +497,9 @@ impl TaskApp {
                         let hint = format!(
                             "{} · {}\n{}\n{}",
                             self.store.identifier(task),
-                            self.store.execution_status(tid, self.todo_batch.as_ref()).label(),
+                            self.store.task_status(tid, self.todo_batch.as_ref()).label(),
                             task.title,
-                            self.store.execution_status(tid, self.todo_batch.as_ref()).hint()
+                            self.store.task_status(tid, self.todo_batch.as_ref()).reason
                         );
                         let hint = hint
                             .chars()
@@ -514,7 +517,7 @@ impl TaskApp {
                             .h_7()
                             .px_2()
                             .tooltip(hint)
-                            .accessibility_label(format!("{} · {}", task.title, self.store.execution_status(tid, self.todo_batch.as_ref()).label()))
+                            .accessibility_label(format!("{} · {}", task.title, self.store.task_status(tid, self.todo_batch.as_ref()).label()))
                             .child(
                                 row()
                                     .w_full()
@@ -1038,7 +1041,8 @@ impl TaskApp {
             .dropdown_menu_with_anchor(Anchor::TopLeft, move |mut menu, _, _| {
                 for filter in [AllStatus::All, AllStatus::Open]
                     .into_iter()
-                    .chain(Stage::ALL.map(AllStatus::Stage))
+                    .chain(Stage::BOARD_ORDER.map(AllStatus::Stage))
+                    .chain(crate::workflow::ExecutionGroup::ALL.map(AllStatus::Execution))
                 {
                     let entity = entity.clone();
                     menu = menu.item(
@@ -1143,15 +1147,6 @@ impl TaskApp {
                         )
                     })
                     .child(
-                        Checkbox::new("sort-priority")
-                            .label("Priority first")
-                            .checked(self.sort_priority)
-                            .on_change(cx.listener(|this, v, _, cx| {
-                                this.sort_priority = *v;
-                                cx.notify();
-                            })),
-                    )
-                    .child(
                         Checkbox::new("compact")
                             .label("Compact rows")
                             .checked(self.compact)
@@ -1222,6 +1217,7 @@ impl TaskApp {
                 .text_color(rgb(colors.muted))
                 .child(div().w(px(156.)).flex_shrink_0().child("PRIORITY / ID"))
                 .child(div().flex_1().min_w_0().child("TASK"))
+                .child(div().w(px(150.)).flex_shrink_0().child("STATUS"))
                 .child(div().w(px(84.)).flex_shrink_0().child("LABELS"))
                 .child(div().w_16().flex_shrink_0().child("DUE"))
                 .child(div().w(px(156.)).flex_shrink_0().child("CREATED")),
@@ -1291,7 +1287,7 @@ impl TaskApp {
             }
         }
         if !matches!(self.scope, Scope::Project(_)) {
-            ordered.sort_by_key(|t| t.project_id);
+            ordered.sort_by_key(|t| crate::display_order::newest_id(t.project_id));
         }
         ordered
     }
@@ -1308,7 +1304,7 @@ impl TaskApp {
             .store
             .tasks
             .iter()
-            .filter(|c| c.parent_id == Some(id) && !c.archived && c.stage == Stage::Done)
+            .filter(|c| c.parent_id == Some(id) && !c.archived && self.store.task_status(c.id, self.todo_batch.as_ref()).phase == Stage::Done)
             .count();
         row()
             .id(format!("task-row-{id}"))
@@ -1378,6 +1374,8 @@ impl TaskApp {
                         )
                     }),
             )
+            .child(div().w(px(150.)).flex_shrink_0().text_xs()
+                .child(self.store.task_status(id, self.todo_batch.as_ref()).label()))
             .child(
                 div().w(px(84.)).flex_shrink_0().overflow_hidden().child(
                     row().children(
@@ -1441,7 +1439,7 @@ impl TaskApp {
         let colors = palette(cx);
         col().flex_1().min_h_0()
             .child(div().px_6().pb_2().child(label(
-                "Workflow stages · Columns show the research phase; card status shows what is happening now.", cx)))
+                "Drop Todo tasks into Execution to submit. Waiting → Queued → Running; problems appear under Needs attention.", cx)))
             .child(row()
             .id("board-scroll")
             .items_start()
@@ -1453,19 +1451,26 @@ impl TaskApp {
             .overflow_x_scroll()
             .restrict_scroll_to_axis()
             .children(Stage::BOARD_ORDER.into_iter().map(|stage| {
+                let entity = cx.entity().downgrade();
                 let cards: Vec<_> = tasks
                     .iter()
-                    .filter(|t| t.parent_id.is_none() && t.stage == stage)
+                    .filter(|t| t.parent_id.is_none() && self.store.task_status(t.id, self.todo_batch.as_ref()).phase == stage)
                     .cloned()
                     .collect();
                 col()
                     .id(format!("column-{}", stage.key()))
-                    .w(px(292.))
+                    .w(px(if stage == Stage::InProgress { 350. } else { 292. }))
                     .flex_shrink_0()
                     .h_full()
                     .gap_3()
                     .rounded_md()
-                    .drag_over::<DragTask>(move |d, _, _, _| d.bg(rgb(colors.hover)))
+                    .drag_over::<DragTask>(move |d, drag, _, cx| {
+                        let allowed = entity.upgrade().is_some_and(|entity| {
+                            let app = entity.read(cx);
+                            app.store.validate_manual_transition(drag.id, stage, app.todo_batch.as_ref()).is_ok()
+                        });
+                        d.bg(rgb(if allowed { colors.hover } else { colors.danger }))
+                    })
                     .on_drop(cx.listener(move |this, drag: &DragTask, _, cx| {
                         this.change_stage(drag.id, stage, cx)
                     }))
@@ -1478,7 +1483,7 @@ impl TaskApp {
                                     .child(
                                         div()
                                             .text_color(rgb(stage_color(stage, cx)))
-                                            .child(stage_text(stage)),
+                                            .child(crate::workflow::phase_label(stage)),
                                     )
                                     .child(label(cards.len().to_string(), cx)),
                             )
@@ -1493,6 +1498,7 @@ impl TaskApp {
                                 )),
                             ),
                     )
+                    .when(stage == Stage::InProgress, |d| d.child(self.execution_filter_bar(&cards, cx)))
                     .child(
                         col()
                             .id(format!("cards-{}", stage.key()))
@@ -1501,7 +1507,9 @@ impl TaskApp {
                             .flex_1()
                             .min_h_0()
                             .gap_3()
-                            .children(self.topic_grouped_cards(&cards, stage, cx))
+                            .children(if stage == Stage::InProgress {
+                                self.execution_board_cards(&cards, cx)
+                            } else { self.topic_grouped_cards(&cards, stage, cx) })
                             .when(cards.is_empty(), |d| {
                                 d.child(
                                     div()
@@ -1524,7 +1532,8 @@ impl TaskApp {
         let colors = palette(cx);
         // Keep each status recognizable even when a card is hovered.
         let dark = gpui_kit::component::Theme::global(cx).is_dark();
-        let (surface, hover, border) = board_card_colors(t.stage, cx);
+        let status = self.store.task_status(t.id, self.todo_batch.as_ref());
+        let (surface, hover, border) = board_card_colors(status.phase, cx);
         let mut metadata = t.labels.iter().take(2).cloned().collect::<Vec<_>>();
         if !t.bucket.is_empty() {
             metadata.push(t.bucket.clone());
@@ -1599,6 +1608,8 @@ impl TaskApp {
                 label(format!("Priority: {}", t.priority.label()), cx).text_xs(),
             ))
             .child(div().line_height(relative(1.4)).child(t.title.clone()))
+            .child(chip(status.label(), status.execution.color(cx), cx))
+            .child(label(status.reason.clone(), cx))
             .when_some(
                 self.store
                     .research_requests
@@ -1648,7 +1659,7 @@ impl TaskApp {
                                     .text_xs()
                                     .whitespace_normal()
                                     .text_left()
-                                    .child(self.execution_summary(id)),
+                                    .child(format!("Open {} steps →", self.store.goal_step_ids(id).len())),
                             )
                             .on_click(cx.listener(move |a, _, w, cx| {
                                 cx.stop_propagation();
@@ -1729,6 +1740,7 @@ impl TaskApp {
     fn task_context(&self, element: AnyElement, id: u64, cx: &mut Context<Self>) -> AnyElement {
         let entity = cx.entity().downgrade();
         let archived = self.store.task_is_archived(id);
+        let allowed_stages = Stage::ALL.into_iter().filter(|stage| self.store.validate_manual_transition(id, *stage, self.todo_batch.as_ref()).is_ok()).collect::<Vec<_>>();
         div()
             .id(format!("task-context-{id}"))
             .child(element)
@@ -1745,10 +1757,10 @@ impl TaskApp {
                         });
                     }));
                     menu = menu.separator();
-                    for stage in Stage::ALL {
+                    for stage in allowed_stages.iter().copied() {
                         let target = entity.clone();
                         menu = menu.item(
-                            PopupMenuItem::new(format!("Set workflow stage: {}", stage.label())).on_click(
+                            PopupMenuItem::new(format!("{}{}", if stage == Stage::InProgress { "Submit to " } else { "Move to " }, crate::workflow::phase_label(stage))).on_click(
                                 move |_, _, cx| {
                                     let _ = target
                                         .update(cx, |this, cx| this.change_stage(id, stage, cx));
@@ -1936,13 +1948,14 @@ impl TaskApp {
                 .child(self.goal_steps_view(id, cx))
                 .into_any_element();
         }
-        let children: Vec<_> = self
+        let mut children: Vec<_> = self
             .store
             .tasks
             .iter()
             .filter(|c| c.parent_id == Some(id) && !c.archived)
             .cloned()
             .collect();
+        children.sort_by(crate::display_order::tasks_newest_first);
         let show_children = is_goal || t.research.is_none() || !children.is_empty();
         let mut body = col()
             .flex_1()
@@ -1996,7 +2009,7 @@ impl TaskApp {
                             } else {
                                 "Subtasks"
                             },
-                            children.iter().filter(|t| t.stage == Stage::Done).count(),
+                            children.iter().filter(|t| self.store.task_status(t.id, self.todo_batch.as_ref()).phase == Stage::Done).count(),
                             children.len()
                         ),
                         cx,
@@ -2175,9 +2188,13 @@ impl TaskApp {
                     self.store.task_is_archived(id)
                         || self.store.research_pending_approval(id)
                         || t.stage == Stage::Cancelled
+                        || t.stage == Stage::Backlog
                         || self.task_running(id),
                 )
-                .on_click(cx.listener(move |this, _, _, cx| this.start_run(id, cx))),
+                .on_click(cx.listener(move |this, _, _, cx| {
+                    if previously_completed { this.start_run(id, cx); }
+                    else { this.change_stage(id, Stage::InProgress, cx); }
+                })),
             );
         }
         if needs_refresh && !self.task_running(id) {
@@ -2301,15 +2318,17 @@ impl TaskApp {
                 .id("task-properties-heading")
                 .child("Task").map(observed),
         );
-        let execution = self.store.execution_status(id, self.todo_batch.as_ref());
+        let status = self.store.task_status(id, self.todo_batch.as_ref());
+        let execution = status.execution;
         properties = properties.child(
             row().justify_between()
-                .child(label("Execution status", cx))
+                .child(label("Status", cx))
                 .child(quiet_button("task-execution-status", "")
-                    .child(row().gap_2().child(execution.icon_view(cx)).child(execution.label()))
+                    .child(row().gap_2().child(execution.icon_view(cx)).child(status.label()))
                     .h(px(28.)).px_2().text_color(rgb(execution.color(cx)))
-                    .tooltip(execution.hint())),
+                    .tooltip(status.reason.clone())),
         );
+        properties = properties.child(label(status.reason.clone(), cx));
         if t.parent_id.is_none() {
             properties = properties.child(
                 row()
@@ -2320,7 +2339,7 @@ impl TaskApp {
             );
         }
         for (prop, name, value) in [
-            (Property::Stage, "Stage", stage_text(t.stage)),
+            (Property::Stage, "Stage", crate::workflow::phase_label(status.phase).into()),
             (Property::Priority, "Priority", t.priority.label().into()),
             (
                 Property::Project,
@@ -2367,7 +2386,7 @@ impl TaskApp {
                 row()
                     .flex_wrap()
                     .justify_between()
-                    .child(label(if prop == Property::Stage { "Workflow stage" } else { name }, cx))
+                    .child(label(if prop == Property::Stage { "Move to" } else { name }, cx))
                     .child(
                         quiet_button(format!("property-{name}"), value.clone())
                             .px_2()
@@ -2376,7 +2395,7 @@ impl TaskApp {
                             .min_w_0()
                             .font_weight(FontWeight::MEDIUM)
                             .text_color(rgb(match prop {
-                                Property::Stage => stage_color(t.stage, cx),
+                                Property::Stage => stage_color(status.phase, cx),
                                 Property::Priority if t.priority == Priority::Urgent => {
                                     colors.danger
                                 }
@@ -2581,15 +2600,18 @@ impl TaskApp {
         match property {
             Property::Stage => {
                 for stage in Stage::ALL {
+                    let allowed = self.store.validate_manual_transition(id, stage, self.todo_batch.as_ref());
                     options = options.child(
                         property_choice(
                             format!("set-{}", stage.key()),
-                            stage.label(),
+                            if stage == Stage::InProgress { "Submit execution" } else { crate::workflow::phase_label(stage) },
                             Some(stage.symbol()),
                             self.store.task(id).is_some_and(|t| t.stage == stage),
                         )
                         .w_full()
                         .justify_start()
+                        .disabled(allowed.is_err())
+                        .tooltip(allowed.err().unwrap_or_else(|| "Move to this phase".into()))
                         .when(self.store.task(id).is_some_and(|t| t.stage == stage), |b| {
                             b.bg(rgb(colors.accent_surface))
                         })
@@ -3010,9 +3032,13 @@ impl TaskApp {
                             .children(Stage::ALL.into_iter().map(|stage| {
                                 select_button(
                                     format!("draft-stage-{}", stage.key()),
-                                    stage.label(),
+                                    crate::workflow::phase_label(stage),
                                     d.stage == stage,
                                 )
+                                .disabled(if let Some(id) = d.id {
+                                    self.store.task(id).is_none_or(|task| task.stage != stage) &&
+                                        (stage == Stage::InProgress || self.store.validate_manual_transition(id, stage, self.todo_batch.as_ref()).is_err())
+                                } else { !matches!(stage, Stage::Backlog | Stage::Planned) })
                                 .on_click(cx.listener(
                                     move |this, _, _, cx| {
                                         if let Some(d) = &mut this.draft {

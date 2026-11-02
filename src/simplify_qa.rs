@@ -526,6 +526,7 @@ fn run_checks(layout_only: bool) {
             cx.update_window(handle, |_, w, cx| {
                 w.click("navigation-back", cx);
                 assert_eq!(app.read(cx).scope, Scope::Settings);
+                w.within("settings-tabs").click(2usize, cx);
                 click_in(w, cx, "model-settings-scroll", "global-task-overrides");
                 assert_eq!(app.read(cx).scope, Scope::Workflow);
             })

@@ -93,7 +93,7 @@ impl TaskApp {
                 "Stages use the global model unless an override is entered below. Task status stays separate.",
                 cx,
             ))
-            .child(button("research-global-settings", "Global model settings →").on_click(cx.listener(|this, _, w, cx| this.navigate(crate::app::Scope::Settings, w, cx))));
+            .child(button("research-global-settings", "Global model settings →").on_click(cx.listener(|this, _, w, cx| this.open_model_settings(w, cx))));
         for kind in ResearchKind::ALL {
             let i = kind.index();
             settings = settings

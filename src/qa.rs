@@ -75,6 +75,7 @@ pub fn run() {
     .unwrap();
     cx.update_window(handle, |_, w, cx| {
         w.click("model-settings", cx);
+        w.within("settings-tabs").click(2usize, cx);
         click_scrolled(w, cx, "model-settings-scroll", "global-task-overrides");
         w.click("policy-review", cx);
         w.click("agent-OpenCode", cx);
@@ -118,6 +119,7 @@ pub fn run() {
     .unwrap();
     cx.update_window(handle, |_, w, cx| {
         w.click("model-settings", cx);
+        w.within("settings-tabs").click(2usize, cx);
         click_scrolled(w, cx, "model-settings-scroll", "global-task-overrides");
         click_scrolled(w, cx, "workflow-scroll", "policy-model");
         w.press("cmd-k", cx);
@@ -223,6 +225,7 @@ pub fn run() {
         .unwrap();
     cx.update_window(small.into(), |_, w, cx| {
         w.click("model-settings", cx);
+        w.within("settings-tabs").click(2usize, cx);
         click_scrolled(w, cx, "model-settings-scroll", "global-task-overrides");
     })
     .unwrap();
@@ -373,6 +376,7 @@ pub fn run_live() {
         w.input(work.to_str().unwrap(), cx);
         w.click("save-directory", cx);
         w.click("model-settings", cx);
+        w.within("settings-tabs").click(2usize, cx);
         click_scrolled(w, cx, "model-settings-scroll", "global-task-overrides");
         w.click("refresh-models", cx);
     })

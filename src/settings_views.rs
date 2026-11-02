@@ -5,12 +5,35 @@ use crate::{
     views::*,
 };
 use gpui_kit::{
-    component::{Disableable, checkbox::Checkbox, input::Input},
+    component::{
+        Disableable,
+        checkbox::Checkbox,
+        input::Input,
+        tab::{Tab, TabBar},
+    },
     prelude::FluentBuilder,
     *,
 };
 
+#[derive(Clone, Copy, Default, PartialEq, Eq)]
+pub enum SettingsTab {
+    #[default]
+    General,
+    Models,
+    Overrides,
+}
+
+impl SettingsTab {
+    const ALL: [Self; 3] = [Self::General, Self::Models, Self::Overrides];
+}
+
 impl TaskApp {
+    pub fn open_model_settings(&mut self, w: &mut Window, cx: &mut Context<Self>) {
+        self.settings_tab = SettingsTab::Models;
+        self.settings_scroll.set_offset(point(px(0.), px(0.)));
+        self.navigate(Scope::Settings, w, cx);
+    }
+
     pub fn refresh_global_model_input(&mut self, w: &mut Window, cx: &mut Context<Self>) {
         let model = self.store.default_model.clone();
         self.global_model
@@ -132,13 +155,13 @@ impl TaskApp {
                     }),
                 ),
             );
-        let mut content = col().w_full().max_w(px(840.)).gap_5()
-            .child(div().text_2xl().font_weight(FontWeight::SEMIBOLD).child("Settings"))
+        let general = col().gap_6()
+            .child(appearance)
             .when_some(self.workspace_root.as_ref(), |view, root| view.child(col().gap_2()
                 .child(div().font_weight(FontWeight::SEMIBOLD).child("Workspace"))
                 .child(label("Projects, reports, materials and app data are stored in this folder's workspace subfolder.", cx))
-                .child(div().text_sm().child(root.to_string_lossy().into_owned()))))
-            .child(appearance)
+                .child(div().text_sm().child(root.to_string_lossy().into_owned()))));
+        let mut content = col().w_full().gap_5()
             .child(col().gap_2()
                 .child(div().text_lg().font_weight(FontWeight::SEMIBOLD).child("Model settings"))
                 .child(label("Choose one default for project planning, research and OpenCode tasks. A stage can override it when needed.", cx)))
@@ -199,7 +222,7 @@ impl TaskApp {
                 .child(col().gap_2()
                     .child(div().font_weight(FontWeight::SEMIBOLD).child("Stage defaults"))
                     .child(label(if self.store.all_stages_use_global_model() {
-                        "All stages follow the global model. Set individual overrides below when needed. Manual stages stay manual."
+                        "All stages follow the global model. Set individual overrides in Stage overrides when needed. Manual stages stay manual."
                     } else { "Apply the global model to every stage and clear existing overrides when saving. Manual stages stay manual." }, cx)))
                 .child(Checkbox::new("global-model-all-stages")
                     .label("Use this model for every stage")
@@ -216,23 +239,109 @@ impl TaskApp {
                     .child(div().text_sm().font_weight(FontWeight::SEMIBOLD).text_color(rgb(colors.text))
                         .child(if self.store.default_model.is_empty() { "Not configured".to_string() } else { self.store.default_model.clone() })))
                 .when(!self.error.is_empty(), |d| d.child(div().text_sm().text_color(rgb(colors.danger)).child(self.error.clone())))
+                );
+        let overrides = col()
+            .gap_3()
+            .child(
+                div()
+                    .font_weight(FontWeight::SEMIBOLD)
+                    .child(format!("Stage overrides · {}", overrides.len())),
+            )
+            .child(label(
+                "Choose a different model for a specific research or task stage.",
+                cx,
+            ))
+            .when(overrides.is_empty(), |d| {
+                d.child(
+                    div()
+                        .text_sm()
+                        .text_color(rgb(colors.text))
+                        .child("All OpenCode stages use the global default."),
                 )
-            .child(col().gap_3().pt_4().border_t_1().border_color(rgb(colors.line))
-                .child(div().font_weight(FontWeight::SEMIBOLD).child(format!("Stage overrides · {}", overrides.len())))
-                .child(label("Choose a different model for a specific research or task stage.", cx))
-                .when(overrides.is_empty(), |d| d.child(div().text_sm().text_color(rgb(colors.text)).child("All OpenCode stages use the global default.")))
-                .children(overrides.into_iter().map(|(name, model)| col().gap_1().py_2().border_b_1().border_color(rgb(colors.line))
+            })
+            .children(overrides.into_iter().map(|(name, model)| {
+                col()
+                    .gap_1()
+                    .py_2()
+                    .border_b_1()
+                    .border_color(rgb(colors.line))
                     .child(label(name, cx))
-                    .child(div().text_sm().font_weight(FontWeight::MEDIUM).text_color(rgb(colors.text)).child(model))))
-                .child(row().flex_wrap()
-                    .child(button("global-research-overrides", "Research stage overrides →").on_click(cx.listener(|this, _, w, cx| { this.navigate(Scope::Research, w, cx); this.show_research_settings = true; })))
-                    .child(button("global-task-overrides", "Task stage overrides →").on_click(cx.listener(|this, _, w, cx| this.navigate(Scope::Workflow, w, cx))))));
+                    .child(
+                        div()
+                            .text_sm()
+                            .font_weight(FontWeight::MEDIUM)
+                            .text_color(rgb(colors.text))
+                            .child(model),
+                    )
+            }))
+            .child(
+                row()
+                    .flex_wrap()
+                    .child(
+                        button("global-research-overrides", "Research stage overrides →").on_click(
+                            cx.listener(|this, _, w, cx| {
+                                this.navigate(Scope::Research, w, cx);
+                                this.show_research_settings = true;
+                            }),
+                        ),
+                    )
+                    .child(
+                        button("global-task-overrides", "Task stage overrides →").on_click(
+                            cx.listener(|this, _, w, cx| this.navigate(Scope::Workflow, w, cx)),
+                        ),
+                    ),
+            );
+        let panel = match self.settings_tab {
+            SettingsTab::General => general,
+            SettingsTab::Models => content,
+            SettingsTab::Overrides => overrides,
+        };
         col()
-            .id("model-settings-scroll")
             .size_full()
-            .overflow_y_scroll()
-            .p_6()
-            .child(content)
-            .map(observed)
+            .child(
+                col()
+                    .flex_shrink_0()
+                    .px_6()
+                    .pt_6()
+                    .gap_4()
+                    .child(
+                        div()
+                            .text_2xl()
+                            .font_weight(FontWeight::SEMIBOLD)
+                            .child("Settings"),
+                    )
+                    .child(
+                        TabBar::new("settings-tabs")
+                            .underline()
+                            .selected_index(Self::settings_tab_index(self.settings_tab))
+                            .child(Tab::new().label("General"))
+                            .child(Tab::new().label("Models"))
+                            .child(Tab::new().label("Stage overrides"))
+                            .on_click(cx.listener(|this, index, _, cx| {
+                                this.settings_tab = SettingsTab::ALL[*index];
+                                this.settings_scroll.set_offset(point(px(0.), px(0.)));
+                                cx.notify();
+                            })),
+                    ),
+            )
+            .child(
+                col()
+                    .id("model-settings-scroll")
+                    .track_scroll(&self.settings_scroll)
+                    .flex_1()
+                    .min_h_0()
+                    .overflow_y_scroll()
+                    .p_6()
+                    .child(panel.max_w(px(840.)))
+                    .map(observed),
+            )
+            .into_any_element()
+    }
+
+    fn settings_tab_index(tab: SettingsTab) -> usize {
+        SettingsTab::ALL
+            .iter()
+            .position(|item| *item == tab)
+            .unwrap()
     }
 }

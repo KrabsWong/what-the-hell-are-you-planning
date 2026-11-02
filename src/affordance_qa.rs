@@ -207,6 +207,7 @@ pub fn run() {
             screenshot(&mut cx, handle, &directory, "09-research-settings.png");
             cx.update_window(handle, |_, w, cx| {
                 w.click("model-settings", cx);
+                w.within("settings-tabs").click(2usize, cx);
                 click_in(w, cx, "model-settings-scroll", "global-task-overrides");
             })
             .unwrap();

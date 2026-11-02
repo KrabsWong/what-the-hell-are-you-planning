@@ -44,6 +44,7 @@ pub fn run() {
                     view.update(cx, |a, cx| {
                         a.attach_storage(Storage::new(path.clone()), w, cx);
                         assert!(a.storage_error.is_empty());
+                        a.workspace_root = Some(directory.clone());
                         a.available_models = vec!["qa/other".into(), MODEL.into()];
                     });
                     app = Some(view.clone());
@@ -130,6 +131,9 @@ pub fn run() {
                         .update(cx, |s, cx| s.set_value("/tmp/unsaved-ego", w, cx));
                     a.research_models[1].update(cx, |s, cx| s.set_value("qa/unsaved", w, cx));
                 });
+                w.within("settings-tabs").click(1usize, cx);
+                w.render_frame(cx);
+                assert!(w.try_find("appearance-system").is_none());
                 w.click("global-model-input", cx);
                 w.input("missing-provider", cx);
                 click(w, cx, "model-settings-scroll", "save-global-model");
@@ -141,6 +145,14 @@ pub fn run() {
                 click(w, cx, "model-settings-scroll", "reset-global-model");
                 click(w, cx, "model-settings-scroll", "global-model-input");
                 w.input("qa/original", cx);
+                w.within("settings-tabs").click(0usize, cx);
+                w.render_frame(cx);
+                assert!(w.try_find("global-model-input").is_none());
+                w.within("settings-tabs").click(1usize, cx);
+                assert_eq!(
+                    app.read(cx).global_model.read(cx).value().as_ref(),
+                    "qa/original"
+                );
                 click(w, cx, "model-settings-scroll", "global-task-overrides");
                 w.click("model-settings", cx);
                 assert_eq!(
@@ -269,6 +281,14 @@ pub fn run() {
             .unwrap();
             screenshot(&mut cx, handle, &directory, "02-saved-with-overrides.png");
             cx.update_window(handle, |_, w, cx| {
+                w.within("settings-tabs").click(2usize, cx);
+                w.render_frame(cx);
+                assert!(w.try_find("global-model-input").is_none());
+                assert!(w.try_find("global-research-overrides").is_some());
+            })
+            .unwrap();
+            screenshot(&mut cx, handle, &directory, "02-stage-overrides.png");
+            cx.update_window(handle, |_, w, cx| {
                 click(w, cx, "model-settings-scroll", "global-research-overrides");
                 assert!(app.read(cx).show_research_settings);
                 click(w, cx, "research-scroll", "research-use-global-0");
@@ -311,6 +331,17 @@ pub fn run() {
                 });
                 w.click("model-settings", cx);
                 click(w, cx, "model-settings-scroll", "global-model-all-stages");
+                assert!(app.read(cx).use_global_for_all);
+                let tab_top = w.within("settings-tabs").find(0usize).bounds().top();
+                w.scroll(
+                    "model-settings-scroll",
+                    ScrollDelta::Pixels(point(px(0.), px(-200.))),
+                    cx,
+                );
+                w.render_frame(cx);
+                assert_eq!(w.within("settings-tabs").find(0usize).bounds().top(), tab_top);
+                w.within("settings-tabs").click(0usize, cx);
+                w.within("settings-tabs").click(1usize, cx);
                 assert!(app.read(cx).use_global_for_all);
                 assert_eq!(
                     app.read(cx).store.research_config.models[1],
@@ -376,7 +407,7 @@ pub fn run() {
                     view.update(cx, |a, cx| {
                         a.attach_storage(Storage::new(path.clone()), w, cx);
                         assert_eq!(a.store, expected);
-                        a.navigate(Scope::Settings, w, cx);
+                        a.open_model_settings(w, cx);
                         assert_eq!(a.global_model.read(cx).value().as_ref(), MODEL);
                     });
                     cx.new(|cx| base::Root::new(view, w, cx))
@@ -412,6 +443,17 @@ fn context() -> HeadlessAppContext {
 }
 fn click(w: &mut Window, cx: &mut App, scroll: &str, id: &str) {
     w.render_frame(cx);
+    if scroll == "model-settings-scroll" {
+        let index = if id == "global-task-overrides" || id == "global-research-overrides" {
+            2usize
+        } else {
+            1usize
+        };
+        if w.try_find(id.to_string()).is_none() {
+            w.within("settings-tabs").click(index, cx);
+            w.render_frame(cx);
+        }
+    }
     for _ in 0..30 {
         let bounds = w.find(id.to_string()).bounds();
         if bounds.top() >= px(110.) && bounds.bottom() <= w.viewport_size().height - px(40.) {

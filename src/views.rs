@@ -496,20 +496,14 @@ impl TaskApp {
                         let nested = depth > 0;
                         let tid = task.id;
                         let has_steps = tasks.iter().any(|t| t.parent_id == Some(tid));
-                        let hint = format!(
-                            "{} · {}\n{}\n{}",
+                        let status = self.display_task_status(tid);
+                        let hint_heading = format!(
+                            "{} · {}",
                             self.store.identifier(task),
-                            self.display_task_status(tid).label(),
-                            task.title,
-                            self.display_task_status(tid).reason
+                            status.label(),
                         );
-                        let hint = hint
-                            .chars()
-                            .collect::<Vec<_>>()
-                            .chunks(32)
-                            .map(|chunk| chunk.iter().collect::<String>())
-                            .collect::<Vec<_>>()
-                            .join("\n");
+                        let hint_title = task.title.clone();
+                        let hint_reason = status.reason;
                         let active = self.selected.or(self.task_result_context) == Some(tid);
                         let task_button = quiet_button(format!("sidebar-task-{tid}"), "")
                             .custom(sidebar_variant(active, cx))
@@ -518,7 +512,26 @@ impl TaskApp {
                             .min_w_0()
                             .h_7()
                             .px_2()
-                            .tooltip(hint)
+                            .map(|mut button| {
+                                button.interactivity().tooltip(move |window, cx| {
+                                    let width = px(360.).min(window.viewport_size().width - px(64.));
+                                    let heading = hint_heading.clone();
+                                    let title = hint_title.clone();
+                                    let reason = hint_reason.clone();
+                                    component::tooltip::Tooltip::element(move |_, cx| {
+                                        col()
+                                            .w(width)
+                                            .gap_2()
+                                            .whitespace_normal()
+                                            .child(label(heading.clone(), cx))
+                                            .child(div().font_weight(FontWeight::SEMIBOLD).child(title.clone()))
+                                            .child(muted(reason.clone(), cx).text_sm())
+                                    })
+                                    .p_3()
+                                    .build(window, cx)
+                                });
+                                button
+                            })
                             .accessibility_label(format!("{} · {}", task.title, self.display_task_status(tid).label()))
                             .child(
                                 row()
@@ -2339,7 +2352,7 @@ impl TaskApp {
                 properties
                     .child(label("Choose a model in Settings before starting.", cx))
                     .child(button("task-setup-model", "Open settings").on_click(
-                        cx.listener(|this, _, w, cx| this.navigate(Scope::Settings, w, cx)),
+                        cx.listener(|this, _, w, cx| this.open_model_settings(w, cx)),
                     ));
         }
         properties = properties.child(div().h_2()).child(
@@ -2888,7 +2901,7 @@ impl TaskApp {
                 .child(button("policy-use-global", "Use global model")
                     .disabled(self.policy_model.read(cx).value().is_empty())
                     .on_click(cx.listener(|this, _, w, cx| { this.policy_model.update(cx, |s, cx| s.set_value("", w, cx)); cx.notify(); })))
-                .child(button("policy-global-settings", "Global model settings →").on_click(cx.listener(|this, _, w, cx| this.navigate(Scope::Settings, w, cx)))))
+                .child(button("policy-global-settings", "Global model settings →").on_click(cx.listener(|this, _, w, cx| this.open_model_settings(w, cx)))))
             .child(label(if self.policy_agent == "Manual" { "No agent execution while this stage is Manual".into() } else { self.model_source_label(self.policy_model.read(cx).value().trim()) }, cx))
             .child(button("choose-model","Choose from local models…").dropdown_caret(true).open(self.show_models).disabled(self.available_models.is_empty()).on_click(cx.listener(|this,_,_,cx|{this.show_models = !this.show_models;cx.notify();})))
             .when(self.show_models,|d|d.child(col().id("models-list").h(px(200.)).overflow_y_scroll().gap_1().children(self.available_models.iter().filter(|m|{let query=self.policy_model.read(cx).value().to_lowercase();query.is_empty()||query=="choose a model"||m.to_lowercase().contains(&query)}).map(|model|{let model=model.clone();button(format!("model-{model}"),model.clone()).on_click(cx.listener(move|this,_,w,cx|{this.policy_model.update(cx,|s,cx|s.set_value(model.clone(),w,cx));this.show_models=false;cx.notify();}))}))))

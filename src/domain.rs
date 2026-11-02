@@ -264,6 +264,8 @@ pub struct Store {
     pub opencode_path: String,
     #[serde(default)]
     pub default_model: String,
+    #[serde(default = "crate::scheduler::default_concurrent_runs")]
+    pub max_concurrent_runs: usize,
     #[serde(default)]
     pub research_config: crate::research::ResearchConfig,
     #[serde(default)]
@@ -326,6 +328,7 @@ impl Store {
             next_id: 1,
             opencode_path: String::new(),
             default_model: String::new(),
+            max_concurrent_runs: crate::scheduler::DEFAULT_CONCURRENT_RUNS,
             research_config: Default::default(),
             appearance: Default::default(),
             last_active_project: None,

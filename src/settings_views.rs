@@ -28,6 +28,15 @@ impl SettingsTab {
 }
 
 impl TaskApp {
+    pub fn set_execution_concurrency(&mut self, limit: usize, cx: &mut Context<Self>) {
+        let limit = limit.clamp(1, crate::scheduler::MAX_CONCURRENT_RUNS);
+        if self.store.max_concurrent_runs == limit { return; }
+        self.snapshot();
+        self.store.max_concurrent_runs = limit;
+        self.confirm_save("Execution limit saved · running tasks will finish normally", cx);
+        cx.notify();
+    }
+
     pub fn open_model_settings(&mut self, w: &mut Window, cx: &mut Context<Self>) {
         self.settings_tab = SettingsTab::Models;
         self.settings_scroll.set_offset(point(px(0.), px(0.)));
@@ -157,6 +166,21 @@ impl TaskApp {
             );
         let general = col().gap_6()
             .child(appearance)
+            .child(col().gap_2()
+                .child(div().font_weight(FontWeight::SEMIBOLD).child("Execution"))
+                .child(div().text_sm().child("Maximum simultaneous tasks"))
+                .child(row()
+                    .child(button("concurrency-decrease", "−")
+                        .accessibility_label("Decrease maximum simultaneous tasks")
+                        .disabled(self.store.concurrency_limit() <= 1)
+                        .on_click(cx.listener(|a, _, _, cx| a.set_execution_concurrency(a.store.concurrency_limit().saturating_sub(1), cx))))
+                    .child(div().w_8().text_center().child(self.store.concurrency_limit().to_string()))
+                    .child(button("concurrency-increase", "+")
+                        .accessibility_label("Increase maximum simultaneous tasks")
+                        .disabled(self.store.concurrency_limit() >= crate::scheduler::MAX_CONCURRENT_RUNS)
+                        .on_click(cx.listener(|a, _, _, cx| a.set_execution_concurrency(a.store.concurrency_limit() + 1, cx)))))
+                .child(label("1–10 tasks. Recommended: 3; try 5 after checking stability. Higher values may cause more rate-limit errors, retries and browser load.", cx))
+                .child(label("Saved immediately to this workspace. Lowering the limit lets running tasks finish. Dependencies, shared folders and browser Spaces can reduce actual concurrency.", cx)))
             .when_some(self.workspace_root.as_ref(), |view, root| view.child(col().gap_2()
                 .child(div().font_weight(FontWeight::SEMIBOLD).child("Workspace"))
                 .child(label("Projects, reports, materials and app data are stored in this folder's workspace subfolder.", cx))

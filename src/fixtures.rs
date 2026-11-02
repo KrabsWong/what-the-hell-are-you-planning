@@ -219,6 +219,7 @@ impl Store {
             next_id: 23,
             opencode_path: String::new(),
             default_model: String::new(),
+            max_concurrent_runs: crate::scheduler::DEFAULT_CONCURRENT_RUNS,
             research_config: Default::default(),
             appearance: crate::appearance::Appearance::Dark,
             last_active_project: None,

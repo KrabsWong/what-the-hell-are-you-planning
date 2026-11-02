@@ -336,7 +336,7 @@ impl TaskApp {
         primary_button("run-project-todo", format!("{} ({count})", if busy { "Add to queue" } else { "Run / resume" }))
             .icon(assets::IconName::Play)
             .disabled(count == 0 || !self.storage_error.is_empty())
-            .tooltip("Queue approved goals. Topics run in order, with up to three concurrent steps within the current topic.")
+            .tooltip(format!("Queue approved goals. Topics run in order, with up to {} concurrent steps within the current topic.", self.store.concurrency_limit()))
             .on_click(cx.listener(move |this, _, _, cx| this.start_todo_batch(project, cx)))
             .into_any_element()
     }

@@ -5,9 +5,16 @@ use crate::{
 };
 use std::path::{Path, PathBuf};
 
-pub const MAX_CONCURRENT_RUNS: usize = 3;
+pub const DEFAULT_CONCURRENT_RUNS: usize = 3;
+pub const MAX_CONCURRENT_RUNS: usize = 10;
+
+pub fn default_concurrent_runs() -> usize { DEFAULT_CONCURRENT_RUNS }
 
 impl Store {
+    pub fn concurrency_limit(&self) -> usize {
+        self.max_concurrent_runs.clamp(1, MAX_CONCURRENT_RUNS)
+    }
+
     /// New one-sentence plans isolate each step; legacy goals retain their shared workspace.
     pub fn uses_step_workspace(&self, task_id: u64) -> bool {
         self.task(task_id).and_then(|t| t.research.as_ref()).is_some_and(|r| {
@@ -184,6 +191,19 @@ fn normalized_path(path: &str) -> PathBuf {
 mod tests {
     use super::*;
     use crate::{domain::Stage, research::ResearchKind};
+
+    #[test]
+    fn concurrency_setting_preserves_legacy_defaults_and_bounds() {
+        let mut legacy = serde_json::to_value(Store::empty()).unwrap();
+        legacy.as_object_mut().unwrap().remove("max_concurrent_runs");
+        let mut store: Store = serde_json::from_value(legacy).unwrap();
+        assert_eq!(store.concurrency_limit(), 3);
+        for (configured, effective) in [(0, 1), (1, 1), (5, 5), (10, 10), (11, 10)] {
+            store.max_concurrent_runs = configured;
+            let restored: Store = serde_json::from_str(&serde_json::to_string(&store).unwrap()).unwrap();
+            assert_eq!(restored.concurrency_limit(), effective);
+        }
+    }
 
     fn setup() -> (Store, u64, u64) {
         let mut store = Store::empty();

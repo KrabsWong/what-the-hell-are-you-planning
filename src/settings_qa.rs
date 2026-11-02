@@ -124,6 +124,25 @@ pub fn run() {
             .unwrap();
             screenshot(&mut cx, handle, &directory, "00-settings-appearance.png");
             cx.update_window(handle, |_, w, cx| {
+                assert_eq!(app.read(cx).store.concurrency_limit(), 3);
+                for limit in 4..=10 {
+                    w.click("concurrency-increase", cx);
+                    assert_eq!(app.read(cx).store.concurrency_limit(), limit);
+                    assert_eq!(Storage::new(path.clone()).load().unwrap().unwrap().concurrency_limit(), limit);
+                }
+                w.click("concurrency-increase", cx);
+                assert_eq!(app.read(cx).store.concurrency_limit(), 10);
+                for limit in (1..10).rev() {
+                    w.click("concurrency-decrease", cx);
+                    assert_eq!(app.read(cx).store.concurrency_limit(), limit);
+                }
+                w.click("concurrency-decrease", cx);
+                assert_eq!(app.read(cx).store.concurrency_limit(), 1);
+                w.click("concurrency-increase", cx);
+                w.click("concurrency-increase", cx);
+                assert_eq!(Storage::new(path.clone()).load().unwrap().unwrap().concurrency_limit(), 3);
+            }).unwrap();
+            cx.update_window(handle, |_, w, cx| {
                 app.update(cx, |a, cx| {
                     a.policy_prompt
                         .update(cx, |s, cx| s.set_value("Unsaved stage instructions", w, cx));

@@ -778,10 +778,10 @@ impl TaskApp {
                     "Queued behind: {}. Starts automatically when this resource is free.",
                     conflicts.join("; ")
                 )
-            } else if self.active_runs.len() >= crate::scheduler::MAX_CONCURRENT_RUNS {
+            } else if self.execution_slots_used() >= self.store.concurrency_limit() {
                 format!(
                     "All {} execution slots are busy. This task is queued and will start automatically when a slot is free.",
-                    crate::scheduler::MAX_CONCURRENT_RUNS
+                    self.store.concurrency_limit()
                 )
             } else {
                 "Queued · preparing to start automatically.".into()

@@ -1391,19 +1391,16 @@ impl TaskApp {
         self.start_pump(cx);
         cx.notify();
     }
+    pub(crate) fn execution_slots_used(&self) -> usize {
+        self.active_runs.len() + self.store.runs.iter()
+            .filter(|run| run.status == "Recovering" && self.store.is_recovery_candidate(run))
+            .count()
+    }
     fn dispatch_runs(&mut self, cx: &mut Context<Self>) {
         if !self.storage_error.is_empty() {
             return;
         }
-        while self.active_runs.len()
-            + self
-                .store
-                .runs
-                .iter()
-                .filter(|r| r.status == "Recovering" && self.store.is_recovery_candidate(r))
-                .count()
-            < crate::scheduler::MAX_CONCURRENT_RUNS
-        {
+        while self.execution_slots_used() < self.store.concurrency_limit() {
             let next = self.queued_runs.iter().position(|(id, _)| {
                 let candidate = self.store.runs.iter().find(|r| r.id == *id).unwrap();
                 if candidate.project_plan.is_none() {

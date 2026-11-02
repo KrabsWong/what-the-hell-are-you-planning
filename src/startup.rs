@@ -12,12 +12,26 @@ use gpui_kit::{
 };
 use std::{path::Path, sync::mpsc};
 
+pub(crate) struct PreparedWorkspace {
+    storage: crate::persistence::Storage,
+    lock: std::fs::File,
+    store: Option<crate::domain::Store>,
+    backup: Option<std::path::PathBuf>,
+}
+pub(crate) enum WorkspaceOpenEvent {
+    Progress(&'static str),
+    Complete(Result<PreparedWorkspace, String>),
+}
+
 type Checks = (Result<String, String>, Result<String, String>);
 #[derive(Default)]
 pub struct Startup {
     pub required: bool,
     pub silent: bool,
     pub pending: Option<mpsc::Receiver<Checks>>,
+    pub(crate) workspace_pending: Option<mpsc::Receiver<WorkspaceOpenEvent>>,
+    pub(crate) workspace_phase: Option<&'static str>,
+    pub(crate) upgrade_backup: Option<std::path::PathBuf>,
     paths: (String, String),
     checks: Option<Checks>,
 }
@@ -32,7 +46,63 @@ fn probe_opencode(path: &str) -> Result<String, String> {
     Ok(format!("Ready · {}", version.trim()))
 }
 impl TaskApp {
+    pub(crate) fn begin_workspace_open(&mut self, storage: crate::persistence::Storage, cx: &mut Context<Self>) {
+        if self.startup.workspace_pending.is_some() { return; }
+        self.workspace_required = true;
+        self.startup.required = true;
+        self.storage_error.clear();
+        self.startup.workspace_phase = Some("Checking workspace data…");
+        self.startup.pending = None;
+        self.startup.checks = None;
+        let (tx, rx) = mpsc::channel();
+        self.startup.workspace_pending = Some(rx);
+        std::thread::spawn(move || {
+            let result = (|| {
+                let lock = storage.acquire_lock()?;
+                let backup = storage.upgrade_paths(|phase| { let _ = tx.send(WorkspaceOpenEvent::Progress(phase)); })?;
+                let store = storage.load()?;
+                Ok(PreparedWorkspace { storage, lock, store, backup })
+            })();
+            let _ = tx.send(WorkspaceOpenEvent::Complete(result));
+        });
+        self.start_pump(cx);
+        cx.notify();
+    }
+    pub(crate) fn poll_workspace_open(&mut self, window: &mut Window, cx: &mut Context<Self>) {
+        loop {
+            let event = match self.startup.workspace_pending.as_ref().map(|rx| rx.try_recv()) {
+                Some(Ok(event)) => event,
+                Some(Err(mpsc::TryRecvError::Disconnected)) => WorkspaceOpenEvent::Complete(Err("Workspace preparation stopped. Please retry.".into())),
+                _ => break,
+            };
+            match event {
+                WorkspaceOpenEvent::Progress(phase) => self.startup.workspace_phase = Some(phase),
+                WorkspaceOpenEvent::Complete(result) => {
+                    self.startup.workspace_pending = None;
+                    self.startup.workspace_phase = None;
+                    match result {
+                        Ok(prepared) => {
+                            self.startup.upgrade_backup = prepared.backup;
+                            self.attach_loaded_storage(prepared.storage, Ok((prepared.lock, prepared.store)), window, cx);
+                            self.workspace_required = self.storage.is_none() || !self.storage_error.is_empty();
+                            if !self.workspace_required {
+                                self.startup.silent = self.startup.upgrade_backup.is_none();
+                                self.check_startup(cx);
+                            } else { self.startup.silent = false; }
+                        }
+                        Err(error) => {
+                            self.storage_error = error;
+                            self.startup.silent = false;
+                        }
+                    }
+                    cx.notify();
+                    break;
+                }
+            }
+        }
+    }
     pub fn check_startup(&mut self, cx: &mut Context<Self>) {
+        if self.workspace_required || self.startup.workspace_pending.is_some() || !self.storage_error.is_empty() { return; }
         let paths = (
             self.executable_input.read(cx).value().trim().to_string(),
             self.ego_input.read(cx).value().trim().to_string(),
@@ -73,6 +143,7 @@ impl TaskApp {
             let ready = self.startup_ready(cx)
                 && self.storage.is_some() && self.storage_error.is_empty();
             self.startup.finish_initial_check(ready);
+            if ready && !self.startup.required { self.check_interrupted_sessions(cx); }
             cx.notify();
         }
     }
@@ -85,6 +156,17 @@ impl TaskApp {
     }
     pub fn startup_view(&self, cx: &mut Context<Self>) -> AnyElement {
         let colors = palette(cx);
+        if let Some(phase) = self.startup.workspace_phase.or(self.workspace_setup.as_ref().map(|_| "Preparing workspace files…")) {
+            return col().id("workspace-upgrading").size_full()
+                .bg(rgb(colors.canvas)).text_color(rgb(colors.text))
+                .items_center().justify_center().gap_4()
+                .child(self.sidebar_logo.clone())
+                .child(col().items_center().gap_2()
+                    .child(div().text_lg().font_weight(FontWeight::SEMIBOLD).child("Preparing your workspace"))
+                    .child(div().id("workspace-upgrade-phase").text_sm().text_color(rgb(colors.muted)).child(phase)))
+                .child(label("Your saved work stays here. Setup continues when this is finished.", cx))
+                .into_any_element();
+        }
         if self.startup.silent {
             return col().id("startup-checking").size_full()
                 .bg(rgb(colors.canvas)).items_center().justify_center()
@@ -179,7 +261,14 @@ impl TaskApp {
                         .child(button("browse-workspace", "Browse…").disabled(self.workspace_setup.is_some()).on_click(cx.listener(|this,_,_,cx| this.choose_workspace(cx))))
                         .child(button("setup-workspace", "Set workspace").disabled(self.workspace_setup.is_some()).on_click(cx.listener(|this,_,_,cx| this.setup_workspace(cx))))))
                     .when(!self.workspace_required, |view| view.child(single_line_text("startup-workspace-path", self.workspace_root.as_ref().map(|p| p.display().to_string()).unwrap_or_default())))
-                    .when(!self.storage_error.is_empty(), |view| view.child(div().text_xs().text_color(rgb(colors.danger)).child(self.storage_error.clone()))))
+                    .when_some(self.startup.upgrade_backup.as_ref(), |view, backup| view.child(col().gap_1()
+                        .child(label("Workspace data upgraded. The previous database was backed up.", cx))
+                        .child(single_line_text("workspace-upgrade-backup", backup.display().to_string()))))
+                    .when(!self.storage_error.is_empty(), |view| view.child(div().text_xs().text_color(rgb(colors.danger)).child(self.storage_error.clone())))
+                    .when(self.workspace_required && self.workspace_root.is_some() && !self.storage_error.is_empty(), |view| view.child(
+                        button("retry-workspace-upgrade", "Retry workspace preparation").on_click(cx.listener(|this,_,_,cx| {
+                            if let Some(root) = &this.workspace_root { this.begin_workspace_open(crate::persistence::Storage::new(root.join("workspace/workspace.sqlite3")), cx); }
+                        })))))
                 .child(card()
                     .child(heading("2 · OpenCode", open.0, open.1))
                     .child(row().justify_between().gap_2().child(label("Runs your AI tasks.", cx))
@@ -198,13 +287,16 @@ impl TaskApp {
                 .child(row().justify_between().gap_3()
                     .child(div().flex_1().min_w_0().text_xs().text_color(rgb(colors.muted)).child("Next: configure your model and provider in Settings."))
                     .child(row().gap_2()
-                        .child(button("startup-recheck", "Check again").disabled(self.startup.pending.is_some()).on_click(cx.listener(|this,_,_,cx| this.check_startup(cx))))
+                        .child(button("startup-recheck", "Check again").disabled(self.workspace_required || self.startup.pending.is_some()).on_click(cx.listener(|this,_,_,cx| this.check_startup(cx))))
                         .child(button("startup-continue", "Continue").primary().disabled(!self.startup_ready(cx)).on_click(cx.listener(|this,_,_,cx| {
                             if !this.startup_ready(cx) { return; }
                             this.store.opencode_path = this.startup.paths.0.clone();
                             this.store.research_config.ego_path = this.startup.paths.1.clone();
                             this.persist_if_changed(true);
-                            if this.storage.is_some() && this.storage_error.is_empty() { this.startup.required = false; }
+                            if this.storage.is_some() && this.storage_error.is_empty() {
+                                this.startup.required = false;
+                                this.check_interrupted_sessions(cx);
+                            }
                             cx.notify();
                         }))))))
             .into_any_element()
@@ -220,6 +312,7 @@ impl Startup {
     }
     fn ready_for(&self, workspace_ready: bool, opencode: &str, ego: &str) -> bool {
         workspace_ready
+            && self.workspace_pending.is_none()
             && self.pending.is_none()
             && self.paths.0 == opencode
             && self.paths.1 == ego

@@ -528,3 +528,53 @@ else:
         root.display()
     );
 }
+
+/// Layout-only regression: no storage attachment, processes, or live sessions.
+pub fn scroll() {
+    let output = std::env::current_dir().unwrap().join(".local/recovery-scroll-qa");
+    std::fs::create_dir_all(&output).unwrap();
+    for (width, height) in [(1000., 680.), (1440., 920.)] {
+        let mut store = Store::empty();
+        store.default_model = "fixture/model".into();
+        store.projects[0].directory = "/unused-scroll-fixture".into();
+        let mut last_step = 0;
+        for index in 0..12 {
+            let goal = store.create_research_goal(format!("Research goal {index}"), "Research".into(), 1).unwrap();
+            let steps = store.apply_research_plan(goal, PLAN).unwrap();
+            store.set_stage(goal, Stage::InProgress).unwrap();
+            let mut run = store.prepare_run(steps[0]).unwrap();
+            run.id = index + 1;
+            run.status = if index % 2 == 0 { "Running" } else { "Queued" }.into();
+            store.runs.push(run);
+            last_step = *steps.last().unwrap();
+        }
+        let mut cx = HeadlessAppContext::with_platform(platform::current_platform(true).text_system(), Arc::new(assets::Assets), platform::current_headless_renderer);
+        cx.update(init);
+        let mut app = None;
+        let window = cx.open_window(size(px(width), px(height)), |w, cx| {
+            let view = cx.new(|cx| TaskApp::new_mock(w, cx));
+            view.update(cx, |a, _| { a.store = store; a.scope = Scope::Recovery; });
+            app = Some(view.clone());
+            cx.new(|cx| base::Root::new(view, w, cx))
+        }).unwrap();
+        let handle = window.into();
+        let app = app.unwrap();
+        cx.update_window(handle, |_, w, cx| { w.render_frame(cx); }).unwrap();
+        cx.update_window(handle, |_, w, cx| {
+            w.render_frame(cx);
+            let before = w.find(("recovery-step", last_step)).bounds().top();
+            assert!(before > px(height), "fixture must overflow the viewport");
+            w.scroll("recovery-scroll", ScrollDelta::Pixels(point(px(0.), px(-10000.))), cx);
+            w.render_frame(cx);
+            let last = w.find(("recovery-step", last_step)).bounds();
+            assert!(last.bottom() <= px(height - 30.), "last task must be reachable above the status bar: {last:?}");
+            assert!(last.top() >= px(40.), "last task must remain visible");
+        }).unwrap();
+        cx.capture_screenshot(handle).unwrap().save(output.join(format!("bottom-{width}.png"))).unwrap();
+        cx.update_window(handle, |_, w, cx| {
+            w.click(("recovery-step", last_step), cx);
+            assert_eq!(app.read(cx).selected, Some(last_step));
+        }).unwrap();
+    }
+    println!("Recovery scroll passed at both window sizes; screenshots: {}", output.display());
+}

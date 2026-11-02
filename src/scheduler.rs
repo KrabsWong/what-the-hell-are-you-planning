@@ -115,8 +115,8 @@ impl Store {
             && (request.research_kind.is_some() || previous.stage == request.stage)
             && (normalized_path(&previous.directory) == normalized_path(&request.directory)
                 || request.workspace_source.as_ref().is_some_and(|source| normalized_path(source) == normalized_path(&previous.directory))
-                || std::fs::read_to_string(Path::new(&request.directory).join(".workspace-migrated"))
-                    .ok().is_some_and(|source| normalized_path(&source) == normalized_path(&previous.directory))))
+                || migrated_workspace_source(Path::new(&request.directory))
+                    .is_some_and(|source| normalized_path(&source) == normalized_path(&previous.directory))))
         .then_some(previous)
     }
 
@@ -406,14 +406,59 @@ mod tests {
         second.project_plan = Some(1);
         assert!(store.run_conflicts(&first, &second));
     }
+    #[test]
+    fn migration_markers_survive_workspace_moves_and_keep_legacy_compatibility() {
+        let base = std::env::temp_dir().join(crate::opencode::new_session_id());
+        let original = base.join("original");
+        let source = original.join("project");
+        let destination = source.join(".research/goal-1");
+        std::fs::create_dir_all(&source).unwrap();
+        std::fs::write(source.join("report.md"), "preserved").unwrap();
+        migrate_workspace(source.to_str().unwrap(), destination.to_str().unwrap()).unwrap();
+        assert_eq!(std::fs::read_to_string(destination.join(".workspace-migrated")).unwrap(), "../..");
+        migrate_workspace(source.to_str().unwrap(), destination.to_str().unwrap()).unwrap();
+        let moved = base.join("moved");
+        std::fs::rename(&original, &moved).unwrap();
+        let source = moved.join("project");
+        let destination = source.join(".research/goal-1");
+        assert_eq!(migrated_workspace_source(&destination).unwrap(), source.canonicalize().unwrap().to_string_lossy());
+        migrate_workspace(source.to_str().unwrap(), destination.to_str().unwrap()).unwrap();
+        assert_eq!(std::fs::read_to_string(destination.join("report.md")).unwrap(), "preserved");
+        std::fs::write(destination.join(".workspace-migrated"), source.to_string_lossy().as_bytes()).unwrap();
+        migrate_workspace(source.to_str().unwrap(), destination.to_str().unwrap()).unwrap();
+        std::fs::remove_dir_all(base).unwrap();
+    }
+}
+
+/// New markers are relative to their containing execution folder; old absolute markers remain readable.
+pub fn migrated_workspace_source(directory: &Path) -> Option<String> {
+    let source = std::fs::read_to_string(directory.join(".workspace-migrated")).ok()?;
+    if source.is_empty() { return None; }
+    let source = Path::new(&source);
+    let resolved = if source.is_absolute() { source.to_path_buf() } else { directory.join(source) };
+    Some(normalized_path(&resolved.to_string_lossy()).to_string_lossy().into_owned())
+}
+
+pub(crate) fn relative_migration_source(source: &Path, destination: &Path) -> PathBuf {
+    let source = normalized_path(&source.to_string_lossy());
+    let destination = normalized_path(&destination.to_string_lossy());
+    let source_parts: Vec<_> = source.components().collect();
+    let destination_parts: Vec<_> = destination.components().collect();
+    let shared = source_parts.iter().zip(&destination_parts).take_while(|(a, b)| a == b).count();
+    // Different volume roots cannot be represented by a relative path.
+    if shared == 0 { return source; }
+    let mut relative = PathBuf::new();
+    for _ in shared..destination_parts.len() { relative.push(".."); }
+    for part in &source_parts[shared..] { relative.push(part.as_os_str()); }
+    if relative.as_os_str().is_empty() { relative.push("."); }
+    relative
 }
 
 /// Copy once via a staging directory; never alter legacy files or merge partial snapshots.
 pub fn migrate_workspace(source: &str, destination: &str) -> Result<(), String> {
     let source = Path::new(source);
     let destination = Path::new(destination);
-    let marker = destination.join(".workspace-migrated");
-    if marker.is_file() && std::fs::read_to_string(&marker).ok().as_deref() == Some(source.to_string_lossy().as_ref()) { return Ok(()); }
+    if migrated_workspace_source(destination).is_some_and(|previous| normalized_path(&previous) == normalized_path(&source.to_string_lossy())) { return Ok(()); }
     if destination.exists() { return Err("The isolated workspace already exists without a migration marker; original files were preserved. Review the folder before retrying.".into()); }
     let parent = destination.parent().ok_or("Invalid workspace destination")?;
     std::fs::create_dir_all(parent).map_err(|e| e.to_string())?;
@@ -436,7 +481,7 @@ pub fn migrate_workspace(source: &str, destination: &str) -> Result<(), String> 
     }
     let result = (|| -> std::io::Result<()> {
         copy(source, &staging)?;
-        std::fs::write(staging.join(".workspace-migrated"), source.to_string_lossy().as_bytes())?;
+        std::fs::write(staging.join(".workspace-migrated"), relative_migration_source(source, destination).to_string_lossy().as_bytes())?;
         std::fs::rename(&staging, destination)
     })();
     if result.is_err() { let _ = std::fs::remove_dir_all(&staging); }

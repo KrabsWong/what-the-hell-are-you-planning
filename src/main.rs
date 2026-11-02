@@ -104,6 +104,8 @@ fn main() {
         return;
     }
     #[cfg(feature = "qa")]
+    if std::env::args().any(|arg| arg == "--qa-recovery-scroll") { recovery_qa::scroll(); return; }
+    #[cfg(feature = "qa")]
     if std::env::args().any(|arg| arg == "--qa-recovery") {
         recovery_qa::run();
         return;

@@ -3169,21 +3169,15 @@ impl Render for TaskApp {
                 match result {
                     Ok(root) => {
                         self.workspace_root = Some(root.clone());
-                        self.attach_storage(
-                            crate::persistence::Storage::new(
-                                root.join("workspace/workspace.sqlite3"),
-                            ),
-                            window,
-                            cx,
+                        self.begin_workspace_open(
+                            crate::persistence::Storage::new(root.join("workspace/workspace.sqlite3")), cx,
                         );
-                        self.workspace_required =
-                            self.storage.is_none() || !self.storage_error.is_empty();
-                        self.check_startup(cx);
                     }
                     Err(error) => self.storage_error = error,
                 }
             }
         }
+        self.poll_workspace_open(window, cx);
         if self.workspace_required || self.startup.required {
             return self.startup_view(cx);
         }

@@ -127,22 +127,46 @@ pub fn initialize(root: &Path, legacy: Option<&Path>) -> Result<PathBuf, String>
         }
         let mut value = serde_json::to_value(&store).map_err(|e| e.to_string())?;
         remap(&mut value, &mappings);
+        // Signatures contain serialized snapshots: remap only their known directory slot,
+        // without refreshing stale inputs or rewriting historical prompt/output text.
+        for run in value["runs"].as_array_mut().into_iter().flatten() {
+            let Some(text) = run.get("input_signature").and_then(serde_json::Value::as_str) else { continue; };
+            let Ok(mut signature) = serde_json::from_str::<serde_json::Value>(text) else { continue; };
+            let index = if run.get("project_plan").is_some_and(|v| !v.is_null()) {
+                match signature.as_array().map(Vec::len) { Some(7) => Some(5), Some(5) => Some(3), _ => None }
+            } else if run.get("research_kind").is_some_and(|v| !v.is_null()) && signature.as_array().is_some_and(|v| v.len() == 5) {
+                Some(2)
+            } else { None };
+            if let Some(index) = index.filter(|index| signature[*index].is_string()) {
+                let before = signature[index].clone();
+                remap(&mut signature[index], &mappings);
+                if signature[index] != before {
+                    let updated = crate::sqlite_storage::replace_signature_path(text, index, &signature[index])?;
+                    run["input_signature"] = serde_json::Value::String(updated);
+                }
+            }
+        }
         store = serde_json::from_value(value).map_err(|e| e.to_string())?;
         store.recover_interrupted_runs();
-        fn remap_markers(directory: &Path, mappings: &[(String, String)]) -> Result<(), String> {
+        fn remap_markers(directory: &Path, staging: &Path, destination: &Path, mappings: &[(String, String)]) -> Result<(), String> {
             for entry in fs::read_dir(directory).map_err(|e| e.to_string())? {
                 let entry = entry.map_err(|e| e.to_string())?;
-                if entry.file_type().map_err(|e| e.to_string())?.is_dir() { remap_markers(&entry.path(), mappings)?; }
+                if entry.file_type().map_err(|e| e.to_string())?.is_dir() { remap_markers(&entry.path(), staging, destination, mappings)?; }
                 else if entry.file_name() == ".workspace-migrated" {
                     let mut value = serde_json::Value::String(fs::read_to_string(entry.path()).map_err(|e| e.to_string())?);
                     remap(&mut value, mappings);
-                    fs::write(entry.path(), value.as_str().unwrap()).map_err(|e| e.to_string())?;
+                    let source = Path::new(value.as_str().unwrap());
+                    let final_directory = destination.join(directory.strip_prefix(staging).map_err(|e| e.to_string())?);
+                    let source = if source.is_absolute() && source.starts_with(destination) {
+                        crate::scheduler::relative_migration_source(source, &final_directory)
+                    } else { source.to_path_buf() };
+                    fs::write(entry.path(), source.to_string_lossy().as_bytes()).map_err(|e| e.to_string())?;
                 }
             }
             Ok(())
         }
-        remap_markers(&staging, &mappings)?;
-        let storage = Storage::new(staging.join("workspace.sqlite3"));
+        remap_markers(&staging, &staging, &destination, &mappings)?;
+        let storage = Storage::new(staging.join("workspace.sqlite3")).with_workspace_root(destination.clone());
         storage.save(&store)?;
         if storage.load()?.as_ref() != Some(&store) {
             return Err("Workspace verification failed; original files are unchanged.".into());
@@ -208,6 +232,54 @@ mod tests {
         assert_eq!(storage.load().unwrap().unwrap(), store);
         assert!(data.join("attachments/material.pdf").is_file());
         for p in [root, old, project] { fs::remove_dir_all(p).unwrap(); }
+    }
+    #[test]
+    fn legacy_import_relocates_signature_paths_and_markers_without_refreshing_inputs() {
+        let root = temp("signature-import"); let old = temp("signature-old"); let project = temp("signature-project");
+        let mut store = Store::empty();
+        store.projects[0].directory = project.to_string_lossy().into_owned();
+        store.default_model = "fixture/model".into();
+        let mut template = store.prepare_project_plan(1).unwrap();
+        template.status = "Succeeded".into();
+        template.prompt = format!("Historical path: {}", project.display());
+        template.output = template.prompt.clone();
+        let signatures = [
+            serde_json::json!([1, "old project name", "old brief", project, []]),
+            serde_json::json!([1, 1, "old request", "date", "old name", project, null]),
+            serde_json::json!([[], [9], project, "analyze", 1]),
+        ];
+        for (index, signature) in signatures.iter().enumerate() {
+            let mut run = template.clone();
+            run.id = index as u64 + 1;
+            run.input_signature = signature.to_string();
+            if index == 2 { run.project_plan = None; run.research_kind = Some(crate::research::ResearchKind::Analyze); }
+            store.runs.push(run);
+        }
+        let marker = project.join(".research/goal-1/.workspace-migrated");
+        fs::create_dir_all(marker.parent().unwrap()).unwrap();
+        fs::write(&marker, project.to_string_lossy().as_bytes()).unwrap();
+        let storage = Storage::new(old.join("workspace.sqlite3"));
+        storage.save(&store).unwrap();
+        let original = fs::read(storage.path()).unwrap();
+        let data = initialize(&root, Some(&old)).unwrap();
+        let restored = Storage::new(data.join("workspace.sqlite3")).load().unwrap().unwrap();
+        for (index, signature) in signatures.into_iter().enumerate() {
+            let mut expected = signature;
+            expected[[3, 5, 2][index]] = serde_json::Value::String(restored.projects[0].directory.clone());
+            assert_eq!(restored.runs[index].input_signature, expected.to_string());
+            assert_eq!(restored.runs[index].prompt, template.prompt);
+            assert_eq!(restored.runs[index].output, template.output);
+        }
+        assert_eq!(fs::read(storage.path()).unwrap(), original);
+        assert_eq!(fs::read_to_string(marker).unwrap(), project.to_string_lossy());
+        let execution = Path::new(&restored.projects[0].directory).join(".research/goal-1");
+        assert_eq!(fs::read_to_string(execution.join(".workspace-migrated")).unwrap(), "../..");
+        assert_eq!(crate::scheduler::migrated_workspace_source(&execution).unwrap(), restored.projects[0].directory);
+        let moved = root.with_extension("moved");
+        fs::rename(&root, &moved).unwrap();
+        let project_after_move = moved.join("workspace/projects/project-1");
+        assert_eq!(crate::scheduler::migrated_workspace_source(&project_after_move.join(".research/goal-1")).unwrap(), project_after_move.canonicalize().unwrap().to_string_lossy());
+        for p in [moved, old, project] { fs::remove_dir_all(p).unwrap(); }
     }
     #[cfg(unix)]
     #[test]

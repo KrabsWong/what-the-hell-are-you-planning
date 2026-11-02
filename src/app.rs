@@ -213,12 +213,7 @@ impl TaskApp {
         match crate::workspace::configured() {
             Ok(Some(root)) => {
                 app.workspace_root = Some(root.clone());
-                app.attach_storage(
-                    Storage::new(root.join("workspace/workspace.sqlite3")),
-                    window,
-                    cx,
-                );
-                app.workspace_required = app.storage.is_none() || !app.storage_error.is_empty();
+                app.begin_workspace_open(Storage::new(root.join("workspace/workspace.sqlite3")), cx);
             }
             Ok(None) => {}
             Err(e) => app.storage_error = e,
@@ -230,7 +225,7 @@ impl TaskApp {
         }
         app.startup.required = true;
         app.startup.silent = !app.workspace_required;
-        app.check_startup(cx);
+        // Dependency probes begin only after the workspace has been upgraded and loaded.
         app
     }
     pub fn choose_workspace(&mut self, cx: &mut Context<Self>) {
@@ -1007,6 +1002,7 @@ impl TaskApp {
     pub fn archive_task(&mut self, id: u64, w: &mut Window, cx: &mut Context<Self>) {
         self.request_archive(crate::archive_app::ArchiveTarget::Task(id), w, cx);
     }
+    #[cfg(feature = "qa")]
     pub fn attach_storage(
         &mut self,
         storage: Storage,
@@ -1015,7 +1011,20 @@ impl TaskApp {
     ) {
         let loaded = storage
             .acquire_lock()
-            .and_then(|lock| storage.load().map(|store| (lock, store)));
+            .and_then(|lock| {
+                storage.upgrade_paths(|_| {})?;
+                storage.load().map(|store| (lock, store))
+            });
+        self.attach_loaded_storage(storage, loaded, window, cx);
+        if self.storage_error.is_empty() { self.check_interrupted_sessions(cx); }
+    }
+    pub(crate) fn attach_loaded_storage(
+        &mut self,
+        storage: Storage,
+        loaded: Result<(std::fs::File, Option<Store>), String>,
+        window: &mut Window,
+        cx: &mut Context<Self>,
+    ) {
         match loaded {
             Ok((lock, store)) => {
                 self._storage_lock = Some(lock);
@@ -1042,10 +1051,14 @@ impl TaskApp {
                         self.last_saved = self.store.clone();
                         self.toast = "Workspace saved locally".into();
                     }
-                    Err(e) => self.storage_error = e,
+                    Err(e) => {
+                        self.storage_error = e;
+                        self.storage = None;
+                        self._storage_lock = None;
+                        return;
+                    }
                 }
                 self.storage = Some(storage);
-                self.check_interrupted_sessions(cx);
             }
             Err(e) => {
                 self.storage_error = e;
@@ -1332,7 +1345,7 @@ impl TaskApp {
             run.session_id = Some(opencode::new_session_id());
         }
         let legacy_source = run.workspace_source.clone().or_else(|| {
-            std::fs::read_to_string(PathBuf::from(&run.directory).join(".workspace-migrated")).ok()
+            crate::scheduler::migrated_workspace_source(std::path::Path::new(&run.directory))
         });
         if let Some(source) = &legacy_source {
             run.prompt = format!(
@@ -1591,6 +1604,7 @@ impl TaskApp {
         .detach();
     }
     pub fn poll_runtime(&mut self, cx: &mut Context<Self>) -> bool {
+        if self.startup.workspace_pending.is_some() { cx.notify(); }
         self.poll_startup(cx);
         self.poll_research_io(cx);
         self.poll_recovery(cx);
@@ -1658,6 +1672,7 @@ impl TaskApp {
         let keep = !self.active_runs.is_empty()
             || !self.queued_runs.is_empty()
             || self.startup.pending.is_some()
+            || self.startup.workspace_pending.is_some()
             || self.discovery.is_some()
             || self.ego_probe.is_some()
             || self.attachment_import.is_some()

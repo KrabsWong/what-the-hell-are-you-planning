@@ -456,7 +456,7 @@ impl TaskApp {
                 .todo_batch
                 .as_ref()
                 .is_none_or(|b| b.state != BatchState::Running);
-        let mut view = col().id("recovery-scroll").flex_1().min_h_0().overflow_y_scroll().p_6().gap_2()
+        let mut view = col().flex_shrink_0().p_6().gap_2()
             .child(row().justify_between().child(div().text_xl().font_weight(FontWeight::SEMIBOLD).child("Paused projects"))
                 .child(row().gap_2().child(button("refresh-recovery", if checking { "Checking sessions…" } else { "Check progress" }).disabled(checking)
                     .on_click(cx.listener(|a, _, _, cx| a.check_interrupted_sessions(cx))))
@@ -679,7 +679,8 @@ impl TaskApp {
                 );
             }
         }
-        view.into_any_element()
+        col().id("recovery-scroll").size_full().min_h_0().overflow_y_scroll()
+            .child(view).map(observed).into_any_element()
     }
 }
 

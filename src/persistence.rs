@@ -12,6 +12,7 @@ static TEMP_SEQUENCE: AtomicU64 = AtomicU64::new(0);
 #[derive(Debug)]
 pub struct Storage {
     path: PathBuf,
+    workspace_root: PathBuf,
 }
 
 #[derive(Serialize, Deserialize)]
@@ -22,7 +23,15 @@ struct WorkspaceFile {
 
 impl Storage {
     pub fn new(path: PathBuf) -> Self {
-        Self { path }
+        let parent = path.parent().filter(|p| !p.as_os_str().is_empty()).unwrap_or(Path::new("."));
+        let workspace_root = std::path::absolute(parent).unwrap_or_else(|_| parent.to_path_buf());
+        Self { path, workspace_root }
+    }
+
+    /// Staged installation resolves paths against the final workspace location.
+    pub fn with_workspace_root(mut self, root: PathBuf) -> Self {
+        self.workspace_root = root;
+        self
     }
 
     #[cfg(feature = "qa")]
@@ -35,6 +44,16 @@ impl Storage {
         }
         crate::workspace::configured()?.map(|root| root.join("workspace/workspace.sqlite3"))
             .ok_or_else(|| "Choose a workspace in the app before continuing.".into())
+    }
+
+    /// Upgrade existing SQLite data before attachment or transfer. Caller holds the workspace lock.
+    /// Returns the retained old-format backup, or None when no upgrade is needed.
+    pub fn upgrade_paths(&self, progress: impl FnMut(&'static str)) -> Result<Option<PathBuf>, String> {
+        if self.path.extension().is_some_and(|extension| extension == "sqlite3") {
+            crate::sqlite_storage::upgrade_paths(&self.path, &self.workspace_root, progress)
+        } else {
+            Ok(None)
+        }
     }
 
     pub fn path(&self) -> &Path {
@@ -72,7 +91,7 @@ impl Storage {
             .is_some_and(|extension| extension == "sqlite3")
         {
             if self.path.exists() {
-                let mut loaded = crate::sqlite_storage::load(&self.path)?;
+                let mut loaded = crate::sqlite_storage::load(&self.path, &self.workspace_root)?;
                 if let Some(store) = &mut loaded { store.normalize_topics(); }
                 return Ok(loaded);
             }
@@ -87,8 +106,8 @@ impl Storage {
                 TEMP_SEQUENCE.fetch_add(1, Ordering::Relaxed)
             ));
             let migrated = (|| {
-                crate::sqlite_storage::save(&temporary, &store)?;
-                if crate::sqlite_storage::load(&temporary)? != Some(store.clone()) {
+                crate::sqlite_storage::save(&temporary, &self.workspace_root, &store)?;
+                if crate::sqlite_storage::load(&temporary, &self.workspace_root)? != Some(store.clone()) {
                     return Err("SQLite migration verification failed".into());
                 }
                 fs::rename(&temporary, &self.path)
@@ -155,7 +174,7 @@ impl Storage {
             .is_some_and(|extension| extension == "sqlite3")
         {
             self.ensure_parent()?;
-            return crate::sqlite_storage::save(&self.path, workspace);
+            return crate::sqlite_storage::save(&self.path, &self.workspace_root, workspace);
         }
         let mut bytes = serde_json::to_vec_pretty(&WorkspaceFile {
             version: VERSION,

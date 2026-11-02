@@ -1,7 +1,7 @@
 use crate::{
     app::{Layout, Scope, TaskApp},
     appearance::palette,
-    domain::{Stage, Task},
+    domain::Task,
     views::*,
 };
 use gpui_kit::{component::Disableable, prelude::FluentBuilder, *};
@@ -10,7 +10,7 @@ impl TaskApp {
     pub(crate) fn topic_grouped_cards(
         &self,
         cards: &[Task],
-        stage: Stage,
+        group: &str,
         cx: &mut Context<Self>,
     ) -> Vec<AnyElement> {
         if matches!(self.scope, Scope::Topic(_)) {
@@ -32,17 +32,28 @@ impl TaskApp {
                 continue;
             }
             let id = topic.id;
+            let colors = palette(cx);
             result.push(
-                quiet_button(
-                    format!("board-topic-{}-{id}", stage.key()),
-                    topic.display_name(),
-                )
-                .px_0()
-                .self_start()
-                .on_click(cx.listener(move |a, _, w, cx| a.navigate(Scope::Topic(id), w, cx)))
-                .into_any_element(),
+                col()
+                    .id(format!("board-topic-group-{}-{id}", group))
+                    .p_2()
+                    .gap_2()
+                    .rounded_md()
+                    .border_1()
+                    .border_color(rgb(colors.line))
+                    .bg(rgb(colors.panel))
+                    .child(quiet_button(format!("board-topic-{}-{id}", group), "")
+                        .w_full().min_w_0().px_1()
+                        .tooltip(topic.display_name())
+                        .accessibility_label(topic.display_name())
+                        .child(single_line_text(
+                            format!("board-topic-title-{}-{id}", group), topic.display_name()))
+                        .child(label(goals.len().to_string(), cx))
+                        .on_click(cx.listener(move |a, _, w, cx| a.navigate(Scope::Topic(id), w, cx))))
+                    .children(goals.into_iter().map(|t| self.goal_card(t, cx)))
+                    .map(observed)
+                    .into_any_element(),
             );
-            result.extend(goals.into_iter().map(|t| self.goal_card(t, cx)));
         }
         // Corrupt/imported legacy roots stay visible while migration is resolved.
         result.extend(

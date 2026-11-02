@@ -1089,11 +1089,11 @@ impl TaskApp {
                         })),
                 ),
         );
-        if self.scope == Scope::Archive {
+        if self.scope == Scope::Archive && self.layout == Layout::List {
             main = main.child(self.topic_directory(None, cx));
         }
         if let Scope::Project(id) = self.scope {
-            if self.layout == Layout::Board || tasks.is_empty() {
+            if self.layout == Layout::List {
                 main = main.child(self.topic_directory(Some(id), cx));
             }
             let pending = self
@@ -1540,7 +1540,7 @@ impl TaskApp {
                             .gap_3()
                             .children(if stage == Stage::InProgress {
                                 self.execution_board_cards(&cards, cx)
-                            } else { self.topic_grouped_cards(&cards, stage, cx) })
+                            } else { self.topic_grouped_cards(&cards, stage.key(), cx) })
                             .when(cards.is_empty(), |d| {
                                 d.child(
                                     div()

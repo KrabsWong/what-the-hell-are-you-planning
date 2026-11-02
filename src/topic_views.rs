@@ -319,26 +319,49 @@ impl TaskApp {
         if topics.is_empty() {
             return div().into_any_element();
         }
-        row()
+        let colors = palette(cx);
+        col()
             .px_6()
             .pb_3()
-            .flex_wrap()
-            .child(label("TOPICS", cx))
-            .children(topics.into_iter().map(|t| {
-                let id = t.id;
-                quiet_button(
-                    format!("topic-link-{id}"),
-                    format!(
-                        "{}{}{}",
-                        t.display_name(),
-                        if t.archived { " · Archived" } else { "" },
-                        self.store.topic_planning_status(id).map(|s| format!(" · {s}")).unwrap_or_default()
-                    ),
-                )
-                .px_0()
-                .self_start()
-                .on_click(cx.listener(move |a, _, w, cx| a.navigate(Scope::Topic(id), w, cx)))
-            }))
+            .gap_2()
+            .min_w_0()
+            .flex_shrink_0()
+            .child(row().justify_between()
+                .child(label(format!("TOPICS · {}", topics.len()), cx))
+                .child(label("Scroll to browse · Click to open", cx)))
+            .child(row()
+                .id("topic-directory-scroll")
+                .w_full()
+                .min_w_0()
+                .gap_2()
+                .pb_2()
+                .overflow_x_scroll()
+                .restrict_scroll_to_axis()
+                .children(topics.into_iter().map(|t| {
+                    let id = t.id;
+                    let title = t.display_name();
+                    let count = self.store.tasks.iter()
+                        .filter(|task| task.parent_id.is_none()
+                            && self.store.task_topic(task.id).is_some_and(|topic| topic.id == id))
+                        .count();
+                    let status = self.store.topic_planning_status(id)
+                        .map(|s| format!(" · {s}")).unwrap_or_default();
+                    button(format!("topic-link-{id}"), "")
+                        .w(px(260.))
+                        .h(px(64.))
+                        .flex_shrink_0()
+                        .border_1()
+                        .border_color(rgb(colors.line))
+                        .bg(rgb(colors.panel))
+                        .tooltip(title.clone())
+                        .accessibility_label(title.clone())
+                        .child(col().w_full().min_w_0().gap_1()
+                            .child(single_line_text(format!("topic-directory-title-{id}"), title))
+                            .child(label(format!("{count} goals{}{status}",
+                                if t.archived { " · Archived" } else { "" }), cx)))
+                        .on_click(cx.listener(move |a, _, w, cx| a.navigate(Scope::Topic(id), w, cx)))
+                }))
+                .map(observed))
             .into_any_element()
     }
 

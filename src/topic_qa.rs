@@ -750,3 +750,71 @@ pub fn goal_actions() {
     }).unwrap();
     println!("Topic report navigation and completed-only export shortcuts passed");
 }
+
+/// Long topic names must never wrap the directory or consume the board viewport.
+pub fn board_directory() {
+    let root = std::env::temp_dir().join("planning-board-directory-qa");
+    std::fs::create_dir_all(&root).unwrap();
+    let mut cx = HeadlessAppContext::with_platform(
+        platform::current_platform(true).text_system(),
+        Arc::new(crate::ui_assets::AppAssets),
+        platform::current_headless_renderer,
+    );
+    cx.update(init);
+    for (width, dark) in [(1000., false), (1440., true)] {
+        let mut entity = None;
+        let mut topics = Vec::new();
+        let handle: AnyWindowHandle = cx.open_window(size(px(width), px(900.)), |w, cx| {
+            let app = cx.new(|cx| TaskApp::new_mock(w, cx));
+            app.update(cx, |a, cx| {
+                a.store = Store::empty();
+                for title in [
+                    "Anthropic IPO 与 AI 资本周期之争：经营基本面、市场分歧和未来情景分析",
+                    "债券、外汇与股票（一级/二级）市场的交易标的、交易机制与全球规模占比对比",
+                    "汇丰与腾讯港股持仓：当前全球与香港市场环境下是否继续持有",
+                    "Alphabet 与 Intel 第三季度财报不及预期原因及投行观点汇总",
+                    "美股半导体板块剧烈波动的成因与未来趋势",
+                ] {
+                    let goal = a.store.create_research_goal(title.into(), "研究行业趋势".into(), 1).unwrap();
+                    topics.push(a.store.task_topic(goal).unwrap().id);
+                }
+                a.navigate(Scope::Project(1), w, cx);
+                a.layout = crate::app::Layout::Board;
+                crate::appearance::apply(if dark { crate::appearance::Appearance::Dark }
+                    else { crate::appearance::Appearance::Light }, Some(w), cx);
+            });
+            entity = Some(app.clone());
+            cx.new(|cx| base::Root::new(app, w, cx))
+        }).unwrap().into();
+        let app = entity.unwrap();
+        cx.update_window(handle, |_, w, cx| {
+            w.render_frame(cx);
+            assert!(w.try_find("topic-directory-scroll").is_none(), "Board must not repeat the topic directory");
+            assert!(w.find("board-scroll").bounds().size.height > px(500.));
+            assert!(w.try_find(format!("board-topic-group-todo-{}", topics[4])).is_some());
+        }).unwrap();
+        cx.capture_screenshot(handle).unwrap()
+            .save(root.join(format!("board-{width}-{dark}.png"))).unwrap();
+        cx.update_window(handle, |_, w, cx| {
+            w.click(format!("board-topic-todo-{}", topics[4]), cx);
+            assert_eq!(app.read(cx).scope, Scope::Topic(topics[4]));
+            app.update(cx, |a, cx| {
+                a.navigate(Scope::Project(1), w, cx);
+                a.layout = crate::app::Layout::List;
+                cx.notify();
+            });
+            w.render_frame(cx);
+            let first = w.find(format!("topic-link-{}", topics[0])).bounds();
+            let second = w.find(format!("topic-link-{}", topics[1])).bounds();
+            assert_eq!(first.top(), second.top());
+            assert!(second.left() >= first.right());
+            assert!(w.find("topic-directory-scroll").bounds().size.height <= px(80.));
+            w.scroll("topic-directory-scroll", ScrollDelta::Pixels(point(px(-300.), px(0.))), cx);
+            w.render_frame(cx);
+            assert!(w.find(format!("topic-link-{}", topics[0])).bounds().left() < first.left());
+            w.click(format!("topic-link-{}", topics[1]), cx);
+            assert_eq!(app.read(cx).scope, Scope::Topic(topics[1]));
+        }).unwrap();
+    }
+    println!("Board topic layout, scrolling and navigation passed: {}", root.display());
+}

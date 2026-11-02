@@ -79,6 +79,8 @@ actions!(task_manager, [Quit]);
 
 fn main() {
     #[cfg(feature = "qa")]
+    if std::env::args().any(|arg| arg == "--qa-board-topics") { topic_qa::board_directory(); return; }
+    #[cfg(feature = "qa")]
     if std::env::args().any(|arg| arg == "--qa-display-order") { workflow_qa::display_order(); return; }
     #[cfg(feature = "qa")]
     if std::env::args().any(|arg| arg == "--qa-board-scroll") { workflow_qa::scroll_benchmark(); return; }

@@ -74,6 +74,7 @@ impl TaskApp {
                         .group
                         == Some(group)
                 })
+                .cloned()
                 .collect();
             if matching.is_empty() {
                 continue;
@@ -83,7 +84,7 @@ impl TaskApp {
                     .gap_2()
                     .id(format!("execution-group-{}", group.key()))
                     .child(label(format!("{} · {}", group.label(), matching.len()), cx))
-                    .children(matching.into_iter().map(|task| self.goal_card(task, cx)))
+                    .children(self.topic_grouped_cards(&matching, group.key(), cx))
                     .map(observed)
                     .into_any_element(),
             );

@@ -773,6 +773,80 @@ pub fn goal_actions() {
         assert!(w.try_find(format!("topic-export-{goal}")).is_none());
         assert!(w.try_find(format!("topic-report-{goal}")).is_none());
     }).unwrap();
+    // A long tree must reveal arrow destinations without moving already visible rows.
+    cx.update_window(handle, |_, w, cx| {
+        app.update(cx, |a, cx| {
+            a.store = store.clone();
+            for index in 0..35 {
+                a.store.create_research_goal_in_topic(format!("Extra goal {index}"), "Scope".into(), 1, Some(topic)).unwrap();
+            }
+            a.open_sidebar_task(goal, w, cx);
+        });
+    }).unwrap();
+    for _ in 0..4 {
+        cx.run_until_parked();
+        cx.update_window(handle, |_, w, cx| w.render_frame(cx)).unwrap();
+    }
+    cx.update_window(handle, |_, w, cx| {
+        let bounds = w.find(format!("sidebar-task-{goal}")).bounds();
+        let viewport = app.read(cx).sidebar_scroll.bounds();
+        assert!(bounds.top() >= viewport.top() && bounds.bottom() <= viewport.bottom(), "row={bounds:?} viewport={viewport:?} offset={:?} pending={:?}", app.read(cx).sidebar_scroll.offset(), app.read(cx).sidebar_reveal);
+        // Simulate manually scrolling away, then navigating from the result panel.
+        app.update(cx, |a, cx| {
+            a.sidebar_scroll.set_offset(point(px(0.), px(0.)));
+            cx.notify();
+        });
+        w.render_frame(cx);
+        w.click("next-task", cx);
+    }).unwrap();
+    for _ in 0..4 {
+        cx.run_until_parked();
+        cx.update_window(handle, |_, w, cx| w.render_frame(cx)).unwrap();
+    }
+    cx.update_window(handle, |_, w, cx| {
+        assert_eq!(app.read(cx).task_result_context, Some(steps[0]));
+        let bounds = w.find(format!("sidebar-task-{}", steps[0])).bounds();
+        let viewport = app.read(cx).sidebar_scroll.bounds();
+        assert!(bounds.top() >= viewport.top() && bounds.bottom() <= viewport.bottom(), "row={bounds:?} viewport={viewport:?} offset={:?} pending={:?}", app.read(cx).sidebar_scroll.offset(), app.read(cx).sidebar_reveal);
+        w.click("previous-task", cx);
+    }).unwrap();
+    for _ in 0..4 {
+        cx.run_until_parked();
+        cx.update_window(handle, |_, w, cx| w.render_frame(cx)).unwrap();
+    }
+    let offset = cx.update(|cx| app.read(cx).sidebar_scroll.offset());
+    cx.update_window(handle, |_, w, cx| {
+        assert_eq!(app.read(cx).task_result_context, Some(goal));
+        app.update(cx, |a, cx| a.open_sidebar_task(goal, w, cx));
+    }).unwrap();
+    for _ in 0..4 {
+        cx.run_until_parked();
+        cx.update_window(handle, |_, w, cx| w.render_frame(cx)).unwrap();
+    }
+    assert_eq!(cx.update(|cx| app.read(cx).sidebar_scroll.offset()), offset);
+    let neighbor = cx.update(|cx| app.read(cx).store.detail_task_neighbors(report).1);
+    for from_result in [true, false] {
+        cx.update_window(handle, |_, w, cx| {
+            app.update(cx, |a, cx| {
+                a.collapsed_sidebar_goals.push(goal);
+                if from_result { a.open_sidebar_task(report, w, cx); }
+                else { a.open_task(report, w, cx); }
+                a.sidebar_scroll.set_offset(point(px(0.), -a.sidebar_scroll.max_offset().y));
+            });
+            w.render_frame(cx);
+            w.click("next-task", cx);
+        }).unwrap();
+        for _ in 0..4 {
+            cx.run_until_parked();
+            cx.update_window(handle, |_, w, cx| w.render_frame(cx)).unwrap();
+        }
+        cx.update_window(handle, |_, w, cx| {
+            assert_eq!(app.read(cx).selected, Some(neighbor));
+            let bounds = w.find(format!("sidebar-task-{neighbor}")).bounds();
+            let viewport = app.read(cx).sidebar_scroll.bounds();
+            assert!(bounds.top() >= viewport.top() && bounds.bottom() <= viewport.bottom());
+        }).unwrap();
+    }
     println!("Topic report navigation and completed-only export shortcuts passed");
 }
 

@@ -270,6 +270,7 @@ impl TaskApp {
             .p_3();
         let mut side = col()
             .id("sidebar-scroll")
+            .track_scroll(&self.sidebar_scroll)
             .flex_1()
             .min_h_0()
             .overflow_y_scroll()
@@ -573,6 +574,8 @@ impl TaskApp {
                                 })
                                 .when(!nested, |d| d.rounded_md())
                                 .hover(|d| d.bg(rgb(colors.hover)))
+                                .id(format!("sidebar-task-row-{tid}"))
+                                .when(active, |d| d.track_scroll(&self.sidebar_selected_row))
                                 .child(task_button)
                                 .when(has_steps, |d| {
                                     d.child(
@@ -3160,6 +3163,27 @@ impl Render for TaskApp {
         // A scroll invalidates this view too. Reuse expensive status validation
         // within this frame only; the next render always sees current domain state.
         self.render_statuses.borrow_mut().clear();
+        if let Some(id) = self.sidebar_reveal.take() {
+            // Deferred effects run after this frame has laid out expanded ancestors.
+            let entity = cx.entity().downgrade();
+            cx.defer(move |cx| {
+                let _ = entity.update(cx, |a, cx| {
+                    if a.selected.or(a.task_result_context) != Some(id) { return; }
+                    let Some(bounds) = a.sidebar_selected_row.bounds_for_item(0) else { return; };
+                    let viewport = a.sidebar_scroll.bounds();
+                    let delta = if bounds.top() < viewport.top() {
+                        viewport.top() - bounds.top()
+                    } else if bounds.bottom() > viewport.bottom() {
+                        viewport.bottom() - bounds.bottom()
+                    } else { px(0.) };
+                    if delta != px(0.) {
+                        let offset = a.sidebar_scroll.offset();
+                        a.sidebar_scroll.set_offset(point(offset.x, offset.y + delta));
+                        cx.notify();
+                    }
+                });
+            });
+        }
         let colors = palette(cx);
         if self.workspace_required {
             if let Some(path) = self.workspace_choice.take() {

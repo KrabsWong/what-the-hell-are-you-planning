@@ -105,6 +105,9 @@ pub struct TaskApp {
     pub scope: Scope,
     pub layout: Layout,
     pub all_status: AllStatus,
+    pub sidebar_scroll: ScrollHandle,
+    pub sidebar_reveal: Option<u64>,
+    pub sidebar_selected_row: ScrollHandle,
     pub detail_scroll: ScrollHandle,
     pub result_scroll: ScrollHandle,
     pub selected: Option<u64>,
@@ -427,6 +430,9 @@ impl TaskApp {
             scope: Scope::Project(1),
             layout: Layout::List,
             all_status: AllStatus::All,
+            sidebar_scroll: ScrollHandle::new(),
+            sidebar_reveal: None,
+            sidebar_selected_row: ScrollHandle::new(),
             detail_scroll: ScrollHandle::new(),
             result_scroll: ScrollHandle::new(),
             selected: None,
@@ -666,6 +672,7 @@ impl TaskApp {
         self.show_task_activity = false;
         self.selected = Some(id);
         self.reveal_task_project(id);
+        self.sidebar_reveal = (!self.store.task_is_archived(id)).then_some(id);
         self.editing = false;
         self.draft = None;
         self.property = None;

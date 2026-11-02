@@ -417,7 +417,7 @@ impl TaskApp {
                             .px_2()
                             .tooltip(hint)
                             .accessibility_label(title.clone())
-                            .on_click(cx.listener(move |a, _, w, cx| a.open_task(goal_id, w, cx)))
+                            .on_click(cx.listener(move |a, _, w, cx| a.open_sidebar_task(goal_id, w, cx)))
                             .child(
                                 row()
                                     .w_full()

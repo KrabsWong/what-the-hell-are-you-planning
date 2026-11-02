@@ -675,6 +675,7 @@ pub fn goal_actions() {
     let topic = store.task(goal).unwrap().topic_id.unwrap();
     let report = *steps.last().unwrap();
     assert!(store.research_export(goal).is_ok());
+    let unfinished = store.create_research_goal_in_topic("Unfinished goal".into(), "Scope".into(), 1, Some(topic)).unwrap();
     let mut cx = HeadlessAppContext::with_platform(
         platform::current_platform(true).text_system(), Arc::new(crate::ui_assets::AppAssets), platform::current_headless_renderer);
     cx.update(init);
@@ -693,6 +694,30 @@ pub fn goal_actions() {
     cx.update_window(handle, |_, w, cx| {
         w.render_frame(cx);
         assert!(w.find(format!("topic-export-{goal}")).visible());
+        w.click(format!("topic-goal-{unfinished}"), cx);
+        assert_eq!(app.read(cx).selected, Some(unfinished));
+        assert_eq!(app.read(cx).task_result_context, None);
+        app.update(cx, |a, cx| a.navigate(Scope::Topic(topic), w, cx));
+        w.render_frame(cx);
+        w.click(format!("topic-goal-{goal}"), cx);
+        assert_eq!(app.read(cx).task_result_context, Some(goal));
+        assert!(app.read(cx).show_run_result);
+        w.render_frame(cx);
+        assert!(w.find("previous-task").visible());
+        assert!(w.find("next-task").visible());
+        w.click("next-task", cx);
+        assert_eq!(app.read(cx).task_result_context, Some(steps[0]));
+        w.render_frame(cx);
+        w.click("next-task", cx);
+        assert_eq!(app.read(cx).task_result_context, Some(steps[1]));
+        w.render_frame(cx);
+        w.click("previous-task", cx);
+        assert_eq!(app.read(cx).task_result_context, Some(steps[0]));
+        app.update(cx, |a, cx| a.open_sidebar_task(report, w, cx));
+        w.render_frame(cx);
+        w.click("next-task", cx);
+        assert_eq!(app.read(cx).selected, Some(unfinished));
+        assert_eq!(app.read(cx).task_result_context, None);
         app.update(cx, |a, cx| a.open_task(report, w, cx));
         w.render_frame(cx);
         w.click("task-view-result", cx);

@@ -848,6 +848,16 @@ impl TaskApp {
                 cx.notify();
             })),
         ));
+        if readable && !planning && self.store.task(context_task.unwrap_or(id)).is_some() {
+            let (previous, next) = self.store.detail_task_neighbors(context_task.unwrap_or(id));
+            actions = actions
+                .child(crate::controls::tool_icon("previous-task", assets::IconName::ArrowUp, "Previous task")
+                    .h(px(28.)).w(px(28.))
+                    .on_click(cx.listener(move |a, _, w, cx| a.open_sidebar_task(previous, w, cx))))
+                .child(crate::controls::tool_icon("next-task", assets::IconName::ArrowDown, "Next task")
+                    .h(px(28.)).w(px(28.))
+                    .on_click(cx.listener(move |a, _, w, cx| a.open_sidebar_task(next, w, cx))));
+        }
         if browser_blocked || (active && run.research_kind == Some(ResearchKind::Collect)) {
             actions = actions.child(
                 quiet_button("run-open-browser", "Open browser")

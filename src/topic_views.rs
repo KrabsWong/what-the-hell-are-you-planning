@@ -356,7 +356,8 @@ impl TaskApp {
                         .tooltip(title.clone())
                         .accessibility_label(title.clone())
                         .child(col().w_full().min_w_0().gap_1()
-                            .child(single_line_text(format!("topic-directory-title-{id}"), title))
+                            .child(row().w_full().min_w_0().h_5().flex_shrink_0()
+                                .child(single_line_text(format!("topic-directory-title-{id}"), title)))
                             .child(label(format!("{count} goals{}{status}",
                                 if t.archived { " · Archived" } else { "" }), cx)))
                         .on_click(cx.listener(move |a, _, w, cx| a.navigate(Scope::Topic(id), w, cx)))

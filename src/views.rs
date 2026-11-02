@@ -1093,9 +1093,6 @@ impl TaskApp {
             main = main.child(self.topic_directory(None, cx));
         }
         if let Scope::Project(id) = self.scope {
-            if self.layout == Layout::List {
-                main = main.child(self.topic_directory(Some(id), cx));
-            }
             let pending = self
                 .store
                 .research_requests
@@ -1223,6 +1220,9 @@ impl TaskApp {
             rows.push(CollectionRow::Task(Box::new(task)));
         }
         main.child(
+            div().id("collection-table-scroll").flex_1().min_h_0().min_w_0()
+                .overflow_x_scroll().restrict_scroll_to_axis()
+                .child(col().w_full().min_w(px(1100.)).h_full().child(
             row()
                 .px_6()
                 .pb_2()
@@ -1302,6 +1302,7 @@ impl TaskApp {
             .h_full()
             .flex_1(),
         )
+        ))
         .into_any_element()
     }
     pub fn ordered_visible_tasks(&self) -> Vec<Task> {

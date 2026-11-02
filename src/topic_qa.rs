@@ -804,17 +804,16 @@ pub fn board_directory() {
                 cx.notify();
             });
             w.render_frame(cx);
-            let first = w.find(format!("topic-link-{}", topics[0])).bounds();
-            let second = w.find(format!("topic-link-{}", topics[1])).bounds();
-            assert_eq!(first.top(), second.top());
-            assert!(second.left() >= first.right());
-            assert!(w.find("topic-directory-scroll").bounds().size.height <= px(80.));
-            w.scroll("topic-directory-scroll", ScrollDelta::Pixels(point(px(-300.), px(0.))), cx);
-            w.render_frame(cx);
-            assert!(w.find(format!("topic-link-{}", topics[0])).bounds().left() < first.left());
-            w.click(format!("topic-link-{}", topics[1]), cx);
-            assert_eq!(app.read(cx).scope, Scope::Topic(topics[1]));
+            assert!(w.try_find("topic-directory-scroll").is_none(), "Project List must not duplicate its topic groups");
+            assert!(w.find(format!("collection-topic-{}", topics[4])).bounds().top() < px(250.));
+            assert!(w.try_find(format!("collection-topic-{}", topics[4])).is_some());
+        }).unwrap();
+        cx.capture_screenshot(handle).unwrap()
+            .save(root.join(format!("list-{width}-{dark}.png"))).unwrap();
+        cx.update_window(handle, |_, w, cx| {
+            w.click(format!("collection-topic-{}", topics[4]), cx);
+            assert_eq!(app.read(cx).scope, Scope::Topic(topics[4]));
         }).unwrap();
     }
-    println!("Board topic layout, scrolling and navigation passed: {}", root.display());
+    println!("Board and List topic layout and navigation passed: {}", root.display());
 }

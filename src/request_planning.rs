@@ -349,6 +349,7 @@ impl Store {
         );
         prompt.push_str(research::RESEARCH_TYPE_GUIDANCE);
         prompt.push_str(research::RESEARCH_PLAN_GUIDANCE);
+        prompt.push_str(research::REPORT_DELIVERY_GUIDANCE);
         let repair = request.planning_run_id
             .and_then(|id| self.runs.iter().find(|r| r.id == id))
             .filter(|run| run.status == "Failed" && run.input_signature == signature
@@ -644,6 +645,7 @@ mod tests {
         assert!(run.prompt.contains("facts_to_verify"));
         assert!(run.prompt.contains(research::RESEARCH_TYPE_GUIDANCE));
         assert!(run.prompt.contains(research::RESEARCH_PLAN_GUIDANCE));
+        assert!(run.prompt.contains(research::REPORT_DELIVERY_GUIDANCE));
         assert!(run.prompt.contains("do not use tools"));
         assert!(s.runs.is_empty());
         let signature = run.input_signature;

@@ -154,6 +154,7 @@ impl Store {
         );
         prompt.push_str(crate::research::RESEARCH_TYPE_GUIDANCE);
         prompt.push_str(crate::research::RESEARCH_PLAN_GUIDANCE);
+        prompt.push_str(crate::research::REPORT_DELIVERY_GUIDANCE);
         if prompt.len() > 240_000 {
             return Err("Project context is too large. Shorten its scope or existing task titles before planning.".into());
         }
@@ -337,6 +338,7 @@ mod tests {
         assert!(run.prompt.contains("All topics will enter Backlog"));
         assert!(run.prompt.contains(crate::research::RESEARCH_TYPE_GUIDANCE));
         assert!(run.prompt.contains(crate::research::RESEARCH_PLAN_GUIDANCE));
+        assert!(run.prompt.contains(crate::research::REPORT_DELIVERY_GUIDANCE));
         assert_eq!(
             run.input_signature,
             store.project_plan_signature(1).unwrap()

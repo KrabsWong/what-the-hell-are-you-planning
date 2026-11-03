@@ -8,7 +8,78 @@ use crate::{
 use gpui_kit::*;
 use std::{path::PathBuf, sync::mpsc};
 impl TaskApp {
+    pub fn open_research_model_picker(&mut self, input: &Entity<component::input::InputState>, cx: &mut Context<Self>) {
+        if self.research_model_picker != Some(input.entity_id()) {
+            self.research_model_picker = Some(input.entity_id());
+            self.research_model_initial = input.read(cx).value();
+            if self.model_field_agent(input) == "Codex" {
+                if self.codex_models.is_empty() { self.discover_codex_models(cx); }
+            } else if self.available_models.is_empty() {
+                self.connection_project = self.research_project;
+                self.discover_models(cx);
+            }
+            cx.notify();
+        }
+    }
+
+    pub fn model_field_agent(&self, input: &Entity<component::input::InputState>) -> &str {
+        self.research_models.iter().position(|field| field == input)
+            .map(|i| self.store.research_agent(ResearchKind::ALL[i]))
+            .unwrap_or(&self.store.research_config.default_agent)
+    }
+
+    pub fn refresh_model_placeholders(&self, w: &mut Window, cx: &mut Context<Self>) {
+        self.global_model.update(cx, |s, cx| s.set_placeholder("Choose a model", w, cx));
+        for i in 0..4 {
+            let placeholder = if self.store.research_agent(ResearchKind::ALL[i]) == self.store.research_config.default_agent {
+                "Global default"
+            } else { "Choose a model" };
+            self.research_models[i].update(cx, |s, cx| s.set_placeholder(placeholder, w, cx));
+        }
+    }
+
+    pub fn set_model_agent(&mut self, stage: Option<usize>, agent: &str, w: &mut Window, cx: &mut Context<Self>) {
+        let current = stage.map(|i| self.store.research_agent(ResearchKind::ALL[i]))
+            .unwrap_or(&self.store.research_config.default_agent);
+        if current == agent { return; }
+        self.snapshot();
+        match stage {
+            Some(i) => {
+                self.store.research_config.agents[i] = Some(agent.to_owned());
+                self.store.research_config.models[i].clear();
+                self.research_models[i].update(cx, |s, cx| s.set_value("", w, cx));
+            }
+            None => {
+                // Preserve existing model overrides on their original agent.
+                for i in 0..4 {
+                    if !self.store.research_config.models[i].is_empty() && self.store.research_config.agents[i].is_none() {
+                        self.store.research_config.agents[i] = Some(self.store.research_config.default_agent.clone());
+                    }
+                }
+                self.store.research_config.default_agent = agent.to_owned();
+                self.store.default_model.clear();
+                self.global_model.update(cx, |s, cx| s.set_value("", w, cx));
+            }
+        }
+        self.research_model_picker = None;
+        self.refresh_model_placeholders(w, cx);
+        self.persist_if_changed(true);
+        cx.notify();
+    }
+
+    pub fn use_global_for_stage(&mut self, i: usize, w: &mut Window, cx: &mut Context<Self>) {
+        self.snapshot();
+        self.store.research_config.agents[i] = None;
+        self.store.research_config.models[i].clear();
+        self.research_models[i].update(cx, |s, cx| s.set_value("", w, cx));
+        self.research_model_picker = None;
+        self.refresh_model_placeholders(w, cx);
+        self.persist_if_changed(true);
+        cx.notify();
+    }
+
     pub fn refresh_research_inputs(&mut self, w: &mut Window, cx: &mut Context<Self>) {
+        self.refresh_model_placeholders(w, cx);
         for i in 0..4 {
             let value = self.store.research_config.models[i].clone();
             self.research_models[i].update(cx, |s, cx| s.set_value(value, w, cx));
@@ -16,24 +87,39 @@ impl TaskApp {
         let path = self.store.research_config.ego_path.clone();
         self.ego_input.update(cx, |s, cx| s.set_value(path, w, cx));
     }
-    pub fn save_research_settings(&mut self, cx: &mut Context<Self>) {
-        let models =
-            std::array::from_fn(|i| self.research_models[i].read(cx).value().trim().to_string());
-        if models
-            .iter()
-            .any(|m: &String| !m.is_empty() && !crate::opencode::valid_model(m))
-        {
-            self.show_save_error("Models must use provider/model format.", cx);
-            return;
+    pub fn finish_model_search(&mut self, input: &Entity<component::input::InputState>, w: &mut Window, cx: &mut Context<Self>) {
+        let draft = input.read(cx).value();
+        let query = draft.trim().to_lowercase();
+        let models = if self.model_field_agent(input) == "Codex" { &self.codex_models } else { &self.available_models };
+        let partial_match = !query.is_empty()
+            && !models.iter().any(|m| m == draft.trim())
+            && models.iter().any(|m| m.to_lowercase().contains(&query));
+        self.finish_model_edit(input, !partial_match, w, cx);
+    }
+
+    pub fn finish_model_edit(&mut self, input: &Entity<component::input::InputState>, accept: bool, w: &mut Window, cx: &mut Context<Self>) {
+        let stage = self.research_models.iter().position(|field| field == input);
+        let saved = match stage {
+            Some(i) => &self.store.research_config.models[i],
+            None => &self.store.default_model,
+        };
+        let draft = input.read(cx).value();
+        let value = draft.trim();
+        if accept && value != saved && ((if self.model_field_agent(input) == "Codex" { crate::codex::valid_model(value) } else { crate::opencode::valid_model(value) }) || (stage.is_some() && value.is_empty())) {
+            self.snapshot();
+            match stage {
+                Some(i) => self.store.research_config.models[i] = value.to_owned(),
+                None => self.store.default_model = value.to_owned(),
+            }
+            self.persist_if_changed(true);
+        } else if draft.as_str() != saved {
+            let previous = saved.clone();
+            input.update(cx, |field, cx| field.set_value(previous, w, cx));
         }
-        self.snapshot();
-        self.store.research_config.models = models;
-        self.store.research_config.ego_path = self.ego_input.read(cx).value().trim().to_string();
-        self.error.clear();
-        self.confirm_save(
-            "Research models and browser path saved to local workspace",
-            cx,
-        );
+        if self.research_model_picker == Some(input.entity_id()) {
+            self.research_model_picker = None;
+        }
+        cx.notify();
     }
     pub fn check_ego(&mut self, cx: &mut Context<Self>) {
         if self.ego_probe.is_some() {
@@ -300,7 +386,12 @@ impl TaskApp {
         run: &mut AgentRun,
     ) -> Result<Vec<PathBuf>, String> {
         let task = self.store.task(id).ok_or("Task not found.")?;
-        if run.research_kind == Some(ResearchKind::Collect) {
+        let browser_handed_off = self.store.owning_research_goal(id)
+            .is_some_and(|goal| self.store.research_browser_handed_off(goal));
+        if browser_handed_off {
+            run.prompt.push_str("\nBROWSER CONTROL: This goal's browser was handed to the user. Browser access remains paused. Do not use browser tools, shell browser commands, other Spaces, other browsers, or background fetching. Continue offline with supplied materials and existing evidence. Return partial with explicit gaps when evidence is insufficient, not blocked solely for this handoff. No user takeover authorization is implied by running this step.\n");
+        }
+        if run.research_kind == Some(ResearchKind::Collect) && !browser_handed_off {
             let r = task.research.as_ref().unwrap();
             let goal = self.store.task(r.goal_id).ok_or("Goal not found.")?;
             run.prompt.push_str(&ego::instructions(
@@ -308,6 +399,9 @@ impl TaskApp {
                 &self.store.research_space(id).unwrap_or_else(|| r.space_name.clone()),
                 &goal.title,
             )?);
+            if run.agent == "Codex" {
+                run.prompt.push_str("\nCODEX BROWSER TRANSPORT: Use the planning_ego MCP server's guide tool to read the full installed browser guide, then its run tool for browser scripts. This replaces the shell-based ego-browser invocation described above and in older session messages. Codex shell sandbox cannot connect to the macOS browser service. Pass JavaScript directly as the script argument; do not invoke ego-browser through shell, request Full Access, or change sandbox settings. All Space ownership, user handoff and access restrictions above still apply. If the bridge is unavailable, report that specific blocker.\n");
+            }
         }
         let mut materials = vec![];
         // Carry original materials through dependency chains, not only parent links.
@@ -377,6 +471,17 @@ impl TaskApp {
         let Some(index) = self.store.runs.iter().position(|r| r.id == run_id) else {
             return;
         };
+        if self.store.runs[index].status == "Blocked"
+            && self.store.runs[index].research_kind == Some(ResearchKind::Collect)
+            && self.store.runs[index].logs.iter().any(|line| line == research::BROWSER_HANDOFF_LOG)
+        {
+            let stored = &mut self.store.runs[index];
+            let materials = stored.attachments.iter().map(|a| format!("{}: not reviewed in this interrupted attempt", a.name)).collect::<Vec<_>>().join("\n");
+            stored.output = serde_json::json!({"status":"partial", "blocker":"browser_handoff",
+                "report":format!("Browser access was handed to the user and remains paused. This attempt was stopped before a validated final report was available. No new verified findings are claimed. Continue with existing evidence and disclose missing data; do not resume browser access without explicit confirmation.\n{materials}"),
+                "sources":[]}).to_string();
+            stored.status = "Succeeded".into();
+        }
         let run = self.store.runs[index].clone();
         if run.project_plan.is_some() {
             self.finalize_project_plan(index);
@@ -421,16 +526,21 @@ impl TaskApp {
                 })
                 .map(|report| {
                     let stored = &mut self.store.runs[index];
-                    stored.output = report.report;
+                    if report.blocker == Some(research::Blocker::BrowserHandoff) {
+                        stored.logs.push(research::BROWSER_HANDOFF_LOG.into());
+                    }
+                    stored.output = if report.status == "partial" { format!("> Evidence gaps: this step finished with incomplete evidence. Preserve its limitations in downstream conclusions.\n\n{}", report.report) } else { report.report };
                     stored.sources = report.sources;
                     if report.status == "blocked" {
                         stored.status = "Blocked".into();
+                        stored.logs.push("[research] Blocked · research incomplete; dependent steps paused. See the result for the blocker.".into());
                         if let Some(goal) = self.run_goal(run_id) {
                             self.research_sequences.remove(&goal);
                         }
                         self.toast =
                             "Research paused · open the result for the required input".into();
                     } else {
+                        stored.logs.push(if report.status == "partial" { "[research] Completed with evidence gaps · downstream steps may continue; see result limitations" } else { "[research] Complete · result validated" }.into());
                         let _ = self
                             .store
                             .set_stage(run.task_id, crate::domain::Stage::Done);

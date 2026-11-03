@@ -75,99 +75,6 @@ impl TaskApp {
                     ),
             );
         }
-        let mut settings = col()
-            .w_full()
-            .max_w(px(850.))
-            .flex_shrink_0()
-            .gap_3()
-            .p_5()
-            .rounded_md()
-            .bg(rgb(colors.panel));
-        settings = settings
-            .child(
-                div()
-                    .font_weight(FontWeight::SEMIBOLD)
-                    .child("Research models"),
-            )
-            .child(label(
-                "Stages use the global model unless an override is entered below. Task status stays separate.",
-                cx,
-            ))
-            .child(button("research-global-settings", "Global model settings →").on_click(cx.listener(|this, _, w, cx| this.open_model_settings(w, cx))));
-        for kind in ResearchKind::ALL {
-            let i = kind.index();
-            settings = settings
-                .child(
-                    row()
-                        .justify_between()
-                        .child(label(kind.label(), cx))
-                        .child(
-                            button(format!("pick-research-model-{i}"), "Choose")
-                                .disabled(self.available_models.is_empty())
-                                .on_click(cx.listener(move |this, _, _, cx| {
-                                    this.research_model_picker =
-                                        if this.research_model_picker == Some(i) {
-                                            None
-                                        } else {
-                                            Some(i)
-                                        };
-                                    cx.notify();
-                                })),
-                        ),
-                )
-                .child(Input::new(&self.research_models[i]).id(format!("research-model-{i}")))
-                .child(
-                    button(format!("research-use-global-{i}"), "Use global model")
-                        .disabled(self.research_models[i].read(cx).value().is_empty())
-                        .on_click(cx.listener(move |this, _, w, cx| {
-                            this.research_models[i].update(cx, |s, cx| s.set_value("", w, cx));
-                            cx.notify();
-                        })),
-                )
-                .child(label(
-                    self.model_source_label(self.research_models[i].read(cx).value().trim()),
-                    cx,
-                ));
-            if self.research_model_picker == Some(i) {
-                settings = settings.child(
-                    col()
-                        .id(format!("research-models-{i}"))
-                        .h(px(180.))
-                        .overflow_y_scroll()
-                        .gap_1()
-                        .children(
-                            self.available_models
-                                .iter()
-                                .filter(|model| {
-                                    let q = self.research_models[i].read(cx).value().to_lowercase();
-                                    q.is_empty() || model.to_lowercase().contains(&q)
-                                })
-                                .map(|model| {
-                                    let model = model.clone();
-                                    button(format!("research-model-option-{model}"), model.clone())
-                                        .on_click(cx.listener(move |this, _, w, cx| {
-                                            this.research_models[i].update(cx, |s, cx| {
-                                                s.set_value(model.clone(), w, cx)
-                                            });
-                                            this.research_model_picker = None;
-                                            cx.notify();
-                                        }))
-                                }),
-                        )
-                        .map(observed),
-                );
-            }
-        }
-        settings=settings.child(button("research-refresh-models","Refresh local models").loading(self.discovering_models()).on_click(cx.listener(|this,_,_,cx|{this.connection_project=this.research_project;this.discover_models(cx);}))).child(label(self.connection_status.clone(), cx))
-            .child(label("Save after changing overrides. PDF text and screenshot OCR are extracted locally for the selected model.", cx))
-            .child(div().h_3().border_b_1().border_color(rgb(colors.line)))
-            .child(div().pt_2().font_weight(FontWeight::SEMIBOLD).child("Browser · ego(lite)"))
-            .child(Input::new(&self.ego_input).id("ego-path"))
-            .child(row().flex_wrap().child(button("check-ego","Check runtime").disabled(self.ego_probe.is_some()).on_click(cx.listener(|this,_,_,cx|this.check_ego(cx)))).child(button("open-ego","Open browser ↗").on_click(cx.listener(|this,_,_,cx|this.open_ego(cx)))))
-            .child(label(self.ego_status.clone(), cx))
-            .child(link_button("install-ego","Install ego(lite) ↗").on_click(|_,_,cx|cx.open_url("https://lite.ego.app")))
-            .child(label("Pages open in a local Space. Use the browser's Space menu to watch or take over. First launch must be completed in ego(lite).", cx))
-            .child(primary_button("save-research-settings", "Save research settings").on_click(cx.listener(|this,_,_,cx|this.save_research_settings(cx))));
         let composer=col().w_full().max_w(px(850.)).min_w_0().gap_4()
             .child(div().text_2xl().font_weight(FontWeight::SEMIBOLD).child("Start with one sentence"))
             .child(muted("Describe what you want to understand and the output you need. We will draft a complete plan in Backlog for your review.", cx))
@@ -193,23 +100,9 @@ impl TaskApp {
                     .border_b_1()
                     .border_color(rgb(colors.line))
                     .justify_between()
-                    .child(div().font_weight(FontWeight::SEMIBOLD).child(
-                        if self.show_research_settings {
-                            "Research settings"
-                        } else {
-                            "Market research"
-                        },
-                    ))
-                    .when(!self.show_research_settings, |d| {
-                        d.child(
-                            button("research-settings-toggle", "Advanced settings…").on_click(
-                                cx.listener(|this, _, _, cx| {
-                                    this.show_research_settings = true;
-                                    cx.notify();
-                                }),
-                            ),
-                        )
-                    }),
+                    .child(div().font_weight(FontWeight::SEMIBOLD).child("Market research"))
+                    .child(button("research-settings-toggle", "Research settings…")
+                        .on_click(cx.listener(|this, _, w, cx| this.open_model_settings(w, cx)))),
             )
             .child(
                 col()
@@ -220,12 +113,145 @@ impl TaskApp {
                     .min_h_0()
                     .p_6()
                     .gap_6()
-                    .when(!self.show_research_settings, |d| d.child(composer))
-                    .when(self.show_research_settings, |d| d.child(settings))
+                    .child(composer)
                     .map(observed),
             )
             .into_any_element()
     }
+    fn model_agent_picker(&self, stage: Option<usize>, cx: &mut Context<Self>) -> AnyElement {
+        let agent = stage.map(|i| self.store.research_agent(ResearchKind::ALL[i]))
+            .unwrap_or(&self.store.research_config.default_agent);
+        let inherited = stage.is_some_and(|i| self.store.research_config.agents[i].is_none());
+        let title = agent.to_owned();
+        let entity = cx.entity().downgrade();
+        button(format!("model-agent-{}", stage.map(|i| i.to_string()).unwrap_or("global".into())), title)
+            .w(px(140.)).flex_shrink_0()
+            .tooltip(if inherited { "Uses the global agent" } else { "Choose the agent for this model" })
+            .icon(assets::IconName::ChevronDown)
+            .dropdown_menu(move |menu, _, _| {
+                let open_entity = entity.clone();
+                let codex_entity = entity.clone();
+                menu.item(PopupMenuItem::new("OpenCode").on_click(move |_, w, cx| {
+                    let _ = open_entity.update(cx, |this, cx| this.set_model_agent(stage, "OpenCode", w, cx));
+                })).item(PopupMenuItem::new("Codex").on_click(move |_, w, cx| {
+                    let _ = codex_entity.update(cx, |this, cx| this.set_model_agent(stage, "Codex", w, cx));
+                }))
+            }).into_any_element()
+    }
+
+    fn research_model_field(&self, input: &Entity<component::input::InputState>, id: String, cx: &mut Context<Self>) -> Div {
+        let colors = palette(cx);
+        let value = input.read(cx).value();
+        let open_input = input.clone();
+        let cancel_input = input.clone();
+        let mut field = div().relative().flex_1().min_w_0()
+            .on_mouse_up(MouseButton::Left, cx.listener(move |this, _, _, cx| {
+                this.open_research_model_picker(&open_input, cx);
+            }))
+            .on_key_down(cx.listener(move |this, event: &KeyDownEvent, w, cx| {
+                if event.keystroke.key == "escape" {
+                    this.finish_model_edit(&cancel_input, false, w, cx);
+                }
+            }))
+            .child(Input::new(input).id(id.clone())
+                .suffix(component::Icon::new(assets::IconName::ChevronDown)
+                    .size(px(14.)).text_color(rgb(colors.muted))));
+        if self.research_model_picker == Some(input.entity_id()) {
+            let input_bounds = std::rc::Rc::new(std::cell::Cell::new(Bounds::<Pixels>::default()));
+            let measured_bounds = input_bounds.clone();
+            field = field.child(canvas(move |bounds, _, _| measured_bounds.set(bounds), |_, _, _, _| {})
+                .absolute().top_0().left_0().size_full());
+            let dismiss_input = input.clone();
+            let query = if value != self.research_model_initial { value.to_lowercase() } else { String::new() };
+            let codex = self.model_field_agent(input) == "Codex";
+            let models = if codex { &self.codex_models } else { &self.available_models };
+            let loading = if codex { self.discovering_codex_models() } else { self.discovering_models() };
+            let matches: Vec<_> = models.iter()
+                .filter(|m| m.to_lowercase().contains(&query)).collect();
+            let mut list = col().id(format!("{id}-options"))
+                .max_h(px(190.)).overflow_y_scroll().occlude()
+                .rounded_md().border_1().border_color(rgb(colors.line))
+                .bg(rgb(colors.panel)).shadow_md().p_1()
+                .on_mouse_down_out(cx.listener(move |this, event: &MouseDownEvent, w, cx| {
+                    if !input_bounds.get().contains(&event.position)
+                        && this.research_model_picker == Some(dismiss_input.entity_id()) {
+                        this.finish_model_search(&dismiss_input, w, cx);
+                    }
+                }));
+            if matches.is_empty() {
+                list = list.child(label(if loading { "Loading local models…" }
+                    else if models.is_empty() { "No models loaded. Refresh this agent or enter a model ID and press Return." }
+                    else { "No matches. Enter a model ID and press Return to use it." }, cx));
+            }
+            for model in matches {
+                let model = model.clone();
+                let input = input.clone();
+                list = list.child(div().id(format!("research-model-option-{model}"))
+                    .flex_shrink_0().px_2().py_1().cursor_pointer()
+                    .hover(|d| d.bg(rgb(colors.line))).child(model.clone())
+                    .on_mouse_down(MouseButton::Left, cx.listener(move |this, _, w, cx| {
+                        w.prevent_default();
+                        cx.stop_propagation();
+                        input.update(cx, |s, cx| s.set_value(model.clone(), w, cx));
+                        this.finish_model_edit(&input, true, w, cx);
+                    })).map(observed));
+            }
+            field = field.child(div().absolute().top_full().left_0().right_0()
+                .child(deferred(div().on_scroll(|_, _, cx| cx.stop_propagation()).child(list.map(observed))).with_priority(1)));
+        }
+        field
+    }
+
+    pub fn research_settings_panel(&self, cx: &mut Context<Self>) -> Div {
+        let colors = palette(cx);
+        let mut settings = col().gap_3()
+            .child(self.agent_settings_panel(cx))
+            .child(col().gap_2()
+                .child(div().font_weight(FontWeight::SEMIBOLD).child("Global default"))
+                .child(row().child(self.model_agent_picker(None, cx)).child(self.research_model_field(
+                    &self.global_model, "research-global-model".into(), cx,
+                ))))
+            .child(col().pt_2().gap_1()
+                .child(row().justify_between()
+                    .child(div().font_weight(FontWeight::SEMIBOLD).child("Research stage models"))
+                    .child(button("global-model-all-stages", "Use global for all stages")
+                        .disabled(self.research_models.iter().all(|m| m.read(cx).value().is_empty()) && self.store.research_config.agents.iter().all(Option::is_none))
+                        .on_click(cx.listener(|this, _, w, cx| {
+                            this.snapshot();
+                            this.store.research_config.models = Default::default();
+                            this.store.research_config.agents = Default::default();
+                            this.refresh_model_placeholders(w, cx);
+                            this.persist_if_changed(true);
+                            for input in &this.research_models { input.update(cx, |s, cx| s.set_value("", w, cx)); }
+                            this.research_model_picker = None;
+                            cx.notify();
+                        }))))
+                .child(label("Choose an agent and model for each stage, or keep the global default.", cx)));
+        for kind in ResearchKind::ALL {
+            let i = kind.index();
+            let value = self.research_models[i].read(cx).value();
+            let field = self.research_model_field(&self.research_models[i], format!("research-model-{i}"), cx);
+            settings = settings.child(col().gap_1()
+                .child(div().text_sm().font_weight(FontWeight::MEDIUM).child(kind.label()))
+                .child(row().child(self.model_agent_picker(Some(i), cx)).child(field)
+                    .child(button(format!("research-use-global-{i}"), "Use global")
+                        .disabled(value.is_empty() && self.store.research_config.agents[i].is_none())
+                        .on_click(cx.listener(move |this, _, w, cx| this.use_global_for_stage(i, w, cx)))))
+                .when(value.is_empty() && self.store.research_agent(kind) != self.store.research_config.default_agent, |d| {
+                    d.child(label("Choose a model for this agent before running this stage.", cx))
+                }));
+        }
+        settings=settings
+            .child(div().h_3().border_b_1().border_color(rgb(colors.line)))
+            .child(div().pt_2().font_weight(FontWeight::SEMIBOLD).child("Browser · ego(lite)"))
+            .child(Input::new(&self.ego_input).id("ego-path"))
+            .child(row().flex_wrap().child(button("check-ego","Check runtime").disabled(self.ego_probe.is_some()).on_click(cx.listener(|this,_,_,cx|this.check_ego(cx)))).child(button("open-ego","Open browser ↗").on_click(cx.listener(|this,_,_,cx|this.open_ego(cx)))))
+            .child(label(self.ego_status.clone(), cx))
+            .when(!crate::ego::is_installed(&self.ego_input.read(cx).value()), |d| d.child(link_button("install-ego","Install ego(lite) ↗").on_click(|_,_,cx|cx.open_url("https://lite.ego.app"))))
+            .child(label("Pages open in a local Space. Use the browser's Space menu to watch or take over. First launch must be completed in ego(lite).", cx));
+        settings
+    }
+
     pub fn materials_panel(&self, id: u64, cx: &mut Context<Self>) -> AnyElement {
         let colors = palette(cx);
         let task = self.store.task(id).unwrap();
@@ -366,7 +392,19 @@ impl TaskApp {
         let browser = quiet_button("task-open-ego", "Open ego(lite) ↗")
             .tooltip("Opens the browser app. Select the research Space in ego(lite).")
             .on_click(cx.listener(|this, _, _, cx| this.open_ego(cx)));
-        let mut panel = col().gap_2();
+        let next_model = self.store.research_model(research.kind);
+        let mut panel = col().gap_2()
+            .child(label(
+                format!("Next run · {} · Model · {}", self.store.research_agent(research.kind), if next_model.is_empty() { "Not configured" } else { next_model }),
+                cx,
+            ));
+        if let Some(run) = self.store.runs.iter().rev().find(|run| run.project_plan.is_none() && run.task_id == id) {
+            panel = panel.child(label(
+                format!("Latest run #{} · {} · Model · {}", run.id, run.agent,
+                    if run.model.is_empty() { "Not recorded" } else { run.model.as_str() }),
+                cx,
+            ));
+        }
         if pending_approval {
             let goal = research.goal_id;
             panel = panel.child(col().p_4().gap_3().rounded_md().bg(rgb(colors.panel))
@@ -455,7 +493,6 @@ impl TaskApp {
     pub fn run_result_panel(&self, run: &AgentRun, cx: &mut Context<Self>) -> AnyElement {
         let colors = palette(cx);
         let output = run.output.clone();
-        let copy = output.clone();
         let sources_open = self.expanded_run_sources == Some(run.id);
         let run_id = run.id;
         col()
@@ -463,13 +500,6 @@ impl TaskApp {
             .min_h_0()
             .gap_1()
             .when(run.research_kind.is_some_and(|kind|kind!=ResearchKind::Goal)&&run.status=="Succeeded"&&self.store.research_result(run.task_id).is_none_or(|latest|latest.id!=run.id),|d|d.child(label("Historical result · task context or dependency results have changed. Run the task again to refresh.", cx)))
-            .child(
-                row().justify_between()
-                    .child(label(format!("{} sources · {} materials", run.sources.len(), run.attachments.len()), cx))
-                    .child(tool_icon("copy-result", assets::IconName::Copy, "Copy result")
-                        .disabled(output.is_empty())
-                        .on_click(move |_, _, cx| cx.write_to_clipboard(ClipboardItem::new_string(copy.clone())))),
-            )
             .child(
                 col()
                     .id("research-result-viewport")

@@ -123,6 +123,9 @@ fn parse_transcript(value: &Value, prompt: &str) -> Result<SessionCheck, String>
     Ok(SessionCheck::Complete(output))
 }
 fn inspect(executable: &Path, run: &AgentRun) -> SessionCheck {
+    if run.agent == "Codex" {
+        return inspect_codex(run);
+    }
     let Some(session) = &run.session_id else {
         return SessionCheck::Stopped;
     };
@@ -144,7 +147,7 @@ fn inspect(executable: &Path, run: &AgentRun) -> SessionCheck {
         if active.contains_key(session) {
             return Ok(SessionCheck::Running);
         }
-        let request = opencode::Request {
+        let request = opencode::Request { browser_executable: None,
             executable: executable.into(),
             directory: directory.canonicalize().map_err(|e| e.to_string())?,
             model: String::new(),
@@ -167,6 +170,27 @@ fn inspect(executable: &Path, run: &AgentRun) -> SessionCheck {
     })();
     result.unwrap_or_else(SessionCheck::Unknown)
 }
+// Every Codex child inherits an attempt lease, including before thread.started.
+// Recovery deliberately avoids reading Codex's private rollout schema. Once stopped,
+// the saved thread ID can be resumed explicitly by the normal dispatcher.
+pub(crate) fn inspect_codex(run: &AgentRun) -> SessionCheck {
+    if run.started_at.is_empty() { return SessionCheck::Stopped; }
+    let directory = match Path::new(&run.directory).canonicalize() {
+        Ok(path) => path,
+        Err(error) => return SessionCheck::Unknown(format!("Cannot inspect Codex working directory: {error}")),
+    };
+    let request = opencode::Request { browser_executable: None,
+        executable: Default::default(), directory, model: run.model.clone(),
+        prompt: run.prompt.clone(), title: run.task_title.clone(), files: vec![],
+        session_id: run.session_id.clone(),
+    };
+    match crate::codex::lock_attempt(&request) {
+        Ok(_lease) => SessionCheck::Stopped,
+        Err(error) if error.contains("session is still running") => SessionCheck::Running,
+        Err(error) => SessionCheck::Unknown(error),
+    }
+}
+
 impl Store {
     // Superseded attempts are history, not live resource owners.
     pub(crate) fn is_recovery_candidate(&self, run: &AgentRun) -> bool {
@@ -226,7 +250,7 @@ impl TaskApp {
             self.recovery.next_check = None;
             return;
         }
-        let executable = self.store.opencode_path.clone();
+        let executables: Vec<_> = runs.iter().map(|run| self.store.agent_path(&run.agent).to_owned()).collect();
         let (tx, rx) = mpsc::channel();
         for run in &runs {
             self.recovery.checks.insert(run.id, SessionCheck::Checking);
@@ -234,7 +258,7 @@ impl TaskApp {
         self.recovery.receiver = Some(rx);
         self.recovery.next_check = None;
         std::thread::spawn(move || {
-            for run in runs {
+            for (run, executable) in runs.into_iter().zip(executables) {
                 let check = inspect(Path::new(&executable), &run);
                 if tx.send((run.id, check)).is_err() {
                     break;
@@ -320,7 +344,7 @@ impl TaskApp {
                     run.ended_at = None;
                 }
                 let message = match &check {
-                    SessionCheck::Running => "[recovery] Previous session is still running in OpenCode. Monitoring without starting another run.".to_string(),
+                    SessionCheck::Running => format!("[recovery] Previous session is still running in {}. Monitoring without starting another run.", run.agent),
                     SessionCheck::Stopped => "[recovery] Previous session has stopped. Resume explicitly from Paused projects.".to_string(),
                     SessionCheck::Unknown(error) => format!("[recovery] Session check could not complete: {error}"),
                     _ => String::new(),
@@ -546,7 +570,7 @@ impl TaskApp {
                                 break;
                             }
                             Some(SessionCheck::Running) => {
-                                status = "Still running in OpenCode · monitoring".into()
+                                status = format!("Still running in {} · monitoring", run.agent)
                             }
                             Some(SessionCheck::Checking) | None => {
                                 status = "Checking previous session…".into()
@@ -565,7 +589,7 @@ impl TaskApp {
                     {
                         status = "Running in this app".into();
                     }
-                    let children = self.store.goal_step_ids(goal);
+                    let children = self.store.research_children(goal);
                     let mut group = col()
                         .pl_8()
                         .gap_1()
@@ -689,6 +713,30 @@ mod tests {
     use super::{SessionCheck, parse_transcript, request_matches};
     use crate::domain::{Stage, Store};
     use serde_json::json;
+    #[test]
+    fn codex_recovery_uses_attempt_lease_even_before_session_event() {
+        let mut store = Store::empty();
+        store.projects[0].directory = std::env::temp_dir().to_string_lossy().into_owned();
+        store.default_model = "test/model".into();
+        let goal = store.create_research_goal("Recovery".into(), "Scope".into(), 1).unwrap();
+        let mut run = store.prepare_run(goal).unwrap();
+        run.agent = "Codex".into();
+        run.prompt = crate::opencode::new_session_id();
+        run.session_id = None;
+        let request = crate::opencode::Request { browser_executable: None,
+            executable: Default::default(), directory: run.directory.clone().into(),
+            model: run.model.clone(), prompt: run.prompt.clone(), title: run.task_title.clone(),
+            files: vec![], session_id: None,
+        };
+        let lease = crate::codex::lock_attempt(&request).unwrap();
+        let nonexistent = std::path::Path::new("/nonexistent/opencode-must-not-run");
+        assert_eq!(super::inspect(nonexistent, &run), SessionCheck::Running);
+        drop(lease);
+        assert_eq!(super::inspect(nonexistent, &run), SessionCheck::Stopped);
+        run.session_id = Some("codex-thread".into());
+        assert_eq!(super::inspect(nonexistent, &run), SessionCheck::Stopped);
+    }
+
     #[test]
     fn transcript_recovery_requires_matching_request_and_successful_end() {
         let transcript = json!({"messages":[{"type":"user","text":"old"},{"type":"assistant","content":[{"type":"text","text":"old output"}]},{"type":"idle","outcome":"succeeded"},{"type":"user","text":"current"}]});

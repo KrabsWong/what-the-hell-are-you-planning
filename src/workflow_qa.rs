@@ -62,98 +62,10 @@ print(json.dumps({'type': 'text', 'part': {'text': text}}), flush=True)
         .unwrap()
         .into();
     let app = entity.unwrap();
-    cx.update_window(handle, |_, w, cx| {
-        w.render_frame(cx);
-        w.drag_to(format!("card-{id}"), "column-in-progress", cx);
-        assert_eq!(app.read(cx).store.task(id).unwrap().stage, Stage::Backlog);
-        assert!(app.read(cx).store.runs.is_empty());
-        w.drag_to(format!("card-{id}"), "column-todo", cx);
-        assert_eq!(app.read(cx).store.task(id).unwrap().stage, Stage::Planned);
-        w.drag_to(format!("card-{id}"), "column-in-progress", cx);
-        assert_eq!(app.read(cx).store.runs.len(), 1, "{}", app.read(cx).error);
-        assert_eq!(app.read(cx).store.runs[0].stage, Stage::InProgress);
-        assert!(
-            app.read(cx).store.runs[0]
-                .prompt
-                .contains("Implement the agreed task")
-        );
-        assert_eq!(app.read(cx).scope, Scope::All);
-        assert_eq!(
-            app.read(cx).store.task_status(id, None).group,
-            Some(ExecutionGroup::Queued)
-        );
-        w.render_frame(cx);
-        w.drag_to(format!("card-{id}"), "column-todo", cx);
-        assert_eq!(app.read(cx).store.runs.len(), 1);
-        assert!(app.read(cx).error.contains("submitted"));
-        w.click("execution-status-filter", cx);
-        w.render_frame(cx);
-        assert_eq!(w.find(3usize).label(), Some("Running · 0"));
-        w.click(3usize, cx);
-        w.render_frame(cx);
-        assert!(w.try_find(format!("card-{id}")).is_none());
+    cx.update_window(handle, |_, _, cx| {
+        app.update(cx, |a, cx| a.start_run(id, cx));
+        assert!(app.read(cx).store.runs.is_empty(), "Legacy tasks cannot start new runs");
     }).unwrap();
-    cx.update_window(handle, |_, w, cx| {
-        w.render_frame(cx);
-        w.click("execution-status-filter", cx);
-    }).unwrap();
-    cx.update_window(handle, |_, w, cx| {
-        w.render_frame(cx);
-        w.click(0usize, cx);
-        app.update(cx, |a, cx| a.change_stage(id, Stage::InProgress, cx));
-        assert_eq!(
-            app.read(cx).store.runs.len(),
-            1,
-            "Duplicate submission must not start another run"
-        );
-    })
-    .unwrap();
-    let deadline = Instant::now() + Duration::from_secs(12);
-    loop {
-        cx.update_window(handle, |_, w, cx| {
-            app.update(cx, |a, cx| {
-                a.poll_runtime(cx);
-            });
-            w.render_frame(cx);
-        })
-        .unwrap();
-        if cx
-            .update(|cx| app.read(cx).active_runs.is_empty() && app.read(cx).queued_runs.is_empty())
-        {
-            break;
-        }
-        assert!(Instant::now() < deadline, "Local fixture timed out");
-        cx.run_until_parked();
-        std::thread::sleep(Duration::from_millis(30));
-    }
-    cx.update_window(handle, |_, w, cx| {
-        assert_eq!(
-            app.read(cx).store.task_status(id, None).phase,
-            Stage::Review
-        );
-        app.update(cx, |a, cx| {
-            a.change_stage(id, Stage::Planned, cx);
-            assert!(a.error.contains("Cannot move"));
-            a.change_stage(id, Stage::Done, cx);
-            assert_eq!(a.store.task_status(id, None).phase, Stage::Done);
-            // A failed submission must not create a fake Running task.
-            let invalid = a
-                .store
-                .create_task("Missing model", 1, Stage::Planned, None)
-                .unwrap();
-            a.store.default_model.clear();
-            let count = a.store.runs.len();
-            a.change_stage(invalid, Stage::InProgress, cx);
-            assert_eq!(a.store.runs.len(), count);
-            assert_eq!(a.store.task_status(invalid, None).phase, Stage::Planned);
-            a.store.default_model = "fixture/model".into();
-            a.error.clear();
-            a.store.tasks.retain(|task| task.id != invalid);
-            a.show_done = true;
-        });
-        w.render_frame(cx);
-    })
-    .unwrap();
     // A single goal drop must execute the complete dependency chain in order.
     let (chain, steps) = app.update(&mut cx, |a, _| {
         let goal = a.store.create_research_goal("Drag dependency acceptance".into(), "Local evidence".into(), 1).unwrap();

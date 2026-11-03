@@ -63,13 +63,10 @@ impl Store {
     pub fn todo_batch_items(&self, project: u64) -> Vec<u64> {
         self.tasks.iter().filter(|task| {
             task.project_id == project && !self.task_is_archived(task.id)
-                && match &task.research {
-                    Some(research) => matches!(task.stage, Stage::Planned | Stage::InProgress)
-                        && research.kind == ResearchKind::Goal
-                        && self.goal_execution_approved(task.id)
-                        && (!self.has_research_plan(task.id) || self.next_research_task(task.id) != Ok(None)),
-                    None => task.stage == Stage::Planned && task.parent_id.is_none(),
-                }
+                && task.research.as_ref().is_some_and(|r| r.kind == ResearchKind::Goal)
+                && matches!(task.stage, Stage::Planned | Stage::InProgress)
+                && self.goal_execution_approved(task.id)
+                && (!self.has_research_plan(task.id) || self.next_research_task(task.id) != Ok(None))
         }).map(|task| task.id).collect()
     }
 
@@ -78,7 +75,6 @@ impl Store {
         self.has_research_plan(goal)
             && children.iter().all(|id| self.task(*id).is_some_and(|t| t.stage == Stage::Done))
             && self.research_results_current(&children)
-            && self.tasks.iter().filter(|t| !t.archived && t.research.is_none() && self.owning_research_goal(t.id) == Some(goal)).all(|t| t.stage == Stage::Done)
     }
 
     /// Internal steps inherit approval from their goal; they are never queue items themselves.
@@ -106,27 +102,12 @@ impl Store {
         if self.task_is_archived(item) || task.project_id != project {
             return Err("The queued goal is no longer available in this project.".into());
         }
-        if let Some(research) = &task.research {
-            if research.kind != ResearchKind::Goal {
-                return Err("Execute the parent goal, not an individual research step.".into());
-            }
-            if !self.goal_execution_approved(item) {
-                return Err("Research approval was withdrawn. Review the goal and move it to Todo.".into());
-            }
-            if self.goal_tasks_complete(item) {
-                return Ok(None);
-            }
-            if task.stage != Stage::Planned && task.stage != Stage::InProgress {
-                return Err("Move the goal to Todo before continuing.".into());
-            }
-            let ready = self.ready_research_tasks(item)?;
-            return ready.first().copied().map(Some).ok_or_else(|| "Waiting for research dependencies or a blocked step. Review the goal's progress.".into());
+        if self.goal_tasks_complete(item) { return Ok(None); }
+        if !matches!(task.stage, Stage::Planned | Stage::InProgress) {
+            return Err("Move the goal to Todo before continuing.".into());
         }
-        if task.stage == Stage::Done { return Ok(None); }
-        if task.stage != Stage::Planned || task.parent_id.is_some() {
-            return Err("Only approved root tasks and goals can be executed from Todo.".into());
-        }
-        Ok(Some(item))
+        self.ready_research_tasks(item)?.first().copied().map(Some)
+            .ok_or_else(|| "Waiting for research dependencies or a blocked step. Review the goal's progress.".into())
     }
 
 }
@@ -189,7 +170,8 @@ mod tests {
             .create_research_goal("Other".into(), "Scope".into(), p)
             .unwrap();
         s.task_mut(other).unwrap().project_id = p + 1;
-        assert_eq!(s.todo_batch_items(p), vec![goal, ordinary]);
+        assert_eq!(s.todo_batch_items(p), vec![goal]);
+        assert!(s.next_todo_batch_task(p, ordinary).is_err());
         assert_eq!(s.next_todo_batch_task(p, goal), Ok(Some(steps[0])));
     }
     #[test]
@@ -197,11 +179,16 @@ mod tests {
         let (mut s, p, goal) = setup();
         assert_eq!(s.next_todo_batch_task(p, goal), Ok(Some(goal)));
         let ids = s.apply_research_plan(goal, PLAN).unwrap();
+        let legacy = s.create_task("Legacy subtask", p, Stage::Planned, Some(goal)).unwrap();
         for id in &ids {
             complete(&mut s, *id);
         }
+        s.sync_goal_progress(goal);
+        assert_eq!(s.task(goal).unwrap().stage, Stage::Done);
+        assert_eq!(s.task(legacy).unwrap().stage, Stage::Planned);
         assert!(s.todo_batch_items(p).is_empty());
         assert_eq!(s.next_todo_batch_task(p, goal), Ok(None));
+        s.set_stage(goal, Stage::Planned).unwrap();
         s.add_comment(ids[1], "New information").unwrap();
         assert_eq!(s.todo_batch_items(p), vec![goal]);
         assert_eq!(s.next_todo_batch_task(p, goal), Ok(Some(ids[1])));

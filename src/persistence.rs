@@ -298,14 +298,6 @@ impl Storage {
         if cleaned.projects.is_empty() {
             cleaned.projects = Store::empty().projects;
         }
-        let defaults = Store::empty();
-        for policy in &mut cleaned.policies {
-            if seed.policies.contains(policy)
-                && let Some(default) = defaults.policies.iter().find(|p| p.stage == policy.stage)
-            {
-                *policy = default.clone();
-            }
-        }
         // Keep next_id monotonic and preserve configured policies, real runs and settings.
         self.save(&cleaned)?;
         *workspace = cleaned;
@@ -501,8 +493,7 @@ mod tests {
         old.policies[2].model = common.into();
         old.projects[0].directory = "/tmp".into();
         old.set_stage(1, old.policies[0].stage).unwrap();
-        let run = old.prepare_run(1).unwrap();
-        old.runs.push(run);
+        old.simulate_run(1).unwrap();
         write_legacy_workspace(&storage, &old, 3);
         let before_bytes = fs::read(storage.path()).unwrap();
         let restored = storage.load().unwrap().unwrap();
@@ -511,7 +502,7 @@ mod tests {
         expected.research_config.models = Default::default();
         expected.policies[0].model.clear();
         assert_eq!(restored, expected);
-        assert_eq!(restored.prepare_run(1).unwrap().model, common);
+        assert!(restored.prepare_run(1).is_err());
         assert_eq!(restored.tasks, old.tasks);
         assert_eq!(restored.runs, old.runs);
         assert_eq!(fs::read(storage.path()).unwrap(), before_bytes);

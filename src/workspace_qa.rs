@@ -18,6 +18,12 @@ pub fn run() {
         let handle = window.into();
         cx.update_window(handle, |_, w, cx| { w.render_frame(cx); }).unwrap();
         cx.update_window(handle, |_, w, cx| { w.render_frame(cx); }).unwrap();
+        cx.update_window(handle, |_, w, cx| {
+            w.render_frame(cx);
+            assert!(w.try_find("startup-opencode").is_some());
+            assert!(w.try_find("startup-codex").is_some());
+            assert_eq!(w.find("startup-continue").disabled(), Some(true));
+        }).unwrap();
         cx.capture_screenshot(handle).unwrap().save(root.join(format!("setup-{width}.png"))).unwrap();
         let app = app.unwrap();
         for phase in ["Backing up existing data…", "Converting workspace paths…", "Verifying upgraded data…"] {
@@ -137,7 +143,7 @@ fn upgrade_retry_preserves_lock_ownership() {
 
 /// Verify the deferred date features have no visible entry points.
 pub fn calendar() {
-    use crate::{domain::Stage, appearance::Appearance};
+    use crate::appearance::Appearance;
     let mut cx = HeadlessAppContext::with_platform(platform::current_platform(true).text_system(), Arc::new(assets::Assets), platform::current_headless_renderer);
     cx.update(init);
     let mut app = None;
@@ -159,7 +165,7 @@ pub fn calendar() {
         });
         w.render_frame(cx);
         assert!(w.try_find("edit-date").is_none());
-        app.update(cx, |a, cx| a.begin_draft(Some(1), None, Stage::Backlog, w, cx));
+        app.update(cx, |a, cx| a.begin_draft(1, w, cx));
         w.render_frame(cx);
         assert!(w.try_find("draft-due").is_none());
         w.click("save-task", cx);

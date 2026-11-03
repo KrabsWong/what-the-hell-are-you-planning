@@ -249,7 +249,9 @@ fn run_checks(layout_only: bool) {
                 app.update(cx, |a, cx| {
                     a.store.runs[0].status = "Succeeded".into();
                     a.store.runs[0].output = REPORT.into();
-                    a.start_run(ordinary, cx);
+                    let planner = a.store.create_research_goal("Local cancellation fixture".into(), "Wait for cancellation.".into(), 1).unwrap();
+                    a.start_run(planner, cx);
+                    a.poll_runtime(cx);
                     assert!(!a.active_runs.is_empty(), "{}", a.error);
                 });
                 w.render_frame(cx);
@@ -496,8 +498,8 @@ fn run_checks(layout_only: bool) {
             .unwrap();
             screenshot(&mut cx, handle, &directory, "09-task-details.png");
             cx.update_window(handle, |_, w, cx| {
-                w.click("research", cx);
-                assert!(!app.read(cx).show_research_settings);
+                app.update(cx, |a, cx| a.navigate(Scope::Research, w, cx));
+                w.render_frame(cx);
                 assert!(w.try_find("save-research-settings").is_none());
                 assert!(w.try_find("create-research").is_some());
             })
@@ -506,51 +508,27 @@ fn run_checks(layout_only: bool) {
             cx.update_window(handle, |_, w, cx| {
                 let before = app.read(cx).store.clone();
                 w.click("research-settings-toggle", cx);
-                assert!(app.read(cx).show_research_settings);
+                assert_eq!(app.read(cx).scope, Scope::Settings);
                 assert!(w.try_find("research-settings-toggle").is_none());
                 assert!(
                     w.try_find("create-research").is_none(),
                     "Advanced settings replace the composer in this view"
                 );
-                assert!(w.try_find("save-research-settings").is_some());
+                assert!(w.try_find("ego-path").is_some());
                 assert_eq!(app.read(cx).store, before);
-                scroll_to(w, cx, "research-scroll", "research-model-0");
+                scroll_to(w, cx, "model-settings-scroll", "research-model-0");
             })
             .unwrap();
             screenshot(&mut cx, handle, &directory, "11-research-settings.png");
             cx.update_window(handle, |_, w, cx| {
-                scroll_to(w, cx, "research-scroll", "save-research-settings")
+                scroll_to(w, cx, "model-settings-scroll", "ego-path")
             })
             .unwrap();
             screenshot(&mut cx, handle, &directory, "11b-browser-settings.png");
             cx.update_window(handle, |_, w, cx| {
                 w.click("navigation-back", cx);
-                assert_eq!(app.read(cx).scope, Scope::Settings);
-                w.within("settings-tabs").click(2usize, cx);
-                click_in(w, cx, "model-settings-scroll", "global-task-overrides");
-                assert_eq!(app.read(cx).scope, Scope::Workflow);
-            })
-            .unwrap();
-            screenshot(&mut cx, handle, &directory, "12-workflow-access.png");
-            cx.update_window(handle, |_, w, cx| {
-                app.update(cx, |a, cx| {
-                    a.store.research_config.models[0] = "qa/planning-override".into();
-                    a.open_project_plan(1, w, cx);
-                });
-                click_in(w, cx, "project-plan-scroll", "project-plan-model");
-                assert_eq!(app.read(cx).scope, Scope::Research);
-                assert!(
-                    app.read(cx).show_research_settings,
-                    "Project planning override link must reveal its settings"
-                );
-                assert!(app.read(cx).planning_project.is_none());
-                assert!(w.try_find("research-model-0").is_some());
-                assert!(w.try_find("create-research").is_none());
-                w.click("research", cx);
-                assert!(
-                    !app.read(cx).show_research_settings,
-                    "Normal navigation returns to the research composer"
-                );
+                app.update(cx, |a, cx| a.navigate(Scope::Research, w, cx));
+                w.render_frame(cx);
                 assert!(w.try_find("create-research").is_some());
                 assert!(w.try_find("research-model-0").is_none());
                 scroll_to(w, cx, "research-scroll", &format!("research-goal-{goal}"));
@@ -641,7 +619,7 @@ fn run_checks(layout_only: bool) {
                         a.store.projects.push(second);
                         let duplicate = a
                             .store
-                            .create_task("生成最终研究报告", 2, Stage::Planned, None)
+                            .create_research_goal("生成最终研究报告".into(), "Isolated history fixture".into(), 2)
                             .unwrap();
                         let mut other = a.store.prepare_run(duplicate).unwrap();
                         other.status = "Succeeded".into();
@@ -1106,12 +1084,15 @@ fn navigation_checks(
         let before = app.read(cx).store.clone();
         let report_task = before.runs.iter().find(|r| r.id == report).unwrap().task_id;
         let project = before.task(goal).unwrap().project_id;
+        let topic = before.task_topic(goal).unwrap().id;
         assert!(w.find("location-all").visible());
         assert!(w.find("location-task").visible());
         w.click("navigation-back", cx);
         assert_eq!(app.read(cx).selected, Some(report_task));
         w.click("navigation-back", cx);
         assert_eq!(app.read(cx).selected, Some(goal));
+        w.click("navigation-back", cx);
+        assert_eq!(app.read(cx).scope, Scope::Topic(topic));
         w.click("navigation-back", cx);
         assert_eq!(app.read(cx).scope, Scope::Project(project));
         assert!(app.read(cx).selected.is_none());
@@ -1125,7 +1106,7 @@ fn navigation_checks(
         });
         w.render_frame(cx);
         w.click("navigation-back", cx);
-        assert_eq!(app.read(cx).scope, Scope::Project(project));
+        assert_eq!(app.read(cx).scope, Scope::Topic(topic));
         app.update(cx, |a, cx| a.open_task(child, w, cx));
         w.render_frame(cx);
         assert!(w.try_find("location-parent").is_some());
@@ -1146,8 +1127,8 @@ fn navigation_checks(
             let (path, _) = a.navigation_path();
             assert_eq!(
                 path.len(),
-                4,
-                "All, project, goal and parent must all be present"
+                5,
+                "All, project, topic, goal and parent must all be present"
             );
             a.go_back(w, cx);
             assert_eq!(a.selected, Some(child));

@@ -255,11 +255,10 @@ pub fn run() {
     assert_eq!(blocked.task(retry_goal).unwrap().stage, Stage::InProgress);
     cx.update_window(handle, |_, _, cx| {
         app.update(cx, |a, cx| {
-            assert!(matches!(
-                a.todo_batch.as_ref().unwrap().state,
-                crate::batch::BatchState::Paused(_)
-            ));
-            a.resume_todo_batch(cx);
+            let batch = a.todo_batch.as_ref().unwrap();
+            assert_eq!(batch.state, crate::batch::BatchState::Finished);
+            assert!(batch.failed_items.contains(&retry_goal));
+            a.start_goal_batch(retry_goal, cx);
         });
     })
     .unwrap();

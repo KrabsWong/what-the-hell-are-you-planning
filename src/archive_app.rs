@@ -82,7 +82,8 @@ impl TaskApp {
             let owned = self.active_runs.iter().any(|a| a.id == id);
             if owned { self.cancel_run_id(id, cx); }
             let run = self.store.runs.iter_mut().find(|r| r.id == id).unwrap();
-            if !run.started_at.is_empty() && run.session_id.is_some() { remote.push(run.clone()); }
+            if !run.started_at.is_empty() && (run.session_id.is_some() || run.agent == "Codex")
+                && !(owned && run.agent == "Codex") { remote.push(run.clone()); }
             run.status = if owned || remote.last().is_some_and(|r| r.id == id) { "Cancelling" } else { "Cancelled" }.into();
             if run.status == "Cancelled" { run.ended_at = Some(opencode::timestamp()); }
             run.logs.push("[archive] Stop requested; queued and subsequent work disabled.".into());
@@ -92,7 +93,15 @@ impl TaskApp {
         let executable = std::path::PathBuf::from(&self.store.opencode_path);
         let work = cx.background_executor().spawn(async move {
             remote.into_iter().map(|run| {
-                let result = opencode::interrupt_session(&executable, &run);
+                let result = if run.agent == "Codex" {
+                    match crate::recovery::inspect_codex(&run) {
+                        crate::recovery::SessionCheck::Stopped => Ok(()),
+                        crate::recovery::SessionCheck::Unknown(error) => Err(error),
+                        _ => Err("Codex is still running from an earlier app instance. Wait for that process to finish before resuming this work.".into()),
+                    }
+                } else {
+                    opencode::interrupt_session(&executable, &run)
+                };
                 (run.id, result)
             }).collect::<Vec<_>>()
         });

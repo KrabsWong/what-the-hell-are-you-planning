@@ -600,10 +600,7 @@ impl TaskApp {
             .rev()
             .filter(|r| r.task_id == run.task_id && r.project_plan == run.project_plan)
             .collect();
-        let latest = attempts.first().is_some_and(|r| r.id == run.id);
-        let caption = format!(
-            "{} · {}",
-            if latest { "Latest" } else { "Earlier version" },
+        let caption =
             (if run.started_at.is_empty() {
                 &run.queued_at
             } else {
@@ -611,28 +608,26 @@ impl TaskApp {
             })
             .chars()
             .take(16)
-            .collect::<String>()
-        );
+            .collect::<String>();
         if attempts.len() < 2 {
             return label(caption, cx).into_any_element();
         }
         let selected = run.id;
         let options: Vec<_> = attempts
             .iter()
-            .enumerate()
-            .map(|(i, r)| {
+            .map(|r| {
                 (
                     r.id,
                     format!(
-                        "{}{} · {}",
-                        if i == 0 { "Latest · " } else { "" },
+                        "Run #{} · {} · {}",
+                        r.id,
                         (if r.started_at.is_empty() {
                             &r.queued_at
                         } else {
                             &r.started_at
                         })
                         .chars()
-                        .take(19)
+                        .take(16)
                         .collect::<String>(),
                         status_label(&r.status)
                     ),
@@ -825,22 +820,10 @@ impl TaskApp {
             })),
         ));
         actions = actions.when(!inline_task_actions, |actions| actions.child(
-            quiet_button(
-                if self.show_run_details {
-                    "show-result"
-                } else {
-                    "run-technical-details"
-                },
-                if self.show_run_details {
-                    "Back to result"
-                } else {
-                    "Technical details"
-                },
-            )
-            .icon(if self.show_run_details {
-                assets::IconName::ArrowLeft
+            (if self.show_run_details {
+                quiet_button("show-result", "Back to result").icon(assets::IconName::ArrowLeft)
             } else {
-                assets::IconName::Code
+                crate::controls::technical_details_button("run-technical-details")
             })
             .on_click(cx.listener(|this, _, _, cx| {
                 this.show_run_details = !this.show_run_details;
@@ -886,6 +869,12 @@ impl TaskApp {
                     .on_click(cx.listener(|this, _, _, cx| this.cancel_run(cx))),
             );
         }
+        if !self.show_run_details && readable {
+            let copy = run.output.clone();
+            actions = actions.child(crate::controls::tool_icon("copy-result", assets::IconName::Copy, "Copy result")
+                .h(px(28.)).w(px(28.))
+                .on_click(move |_, _, cx| cx.write_to_clipboard(ClipboardItem::new_string(copy.clone()))));
+        }
         let progress = col()
             .id("run-progress")
             .gap_2()
@@ -900,7 +889,11 @@ impl TaskApp {
                             .flex_wrap()
                             .gap_3()
                             .child(attempt_indicator(run, cx))
-                            .child(self.run_version_picker(run, cx)),
+                            .child(label(format!("Run #{} · {} · {}", run.id, run.agent,
+                                if run.model.is_empty() { "Not recorded" } else { run.model.as_str() }), cx))
+                            .child(self.run_version_picker(run, cx))
+                            .when(!self.show_run_details && readable, |d| d.child(label(
+                                format!("{} sources · {} materials", run.sources.len(), run.attachments.len()), cx))),
                     )
                     .child(actions),
             )
@@ -1000,8 +993,7 @@ impl TaskApp {
                             .h(px(28.)).w(px(28.))
                             .on_click(cx.listener(move |a, _, w, cx| a.open_task(task_id, w, cx))))
                         .when_some(latest_run, |actions, run_id| actions.child(
-                            crate::controls::tool_icon(format!("progress-technical-details-{task_id}"), assets::IconName::Code, "Technical details · latest attempt")
-                                .h(px(28.)).w(px(28.))
+                            crate::controls::technical_details_button(format!("progress-technical-details-{task_id}"))
                                 .on_click(cx.listener(move |a, _, _, cx| {
                                     a.select_run(run_id, cx);
                                     a.show_run_details = true;

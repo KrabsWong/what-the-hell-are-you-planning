@@ -104,13 +104,6 @@ impl Store {
             format!("Waiting for {}", dependencies.join(", "))
         })
     }
-    pub(crate) fn goal_step_ids(&self, goal: u64) -> Vec<u64> {
-        self.tasks
-            .iter()
-            .filter(|t| t.parent_id == Some(goal) && !t.archived)
-            .map(|t| t.id)
-            .collect()
-    }
 
 }
 impl TaskApp {
@@ -225,11 +218,13 @@ impl TaskApp {
                 .self_start().h_7().px_1().text_sm().text_color(rgb(colors.secondary))
                 .on_click(cx.listener(move |a, _, w, cx| a.open_task(goal, w, cx))));
         if latest.is_some() {
-            actions = actions.child(quiet_button("step-attempt-details", "Last attempt details →")
-                .self_start().h_7().px_1().text_sm().text_color(rgb(colors.secondary))
+            actions = actions.child(crate::controls::technical_details_button("step-attempt-details")
+                .self_start()
                 .on_click(cx.listener(move |a, _, _, cx| {
                     a.view_task_result(id, cx);
                     a.show_run_details = true;
+                    a.show_run_result = false;
+                    cx.notify();
                 })));
         }
         panel.child(actions)
@@ -266,7 +261,7 @@ impl TaskApp {
     }
     pub(crate) fn goal_steps_view(&self, goal: u64, cx: &mut Context<Self>) -> AnyElement {
         let colors = crate::appearance::palette(cx);
-        let mut ids = self.store.goal_step_ids(goal);
+        let mut ids = self.store.research_children(goal);
         ids.sort_by(|a, b| crate::display_order::siblings_in_display_order(self.store.task(*a).unwrap(), self.store.task(*b).unwrap()));
         let mut content = col().flex_1().min_h_0().child(
             col()
@@ -325,7 +320,7 @@ impl TaskApp {
                 })
                 .when(!board, |b| b.h_8().px_2())
                 .accessibility_label(format!("{} · {}", title, status.label()))
-                .tooltip(format!("{} · {}", status.label(), status.reason))
+                .when(!board, |b| b.tooltip(format!("{} · {}", status.label(), status.reason)))
                 .on_click(cx.listener(move |a, _, w, cx| a.open_task(id, w, cx)))
                 .child(if board {
                     col()
@@ -488,6 +483,6 @@ mod tests {
             .description
             .push_str(" changed inputs");
         assert_eq!(s.step_state(ids[0]), StepState::Waiting);
-        assert_eq!(s.goal_step_ids(goal), ids);
+        assert_eq!(s.research_children(goal), ids);
     }
 }

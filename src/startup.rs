@@ -23,7 +23,7 @@ pub(crate) enum WorkspaceOpenEvent {
     Complete(Result<PreparedWorkspace, String>),
 }
 
-type Checks = (Result<String, String>, Result<String, String>);
+type Checks = [Result<String, String>; 3];
 #[derive(Default)]
 pub struct Startup {
     pub required: bool,
@@ -32,18 +32,18 @@ pub struct Startup {
     pub(crate) workspace_pending: Option<mpsc::Receiver<WorkspaceOpenEvent>>,
     pub(crate) workspace_phase: Option<&'static str>,
     pub(crate) upgrade_backup: Option<std::path::PathBuf>,
-    paths: (String, String),
+    paths: [String; 3],
     checks: Option<Checks>,
 }
-fn probe_opencode(path: &str) -> Result<String, String> {
+fn probe_agent(agent: &str, path: &str) -> Result<String, String> {
     if path.trim().is_empty() {
-        return Err("Enter the OpenCode executable path.".into());
+        return Err(format!("{agent} is not configured."));
     }
     let version = crate::opencode::capture(Path::new(path), &std::env::temp_dir(), &["--version"])?;
     if version.trim().is_empty() {
-        return Err("OpenCode returned no version. Check the executable path.".into());
+        return Err(format!("{agent} returned no version. Check the executable path."));
     }
-    Ok(format!("Ready · {}", version.trim()))
+    Ok(version.trim().to_owned())
 }
 impl TaskApp {
     pub(crate) fn begin_workspace_open(&mut self, storage: crate::persistence::Storage, cx: &mut Context<Self>) {
@@ -103,23 +103,25 @@ impl TaskApp {
     }
     pub fn check_startup(&mut self, cx: &mut Context<Self>) {
         if self.workspace_required || self.startup.workspace_pending.is_some() || !self.storage_error.is_empty() { return; }
-        let paths = (
+        let paths = [
             self.executable_input.read(cx).value().trim().to_string(),
+            self.codex_executable_input.read(cx).value().trim().to_string(),
             self.ego_input.read(cx).value().trim().to_string(),
-        );
+        ];
         self.startup.paths = paths.clone();
         self.startup.checks = None;
         let (tx, rx) = mpsc::channel();
         self.startup.pending = Some(rx);
         std::thread::spawn(move || {
-            let ego =
-                std::thread::spawn(move || crate::ego::probe(&paths.1, &std::env::temp_dir()));
-            let open = probe_opencode(&paths.0);
-            let _ = tx.send((
-                open,
-                ego.join()
-                    .unwrap_or_else(|_| Err("Browser check stopped. Please retry.".into())),
-            ));
+            let checks = std::thread::scope(|scope| {
+                let open = scope.spawn(|| probe_agent("OpenCode", &paths[0]));
+                let codex = scope.spawn(|| probe_agent("Codex", &paths[1]));
+                let ego = scope.spawn(|| crate::ego::probe(&paths[2], &std::env::temp_dir()));
+                [open.join(), codex.join(), ego.join()].map(|result| {
+                    result.unwrap_or_else(|_| Err("Check stopped. Please retry.".into()))
+                })
+            });
+            let _ = tx.send(checks);
         });
         self.start_pump(cx);
         cx.notify();
@@ -132,13 +134,13 @@ impl TaskApp {
             .and_then(|rx| match rx.try_recv() {
                 Ok(checks) => Some(checks),
                 Err(mpsc::TryRecvError::Empty) => None,
-                Err(mpsc::TryRecvError::Disconnected) => Some((
-                    Err("Check stopped. Please retry.".into()),
-                    Err("Check stopped. Please retry.".into()),
-                )),
+                Err(mpsc::TryRecvError::Disconnected) => Some(std::array::from_fn(|_| Err("Check stopped. Please retry.".into()))),
             });
         if let Some(checks) = result {
             self.startup.pending = None;
+            self.opencode_version = checks[0].as_ref().ok()
+                .map(|version| (self.startup.paths[0].clone(), version.clone()));
+            self.codex_version = checks[1].as_ref().ok().cloned();
             self.startup.checks = Some(checks);
             let ready = self.startup_ready(cx)
                 && self.storage.is_some() && self.storage_error.is_empty();
@@ -151,6 +153,7 @@ impl TaskApp {
         self.startup.ready_for(
             !self.workspace_required,
             self.executable_input.read(cx).value().trim(),
+            self.codex_executable_input.read(cx).value().trim(),
             self.ego_input.read(cx).value().trim(),
         )
     }
@@ -173,16 +176,12 @@ impl TaskApp {
                 .child(label("Starting…", cx)).into_any_element();
         }
         let dependency = |index: usize| {
-            let current = if index == 0 {
-                self.executable_input.read(cx).value()
-            } else {
-                self.ego_input.read(cx).value()
+            let current = match index {
+                0 => self.executable_input.read(cx).value(),
+                1 => self.codex_executable_input.read(cx).value(),
+                _ => self.ego_input.read(cx).value(),
             };
-            let checked = if index == 0 {
-                &self.startup.paths.0
-            } else {
-                &self.startup.paths.1
-            };
+            let checked = &self.startup.paths[index];
             if checked.is_empty() && self.startup.checks.is_none() && self.startup.pending.is_none()
             {
                 return ("○ Not checked", colors.muted, String::new(), false);
@@ -199,15 +198,18 @@ impl TaskApp {
                 .startup
                 .checks
                 .as_ref()
-                .map(|(a, b)| if index == 0 { a } else { b })
+                .map(|checks| &checks[index])
             {
                 Some(Ok(message)) => ("✓ Ready", colors.success, message.clone(), true),
+                Some(Err(message)) if index < 2 => ("○ Unavailable", colors.muted, message.clone(), false),
                 Some(Err(message)) => ("! Needs attention", colors.danger, message.clone(), false),
                 None => ("◌ Checking…", colors.accent, String::new(), false),
             }
         };
         let open = dependency(0);
-        let ego = dependency(1);
+        let codex = dependency(1);
+        let ego = dependency(2);
+        let agent_ready = open.3 || codex.3;
         let workspace = if self.workspace_setup.is_some() {
             ("◌ Preparing…", colors.accent)
         } else if !self.storage_error.is_empty() {
@@ -218,7 +220,7 @@ impl TaskApp {
             ("✓ Ready", colors.success)
         };
         let ready =
-            usize::from(!self.workspace_required) + usize::from(open.3) + usize::from(ego.3);
+            usize::from(!self.workspace_required) + usize::from(agent_ready) + usize::from(ego.3);
         let badge = |text: &'static str, color: u32| {
             div()
                 .flex_shrink_0()
@@ -270,16 +272,23 @@ impl TaskApp {
                             if let Some(root) = &this.workspace_root { this.begin_workspace_open(crate::persistence::Storage::new(root.join("workspace/workspace.sqlite3")), cx); }
                         })))))
                 .child(card()
-                    .child(heading("2 · OpenCode", open.0, open.1))
-                    .child(row().justify_between().gap_2().child(label("Runs your AI tasks.", cx))
+                    .child(heading("2 · AI agents", if agent_ready { "✓ Ready" } else { "○ At least one required" }, if agent_ready { colors.success } else { colors.warning }))
+                    .child(label("Install OpenCode or Codex. Either one is enough to start; models and login are configured separately.", cx))
+                    .child(heading("OpenCode", open.0, open.1))
+                    .child(row().justify_between().gap_2().child(label("OpenCode CLI", cx))
                         .child(link_button("install-opencode", "Install ↗").on_click(|_,_,cx| cx.open_url("https://opencode.ai"))))
                     .child(Input::new(&self.executable_input).id("startup-opencode"))
-                    .when(!open.2.is_empty(), |view| view.child(div().text_xs().text_color(rgb(if open.3 { colors.muted } else { open.1 })).child(open.2.clone()))))
+                    .when(!open.2.is_empty(), |view| view.child(div().text_xs().text_color(rgb(colors.muted)).child(open.2.clone())))
+                    .child(heading("Codex", codex.0, codex.1))
+                    .child(row().justify_between().gap_2().child(label("Codex CLI", cx))
+                        .child(link_button("install-codex", "Install ↗").on_click(|_,_,cx| cx.open_url("https://developers.openai.com/codex/cli"))))
+                    .child(Input::new(&self.codex_executable_input).id("startup-codex"))
+                    .when(!codex.2.is_empty(), |view| view.child(div().text_xs().text_color(rgb(colors.muted)).child(codex.2.clone()))))
                 .child(card()
                     .child(heading("3 · ego(lite)", ego.0, ego.1))
                     .child(row().justify_between().gap_2().child(label("Browser access · finish its first launch after installing.", cx))
                         .child(row().gap_3()
-                            .child(link_button("startup-install-ego", "Install ↗").on_click(|_,_,cx| cx.open_url("https://lite.ego.app")))
+                            .when(!crate::ego::is_installed(&self.ego_input.read(cx).value()), |d| d.child(link_button("startup-install-ego", "Install ↗").on_click(|_,_,cx| cx.open_url("https://lite.ego.app"))))
                             .child(link_button("startup-open-ego", "Open ↗").on_click(cx.listener(|this,_,_,cx| this.open_ego(cx))))))
                     .child(Input::new(&self.ego_input).id("startup-ego"))
                     .when(!ego.2.is_empty(), |view| view.child(div().text_xs().text_color(rgb(if ego.3 { colors.muted } else { ego.1 })).child(ego.2.clone())))
@@ -290,8 +299,9 @@ impl TaskApp {
                         .child(button("startup-recheck", "Check again").disabled(self.workspace_required || self.startup.pending.is_some()).on_click(cx.listener(|this,_,_,cx| this.check_startup(cx))))
                         .child(button("startup-continue", "Continue").primary().disabled(!self.startup_ready(cx)).on_click(cx.listener(|this,_,_,cx| {
                             if !this.startup_ready(cx) { return; }
-                            this.store.opencode_path = this.startup.paths.0.clone();
-                            this.store.research_config.ego_path = this.startup.paths.1.clone();
+                            this.store.opencode_path = this.executable_input.read(cx).value().trim().into();
+                            this.store.research_config.codex_path = this.codex_executable_input.read(cx).value().trim().into();
+                            this.store.research_config.ego_path = this.startup.paths[2].clone();
                             this.persist_if_changed(true);
                             if this.storage.is_some() && this.storage_error.is_empty() {
                                 this.startup.required = false;
@@ -310,40 +320,66 @@ impl Startup {
             self.required = !ready;
         }
     }
-    fn ready_for(&self, workspace_ready: bool, opencode: &str, ego: &str) -> bool {
+    fn ready_for(&self, workspace_ready: bool, opencode: &str, codex: &str, ego: &str) -> bool {
         workspace_ready
             && self.workspace_pending.is_none()
             && self.pending.is_none()
-            && self.paths.0 == opencode
-            && self.paths.1 == ego
-            && self
-                .checks
-                .as_ref()
-                .is_some_and(|(a, b)| a.is_ok() && b.is_ok())
+            && self.paths[2] == ego
+            && self.checks.as_ref().is_some_and(|checks| {
+                checks[2].is_ok()
+                    && ((checks[0].is_ok() && self.paths[0] == opencode)
+                        || (checks[1].is_ok() && self.paths[1] == codex))
+            })
     }
+
 }
 #[cfg(test)]
 mod tests {
-    use super::{Startup, probe_opencode};
+    use super::{Startup, probe_agent};
     use std::sync::mpsc;
     #[test]
     fn all_requirements_and_current_paths_must_pass() {
         let mut startup = Startup {
-            paths: ("open".into(), "ego".into()),
+            paths: ["open".into(), "codex".into(), "ego".into()],
             ..Default::default()
         };
-        assert!(!startup.ready_for(true, "open", "ego"));
-        startup.checks = Some((Ok("ready".into()), Err("missing".into())));
-        assert!(!startup.ready_for(true, "open", "ego"));
-        startup.checks = Some((Ok("ready".into()), Ok("ready".into())));
-        assert!(!startup.ready_for(false, "open", "ego"));
-        assert!(!startup.ready_for(true, "changed", "ego"));
-        assert!(!startup.ready_for(true, "open", "changed"));
-        assert!(startup.ready_for(true, "open", "ego"));
+        assert!(!startup.ready_for(true, "open", "codex", "ego"));
+        startup.checks = Some([Ok("ready".into()), Err("missing".into()), Err("missing".into())]);
+        assert!(!startup.ready_for(true, "open", "codex", "ego"));
+        startup.checks = Some([Ok("ready".into()), Err("missing".into()), Ok("ready".into())]);
+        assert!(!startup.ready_for(false, "open", "codex", "ego"));
+        assert!(!startup.ready_for(true, "changed", "codex", "ego"));
+        assert!(!startup.ready_for(true, "open", "codex", "changed"));
+        assert!(startup.ready_for(true, "open", "codex", "ego"));
         let (_, rx) = mpsc::channel();
         startup.pending = Some(rx);
-        assert!(!startup.ready_for(true, "open", "ego"));
+        assert!(!startup.ready_for(true, "open", "codex", "ego"));
     }
+    #[test]
+    fn either_agent_is_sufficient_but_browser_and_current_success_path_are_required() {
+        for open in [false, true] {
+            for codex in [false, true] {
+                for browser in [false, true] {
+                    let result = |ready| if ready { Ok("version".into()) } else { Err("missing".into()) };
+                    let mut startup = Startup {
+                        paths: ["open".into(), "codex".into(), "ego".into()],
+                        checks: Some([result(open), result(codex), result(browser)]),
+                        ..Default::default()
+                    };
+                    assert_eq!(startup.ready_for(true, "open", "codex", "ego"), (open || codex) && browser);
+                    assert_eq!(startup.ready_for(true, "changed", "codex", "ego"), codex && browser);
+                    assert_eq!(startup.ready_for(true, "open", "changed", "ego"), open && browser);
+                    assert!(!startup.ready_for(true, "changed", "changed", "ego"));
+                    assert!(!startup.ready_for(true, "open", "codex", "changed"));
+                    startup.silent = true;
+                    let ready = startup.ready_for(true, "open", "codex", "ego");
+                    startup.finish_initial_check(ready);
+                    assert_eq!(startup.required, !((open || codex) && browser));
+                }
+            }
+        }
+    }
+
     #[test]
     fn silent_start_skips_setup_only_when_ready() {
         for ready in [true, false] {
@@ -363,11 +399,13 @@ mod tests {
         let root = std::env::temp_dir().join(crate::opencode::new_session_id());
         std::fs::create_dir(&root).unwrap();
         let cli = root.join("opencode");
-        assert!(probe_opencode(cli.to_str().unwrap()).is_err());
+        assert!(probe_agent("OpenCode", cli.to_str().unwrap()).is_err());
         for (script, valid) in [("exit 0", false), ("exit 1", false), ("echo 1.2.3", true)] {
             std::fs::write(&cli, format!("#!/bin/sh\n{script}\n")).unwrap();
             std::fs::set_permissions(&cli, std::fs::Permissions::from_mode(0o700)).unwrap();
-            assert_eq!(probe_opencode(cli.to_str().unwrap()).is_ok(), valid);
+            for agent in ["OpenCode", "Codex"] {
+                assert_eq!(probe_agent(agent, cli.to_str().unwrap()).is_ok(), valid);
+            }
         }
         std::fs::remove_dir_all(root).unwrap();
     }

@@ -1,7 +1,7 @@
-//! Local OpenCode CLI adapter. The worker owns the child; GPUI only drains typed events.
+//! Local CLI worker and OpenCode adapter. GPUI only drains typed events.
 use serde_json::Value;
 use std::{
-    io::{BufRead, BufReader, Read, Seek, SeekFrom},
+    io::{BufRead, BufReader, Read, Seek, SeekFrom, Write},
     path::{Path, PathBuf},
     process::{Child, Command, Stdio},
     sync::{
@@ -27,6 +27,7 @@ pub enum Event {
 }
 #[derive(Clone, Debug)]
 pub struct Request {
+    pub browser_executable: Option<PathBuf>,
     pub executable: PathBuf,
     pub directory: PathBuf,
     pub model: String,
@@ -149,7 +150,15 @@ pub(crate) fn lock_session(request: &Request) -> Result<Option<std::fs::File>, S
     Ok(Some(file))
 }
 
-pub fn start(mut request: Request) -> Result<Running, String> {
+pub fn start(request: Request) -> Result<Running, String> {
+    start_adapter(request, false)
+}
+
+pub(crate) fn start_codex(request: Request) -> Result<Running, String> {
+    start_adapter(request, true)
+}
+
+fn start_adapter(mut request: Request, codex: bool) -> Result<Running, String> {
     if !request.directory.is_absolute() || !request.directory.is_dir() {
         return Err("Choose an existing absolute project folder before running.".into());
     }
@@ -157,11 +166,11 @@ pub fn start(mut request: Request) -> Result<Running, String> {
         .directory
         .canonicalize()
         .map_err(|e| format!("Cannot resolve project folder: {e}"))?;
-    if !valid_model(&request.model) {
-        return Err("Choose an OpenCode model in provider/model format.".into());
+    if !(if codex { crate::codex::valid_model(&request.model) } else { valid_model(&request.model) }) {
+        return Err("Choose a valid model for the selected agent.".into());
     }
     #[cfg(unix)]
-    let session_lock = lock_session(&request)?;
+    let session_lock = if codex { crate::codex::lock_attempt(&request)? } else { lock_session(&request)? };
     let (tx, rx) = mpsc::sync_channel(128);
     let cancel = Arc::new(AtomicBool::new(false));
     let worker_cancel = cancel.clone();
@@ -169,10 +178,11 @@ pub fn start(mut request: Request) -> Result<Running, String> {
     let worker_pid = pid.clone();
     let (done_tx, done) = mpsc::channel();
     thread::Builder::new()
-        .name("opencode-run".into())
+        .name(if codex { "codex-run" } else { "opencode-run" }.into())
         .spawn(move || {
             run_worker(
                 request,
+                codex,
                 worker_cancel,
                 worker_pid,
                 tx,
@@ -244,6 +254,7 @@ fn inherit_session_lock(cmd: &mut Command, file: &std::fs::File) {
 
 fn run_worker(
     request: Request,
+    codex: bool,
     cancel: Arc<AtomicBool>,
     pid: Arc<AtomicU32>,
     tx: SyncSender<Event>,
@@ -258,53 +269,67 @@ fn run_worker(
         return;
     }
     let mut cmd = command(&request.executable);
-    cmd.current_dir(&request.directory)
-        .env("PWD", &request.directory)
-        .args([
-            "--standalone",
-            "run",
-            "--format",
-            "json",
-            "--model",
-            &request.model,
-            "--agent",
-            "build",
-            "--title",
-            &request.title,
-        ]);
-    if let Some(session) = &request.session_id {
-        cmd.arg("--session").arg(session);
+    cmd.current_dir(&request.directory).env("PWD", &request.directory);
+    let agent = if codex { "Codex" } else { "OpenCode" };
+    if codex {
+        crate::codex::configure_command(&mut cmd, &request);
+    } else {
+        cmd.args(["--standalone", "run", "--format", "json", "--model", &request.model,
+            "--agent", "build", "--title", &request.title]);
+        if let Some(session) = &request.session_id {
+            cmd.arg("--session").arg(session);
+        }
+        for file in &request.files {
+            cmd.arg("--file").arg(file);
+        }
+        cmd.arg("--").arg(&request.prompt);
     }
     #[cfg(unix)]
     if let Some(file) = &session_lock {
         inherit_session_lock(&mut cmd, file);
     }
-    for file in &request.files {
-        cmd.arg("--file").arg(file);
-    }
-    cmd.arg("--").arg(&request.prompt);
+    let final_output = if codex {
+        match crate::codex::FinalOutput::create() {
+            Ok(output) => {
+                cmd.arg("--output-last-message").arg(&output.0);
+                Some(output)
+            }
+            Err(error) => {
+                let _ = tx.send(Event::Finished { code: None, cancelled: false, error: Some(error) });
+                return;
+            }
+        }
+    } else { None };
     let mut child = match cmd.spawn() {
         Ok(child) => child,
         Err(e) => {
             let _ = tx.send(Event::Finished {
                 code: None,
                 cancelled: false,
-                error: Some(format!("Cannot start OpenCode: {e}")),
+                error: Some(format!("Cannot start {agent}: {e}")),
             });
             return;
         }
     };
     pid.store(child.id(), Ordering::SeqCst);
+    let prompt_writer = if codex {
+        let mut stdin = child.stdin.take().unwrap();
+        let prompt = crate::codex::input_prompt(&request);
+        Some(thread::spawn(move || stdin.write_all(prompt.as_bytes())))
+    } else { None };
+    let failed = Arc::new(AtomicBool::new(false));
+    let out_failed = failed.clone();
+    let err_failed = failed.clone();
     let stdout = child.stdout.take().unwrap();
     let stderr = child.stderr.take().unwrap();
     let out_tx = tx.clone();
     let err_tx = tx.clone();
     let out_cancel = cancel.clone();
     let out_pid = pid.clone();
-    let out = thread::spawn(move || read_events(stdout, false, out_tx, out_cancel, out_pid));
+    let out = thread::spawn(move || read_events(stdout, false, out_tx, out_cancel, out_pid, codex, out_failed));
     let err_cancel = cancel.clone();
     let err_pid = pid.clone();
-    let err = thread::spawn(move || read_events(stderr, true, err_tx, err_cancel, err_pid));
+    let err = thread::spawn(move || read_events(stderr, true, err_tx, err_cancel, err_pid, codex, err_failed));
     let (status, cancelled) = loop {
         if cancel.load(Ordering::SeqCst) {
             terminate(&mut child);
@@ -329,8 +354,26 @@ fn run_worker(
         Ok(status) => (status.code(), None),
         Err(e) => (None, Some(e.to_string())),
     };
+    if let Some(writer) = prompt_writer {
+        if !matches!(finish_reader(writer), Some(Ok(()))) && !cancelled {
+            error = Some("Could not deliver the complete prompt to Codex.".into());
+        }
+    }
+    if failed.load(Ordering::SeqCst) && error.is_none() {
+        error = Some(format!("{agent} reported a failed turn; see run logs."));
+    }
     if !streams_closed {
-        error = Some("OpenCode output pipes did not close; stream cleanup timed out.".into());
+        error = Some(format!("{agent} output pipes did not close; stream cleanup timed out."));
+    }
+    if let Some(output) = final_output {
+        match output.read() {
+            Ok(text) if !text.trim().is_empty() => { let _ = tx.send(Event::Text(text)); }
+            Ok(_) if !cancelled && error.is_none() && code == Some(0) => {
+                error = Some("Codex completed without a final response.".into());
+            }
+            Err(read_error) if !cancelled && error.is_none() => { error = Some(read_error); }
+            _ => {}
+        }
     }
     let _ = tx.send(Event::Finished {
         code,
@@ -344,6 +387,8 @@ fn read_events(
     tx: SyncSender<Event>,
     cancel: Arc<AtomicBool>,
     pid: Arc<AtomicU32>,
+    codex: bool,
+    failed: Arc<AtomicBool>,
 ) {
     let mut reader = BufReader::new(input);
     loop {
@@ -366,13 +411,19 @@ fn read_events(
                         break;
                     }
                 } else {
-                    let events = parse_event(&line);
+                    let events = if codex {
+                        if crate::codex::is_failure(&line) { failed.store(true, Ordering::SeqCst); }
+                        crate::codex::parse_event(&line)
+                    } else { parse_event(&line) };
                     if events.iter().any(|e| matches!(e, Event::BrowserBlocked(_))) {
                         // Stop before waiting for the UI to drain its event queue.
                         cancel.store(true, Ordering::SeqCst);
                         kill_group(pid.load(Ordering::SeqCst));
                     }
                     for event in events {
+                        // Codex may emit commentary agent messages. Only --output-last-message
+                        // supplies the final structured response consumed by the workflow.
+                        if codex && matches!(event, Event::Text(_)) { continue; }
                         if tx.send(event).is_err() {
                             return;
                         }
@@ -500,6 +551,14 @@ pub(crate) fn capture(
     directory: &Path,
     args: &[&str],
 ) -> Result<String, String> {
+    capture_local(executable, directory, args, false)
+}
+
+pub(crate) fn capture_diagnostics(executable: &Path, directory: &Path, args: &[&str]) -> Result<String, String> {
+    capture_local(executable, directory, args, true)
+}
+
+fn capture_local(executable: &Path, directory: &Path, args: &[&str], include_diagnostics: bool) -> Result<String, String> {
     // OpenCode can exit before flushing large piped exports. A regular file
     // makes stdout writes synchronous; unlink it immediately to keep transcripts private.
     use std::os::unix::fs::OpenOptionsExt;
@@ -562,6 +621,7 @@ pub(crate) fn capture(
     if text.len() as u64 > MAX_OUTPUT {
         return Err("Local command output exceeds the 32 MiB capture limit.".into());
     }
+    if include_diagnostics { text.push_str(&err); }
     Ok(text)
 }
 
@@ -637,11 +697,61 @@ mod tests {
     }
     #[cfg(unix)]
     #[test]
+    fn codex_worker_streams_stdin_and_reports_failed_turn_even_with_zero_exit() {
+        let (dir, executable) = fake_script(r#"cat > prompt.txt
+while [ "$#" -gt 0 ]; do
+  if [ "$1" = "--output-last-message" ]; then shift; printf 'result' > "$1"; break; fi
+  shift
+done
+printf '%s\n' '{"type":"thread.started","thread_id":"codex-thread"}' '{"type":"item.completed","item":{"type":"agent_message","text":"intermediate commentary"}}' '{"type":"turn.failed","error":{"message":"quota"}}'
+"#);
+        let request = Request { browser_executable: None, executable, directory: dir.clone(), model: "test-model".into(),
+            prompt: "研究\n".repeat(40_000), title: "Test".into(), files: vec![], session_id: None };
+        let worker = start_codex(request.clone()).unwrap();
+        let mut session = None;
+        let mut output = String::new();
+        loop {
+            match worker.events.recv_timeout(Duration::from_secs(5)).unwrap() {
+                Event::Session(id) => session = Some(id),
+                Event::Text(text) => output.push_str(&text),
+                Event::Finished { code, error, cancelled } => {
+                    assert_eq!(code, Some(0));
+                    assert!(error.unwrap().contains("failed turn"));
+                    assert!(!cancelled);
+                    break;
+                }
+                _ => {}
+            }
+        }
+        assert_eq!(session.as_deref(), Some("codex-thread"));
+        assert_eq!(output, "result");
+        assert_eq!(std::fs::read_to_string(dir.join("prompt.txt")).unwrap(), request.prompt);
+        std::fs::remove_dir_all(dir).unwrap();
+    }
+
+    #[cfg(unix)]
+    #[test]
+    fn codex_first_attempt_is_leased_and_cancelled_without_session_id() {
+        let (dir, executable) = fake_script("cat >/dev/null\necho ready\nsleep 20");
+        let request = Request { browser_executable: None, executable, directory: dir.clone(), model: "test-model".into(),
+            prompt: "first attempt".into(), title: "Test".into(), files: vec![], session_id: None };
+        let worker = start_codex(request.clone()).unwrap();
+        assert!(matches!(worker.events.recv_timeout(Duration::from_secs(3)).unwrap(), Event::Log(_)));
+        assert!(crate::codex::lock_attempt(&request).is_err());
+        let (stopped, events) = worker.stop_and_wait(Duration::from_secs(5));
+        assert!(stopped);
+        assert!(events.iter().any(|event| matches!(event, Event::Finished { cancelled: true, .. })));
+        assert!(crate::codex::lock_attempt(&request).is_ok());
+        std::fs::remove_dir_all(dir).unwrap();
+    }
+
+    #[cfg(unix)]
+    #[test]
     fn explicit_sessions_resume_without_fork_and_exclude_duplicate_workers() {
         let (dir, executable) =
             fake_script("printf '%s\\n' \"$@\" > args.txt\necho ready\nsleep 20");
         let session = new_session_id();
-        let request = Request {
+        let request = Request { browser_executable: None,
             executable,
             directory: dir.clone(),
             model: "test/model".into(),
@@ -683,7 +793,7 @@ mod tests {
     #[test]
     fn child_retains_session_lock_when_parent_lease_is_dropped() {
         let (dir, executable) = fake_script("sleep 20 &\necho ready\nwait");
-        let request = Request {
+        let request = Request { browser_executable: None,
             executable: executable.clone(),
             directory: dir.canonicalize().unwrap(),
             model: "test/model".into(),
@@ -735,7 +845,7 @@ mod tests {
         let (dir, executable) = fake_script(
             "printf '%s\\n' '{\"type\":\"text\",\"part\":{\"text\":\"live output\"}}'\nsleep 20",
         );
-        let running = start(Request {
+        let running = start(Request { browser_executable: None,
             executable,
             directory: dir.clone(),
             model: "test/model".into(),
@@ -765,7 +875,7 @@ mod tests {
     #[test]
     fn reports_failed_process_exit() {
         let (dir, executable) = fake_script("echo 'provider unavailable' >&2\nexit 7");
-        let running = start(Request {
+        let running = start(Request { browser_executable: None,
             executable,
             directory: dir.clone(),
             model: "test/model".into(),
@@ -793,7 +903,7 @@ mod tests {
         let (dir, executable) = fake_script(
             "test \"$PWD\" = \"$(pwd -P)\" || exit 9\nsleep 20 &\necho 'finished parent'\nexit 0",
         );
-        let running = start(Request {
+        let running = start(Request { browser_executable: None,
             executable,
             directory: dir.clone(),
             model: "test/model".into(),
@@ -817,7 +927,7 @@ mod tests {
     #[test]
     fn shutdown_waits_for_cleanup_even_when_log_queue_is_full() {
         let (dir, executable) = fake_script("while :; do echo busy; done");
-        let running = start(Request {
+        let running = start(Request { browser_executable: None,
             executable,
             directory: dir.clone(),
             model: "test/model".into(),
@@ -867,7 +977,7 @@ pub(crate) fn interrupt_session(executable: &Path, run: &crate::domain::AgentRun
         .ok_or("OpenCode did not acknowledge interruption")?;
     if !interrupted {
         // An idle server does not prove a detached CLI process has stopped.
-        let request = Request {
+        let request = Request { browser_executable: None,
             executable: executable.into(),
             directory: Path::new(&run.directory).canonicalize().map_err(|e| e.to_string())?,
             model: String::new(), prompt: String::new(), title: String::new(),

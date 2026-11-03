@@ -17,6 +17,7 @@ mod controls;
 mod domain;
 mod display_order;
 mod ego;
+mod ego_mcp;
 mod execution_status;
 mod goal_steps;
 #[cfg(feature = "qa")]
@@ -26,6 +27,7 @@ mod intake_views;
 mod material_qa;
 mod navigation;
 mod opencode;
+mod codex;
 mod persistence;
 mod project_app;
 mod project_planning;
@@ -78,6 +80,12 @@ use gpui_kit::*;
 actions!(task_manager, [Quit]);
 
 fn main() {
+    if std::env::args().nth(1).as_deref() == Some("--ego-browser-mcp") {
+        let result = std::env::args().nth(2).ok_or_else(|| "Missing ego-browser path".to_string())
+            .and_then(|path| ego_mcp::serve(std::path::Path::new(&path)));
+        if let Err(error) = result { eprintln!("{error}"); std::process::exit(1); }
+        return;
+    }
     #[cfg(feature = "qa")]
     if std::env::args().any(|arg| arg == "--qa-board-topics") { topic_qa::board_directory(); return; }
     #[cfg(feature = "qa")]
@@ -190,18 +198,13 @@ fn main() {
         return;
     }
     #[cfg(feature = "qa")]
+    if std::env::args().any(|arg| arg == "--qa-handoff-progress") {
+        research_qa::handoff_progress();
+        return;
+    }
+    #[cfg(feature = "qa")]
     if std::env::args().any(|arg| arg == "--qa-research") {
         research_qa::run();
-        return;
-    }
-    #[cfg(feature = "qa")]
-    if std::env::args().any(|arg| arg == "--qa-live") {
-        qa::run_live();
-        return;
-    }
-    #[cfg(feature = "qa")]
-    if std::env::args().any(|arg| arg == "--qa-reopen") {
-        qa::reopen_live();
         return;
     }
     #[cfg(feature = "qa")]

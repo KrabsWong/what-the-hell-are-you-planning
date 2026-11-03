@@ -36,7 +36,7 @@
 
 ## Progressive disclosure
 
-- 日常导航使用 Progress & results；Stage workflow 从 Settings 的阶段覆盖入口进入。
+- 日常导航使用 Progress & results；Settings → Agent & models 显示规划、收集、分析和报告使用的模型。
 - 执行页优先任务标题、状态、进度与报告。运行历史是紧凑列表，长标题两行显示并可悬停查看全名。运行中的研究协议不作为报告展示。
 - Technical details 内保留模型、目录、会话、时间、退出状态、Live logs 和 Saved output。一个选中的活动任务只显示一个停止按钮，批次控制始终在历史列表外可见。
 - 任务页默认保留开始/查看结果、状态、优先级、项目和截止日期。More details 收起低频属性和执行设置；缺少模型或工作目录时直接显示修复入口。

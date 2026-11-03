@@ -92,9 +92,6 @@ pub(crate) fn board_card_colors(stage: Stage, cx: &App) -> (u32, u32, u32) {
         (true, Stage::Cancelled) => (0x442c33, 0x543740, 0x754c57),
     }
 }
-fn stage_text(stage: Stage) -> String {
-    format!("{}  {}", stage.symbol(), stage.label())
-}
 // Tree rows own hover feedback so the title and disclosure read as one item.
 pub(crate) fn sidebar_variant(active: bool, cx: &App) -> gpui_kit::component::button::ButtonCustomVariant {
     let colors = palette(cx);
@@ -703,7 +700,6 @@ impl TaskApp {
             Scope::Project(_) | Scope::Topic(_) => assets::IconName::Folder,
             Scope::Cycle(_) => assets::IconName::RefreshCw,
             Scope::Archive => assets::IconName::Archive,
-            Scope::Workflow => assets::IconName::Workflow,
             Scope::Runs => assets::IconName::ChartNoAxesCombined,
             Scope::Recovery => assets::IconName::Pause,
             Scope::Research => assets::IconName::Search,
@@ -853,17 +849,6 @@ impl TaskApp {
                     project.name.clone(),
                     CrumbTarget::View(Scope::Project(project.id)),
                 ));
-            }
-        } else if self.scope == Scope::Workflow
-            || (self.scope == Scope::Research && self.show_research_settings)
-        {
-            links.push((
-                "location-settings".into(),
-                "Settings".into(),
-                CrumbTarget::View(Scope::Settings),
-            ));
-            if self.scope == Scope::Research {
-                current = "Research models".into();
             }
         }
         (links, current)
@@ -1707,7 +1692,7 @@ impl TaskApp {
                                     .text_xs()
                                     .whitespace_normal()
                                     .text_left()
-                                    .child(format!("Open {} steps →", self.store.goal_step_ids(id).len())),
+                                    .child(format!("Open {} steps →", self.store.research_children(id).len())),
                             )
                             .on_click(cx.listener(move |a, _, w, cx| {
                                 cx.stop_propagation();
@@ -1801,7 +1786,7 @@ impl TaskApp {
                     let target = entity.clone();
                     menu = menu.item(PopupMenuItem::new("Edit task").on_click(move |_, w, cx| {
                         let _ = target.update(cx, |this, cx| {
-                            this.begin_draft(Some(id), None, Stage::Backlog, w, cx)
+                            this.begin_draft(id, w, cx)
                         });
                     }));
                     menu = menu.separator();
@@ -1947,7 +1932,7 @@ impl TaskApp {
                                     .disabled(editing_disabled)
                                     .on_click(move |_, w, cx| {
                                         let _ = edit.update(cx, |a, cx| {
-                                            a.begin_draft(Some(id), None, Stage::Backlog, w, cx)
+                                            a.begin_draft(id, w, cx)
                                         });
                                     }),
                             )
@@ -2062,15 +2047,7 @@ impl TaskApp {
                         ),
                         cx,
                     ))
-                    .when(t.research.is_none(), |d| {
-                        d.child(
-                            button("add-subtask", "+  Add subtask")
-                                .disabled(t.archived || self.task_running(id))
-                                .on_click(cx.listener(move |this, _, w, cx| {
-                                    this.begin_draft(None, Some(id), Stage::Backlog, w, cx)
-                                })),
-                        )
-                    }).map(observed),
+                    .map(observed),
             ));
         let mut subtask_list = col().gap_1();
         for child in children {
@@ -2192,11 +2169,6 @@ impl TaskApp {
         );
         let mut properties = col().w(px(240.)).flex_shrink_0().p_3().m_4().ml_0().gap_2()
             .child(self.step_execution_panel(id, cx));
-        let goal_has_plan = t
-            .research
-            .as_ref()
-            .is_some_and(|r| r.kind == crate::research::ResearchKind::Goal)
-            && self.store.has_research_plan(id);
         let has_result = t
             .research
             .as_ref()
@@ -2213,38 +2185,6 @@ impl TaskApp {
             && t.research
                 .as_ref()
                 .is_some_and(|r| r.kind != crate::research::ResearchKind::Goal);
-        if !goal_has_plan && t.research.is_none() && t.parent_id.is_none() {
-            properties = properties.child(
-                button(
-                    "execute-task",
-                    if self.task_running(id) {
-                        "Working…"
-                    } else if t
-                        .research
-                        .as_ref()
-                        .is_some_and(|r| r.kind == crate::research::ResearchKind::Goal)
-                    {
-                        "Plan research steps"
-                    } else if previously_completed {
-                        "Run again"
-                    } else {
-                        "Start task"
-                    },
-                )
-                .when(!previously_completed, |b| b.primary())
-                .disabled(
-                    self.store.task_is_archived(id)
-                        || self.store.research_pending_approval(id)
-                        || t.stage == Stage::Cancelled
-                        || t.stage == Stage::Backlog
-                        || self.task_running(id),
-                )
-                .on_click(cx.listener(move |this, _, _, cx| {
-                    if previously_completed { this.start_run(id, cx); }
-                    else { this.change_stage(id, Stage::InProgress, cx); }
-                })),
-            );
-        }
         if needs_refresh && !self.task_running(id) {
             properties = properties.child(
                 col().gap_1()
@@ -2326,19 +2266,9 @@ impl TaskApp {
             .iter()
             .find(|p| p.id == t.project_id)
             .is_none_or(|p| p.directory.is_empty());
-        let missing_model = if let Some(r) = &t.research {
-            !crate::opencode::valid_model(self.store.research_model(r.kind))
-        } else {
-            self.store
-                .policies
-                .iter()
-                .find(|p| p.stage == t.stage)
-                .is_none_or(|p| {
-                    p.agent != "Manual"
-                        && !crate::opencode::valid_model(self.store.effective_model(&p.model))
-                })
-        };
-        if missing_folder {
+        let missing_model = t.research.as_ref().is_some_and(|r|
+            !self.store.valid_research_model(r.kind));
+        if missing_folder && t.research.is_some() {
             properties = properties
                 .child(label(
                     "Choose where this project's work will be saved before starting.",
@@ -2514,7 +2444,7 @@ impl TaskApp {
                             tool_icon("edit-labels", assets::IconName::Pencil, "Edit labels")
                                 .disabled(t.archived || self.task_running(id))
                                 .on_click(cx.listener(move |this, _, w, cx| {
-                                    this.begin_draft(Some(id), None, Stage::Backlog, w, cx)
+                                    this.begin_draft(id, w, cx)
                                 })),
                         ),
                 )
@@ -2597,23 +2527,9 @@ impl TaskApp {
                     ))
                     .child(button("configure-research", "Research settings…").on_click(
                         cx.listener(|this, _, w, cx| {
-                            this.navigate(Scope::Research, w, cx);
-                            this.show_research_settings = true;
+                            this.open_model_settings(w, cx);
                         }),
                     ));
-            } else if let Some(p) = self.store.policies.iter().find(|p| p.stage == t.stage) {
-                properties = properties.child(execution_field("Agent", p.agent.clone()));
-                if p.agent == "Manual" {
-                    properties = properties.child(execution_field("Execution", "Manual".into()));
-                } else {
-                    properties = properties.child(model_fields(&p.model));
-                }
-                properties = properties.child(button("configure-stage", "Workflow rules…").on_click(
-                    cx.listener(move |this, _, w, cx| {
-                        this.navigate(Scope::Workflow, w, cx);
-                        this.select_policy(t.stage, w, cx);
-                    }),
-                ));
             }
             properties = properties.child(button("task-folder", "Working folder…").on_click(
                 cx.listener(move |this, _, w, cx| this.open_directory(t.project_id, w, cx)),
@@ -2812,139 +2728,6 @@ impl TaskApp {
         }
         options.into_any_element()
     }
-    fn workflow(&self, cx: &mut Context<Self>) -> AnyElement {
-        let colors = palette(cx);
-        let mut stages = col().w(px(300.)).flex_shrink_0().gap_2();
-        for stage in Stage::ALL {
-            let p = self.store.policies.iter().find(|p| p.stage == stage);
-            stages = stages.child(
-                col()
-                    .id(format!("policy-{}", stage.key()))
-                    .p_4()
-                    .gap_2()
-                    .rounded_md()
-                    .border_1()
-                    .border_color(rgb(if self.policy_stage == stage {
-                        colors.accent
-                    } else {
-                        colors.line
-                    }))
-                    .bg(rgb(if self.policy_stage == stage {
-                        colors.accent_surface
-                    } else {
-                        colors.panel
-                    }))
-                    .cursor_pointer()
-                    .hover(|d| d.border_color(rgb(colors.accent)))
-                    .on_click(cx.listener(move |this, _, w, cx| this.select_policy(stage, w, cx)))
-                    .child(
-                        row()
-                            .justify_between()
-                            .child(
-                                div()
-                                    .text_color(rgb(stage_color(stage, cx)))
-                                    .child(stage_text(stage)),
-                            )
-                            .child(label("→", cx)),
-                    )
-                    .child(label(
-                        p.map(|p| {
-                            if p.agent == "Manual" {
-                                "Manual · No agent execution".into()
-                            } else {
-                                format!("{} · {}", p.agent, self.model_source_label(&p.model))
-                            }
-                        })
-                        .unwrap_or("Manual".into()),
-                        cx,
-                    ))
-                    .map(observed),
-            );
-        }
-        let editor = col()
-            .flex_1()
-            .min_w_0()
-            .max_w(px(660.))
-            .gap_5()
-            .p_6()
-            .rounded(px(8.))
-            .border_1()
-            .border_color(rgb(colors.line))
-            .bg(rgb(colors.panel))
-            .child(
-                row()
-                    .justify_between()
-                    .child(
-                        div()
-                            .text_lg()
-                            .font_weight(FontWeight::SEMIBOLD)
-                            .child(format!("{} stage", self.policy_stage.label())),
-                    )
-                    .child(chip("LOCAL EXECUTION", colors.accent, cx)),
-            )
-            .child(muted(
-                "Choose who works on this stage and how they should approach it.",
-             cx))
-            .child(label("AGENT", cx))
-            .child(
-                row()
-                    .gap_3()
-                    .children(["Manual", "Codex", "OpenCode"].into_iter().map(|agent| {
-                        select_button(format!("agent-{agent}"), agent, self.policy_agent == agent)
-                            .disabled(agent=="Codex")
-                            .on_click(cx.listener(move |this, _, _, cx| {
-                                this.policy_agent = agent.into();
-                                cx.notify();
-                            }))
-                    })),
-            )
-            .child(label("MODEL OVERRIDE · OPTIONAL", cx))
-            .child(Input::new(&self.policy_model).id("policy-model"))
-            .child(row().flex_wrap()
-                .child(button("policy-use-global", "Use global model")
-                    .disabled(self.policy_model.read(cx).value().is_empty())
-                    .on_click(cx.listener(|this, _, w, cx| { this.policy_model.update(cx, |s, cx| s.set_value("", w, cx)); cx.notify(); })))
-                .child(button("policy-global-settings", "Global model settings →").on_click(cx.listener(|this, _, w, cx| this.open_model_settings(w, cx)))))
-            .child(label(if self.policy_agent == "Manual" { "No agent execution while this stage is Manual".into() } else { self.model_source_label(self.policy_model.read(cx).value().trim()) }, cx))
-            .child(button("choose-model","Choose from local models…").dropdown_caret(true).open(self.show_models).disabled(self.available_models.is_empty()).on_click(cx.listener(|this,_,_,cx|{this.show_models = !this.show_models;cx.notify();})))
-            .when(self.show_models,|d|d.child(col().id("models-list").h(px(200.)).overflow_y_scroll().gap_1().children(self.available_models.iter().filter(|m|{let query=self.policy_model.read(cx).value().to_lowercase();query.is_empty()||query=="choose a model"||m.to_lowercase().contains(&query)}).map(|model|{let model=model.clone();button(format!("model-{model}"),model.clone()).on_click(cx.listener(move|this,_,w,cx|{this.policy_model.update(cx,|s,cx|s.set_value(model.clone(),w,cx));this.show_models=false;cx.notify();}))}))))
-            .child(label("Leave empty to use the global model. A provider/model or provider/model#variant here overrides it after saving.", cx))
-            .child(label("STAGE INSTRUCTIONS", cx))
-            .child(
-                div()
-                    .id("policy-prompt")
-                    .child(Textarea::new(&self.policy_prompt)),
-            )
-            .child(
-                Checkbox::new("policy-auto")
-                    .label("Automatic stage execution (coming later)").disabled(true)
-                    .checked(self.policy_auto)
-                    .on_change(cx.listener(|this, v, _, cx| {
-                        this.policy_auto = *v;
-                        cx.notify();
-                    })),
-            )
-            .child(label(
-                "This version starts real runs only when you click Run with OpenCode. Codex is not connected yet.",
-             cx))
-            .child(
-                row().justify_end().child(
-                    primary_button("save-policy", "Save stage configuration")
-                        .on_click(cx.listener(|this, _, _, cx| this.save_policy(cx))),
-                ),
-            );
-        col().size_full().child(row().h_16().px_8().border_b_1().border_color(rgb(colors.line)).child(div().font_weight(FontWeight::SEMIBOLD).child("Workflow stages")))
-            .child(col().id("workflow-scroll").flex_1().min_h_0().overflow_y_scroll().p_8().gap_6()
-                .child(col().gap_2().child(div().text_2xl().font_weight(FontWeight::SEMIBOLD).child("The right agent for each stage."))
-                    .child(muted("Plan with one model, build with another, and review before shipping.", cx)))
-                .child(label(self.storage.as_ref().map(|s|format!("Data: {}",s.path().display())).unwrap_or_else(||"Preview workspace (not saved)".into()), cx))
-                .child(col().p_4().gap_3().border_1().border_color(rgb(colors.line)).rounded_md()
-                    .child(row().justify_between().child(label("LOCAL OPENCODE", cx)).child(label(self.connection_status.clone(), cx)))
-                    .child(row().child(div().flex_1().child(Input::new(&self.executable_input).id("opencode-path"))).child(button("refresh-models","Refresh models").loading(self.discovering_models()).on_click(cx.listener(|this,_,_,cx|this.discover_models(cx)))))
-                    .child(row().flex_wrap().children(self.store.projects.iter().map(|p|{let id=p.id;select_button(format!("connection-project-{id}"),p.name.clone(),self.connection_project==id).on_click(cx.listener(move|this,_,_,cx|{this.connection_project=id;cx.notify();}))})))
-                    .child(row().child(label(self.store.projects.iter().find(|p|p.id==self.connection_project).map(|p|if p.directory.is_empty(){"Project folder is not set".into()}else{p.directory.clone()}).unwrap_or_default(), cx)).child(button("connection-folder","Set folder").on_click(cx.listener(|this,_,w,cx|this.open_directory(this.connection_project,w,cx))))))
-                .child(row().items_start().gap_6().child(stages).child(editor)).map(observed)).into_any_element()
-    }
     fn directory_overlay(&self, cx: &mut Context<Self>) -> AnyElement {
         let colors = palette(cx);
         let name = self
@@ -3033,13 +2816,7 @@ impl TaskApp {
                         row()
                             .justify_between()
                             .child(div().text_lg().font_weight(FontWeight::SEMIBOLD).child(
-                                if d.id.is_some() {
-                                    "Edit task"
-                                } else if d.parent.is_some() {
-                                    "New subtask"
-                                } else {
-                                    "New task"
-                                },
+                                "Edit task",
                             ))
                             .child(
                                 icon_button("cancel-draft", "×", "Close without saving")
@@ -3072,10 +2849,8 @@ impl TaskApp {
                                     crate::workflow::phase_label(stage),
                                     d.stage == stage,
                                 )
-                                .disabled(if let Some(id) = d.id {
-                                    self.store.task(id).is_none_or(|task| task.stage != stage) &&
-                                        (stage == Stage::InProgress || self.store.validate_manual_transition(id, stage, self.todo_batch.as_ref()).is_err())
-                                } else { !matches!(stage, Stage::Backlog | Stage::Planned) })
+                                .disabled(self.store.task(d.id).is_none_or(|task| task.stage != stage) &&
+                                        (stage == Stage::InProgress || self.store.validate_manual_transition(d.id, stage, self.todo_batch.as_ref()).is_err()))
                                 .on_click(cx.listener(
                                     move |this, _, _, cx| {
                                         if let Some(d) = &mut this.draft {
@@ -3097,7 +2872,7 @@ impl TaskApp {
                                     p.name.clone(),
                                     d.project == id,
                                 )
-                                .disabled(d.parent.is_some())
+                                .disabled(self.store.task(d.id).is_some_and(|task| task.parent_id.is_some()))
                                 .on_click(cx.listener(
                                     move |this, _, _, cx| {
                                         if let Some(d) = &mut this.draft {
@@ -3144,11 +2919,7 @@ impl TaskApp {
                             .child(
                                 primary_button(
                                     "save-task",
-                                    if d.id.is_some() {
-                                        "Save changes"
-                                    } else {
-                                        "Create task"
-                                    },
+                                    "Save changes",
                                 )
                                 .on_click(cx.listener(|this, _, w, cx| this.save_draft(w, cx))),
                             ),
@@ -3223,7 +2994,6 @@ impl Render for TaskApp {
         } else {
             match self.scope {
                 Scope::Topic(id) => self.topic_view(id, cx),
-                Scope::Workflow => self.workflow(cx),
                 Scope::Runs => self.runs(cx),
                 Scope::Recovery => self.recovery_view(cx),
                 Scope::Research => self.research_view(cx),
@@ -3270,8 +3040,7 @@ impl Render for TaskApp {
                     this.planning_project = None;
                     if matches!(
                         this.scope,
-                        Scope::Workflow
-                            | Scope::Runs
+                        Scope::Runs
                             | Scope::Recovery
                             | Scope::Research
                             | Scope::Settings

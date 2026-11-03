@@ -18,7 +18,7 @@ Define what you want to understand, let an agent propose a plan, and decide whic
 
 ## Execute through local OpenCode
 
-The application uses your locally installed and configured **OpenCode** to plan and execute tasks. It discovers the models available in your OpenCode configuration and lets you choose a global default or override the model for individual stages.
+The application uses your locally installed and configured **OpenCode** to plan and execute research. Settings → Research models shows the effective model for planning, collection, analysis and the final report. Choose a model for each stage or leave it blank to use the global default.
 
 Approved goals can be added to a FIFO topic queue even when all execution slots are occupied. One topic runs at a time, with dependency-ready steps running concurrently within it. Settings → General lets you choose 1–10 simultaneous tasks (default 3). Changes are saved per workspace; lowering the limit lets running tasks finish before admitting more work. Start with 3, try 5 after checking stability, and use 6–10 only after validating provider limits and local resource usage. Higher concurrency can increase rate limiting, retries, and browser load. Exhausted retries or blocked goals retain their status while later topics continue. New request-generated Goals use separate step folders and browser Spaces. Shared sessions, Spaces and overlapping folders remain serialized; legacy research preserves its existing workspace. A failed branch blocks its dependents while independent approved work can continue.
 
@@ -71,7 +71,7 @@ For a complete backup, quit the application and copy the entire workspace root, 
 
 ## Current scope
 
-This is an early desktop application, currently validated on Apple Silicon macOS. It uses Rust and GPUI / gpui-kit for its native interface. Local OpenCode and ego(lite) are separate prerequisites for agent execution and browser-based research.
+This is an early desktop application, currently validated on Apple Silicon macOS. It uses Rust and GPUI / gpui-kit for its native interface. At least one local agent CLI (OpenCode or Codex) is required for agent execution; ego(lite) is required for browser-based research.
 
 The application provides research workflows, not trading or order execution. Generated conclusions and source records still require human review. A project working directory organizes agent output; it is not a filesystem sandbox.
 
@@ -81,6 +81,8 @@ The application provides research workflows, not trading or order execution. Gen
 
 ### Local macOS beta package
 
-Run `./script/package_macos.sh` on Apple Silicon to build an optimized release and produce a DMG plus SHA-256 checksum in `target/distribution/`. The disk image includes `Planning.app`, an Applications shortcut, installation instructions, and the license. No workspace or credentials are packaged. OpenCode and ego(lite) remain separate prerequisites.
+Run `./script/package_macos.sh` on Apple Silicon to build an optimized release and produce a DMG plus SHA-256 checksum in `target/distribution/`. The disk image includes `Planning.app`, an Applications shortcut, installation instructions, and the license. No workspace or credentials are packaged. Install OpenCode or Codex, plus ego(lite), separately.
 
 These beta packages use ad-hoc signing and are **not notarized**. Testers may need to allow the app in macOS Privacy & Security after attempting to open it. For ordinary trusted distribution without this exception, use a Developer ID Application certificate and Apple notarization. The current package is arm64 only; compatibility with older macOS versions has not been fully tested.
+
+On macOS, Codex collection runs use an app-owned `planning_ego` stdio MCP bridge for ego(lite). Browser scripts run with desktop access while Codex shell commands retain the `workspace-write` sandbox. The bridge is configured per run, not in global Codex settings, and requires the configured local ego-browser executable. Process exit logs are separate from validated research completion or blocking.

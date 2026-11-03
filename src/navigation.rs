@@ -112,11 +112,12 @@ mod tests {
         store.projects[0].directory = std::env::temp_dir().to_string_lossy().into_owned();
         store.default_model = "test/model".into();
         let id = store.create_task("Task", 1, Stage::Planned, None).unwrap();
-        let mut run = store.prepare_run(id).unwrap();
+        store.policies = Store::mock().policies;
+        store.simulate_run(id).unwrap();
+        let run = store.runs.last_mut().unwrap();
         run.status = "Succeeded".into();
         run.output = "Final result".into();
         let run_id = run.id;
-        store.runs.push(run);
         for stage in [Stage::Backlog, Stage::Planned, Stage::InProgress, Stage::Review, Stage::Cancelled] {
             store.task_mut(id).unwrap().stage = stage;
             assert_eq!(store.completed_sidebar_result(id), None);

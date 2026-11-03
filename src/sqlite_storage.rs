@@ -253,11 +253,12 @@ mod tests {
         original.default_model = "test/model".into();
         original.projects[0].directory = root.join("projects/project-1").to_string_lossy().into();
         original.set_stage(1, Stage::InProgress).unwrap();
-        let mut run = original.prepare_run(1).unwrap();
+        original.simulate_run(1).unwrap();
+        let run = original.runs.last_mut().unwrap();
+        run.directory = original.projects[0].directory.clone();
         run.workspace_source = Some(root.to_string_lossy().into());
         run.prompt = format!("Historical path: {}", run.directory);
         run.output = run.prompt.clone();
-        original.runs.push(run);
         // Reproduce the old v1 format, with absolute paths and no rewrite on reading.
         save(&path, Path::new("/unrelated-legacy-root"), &original).unwrap();
         let db = Connection::open(&path).unwrap();

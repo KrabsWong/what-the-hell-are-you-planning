@@ -59,17 +59,17 @@ pub fn run() {
             let app = app.unwrap();
             let handle = window.into();
 
-            screenshot(&mut cx, handle, &directory, "01-planning-disabled.png");
+            screenshot(&mut cx, handle, &directory, "01-planning-empty.png");
             cx.update_window(handle, |_, w, cx| {
-                assert_eq!(w.find("generate-project-plan").disabled(), Some(true));
                 let before = app.read(cx).store.clone();
                 w.click("generate-project-plan", cx);
                 assert_eq!(
                     app.read(cx).store,
                     before,
-                    "Disabled generation must have no side effect"
+                    "Empty research request must have no side effect"
                 );
-                w.hover("project-plan-folder", cx);
+                assert!(!app.read(cx).error.is_empty());
+                w.hover("generate-project-plan", cx);
             })
             .unwrap();
             screenshot(&mut cx, handle, &directory, "02-planning-hover.png");
@@ -104,8 +104,8 @@ pub fn run() {
             })
             .unwrap();
             press(&mut cx, handle, "shift-tab");
-            cx.update_window(handle, |_, w, _| {
-                assert_eq!(w.find("project-plan-model").focused(), Some(true));
+            cx.update_window(handle, |_, w, cx| {
+                assert!(app.read(cx).modal_focus.contains_focused(w, cx));
             })
             .unwrap();
             press(&mut cx, handle, "tab");
@@ -114,15 +114,6 @@ pub fn run() {
             })
             .unwrap();
             screenshot(&mut cx, handle, &directory, "03-keyboard-focus.png");
-            press(&mut cx, handle, "enter");
-            cx.update_window(handle, |_, _, cx| {
-                assert!(
-                    app.read(cx).store.projects[0]
-                        .research_brief
-                        .contains("全球半导体市场")
-                );
-            })
-            .unwrap();
             for key in ["tab", "shift-tab"] {
                 for _ in 0..8 {
                     press(&mut cx, handle, key);
@@ -131,11 +122,16 @@ pub fn run() {
                             app.read(cx).modal_focus.contains_focused(w, cx),
                             "Planning dialog lost its focus trap while navigating with {key}"
                         );
-                        assert_ne!(w.find("generate-project-plan").focused(), Some(true));
                     })
                     .unwrap();
                 }
             }
+            cx.update_window(handle, |_, w, cx| {
+                w.click("save-project-context", cx);
+                assert!(app.read(cx).planning_project.is_none());
+                assert!(app.read(cx).store.research_requests.iter().any(|request| request.input.contains("全球半导体市场")));
+                w.click("plan-project", cx);
+            }).unwrap();
             cx.update_window(handle, |_, w, cx| {
                 // Close is tested as an actual icon hit target, then reopen from the project.
                 w.click("close-project-plan", cx);
@@ -157,6 +153,7 @@ pub fn run() {
                     w.click("close-project-plan", cx);
                     app.update(cx, |a, cx| {
                         let ids = a.store.apply_project_plan(1, TOPICS).unwrap();
+                        a.navigate(Scope::All, w, cx);
                         a.layout = Layout::Board;
                         cx.notify();
                         ids[0]
@@ -195,35 +192,25 @@ pub fn run() {
             .unwrap();
             screenshot(&mut cx, handle, &directory, "07-task-property-menu.png");
             cx.update_window(handle, |_, w, cx| {
-                w.click("research", cx);
+                w.click("model-settings", cx);
+                w.within("settings-tabs").click(1usize, cx);
             })
             .unwrap();
             screenshot(&mut cx, handle, &directory, "08-research.png");
             cx.update_window(handle, |_, w, cx| {
-                w.click("research-settings-toggle", cx);
-                click_in(w, cx, "research-scroll", "save-research-settings");
+                assert!(w.try_find("save-research-settings").is_none());
+                w.render_frame(cx);
             })
             .unwrap();
             screenshot(&mut cx, handle, &directory, "09-research-settings.png");
             cx.update_window(handle, |_, w, cx| {
                 w.click("model-settings", cx);
-                w.within("settings-tabs").click(2usize, cx);
-                click_in(w, cx, "model-settings-scroll", "global-task-overrides");
+                w.within("settings-tabs").click(1usize, cx);
+                w.render_frame(cx);
+                assert!(w.try_find("research-model-0").is_some());
+                assert!(w.try_find("global-task-overrides").is_none());
             })
             .unwrap();
-            screenshot(&mut cx, handle, &directory, "10-workflow.png");
-            cx.update_window(handle, |_, w, cx| {
-                assert_eq!(w.find("agent-Codex").disabled(), Some(true));
-                let before = app.read(cx).policy_agent.clone();
-                click_in(w, cx, "workflow-scroll", "agent-Codex");
-                assert_eq!(app.read(cx).policy_agent, before);
-            })
-            .unwrap();
-            cx.update_window(handle, |_, w, cx| {
-                click_in(w, cx, "workflow-scroll", "save-policy");
-            })
-            .unwrap();
-            screenshot(&mut cx, handle, &directory, "11-workflow-settings.png");
             cx.update_window(handle, |_, w, cx| {
                 w.click("runs", cx);
             })
@@ -303,7 +290,7 @@ pub fn run() {
         }
     }
     println!(
-        "AFFORDANCE QA PASSED: 1440/1000 × light/dark, disabled no-op, hover, Tab/Enter save, close/reopen, approval, property menus, materials, settings and result links. Screenshots: {}",
+        "AFFORDANCE QA PASSED: 1440/1000 × light/dark, empty request validation, hover, keyboard focus, save, close/reopen, approval, property menus, materials, settings and result links. Screenshots: {}",
         root.display()
     );
 }

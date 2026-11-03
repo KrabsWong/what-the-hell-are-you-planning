@@ -39,7 +39,7 @@ if 'Attached material:' in prompt:
 with open('calls.jsonl', 'a', encoding='utf-8') as log:
     log.write(json.dumps({'model': model, 'prompt': prompt, 'files': files}, ensure_ascii=False) + '\n')
 print(json.dumps({'type': 'reasoning', 'sessionID': 'fixture-' + model, 'part': {'text': 'LIVE_MARKER ' + model}}), flush=True)
-if 'QA_BROWSER_HANDOFF' in prompt:
+if 'QA_BROWSER_HANDOFF' in prompt and model == 'fixture/collector':
     output = 'Error: task.listTabs: A browser permission prompt for location access has appeared. The user now controls this task space. Resume only after the user confirms.'
     print(json.dumps({'type': 'tool_use', 'part': {'tool': 'shell', 'state': {'status': 'completed', 'input': {'command': 'ego-browser nodejs < fixture.mjs'}, 'output': output}}}), flush=True)
     time.sleep(2)
@@ -54,8 +54,14 @@ if model == 'fixture/planner':
         {'title': '收集原始新闻与公告', 'instructions': '保存来源、时间和事实，使用 ego(lite) 检索。', 'kind': 'collect', 'depends_on': []},
         {'title': '分析新闻与补充材料', 'instructions': '核对 PDF 和截图，区分事实与推断。', 'kind': 'analyze', 'depends_on': [0]},
         {'title': '形成有条件的投资简报', 'instructions': '注明风险、催化因素和失效条件。', 'kind': 'advise', 'depends_on': [1]}]}
+elif 'QA_REPORTED_HANDOFF' in prompt and model == 'fixture/collector':
+    result = {'status':'blocked', 'blocker':'browser_handoff', 'report':'Browser access was handed to the user. Existing evidence incomplete.', 'sources':[]}
+elif 'QA_BROWSER_HANDOFF' in prompt or 'QA_REPORTED_HANDOFF' in prompt:
+    assert 'BROWSER CONTROL:' in prompt and 'Do not use browser tools' in prompt
+    assert 'Browser access was handed to the user' in prompt or 'OFFLINE_GAP_SENTINEL' in prompt
+    result = {'status': 'partial', 'report': 'OFFLINE_GAP_SENTINEL: Browser access was handed to the user. No verified prices; conclusions remain unavailable.', 'sources': []}
 elif 'QA_BLOCK' in prompt:
-    result = {'status': 'blocked', 'report': 'QA fixture: browser requires user input; chain must stop.', 'sources': []}
+    result = {'status': 'blocked', 'blocker': 'browser_unavailable', 'report': 'QA fixture: browser runtime unavailable; chain must stop.', 'sources': []}
 else:
     if model == 'fixture/collector':
         assert 'BROWSER INTEGRATION' in prompt and 'Task Manager research' in prompt
@@ -121,22 +127,24 @@ pub fn run() {
 
     cx.update_window(handle, |_, w, cx| {
         w.render_frame(cx);
-        w.click("research", cx);
-        w.click("research-settings-toggle", cx);
+        w.click("model-settings", cx);
+        w.within("settings-tabs").click(1usize, cx);
         for (i, model) in MODELS.iter().enumerate() {
-            click_in(w, cx, "research-scroll", &format!("research-model-{i}"));
+            click_in(w, cx, "model-settings-scroll", &format!("research-model-{i}"));
             w.press("cmd-a", cx);
             w.input(model, cx);
+            w.press("enter", cx);
         }
-        click_in(w, cx, "research-scroll", "ego-path");
+        click_in(w, cx, "model-settings-scroll", "ego-path");
         w.press("cmd-a", cx);
         w.input(ego.to_str().unwrap(), cx);
-        click_in(w, cx, "research-scroll", "save-research-settings");
+    }).unwrap();
+    cx.update_window(handle, |_, w, cx| {
         assert_eq!(
             app.read(cx).store.research_config.models,
             MODELS.map(String::from)
         );
-        click_in(w, cx, "research-scroll", "check-ego");
+        click_in(w, cx, "model-settings-scroll", "check-ego");
     })
     .unwrap();
     wait_until(
@@ -431,12 +439,17 @@ pub fn run() {
     let expected = cx
         .update_window(handle, |_, _, cx| {
             let state = app.read(cx);
-            assert_eq!(state.store.runs.len(), 12);
-            assert_eq!(state.store.runs.last().unwrap().status, "Blocked");
+            assert_eq!(state.store.runs.len(), 14);
+            assert_eq!(state.store.runs.last().unwrap().status, "Succeeded");
             assert!(state.research_sequences.is_empty());
-            assert!(state.error.contains("browser permission prompt"));
+            let handoff = &state.store.runs[11];
+            let goal = state.store.owning_research_goal(handoff.task_id).unwrap();
+            assert!(state.store.research_browser_handed_off(goal));
+            assert!(state.store.research_children(goal).iter().all(|id| state.store.research_result(*id).is_some()));
+            assert!(state.store.runs[12].prompt.contains("BROWSER CONTROL:"));
+            assert!(state.store.runs[13].output.contains("OFFLINE_GAP_SENTINEL"));
             assert!(
-                !Path::new(&state.store.runs.last().unwrap().directory)
+                !Path::new(&handoff.directory)
                     .join("handoff-continued")
                     .exists()
             );
@@ -537,6 +550,64 @@ pub fn run() {
         "Research QA passed: Chinese native input, four routed models, managed PDF/image copies, generated persisted plan, streamed dependency chain, source/file handoff, comment/material invalidation and reruns, stale plan rejection, blocked/cancel cleanup, exact workspace reopen and 1440/1000 screenshots. Fixtures only: {}",
         root.display()
     );
+}
+
+// Focused lifecycle acceptance independent of legacy settings navigation.
+pub fn handoff_progress() {
+    let root = std::env::current_dir().unwrap().join(format!(".local/handoff-qa/{}", std::process::id()));
+    std::fs::create_dir_all(&root).unwrap();
+    let cli = root.join("fake-opencode");
+    let ego = root.join("ego-browser");
+    write_executable(&cli, FAKE_CLI);
+    write_executable(&ego, "#!/bin/sh\nexit 0\n");
+    let mut cx = HeadlessAppContext::with_platform(platform::current_platform(true).text_system(), Arc::new(assets::Assets), platform::current_headless_renderer);
+    cx.update(init);
+    let mut app = None;
+    let window = cx.open_window(size(px(1000.), px(680.)), |w, cx| {
+        let view = cx.new(|cx| TaskApp::new_mock(w, cx));
+        view.update(cx, |a, cx| {
+            a.attach_storage(Storage::new(root.join("workspace.json")), w, cx);
+            a.store.projects[0].directory = root.to_string_lossy().into_owned();
+            a.store.opencode_path = cli.to_string_lossy().into_owned();
+            a.store.research_config.ego_path = ego.to_string_lossy().into_owned();
+            a.store.research_config.models = MODELS.map(String::from);
+        });
+        app = Some(view.clone());
+        cx.new(|cx| base::Root::new(view, w, cx))
+    }).unwrap();
+    let app = app.unwrap();
+    let handle = window.into();
+    for title in ["QA_BROWSER_HANDOFF", "QA_REPORTED_HANDOFF", "QA_BLOCK"] {
+        let goal = cx.update_window(handle, |_, w, cx| {
+            let goal = create_fixture_goal(&app, w, cx, title);
+            app.update(cx, |a, cx| a.run_research_next(goal, true, cx));
+            goal
+        }).unwrap();
+        wait_idle(&mut cx, handle, &app);
+        cx.update_window(handle, |_, _, cx| {
+            let state = app.read(cx);
+            let runs: Vec<_> = state.store.runs.iter().filter(|r| state.store.owning_research_goal(r.task_id) == Some(goal)).collect();
+            assert!(state.storage_error.is_empty(), "{}", state.storage_error);
+            if title == "QA_BLOCK" {
+                assert_eq!(runs.len(), 1);
+                assert_eq!(runs[0].status, "Blocked");
+                assert!(!state.store.research_browser_handed_off(goal));
+            } else {
+                assert_eq!(runs.len(), 3, "{title}: {:?}", runs.iter().map(|r| (&r.status, &r.logs)).collect::<Vec<_>>());
+                assert!(runs.iter().all(|r| r.status == "Succeeded"));
+                assert!(state.store.research_browser_handed_off(goal));
+                assert!(runs[1].prompt.contains("BROWSER CONTROL:"));
+                assert!(runs[2].output.contains("OFFLINE_GAP_SENTINEL"));
+                assert!(!Path::new(&runs[0].directory).join("handoff-continued").exists());
+                let mut next = state.store.prepare_run(runs[0].task_id).unwrap();
+                state.prepare_run_materials(runs[0].task_id, &mut next).unwrap();
+                assert!(next.prompt.contains("BROWSER CONTROL:"));
+                assert!(!next.prompt.contains("CODEX BROWSER TRANSPORT"));
+                assert!(!next.prompt.contains("\nBROWSER INTEGRATION"));
+            }
+        }).unwrap();
+    }
+    println!("HANDOFF QA PASSED: tool handoff and reported handoff continue offline through analysis/report; browser runtime failure stops; no browser takeover. {}", root.display());
 }
 
 fn create_fixture_goal(app: &Entity<TaskApp>, w: &mut Window, cx: &mut App, title: &str) -> u64 {
@@ -726,7 +797,7 @@ files=[args[i+1] for i,a in enumerate(args) if a=='--file']
 assert len(files)==3 and all(pathlib.Path(f).is_file() for f in files)
 assert 'Read the attached file directly' in args[-1]
 "#);
-    let running = crate::opencode::start(crate::opencode::Request {
+    let running = crate::opencode::start(crate::opencode::Request { browser_executable: None,
         executable: cli, directory: root.clone(), model: MODELS[2].into(), prompt: run.prompt,
         title: "attachment QA".into(), files, session_id: None,
     }).unwrap();

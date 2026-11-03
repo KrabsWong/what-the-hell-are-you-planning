@@ -8,7 +8,9 @@
 
 ## 1. 首次启动与界面
 
-启动顺序为 **确认 Workspace 并取得锁 → 升级旧数据（如需）→ 检查 OpenCode 和 ego(lite)**。旧数据库升级不依赖两项工具是否已安装。升级在后台进行，界面显示动态 Logo 与备份、路径转换、校验阶段，不显示估算百分比。升级失败时停止后续检查，显示错误和重试入口。没有升级且三项均已就绪时直接进入主界面；升级成功后设置页会显示旧库备份位置。缺少工作区或依赖检测失败时才显示设置页。选择工作区并点击 **Set workspace**；OpenCode 会执行 `--version` 检查，ego(lite) 会读取本机 `ego-browser skill` 的完整指南。缺少依赖时可使用安装链接；ego(lite) 安装后还需打开并完成首次设置。可修改两项可执行文件路径，点击 **Check again** 重新检测。三项就绪后 **Continue** 才可用，并保存验证过的路径。检测不调用模型；进入应用后仍需配置模型及服务商。
+启动顺序为 **确认 Workspace 并取得锁 → 升级旧数据（如需）→ 检查 AI agents 和 ego(lite)**。旧数据库升级不依赖工具是否已安装。升级在后台进行，界面显示动态 Logo 与备份、路径转换、校验阶段；失败时停止后续检查并提供重试入口。没有升级且三类条件均已就绪时直接进入主界面；升级成功后设置页显示备份位置。
+
+AI agents 分别检测 OpenCode 和 Codex 的 `--version`，**至少一个可用即可通过**，无需同时安装；两者都不可用时才阻止继续。ego(lite) 仍需读取本机 `ego-browser skill` 的完整指南并完成首次设置。可修改各工具路径后点击 **Check again**，更改成功 Agent 的路径会使该项检测失效；另一个已验证且路径未变的 Agent 仍可满足条件。Workspace、至少一个 Agent、ego(lite) 就绪后 **Continue** 才可用。启动检测不调用模型、不检查订阅额度、不自动切换已保存的阶段配置；进入应用后在 Settings 选择实际可用的 Agent 和模型。
 
 
 运行 `cargo run`，或打开已构建的 `target/debug/what-the-hell-are-you-planning`。当前真实验证环境是 Apple Silicon macOS，需要已配置提供商的 OpenCode。
@@ -21,10 +23,10 @@
 
 | 区域 | 用途 |
 | --- | --- |
-| All / 项目 | 浏览任务、按状态筛选、列表或看板、新建任务、编辑、归档 |
-| Settings（侧栏底部） | 设置默认模型；按需进入研究设置和阶段规则 |
+| All / 项目 | 浏览任务、按状态筛选、列表或看板、新建研究、编辑、归档 |
+| Settings（侧栏底部） | 设置默认模型和四个研究阶段使用的模型 |
 | Market research | 提出研究目标、查看已有研究；高级配置按需打开 |
-| Settings → Task stage overrides → | 配置普通任务不同状态对应的模型与指令 |
+| Settings → Research models | 查看四个研究阶段实际使用的模型，点击 Edit research models 修改 |
 | Progress & results | 看当前进展、报告与来源；技术详情中查看模型和日志 |
 | Archive | 查看、恢复归档任务 |
 
@@ -56,13 +58,13 @@ Project 的 List 视图按 Topic 分组显示 Goal，每组有独立标题和当
 
 使用 **Tab / Shift-Tab** 在控件之间移动，**Enter / Space** 激活按钮；多行表单的 Tab 用来移到下一控件。弹窗内焦点保持在弹窗中。`Generate topics` 灰显时，按钮附近会说明需要设置目录、选择模型或等待当前运行。
 
-**研究角色与任务状态不同**：Plan / News collection / Analysis / Investment brief 决定研究模型；Todo / In progress / Done 等表示任务状态。普通任务使用 Stage workflow，研究任务使用 Research 设置。
+**研究角色与任务状态不同**：Plan / News collection / Analysis / Investment brief 决定研究模型；Todo / In progress / Done 等表示任务状态。旧工作区中的普通任务和运行记录仍可查看。新的执行从研究目标或研究步骤发起。
 
 ## 2. 配置一次真实链路
 
 1. 选择项目，应用已在 workspace 内自动分配工作目录；如需调整，通过 **项目标题旁 ⋯ → Working folder…** 选择 workspace 内的目录。Agent 会在该目录读写产物；这不是文件系统沙盒。
-2. 打开 **Settings → Task stage overrides →**（Stage workflow），确认 OpenCode 可执行路径，点击 **Refresh models**，获取本机已配置的模型。
-3. 打开侧栏底部 **Settings**，点击 **Choose from OpenCode…**，搜索并选择模型，再点击 **Save global model**。项目拆分、研究任务和普通 OpenCode 任务默认共用它。
+2. 打开 **Settings → Agent & models**，确认 Agent 版本、路径及连接状态，点击 **Refresh local models** 更新模型目录。
+3. 在同一页选择全局 Agent 和模型；点击模型输入框可展开和搜索，修改自动保存。规划、收集、分析及最终报告默认共用它。
 4. 安装并完成 ego(lite) 首次设置，填写 `ego-browser` 路径，点击 **Check runtime**。常见路径为 `~/.local/bin/ego-browser`。
 5. **Open browser** 打开 ego(lite)。每个目标有独立 Space 名称，可在浏览器 Space 菜单中查看。运行时会读取安装版本的操作指南。
 
@@ -72,10 +74,9 @@ Check runtime 只表示本地指南可读；实际网页访问是否成功，需
 
 全局设置对整个工作区的所有项目生效。可以选择本机 OpenCode 已配置的模型，或填写完整的 `provider/model`（支持 `#variant`）。例如 Tencent Token Plan 的 DeepSeek-V4.1-Flash-1017 原厂直供，对应当前本机标识 `tencent-token-plan/deepseek/deepseek-flash`；不要省略提供商前缀。
 
-- **Market research** 的四个研究阶段、**Stage workflow** 的普通任务阶段，模型输入留空时继承全局默认；填入模型后优先使用该阶段覆盖。页面会显示模型来源和完整标识。
-- 全局页 **Stage overrides** 列出仍有单独配置的阶段。要让它们全部跟随全局模型，勾选 **Use this model for every stage** 后保存；Manual 阶段仍保持手动。
-- 全部阶段已经继承时，勾选保持显示，重启后仍然保留；此时它是只读状态指示。要给某个阶段使用不同模型，进入对应阶段设置覆盖即可。
-- 只恢复某一个阶段时，在对应设置页点击 **Use global model**，再保存该页配置。
+- 四个研究阶段，模型输入留空时继承全局默认；填入模型后优先使用该阶段覆盖。页面会显示模型来源和完整标识。
+- **Settings → Agent & models** 集中显示全局配置及四个阶段覆盖。点击 **Use global for all stages** 清除所有阶段覆盖。
+- 单个阶段点击 **Use global** 恢复全局 Agent 与模型；已经继承时按钮禁用。所有修改自动保存。
 - 保存只影响此后启动的运行。进行中的任务继续使用启动时的模型，历史记录、研究结果和 Todo 批准状态保留；保存不会自动执行任务。
 - 旧工作区四个研究模型相同时自动迁移为全局默认；不同的阶段配置保留为覆盖。模型设置页会明确列出，便于检查。
 
@@ -129,9 +130,9 @@ Board 按大阶段显示 **Backlog → Todo → Execution → In review → Done
 - **Running**：存在真实的运行记录。目标按整条任务链汇总，某一步运行时不会因为其他步骤等待而把整个目标显示成 Waiting。
 - **Paused / Blocked**：队列暂停、运行停止或需要处理失败；卡片显示原因和下一步。
 
-将 Todo 卡片拖入 Execution 等同于提交执行：研究目标按依赖顺序执行整条任务链，普通任务使用执行阶段的模型与指令。提交后仍留在 Board；依赖或资源不足时显示等待或排队，不会伪造 Running。即使当前筛选为 Running，拖入仍只提交执行。无效拖放会提示原因，重复提交不会创建重复运行。
+将已批准的研究目标从 Todo 拖入 Execution，会提交目标并按依赖顺序执行研究步骤。提交后仍留在 Board；依赖或资源不足时显示等待或排队，不会伪造 Running。即使当前筛选为 Running，拖入仍只提交执行。无效拖放会提示原因，重复提交不会创建重复运行。
 
-不能从 Backlog 直接拖入 Execution，不能将已提交或运行中的任务拖回 Todo，也不能跳过研究依赖把目标标记为 Done。Backlog → Todo 只接纳／审批，不运行；未提交的 Todo 可以退回 Backlog。暂停、继续和停止使用队列或运行操作。普通任务运行成功后进入 In review，审核后可以标记 Done；研究链全部产生有效结果后自动完成。内部研究步骤由调度器管理，不能手动拖动来绕过整体审批或依赖。
+不能从 Backlog 直接拖入 Execution，不能将已提交或运行中的任务拖回 Todo，也不能跳过研究依赖把目标标记为 Done。Backlog → Todo 只接纳／审批，不运行；未提交的 Todo 可以退回 Backlog。暂停、继续和停止使用队列或运行操作。研究链全部产生有效结果后自动完成。内部研究步骤由调度器管理，不能手动拖动来绕过整体审批或依赖。
 
 Board、List、左侧任务树和右侧详情共用 `Store::task_status` 的阶段、状态、原因；List 显示状态文字并支持大阶段与执行分类筛选，侧边栏用图标和悬停说明。手动拖拽、状态菜单和编辑表单共用 `validate_manual_transition` 校验。运行完成、重试及中断恢复使用内部流转，不受手动回退规则干扰。结果页仍显示所查看的那一次运行状态，历史记录不会被当前状态覆盖。
 
@@ -145,7 +146,7 @@ Board、List、左侧任务树和右侧详情共用 `Store::task_status` 的阶�
 4. 某个步骤失败后先按 30 秒间隔自动重试，最多 3 次。重试耗尽、需要用户接管或审批失效时保留失败／阻塞状态；当前 Topic 的其他可执行步骤结束后自动进入下一个 Topic。队列结束显示成功数和需要处理的目标，修复后可将失败目标重新加入队尾。
 5. **Pause after task** 暂停后续步骤及重试派发，仍可向队列追加；**Continue** 继续尚未处理的 Topic，不重跑之前已失败的 Topic；**Stop all** 停止本队列已提交任务并清空等待项，保留已有成果。保存失败会暂停队列。若下一步在创建执行记录前就无法提交（例如模型配置或上下文检查未通过），也会暂停当前 Topic，保留具体原因到 Goal 的 Activity；修复后点击 Continue，不会把这种情况当成重试耗尽而跳过。
 
-状态栏显示当前 Topic、接下来的排队顺序及失败目标数。未批准的 Backlog 不执行；归档或撤回审批的等待目标会跳过。关闭应用不会恢复队列或自动执行任务，下次需重新明确提交。普通任务仍留在 Todo 时，下次新建批次会再次纳入，应先人工更新已验收任务的状态。
+状态栏显示当前 Topic、接下来的排队顺序及失败目标数。未批准的 Backlog 不执行；归档或撤回审批的等待目标会跳过。关闭应用不会恢复队列或自动执行任务，下次需重新明确提交。旧版普通任务不会进入研究队列。
 
 ### 单个研究目标
 
@@ -294,3 +295,12 @@ $$
 本地渲染器支持常用 Mermaid 和 LaTeX 数学语法，并非完整 TeX 文档引擎。语法不受支持、无效或超出预览大小限制时保留源码，块级内容同时显示错误提示。复制结果和导出 Markdown 均保留原始语法。
 
 显示排序：Project、Topic、Goal 保持新到旧。单个 Goal 内的研究步骤按 Evidence → Analysis → Report 排列，同一阶段按原计划步骤顺序排列；Steps、Overview、侧栏和详情上一项／下一项保持一致。普通任务仍按新到旧显示，实际执行依赖与队列顺序不受显示排序影响。
+
+
+### 混合使用 OpenCode 和 Codex
+
+在 Settings → Agent & models 中，可为全局默认及 Plan、News collection、Analysis、Investment brief 分别选择 Agent 和模型。模型下拉框只显示当前 Agent 的模型，支持搜索和手动输入，修改立即保存。Use global 同时恢复默认 Agent 与模型。切换 Agent 后需重新选择模型；历史结果与已排队的任务保持原来的 Agent 和模型。
+
+Codex 使用本机 CLI 登录状态，首次使用前在终端完成 `codex login`。Codex 卡片显示版本、路径及登录状态；模型列表读取本地 Codex 缓存，缺少模型时可先在 Codex CLI 打开模型列表，再回到应用重新读取，或直接输入 CLI 支持的模型 ID。Codex 模型填写如 `gpt-6.1-sol`，无需 OpenCode provider 前缀。运行详情显示本次实际使用的 Agent 和模型。
+
+阶段之间由应用传递证据、引用及结果，无需共享两个 Agent 的会话。Codex 与 OpenCode 使用各自的 MCP 配置。关闭应用后不会自动继续研究；异常退出后尚未保存的 Codex 最终结果需显式继续会话生成。

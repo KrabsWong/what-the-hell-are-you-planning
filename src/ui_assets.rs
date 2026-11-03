@@ -45,8 +45,7 @@ assets::icon_assets!(
         Search,
         Settings,
         Settings2,
-        Sun,
-        Workflow
+        Sun
     ]
 );
 pub struct AppAssets;

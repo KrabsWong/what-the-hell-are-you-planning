@@ -35,11 +35,7 @@ impl Store {
             return None;
         }
         // Retry the approved snapshot only. Dispatch checks it again after the delay.
-        if failed.research_kind.is_some() {
-            if self.research_signature(task.id).as_ref() != Some(&failed.input_signature) {
-                return None;
-            }
-        } else if task.stage != failed.stage {
+        if failed.research_kind.is_none() || self.research_signature(task.id).as_ref() != Some(&failed.input_signature) {
             return None;
         }
         let mut retry = failed.clone();
@@ -70,8 +66,11 @@ mod tests {
     use super::*;
 
     fn failed_task() -> (Store, u64) {
-        let mut store = Store::mock();
-        store.simulate_run(1).unwrap();
+        let mut store = Store::empty();
+        store.projects[0].directory = std::env::temp_dir().to_string_lossy().into_owned();
+        store.default_model = "test/model".into();
+        let goal = store.create_research_goal("Goal".into(), "Scope".into(), 1).unwrap();
+        store.runs.push(store.prepare_run(goal).unwrap());
         let run = store.runs.last_mut().unwrap();
         run.status = "Failed".into();
         run.session_id = Some("existing-session".into());
@@ -90,6 +89,8 @@ mod tests {
         assert!(retry.prompt.starts_with(&original.prompt));
         assert!(retry.prompt.contains("Source 2 has an unsupported URL."));
         assert_eq!(retry.session_id, original.session_id);
+        assert_eq!(retry.agent, original.agent);
+        assert_eq!(retry.model, original.model);
         assert_eq!(retry.attachments, original.attachments);
         assert_eq!(crate::run_errors::user_message("[error] [validation] Invalid source"), "Invalid source");
     }

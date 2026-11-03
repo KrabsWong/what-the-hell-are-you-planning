@@ -209,12 +209,26 @@ impl Store {
                 activity: vec!["Sample task created · 27 Oct".into(), format!("Sample status: {}", stage.label())], archived: false, attachments: vec![], research: None,
             }
         }).collect();
+        let policies = Stage::ALL.into_iter().map(|stage| StagePolicy {
+            stage,
+            agent: if matches!(stage,Done|Cancelled) { "Manual" } else { "OpenCode" }.into(),
+            model: String::new(),
+            prompt: match stage {
+                Backlog => "Clarify the task and identify missing requirements. Do not modify files.",
+                Planned => "Read the task and repository instructions. Propose an implementation plan and verification steps.",
+                InProgress => "Implement the agreed task. Keep changes focused and run the relevant checks.",
+                Review => "Review the change for correctness, regressions and missing tests. Report findings before modifying code.",
+                Done => "Summarize the completed changes and verification evidence.",
+                Cancelled => "Do not start work on cancelled tasks.",
+            }.into(),
+            auto_start: false,
+        }).collect();
         let mut store = Self {
             tasks,
             projects,
             topics: vec![],
             research_requests: vec![],
-            policies: Store::empty().policies,
+            policies,
             runs: vec![],
             next_id: 23,
             opencode_path: String::new(),

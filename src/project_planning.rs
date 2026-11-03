@@ -110,9 +110,9 @@ impl Store {
             );
         }
         let model = self.research_model(ResearchKind::Goal);
-        if !crate::opencode::valid_model(model) {
+        if !self.valid_research_model(ResearchKind::Goal) {
             return Err(
-                "Choose a global model or a provider/model override for Plan in Research settings."
+                "Choose an agent and model for Plan in Settings."
                     .into(),
             );
         }
@@ -149,7 +149,7 @@ impl Store {
              Return only one JSON object with this exact schema, no other fields or commentary: \
              {{\"tasks\":[{{\"title\":\"A focused research question\",\"brief\":\"Scope, questions, assumptions, evidence and deliverable\"}}]}}. \
              Titles must be at most 160 characters and briefs at most 12,000 UTF-8 bytes each. \
-             All topics will enter Backlog awaiting explicit human approval; do not mark anything approved or complete.",
+             All topics will enter Backlog awaiting explicit human approval; do not mark anything approved or complete. The application manages approval state. Do not embed transient workflow status or reapproval requirements in generated titles or briefs.",
             chrono::Local::now().format("%Y-%m-%d %:z"),
         );
         if prompt.len() > 240_000 {
@@ -168,7 +168,7 @@ impl Store {
             ended_at: None,
             session_id: None,
             exit_code: None,
-            agent: "OpenCode".into(),
+            agent: self.research_agent(ResearchKind::Goal).into(),
             model: model.to_string(),
             stage: Stage::Backlog,
             status: "Running".into(),

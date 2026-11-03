@@ -91,7 +91,7 @@ pub fn initialize(root: &Path, legacy: Option<&Path>) -> Result<PathBuf, String>
                 let mut seen = std::collections::HashSet::new();
                 for run in &store.runs {
                     if seen.insert((run.directory.clone(), run.session_id.clone())) {
-                        session_locks.push(crate::opencode::lock_session(&crate::opencode::Request {
+                        session_locks.push(crate::opencode::lock_session(&crate::opencode::Request { browser_executable: None,
                             directory: PathBuf::from(&run.directory), session_id: run.session_id.clone(),
                             executable: PathBuf::from(&store.opencode_path), files: vec![],
                             model: run.model.clone(), prompt: String::new(), title: String::new(),

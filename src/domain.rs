@@ -275,15 +275,6 @@ pub struct Store {
 }
 
 impl Store {
-    pub fn all_stages_use_global_model(&self) -> bool {
-        !self.default_model.is_empty()
-            && self.research_config.models.iter().all(String::is_empty)
-            && self
-                .policies
-                .iter()
-                .filter(|p| p.agent == "OpenCode")
-                .all(|p| p.model.is_empty())
-    }
     /// A non-empty stage override takes precedence over the workspace default.
     pub fn effective_model<'a>(&'a self, stage_override: &'a str) -> &'a str {
         if stage_override.is_empty() {
@@ -293,25 +284,29 @@ impl Store {
         }
     }
     pub fn research_model(&self, kind: crate::research::ResearchKind) -> &str {
-        self.effective_model(&self.research_config.models[kind.index()])
+        let model = &self.research_config.models[kind.index()];
+        if model.is_empty() && self.research_agent(kind) != self.research_config.default_agent {
+            ""
+        } else {
+            self.effective_model(model)
+        }
+    }
+    pub fn research_agent(&self, kind: crate::research::ResearchKind) -> &str {
+        self.research_config.agents[kind.index()].as_deref()
+            .unwrap_or(&self.research_config.default_agent)
+    }
+    pub fn agent_path(&self, agent: &str) -> &str {
+        if agent == "Codex" { &self.research_config.codex_path } else { &self.opencode_path }
+    }
+    pub fn valid_research_model(&self, kind: crate::research::ResearchKind) -> bool {
+        match self.research_agent(kind) {
+            "Codex" => crate::codex::valid_model(self.research_model(kind)),
+            "OpenCode" => crate::opencode::valid_model(self.research_model(kind)),
+            _ => false,
+        }
     }
     /// A new workspace contains configuration, never demonstration tasks or runs.
     pub fn empty() -> Self {
-        use Stage::*;
-        let policies = Stage::ALL.into_iter().map(|stage| StagePolicy {
-            stage,
-            agent: if matches!(stage,Done|Cancelled) { "Manual" } else { "OpenCode" }.into(),
-            model: String::new(),
-            prompt: match stage {
-                Backlog => "Clarify the task and identify missing requirements. Do not modify files.",
-                Planned => "Read the task and repository instructions. Propose an implementation plan and verification steps.",
-                InProgress => "Implement the agreed task. Keep changes focused and run the relevant checks.",
-                Review => "Review the change for correctness, regressions and missing tests. Report findings before modifying code.",
-                Done => "Summarize the completed changes and verification evidence.",
-                Cancelled => "Do not start work on cancelled tasks.",
-            }.into(),
-            auto_start: false,
-        }).collect();
         Self {
             tasks: vec![],
             projects: vec![Project {
@@ -323,7 +318,7 @@ impl Store {
             }],
             topics: vec![],
             research_requests: vec![],
-            policies,
+            policies: vec![],
             runs: vec![],
             next_id: 1,
             opencode_path: String::new(),
@@ -971,78 +966,7 @@ impl Store {
                 "Approve the complete research goal in Todo before running its steps.".into(),
             );
         }
-        if self.task(id).is_some_and(|t| t.research.is_some()) {
-            return crate::research::prepare_run(self, id);
-        }
-        let task = self.task(id).ok_or("Task not found.")?;
-        if self.task_is_archived(id) || task.stage == Stage::Cancelled {
-            return Err("Restore or reopen this task before running.".into());
-        }
-        let policy = self
-            .policies
-            .iter()
-            .find(|p| p.stage == task.stage)
-            .ok_or("Configure this stage first.")?;
-        if policy.agent != "OpenCode" {
-            return Err(format!(
-                "This stage uses {}. Select OpenCode in Workflow stages to execute it.",
-                policy.agent
-            ));
-        }
-        let model = self.effective_model(&policy.model);
-        if !crate::opencode::valid_model(model) {
-            return Err(
-                "Choose a global model or a stage override in provider/model format.".into(),
-            );
-        }
-        let project = self
-            .projects
-            .iter()
-            .find(|p| p.id == task.project_id)
-            .ok_or("Project not found.")?;
-        if project.directory.is_empty() {
-            return Err("Set this project's working folder before running.".into());
-        }
-        let prompt = format!(
-            "Task: {} — {}\nStage: {}\nProject directory: {}\n\nStage instructions:\n{}\n\nTask description and acceptance criteria:\n{}\n\nWork in the selected project directory. Follow its repository instructions. Report your changes and verification when finished.",
-            self.identifier(task),
-            task.title,
-            task.stage.label(),
-            project.directory,
-            policy.prompt,
-            task.description
-        );
-        Ok(AgentRun {
-            auto_retry_attempt: 0,
-            retry_not_before: None,
-            project_plan: None,
-            id: self.runs.iter().map(|r| r.id).max().unwrap_or(0) + 1,
-            task_id: id,
-            task_title: task.title.clone(),
-            agent: policy.agent.clone(),
-            model: model.to_string(),
-            stage: task.stage,
-            status: "Running".into(),
-            output: String::new(),
-            attachments: vec![],
-            research_kind: None,
-            sources: vec![],
-            input_signature: String::new(),
-            directory: project.directory.clone(),
-            prompt,
-            queued_at: String::new(),
-            workspace_source: None,
-            started_at: crate::opencode::timestamp(),
-            ended_at: None,
-            session_id: None,
-            exit_code: None,
-            logs: vec![format!(
-                "[run] {} · {} · {}",
-                self.identifier(task),
-                task.stage.label(),
-                model
-            )],
-        })
+        crate::research::prepare_run(self, id)
     }
     pub fn mark_research_running(&mut self, run_id: u64) {
         let Some(run) = self.runs.iter().find(|r| r.id == run_id) else {
@@ -1175,6 +1099,28 @@ fn matches_term(task: &Task, term: &str) -> bool {
 mod tests {
     use super::*;
     #[test]
+    fn agent_configuration_migrates_and_prevents_cross_agent_model_inheritance() {
+        use crate::research::ResearchKind;
+        let legacy: crate::research::ResearchConfig = serde_json::from_str(r#"{"models":["test/plan","","",""],"ego_path":"ego-browser"}"#).unwrap();
+        assert_eq!(legacy.default_agent, "OpenCode");
+        assert!(legacy.agents.iter().all(Option::is_none));
+        let mut store = Store::empty();
+        store.default_model = "test/global".into();
+        store.research_config = legacy;
+        assert_eq!(store.research_agent(ResearchKind::Goal), "OpenCode");
+        store.research_config.agents[2] = Some("Codex".into());
+        assert_eq!(store.research_model(ResearchKind::Analyze), "");
+        assert!(!store.valid_research_model(ResearchKind::Analyze));
+        store.research_config.models[2] = "fixture-codex".into();
+        assert!(store.valid_research_model(ResearchKind::Analyze));
+        let reopened: Store = serde_json::from_slice(&serde_json::to_vec(&store).unwrap()).unwrap();
+        assert_eq!(reopened, store);
+        store.research_config.agents[2] = None;
+        store.research_config.models[2].clear();
+        assert_eq!(store.research_model(ResearchKind::Analyze), "test/global");
+    }
+
+    #[test]
     fn progress_count_tracks_tasks_instead_of_attempts() {
         let mut store = Store::mock();
         store.runs.clear();
@@ -1184,7 +1130,8 @@ mod tests {
             policy.model = "test/model".into();
         }
         store.set_stage(1, Stage::InProgress).unwrap();
-        let template = store.prepare_run(1).unwrap();
+        store.simulate_run(1).unwrap();
+        let template = store.runs.pop().unwrap();
         for index in 0..8 {
             let id = store.create_task(&format!("Step {index}"), 1, Stage::InProgress, None).unwrap();
             let mut run = template.clone();
@@ -1579,62 +1526,13 @@ mod tests {
         assert_eq!(store.next_id, 1);
         assert_eq!(store.projects[0].name, "Workspace");
         assert!(store.projects[0].directory.is_empty());
-        assert!(
-            store
-                .policies
-                .iter()
-                .all(|p| p.model.is_empty() && !p.auto_start)
-        );
+        assert!(store.policies.is_empty());
         assert_eq!(store.appearance, crate::appearance::Appearance::Light);
     }
     #[test]
-    fn execution_snapshots_stage_model_prompt_and_project_folder() {
-        let mut store = Store::mock();
-        store.projects[0].directory = "/tmp/test-project".into();
-        for policy in &mut store.policies {
-            policy.agent = "OpenCode".into();
-            policy.model = format!("test/{}", policy.stage.key());
-        }
-        store.set_stage(1, Stage::InProgress).unwrap();
-        let run = store.prepare_run(1).unwrap();
-        assert_eq!(run.model, "test/in-progress");
-        assert!(run.prompt.contains("/tmp/test-project"));
-        store.set_stage(1, Stage::Review).unwrap();
-        let review = store.prepare_run(1).unwrap();
-        assert_eq!(review.model, "test/review");
-        assert_eq!(run.stage, Stage::InProgress);
-    }
-    #[test]
-    fn global_model_fallback_and_stage_overrides_snapshot_requests() {
-        let mut store = Store::mock();
-        store.projects[0].directory = "/tmp/test-project".into();
-        let index = store
-            .policies
-            .iter()
-            .position(|p| p.stage == Stage::InProgress)
-            .unwrap();
-        store.policies[index].agent = "OpenCode".into();
-        store.policies[index].model.clear();
+    fn ordinary_tasks_cannot_start_new_runs() {
+        let store = Store::mock();
         assert!(store.prepare_run(1).is_err());
-        store.default_model = "missing-provider".into();
-        assert!(store.prepare_run(1).is_err());
-        store.default_model = "tencent-token-plan/deepseek/deepseek-flash".into();
-        let run = store.prepare_run(1).unwrap();
-        assert_eq!(run.model, store.default_model);
-        assert!(run.logs[0].contains(&run.model));
-        store.runs.push(run.clone());
-        store.default_model = "test/new-default".into();
-        assert_eq!(store.prepare_run(1).unwrap().model, "test/new-default");
-        store.policies[index].model = "test/override".into();
-        store.default_model.clear();
-        assert_eq!(store.prepare_run(1).unwrap().model, "test/override");
-        store.default_model = "test/default".into();
-        store.policies[index].model = "invalid".into();
-        assert!(store.prepare_run(1).is_err());
-        store.policies[index].model.clear();
-        store.policies[index].agent = "Manual".into();
-        assert!(store.prepare_run(1).is_err());
-        assert_eq!(store.runs, vec![run]);
     }
     #[test]
     fn research_execution_updates_stage_and_recovers_without_overriding_completion() {

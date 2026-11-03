@@ -106,7 +106,7 @@ impl Store {
             .is_some_and(|r| r.kind == ResearchKind::Goal);
         // Goals aggregate real run records, rather than treating their workflow stage as activity.
         let ids = if is_goal {
-            let mut ids = self.goal_step_ids(id);
+            let mut ids = self.research_children(id);
             ids.push(id);
             ids
         } else {
@@ -205,7 +205,7 @@ impl Store {
 }
 impl crate::app::TaskApp {
     pub(crate) fn execution_summary(&self, goal: u64) -> String {
-        let states: Vec<_> = self.store.goal_step_ids(goal).into_iter()
+        let states: Vec<_> = self.store.research_children(goal).into_iter()
             .map(|id| self.display_task_status(id).execution).collect();
         let mut parts = vec![format!("{} steps", states.len())];
         for status in ExecutionStatus::ALL.into_iter().chain(Stage::ALL.into_iter().map(ExecutionStatus::Stage)) {
@@ -227,7 +227,7 @@ impl crate::app::TaskApp {
             .flex().items_center().justify_center()
             .child(status.icon_view(cx))
             .tooltip(move |window, cx| {
-                component::tooltip::Tooltip::new(format!("{} · {}", state.label(), state.reason))
+                component::tooltip::Tooltip::new(state.label())
                     .build(window, cx)
             })
             .into_any_element()

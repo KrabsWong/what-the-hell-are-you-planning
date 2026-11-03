@@ -14,7 +14,7 @@ impl TaskApp {
         }
         let items = self.store.todo_batch_items(project);
         if items.is_empty() {
-            self.toast = "No pending Todo tasks in this project".into();
+            self.toast = "No approved unfinished research goals in this project".into();
             cx.notify();
             return;
         }
@@ -61,8 +61,7 @@ impl TaskApp {
                 self.error = "Restore the selected research before queueing it.".into();
                 cx.notify(); return;
             }
-            if self.store.task(*id).unwrap().research.as_ref().is_some_and(|r| r.kind == ResearchKind::Goal)
-                && !self.store.goal_execution_approved(*id) {
+            if !self.store.goal_execution_approved(*id) {
                 self.error = "Review the goal and move it to Todo before queueing it.".into();
                 cx.notify(); return;
             }
@@ -200,26 +199,22 @@ impl TaskApp {
                         crate::domain::Stage::Planned | crate::domain::Stage::InProgress | crate::domain::Stage::Done)) else {
                     self.todo_batch.as_mut().unwrap().failed_items.push(item); continue;
                 };
-                let project = task.project_id;
-                let research_goal = task.research.as_ref().is_some_and(|r| r.kind == ResearchKind::Goal);
-                let next = if research_goal { self.store.ready_research_tasks(item) }
-                    else { self.store.next_todo_batch_task(project, item).map(|id| id.into_iter().collect()) };
-                let candidates = match next {
+                let stage = task.stage;
+                let candidates = match self.store.ready_research_tasks(item) {
                     Ok(ids) => ids,
                     Err(error) => {
                         self.error = error;
                         self.todo_batch.as_mut().unwrap().failed_items.push(item); continue;
                     }
                 };
-                let finished = if research_goal { self.store.goal_tasks_complete(item) } else { candidates.is_empty() };
-                if finished {
-                    if research_goal { self.store.sync_goal_progress(item); }
+                if self.store.goal_tasks_complete(item) {
+                    self.store.sync_goal_progress(item);
                     let batch = self.todo_batch.as_mut().unwrap();
                     batch.done_items.push(item);
                     batch.completed = batch.done_items.len();
                     continue;
                 }
-                if research_goal && self.store.task(item).unwrap().stage == crate::domain::Stage::Planned {
+                if stage == crate::domain::Stage::Planned {
                     if let Err(error) = self.store.set_stage(item, crate::domain::Stage::InProgress) {
                         self.error = error;
                         self.todo_batch.as_mut().unwrap().failed_items.push(item); continue;
@@ -303,17 +298,12 @@ impl TaskApp {
         let run = self.store.runs.iter().find(|r| r.id == run_id).unwrap();
         let successful = run.status == "Succeeded"
             && self.storage_error.is_empty()
-            && (run.research_kind.is_none_or(|k| k == ResearchKind::Goal)
+            && (run.research_kind == Some(ResearchKind::Goal)
                 || self.store.research_result(run.task_id).is_some());
         let batch = self.todo_batch.as_mut().unwrap();
         if successful {
             batch.runs_completed += 1;
-            let goal = self
-                .store
-                .task(item)
-                .and_then(|t| t.research.as_ref())
-                .is_some_and(|r| r.kind == ResearchKind::Goal);
-            if !goal || self.store.next_todo_batch_task(self.store.task(item).map(|t| t.project_id).unwrap_or(batch.project_id), item) == Ok(None) {
+            if self.store.next_todo_batch_task(self.store.task(item).map(|task| task.project_id).unwrap_or(batch.project_id), item) == Ok(None) {
                 if !batch.done_items.contains(&item) {
                     batch.done_items.push(item);
                 }

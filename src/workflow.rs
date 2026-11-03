@@ -184,7 +184,7 @@ impl Store {
                 .is_some_and(|r| r.kind == ResearchKind::Goal)
         }) {
             let states: Vec<_> = self
-                .goal_step_ids(id)
+                .research_children(id)
                 .into_iter()
                 .map(|step| self.execution_status(step, batch))
                 .collect();
@@ -247,14 +247,15 @@ impl Store {
                         .into(),
                 );
             }
-            if task.research.is_some() && !self.goal_execution_approved(id) {
+            if task.research.is_none() {
+                return Err("Only research goals can be submitted for execution.".into());
+            }
+            if !self.goal_execution_approved(id) {
                 return Err(
                     "Review and approve the complete research plan before executing.".into(),
                 );
             }
-            if task.research.is_some() {
-                self.validate_goal_dependencies(id)?;
-            }
+            self.validate_goal_dependencies(id)?;
             return Ok(());
         }
         let allowed = matches!(
@@ -416,7 +417,7 @@ mod tests {
         assert!(
             store
                 .validate_manual_transition(id, Stage::InProgress, None)
-                .is_ok()
+                .is_err()
         );
         store.set_stage(id, Stage::InProgress).unwrap();
         assert!(
@@ -464,9 +465,9 @@ mod tests {
         let id = store
             .create_task("Ordinary", 1, Stage::Planned, None)
             .unwrap();
-        let mut run = store.prepare_run(id).unwrap();
-        run.status = "Succeeded".into();
-        store.runs.push(run);
+        store.policies = Store::mock().policies;
+        store.simulate_run(id).unwrap();
+        store.runs.last_mut().unwrap().status = "Succeeded".into();
         assert_eq!(store.task_status(id, None).phase, Stage::Review);
         assert!(
             store

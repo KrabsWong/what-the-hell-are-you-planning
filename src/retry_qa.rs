@@ -16,18 +16,26 @@ pub fn run() {
     let root = std::env::temp_dir().join(format!("planning-retry-qa-{}", std::process::id()));
     std::fs::create_dir_all(&root).unwrap();
     let cli = root.join("fake-opencode");
-    std::fs::write(&cli, "#!/bin/sh\nprintf '%s\\n' '{\"type\":\"text\",\"part\":{\"text\":\"Recovered result\"}}'\n").unwrap();
+    std::fs::write(&cli, r#"#!/usr/bin/python3
+import json
+result = {"status":"complete","report":"Recovered result","sources":[]}
+print(json.dumps({"type":"text","part":{"text":json.dumps(result)}}))
+"#).unwrap();
     std::fs::set_permissions(&cli, std::fs::Permissions::from_mode(0o700)).unwrap();
     let mut store = Store::empty();
     store.projects[0].directory = root.to_string_lossy().into();
     store.opencode_path = cli.to_string_lossy().into();
     store.default_model = "fixture/model".into();
-    for policy in &mut store.policies {
-        policy.agent = "OpenCode".into();
+    let goal = store.create_research_goal("Retry acceptance".into(), "Verify the saved report".into(), 1).unwrap();
+    let steps = store.apply_research_plan(goal, r#"{"tasks":[{"title":"Collect","instructions":"Gather evidence","kind":"collect","depends_on":[]},{"title":"Analyze","instructions":"Verify evidence","kind":"analyze","depends_on":[0]},{"title":"Report","instructions":"Write report","kind":"advise","depends_on":[1]}]}"#).unwrap();
+    for &step in &steps[..2] {
+        let mut run = store.prepare_run(step).unwrap();
+        run.status = "Succeeded".into();
+        run.output = "Verified fixture evidence".into();
+        store.runs.push(run);
+        store.set_stage(step, Stage::Done).unwrap();
     }
-    let task = store
-        .create_task("Retry acceptance", 1, Stage::Planned, None)
-        .unwrap();
+    let task = steps[2];
     let path = root.join("workspace.sqlite3");
     Storage::new(path.clone()).save(&store).unwrap();
     let mut cx = HeadlessAppContext::with_platform(
@@ -73,11 +81,11 @@ pub fn run() {
             a.store.runs.push(failed);
             a.todo_batch = Some(TodoBatch {
                 project_id: 1,
-                items: vec![task],
+                items: vec![goal],
                 completed: 0,
                 runs_completed: 0,
                 state: BatchState::Running,
-                run_ids: [(failed_id, task)].into_iter().collect(),
+                run_ids: [(failed_id, goal)].into_iter().collect(),
                 done_items: vec![],
                 failed_items: vec![],
                 failed_tasks: vec![],

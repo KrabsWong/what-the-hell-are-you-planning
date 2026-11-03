@@ -6,7 +6,7 @@
 
 ```mermaid
 flowchart LR
-  UI[Run with OpenCode] --> Snapshot[读取任务阶段 / 模型 / 指令 / 项目目录]
+  UI[Run goal / Add to queue] --> Snapshot[读取研究阶段 / 模型 / 指令 / 工作目录]
   Snapshot --> Save[先持久化运行快照]
   Save --> Worker[独立工作线程]
   Worker --> CLI[OpenCode standalone run]
@@ -28,7 +28,7 @@ Rust `Command` 分别传递参数，不经过 shell。工作目录和 `PWD` 同�
 
 ## 状态与生命周期
 
-`AgentRun` 保存 run ID、task ID/标题、阶段、agent、model、prompt、目录、开始/结束时间、session ID、退出码和日志。更新阶段策略不会改变历史快照。
+`AgentRun` 保存 run ID、task ID/标题、阶段、agent、model、prompt、目录、开始/结束时间、session ID、退出码和日志。更新研究模型配置不会改变历史快照。
 
 运行状态包括 Running、Cancelling、Succeeded、Failed、Cancelled、Interrupted、Blocked、Stale；旧 Simulated 历史兼容读取，产品不再创建模拟运行。CLI 非零退出、顶层 error 事件或读流失败会记为 Failed。工具内部单次失败不一定表示整个 Agent 失败，因为 Agent 可能自行恢复。
 
@@ -54,14 +54,9 @@ Unix 子进程通过独立 process group 启动。取消立即通知该组，wor
 
 所有被 UI 通知的 Store 修改由统一观察者保存。执行日志按约 500ms 合并，退出和终态强制保存。加载时将遗留 Running/Cancelling 标为 Interrupted，保留已收到的输出，不重新执行。
 
-## 后续 Codex 接入
-
-保留 `StagePolicy.agent` 和 `AgentRun.agent`。新增 Codex Adapter 时复用请求快照、生命周期事件与历史 UI，替换命令创建、协议解析和取消实现即可。不要在 `Store::set_stage` 内启动进程；阶段自动路由、交互批准、跨阶段会话复用和并行工作目录隔离应作为独立阶段实现。
-
-
 ## 研究执行路径
 
-`ResearchTask.kind` 有 Goal / Collect / Analyze / Advise；`ResearchConfig.models` 分别保存四种角色的模型，不复用开发任务的 coding stage 指令。Goal 运行由模型返回 JSON 计划，校验数量、标题／指令长度、前向依赖和必要角色；全部合法才创建子任务，已有计划不覆盖。研究子任务保留固定 goal 归属。
+`ResearchTask.kind` 有 Goal / Collect / Analyze / Advise；`ResearchConfig.models` 分别保存四种角色的模型。旧工作区的 StagePolicy 仅为读取与保存历史数据保留。Goal 运行由模型返回 JSON 计划，校验数量、标题／指令长度、前向依赖和必要角色；全部合法才创建子任务，已有计划不覆盖。研究子任务保留固定 goal 归属。
 
 下游请求包含父目标、当前任务描述／评论、直接依赖的已验证正文与结构化来源、当前和父级附件。通过输入签名和依赖 run ID 递归校验新鲜度，签名不含执行产生的活动和任务状态。运行期间输入改变会得到 Stale；退出路径同样运行校验，绝不自动续跑。
 
@@ -94,3 +89,14 @@ Unix 子进程通过独立 process group 启动。取消立即通知该组，wor
 `requires_approval` 只用于项目生成的父 Goal，默认为 false 以兼容旧研究。Backlog 表示待批准；进入 Todo 批准；未批准／已取消题目不可直接跳到执行或完成状态。子任务通过 goal_id 继承准入约束；准备请求、计划应用、下一任务选择、结果输入签名均检查父目标。退回 Backlog 后当前外部进程不会立刻取消，但该时段完成的结果失效，后续链停止。没有引入新的调度器或状态变更自动调用模型。
 
 候选题目在创建时复制项目范围，防止后续修改项目说明隐式改变已批准任务。一次成功规划不重复应用，保留用户编辑；运行中项目输入改变则 Stale，失败或取消不落卡片。
+
+
+## OpenCode / Codex 混合阶段执行
+
+设置页的全局默认和四个研究阶段均保存 Agent + 模型组合。旧配置默认 OpenCode；阶段可覆盖 Agent 和模型，Use global 同时清除两者。跨 Agent 的空模型不继承另一 Agent 的模型；切换全局 Agent 时，已有阶段模型被固定到原 Agent。已排队和历史运行保留创建时的 Agent / 模型快照。
+
+Codex 通过本地 `codex exec --json --model` 执行，沿用 CLI 登录和 MCP 配置。模型列表来自当前 CODEX_HOME 的本地 models_cache.json，只显示可见模型，不代表实时账号额度；无缓存时可手动输入模型 ID。发现仅运行版本和登录状态检查，不发送推理请求。Codex 使用 workspace-write sandbox、允许网络访问、禁止交互批准；权限不足时应返回 blocked，不启用全权限模式。
+
+各任务有独立会话；相同任务、Agent、模型且可恢复的失败尝试才继续原会话。OpenCode 和 Codex 通过应用保存的证据、来源和依赖文件交接，不共享会话。Codex 事件进入统一运行日志，最终内容读取私有临时 --output-last-message 文件，避免进度说明污染 JSON 契约。图片以 --image 传入，其他附件以本地文件路径作为证据传入；无法读取时明确报告 blocked。
+
+活动 Codex 任务可取消进程组。异常退出后通过子进程继承的 attempt lease 判断是否仍运行，停止后可显式恢复保存的 Codex 会话；不解析 Codex 私有 rollout 文件导入未保存结果。旧实例遗留且仍运行的 Codex 不能通过 OpenCode interrupt API 停止，界面会报告需等待其结束。所有恢复均不自动重跑。

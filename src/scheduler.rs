@@ -134,7 +134,7 @@ impl Store {
     pub fn run_conflict_reason(&self, candidate: &AgentRun, active: &AgentRun) -> Option<&'static str> {
         if same_task(candidate, active) { return Some("same task"); }
         if let (Some(a), Some(b)) = (&candidate.session_id, &active.session_id) {
-            if a == b { return Some("same OpenCode session"); }
+            if candidate.agent == active.agent && a == b { return Some("same agent session"); }
         }
         if candidate.project_plan.is_none() && active.project_plan.is_none() {
             if let (Some(a), Some(b)) = (
@@ -190,7 +190,7 @@ fn normalized_path(path: &str) -> PathBuf {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::{domain::Stage, research::ResearchKind};
+    use crate::research::ResearchKind;
 
     #[test]
     fn concurrency_setting_preserves_legacy_defaults_and_bounds() {
@@ -357,6 +357,9 @@ mod tests {
             assert!(store.resume_candidate(&next).is_some());
         }
         let mut changed = next.clone();
+        changed.agent = "Codex".into();
+        assert!(store.resume_candidate(&changed).is_none());
+        changed = next.clone();
         changed.model = "fixture/other".into();
         assert!(store.resume_candidate(&changed).is_none());
         changed = next.clone();
@@ -396,22 +399,6 @@ mod tests {
             .unwrap()
             .space_name = space;
         assert!(store.run_conflicts(&first, &second));
-    }
-    #[test]
-    fn ordinary_tasks_keep_project_directory_and_stage_specific_sessions() {
-        let (mut store, _, _) = setup();
-        let project = store.projects[0].id;
-        let id = store
-            .create_task("Task", project, Stage::Planned, None)
-            .unwrap();
-        let mut next = request(&store, id);
-        assert_eq!(next.directory, store.projects[0].directory);
-        next.status = "Interrupted".into();
-        next.session_id = Some("ses_task".into());
-        store.runs.push(next.clone());
-        assert!(store.resume_candidate(&next).is_some());
-        next.stage = Stage::Done;
-        assert!(store.resume_candidate(&next).is_none());
     }
     #[test]
     fn project_planning_identity_is_scoped_to_project() {

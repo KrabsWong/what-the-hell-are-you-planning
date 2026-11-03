@@ -35,6 +35,11 @@ pub fn tool_icon(
         .tooltip(name.clone())
         .accessibility_label(name)
 }
+/// One affordance for execution diagnostics across task, result and progress views.
+pub fn technical_details_button(id: impl Into<ElementId>) -> Button {
+    tool_icon(id, assets::IconName::Code, "Technical details")
+        .h(px(28.)).w(px(28.))
+}
 pub fn primary_button(id: impl Into<ElementId>, text: impl Into<SharedString>) -> Button {
     button(id, text).primary().font_weight(FontWeight::MEDIUM)
 }

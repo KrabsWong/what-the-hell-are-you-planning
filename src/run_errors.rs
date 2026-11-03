@@ -77,7 +77,7 @@ pub(crate) fn user_message(line: &str) -> &str {
     {
         "The model service is temporarily unavailable. Try again later or choose another model in Settings."
     } else {
-        "This step could not finish. Retry it; if the problem continues, check your model settings. Last attempt details contains technical information for troubleshooting."
+        "This step could not finish. Retry it; if the problem continues, check your model settings. Open Technical details for troubleshooting information."
     }
 }
 

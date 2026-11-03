@@ -27,7 +27,6 @@ pub enum Scope {
     Topic(u64),
     Cycle(String),
     Archive,
-    Workflow,
     Runs,
     Recovery,
     Research,
@@ -90,8 +89,7 @@ impl Render for DragTask {
     }
 }
 pub struct Draft {
-    pub id: Option<u64>,
-    pub parent: Option<u64>,
+    pub id: u64,
     pub project: u64,
     pub stage: Stage,
     pub cycle: Option<String>,
@@ -131,11 +129,6 @@ pub struct TaskApp {
     pub show_done: bool,
     pub compact: bool,
     pub collapsed: Vec<u64>,
-    pub policy_stage: Stage,
-    pub policy_agent: String,
-    pub policy_model: Entity<InputState>,
-    pub policy_prompt: Entity<TextareaState>,
-    pub policy_auto: bool,
     pub undo: Vec<Store>,
     pub focus: FocusHandle,
     pub modal_focus: FocusHandle,
@@ -159,19 +152,21 @@ pub struct TaskApp {
     last_save: Instant,
     _storage_lock: Option<std::fs::File>,
     pub executable_input: Entity<InputState>,
+    pub codex_executable_input: Entity<InputState>,
     pub directory_input: Entity<InputState>,
     pub directory_project: Option<u64>,
     pub connection_project: u64,
     pub connection_status: String,
+    pub opencode_version: Option<(String, String)>,
     pub available_models: Vec<String>,
+    pub codex_models: Vec<String>,
+    pub codex_status: String,
+    pub codex_version: Option<String>,
+    pub codex_discovery: Option<mpsc::Receiver<Result<crate::codex::Discovery, String>>>,
     pub settings_scroll: ScrollHandle,
     pub settings_tab: crate::settings_views::SettingsTab,
     pub global_model: Entity<InputState>,
-    pub global_model_filter: Entity<InputState>,
-    pub show_global_models: bool,
-    pub use_global_for_all: bool,
-    pub show_models: bool,
-    discovery: Option<mpsc::Receiver<Discovery>>,
+    discovery: Option<mpsc::Receiver<(PathBuf, Discovery)>>,
     pub active_runs: Vec<ActiveRun>,
     pub queued_runs: Vec<(u64, Vec<PathBuf>)>,
     pub selected_run: Option<u64>,
@@ -187,7 +182,8 @@ pub struct TaskApp {
     pub ego_input: Entity<InputState>,
     pub ego_status: String,
     pub ego_probe: Option<mpsc::Receiver<Result<String, String>>>,
-    pub research_model_picker: Option<usize>,
+    pub research_model_picker: Option<EntityId>,
+    pub research_model_initial: SharedString,
     pub research_sequences: std::collections::BTreeSet<u64>,
     pub todo_batch: Option<crate::batch::TodoBatch>,
     pub(crate) recovery: crate::recovery::Recovery,
@@ -205,7 +201,6 @@ pub struct TaskApp {
     pub render_statuses: std::cell::RefCell<std::collections::HashMap<u64, crate::workflow::TaskStatus>>,
     pub board_execution_filter: Option<crate::workflow::ExecutionGroup>,
     pub show_task_activity: bool,
-    pub show_research_settings: bool,
     pub _subscriptions: Vec<Subscription>,
 }
 impl TaskApp {
@@ -223,7 +218,7 @@ impl TaskApp {
             Ok(None) => {}
             Err(e) => app.storage_error = e,
         }
-        for input in [&app.executable_input, &app.ego_input] {
+        for input in [&app.executable_input, &app.codex_executable_input, &app.ego_input] {
             app._subscriptions.push(cx.subscribe(input, |_, _, event, cx| {
                 if matches!(event, InputEvent::Change) { cx.notify(); }
             }));
@@ -324,11 +319,6 @@ impl TaskApp {
                 cx.notify();
             }
         });
-        let first = store
-            .policies
-            .iter()
-            .find(|p| p.stage == Stage::Planned)
-            .cloned();
         let focus = cx.focus_handle();
         window.focus(&focus, cx);
         let autosave = cx.observe_self(|this, cx| {
@@ -346,25 +336,8 @@ impl TaskApp {
                 .default_value(store.default_model.clone())
                 .placeholder("provider/model")
         });
-        let global_model_filter =
-            cx.new(|cx| InputState::new(window, cx).placeholder("Search provider or model…"));
-        let global_changes = cx.subscribe(&global_model, |_, _, event, cx| {
-            if matches!(event, InputEvent::Change) {
-                cx.notify();
-            }
-        });
-        let filter_changes = cx.subscribe(&global_model_filter, |_, _, event, cx| {
-            if matches!(event, InputEvent::Change) {
-                cx.notify();
-            }
-        });
-        let policy_model = cx.new(|cx| {
-            InputState::new(window, cx)
-                .default_value(first.as_ref().map(|p| p.model.clone()).unwrap_or_default())
-                .placeholder("Leave blank to use global model")
-        });
         let research_models: [_; 4] = std::array::from_fn(|_| {
-            cx.new(|cx| InputState::new(window, cx).placeholder("Leave blank to use global model"))
+            cx.new(|cx| InputState::new(window, cx).placeholder("Global default"))
         });
         let system_appearance = cx.observe_window_appearance(window, |this, w, cx| {
             if this.store.appearance == crate::appearance::Appearance::System {
@@ -377,17 +350,31 @@ impl TaskApp {
             autosave,
             quit,
             release,
-            global_changes,
-            filter_changes,
             system_appearance,
         ];
-        for input in std::iter::once(&policy_model).chain(research_models.iter()) {
-            subscriptions.push(cx.subscribe(input, |_, _, event, cx| {
-                if matches!(event, InputEvent::Change) {
-                    cx.notify();
+        for input in research_models.iter().chain([&global_model]) {
+            subscriptions.push(cx.subscribe_in(input, window, move |this, input, event, w, cx| {
+                match event {
+                    InputEvent::Focus if this.scope == Scope::Settings && this.settings_tab == crate::settings_views::SettingsTab::Models => this.open_research_model_picker(&input, cx),
+                    InputEvent::PressEnter { .. } => this.finish_model_edit(input, true, w, cx),
+                    InputEvent::Blur => this.finish_model_search(input, w, cx),
+                    _ => {}
                 }
+                cx.notify();
             }));
         }
+        let ego_input = cx.new(|cx| InputState::new(window, cx).default_value(crate::research::default_ego_path()));
+        subscriptions.push(cx.subscribe(&ego_input, |this, input, event, cx| {
+            if matches!(event, InputEvent::Change) && this.scope == Scope::Settings
+                && this.settings_tab == crate::settings_views::SettingsTab::Models && !this.startup.required {
+                let value = input.read(cx).value();
+                if value.trim() != this.store.research_config.ego_path {
+                    this.store.research_config.ego_path = value.trim().to_owned();
+                    this.ego_status = "Runtime not checked".into();
+                    cx.notify();
+                }
+            }
+        }));
         Self {
             last_saved: store.clone(),
             storage: None,
@@ -404,19 +391,22 @@ impl TaskApp {
                     .default_value(opencode::detect_executable())
                     .placeholder("Path to opencode")
             }),
+            codex_executable_input: cx.new(|cx| InputState::new(window, cx)
+                .default_value(crate::codex::detect_executable()).placeholder("Path to codex")),
             directory_input: cx
                 .new(|cx| InputState::new(window, cx).placeholder("/absolute/path/to/project")),
             directory_project: None,
             connection_project: 1,
-            connection_status: "Refresh models to connect to local OpenCode".into(),
+            connection_status: "Model catalog has not been loaded.".into(),
+            opencode_version: None,
+            codex_models: vec![],
+            codex_status: "Not checked".into(),
+            codex_version: None,
+            codex_discovery: None,
             available_models: vec![],
             settings_scroll: ScrollHandle::new(),
             settings_tab: Default::default(),
             global_model,
-            global_model_filter,
-            show_global_models: false,
-            use_global_for_all: false,
-            show_models: false,
             discovery: None,
             active_runs: vec![],
             queued_runs: vec![],
@@ -460,18 +450,6 @@ impl TaskApp {
             show_done: true,
             compact: false,
             collapsed: vec![],
-            policy_stage: Stage::Planned,
-            policy_agent: first
-                .as_ref()
-                .map(|p| p.agent.clone())
-                .unwrap_or("Codex".into()),
-            policy_model,
-            policy_prompt: cx.new(|cx| {
-                TextareaState::new(window, cx)
-                    .default_value(first.as_ref().map(|p| p.prompt.clone()).unwrap_or_default())
-                    .rows(7)
-            }),
-            policy_auto: false,
             undo: vec![],
             focus,
             modal_focus: cx.focus_handle(),
@@ -499,12 +477,11 @@ impl TaskApp {
             }),
             research_project: 1,
             research_models,
-            ego_input: cx.new(|cx| {
-                InputState::new(window, cx).default_value(crate::research::default_ego_path())
-            }),
-            ego_status: "Not checked · install ego(lite) and finish its first launch".into(),
+            ego_input,
+            ego_status: "Runtime not checked".into(),
             ego_probe: None,
             research_model_picker: None,
+            research_model_initial: SharedString::default(),
             research_sequences: Default::default(),
             todo_batch: None,
             recovery: Default::default(),
@@ -522,7 +499,6 @@ impl TaskApp {
             render_statuses: Default::default(),
             board_execution_filter: None,
             show_task_activity: false,
-            show_research_settings: false,
             _subscriptions: subscriptions,
         }
     }
@@ -581,7 +557,7 @@ impl TaskApp {
         self.save_feedback = None;
         self.show_run_details = false;
         self.show_run_result = true;
-        self.show_research_settings = false;
+        self.research_model_picker = None;
         let project = match &scope {
             Scope::Project(id) => Some(*id),
             Scope::Topic(id) => self.store.topics.iter().find(|t| t.id == *id).map(|t| t.project_id),
@@ -702,7 +678,6 @@ impl TaskApp {
                 .unwrap_or_default(),
             Scope::Cycle(c) => c.clone(),
             Scope::Archive => "Archive".into(),
-            Scope::Workflow => "Workflow stages".into(),
             Scope::Runs => "Progress & results".into(),
             Scope::Recovery => "Paused projects".into(),
             Scope::Research => "Market research".into(),
@@ -747,23 +722,7 @@ impl TaskApp {
             // Submit through the existing scheduler; never manufacture Running.
             let scope = self.scope.clone();
             let selected = self.selected;
-            if self.store.task(id).is_some_and(|t| t.research.is_some()) {
-                self.start_goal_batch(id, cx);
-            } else {
-                // Stage-specific agents must receive the execution policy, not Todo's planning policy.
-                // Roll back the phase if admission fails before a run record is created.
-                let previous = self.store.task(id).cloned().unwrap();
-                let count = self.store.runs.len();
-                if let Err(error) = self.store.set_stage(id, Stage::InProgress) {
-                    self.error = error;
-                } else {
-                    self.start_run(id, cx);
-                    if self.store.runs.len() == count {
-                        if let Some(task) = self.store.task_mut(id) { *task = previous; }
-                        self.persist_if_changed(true);
-                    }
-                }
-            }
+            self.start_goal_batch(id, cx);
             self.scope = scope;
             self.selected = selected;
             if self.error.is_empty() && self.store.task_status(id, self.todo_batch.as_ref()).phase == Stage::InProgress {
@@ -780,74 +739,37 @@ impl TaskApp {
     }
     pub fn begin_draft(
         &mut self,
-        id: Option<u64>,
-        parent: Option<u64>,
-        stage: Stage,
+        id: u64,
         window: &mut Window,
         cx: &mut Context<Self>,
     ) {
-        let task = id.and_then(|id| self.store.task(id)).cloned();
-        let project = task
-            .as_ref()
-            .map(|t| t.project_id)
-            .or_else(|| parent.and_then(|id| self.store.task(id).map(|t| t.project_id)))
-            .unwrap_or(match self.scope {
-                Scope::Project(id) => id,
-                Scope::Topic(id) => self
-                    .store
-                    .topics
-                    .iter()
-                    .find(|t| t.id == id)
-                    .map(|t| t.project_id)
-                    .unwrap_or(0),
-                _ => self.store.projects.first().map(|p| p.id).unwrap_or(0),
-            });
+        let Some(task) = self.store.task(id) else { return; };
         let title = cx.new(|cx| {
             InputState::new(window, cx)
                 .placeholder("What needs to be done?")
-                .default_value(task.as_ref().map(|t| t.title.clone()).unwrap_or_default())
+                .default_value(task.title.clone())
         });
         self.draft = Some(Draft {
             id,
-            cycle: if let Some(t) = &task {
-                t.cycle.clone()
-            } else {
-                match &self.scope {
-                    Scope::Cycle(c) => Some(c.clone()),
-                    _ => None,
-                }
-            },
-            parent: task.as_ref().and_then(|t| t.parent_id).or(parent),
-            project,
-            stage: task.as_ref().map(|t| t.stage).unwrap_or(stage),
+            cycle: task.cycle.clone(),
+            project: task.project_id,
+            stage: task.stage,
             title: title.clone(),
             description: cx.new(|cx| {
                 TextareaState::new(window, cx)
                     .placeholder("Describe the outcome, context, and acceptance criteria…")
-                    .default_value(
-                        task.as_ref()
-                            .map(|t| t.description.clone())
-                            .unwrap_or_default(),
-                    )
+                    .default_value(task.description.clone())
                     .rows(6)
             }),
             labels: cx.new(|cx| {
                 InputState::new(window, cx)
                     .placeholder("Feature, UI")
-                    .default_value(
-                        task.as_ref()
-                            .map(|t| t.labels.join(", "))
-                            .unwrap_or_default(),
-                    )
+                    .default_value(task.labels.join(", "))
             }),
             due: cx.new(|cx| {
                 InputState::new(window, cx)
                     .placeholder("YYYY-MM-DD")
-                    .default_value(
-                        task.as_ref()
-                            .map(|t| t.due_date.clone())
-                            .unwrap_or_default(),
-                    )
+                    .default_value(task.due_date.clone())
             }),
         });
         self.editing = true;
@@ -879,94 +801,45 @@ impl TaskApp {
             self.show_save_error("Use a valid date in YYYY-MM-DD format.", cx);
             return;
         }
-        let (id, project, stage, parent, cycle) =
-            (d.id, d.project, d.stage, d.parent, d.cycle.clone());
-        if let Some(id) = id {
-            if self.store.task(id).is_some_and(|t| t.project_id != project) {
-                self.show_save_error("Move the entire topic using its Project property or topic menu, then edit task details.", cx);
-                return;
-            }
-            if self.store.task(id).is_some_and(|t| t.stage != stage) {
-                if stage == Stage::InProgress {
-                    self.show_save_error("Save task details first, then submit execution from Board or the status menu.", cx);
-                    return;
-                }
-                if let Err(error) = self.store.validate_manual_transition(id, stage, self.todo_batch.as_ref()) {
-                    self.show_save_error(&error, cx);
-                    return;
-                }
-            }
-        } else if !matches!(stage, Stage::Backlog | Stage::Planned) {
-            self.show_save_error("New tasks must start in Backlog or Todo.", cx);
+        let (id, project, stage, cycle) = (d.id, d.project, d.stage, d.cycle.clone());
+        if self.store.task(id).is_some_and(|t| t.project_id != project) {
+            self.show_save_error("Move the entire topic using its Project property or topic menu, then edit task details.", cx);
             return;
         }
-        self.snapshot();
-        let result = if let Some(id) = id {
-            Ok(id)
-        } else {
-            self.store
-                .create_task_in_topic(title.clone(), project, stage, parent, match self.scope { Scope::Topic(id) => Some(id), _ => None })
-        };
-        match result {
-            Ok(id) => {
-                if let Err(e) = self
-                    .store
-                    .move_project(id, project)
-                    .and_then(|_| self.store.set_stage(id, stage))
-                {
-                    self.store = self.undo.pop().unwrap();
-                    self.show_save_error(e, cx);
-                    return;
-                }
-                if let Some(t) = self.store.task_mut(id) {
-                    t.cycle = cycle;
-                    t.title = title.trim().into();
-                    t.description = desc;
-                    t.labels = labels;
-                    t.due_date = due;
-                    t.activity
-                        .push(crate::domain::activity_event("Task details updated"));
-                }
-                self.editing = false;
-                self.draft = None;
-                self.open_task(id, window, cx);
-                self.confirm_save("Task saved to local workspace", cx);
+        if self.store.task(id).is_some_and(|t| t.stage != stage) {
+            if stage == Stage::InProgress {
+                self.show_save_error("Save task details first, then submit execution from Board or the status menu.", cx);
+                return;
             }
-            Err(e) => {
-                self.undo.pop();
-                self.show_save_error(e, cx);
+            if let Err(error) = self.store.validate_manual_transition(id, stage, self.todo_batch.as_ref()) {
+                self.show_save_error(&error, cx);
+                return;
             }
         }
-        cx.notify();
-    }
-    pub fn select_policy(&mut self, stage: Stage, window: &mut Window, cx: &mut Context<Self>) {
-        self.policy_stage = stage;
-        if let Some(p) = self.store.policies.iter().find(|p| p.stage == stage) {
-            self.policy_agent = p.agent.clone();
-            self.policy_auto = p.auto_start;
-            let model = p.model.clone();
-            let prompt = p.prompt.clone();
-            self.policy_model
-                .update(cx, |s, cx| s.set_value(model, window, cx));
-            self.policy_prompt
-                .update(cx, |s, cx| s.set_value(prompt, window, cx));
-        }
-        cx.notify();
-    }
-    pub fn save_policy(&mut self, cx: &mut Context<Self>) {
         self.snapshot();
-        if let Some(p) = self
+        if let Err(e) = self
             .store
-            .policies
-            .iter_mut()
-            .find(|p| p.stage == self.policy_stage)
+            .move_project(id, project)
+            .and_then(|_| self.store.set_stage(id, stage))
         {
-            p.agent = self.policy_agent.clone();
-            p.model = self.policy_model.read(cx).value().trim().to_string();
-            p.prompt = self.policy_prompt.read(cx).value().to_string();
-            p.auto_start = self.policy_auto;
+            self.store = self.undo.pop().unwrap();
+            self.show_save_error(e, cx);
+            return;
         }
-        self.confirm_save("Stage configuration saved to local workspace", cx);
+        if let Some(t) = self.store.task_mut(id) {
+            t.cycle = cycle;
+            t.title = title.trim().into();
+            t.description = desc;
+            t.labels = labels;
+            t.due_date = due;
+            t.activity
+                .push(crate::domain::activity_event("Task details updated"));
+        }
+        self.editing = false;
+        self.draft = None;
+        self.open_task(id, window, cx);
+        self.confirm_save("Task saved to local workspace", cx);
+        cx.notify();
     }
     pub fn undo_change(&mut self, window: &mut Window, cx: &mut Context<Self>) {
         if !self.active_runs.is_empty() || !self.queued_runs.is_empty()
@@ -1002,7 +875,6 @@ impl TaskApp {
             self.draft = None;
             self.editing = false;
             self.property = None;
-            self.select_policy(self.policy_stage, window, cx);
             self.refresh_research_inputs(window, cx);
             self.refresh_global_model_input(window, cx);
             self.toast = "Last change undone".into();
@@ -1054,7 +926,8 @@ impl TaskApp {
                 let path = self.store.opencode_path.clone();
                 self.executable_input
                     .update(cx, |s, cx| s.set_value(path, window, cx));
-                self.select_policy(self.policy_stage, window, cx);
+                let codex_path = self.store.research_config.codex_path.clone();
+                self.codex_executable_input.update(cx, |s, cx| s.set_value(codex_path, window, cx));
                 self.refresh_research_inputs(window, cx);
                 self.refresh_global_model_input(window, cx);
                 match storage.save(&self.store) {
@@ -1173,6 +1046,17 @@ impl TaskApp {
         self.error.clear();
         self.confirm_save("Project folder saved to local workspace", cx);
     }
+    pub fn discovering_codex_models(&self) -> bool { self.codex_discovery.is_some() }
+    pub fn discover_codex_models(&mut self, cx: &mut Context<Self>) {
+        if self.codex_discovery.is_some() { return; }
+        let executable = PathBuf::from(&self.store.research_config.codex_path);
+        let (tx, rx) = mpsc::channel();
+        self.codex_discovery = Some(rx);
+        self.codex_status = "Checking Codex…".into();
+        std::thread::spawn(move || { let _ = tx.send(crate::codex::discover(&executable)); });
+        self.start_pump(cx);
+        cx.notify();
+    }
     pub fn discover_models(&mut self, cx: &mut Context<Self>) {
         if self.discovery.is_some() {
             return;
@@ -1197,7 +1081,8 @@ impl TaskApp {
         self.discovery = Some(rx);
         self.connection_status = "Connecting to OpenCode…".into();
         std::thread::spawn(move || {
-            let _ = tx.send(opencode::discover(&executable, &directory));
+            let result = opencode::discover(&executable, &directory);
+            let _ = tx.send((executable, result));
         });
         self.start_pump(cx);
         cx.notify();
@@ -1227,8 +1112,6 @@ impl TaskApp {
         self.task_start_feedback = None;
         if self.store.task_is_archived(id) {
             self.error = "Restore the archived topic or goal before executing.".into();
-        } else if self.store.task(id).is_some_and(|t| t.research.is_none() && t.stage == Stage::Backlog) {
-            self.error = "Move this task to Todo before submitting execution.".into();
         } else if self.recovery_blocks_task(id) {
             self.error =
                 "Check this task’s previous session in Paused projects before starting again."
@@ -1352,7 +1235,7 @@ impl TaskApp {
                 "[session] Will resume session from run {} when dispatched",
                 previous.id
             ));
-        } else {
+        } else if run.agent == "OpenCode" {
             run.session_id = Some(opencode::new_session_id());
         }
         let legacy_source = run.workspace_source.clone().or_else(|| {
@@ -1471,9 +1354,7 @@ impl TaskApp {
                         !t.archived && !matches!(t.stage, Stage::Backlog | Stage::Cancelled)
                     })
             } else {
-                self.store
-                    .task(run.task_id)
-                    .is_some_and(|t| !t.archived && t.stage == run.stage)
+                false
             };
             if !valid || self.store.run_is_archived(run) {
                 self.store.runs[index].status = "Stale".into();
@@ -1520,11 +1401,12 @@ impl TaskApp {
                 self.complete_research_run(id, cx);
                 continue;
             }
+            self.store.refresh_queued_browser_control(index);
             let run = &self.store.runs[index];
-            let request = opencode::Request {
+            let request = opencode::Request { browser_executable: (run.agent == "Codex" && run.research_kind == Some(crate::research::ResearchKind::Collect) && !self.store.owning_research_goal(run.task_id).is_some_and(|goal| self.store.research_browser_handed_off(goal))).then(|| PathBuf::from(&self.store.research_config.ego_path)),
                 files,
                 session_id: run.session_id.clone(),
-                executable: PathBuf::from(&self.store.opencode_path),
+                executable: PathBuf::from(self.store.agent_path(&run.agent)),
                 directory: PathBuf::from(&run.directory),
                 model: run.model.clone(),
                 prompt: run.prompt.clone(),
@@ -1539,7 +1421,12 @@ impl TaskApp {
                 self.queued_runs.insert(0, (id, request.files));
                 break;
             }
-            match opencode::start(request) {
+            let started = match self.store.runs[index].agent.as_str() {
+                "Codex" => crate::codex::start(request),
+                "OpenCode" => opencode::start(request),
+                agent => Err(format!("Unsupported agent: {agent}")),
+            };
+            match started {
                 Ok(handle) => {
                     self.store.mark_research_running(id);
                     self.active_runs.push(ActiveRun {
@@ -1616,12 +1503,25 @@ impl TaskApp {
         self.poll_startup(cx);
         self.poll_research_io(cx);
         self.poll_recovery(cx);
+        if let Some(result) = self.codex_discovery.as_ref().and_then(|rx| rx.try_recv().ok()) {
+            self.codex_discovery = None;
+            match result {
+                Ok(result) => {
+                    self.codex_version = Some(result.version);
+                    self.codex_models = result.models;
+                    self.codex_status = result.status;
+                }
+                Err(error) => { self.codex_status = error; self.codex_models.clear(); }
+            }
+            cx.notify();
+        }
         let discovery = self.discovery.as_ref().and_then(|rx| rx.try_recv().ok());
-        if let Some(result) = discovery {
+        if let Some((executable, result)) = discovery {
             self.discovery = None;
             match result {
                 Ok((version, models)) => {
-                    self.connection_status = format!("{version} · {} models", models.len());
+                    self.opencode_version = Some((executable.to_string_lossy().into_owned(), version));
+                    self.connection_status = format!("{} local models available", models.len());
                     self.available_models = models;
                     self.error.clear();
                 }
@@ -1634,7 +1534,6 @@ impl TaskApp {
         }
         let mut completed = vec![];
         let mut changed = false;
-        let mut stopped_goals = vec![];
         for active in &mut self.active_runs {
             // Bound per-worker draining so a noisy session cannot starve others or the UI.
             let events: Vec<_> = active.handle.events.try_iter().take(128).collect();
@@ -1644,18 +1543,12 @@ impl TaskApp {
                 _ => None,
             }) {
                 active.handle.cancel();
-                stopped_goals.push(active.id);
-                self.error = message;
+                self.toast = format!("Browser paused; research will continue with evidence gaps. {message}");
             }
             if let Some(run) = self.store.runs.iter_mut().find(|r| r.id == active.id) {
                 if record_events(run, &mut active.had_error, events) {
                     completed.push(active.id);
                 }
-            }
-        }
-        for id in stopped_goals {
-            if let Some(goal) = self.run_goal(id) {
-                self.research_sequences.remove(&goal);
             }
         }
         self.active_runs.retain(|a| !completed.contains(&a.id));
@@ -1682,6 +1575,7 @@ impl TaskApp {
             || self.startup.pending.is_some()
             || self.startup.workspace_pending.is_some()
             || self.discovery.is_some()
+            || self.codex_discovery.is_some()
             || self.ego_probe.is_some()
             || self.attachment_import.is_some()
             || self.recovery_pending();
@@ -1738,7 +1632,8 @@ fn record_events(run: &mut AgentRun, had_error: &mut bool, events: Vec<opencode:
             opencode::Event::Session(id) => run.session_id = Some(id),
             opencode::Event::BrowserBlocked(message) => {
                 run.status = "Blocked".into();
-                run.logs.push(format!("[blocked] {message}"));
+                run.logs.push(format!("[browser] Access paused · {message}"));
+                run.logs.push(crate::research::BROWSER_HANDOFF_LOG.into());
             }
             opencode::Event::Finished {
                 code,
@@ -1761,8 +1656,10 @@ fn record_events(run: &mut AgentRun, had_error: &mut bool, events: Vec<opencode:
                     run.logs.push(format!("[error] {e}"));
                 }
                 run.logs.push(format!(
-                    "[run] {} · exit {}",
-                    run.status,
+                    "[process] {} · exit {}",
+                    if run.status == "Succeeded" { "Exited normally (process only)" }
+                    else if run.status == "Blocked" && run.logs.iter().any(|line| line == crate::research::BROWSER_HANDOFF_LOG) { "Stopped for browser handoff (research result pending)" }
+                    else { &run.status },
                     code.map(|c| c.to_string())
                         .unwrap_or("signal / unavailable".into())
                 ));
@@ -1854,6 +1751,8 @@ mod tests {
         assert_eq!(run.status, "Succeeded");
         assert_eq!(run.session_id.as_deref(), Some("session"));
         assert!(run.logs.iter().any(|s| s == "last output"));
+        assert!(run.logs.iter().any(|s| s == "[process] Exited normally (process only) · exit 0"));
+        assert!(!run.logs.iter().any(|s| s.starts_with("[run] Succeeded")));
     }
     #[test]
     fn dates_validate_calendar_days_not_only_shape() {

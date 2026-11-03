@@ -214,13 +214,13 @@ impl TaskApp {
         actions = actions.child(run_action
             .disabled(archived || pending || checking || active || cancelled || !dependencies.is_empty())
             .on_click(cx.listener(move |a, _, _, cx| a.start_run(id, cx))));
-        let mut links = row().gap_2().items_center()
-            .child(quiet_button("step-open-goal", if pending { "Review goal →" } else { "Open goal →" })
+        let mut links = col().gap_1()
+            .child(quiet_button("step-open-goal", if pending { "Review goal" } else { "Open goal" })
                 .self_start().h_7().px_1().text_sm().text_color(rgb(colors.secondary))
                 .on_click(cx.listener(move |a, _, w, cx| a.open_task(goal, w, cx))));
         if latest.is_some() {
-            links = links.child(crate::controls::technical_details_button("step-attempt-details")
-                .self_start()
+            links = links.child(quiet_button("step-attempt-details", "Technical details")
+                .self_start().h_7().px_1().text_sm().text_color(rgb(colors.secondary))
                 .on_click(cx.listener(move |a, _, _, cx| {
                     a.view_task_result(id, cx);
                     a.show_run_details = true;

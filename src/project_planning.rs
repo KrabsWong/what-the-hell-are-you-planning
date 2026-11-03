@@ -132,11 +132,11 @@ impl Store {
             "scope": project.research_brief,
             "existing_task_titles": existing,
         });
-        let prompt = format!(
+        let mut prompt = format!(
             "You are planning research topics for a project in What the hell are you planning? Today is {}.\n\
              Produce 1–8 distinct, independently useful research questions that the human can choose from. \
              Match the language of the project. Use its name as the scope when no additional scope is given. \
-             A broad industry project usually benefits from several focused subindustry or investment-theme questions. \
+             A broad project usually benefits from focused questions suited to its research type. \
              Each topic must be able to run independently after approval; do not create cross-topic dependencies. \
              These are proposed research goals, not collect/analyze/report phase tasks. \
              Each approved goal will later receive its own collection, analysis and report plan. \
@@ -152,6 +152,8 @@ impl Store {
              All topics will enter Backlog awaiting explicit human approval; do not mark anything approved or complete. The application manages approval state. Do not embed transient workflow status or reapproval requirements in generated titles or briefs.",
             chrono::Local::now().format("%Y-%m-%d %:z"),
         );
+        prompt.push_str(crate::research::RESEARCH_TYPE_GUIDANCE);
+        prompt.push_str(crate::research::RESEARCH_PLAN_GUIDANCE);
         if prompt.len() > 240_000 {
             return Err("Project context is too large. Shorten its scope or existing task titles before planning.".into());
         }
@@ -333,6 +335,8 @@ mod tests {
         assert!(run.prompt.contains("半导体行业研究"));
         assert!(run.prompt.contains("do not use tools"));
         assert!(run.prompt.contains("All topics will enter Backlog"));
+        assert!(run.prompt.contains(crate::research::RESEARCH_TYPE_GUIDANCE));
+        assert!(run.prompt.contains(crate::research::RESEARCH_PLAN_GUIDANCE));
         assert_eq!(
             run.input_signature,
             store.project_plan_signature(1).unwrap()

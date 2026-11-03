@@ -347,6 +347,8 @@ impl Store {
              {{\"topic_name\":\"Company or subject\",\"brief\":{{\"objective\":\"Question to answer\",\"deliverable\":\"Expected report and acceptance criteria\",\"scope\":\"Boundaries and temporal anchor\",\"assumptions\":[\"Explicit planning assumptions\"],\"facts_to_verify\":[\"Unverified user assertions or missing factual context\"]}},\"goals\":[{{\"title\":\"One research outcome\",\"brief\":\"Goal scope and acceptance criteria\",\"tasks\":[{{\"title\":\"Collect evidence\",\"instructions\":\"Output and completion criteria\",\"kind\":\"collect\",\"depends_on\":[]}},{{\"title\":\"Analyze\",\"instructions\":\"Analyze verified evidence\",\"kind\":\"analyze\",\"depends_on\":[0]}},{{\"title\":\"Final report\",\"instructions\":\"Deliver the requested sourced report and disclose gaps\",\"kind\":\"advise\",\"depends_on\":[1]}}]}}]}}\n\
              Use 1–8 goals with 3–12 steps each. Titles and topic_name: at most 160 characters. Goal brief and task instructions: at most 12,000 bytes. Objective/deliverable/scope: at most 6,000 bytes each. Assumption and facts lists: at most 20 concise items each. depends_on contains zero-based indices of earlier tasks within the SAME goal. Each analyze must transitively depend on collect, each advise on analyze. Final task must be advise and transitively include every task. Never include nested goals or omit required fields."
         );
+        prompt.push_str(research::RESEARCH_TYPE_GUIDANCE);
+        prompt.push_str(research::RESEARCH_PLAN_GUIDANCE);
         let repair = request.planning_run_id
             .and_then(|id| self.runs.iter().find(|r| r.id == id))
             .filter(|run| run.status == "Failed" && run.input_signature == signature
@@ -640,6 +642,8 @@ mod tests {
         assert!(run.prompt.contains(&stamp));
         assert!(run.prompt.contains("Intel 昨天财报后大跌"));
         assert!(run.prompt.contains("facts_to_verify"));
+        assert!(run.prompt.contains(research::RESEARCH_TYPE_GUIDANCE));
+        assert!(run.prompt.contains(research::RESEARCH_PLAN_GUIDANCE));
         assert!(run.prompt.contains("do not use tools"));
         assert!(s.runs.is_empty());
         let signature = run.input_signature;

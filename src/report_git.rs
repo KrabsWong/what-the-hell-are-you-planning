@@ -64,14 +64,8 @@ fn publish_with_progress(root: &Path, repository: &str, branch: &str, files: &[(
         fs::write(&path, bytes).map_err(|_| "Could not write report assets.")?;
         git(dir, &["add", "--", name])?;
     }
-    // Bootstrap an empty static site without replacing existing landing pages or rules.
-    const EMPTY: &str = "<!doctype html><html lang=\"zh-CN\"><meta charset=\"utf-8\"><meta name=\"viewport\" content=\"width=device-width,initial-scale=1\"><meta name=\"robots\" content=\"noindex,nofollow,noarchive\"><meta name=\"referrer\" content=\"no-referrer\"><title>Report Something</title><body><p>请使用完整的报告链接访问。</p></body></html>";
-    for (name, content) in [("index.html", EMPTY), ("404.html", EMPTY), ("robots.txt", "User-agent: *\nDisallow: /\n")] {
-        if fs::symlink_metadata(checkout.0.join(name)).is_err() {
-            let path = safe_destination(&checkout.0, name)?;
-            fs::write(path, content).map_err(|_| "Could not create site entry files.")?;
-            git(dir, &["add", "--", name])?;
-        }
+    for name in prepare_entry_pages(&checkout.0)? {
+        git(dir, &["add", "--", name])?;
     }
     prepare_repository_index(&checkout.0, site_url)?;
     git(dir, &["add", "--", "README.md", "edgeone.json", "build-reports.mjs"])?;
@@ -88,6 +82,41 @@ fn publish_with_progress(root: &Path, repository: &str, branch: &str, files: &[(
     progress("Pushing to GitHub");
     git(dir, &["push", "origin", &format!("{head}:refs/heads/{branch}")])?;
     Ok(head)
+}
+
+const LEGACY_ENTRY: &str = "<!doctype html><html lang=\"zh-CN\"><meta charset=\"utf-8\"><meta name=\"viewport\" content=\"width=device-width,initial-scale=1\"><meta name=\"robots\" content=\"noindex,nofollow,noarchive\"><meta name=\"referrer\" content=\"no-referrer\"><title>Report Something</title><body><p>请使用完整的报告链接访问。</p></body></html>";
+
+const ENTRY_TEMPLATE: &str = include_str!("../assets/report-publishing/entry.html");
+
+fn entry_page(not_found: bool) -> String {
+    let (title, intro) = if not_found {
+        ("404 · 报告未找到", "请确认报告链接是否完整，或稍后重试。")
+    } else {
+        ("研究报告", "请通过分享链接访问具体报告。")
+    };
+    ENTRY_TEMPLATE.replace("{{TITLE}}", title).replace("{{INTRO}}", intro)
+}
+
+fn prepare_entry_pages(root: &Path) -> Result<Vec<&'static str>, String> {
+    let mut changed = Vec::new();
+    for (name, content) in [("index.html", entry_page(false)), ("404.html", entry_page(true)), ("robots.txt", "User-agent: *\nDisallow: /\n".into())] {
+        let path = safe_destination(root, name)?;
+        let replace = match fs::read_to_string(&path) {
+            Ok(existing) => {
+                let previous = include_str!("../assets/report-publishing/entry-v1.html")
+                    .replace("{{TITLE}}", if name == "404.html" { "404 · 报告未找到" } else { "研究报告" })
+                    .replace("{{INTRO}}", if name == "404.html" { "请确认报告链接是否完整，或稍后重试。" } else { "请通过分享链接访问具体报告。" });
+                name != "robots.txt" && (existing == LEGACY_ENTRY || existing == previous)
+            },
+            Err(error) if error.kind() == std::io::ErrorKind::NotFound => true,
+            Err(_) => false, // Preserve custom or unreadable site files.
+        };
+        if replace {
+            fs::write(path, content).map_err(|_| "Could not create site entry files.")?;
+            changed.push(name);
+        }
+    }
+    Ok(changed)
 }
 
 const INDEX_START: &str = "<!-- planning-reports:start -->";
@@ -282,6 +311,47 @@ fn git(dir: Option<&Path>, args: &[&str]) -> Result<String, String> {
 #[cfg(test)]
 mod tests {
     use super::*;
+    #[test]
+    fn entry_pages_upgrade_only_legacy_defaults_and_preserve_custom_content() {
+        let root = std::env::temp_dir().join(format!("report-entry-test-{}", chrono::Utc::now().timestamp_nanos_opt().unwrap()));
+        fs::create_dir_all(&root).unwrap();
+        let _cleanup = Checkout(root.clone());
+        assert_eq!(prepare_entry_pages(&root).unwrap(), ["index.html", "404.html", "robots.txt"]);
+        let home = fs::read_to_string(root.join("index.html")).unwrap();
+        let missing = fs::read_to_string(root.join("404.html")).unwrap();
+        assert_ne!(home, missing);
+        assert!(home.contains("请通过分享链接访问具体报告。"));
+        assert!(missing.contains("404 · 报告未找到"));
+        for page in [&home, &missing] {
+            assert!(page.contains("noindex,nofollow,noarchive"));
+            assert!(page.contains("prefers-color-scheme: dark"));
+            assert!(!page.contains("{{"));
+            assert!(page.contains("https://weekly.tw93.fun/fonts/jinkai.css"));
+            assert!(page.contains("TsangerJinKai02"));
+            assert!(!page.contains("<nav"));
+            assert!(!page.contains("Yooooo"));
+        }
+        assert!(prepare_entry_pages(&root).unwrap().is_empty());
+        let previous = include_str!("../assets/report-publishing/entry-v1.html")
+            .replace("{{TITLE}}", "404 · 报告未找到")
+            .replace("{{INTRO}}", "请确认报告链接是否完整，或稍后重试。");
+        fs::write(root.join("404.html"), previous).unwrap();
+        assert_eq!(prepare_entry_pages(&root).unwrap(), ["404.html"]);
+        assert_eq!(fs::read_to_string(root.join("404.html")).unwrap(), missing);
+        fs::write(root.join("index.html"), "Custom home").unwrap();
+        fs::write(root.join("404.html"), LEGACY_ENTRY).unwrap();
+        fs::write(root.join("robots.txt"), "Custom rules").unwrap();
+        assert_eq!(prepare_entry_pages(&root).unwrap(), ["404.html"]);
+        assert_eq!(fs::read_to_string(root.join("index.html")).unwrap(), "Custom home");
+        assert_eq!(fs::read_to_string(root.join("404.html")).unwrap(), missing);
+        assert_eq!(fs::read_to_string(root.join("robots.txt")).unwrap(), "Custom rules");
+        fs::write(root.join("404.html"), "Custom error").unwrap();
+        fs::write(root.join("index.html"), LEGACY_ENTRY).unwrap();
+        assert_eq!(prepare_entry_pages(&root).unwrap(), ["index.html"]);
+        assert_eq!(fs::read_to_string(root.join("index.html")).unwrap(), home);
+        assert_eq!(fs::read_to_string(root.join("404.html")).unwrap(), "Custom error");
+    }
+
     #[test]
     fn rejects_credentials_and_unsafe_paths() {
         assert!(validate("https://github.com/owner/reports.git", "main").is_ok());

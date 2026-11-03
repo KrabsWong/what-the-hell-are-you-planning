@@ -1,0 +1,46 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <meta name="robots" content="noindex,nofollow,noarchive">
+  <meta name="referrer" content="no-referrer">
+  <meta name="color-scheme" content="light dark">
+  <meta name="theme-color" content="#ffffff" media="(prefers-color-scheme: light)">
+  <meta name="theme-color" content="#171819" media="(prefers-color-scheme: dark)">
+  <title>{{TITLE}} · Report Something</title>
+  <link rel="preconnect" href="https://weekly.tw93.fun">
+  <link rel="preconnect" href="https://gw.alipayobjects.com" crossorigin>
+  <link rel="stylesheet" href="https://weekly.tw93.fun/fonts/jinkai.css">
+  <style>
+    :root { color-scheme: light dark; --paper: #fff; --ink: #171819; --muted: #76797d; --line: #e4e4e0; --badge: #f4f3ef; }
+    @media (prefers-color-scheme: dark) {
+      :root { --paper: #171819; --ink: #ececea; --muted: #999b9d; --line: #36383a; --badge: #222426; }
+    }
+    * { box-sizing: border-box; }
+    body { margin: 0; min-height: 100vh; min-height: 100svh; display: grid; grid-template-rows: 1fr auto; padding: 32px 24px; background: var(--paper); color: var(--ink); font-family: "TsangerJinKai02", STKaiti, KaiTi, "PingFang SC", system-ui, sans-serif; -webkit-font-smoothing: antialiased; }
+    main { width: min(100%, 360px); margin: 48px auto; align-self: center; text-align: center; }
+    .mark { width: 48px; height: 48px; display: grid; place-items: center; margin: 0 auto 12px; border-radius: 50%; background: var(--badge); color: var(--ink); font-size: 21px; }
+    .message { border-top: 1px solid var(--line); padding-top: 24px; }
+    footer { text-align: center; color: var(--muted); font-size: 11px; line-height: 1.6; }
+    .brand { margin: 0 0 28px; font-size: 18px; font-weight: 400; line-height: 1.5; }
+    h1 { margin: 0; font-size: 16px; font-weight: 400; line-height: 1.6; }
+    .intro { margin: 10px 0 0; color: var(--muted); font-size: 13px; line-height: 1.85; text-wrap: balance; }
+    @media (max-width: 520px) {
+      body { padding: 24px; }
+      main { padding: 16px 0; }
+    }
+  </style>
+</head>
+<body>
+  <main>
+    <div class="mark" aria-hidden="true">R</div>
+    <p class="brand">Report Something</p>
+    <section class="message" aria-labelledby="page-title">
+    <h1 id="page-title">{{TITLE}}</h1>
+    <p class="intro">{{INTRO}}</p>
+    </section>
+  </main>
+  <footer>研究 · 证据 · 洞察</footer>
+</body>
+</html>

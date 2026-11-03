@@ -53,25 +53,100 @@ fn heading_text(html: &str) -> String {
         .collect()
 }
 
+// Only inspect code blocks emitted by the Markdown renderer, never raw user HTML.
+fn render_diagrams(html: &str) -> String {
+    const OPEN: &str = "<pre><code class=\"language-mermaid\">";
+    const CLOSE: &str = "</code></pre>";
+    let mut rest = html;
+    let mut output = String::new();
+    while let Some(start) = rest.find(OPEN) {
+        output.push_str(&rest[..start]);
+        let source_start = start + OPEN.len();
+        let Some(end) = rest[source_start..].find(CLOSE) else {
+            output.push_str(&rest[start..]);
+            return output;
+        };
+        let end = source_start + end;
+        let source = rest[source_start..end].replace("&lt;", "<").replace("&gt;", ">")
+            .replace("&quot;", "\"").replace("&#39;", "'").replace("&amp;", "&");
+        match diagram_images(&source) {
+            Ok(images) => output.push_str(&images),
+            Err(_) => {
+                output.push_str("<div class=\"diagram-fallback\"><p>图表暂时无法渲染，以下保留 Mermaid 源码。</p>");
+                output.push_str(&rest[start..end + CLOSE.len()]);
+                output.push_str("</div>");
+            }
+        }
+        rest = &rest[end + CLOSE.len()..];
+    }
+    output.push_str(rest);
+    output
+}
+
+fn diagram_images(source: &str) -> Result<String, String> {
+    if source.len() > 16_384 || source.lines().count() > 256 {
+        return Err("Diagram exceeds rendering limits".into());
+    }
+    let parsed = mermaid_rs_renderer::parse_mermaid_strict(source).map_err(|e| e.to_string())?;
+    let options = mermaid_rs_renderer::RenderOptions::default();
+    let layout = mermaid_rs_renderer::compute_layout(&parsed.graph, &options.theme, &options.layout);
+    let mut images = String::from("<figure class=\"report-diagram\">");
+    for (name, theme) in [("light", options.theme), ("dark", mermaid_rs_renderer::Theme::dark())] {
+        let svg = mermaid_rs_renderer::render_svg(&layout, &theme, &options.layout);
+        let tree = usvg::Tree::from_str(&svg, &usvg::Options::default()).map_err(|e| e.to_string())?;
+        let size = tree.size();
+        if size.width() > 8192. || size.height() > 8192. || size.width() * size.height() > 16_000_000. {
+            return Err("Diagram exceeds image limits".into());
+        }
+        // SVGs are isolated image documents, not active inline HTML. Encode every byte.
+        let data: String = svg.bytes().map(|byte| format!("%{byte:02X}")).collect();
+        images.push_str(&format!("<img class=\"diagram-{name}\" alt=\"研究报告流程图\" src=\"data:image/svg+xml,{data}\">"));
+    }
+    images.push_str("<details><summary>查看 Mermaid 源码</summary><pre><code>");
+    images.push_str(&escape(source));
+    images.push_str("</code></pre></details></figure>");
+    Ok(images)
+}
+
+const INTERNAL_GAP_NOTE: &str = "<blockquote>\n<p>Evidence gaps: this step finished with incomplete evidence. Preserve its limitations in downstream conclusions.</p>\n</blockquote>";
+const PUBLIC_GAP_NOTE: &str = "<aside class=\"evidence-notice\" aria-label=\"研究局限\"><strong>证据说明</strong><p>本报告的部分结论仍有证据缺口，请结合正文中的限制与待验证事项阅读。</p></aside>";
+
+// The page owns h1. Remove only a repeated report title, never repeated sections
+// separated by substantive content. A generated evidence notice is not content.
+fn normalize_headings(title: &str, html: &str) -> String {
+    let html = html.replace(INTERNAL_GAP_NOTE, PUBLIC_GAP_NOTE);
+    let mut rest = html.as_str();
+    let mut result = String::new();
+    let mut previous = escape(title);
+    while let Some((start, level)) = (1..=6)
+        .filter_map(|level| rest.find(&format!("<h{level}>")).map(|p| (p, level)))
+        .min_by_key(|(p, _)| *p)
+    {
+        let end_tag = format!("</h{level}>");
+        let Some(length) = rest[start + 4..].find(&end_tag) else { break; };
+        let end = start + 4 + length;
+        let content = &rest[start + 4..end];
+        let between = &rest[..start];
+        let is_title_repeat = level == 1 && heading_text(content).trim() == previous.trim()
+            && between.replace(PUBLIC_GAP_NOTE, "").replace("<hr />", "").trim().is_empty();
+        result.push_str(between);
+        if !is_title_repeat {
+            let output_level = level.max(2);
+            result.push_str(&format!("<h{output_level}>{content}</h{output_level}>"));
+        }
+        previous = heading_text(content);
+        rest = &rest[end + end_tag.len()..];
+    }
+    result.push_str(rest);
+    result
+}
+
 pub fn render(title: &str, markdown: &str) -> String {
     // GFM enables tables, task lists and strikethrough. Dangerous HTML/protocols stay disabled.
     let html = markdown::to_html_with_options(markdown, &markdown::Options::gfm())
         .unwrap_or_else(|_| format!("<pre>{}</pre>", escape(markdown)));
-    let html = public_urls(&html);
-    // The page owns its title; avoid repeating an identical leading Markdown title.
-    let html = if let Some(rest) = html.strip_prefix("<h1>") {
-        if let Some(end) = rest.find("</h1>") {
-            if heading_text(&rest[..end]) == escape(title) {
-                rest[end + 5..].trim_start().to_string()
-            } else {
-                html
-            }
-        } else {
-            html
-        }
-    } else {
-        html
-    };
+    let html = render_diagrams(&public_urls(&html));
+    let html = normalize_headings(title, &html);
     let mut body = String::new();
     let mut toc = String::new();
     let mut remaining = html.as_str();
@@ -111,7 +186,7 @@ pub fn render(title: &str, markdown: &str) -> String {
         r##"<!doctype html>
 <html lang="zh-CN"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
 <meta name="robots" content="noindex,nofollow,noarchive"><meta name="referrer" content="no-referrer">
-<meta http-equiv="Content-Security-Policy" content="default-src 'none'; style-src 'unsafe-inline'; script-src 'unsafe-inline'; font-src https://gw.alipayobjects.com; img-src https: http:; base-uri 'none'; form-action 'none'">
+<meta http-equiv="Content-Security-Policy" content="default-src 'none'; style-src 'unsafe-inline'; script-src 'unsafe-inline'; font-src https://gw.alipayobjects.com; img-src https: http: data:; base-uri 'none'; form-action 'none'">
 <title>{title} · Report Something</title><style>{fonts}{base}{style}</style></head>
 <body><a class="skip" href="#report">跳转到报告</a><div class="shell">
 <aside class="sidebar"><div class="brandline"><span class="brand-mark">R</span>Report Something</div>
@@ -130,6 +205,54 @@ pub fn render(title: &str, markdown: &str) -> String {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn mermaid_exports_isolated_theme_images_and_preserves_source() {
+        let page = render("Diagram", "```mermaid\nflowchart LR\n A[客户] --> B[律师]\n```\n\n```rust\nlet a = 1;\n```");
+        assert_eq!(page.matches("src=\"data:image/svg+xml,").count(), 2);
+        assert!(page.contains("查看 Mermaid 源码"));
+        assert!(page.contains("A[客户] --&gt; B[律师]"));
+        assert!(page.contains("language-rust"));
+        assert!(!page.split("<figure class=\"report-diagram\">").nth(1).unwrap().split("</figure>").next().unwrap().contains("<svg"));
+        assert!(!page.contains("diagram-fallback\""));
+        let unsafe_page = render("Unsafe", "```mermaid\nflowchart LR\n A[\"<script>alert(1)</script>\"] --> B[ok]\n```\n\n![injected](data:image/svg+xml,evil)");
+        assert!(!unsafe_page.contains("<script>alert(1)"));
+        assert!(!unsafe_page.contains("src=\"data:image/svg+xml,evil"));
+    }
+
+    #[test]
+    fn invalid_and_oversized_diagrams_keep_readable_code() {
+        for source in ["not a diagram".to_string(), format!("flowchart LR\n A[{}]", "x".repeat(16_385))] {
+            let page = render("Fallback", &format!("```mermaid\n{source}\n```"));
+            assert!(page.contains("图表暂时无法渲染"));
+            assert!(page.contains("language-mermaid"));
+            assert!(!page.contains("src=\"data:image/svg+xml,"));
+        }
+    }
+
+    #[test]
+    fn generated_goal_title_and_internal_notice_do_not_duplicate_report_title() {
+        let input = "## 法律 AI 研究\n\n> Evidence gaps: this step finished with incomplete evidence. Preserve its limitations in downstream conclusions.\n\n# **法律 AI 研究**\n\n## 摘要\n\n证据不足，不能确认付费需求。";
+        let page = render("Topic", input);
+        assert_eq!(page.matches("<h1 ").count(), 1);
+        assert_eq!(page.matches(">法律 AI 研究</h2>").count(), 1);
+        assert!(!page.contains("Preserve its limitations"));
+        assert!(page.contains("证据说明"));
+        assert!(page.contains("不能确认付费需求"));
+        // Both desktop and mobile TOCs link to the same unique heading.
+        assert_eq!(page.matches("href=\"#section-1\">法律 AI 研究</a>").count(), 2);
+        assert!(page.contains("id=\"section-2\">摘要</h2>"));
+    }
+
+    #[test]
+    fn distinct_reports_and_repeated_real_sections_are_preserved() {
+        let page = render("Topic", "## Goal A\n\n# Goal A\n\n内容 A\n\n## Goal B\n\n# Goal B\n\n## 摘要\n\n内容 B\n\n# 摘要\n\n补充内容");
+        assert_eq!(page.matches("<h1 ").count(), 1);
+        assert!(page.contains(">Goal A</h2>"));
+        assert!(page.contains(">Goal B</h2>"));
+        assert_eq!(page.matches(">摘要</h2>").count(), 2);
+        assert!(page.contains("补充内容"));
+    }
 
     #[test]
     fn renders_tables_and_unique_heading_links() {

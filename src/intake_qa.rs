@@ -85,10 +85,22 @@ pub fn run() {
     let app = app.unwrap();
     let handle = window.into();
     cx.update_window(handle, |_,w,cx| {
-        w.render_frame(cx); w.click("plan-project",cx); w.render_frame(cx);
+        app.update(cx, |a, cx| {
+            let existing = a.store.create_topic(1, "Existing unrelated research").unwrap();
+            a.navigate(Scope::Topic(existing), w, cx);
+            a.open_research_intake(w, cx);
+            assert_eq!(a.planning_project, Some(1));
+            assert_eq!(a.planning_topic, None);
+        });
+        w.render_frame(cx);
         w.click("project-plan-brief",cx); w.input("分析 Intel 昨天财报后大跌的原因，结合官方数据和机构观点，输出中文报告，也考虑独立做同行比较。",cx);
         w.click("generate-project-plan",cx);
         assert_eq!(app.read(cx).store.research_requests.len(),1);
+        let state = app.read(cx);
+        let topic = state.store.research_requests[0].topic_id.unwrap();
+        assert_ne!(state.store.topics.iter().find(|t| t.id == topic).unwrap().name, "Existing unrelated research");
+        w.render_frame(cx);
+        assert!(w.find(format!("topic-{topic}")).visible());
     }).unwrap();
     wait(&mut cx, handle, &app);
     let timestamp = snapshot(&mut cx, &app).research_requests[0]

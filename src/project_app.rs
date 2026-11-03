@@ -37,7 +37,8 @@ impl TaskApp {
             })
             .unwrap_or(self.research_project);
         self.open_project_plan(project, w, cx);
-        self.planning_topic = topic;
+        // Global New research starts a new topic, even when invoked from a topic.
+        // Appending to an existing topic is an explicit action in that topic's menu.
     }
 
     pub(crate) fn capture_research_request(

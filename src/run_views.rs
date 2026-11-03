@@ -795,42 +795,20 @@ impl TaskApp {
         let context_task = self.task_result_context;
         let inline_task_actions = ongoing && !readable && !self.show_run_details && !planning
             && run_goal.is_some() && run.research_kind.is_some();
-        let mut actions = row().flex_wrap().gap_2().when(!inline_task_actions, |actions| actions.child(
-            quiet_button(
-                "open-run-task",
-                if project_plan.is_some() {
-                    "Project details"
-                } else if context_task.is_some() {
-                    if context_task.and_then(|id| self.store.task(id)).and_then(|t| t.research.as_ref())
-                        .is_some_and(|r| r.kind == ResearchKind::Goal) {
-                        "View original goal"
-                    } else { "View original task" }
-                } else {
-                    "Task details"
-                },
-            )
-            .disabled(!can_open)
-            .on_click(cx.listener(move |this, _, w, cx| {
-                if let Some(pid) = project_plan {
-                    this.navigate(Scope::Project(pid), w, cx);
-                    this.layout = Layout::Board;
-                } else {
-                    this.open_task(context_task.unwrap_or(id), w, cx);
-                }
-            })),
-        ));
-        actions = actions.when(!inline_task_actions, |actions| actions.child(
-            (if self.show_run_details {
-                quiet_button("show-result", "Back to result").icon(assets::IconName::ArrowLeft)
-            } else {
-                crate::controls::technical_details_button("run-technical-details")
-            })
-            .on_click(cx.listener(|this, _, _, cx| {
-                this.show_run_details = !this.show_run_details;
-                this.show_run_result = !this.show_run_details;
-                cx.notify();
-            })),
-        ));
+        let origin_label = if project_plan.is_some() { "Project details" }
+            else if context_task.and_then(|id| self.store.task(id)).and_then(|t| t.research.as_ref())
+                .is_some_and(|r| r.kind == ResearchKind::Goal) { "View original goal" }
+            else { "View original task" };
+        let mut actions = row().flex_wrap().gap_2();
+        if self.show_run_details {
+            actions = actions.child(quiet_button("show-result", "Back to result")
+                .icon(assets::IconName::ArrowLeft)
+                .on_click(cx.listener(|a, _, _, cx| {
+                    a.show_run_details = false;
+                    a.show_run_result = true;
+                    cx.notify();
+                })));
+        }
         if readable && !planning && self.store.task(context_task.unwrap_or(id)).is_some() {
             let (previous, next) = self.store.detail_task_neighbors(context_task.unwrap_or(id));
             actions = actions
@@ -869,11 +847,42 @@ impl TaskApp {
                     .on_click(cx.listener(|this, _, _, cx| this.cancel_run(cx))),
             );
         }
-        if !self.show_run_details && readable {
+        if !inline_task_actions {
+            let entity = cx.entity().downgrade();
             let copy = run.output.clone();
-            actions = actions.child(crate::controls::tool_icon("copy-result", assets::IconName::Copy, "Copy result")
+            let details = self.show_run_details;
+            actions = actions.child(crate::controls::tool_icon("run-actions-menu", assets::IconName::Ellipsis, "More result actions")
                 .h(px(28.)).w(px(28.))
-                .on_click(move |_, _, cx| cx.write_to_clipboard(ClipboardItem::new_string(copy.clone()))));
+                .dropdown_menu_with_anchor(Anchor::TopRight, move |mut menu, _, _| {
+                    if !details {
+                        let entity = entity.clone();
+                        menu = menu.item(gpui_kit::component::menu::PopupMenuItem::new("Technical details").on_click(move |_, _, cx| {
+                            let _ = entity.update(cx, |a, cx| {
+                                a.show_run_details = true;
+                                a.show_run_result = false;
+                                cx.notify();
+                            });
+                        }));
+                    }
+                    let entity = entity.clone();
+                    menu = menu.item(gpui_kit::component::menu::PopupMenuItem::new(origin_label).disabled(!can_open).on_click(move |_, w, cx| {
+                        let _ = entity.update(cx, |a, cx| {
+                            if let Some(pid) = project_plan {
+                                a.navigate(Scope::Project(pid), w, cx);
+                                a.layout = Layout::Board;
+                            } else {
+                                a.open_task(context_task.unwrap_or(id), w, cx);
+                            }
+                        });
+                    }));
+                    if readable {
+                        let copy = copy.clone();
+                        menu = menu.separator().item(gpui_kit::component::menu::PopupMenuItem::new("Copy result").on_click(move |_, _, cx| {
+                            cx.write_to_clipboard(ClipboardItem::new_string(copy.clone()));
+                        }));
+                    }
+                    menu
+                }));
         }
         let progress = col()
             .id("run-progress")
@@ -977,6 +986,8 @@ impl TaskApp {
                     && !matches!(status, ExecutionStatus::Running | ExecutionStatus::Queued | ExecutionStatus::Retrying) {
                     ExecutionStatus::Done
                 } else { status };
+                let result_run = (status == ExecutionStatus::Done)
+                    .then(|| self.store.research_result(task_id).map(|r| r.id)).flatten();
                 let current = task_id == run.task_id;
                 let title = task.title.clone();
                 let latest_run = self.store.runs.iter().rev()
@@ -986,12 +997,20 @@ impl TaskApp {
                     .when(current, |d| d.bg(rgb(colors.accent_surface)))
                     .tooltip(move |w, cx| gpui_kit::component::tooltip::Tooltip::new(title.clone()).build(w, cx))
                     .child(status.icon_view(cx))
-                    .child(div().flex_1().min_w_0().text_sm().truncate()
-                        .text_color(rgb(colors.text)).child(task.title.clone()))
+                    .child(quiet_button(format!("progress-task-title-{task_id}"), "")
+                        .flex_1().min_w_0().h(px(28.)).px_1()
+                        .accessibility_label(task.title.clone())
+                        .tooltip(if result_run.is_some() { "Open result" } else { "Open task details" })
+                        .child(div().w_full().min_w_0().text_sm().text_left().truncate()
+                            .text_color(rgb(colors.text)).child(task.title.clone()))
+                        .on_click(cx.listener(move |a, _, w, cx| {
+                            if let Some(run_id) = result_run {
+                                a.show_task_result(run_id, cx);
+                            } else {
+                                a.open_task(task_id, w, cx);
+                            }
+                        })))
                     .child(row().gap_0p5().flex_shrink_0()
-                        .child(crate::controls::tool_icon(format!("progress-task-details-{task_id}"), assets::IconName::FileText, "Task details")
-                            .h(px(28.)).w(px(28.))
-                            .on_click(cx.listener(move |a, _, w, cx| a.open_task(task_id, w, cx))))
                         .when_some(latest_run, |actions, run_id| actions.child(
                             crate::controls::technical_details_button(format!("progress-technical-details-{task_id}"))
                                 .on_click(cx.listener(move |a, _, _, cx| {

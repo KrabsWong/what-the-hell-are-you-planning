@@ -213,12 +213,13 @@ impl TaskApp {
         };
         actions = actions.child(run_action
             .disabled(archived || pending || checking || active || cancelled || !dependencies.is_empty())
-            .on_click(cx.listener(move |a, _, _, cx| a.start_run(id, cx))))
+            .on_click(cx.listener(move |a, _, _, cx| a.start_run(id, cx))));
+        let mut links = row().gap_2().items_center()
             .child(quiet_button("step-open-goal", if pending { "Review goal →" } else { "Open goal →" })
                 .self_start().h_7().px_1().text_sm().text_color(rgb(colors.secondary))
                 .on_click(cx.listener(move |a, _, w, cx| a.open_task(goal, w, cx))));
         if latest.is_some() {
-            actions = actions.child(crate::controls::technical_details_button("step-attempt-details")
+            links = links.child(crate::controls::technical_details_button("step-attempt-details")
                 .self_start()
                 .on_click(cx.listener(move |a, _, _, cx| {
                     a.view_task_result(id, cx);
@@ -227,7 +228,7 @@ impl TaskApp {
                     cx.notify();
                 })));
         }
-        panel.child(actions)
+        panel.child(actions.child(links))
             .when_some(self.task_start_feedback.as_ref().filter(|(task, _)| *task == id), |d, (_, message)| {
                 d.child(div().text_sm().text_color(rgb(colors.danger)).child(message.clone()))
             }).map(observed).into_any_element()

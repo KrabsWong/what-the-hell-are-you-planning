@@ -740,16 +740,18 @@ pub fn goal_actions() {
         assert_eq!(app.read(cx).task_result_context, Some(goal));
         assert_eq!(app.read(cx).selected_run, expected.2);
         w.render_frame(cx);
-        assert_eq!(w.find("open-run-task").label(), Some("View original goal"));
-        w.click("open-run-task", cx);
+        w.click("run-actions-menu", cx);
+        w.render_frame(cx);
+        w.click(1usize, cx);
         assert_eq!(app.read(cx).selected, Some(goal));
         assert_eq!(app.read(cx).task_result_context, None);
         w.render_frame(cx);
         w.click(format!("sidebar-task-{report}"), cx);
         assert_eq!(app.read(cx).task_result_context, Some(report));
         w.render_frame(cx);
-        assert_eq!(w.find("open-run-task").label(), Some("View original task"));
-        w.click("open-run-task", cx);
+        w.click("run-actions-menu", cx);
+        w.render_frame(cx);
+        w.click(1usize, cx);
         assert_eq!(app.read(cx).selected, Some(report));
         // An old successful report is insufficient when the latest attempt failed.
         app.update(cx, |a, cx| {

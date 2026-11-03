@@ -180,8 +180,10 @@ fn run_checks(layout_only: bool) {
                 assert!(w.try_find("result-source-0").is_none());
                 assert_eq!(w.find_all("cancel-run").len(), 0);
                 let before = app.read(cx).store.clone();
-                let toggle_y = w.find("run-technical-details").bounds().origin.y;
-                w.click("run-technical-details", cx);
+                let toggle_y = w.find("run-actions-menu").bounds().origin.y;
+                w.click("run-actions-menu", cx);
+                w.render_frame(cx);
+                w.click(0usize, cx);
                 assert_eq!(w.find_all("show-result").len(), 1);
                 assert_eq!(w.find("show-result").bounds().origin.y, toggle_y);
                 assert!(app.read(cx).show_run_details);
@@ -200,7 +202,9 @@ fn run_checks(layout_only: bool) {
                 w.click("show-result", cx);
                 assert!(!app.read(cx).show_run_details);
                 assert!(w.try_find("run-technical-panel").is_none());
-                w.click("run-technical-details", cx);
+                w.click("run-actions-menu", cx);
+                w.render_frame(cx);
+                w.click(0usize, cx);
                 click_in(w, cx, "run-history", "run-1");
                 assert!(
                     !app.read(cx).show_run_details,
@@ -239,7 +243,7 @@ fn run_checks(layout_only: bool) {
                     assert!(w.find("run-progress").visible());
                     assert!(w.try_find("run-technical-panel").is_none());
                     assert!(w.try_find("run-log-panel").is_none());
-                    assert!(w.find("open-run-task").visible());
+                    assert!(w.find("run-actions-menu").visible());
                 })
                 .unwrap();
                 screenshot(&mut cx, handle, &directory, name);
@@ -297,7 +301,9 @@ fn run_checks(layout_only: bool) {
             choose_menu(&mut cx, handle, "run-topic-picker", 1); // Standalone task
             cx.update_window(handle, |_, w, cx| {
                 assert_eq!(app.read(cx).selected_run, Some(active_id));
-                w.click("run-technical-details", cx);
+                w.click("run-actions-menu", cx);
+                w.render_frame(cx);
+                w.click(0usize, cx);
                 assert_eq!(w.find_all("cancel-run").len(), 1);
                 w.click("cancel-run", cx);
             })
@@ -370,7 +376,9 @@ fn run_checks(layout_only: bool) {
             .unwrap();
             screenshot(&mut cx, handle, &directory, "08-inline-task-result.png");
             cx.update_window(handle, |_, w, cx| {
-                w.click("open-run-task", cx);
+                w.click("run-actions-menu", cx);
+                w.render_frame(cx);
+                w.click(1usize, cx);
                 assert_eq!(app.read(cx).selected, Some(steps[0]));
                 assert_eq!(app.read(cx).detail_scroll.offset(), task_scroll);
                 app.update(cx, |a, cx| a.navigate(Scope::Runs, w, cx));
@@ -807,7 +815,9 @@ fn run_checks(layout_only: bool) {
                 app.update(cx, |a, cx| a.view_task_result(steps[2], cx));
                 w.render_frame(cx);
                 assert!(w.find("location-all").visible());
-                w.click("open-run-task", cx);
+                w.click("run-actions-menu", cx);
+                w.render_frame(cx);
+                w.click(1usize, cx);
                 assert_eq!(app.read(cx).selected, Some(steps[2]));
                 w.click("navigation-back", cx);
                 assert_eq!(app.read(cx).selected, Some(goal));

@@ -265,7 +265,7 @@ pub fn run() {
         },
         "streamed collection output",
     );
-    cx.update_window(handle, |_, w, cx| w.click("run-technical-details", cx))
+    cx.update_window(handle, |_, w, cx| { w.click("run-actions-menu", cx); w.render_frame(cx); w.click(0usize, cx); })
         .unwrap();
     screenshot(&mut cx, handle, &root, "03-live-logs.png");
     assert!(
@@ -863,7 +863,8 @@ assert 'Read the attached file directly' in args[-1]
         w.render_frame(cx);
         for id in &steps {
             assert!(w.find(format!("progress-task-{id}")).visible());
-            assert!(w.find(format!("progress-task-details-{id}")).visible());
+            assert!(w.find(format!("progress-task-title-{id}")).visible());
+            assert!(w.try_find(format!("progress-task-details-{id}")).is_none());
         }
         assert!(w.try_find("open-run-task").is_none());
         assert!(w.try_find("run-technical-details").is_none());
@@ -871,6 +872,24 @@ assert 'Read the attached file directly' in args[-1]
         assert!(w.try_find(format!("progress-technical-details-{}", steps[2])).is_none());
     }).unwrap();
     screenshot(&mut cx, handle, &root, "recovering-stage-tasks.png");
+    cx.update_window(handle, |_, w, cx| {
+        let running = app.read(cx).selected_run.unwrap();
+        w.click(format!("progress-task-title-{}", steps[0]), cx);
+        assert!(app.read(cx).show_run_result);
+        assert!(!app.read(cx).show_run_details);
+        assert_eq!(app.read(cx).store.runs.iter().find(|r| r.id == app.read(cx).selected_run.unwrap()).unwrap().task_id, steps[0]);
+        app.update(cx, |a, cx| { a.selected_run = Some(running); cx.notify(); });
+        w.render_frame(cx);
+        w.click(format!("progress-task-title-{}", steps[1]), cx);
+        assert_eq!(app.read(cx).selected, Some(steps[1]));
+        app.update(cx, |a, cx| { a.show_task_result(running, cx); });
+        w.render_frame(cx);
+        w.click(format!("progress-task-title-{}", steps[2]), cx);
+        assert_eq!(app.read(cx).selected, Some(steps[2]));
+        app.update(cx, |a, cx| { a.show_task_result(running, cx); });
+        w.render_frame(cx);
+    }).unwrap();
+
     cx.update_window(handle, |_, w, cx| {
         w.click(format!("progress-technical-details-{}", steps[0]), cx);
         assert!(app.read(cx).show_run_details);
@@ -891,5 +910,34 @@ assert 'Read the attached file directly' in args[-1]
         for id in &steps { assert!(w.try_find(format!("progress-task-{id}")).is_none()); }
     }).unwrap();
     screenshot(&mut cx, handle, &root, "completed-report.png");
+    cx.update_window(handle, |_, w, cx| {
+        assert!(w.try_find("copy-result").is_none());
+        assert!(w.try_find("open-run-task").is_none());
+        assert!(w.try_find("run-technical-details").is_none());
+        w.click("run-actions-menu", cx);
+    }).unwrap();
+    screenshot(&mut cx, handle, &root, "result-actions-menu.png");
+    cx.update_window(handle, |_, w, cx| {
+        w.click(0usize, cx);
+        assert!(app.read(cx).show_run_details);
+    }).unwrap();
+    cx.run_until_parked();
+    cx.update_window(handle, |_, w, cx| { w.render_frame(cx); w.click("show-result", cx); }).unwrap();
+    cx.run_until_parked();
+    cx.update_window(handle, |_, w, cx| { w.render_frame(cx); w.click("run-actions-menu", cx); }).unwrap();
+    cx.run_until_parked();
+    cx.update_window(handle, |_, w, cx| {
+        w.render_frame(cx);
+        w.click(3usize, cx);
+        assert!(cx.read_from_clipboard().unwrap().text().unwrap().contains("Readable report fixture"));
+    }).unwrap();
+    cx.run_until_parked();
+    cx.update_window(handle, |_, w, cx| { w.render_frame(cx); w.click("run-actions-menu", cx); }).unwrap();
+    cx.run_until_parked();
+    cx.update_window(handle, |_, w, cx| {
+        w.render_frame(cx);
+        w.click(1usize, cx);
+        assert!(app.read(cx).selected.is_some());
+    }).unwrap();
     println!("ATTACHMENT QA PASSED: paste shortcut, file drop, original bytes, blank PDF, inheritance, CLI --file; no OCR/cache. {}", root.display());
 }

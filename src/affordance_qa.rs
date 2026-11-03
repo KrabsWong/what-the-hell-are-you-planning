@@ -221,7 +221,9 @@ pub fn run() {
                 click_in(w, cx, "research-result-scroll", "toggle-result-sources");
                 assert!(w.try_find("result-source-0").is_some());
                 let before = app.read(cx).store.clone();
-                w.click("run-technical-details", cx);
+                w.click("run-actions-menu", cx);
+                w.render_frame(cx);
+                w.click(0usize, cx);
                 assert!(w.try_find("run-log-panel").is_some());
                 assert!(
                     w.try_find("cancel-run").is_none(),

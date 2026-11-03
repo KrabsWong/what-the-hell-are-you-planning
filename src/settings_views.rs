@@ -6,6 +6,9 @@ use crate::{
 use gpui_kit::{
     component::{
         Disableable,
+        input::Input,
+        button::ButtonVariants,
+        menu::{DropdownMenu, PopupMenuItem},
         tab::{Tab, TabBar},
     },
     prelude::FluentBuilder,
@@ -17,13 +20,135 @@ pub enum SettingsTab {
     #[default]
     General,
     Models,
+    Publishing,
 }
 
 impl SettingsTab {
-    const ALL: [Self; 2] = [Self::General, Self::Models];
+    const ALL: [Self; 3] = [Self::General, Self::Models, Self::Publishing];
 }
 
 impl TaskApp {
+    fn confirm_profile_save(&mut self, message: &str, cx: &mut Context<Self>) {
+        self.confirm_save(message, cx);
+        if matches!(self.save_feedback, Some(Ok(_))) {
+            self.save_feedback = None;
+        }
+    }
+
+    pub fn model_profiles_panel(&self, cx: &mut Context<Self>) -> Div {
+        let active = self.store.active_model_profile.as_ref()
+            .and_then(|name| self.store.model_profiles.iter().find(|p| &p.name == name));
+        let changed = active.is_some_and(|p| self.store.model_profile_changed(p));
+        let selected = self.store.active_model_profile.clone();
+        let names: Vec<_> = self.store.model_profiles.iter().map(|p| p.name.clone()).collect();
+        let entity = cx.entity().downgrade();
+        let picker = button("model-profile-picker", selected.clone().unwrap_or("Custom settings".into()))
+            .w(px(240.)).dropdown_caret(true)
+            .disabled(names.is_empty())
+            .tooltip("Apply a saved global and stage model configuration")
+            .dropdown_menu(move |mut menu, _, _| {
+                for name in &names {
+                    let entity = entity.clone();
+                    let name = name.clone();
+                    menu = menu.item(PopupMenuItem::new(name.clone())
+                        .checked(selected.as_ref() == Some(&name))
+                        .on_click(move |_, w, cx| {
+                            let _ = entity.update(cx, |this, cx| {
+                                this.snapshot();
+                                this.store.apply_model_profile(&name);
+                                this.creating_model_profile = false;
+                                this.research_model_picker = None;
+                                this.refresh_global_model_input(w, cx);
+                                this.refresh_research_inputs(w, cx);
+                                this.confirm_profile_save("Model profile applied", cx);
+                            });
+                        }));
+                }
+                menu
+            });
+        let entity = cx.entity().downgrade();
+        let active_name = active.map(|p| p.name.clone());
+        let delete_name = active_name.clone();
+        let management = quiet_button("model-profile-menu", "Manage")
+            .dropdown_caret(true)
+            .disabled(active.is_none())
+            .dropdown_menu_with_anchor(Anchor::TopRight, move |menu, _, _| {
+                let Some(name) = delete_name.clone() else { return menu; };
+                let restore_entity = entity.clone();
+                let restore_name = name.clone();
+                let delete_entity = entity.clone();
+                menu.item(PopupMenuItem::new("Restore saved settings").disabled(!changed)
+                    .on_click(move |_, w, cx| {
+                        let _ = restore_entity.update(cx, |this, cx| {
+                            this.snapshot();
+                            this.store.apply_model_profile(&restore_name);
+                            this.research_model_picker = None;
+                            this.refresh_global_model_input(w, cx);
+                            this.refresh_research_inputs(w, cx);
+                            this.confirm_profile_save("Saved profile settings restored", cx);
+                        });
+                    }))
+                    .separator()
+                    .item(PopupMenuItem::new("Delete current profile")
+                        .on_click(move |_, _, cx| {
+                            let _ = delete_entity.update(cx, |this, cx| {
+                                this.snapshot();
+                                this.store.delete_model_profile(&name);
+                                this.confirm_profile_save("Profile deleted · current settings kept · Undo to restore", cx);
+                            });
+                        }))
+            });
+        let toolbar = row().w_full().justify_between().flex_wrap()
+            .child(row()
+                .child(div().text_sm().font_weight(FontWeight::SEMIBOLD).child("Profile"))
+                .child(picker))
+            .child(row()
+                .child(quiet_button("model-profile-new", "New profile")
+                    .on_click(cx.listener(|this, _, w, cx| {
+                        this.creating_model_profile = true;
+                        this.model_profile_name.update(cx, |s, cx| {
+                            s.set_value("", w, cx);
+                            s.focus(w, cx);
+                        });
+                        cx.notify();
+                    })))
+                .child(management)
+                .child(button("model-profile-update", "Save profile")
+                    .w(px(110.)).primary().disabled(!changed)
+                    .tooltip(if changed { "Save current model settings to this profile" } else { "No changes to save" })
+                    .on_click(cx.listener(move |this, _, _, cx| {
+                        let Some(name) = &active_name else { return; };
+                        this.snapshot();
+                        this.store.update_model_profile(name);
+                        this.confirm_profile_save("Model profile updated", cx);
+                    }))));
+        let mut panel = col().gap_2().child(toolbar);
+        if self.creating_model_profile {
+            panel = panel.child(col().gap_2()
+                .child(label("Save the current global and stage models as a new profile.", cx))
+                .child(row().flex_wrap()
+                    .child(div().w(px(240.)).child(Input::new(&self.model_profile_name).id("model-profile-name")))
+                    .child(button("model-profile-create", "Save profile")
+                        .on_click(cx.listener(|this, _, _, cx| {
+                            let name = this.model_profile_name.read(cx).value().to_string();
+                            if let Err(error) = this.store.validate_model_profile_name(&name) {
+                                this.show_save_error(error, cx);
+                                return;
+                            }
+                            this.snapshot();
+                            this.store.create_model_profile(&name).expect("validated profile name");
+                            this.creating_model_profile = false;
+                            this.confirm_profile_save("Model profile saved", cx);
+                        })))
+                    .child(quiet_button("model-profile-cancel", "Cancel")
+                        .on_click(cx.listener(|this, _, _, cx| {
+                            this.creating_model_profile = false;
+                            cx.notify();
+                        })))));
+        }
+        panel
+    }
+
     pub fn set_execution_concurrency(&mut self, limit: usize, cx: &mut Context<Self>) {
         let limit = limit.clamp(1, crate::scheduler::MAX_CONCURRENT_RUNS);
         if self.store.max_concurrent_runs == limit { return; }
@@ -146,6 +271,7 @@ impl TaskApp {
                 .child(div().text_sm().child(root.to_string_lossy().into_owned()))));
         let panel = match self.settings_tab {
             SettingsTab::General => general,
+            SettingsTab::Publishing => self.publishing_settings_panel(cx),
             SettingsTab::Models => self.research_settings_panel(cx),
         };
         col()
@@ -168,7 +294,9 @@ impl TaskApp {
                             .selected_index(Self::settings_tab_index(self.settings_tab))
                             .child(Tab::new().label("General"))
                             .child(Tab::new().label("Agent & models"))
-                            .on_click(cx.listener(|this, index, _, cx| {
+                            .child(Tab::new().label("Publishing"))
+                            .on_click(cx.listener(|this, index, w, cx| {
+                                this.refresh_publishing_inputs(w, cx);
                                 this.research_model_picker = None;
                                 this.settings_tab = SettingsTab::ALL[*index];
                                 this.settings_scroll.set_offset(point(px(0.), px(0.)));
@@ -176,6 +304,11 @@ impl TaskApp {
                             })),
                     ),
             )
+            .when(self.settings_tab == SettingsTab::Models, |view| view.child(
+                div().flex_shrink_0().px_6().py_4()
+                    .border_b_1().border_color(rgb(palette(cx).line))
+                    .child(self.model_profiles_panel(cx).max_w(px(840.)))
+            ))
             .child(
                 col()
                     .id("model-settings-scroll")

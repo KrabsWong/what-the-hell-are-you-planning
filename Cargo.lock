@@ -7845,6 +7845,7 @@ dependencies = [
  "gpui-kit",
  "latex-rust",
  "libc",
+ "markdown",
  "mermaid-rs-renderer",
  "rusqlite",
  "serde",

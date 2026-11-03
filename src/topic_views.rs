@@ -476,6 +476,7 @@ impl TaskApp {
                 .when(can_queue, |d| d.child(button("queue-topic", "Queue topic")
                     .tooltip("Queue all approved unfinished goals in this topic. Topics execute one at a time.")
                     .on_click(cx.listener(move |a, _, _, cx| a.start_topic_batch(id, cx)))))
+                .child(self.topic_publish_button(id, cx))
                 .child(primary_button("topic-new-goal", "New research").disabled(archived).on_click(cx.listener(move |a, _, w, cx| {
                     a.open_project_plan(project, w, cx); a.planning_topic = Some(id); cx.notify();
                 })))
@@ -501,7 +502,10 @@ impl TaskApp {
                             });
                         }))
                     })))
-            .child(label(format!("{} research goal{}{}", goals.len(), if goals.len() == 1 { "" } else { "s" }, if archived { " · Archived topic. Existing goals and results remain available." } else { " · Open a goal to explore its steps and materials." }), cx).px_6())
+            .child(row().px_6().pb_2().gap_3()
+                .child(self.layout_switch(cx))
+                .child(div().flex_1().min_w_0().child(label(format!("{} research goal{}{}", goals.len(), if goals.len() == 1 { "" } else { "s" }, if archived { " · Archived topic. Existing goals and results remain available." } else { " · Open a goal to explore its steps and materials." }), cx))))
+            .child(self.topic_publication_panel(id, cx))
             .when_some(self.store.topic_planning_status(id), |d, status| d.child(
                 col().px_6().py_3().gap_2()
                     .child(label(status, cx))
@@ -509,9 +513,8 @@ impl TaskApp {
                     .child(col().id("topic-planning-requests").max_h(px(260.)).overflow_y_scroll().child(self.request_history(Some(project), cx)))
             ))
             .child(self.todo_batch_bar(Some(project), cx))
-            .child(row().px_6().pt_2().pb_3().justify_end().child(self.layout_switch(cx)))
             .when(self.layout == Layout::Board, |d| d.child(self.board(&goals.iter().map(|t| (*t).clone()).collect::<Vec<_>>(), cx)))
-            .when(self.layout == Layout::List, |d| d.child(col().id("topic-goals").px_6().pb_5().overflow_y_scroll().flex_1().min_h_0()
+            .when(self.layout == Layout::List, |d| d.child(col().id("topic-goals").px_6().pt_3().pb_5().overflow_y_scroll().flex_1().min_h_0()
                 .when(goals.is_empty(), |d| d.child(muted("No research goals yet. Create one here or assign an existing goal using its Topic property.", cx)))
                 .child(list)))
             .into_any_element()

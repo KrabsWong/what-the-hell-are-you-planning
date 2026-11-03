@@ -43,6 +43,11 @@ mod request_planning;
 mod research;
 mod research_app;
 mod research_export;
+mod report_html;
+mod report_git;
+mod report_publish;
+#[cfg(feature = "qa")]
+mod publishing_qa;
 #[cfg(feature = "qa")]
 mod research_qa;
 mod research_views;
@@ -58,6 +63,7 @@ mod topic_queue_qa;
 #[cfg(feature = "qa")]
 mod settings_qa;
 mod settings_views;
+mod model_profiles;
 #[cfg(feature = "qa")]
 mod simplify_qa;
 mod sqlite_storage;
@@ -167,6 +173,8 @@ fn main() {
         batch_qa::run();
         return;
     }
+    #[cfg(feature = "qa")]
+    if std::env::args().any(|arg| arg == "--qa-publishing") { publishing_qa::run(); return; }
     #[cfg(feature = "qa")]
     if std::env::args().any(|arg| arg == "--qa-settings") {
         settings_qa::run();

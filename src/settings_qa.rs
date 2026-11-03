@@ -332,12 +332,104 @@ pub fn run() {
             })
             .unwrap();
             screenshot(&mut cx, handle, &directory, "03-planning-global.png");
-            let expected = cx
-                .update_window(handle, |_, w, cx| {
-                    w.click("close-project-plan", cx);
-                    app.read(cx).store.clone()
-                })
-                .unwrap();
+            cx.update_window(handle, |_, w, cx| {
+                w.click("close-project-plan", cx);
+                app.update(cx, |a, cx| a.open_model_settings(w, cx));
+            }).unwrap();
+            cx.run_until_parked();
+            cx.update_window(handle, |_, w, cx| {
+                w.render_frame(cx);
+                w.click("model-profile-new", cx);
+            }).unwrap();
+            screenshot(&mut cx, handle, &directory, "05-new-profile.png");
+            cx.update_window(handle, |_, w, cx| {
+                click(w, cx, "model-settings-scroll", "model-profile-cancel");
+                w.render_frame(cx);
+                assert!(w.try_find("model-profile-name").is_none());
+            }).unwrap();
+            cx.run_until_parked();
+            cx.update_window(handle, |_, w, cx| {
+                w.render_frame(cx);
+                w.click("model-profile-new", cx);
+            }).unwrap();
+            cx.update_window(handle, |_, w, cx| {
+                click(w, cx, "model-settings-scroll", "model-profile-create");
+                assert!(app.read(cx).store.model_profiles.is_empty());
+                app.update(cx, |a, cx| {
+                    a.model_profile_name.update(cx, |s, cx| s.set_value("Common Research", w, cx));
+                });
+                click(w, cx, "model-settings-scroll", "model-profile-create");
+                assert_eq!(app.read(cx).store.model_profiles.len(), 1);
+                w.render_frame(cx);
+                assert!(w.try_find("model-profile-name").is_none());
+                assert_eq!(w.find("model-profile-update").disabled(), Some(true));
+                assert!(app.read(cx).save_feedback.is_none());
+            }).unwrap();
+            cx.run_until_parked();
+            cx.update_window(handle, |_, w, cx| {
+                w.render_frame(cx);
+                w.click("model-profile-new", cx);
+            }).unwrap();
+            cx.update_window(handle, |_, w, cx| {
+                app.update(cx, |a, cx| {
+                    a.set_model_agent(Some(1), "Codex", w, cx);
+                    let input = a.research_models[1].clone();
+                    input.update(cx, |s, cx| s.set_value("qa-codex-model", w, cx));
+                    a.finish_model_edit(&input, true, w, cx);
+                    a.model_profile_name.update(cx, |s, cx| s.set_value("深度研究 · 多 Agent 协作方案", w, cx));
+                });
+                click(w, cx, "model-settings-scroll", "model-profile-create");
+            }).unwrap();
+            cx.run_until_parked();
+            profile_menu(&mut cx, handle, "model-profile-picker", 0);
+            cx.update_window(handle, |_, _, cx| {
+                assert!(app.read(cx).store.research_config.agents.iter().all(Option::is_none));
+                assert!(app.read(cx).research_models[1].read(cx).value().is_empty());
+            }).unwrap();
+            cx.run_until_parked();
+            profile_menu(&mut cx, handle, "model-profile-picker", 1);
+            cx.update_window(handle, |_, w, cx| {
+                assert_eq!(app.read(cx).research_models[1].read(cx).value().as_ref(), "qa-codex-model");
+                assert_eq!(app.read(cx).store.research_config.agents[1].as_deref(), Some("Codex"));
+                w.render_frame(cx);
+                let save_bounds = w.find("model-profile-update").bounds();
+                assert_eq!(w.find("model-profile-update").disabled(), Some(true));
+                app.update(cx, |a, cx| a.use_global_for_stage(1, w, cx));
+                w.render_frame(cx);
+                assert_eq!(w.find("model-profile-update").bounds(), save_bounds);
+                assert_ne!(w.find("model-profile-update").disabled(), Some(true));
+                w.scroll("model-settings-scroll", ScrollDelta::Pixels(point(px(0.), px(-400.))), cx);
+                w.render_frame(cx);
+                assert_eq!(w.find("model-profile-update").bounds(), save_bounds, "Profile actions stay fixed while scrolling");
+                app.update(cx, |a, cx| {
+                    a.settings_scroll.set_offset(point(px(0.), px(0.)));
+                    cx.notify();
+                });
+            }).unwrap();
+            screenshot(&mut cx, handle, &directory, "06-modified-profile.png");
+            profile_menu(&mut cx, handle, "model-profile-menu", 0);
+            cx.update_window(handle, |_, w, cx| {
+                assert_eq!(app.read(cx).store.research_config.models[1], "qa-codex-model");
+                assert_eq!(app.read(cx).research_models[1].read(cx).value().as_ref(), "qa-codex-model");
+                w.render_frame(cx);
+                assert_eq!(w.find("model-profile-update").disabled(), Some(true));
+                app.update(cx, |a, cx| a.use_global_for_stage(1, w, cx));
+            }).unwrap();
+            cx.update_window(handle, |_, w, cx| {
+                click(w, cx, "model-settings-scroll", "model-profile-update");
+                assert!(app.read(cx).store.model_profiles[1].models[1].is_empty());
+            }).unwrap();
+            cx.run_until_parked();
+            profile_menu(&mut cx, handle, "model-profile-menu", 2);
+            cx.update_window(handle, |_, w, cx| {
+                assert_eq!(app.read(cx).store.model_profiles.len(), 1);
+                assert_eq!(app.read(cx).store.default_model, "qa/other");
+                app.update(cx, |a, cx| a.undo_change(w, cx));
+                assert_eq!(app.read(cx).store.model_profiles.len(), 2);
+            }).unwrap();
+            cx.run_until_parked();
+            profile_menu(&mut cx, handle, "model-profile-picker", 0);
+            let expected = cx.update_window(handle, |_, _, cx| app.read(cx).store.clone()).unwrap();
             assert_eq!(
                 Storage::new(path.clone()).load().unwrap().unwrap(),
                 expected
@@ -368,12 +460,24 @@ pub fn run() {
                 );
             })
             .unwrap();
+            cx.update_window(window.into(), |_, w, cx| {
+                click(w, cx, "model-settings-scroll", "model-profile-picker");
+            }).unwrap();
+            screenshot(&mut cx, window.into(), &directory, "07-profile-picker.png");
+            cx.update_window(window.into(), |_, w, cx| {
+                w.within("popup-menu").click(0usize, cx);
+            }).unwrap();
+            cx.run_until_parked();
+            cx.update_window(window.into(), |_, w, cx| {
+                click(w, cx, "model-settings-scroll", "model-profile-menu");
+            }).unwrap();
+            screenshot(&mut cx, window.into(), &directory, "08-profile-management.png");
             cx.update_window(window.into(), |_, w, _| w.remove_window())
                 .unwrap();
         }
     }
     println!(
-        "MODEL SETTINGS QA PASSED: validation, picker filtering, save, inheritance, individual/all-stage reset, planning eligibility and restart; light/dark at both sizes. {}",
+        "MODEL SETTINGS QA PASSED: validation, picker filtering, save, inheritance, individual/all-stage reset, profiles create/apply/update/delete/undo, planning eligibility and restart; light/dark at both sizes. {}",
         root.display()
     );
 }
@@ -387,6 +491,15 @@ fn context() -> HeadlessAppContext {
     cx.update(init);
     cx
 }
+fn profile_menu(cx: &mut HeadlessAppContext, handle: AnyWindowHandle, id: &str, index: usize) {
+    cx.update_window(handle, |_, w, cx| click(w, cx, "model-settings-scroll", id)).unwrap();
+    cx.run_until_parked();
+    cx.update_window(handle, |_, w, cx| {
+        w.render_frame(cx);
+        w.within("popup-menu").click(index, cx);
+    }).unwrap();
+    cx.run_until_parked();
+}
 fn click(w: &mut Window, cx: &mut App, scroll: &str, id: &str) {
     w.render_frame(cx);
     if scroll == "model-settings-scroll" {
@@ -394,6 +507,10 @@ fn click(w: &mut Window, cx: &mut App, scroll: &str, id: &str) {
             w.within("settings-tabs").click(1usize, cx);
             w.render_frame(cx);
         }
+    }
+    if id.starts_with("model-profile-") {
+        w.click(id.to_string(), cx);
+        return;
     }
     for _ in 0..30 {
         let bounds = w.find(id.to_string()).bounds();

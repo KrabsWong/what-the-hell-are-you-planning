@@ -166,6 +166,11 @@ pub struct TaskApp {
     pub settings_scroll: ScrollHandle,
     pub settings_tab: crate::settings_views::SettingsTab,
     pub global_model: Entity<InputState>,
+    pub model_profile_name: Entity<InputState>,
+    pub creating_model_profile: bool,
+    pub publishing_inputs: [Entity<InputState>; 3],
+    pub publishing_scan_requested: bool,
+    pub publishing_job: Option<(String, mpsc::Receiver<crate::report_publish::PublishEvent>)>,
     discovery: Option<mpsc::Receiver<(PathBuf, Discovery)>>,
     pub active_runs: Vec<ActiveRun>,
     pub queued_runs: Vec<(u64, Vec<PathBuf>)>,
@@ -406,7 +411,12 @@ impl TaskApp {
             available_models: vec![],
             settings_scroll: ScrollHandle::new(),
             settings_tab: Default::default(),
+            publishing_inputs: std::array::from_fn(|_| cx.new(|cx| InputState::new(window, cx))),
+            publishing_job: None,
+            publishing_scan_requested: true,
             global_model,
+            creating_model_profile: false,
+            model_profile_name: cx.new(|cx| InputState::new(window, cx).placeholder("Profile name")),
             discovery: None,
             active_runs: vec![],
             queued_runs: vec![],
@@ -852,6 +862,8 @@ impl TaskApp {
         if let Some(mut store) = self.undo.pop() {
             store.last_active_project = self.store.last_active_project;
             store.runs = self.store.runs.clone();
+            store.publications = self.store.publications.clone();
+            store.report_publishing = self.store.report_publishing.clone();
             store.next_id = store.next_id.max(self.store.next_id);
             self.store = store;
             crate::appearance::apply(self.store.appearance, Some(window), cx);
@@ -914,6 +926,7 @@ impl TaskApp {
                 self.store = store.unwrap_or_else(Store::empty);
                 self.restore_sidebar();
                 self.store.recover_interrupted_runs();
+                self.recover_publications();
                 self.store.reconcile_goal_approvals();
                 let project = self.store.projects.first().map(|p| p.id).unwrap_or(0);
                 self.connection_project = project;
@@ -1557,6 +1570,7 @@ impl TaskApp {
         }
         self.advance_todo_batch(cx);
         self.dispatch_runs(cx);
+        self.poll_report_publishing(cx);
         if self.queued_runs.iter().any(|(id, _)| self.store.runs.iter()
             .any(|run| run.id == *id && run.auto_retry_attempt > 0)) {
             cx.notify();
@@ -1578,6 +1592,7 @@ impl TaskApp {
             || self.codex_discovery.is_some()
             || self.ego_probe.is_some()
             || self.attachment_import.is_some()
+            || self.publishing_job.is_some()
             || self.recovery_pending();
         if !keep {
             self.pumping = false;

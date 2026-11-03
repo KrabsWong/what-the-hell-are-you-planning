@@ -562,6 +562,7 @@ impl TaskApp {
         }
     }
     pub fn complete_research_run(&mut self, run_id: u64, cx: &mut Context<Self>) {
+        self.publishing_scan_requested = true;
         let continuing_goal = self.run_goal(run_id)
             .filter(|goal| self.research_sequences.contains(goal));
         self.finalize_research_run(run_id);

@@ -35,11 +35,12 @@ Planning 内测版 · Apple Silicon (M 系列芯片)
 安装
 1. 将 Planning.app 拖入 Applications（应用程序）。
 2. 推出磁盘映像，然后从 Applications 打开 Planning。
-3. 首次启动会自动检测 OpenCode 和 ego(lite)；按提示安装缺少的依赖，选择自己的 Workspace。
-4. 安装依赖后点击 Check again；三项通过后点击 Continue，并在 Settings 配置模型和服务商。
+3. 首次启动会自动检测 OpenCode、Codex 和 ego(lite)；OpenCode / Codex 至少安装一个，按提示选择自己的 Workspace。
+4. 安装依赖后点击 Check again；必需检查通过后点击 Continue，并在 Settings 配置 Agent、模型和服务商。
 
 依赖需单独安装
 OpenCode：https://opencode.ai
+Codex：https://developers.openai.com/codex/cli（与 OpenCode 至少安装一个）
 ego(lite)：https://lite.ego.app（安装后需打开并完成首次设置）
 模型服务商可能产生费用，请使用自己的账号与配置。
 

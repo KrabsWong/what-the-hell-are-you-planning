@@ -251,6 +251,10 @@ pub struct AgentRun {
 }
 #[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
 pub struct Store {
+    #[serde(default)]
+    pub report_publishing: crate::report_publish::PublishingConfig,
+    #[serde(default)]
+    pub publications: Vec<crate::report_publish::Publication>,
     pub tasks: Vec<Task>,
     pub projects: Vec<Project>,
     #[serde(default)]
@@ -264,6 +268,10 @@ pub struct Store {
     pub opencode_path: String,
     #[serde(default)]
     pub default_model: String,
+    #[serde(default)]
+    pub model_profiles: Vec<crate::model_profiles::ModelProfile>,
+    #[serde(default)]
+    pub active_model_profile: Option<String>,
     #[serde(default = "crate::scheduler::default_concurrent_runs")]
     pub max_concurrent_runs: usize,
     #[serde(default)]
@@ -308,6 +316,8 @@ impl Store {
     /// A new workspace contains configuration, never demonstration tasks or runs.
     pub fn empty() -> Self {
         Self {
+            report_publishing: Default::default(),
+            publications: vec![],
             tasks: vec![],
             projects: vec![Project {
                 id: 1,
@@ -323,6 +333,8 @@ impl Store {
             next_id: 1,
             opencode_path: String::new(),
             default_model: String::new(),
+            model_profiles: vec![],
+            active_model_profile: None,
             max_concurrent_runs: crate::scheduler::DEFAULT_CONCURRENT_RUNS,
             research_config: Default::default(),
             appearance: Default::default(),

@@ -301,6 +301,8 @@ $$
 
 在 Settings → Agent & models 中，可为全局默认及 Plan、News collection、Analysis、Investment brief 分别选择 Agent 和模型。模型下拉框只显示当前 Agent 的模型，支持搜索和手动输入，修改立即保存。Use global 同时恢复默认 Agent 与模型。切换 Agent 后需重新选择模型；历史结果与已排队的任务保持原来的 Agent 和模型。
 
+顶部的 **Profile** 工具栏在滚动时保持可见。下拉框应用已保存方案，包含全局 Agent、模型及四个阶段的覆盖和继承关系。点击 **New profile**，输入名称并保存当前配置；可点击 Cancel 取消。右侧 **Save profile** 始终显示，仅在配置有修改时可用，点击后更新当前方案。**Manage → Restore saved settings** 恢复已保存的方案；**Manage → Delete current profile** 仅删除方案，保留生效配置，可通过 Undo 恢复。切换前未保存到方案的修改会被替换。保存和切换成功仅在底部状态栏提示。方案随工作区保存，重启后保留；模型配置下方的 Agent connections 为所有方案共用，不随 Profile 切换。
+
 Codex 使用本机 CLI 登录状态，首次使用前在终端完成 `codex login`。Codex 卡片显示版本、路径及登录状态；模型列表读取本地 Codex 缓存，缺少模型时可先在 Codex CLI 打开模型列表，再回到应用重新读取，或直接输入 CLI 支持的模型 ID。Codex 模型填写如 `gpt-6.1-sol`，无需 OpenCode provider 前缀。运行详情显示本次实际使用的 Agent 和模型。
 
 阶段之间由应用传递证据、引用及结果，无需共享两个 Agent 的会话。Codex 与 OpenCode 使用各自的 MCP 配置。关闭应用后不会自动继续研究；异常退出后尚未保存的 Codex 最终结果需显式继续会话生成。

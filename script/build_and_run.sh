@@ -12,7 +12,7 @@ while IFS= read -r app_pid; do
   if lsof -a -p "$app_pid" -d cwd -Fn 2>/dev/null | grep -Fxq "n$PWD"; then
     kill "$app_pid"
   fi
-done < <(pgrep -f '^\./target/debug/what-the-hell-are-you-planning$' || true)
+done < <(pgrep -f '^(\./)?target/debug/what-the-hell-are-you-planning$' || true)
 if [[ "$(uname -s)" == "Darwin" ]]; then
   app_bundle="$PWD/target/debug/Planning.app"
   bundled_binary="$app_bundle/Contents/MacOS/what-the-hell-are-you-planning"

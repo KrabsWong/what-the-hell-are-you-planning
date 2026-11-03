@@ -205,7 +205,6 @@ impl TaskApp {
     pub fn research_settings_panel(&self, cx: &mut Context<Self>) -> Div {
         let colors = palette(cx);
         let mut settings = col().gap_3()
-            .child(self.agent_settings_panel(cx))
             .child(col().gap_2()
                 .child(div().font_weight(FontWeight::SEMIBOLD).child("Global default"))
                 .child(row().child(self.model_agent_picker(None, cx)).child(self.research_model_field(
@@ -242,6 +241,9 @@ impl TaskApp {
                 }));
         }
         settings=settings
+            .child(div().pt_4().font_weight(FontWeight::SEMIBOLD).child("Agent connections"))
+            .child(label("Local runtimes shared by all profiles.", cx))
+            .child(self.agent_settings_panel(cx))
             .child(div().h_3().border_b_1().border_color(rgb(colors.line)))
             .child(div().pt_2().font_weight(FontWeight::SEMIBOLD).child("Browser · ego(lite)"))
             .child(Input::new(&self.ego_input).id("ego-path"))

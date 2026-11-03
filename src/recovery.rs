@@ -330,6 +330,7 @@ impl TaskApp {
                 run.ended_at = Some(opencode::timestamp());
                 run.logs.push("[recovery] Imported completed session output; validating against the saved inputs.".into());
                 self.finalize_research_run(id);
+                self.publishing_scan_requested = true;
                 self.persist_if_changed(true);
             }
             if !matches!(check, SessionCheck::Complete(_)) {

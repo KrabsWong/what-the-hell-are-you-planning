@@ -44,8 +44,12 @@ impl Publication {
     pub fn url(&self) -> String { format!("{}/{}/", self.config.base_url, self.id) }
     fn presentation(&self) -> (&str, &str) {
         match self.status.as_str() {
-            "Pushed · verifying live page" | "Pushed · awaiting deployment" =>
-                ("Awaiting deployment", "Report pushed to GitHub. Waiting for the public page to become available."),
+            "Pushed · verifying live page" =>
+                ("GitHub synced · checking page", "Report pushed to GitHub successfully. Checking the public page; no new push is needed."),
+            "Pushed · awaiting deployment" =>
+                ("GitHub synced · awaiting deployment", if self.message.is_empty() { "Report pushed to GitHub successfully. Waiting for the public page to serve this version." } else { &self.message }),
+            "Pushed · site access error" =>
+                ("GitHub synced · site access error", if self.message.is_empty() { "Report pushed to GitHub successfully, but the public page could not be verified. Use Check status to retry without pushing again." } else { &self.message }),
             "Online" => ("Online", "Report is live and ready to share."),
             "Failed" | "Interrupted" => (&self.status, if self.message.is_empty() { "Publishing stopped. You can retry from the button above." } else { &self.message }),
             _ => (&self.status, "Preparing and publishing the report. Your research results are saved."),
@@ -53,7 +57,41 @@ impl Publication {
     }
 }
 pub enum PublishEvent { Progress(String, Option<String>), Complete(PublishOutcome) }
-pub struct PublishOutcome { commit: Option<String>, online: bool, error: Option<String> }
+pub struct PublishOutcome { commit: Option<String>, page: Option<PageCheck>, error: Option<String> }
+
+#[derive(Debug, PartialEq)]
+enum PageCheck { Online, Awaiting(String), AccessError(String) }
+
+fn classify_page(curl_code: Option<i32>, output: &[u8], marker: &str) -> PageCheck {
+    let synced = "Report pushed to GitHub successfully.";
+    if curl_code != Some(0) {
+        let reason = match curl_code {
+            Some(5) => "Could not resolve the proxy",
+            Some(6) => "Could not resolve the site hostname",
+            Some(7) => "Could not connect to the site",
+            Some(28) => "Page check timed out after 15 seconds",
+            Some(35) => "TLS connection failed",
+            Some(60) => "Site TLS certificate verification failed",
+            Some(63) => "Page exceeds the 10 MB verification limit",
+            _ => "Page request failed",
+        };
+        return PageCheck::AccessError(format!("{synced} {reason} (curl {}). Check the site or network, then use Check status; no new push is needed.", curl_code.map(|code| code.to_string()).unwrap_or_else(|| "terminated".into())));
+    }
+    let output = String::from_utf8_lossy(output);
+    let Some((body, code)) = output.rsplit_once('\n') else {
+        return PageCheck::AccessError(format!("{synced} Page check returned no HTTP status. Use Check status to retry."));
+    };
+    let code = code.trim().parse::<u16>().unwrap_or(0);
+    match code {
+        200..=299 if body.contains(marker) => PageCheck::Online,
+        200..=299 => PageCheck::Awaiting(format!("{synced} HTTP {code}: the page is reachable but does not yet contain this report version. Wait for deployment/cache refresh, then use Check status.")),
+        404 | 423 => PageCheck::Awaiting(format!("{synced} HTTP {code}: the report page is not available yet. Check EdgeOne deployment, then use Check status.")),
+        _ => {
+            let detail = if code == 545 { " EdgeOne reports an edge function execution error." } else { "" };
+            PageCheck::AccessError(format!("{synced} Public page returned HTTP {code}.{detail} Check the hosting service, then use Check status; no new push is needed."))
+        }
+    }
+}
 
 #[derive(Debug, PartialEq)]
 enum PublicationAction { Publish(bool), Retry(String), Verify(String), Open(String) }
@@ -69,7 +107,7 @@ fn publication_action(publication: Option<&Publication>, changed: bool) -> Publi
     let Some(p) = publication else { return PublicationAction::Publish(false); };
     if changed { return PublicationAction::Publish(true); }
     if p.status == "Online" { PublicationAction::Open(p.url()) }
-    else if p.commit.is_some() && p.status != "Failed" { PublicationAction::Verify(p.id.clone()) }
+    else if p.commit.is_some() { PublicationAction::Verify(p.id.clone()) }
     else { PublicationAction::Retry(p.id.clone()) }
 }
 
@@ -124,7 +162,7 @@ fn publish(root: std::path::PathBuf, publication: Publication, tx: &mpsc::Sender
     let files = vec![(format!("{}/index.html", publication.id), html.into_bytes())];
     let commit = match crate::report_git::publish(&root, &publication.config.repository, &publication.config.branch, &files, &publication.config.base_url, |stage| { let _ = tx.send(PublishEvent::Progress(stage.into(), None)); }) {
         Ok(commit) => commit,
-        Err(error) => return PublishOutcome { commit: None, online: false, error: Some(error) },
+        Err(error) => return PublishOutcome { commit: None, page: None, error: Some(error) },
     };
     let _ = tx.send(PublishEvent::Progress("Pushed · verifying live page".into(), Some(commit.clone())));
     verify_page(&publication, commit)
@@ -132,18 +170,21 @@ fn publish(root: std::path::PathBuf, publication: Publication, tx: &mpsc::Sender
 
 fn verify_page(publication: &Publication, commit: String) -> PublishOutcome {
     let marker = format!("<!-- report-version:{} -->", publication.fingerprint);
-    // Verify this exact snapshot, not a stale cached page or a successful Git push.
-    for _ in 0..6 {
-        if let Ok(output) = std::process::Command::new("curl")
-            .args(["--silent", "--fail", "--max-time", "15", "--proto", "=https", "--max-filesize", "10000000", &publication.url()]).output()
+    // Keep HTTP status separate from the body: an error page must never verify a report.
+    for attempt in 0..6 {
+        let page = match std::process::Command::new("curl")
+            .args(["--silent", "--show-error", "--location", "--max-redirs", "5", "--max-time", "15", "--proto", "=https", "--proto-redir", "=https", "--max-filesize", "10000000", "--write-out", "\n%{http_code}", &publication.url()]).output()
         {
-            if output.status.success() && String::from_utf8_lossy(&output.stdout).contains(&marker) {
-                return PublishOutcome { commit: Some(commit), online: true, error: None };
-            }
+            Ok(output) => classify_page(output.status.code(), &output.stdout, &marker),
+            Err(error) => PageCheck::AccessError(format!("Report pushed to GitHub successfully. Could not start the page checker ({:?}). Use Check status to retry; no new push is needed.", error.kind())),
+        };
+        // Deployment can take time; actual access errors should be visible immediately.
+        if !matches!(page, PageCheck::Awaiting(_)) || attempt == 5 {
+            return PublishOutcome { commit: Some(commit), page: Some(page), error: None };
         }
         std::thread::sleep(std::time::Duration::from_secs(10));
     }
-    PublishOutcome { commit: Some(commit), online: false, error: Some("Pushed to GitHub; the exact page is not live yet. Check EdgeOne deployment, then use Check status.".into()) }
+    unreachable!()
 }
 
 impl TaskApp {
@@ -151,8 +192,8 @@ impl TaskApp {
         self.publishing_scan_requested = true;
         for publication in &mut self.store.publications {
             if matches!(publication.status.as_str(), "Publishing" | "Generating HTML" | "Fetching repository" | "Preparing report commit" | "Checking outgoing history" | "Pushing to GitHub" | "Pushed · verifying live page") {
-                publication.status = "Interrupted".into();
-                publication.message = "Publishing was interrupted. Retry safely using the same report URL.".into();
+                publication.status = if publication.commit.is_some() { "Pushed · site access error" } else { "Interrupted" }.into();
+                publication.message = if publication.commit.is_some() { "Report pushed to GitHub successfully. Page verification was interrupted. Use Check status; no new push is needed." } else { "Publishing was interrupted. Retry safely using the same report URL." }.into();
             }
         }
     }
@@ -222,7 +263,7 @@ impl TaskApp {
     pub(crate) fn poll_report_publishing(&mut self, cx: &mut Context<Self>) {
         let event = self.publishing_job.as_ref().and_then(|(id, rx)| match rx.try_recv() {
             Ok(event) => Some((id.clone(), event)),
-            Err(mpsc::TryRecvError::Disconnected) => Some((id.clone(), PublishEvent::Complete(PublishOutcome { commit: None, online: false, error: Some("Publishing worker stopped. Retry this publication.".into()) }))),
+            Err(mpsc::TryRecvError::Disconnected) => Some((id.clone(), PublishEvent::Complete(PublishOutcome { commit: None, page: None, error: Some("Publishing worker stopped.".into()) }))),
             Err(mpsc::TryRecvError::Empty) => None,
         });
         if let Some((id, event)) = event {
@@ -236,9 +277,16 @@ impl TaskApp {
                     PublishEvent::Complete(outcome) => {
                         self.publishing_job = None;
                         self.publishing_scan_requested = true;
-                        p.status = if outcome.online { "Online" } else if outcome.commit.is_some() { "Pushed · awaiting deployment" } else { "Failed" }.into();
                         p.commit = outcome.commit.or(p.commit.take());
-                        p.message = outcome.error.unwrap_or_default();
+                        let (status, message) = match outcome.page {
+                            Some(PageCheck::Online) => ("Online", String::new()),
+                            Some(PageCheck::Awaiting(message)) => ("Pushed · awaiting deployment", message),
+                            Some(PageCheck::AccessError(message)) => ("Pushed · site access error", message),
+                            None if p.commit.is_some() => ("Pushed · site access error", format!("Report pushed to GitHub successfully. {} Use Check status; no new push is needed.", outcome.error.unwrap_or_else(|| "Page verification stopped.".into()))),
+                            None => ("Failed", outcome.error.unwrap_or_default()),
+                        };
+                        p.status = status.into();
+                        p.message = message;
                     }
                 }
                 self.toast = format!("Report publication · {}", p.status);
@@ -313,8 +361,8 @@ impl TaskApp {
             let url = p.url(); let open_url = url.clone();
             let busy = self.publishing_job.as_ref().is_some_and(|(id, _)| id == &p.id);
             let (status, description) = p.presentation();
-            let color = if status == "Awaiting deployment" { colors.warning } else if busy { colors.accent } else if p.status == "Online" { colors.success }
-                else if matches!(p.status.as_str(), "Failed" | "Interrupted") { colors.danger } else { colors.warning };
+            let color = if p.status == "Pushed · awaiting deployment" { colors.warning } else if busy { colors.accent } else if p.status == "Online" { colors.success }
+                else if matches!(p.status.as_str(), "Failed" | "Interrupted" | "Pushed · site access error") { colors.danger } else { colors.warning };
             panel = panel.child(col().gap_1().px_3().py_2().rounded_md()
                 .bg(rgb(colors.side)).border_1().border_color(rgb(colors.subtle_line))
                 .child(row().flex_wrap().gap_2()
@@ -342,16 +390,36 @@ mod tests {
     use super::{PublishingConfig, fingerprint};
     use crate::domain::{Store, Stage};
     #[test]
-    fn deployment_check_keeps_status_and_description_stable() {
-        let mut p = super::Publication { id: "a".repeat(32), topic: 1, fingerprint: "snapshot".into(), config: Default::default(),
-            title: "Topic".into(), markdown: "Report".into(), status: "Pushed · awaiting deployment".into(), commit: Some("commit".into()), message: "Previous check timed out".into() };
-        let before = (p.presentation().0.to_owned(), p.presentation().1.to_owned());
+    fn page_checks_distinguish_deployment_from_access_errors() {
+        use super::{classify_page, PageCheck};
+        let marker = "<!-- report-version:snapshot -->";
+        assert_eq!(classify_page(Some(0), format!("{marker}\n200").as_bytes(), marker), PageCheck::Online);
+        assert!(matches!(classify_page(Some(0), b"older report\n200", marker), PageCheck::Awaiting(message) if message.contains("HTTP 200") && message.contains("version")));
+        for code in [404, 423] {
+            assert!(matches!(classify_page(Some(0), format!("not ready\n{code}").as_bytes(), marker), PageCheck::Awaiting(message) if message.contains(&format!("HTTP {code}"))));
+        }
+        for code in [403, 500, 545] {
+            assert!(matches!(classify_page(Some(0), format!("{marker} private error details\n{code}").as_bytes(), marker), PageCheck::AccessError(message) if message.contains(&format!("HTTP {code}")) && message.contains("GitHub successfully") && !message.contains("private error details")));
+        }
+        for (code, reason) in [(6, "hostname"), (28, "timed out"), (60, "certificate")] {
+            assert!(matches!(classify_page(Some(code), format!("{marker}\n200").as_bytes(), marker), PageCheck::AccessError(message) if message.contains(reason) && message.contains(&format!("curl {code}"))));
+        }
+    }
+    #[test]
+    fn deployment_presentation_keeps_push_success_and_specific_error_visible() {
+        use super::{Publication, PublicationAction, publication_action};
+        let mut p = Publication { id: "a".repeat(32), topic: 1, fingerprint: "snapshot".into(), config: Default::default(),
+            title: "Topic".into(), markdown: "Report".into(), status: "Pushed · awaiting deployment".into(), commit: Some("commit".into()), message: String::new() };
+        assert!(p.presentation().0.contains("GitHub synced"));
+        assert!(p.presentation().1.contains("pushed to GitHub successfully"));
+        p.status = "Pushed · site access error".into();
+        p.message = "Report pushed to GitHub successfully. HTTP 545: EdgeOne execution error.".into();
+        assert!(p.presentation().0.contains("site access error"));
+        assert_eq!(p.presentation().1, p.message);
+        assert_eq!(publication_action(Some(&p), false), PublicationAction::Verify(p.id.clone()));
         p.status = "Pushed · verifying live page".into(); p.message.clear();
-        assert_eq!(p.presentation(), (before.0.as_str(), before.1.as_str()));
-        p.status = "Pushed · awaiting deployment".into(); p.message = "Still waiting".into();
-        assert_eq!(p.presentation(), (before.0.as_str(), before.1.as_str()));
-        p.status = "Online".into(); p.message.clear();
-        assert!(!p.presentation().1.is_empty());
+        assert!(p.presentation().0.contains("checking page"));
+        assert!(p.presentation().1.contains("no new push"));
     }
     #[test]
     fn header_action_matches_publication_state_and_current_content() {
@@ -366,7 +434,7 @@ mod tests {
         assert_eq!(publication_action(Some(&p), false), PublicationAction::Open(p.url()));
         assert_eq!(publication_action(Some(&p), true), PublicationAction::Publish(true));
         p.status = "Failed".into();
-        assert_eq!(publication_action(Some(&p), false), PublicationAction::Retry(p.id.clone()));
+        assert_eq!(publication_action(Some(&p), false), PublicationAction::Verify(p.id.clone()));
     }
     #[test]
     fn returning_to_an_older_snapshot_makes_it_current_without_changing_its_url() {

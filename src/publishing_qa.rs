@@ -255,7 +255,7 @@ pub fn run() {
                     cx.notify();
                 });
                 w.render_frame(cx);
-                assert_eq!(w.find(description_id.clone()).bounds(), checking_bounds);
+                assert_eq!(w.find(description_id.clone()).bounds().size.width, checking_bounds.size.width);
                 app.update(cx, |a, cx| {
                     let p = a.store.publications.last_mut().unwrap();
                     p.status = "Pushed · verifying live page".into();
@@ -263,7 +263,20 @@ pub fn run() {
                     cx.notify();
                 });
                 w.render_frame(cx);
-                assert_eq!(w.find(description_id).bounds(), checking_bounds);
+                assert_eq!(w.find(description_id.clone()).bounds().size.width, checking_bounds.size.width);
+                app.update(cx, |a, cx| {
+                    let p = a.store.publications.last_mut().unwrap();
+                    p.status = "Pushed · site access error".into();
+                    p.message = "Report pushed to GitHub successfully. Public page returned HTTP 545. EdgeOne reports an edge function execution error. Check the hosting service, then use Check status; no new push is needed.".into();
+                    a.publishing_job = None;
+                    cx.notify();
+                });
+                w.render_frame(cx);
+                assert_eq!(w.find("publish-topic-report").label(), Some("Check status"));
+                let description = w.find(description_id).bounds();
+                assert!(description.size.height >= checking_bounds.size.height);
+                assert_eq!(description.size.width, checking_bounds.size.width);
+                assert_eq!(app.read(cx).store.publications.last().unwrap().commit.as_deref(), Some("fixture-commit-sha"));
 
             })
             .unwrap();

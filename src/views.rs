@@ -633,6 +633,11 @@ impl TaskApp {
             ));
         let appearance = self.store.appearance;
         shell
+            .when(cfg!(target_os = "macos"), |d| {
+                // Reserve space for the native traffic lights outside the scroll area.
+                d.child(gpui_kit::component::TitleBar::new()
+                    .h(px(32.)).pl_0().border_b_0().bg(rgb(colors.side)))
+            })
             .child(side.map(observed))
             .child(
                 row()
@@ -959,7 +964,17 @@ impl TaskApp {
                     }),
             );
         }
-        header.into_any_element()
+        if cfg!(target_os = "macos") {
+            gpui_kit::component::TitleBar::new()
+                .h(px(44.))
+                .pl_0()
+                .border_b_0()
+                .bg(rgb(colors.canvas))
+                .child(header.w_full())
+                .into_any_element()
+        } else {
+            header.into_any_element()
+        }
     }
     fn toolbar(&self, cx: &mut Context<Self>) -> AnyElement {
         let project = if let Scope::Project(id) = self.scope {
@@ -2987,6 +3002,13 @@ impl Render for TaskApp {
         }
         self.poll_workspace_open(window, cx);
         if self.workspace_required || self.startup.required {
+            if cfg!(target_os = "macos") {
+                return col().size_full().bg(rgb(colors.canvas))
+                    .child(gpui_kit::component::TitleBar::new()
+                        .h(px(44.)).border_b_0().bg(rgb(colors.canvas)))
+                    .child(div().flex_1().min_h_0().child(self.startup_view(cx)))
+                    .into_any_element();
+            }
             return self.startup_view(cx);
         }
         let content = if let Some(id) = self.selected {

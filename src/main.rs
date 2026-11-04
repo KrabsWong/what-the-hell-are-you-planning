@@ -232,9 +232,12 @@ fn main() {
                 window_min_size: Some(size(px(1000.), px(680.))),
                 titlebar: Some(TitlebarOptions {
                     title: Some("What the hell are you planning?".into()),
-                    appears_transparent: false,
+                    appears_transparent: cfg!(target_os = "macos"),
+                    traffic_light_position: cfg!(target_os = "macos")
+                        .then(|| point(px(20.), px(16.))),
                     ..Default::default()
                 }),
+                app_owns_titlebar_drag: cfg!(target_os = "macos"),
                 ..Default::default()
             },
             cx,

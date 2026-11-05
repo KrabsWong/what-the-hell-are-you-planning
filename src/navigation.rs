@@ -79,6 +79,7 @@ impl TaskApp {
         self.project_rename = None;
         self.topic_move = None;
         self.planning_project = None;
+        self.planning_replan_source = None;
         self.planning_topic = None;
         self.directory_project = None;
         self.error.clear();

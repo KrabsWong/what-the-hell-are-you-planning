@@ -105,6 +105,20 @@ fn run_checks(layout_only: bool) {
             if layout_only {
                 screenshot(&mut cx, handle, &directory, "compact-result.png");
                 cx.update_window(handle, |_, w, cx| {
+                    w.click("regenerate-report", cx);
+                    w.render_frame(cx);
+                    assert!(w.find("confirm-regenerate-report").visible());
+                    assert!(app.read(cx).report_regeneration.is_some());
+                }).unwrap();
+                screenshot(&mut cx, handle, &directory, "regenerate-report.png");
+                cx.update_window(handle, |_, w, cx| {
+                    w.click("cancel-regenerate-report", cx);
+                    w.render_frame(cx);
+                    assert!(app.read(cx).report_regeneration.is_none());
+                    assert_eq!(app.read(cx).store.runs.len(), store.runs.len());
+                }).unwrap();
+
+                cx.update_window(handle, |_, w, cx| {
                     assert!(w.find("research-result-scroll").visible());
                     assert!(w.try_find("run-technical-panel").is_none());
                     assert_eq!(app.read(cx).store.runs.len(), store.runs.len());

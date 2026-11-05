@@ -75,7 +75,7 @@ pub fn run() {
                     w.click("toggle-appearance", cx);
                 }
                 assert_eq!(app.read(cx).store.appearance, Appearance::System);
-                assert_eq!(w.find("appearance-system").label(), Some("✓ Follow system"));
+                assert_eq!(w.find("appearance-system").label(), Some("Follow system"));
                 assert_eq!(
                     Storage::new(path.clone())
                         .load()
@@ -106,9 +106,9 @@ pub fn run() {
                     })
                     .label(),
                     Some(if mode == Appearance::Light {
-                        "✓ Light"
+                        "Light"
                     } else {
-                        "✓ Dark"
+                        "Dark"
                     })
                 );
             })

@@ -34,7 +34,7 @@ pub fn run() {
             Storage::new(path.clone()).save(&store).unwrap();
             let mut cx = HeadlessAppContext::with_platform(
                 platform::current_platform(true).text_system(),
-                Arc::new(assets::Assets),
+                Arc::new(crate::ui_assets::AppAssets),
                 platform::current_headless_renderer,
             );
             cx.update(init);

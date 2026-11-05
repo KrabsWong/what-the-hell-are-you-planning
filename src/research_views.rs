@@ -57,7 +57,7 @@ impl TaskApp {
                                     .w_4()
                                     .flex_shrink_0()
                                     .text_color(rgb(stage_color(task.stage, cx)))
-                                    .child(task.stage.symbol()),
+                                    .child(gpui_kit::component::Icon::new(crate::execution_status::ExecutionStatus::Stage(task.stage).icon()).size_4()),
                             )
                             .child(single_line_text(format!("research-goal-title-{id}"), title))
                             .when(self.store.research_pending_approval(id), |d| {
@@ -71,7 +71,7 @@ impl TaskApp {
                                 },
                                 cx,
                             )))
-                            .child(div().flex_shrink_0().child(label("Open ›", cx))),
+                            .child(div().flex_shrink_0().child(row().gap_1().child(label("Open", cx)).child(gpui_kit::component::Icon::new(assets::IconName::ChevronRight).size_4()))),
                     ),
             );
         }
@@ -247,9 +247,9 @@ impl TaskApp {
             .child(div().h_3().border_b_1().border_color(rgb(colors.line)))
             .child(div().pt_2().font_weight(FontWeight::SEMIBOLD).child("Browser · ego(lite)"))
             .child(Input::new(&self.ego_input).id("ego-path"))
-            .child(row().flex_wrap().child(button("check-ego","Check runtime").disabled(self.ego_probe.is_some()).on_click(cx.listener(|this,_,_,cx|this.check_ego(cx)))).child(button("open-ego","Open browser ↗").on_click(cx.listener(|this,_,_,cx|this.open_ego(cx)))))
+            .child(row().flex_wrap().child(button("check-ego","Check runtime").disabled(self.ego_probe.is_some()).on_click(cx.listener(|this,_,_,cx|this.check_ego(cx)))).child(button("open-ego","Open browser").icon(assets::IconName::ExternalLink).on_click(cx.listener(|this,_,_,cx|this.open_ego(cx)))))
             .child(label(self.ego_status.clone(), cx))
-            .when(!crate::ego::is_installed(&self.ego_input.read(cx).value()), |d| d.child(link_button("install-ego","Install ego(lite) ↗").on_click(|_,_,cx|cx.open_url("https://lite.ego.app"))))
+            .when(!crate::ego::is_installed(&self.ego_input.read(cx).value()), |d| d.child(link_button("install-ego","Install ego(lite)").icon(assets::IconName::ExternalLink).on_click(|_,_,cx|cx.open_url("https://lite.ego.app"))))
             .child(label("Pages open in a local Space. Use the browser's Space menu to watch or take over. First launch must be completed in ego(lite).", cx));
         settings
     }
@@ -277,7 +277,7 @@ impl TaskApp {
             .child(row().justify_between()
                 .child(muted(format!("Materials · {}", task.attachments.len()), cx))
                 .child(row().gap_2()
-                    .child(quiet_button("add-attachments", if busy { "Adding…" } else { "+ Add Files" })
+                    .child(quiet_button("add-attachments", if busy { "Adding…" } else { "Add Files" }).icon(assets::IconName::Plus)
                         .h_7().px_1().text_sm().disabled(task.archived || busy)
                         .on_click(cx.listener(move |this, _, _, cx| this.choose_attachments(id, cx))))))
             .child(label(if task.attachments.is_empty() {
@@ -372,10 +372,11 @@ impl TaskApp {
                 link_button(
                     "parent-materials",
                     format!(
-                        "Also includes {} material(s) from the parent →",
+                        "Also includes {} material(s) from the parent",
                         parent.attachments.len()
                     ),
                 )
+                .icon(assets::IconName::ArrowRight)
                 .on_click(cx.listener(move |this, _, w, cx| this.open_task(pid, w, cx))),
             );
         }
@@ -391,7 +392,7 @@ impl TaskApp {
             && children
                 .iter()
                 .all(|child| self.store.research_result(*child).is_some());
-        let browser = quiet_button("task-open-ego", "Open ego(lite) ↗")
+        let browser = quiet_button("task-open-ego", "Open ego(lite)").icon(assets::IconName::ExternalLink)
             .tooltip("Opens the browser app. Select the research Space in ego(lite).")
             .on_click(cx.listener(|this, _, _, cx| this.open_ego(cx)));
         let next_model = self.store.research_model(research.kind);
@@ -425,7 +426,7 @@ impl TaskApp {
             let status = if children.is_empty() {
                 "Research steps not planned yet".into()
             } else if complete {
-                format!("✓ Research complete · {completed}/{} steps", children.len())
+                format!("Research complete · {completed}/{} steps", children.len())
             } else {
                 format!("Research progress · {completed}/{} steps", children.len())
             };
@@ -483,8 +484,9 @@ impl TaskApp {
                 panel = panel.child(
                     link_button(
                         format!("research-dependency-{dep}"),
-                        format!("{} {}", if ready { "✓" } else { "○" }, title),
+                        title.to_string(),
                     )
+                    .icon(if ready { assets::IconName::Check } else { assets::IconName::Circle })
                     .disabled(self.store.task(dep).is_none())
                     .on_click(cx.listener(move |this, _, w, cx| this.open_task(dep, w, cx))),
                 );
@@ -551,7 +553,7 @@ impl TaskApp {
                                     .children(run.sources.iter().enumerate().map(|(i, source)| {
                                         let url = source.url.clone();
                                         col().flex_shrink_0().gap_1()
-                                            .child(link_button(format!("result-source-{i}"), format!("{} ↗", source.title))
+                                            .child(link_button(format!("result-source-{i}"), source.title.clone()).icon(assets::IconName::ExternalLink)
                                                 .justify_start().on_click(move |_, _, cx| cx.open_url(&url)))
                                             .child(label(source.url.clone(), cx))
                                             .child(label(format!("Published: {}", source.published_at), cx))

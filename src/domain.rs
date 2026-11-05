@@ -69,16 +69,6 @@ impl Stage {
             Self::Cancelled => "cancelled",
         }
     }
-    pub fn symbol(self) -> &'static str {
-        match self {
-            Self::Backlog => "◌",
-            Self::Planned => "○",
-            Self::InProgress => "◐",
-            Self::Review => "◇",
-            Self::Done => "✓",
-            Self::Cancelled => "⊗",
-        }
-    }
     pub fn is_closed(self) -> bool {
         matches!(self, Self::Done | Self::Cancelled)
     }
@@ -183,6 +173,8 @@ pub struct Project {
 }
 #[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
 pub struct Topic {
+    #[serde(default)]
+    pub replanned_from: Option<u64>,
     pub id: u64,
     pub project_id: u64,
     pub name: String,
@@ -419,6 +411,7 @@ impl Store {
         }
         let id = self.topics.iter().map(|t| t.id).max().unwrap_or(0) + 1;
         self.topics.push(Topic {
+            replanned_from: None,
             id,
             project_id: project,
             name,

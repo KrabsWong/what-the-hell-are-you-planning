@@ -13,10 +13,26 @@ impl TaskApp {
         self.layout = Layout::Board;
         self.planning_project = Some(project);
         self.planning_topic = None;
+        self.planning_replan_source = None;
         self.project_brief.update(cx, |s, cx| {
             s.set_value("", w, cx);
             s.focus(w, cx);
         });
+        cx.notify();
+    }
+
+    pub(crate) fn open_topic_replan(&mut self, topic: u64, w: &mut Window, cx: &mut Context<Self>) {
+        if !self.store.can_replan_topic(topic) {
+            self.error = "Complete all goals in this topic before replanning.".into();
+            cx.notify();
+            return;
+        }
+        let Some(source) = self.store.topics.iter().find(|t| t.id == topic) else { return; };
+        let project = source.project_id;
+        let input = self.store.topic_replan_input(topic);
+        self.open_project_plan(project, w, cx);
+        self.planning_replan_source = Some(topic);
+        self.project_brief.update(cx, |s, cx| s.set_value(input, w, cx));
         cx.notify();
     }
 
@@ -49,7 +65,12 @@ impl TaskApp {
         start: bool,
         cx: &mut Context<Self>,
     ) -> bool {
-        let id = match self.store.create_research_request(project, topic, input) {
+        let request = if let Some(source) = self.planning_replan_source {
+            self.store.create_topic_replan_request(source, input)
+        } else {
+            self.store.create_research_request(project, topic, input)
+        };
+        let id = match request {
             Ok(id) => id,
             Err(e) => {
                 self.error = e;
@@ -69,6 +90,7 @@ impl TaskApp {
         }
         self.planning_project = None;
         self.planning_topic = None;
+        self.planning_replan_source = None;
         self.error.clear();
         self.toast = "Request saved · generate a plan when ready".into();
         if start {
@@ -171,6 +193,8 @@ impl TaskApp {
             {
                 self.store.runs[index].status = "Stale".into();
                 Err("Research destination changed during planning. Review the saved request and generate again.".into())
+            } else if !request.goal_ids.is_empty() {
+                self.store.regenerate_request_plan(request_id, &run.output)
             } else {
                 self.store.apply_request_plan(request_id, &run.output)
             }

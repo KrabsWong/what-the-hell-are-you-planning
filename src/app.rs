@@ -121,6 +121,7 @@ pub struct TaskApp {
     pub property: Option<Property>,
     pub editing: bool,
     pub comment: Entity<TextareaState>,
+    pub report_regeneration: Option<(u64, Entity<TextareaState>)>,
     pub toast: String,
     pub error: String,
     pub task_start_feedback: Option<(u64, String)>,
@@ -140,6 +141,7 @@ pub struct TaskApp {
     pub research_topic: Option<u64>,
     pub planning_project: Option<u64>,
     pub planning_topic: Option<u64>,
+    pub planning_replan_source: Option<u64>,
     pub project_brief: Entity<TextareaState>,
     pub storage: Option<Storage>,
     pub startup: crate::startup::Startup,
@@ -452,6 +454,7 @@ impl TaskApp {
                     .placeholder("Leave a comment…")
                     .rows(3)
             }),
+            report_regeneration: None,
             toast: "Local workspace".into(),
             error: String::new(),
             task_start_feedback: None,
@@ -471,6 +474,7 @@ impl TaskApp {
             research_topic: None,
             planning_project: None,
             planning_topic: None,
+            planning_replan_source: None,
             project_brief: cx.new(|cx| {
                 TextareaState::new(window, cx)
                     .rows(5)

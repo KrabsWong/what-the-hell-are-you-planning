@@ -237,13 +237,10 @@ impl TaskApp {
                     .map(|(id, name, mode)| {
                         select_button(
                             id,
-                            if self.store.appearance == mode {
-                                format!("✓ {name}")
-                            } else {
-                                name.into()
-                            },
+                            name,
                             self.store.appearance == mode,
                         )
+                        .when(self.store.appearance == mode, |b| b.icon(assets::IconName::Check))
                         .on_click(cx.listener(move |a, _, w, cx| a.set_appearance(mode, w, cx)))
                     }),
                 ),

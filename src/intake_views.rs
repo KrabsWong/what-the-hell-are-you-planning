@@ -78,7 +78,7 @@ impl TaskApp {
             .iter()
             .rev()
             .filter(|r| project.is_none_or(|id| r.project_id == id) && !self.store.request_is_archived(r)
-                && match self.scope { Scope::Topic(id) => r.topic_id == Some(id) && r.goal_ids.is_empty(), _ => true })
+                && match self.scope { Scope::Topic(id) => r.topic_id == Some(id) && (r.goal_ids.is_empty() || self.store.can_regenerate_request_plan(r.id)), _ => true })
         {
             let id = request.id;
             let project = request.project_id;
@@ -88,7 +88,9 @@ impl TaskApp {
             let active = run
                 .is_some_and(|r| matches!(r.status.as_str(), "Queued" | "Running" | "Cancelling"));
             let planned = !request.goal_ids.is_empty();
-            let status = if planned {
+            let status = if active {
+                "Planning…"
+            } else if planned {
                 "Plan generated"
             } else {
                 run.map(|r| r.status.as_str())
@@ -105,17 +107,20 @@ impl TaskApp {
                     .child(
                         row()
                             .flex_wrap()
-                            .when(!planned, |d| {
+                            .when(!planned || self.store.can_regenerate_request_plan(id), |d| {
                                 d.child(
                                     button(
                                         format!("retry-request-{id}"),
-                                        if run.is_some() {
+                                        if planned {
+                                            "Regenerate plan"
+                                        } else if run.is_some() {
                                             "Retry planning"
                                         } else {
                                             "Generate plan"
                                         },
                                     )
                                     .disabled(active)
+                                    .tooltip(if planned { "Regenerates all unapproved goals from this request. The current plan stays available until a valid replacement is ready; previous goals are archived." } else { "Generate a reviewable plan from this saved request." })
                                     .on_click(cx.listener(
                                         move |a, _, _, cx| a.retry_research_request(id, cx),
                                     )),
@@ -170,6 +175,9 @@ impl TaskApp {
             return div().into_any_element();
         };
         let colors = palette(cx);
+        let request_id = request.id;
+        let regenerating = request.planning_run_id.is_some_and(|id| self.store.runs.iter()
+            .any(|r| r.id == id && matches!(r.status.as_str(), "Queued" | "Running" | "Cancelling")));
         let expanded = self.expanded_request_brief == Some(goal);
         col()
             .gap_2()
@@ -186,6 +194,11 @@ impl TaskApp {
                         cx.notify();
                     })),
             )
+            .when(self.store.can_regenerate_request_plan(request_id), |d| d.child(
+                button("regenerate-request-plan", "Regenerate plan")
+                    .disabled(regenerating)
+                    .tooltip("Regenerates all Backlog goals from the original request. Previous goals are archived only after the new plan is valid.")
+                    .on_click(cx.listener(move |a, _, _, cx| a.retry_research_request(request_id, cx)))))
             .when(expanded, |d| {
                 d.child(
                     col()

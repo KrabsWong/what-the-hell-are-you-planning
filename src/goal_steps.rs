@@ -374,7 +374,7 @@ impl TaskApp {
                                         .unwrap_or("Task"),
                                     cx,
                                 ))
-                                .child(label("Open ›", cx)),
+                                .child(row().gap_1().child(label("Open", cx)).child(gpui_kit::component::Icon::new(assets::IconName::ChevronRight).size_4())),
                         )
                         .into_any_element()
                 } else {
@@ -386,7 +386,7 @@ impl TaskApp {
                         )
                         .child(single_line_text(format!("goal-step-title-{id}"), title))
                         .child(label(status.label(), cx))
-                        .child(label("Open ›", cx))
+                        .child(row().gap_1().child(label("Open", cx)).child(gpui_kit::component::Icon::new(assets::IconName::ChevronRight).size_4()))
                         .into_any_element()
                 })
         };

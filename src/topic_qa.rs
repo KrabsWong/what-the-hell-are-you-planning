@@ -879,6 +879,7 @@ pub fn board_directory() {
                     let goal = a.store.create_research_goal(title.into(), "研究行业趋势".into(), 1).unwrap();
                     topics.push(a.store.task_topic(goal).unwrap().id);
                 }
+                a.store.topics.iter_mut().find(|t| t.id == topics[4]).unwrap().replanned_from = Some(topics[0]);
                 a.navigate(Scope::Project(1), w, cx);
                 a.layout = crate::app::Layout::Board;
                 crate::appearance::apply(if dark { crate::appearance::Appearance::Dark }
@@ -914,7 +915,45 @@ pub fn board_directory() {
         cx.update_window(handle, |_, w, cx| {
             w.click(format!("collection-topic-{}", topics[4]), cx);
             assert_eq!(app.read(cx).scope, Scope::Topic(topics[4]));
+            app.update(cx, |a, cx| {
+                a.expanded_sidebar_projects.push(1);
+                cx.notify();
+            });
         }).unwrap();
+        cx.run_until_parked();
+        cx.update_window(handle, |_, w, cx| {
+            w.render_frame(cx);
+            assert_eq!(w.find(format!("topic-{}", topics[4])).label(), Some(format!("Replanned topic · {}", app.read(cx).store.topics.iter().find(|t| t.id == topics[4]).unwrap().display_name()).as_str()));
+        }).unwrap();
+        cx.update_window(handle, |_, w, cx| {
+            assert!(w.try_find("replan-topic").is_none(), "Todo goals must hide Replan");
+            assert!(w.try_find("regenerate-topic-plan").is_none());
+            app.update(cx, |a, cx| {
+                let request = a.store.create_research_request(1, Some(topics[4]), "Review this research plan").unwrap();
+                let mut goals = Vec::new();
+                for goal in a.store.tasks.iter_mut().filter(|t| t.topic_id == Some(topics[4]) && t.parent_id.is_none()) {
+                    goal.stage = crate::domain::Stage::Backlog;
+                    goal.approved_plan = None;
+                    goals.push(goal.id);
+                }
+                a.store.research_requests.iter_mut().find(|r| r.id == request).unwrap().goal_ids = goals;
+                cx.notify();
+            });
+            w.render_frame(cx);
+            assert_eq!(w.find("regenerate-topic-plan").label(), Some("Regenerate"));
+            assert!(w.try_find("replan-topic").is_none());
+            app.update(cx, |a, cx| {
+                for goal in a.store.tasks.iter_mut().filter(|t| t.topic_id == Some(topics[4]) && t.parent_id.is_none()) {
+                    goal.stage = crate::domain::Stage::Done;
+                }
+                cx.notify();
+            });
+            w.render_frame(cx);
+            assert_eq!(w.find("replan-topic").label(), Some("Replan"));
+            assert!(w.try_find("regenerate-topic-plan").is_none());
+        }).unwrap();
+        cx.capture_screenshot(handle).unwrap()
+            .save(root.join(format!("replanned-{width}-{dark}.png"))).unwrap();
     }
     println!("Board and List topic layout and navigation passed: {}", root.display());
 }

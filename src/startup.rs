@@ -184,11 +184,11 @@ impl TaskApp {
             let checked = &self.startup.paths[index];
             if checked.is_empty() && self.startup.checks.is_none() && self.startup.pending.is_none()
             {
-                return ("○ Not checked", colors.muted, String::new(), false);
+                return ("Not checked", colors.muted, String::new(), false);
             }
             if current.trim() != checked {
                 return (
-                    "↻ Check again",
+                    "Check again",
                     colors.warning,
                     "Path changed. Run the check again.".into(),
                     false,
@@ -200,10 +200,10 @@ impl TaskApp {
                 .as_ref()
                 .map(|checks| &checks[index])
             {
-                Some(Ok(message)) => ("✓ Ready", colors.success, message.clone(), true),
-                Some(Err(message)) if index < 2 => ("○ Unavailable", colors.muted, message.clone(), false),
-                Some(Err(message)) => ("! Needs attention", colors.danger, message.clone(), false),
-                None => ("◌ Checking…", colors.accent, String::new(), false),
+                Some(Ok(message)) => ("Ready", colors.success, message.clone(), true),
+                Some(Err(message)) if index < 2 => ("Unavailable", colors.muted, message.clone(), false),
+                Some(Err(message)) => ("Needs attention", colors.danger, message.clone(), false),
+                None => ("Checking…", colors.accent, String::new(), false),
             }
         };
         let open = dependency(0);
@@ -211,18 +211,25 @@ impl TaskApp {
         let ego = dependency(2);
         let agent_ready = open.3 || codex.3;
         let workspace = if self.workspace_setup.is_some() {
-            ("◌ Preparing…", colors.accent)
+            ("Preparing…", colors.accent)
         } else if !self.storage_error.is_empty() {
-            ("! Needs attention", colors.danger)
+            ("Needs attention", colors.danger)
         } else if self.workspace_required {
-            ("○ Choose folder", colors.warning)
+            ("Choose folder", colors.warning)
         } else {
-            ("✓ Ready", colors.success)
+            ("Ready", colors.success)
         };
         let ready =
             usize::from(!self.workspace_required) + usize::from(agent_ready) + usize::from(ego.3);
         let badge = |text: &'static str, color: u32| {
-            div()
+            let icon = match text {
+                "Ready" => assets::IconName::Check,
+                "Needs attention" => assets::IconName::CircleAlert,
+                "Check again" => assets::IconName::RefreshCw,
+                "Checking…" | "Preparing…" => assets::IconName::Loader,
+                _ => assets::IconName::Circle,
+            };
+            row().gap_1().child(gpui_kit::component::Icon::new(icon).size_4())
                 .flex_shrink_0()
                 .px_2()
                 .py_1()
@@ -272,24 +279,24 @@ impl TaskApp {
                             if let Some(root) = &this.workspace_root { this.begin_workspace_open(crate::persistence::Storage::new(root.join("workspace/workspace.sqlite3")), cx); }
                         })))))
                 .child(card()
-                    .child(heading("2 · AI agents", if agent_ready { "✓ Ready" } else { "○ At least one required" }, if agent_ready { colors.success } else { colors.warning }))
+                    .child(heading("2 · AI agents", if agent_ready { "Ready" } else { "At least one required" }, if agent_ready { colors.success } else { colors.warning }))
                     .child(label("Install OpenCode or Codex. Either one is enough to start; models and login are configured separately.", cx))
                     .child(heading("OpenCode", open.0, open.1))
                     .child(row().justify_between().gap_2().child(label("OpenCode CLI", cx))
-                        .child(link_button("install-opencode", "Install ↗").on_click(|_,_,cx| cx.open_url("https://opencode.ai"))))
+                        .child(link_button("install-opencode", "Install").icon(assets::IconName::ExternalLink).on_click(|_,_,cx| cx.open_url("https://opencode.ai"))))
                     .child(Input::new(&self.executable_input).id("startup-opencode"))
                     .when(!open.2.is_empty(), |view| view.child(div().text_xs().text_color(rgb(colors.muted)).child(open.2.clone())))
                     .child(heading("Codex", codex.0, codex.1))
                     .child(row().justify_between().gap_2().child(label("Codex CLI", cx))
-                        .child(link_button("install-codex", "Install ↗").on_click(|_,_,cx| cx.open_url("https://developers.openai.com/codex/cli"))))
+                        .child(link_button("install-codex", "Install").icon(assets::IconName::ExternalLink).on_click(|_,_,cx| cx.open_url("https://developers.openai.com/codex/cli"))))
                     .child(Input::new(&self.codex_executable_input).id("startup-codex"))
                     .when(!codex.2.is_empty(), |view| view.child(div().text_xs().text_color(rgb(colors.muted)).child(codex.2.clone()))))
                 .child(card()
                     .child(heading("3 · ego(lite)", ego.0, ego.1))
                     .child(row().justify_between().gap_2().child(label("Browser access · finish its first launch after installing.", cx))
                         .child(row().gap_3()
-                            .when(!crate::ego::is_installed(&self.ego_input.read(cx).value()), |d| d.child(link_button("startup-install-ego", "Install ↗").on_click(|_,_,cx| cx.open_url("https://lite.ego.app"))))
-                            .child(link_button("startup-open-ego", "Open ↗").on_click(cx.listener(|this,_,_,cx| this.open_ego(cx))))))
+                            .when(!crate::ego::is_installed(&self.ego_input.read(cx).value()), |d| d.child(link_button("startup-install-ego", "Install").icon(assets::IconName::ExternalLink).on_click(|_,_,cx| cx.open_url("https://lite.ego.app"))))
+                            .child(link_button("startup-open-ego", "Open").icon(assets::IconName::ExternalLink).on_click(cx.listener(|this,_,_,cx| this.open_ego(cx))))))
                     .child(Input::new(&self.ego_input).id("startup-ego"))
                     .when(!ego.2.is_empty(), |view| view.child(div().text_xs().text_color(rgb(if ego.3 { colors.muted } else { ego.1 })).child(ego.2.clone())))
                     .when(!self.error.is_empty(), |view| view.child(div().text_xs().text_color(rgb(colors.danger)).child(self.error.clone()))))

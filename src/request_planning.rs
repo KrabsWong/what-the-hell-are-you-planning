@@ -165,6 +165,44 @@ pub fn parse_request_plan(text: &str) -> Result<RequestPlan, String> {
 }
 
 impl Store {
+    pub fn topic_replan_input(&self, topic: u64) -> String {
+        let requests: Vec<_> = self.research_requests.iter()
+            .filter(|r| r.topic_id == Some(topic)).collect();
+        let mut inputs: Vec<_> = requests.iter().map(|r| r.input.clone()).collect();
+        inputs.extend(self.tasks.iter().filter(|t| t.topic_id == Some(topic)
+            && !self.task_is_archived(t.id)
+            && t.research.as_ref().is_some_and(|r| r.kind == ResearchKind::Goal)
+            && !requests.iter().any(|r| r.goal_ids.contains(&t.id)))
+            .map(|t| format!("{}\n{}", t.title, t.description)));
+        inputs.join("\n\n")
+    }
+
+    pub fn can_replan_topic(&self, topic: u64) -> bool {
+        if !self.topics.iter().any(|t| t.id == topic && !t.archived) { return false; }
+        let goals: Vec<_> = self.tasks.iter().filter(|t| t.topic_id == Some(topic)
+            && !self.task_is_archived(t.id)
+            && t.research.as_ref().is_some_and(|r| r.kind == ResearchKind::Goal)).collect();
+        !goals.is_empty() && goals.iter().all(|goal| goal.stage == Stage::Done)
+            && self.research_requests.iter().filter(|r| r.topic_id == Some(topic)).all(|r|
+                !r.goal_ids.is_empty() && !r.planning_run_id.is_some_and(|id| self.runs.iter()
+                    .any(|run| run.id == id && matches!(run.status.as_str(), "Queued" | "Running" | "Cancelling"))))
+    }
+
+    pub fn create_topic_replan_request(&mut self, source: u64, input: String) -> Result<u64, String> {
+        if !self.can_replan_topic(source) {
+            return Err("Complete all goals in this topic before replanning.".into());
+        }
+        let original = self.topics.iter().find(|t| t.id == source)
+            .ok_or("Source topic not found.")?.clone();
+        // Commit the new topic and request together; validation must never leave an empty copy.
+        let mut staged = self.clone();
+        let topic = staged.create_topic(original.project_id, original.name)?;
+        staged.topics.iter_mut().find(|t| t.id == topic).unwrap().replanned_from = Some(source);
+        let request = staged.create_research_request(original.project_id, Some(topic), input)?;
+        *self = staged;
+        Ok(request)
+    }
+
     pub fn create_research_request(
         &mut self,
         project: u64,
@@ -259,7 +297,11 @@ impl Store {
             ),
             None => None,
         };
-        serde_json::to_string(&(
+        let existing_plan = if request.goal_ids.is_empty() { None } else {
+            Some(request.goal_ids.iter().map(|goal| (goal, self.goal_plan_signature(*goal),
+                self.task(*goal).map(|t| (t.stage, t.archived, &t.approved_plan)))).collect::<Vec<_>>())
+        };
+        let signature = serde_json::to_string(&(
             request.id,
             request.project_id,
             &request.input,
@@ -268,7 +310,11 @@ impl Store {
             &project.directory,
             topic.map(|t| (t.id, &t.name)),
         ))
-        .map_err(|e| e.to_string())
+        .map_err(|e| e.to_string())?;
+        match existing_plan {
+            Some(plan) => serde_json::to_string(&(signature, plan)).map_err(|e| e.to_string()),
+            None => Ok(signature),
+        }
     }
 
     pub fn request_plan_auto_repair(&self, run_id: u64) -> Option<u64> {
@@ -286,6 +332,36 @@ impl Store {
             .then_some(request.id)
     }
 
+    pub fn can_regenerate_request_plan(&self, id: u64) -> bool {
+        let Some(request) = self.research_requests.iter().find(|r| r.id == id) else { return false; };
+        !self.request_is_archived(request) && !request.goal_ids.is_empty()
+            && self.tasks.iter().filter(|t| t.topic_id == request.topic_id && !self.task_is_archived(t.id)
+                && t.research.as_ref().is_some_and(|r| r.kind == ResearchKind::Goal))
+                .all(|goal| goal.stage == Stage::Backlog && goal.approved_plan.is_none())
+            && self.research_requests.iter().filter(|r| r.topic_id == request.topic_id)
+                .all(|r| !r.goal_ids.is_empty())
+            && !self.runs.iter().any(|run| self.owning_research_goal(run.task_id)
+                .and_then(|goal| self.task(goal)).is_some_and(|goal| goal.topic_id == request.topic_id))
+            && request.goal_ids.iter().all(|id| self.task(*id).is_some_and(|goal|
+                goal.stage == Stage::Backlog && !goal.archived && goal.approved_plan.is_none()))
+            && !self.runs.iter().any(|run| request.goal_ids.contains(&run.task_id)
+                || self.owning_research_goal(run.task_id).is_some_and(|goal| request.goal_ids.contains(&goal)))
+    }
+
+    pub fn regenerate_request_plan(&mut self, id: u64, text: &str) -> Result<Vec<u64>, String> {
+        if !self.can_regenerate_request_plan(id) {
+            return Err("Only unstarted plans whose goals are all in Backlog can be regenerated.".into());
+        }
+        // Keep the previous plan intact on malformed output or any late validation failure.
+        let mut staged = self.clone();
+        let request = staged.research_requests.iter_mut().find(|r| r.id == id).unwrap();
+        let old_goals = std::mem::take(&mut request.goal_ids);
+        for goal in old_goals { staged.archive(goal)?; }
+        let goals = staged.apply_request_plan(id, text)?;
+        *self = staged;
+        Ok(goals)
+    }
+
     pub fn prepare_request_plan(&self, id: u64) -> Result<AgentRun, String> {
         let request = self
             .research_requests
@@ -295,9 +371,9 @@ impl Store {
         if self.request_is_archived(request) {
             return Err("Restore the archived topic before planning.".into());
         }
-        if !request.goal_ids.is_empty() {
+        if !request.goal_ids.is_empty() && !self.can_regenerate_request_plan(id) {
             return Err(
-                "This request already has a plan. Review its goals or submit a new request.".into(),
+                "Only unstarted plans whose goals are all in Backlog can be regenerated.".into(),
             );
         }
         if request.planning_run_id.is_some_and(|id| {
@@ -467,6 +543,173 @@ mod tests {
         s.projects[0].directory = std::env::temp_dir().to_string_lossy().into();
         s.default_model = "fixture/planner".into();
         s
+    }
+
+    #[test]
+    fn topic_plan_actions_follow_all_goal_lifecycle() {
+        let mut s = store();
+        let request = s.create_research_request(1, None, "Research").unwrap();
+        let topic = s.research_requests[0].topic_id.unwrap();
+        assert!(!s.can_replan_topic(topic));
+        assert!(!s.can_regenerate_request_plan(request));
+        let goals = s.apply_request_plan(request, PLAN).unwrap();
+        let other_request = s.create_research_request(1, Some(topic), "Related research").unwrap();
+        assert!(!s.can_regenerate_request_plan(request), "Wait for the entire topic plan");
+        let other = s.apply_request_plan(other_request, PLAN).unwrap()[0];
+        assert!(s.can_regenerate_request_plan(request));
+        assert!(!s.can_replan_topic(topic));
+        s.task_mut(other).unwrap().stage = Stage::Planned;
+        assert!(!s.can_regenerate_request_plan(request), "Another goal entered Todo");
+        assert!(!s.can_replan_topic(topic));
+        let before = s.clone();
+        assert!(s.create_topic_replan_request(topic, "Again".into()).is_err());
+        assert_eq!(s, before);
+        s.task_mut(other).unwrap().stage = Stage::Done;
+        assert!(!s.can_replan_topic(topic), "One completed goal is insufficient");
+        for goal in goals { s.task_mut(goal).unwrap().stage = Stage::Done; }
+        assert!(s.can_replan_topic(topic));
+        assert!(!s.can_regenerate_request_plan(request));
+        s.set_topic_archived(topic, true).unwrap();
+        assert!(!s.can_replan_topic(topic));
+    }
+
+    #[test]
+    fn regenerate_backlog_plan_is_atomic_and_preserves_old_work() {
+        let mut s = store();
+        let request = s.create_research_request(1, None, "Compare original evidence").unwrap();
+        let old = s.apply_request_plan(request, PLAN).unwrap();
+        let topic = s.task(old[0]).unwrap().topic_id;
+        let child = s.research_children(old[0])[0];
+        s.add_comment(child, "Keep this annotation").unwrap();
+        let before = s.clone();
+        assert!(s.can_regenerate_request_plan(request));
+        assert!(s.prepare_request_plan(request).is_ok());
+        assert!(s.regenerate_request_plan(request, "invalid JSON").is_err());
+        assert_eq!(s, before);
+        let new = s.regenerate_request_plan(request, PLAN).unwrap();
+        assert_ne!(old, new);
+        assert!(s.task_is_archived(old[0]));
+        assert!(s.task_is_archived(child));
+        assert_eq!(s.task(child), before.task(child));
+        assert_eq!(s.task(new[0]).unwrap().topic_id, topic);
+        assert_eq!(s.task(new[0]).unwrap().stage, Stage::Backlog);
+        assert!(!s.goal_execution_approved(new[0]));
+        assert_eq!(s.research_requests[0].goal_ids, new);
+        assert!(s.can_regenerate_request_plan(request));
+    }
+
+    #[test]
+    fn replan_input_excludes_replaced_and_archived_goals() {
+        let mut s = store();
+        let request = s.create_research_request(1, None, "Original question").unwrap();
+        let old = s.apply_request_plan(request, PLAN).unwrap();
+        let topic = s.task(old[0]).unwrap().topic_id.unwrap();
+        let current = s.regenerate_request_plan(request, PLAN).unwrap();
+        for goal in current { s.task_mut(goal).unwrap().stage = Stage::Done; }
+        let manual = s.create_research_goal_in_topic("Manual goal".into(), "Current scope".into(), 1, Some(topic)).unwrap();
+        s.task_mut(manual).unwrap().stage = Stage::Done;
+        let archived = s.create_research_goal_in_topic("Old manual goal".into(), "Discarded scope".into(), 1, Some(topic)).unwrap();
+        s.archive(archived).unwrap();
+        assert!(s.can_replan_topic(topic));
+        assert_eq!(s.topic_replan_input(topic), "Original question\n\nManual goal\nCurrent scope");
+    }
+
+    #[test]
+    fn regeneration_rechecks_approval_execution_and_plan_edits() {
+        let mut s = store();
+        let request = s.create_research_request(1, None, "Compare evidence").unwrap();
+        let goals = s.apply_request_plan(request, PLAN).unwrap();
+        let signature = s.prepare_request_plan(request).unwrap().input_signature;
+        let child = s.research_children(goals[0])[0];
+        s.task_mut(child).unwrap().description.push_str(" Updated scope");
+        assert_ne!(s.request_plan_signature(request).unwrap(), signature);
+        s.task_mut(goals[0]).unwrap().stage = Stage::Planned;
+        let before = s.clone();
+        assert!(!s.can_regenerate_request_plan(request));
+        assert!(s.prepare_request_plan(request).is_err());
+        assert!(s.regenerate_request_plan(request, PLAN).is_err());
+        assert_eq!(s, before);
+        s.task_mut(goals[0]).unwrap().stage = Stage::Backlog;
+        let mut run = s.prepare_request_plan(request).unwrap();
+        run.task_id = child;
+        run.status = "Failed".into();
+        s.runs.push(run);
+        assert!(!s.can_regenerate_request_plan(request));
+        assert!(s.regenerate_request_plan(request, PLAN).is_err());
+    }
+
+    #[test]
+    fn replan_preserves_original_and_creates_unapproved_goals_in_new_topic() {
+        let mut s = store();
+        let original_request = s.create_research_request(1, None, "Original question").unwrap();
+        let old_goals = s.apply_request_plan(original_request, PLAN).unwrap();
+        let source = s.task(old_goals[0]).unwrap().topic_id.unwrap();
+        let additional = s.create_research_request(1, Some(source), "Additional question").unwrap();
+        let run = s.prepare_request_plan(additional).unwrap();
+        s.runs.push(run);
+        s.runs.last_mut().unwrap().status = "Succeeded".into();
+        s.apply_request_plan(additional, PLAN).unwrap();
+        for task in &mut s.tasks { task.stage = Stage::Done; }
+        let before = s.clone();
+        assert_eq!(s.topic_replan_input(source), "Original question\n\nAdditional question");
+        let manual = s.create_research_goal_in_topic("Manual goal".into(), "Additional scope".into(), 1, Some(source)).unwrap();
+        assert_eq!(s.topic_replan_input(source), "Original question\n\nAdditional question\n\nManual goal\nAdditional scope");
+        s.task_mut(manual).unwrap().stage = Stage::Done;
+        let request = s.create_topic_replan_request(source, "Updated question".into()).unwrap();
+        let topic = s.research_requests.iter().find(|r| r.id == request).unwrap().topic_id.unwrap();
+        assert_ne!(topic, source);
+        assert_eq!(s.topics.iter().find(|t| t.id == topic).unwrap().replanned_from, Some(source));
+        let goals = s.apply_request_plan(request, PLAN).unwrap();
+        for goal in goals {
+            assert_eq!(s.task(goal).unwrap().topic_id, Some(topic));
+            assert_eq!(s.task(goal).unwrap().stage, Stage::Backlog);
+            assert!(!s.goal_execution_approved(goal));
+        }
+        for task in &before.tasks { assert_eq!(s.task(task.id), Some(task)); }
+        assert_eq!(s.task(manual).unwrap().topic_id, Some(source));
+        assert_eq!(s.runs, before.runs);
+        assert_eq!(&s.topics[..before.topics.len()], &before.topics);
+        assert_eq!(&s.research_requests[..before.research_requests.len()], &before.research_requests);
+        s.rename_topic(topic, "Renamed research").unwrap();
+        assert_eq!(s.topics.iter().find(|t| t.id == topic).unwrap().display_name(), "#Renamed research");
+        for task in s.tasks.iter_mut().filter(|t| t.topic_id == Some(topic)) { task.stage = Stage::Done; }
+        let next = s.create_topic_replan_request(topic, "Next question".into()).unwrap();
+        let next_topic = s.research_requests.iter().find(|r| r.id == next).unwrap().topic_id.unwrap();
+        assert_eq!(s.topics.iter().find(|t| t.id == next_topic).unwrap().replanned_from, Some(topic));
+    }
+
+    #[test]
+    fn replan_validation_is_atomic_and_failed_planning_can_retry() {
+        let mut s = store();
+        let source = s.create_topic(1, "Research").unwrap();
+        let before = s.clone();
+        assert!(s.create_topic_replan_request(source, " ".into()).is_err());
+        assert!(s.create_topic_replan_request(u64::MAX, "Question".into()).is_err());
+        assert_eq!(s, before);
+        let goal = s.create_research_goal_in_topic("Finished".into(), "Scope".into(), 1, Some(source)).unwrap();
+        s.task_mut(goal).unwrap().stage = Stage::Done;
+        let request = s.create_topic_replan_request(source, "Question".into()).unwrap();
+        let captured = s.clone();
+        assert!(s.apply_request_plan(request, "invalid plan").is_err());
+        assert_eq!(s, captured);
+        s.apply_request_plan(request, PLAN).unwrap();
+        assert_eq!(s.topics.len(), before.topics.len() + 1);
+    }
+
+    #[test]
+    fn replan_metadata_roundtrips_and_legacy_topics_load() {
+        let legacy: crate::domain::Topic = serde_json::from_str(
+            r#"{"id":1,"project_id":1,"name":"Original","archived":false}"#).unwrap();
+        assert_eq!(legacy.replanned_from, None);
+        assert_eq!(legacy.display_name(), "#Original");
+        let mut s = store();
+        let goal = s.create_research_goal("Goal".into(), "Scope".into(), 1).unwrap();
+        let source = s.task(goal).unwrap().topic_id.unwrap();
+        assert_eq!(s.topic_replan_input(source), "Goal\nScope");
+        s.task_mut(goal).unwrap().stage = Stage::Done;
+        s.create_topic_replan_request(source, "Updated scope".into()).unwrap();
+        let loaded: Store = serde_json::from_str(&serde_json::to_string(&s).unwrap()).unwrap();
+        assert_eq!(loaded, s);
     }
 
     #[test]

@@ -311,7 +311,8 @@ impl TaskApp {
             .child(label("Target branch", cx)).child(Input::new(&self.publishing_inputs[1]).id("publishing-branch"))
             .child(label("Public site URL", cx)).child(Input::new(&self.publishing_inputs[2]).id("publishing-url"))
             .child(button("save-publishing", "Save publishing settings").disabled(self.publishing_job.is_some()).on_click(cx.listener(|a, _, _, cx| a.save_publishing_settings(cx))))
-            .child(select_button("automatic-publishing", if self.store.report_publishing.automatic { "✓ Publish completed Topics automatically" } else { "Publish completed Topics automatically" }, self.store.report_publishing.automatic)
+            .child(select_button("automatic-publishing", "Publish completed Topics automatically", self.store.report_publishing.automatic)
+                .when(self.store.report_publishing.automatic, |b| b.icon(assets::IconName::Check))
                 .disabled(self.publishing_job.is_some())
                 .on_click(cx.listener(|a, _, _, cx| {
                     if !a.store.report_publishing.automatic {
@@ -369,10 +370,10 @@ impl TaskApp {
                     .child(div().text_xs().font_weight(FontWeight::MEDIUM).px_2().py_1().rounded_md()
                         .text_color(rgb(color)).bg(rgba((color << 8) | 20)).child(status.to_string()))
                     .child(row().min_w_0().max_w_full()
-                    .child(link_button(format!("open-report-{}", p.id), "").min_w_0().flex_1()
+                    .child(link_button(format!("open-report-{}", p.id), "").icon(assets::IconName::ExternalLink).min_w_0().flex_1()
                         .accessibility_label(format!("Open report: {url}"))
                         .tooltip(url.clone())
-                        .child(div().min_w_0().text_sm().underline().overflow_hidden().text_ellipsis().whitespace_nowrap().child(format!("{url} ↗")))
+                        .child(div().min_w_0().text_sm().underline().overflow_hidden().text_ellipsis().whitespace_nowrap().child(url.clone()))
                         .on_click(cx.listener(move |_, _, _, cx| cx.open_url(&open_url))))
                     .child(crate::controls::tool_icon(format!("copy-report-{}", p.id), assets::IconName::Copy, "Copy report link")
                         .on_click(cx.listener(move |a, _, _, cx| {

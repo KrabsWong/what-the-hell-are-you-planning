@@ -257,6 +257,38 @@ impl TaskApp {
         .into_any_element()
     }
 
+    fn topic_plan_action(&self, topic: u64, cx: &mut Context<Self>) -> AnyElement {
+        if self.store.can_replan_topic(topic) {
+            return button("replan-topic", "Replan")
+                .on_click(cx.listener(move |a, _, w, cx| a.open_topic_replan(topic, w, cx)))
+                .into_any_element();
+        }
+        let requests: Vec<_> = self.store.research_requests.iter()
+            .filter(|r| r.topic_id == Some(topic) && self.store.can_regenerate_request_plan(r.id))
+            .map(|r| (r.id, r.input.clone())).collect();
+        if requests.is_empty() { return div().into_any_element(); }
+        let active = self.store.research_requests.iter().filter(|r| r.topic_id == Some(topic))
+            .any(|r| r.planning_run_id.is_some_and(|id| self.store.runs.iter()
+                .any(|run| run.id == id && matches!(run.status.as_str(), "Queued" | "Running" | "Cancelling"))));
+        let action = button("regenerate-topic-plan", "Regenerate").disabled(active)
+            .tooltip("Generate a replacement for an unapproved plan. Previous goals are archived only after the replacement is valid.");
+        if requests.len() == 1 {
+            let request = requests[0].0;
+            return action.on_click(cx.listener(move |a, _, _, cx| a.retry_research_request(request, cx))).into_any_element();
+        }
+        let entity = cx.entity().downgrade();
+        action.dropdown_menu(move |mut menu, _, _| {
+            for (request, input) in &requests {
+                let request = *request;
+                let entity = entity.clone();
+                menu = menu.item(PopupMenuItem::new(input.clone()).on_click(move |_, _, cx| {
+                    let _ = entity.update(cx, |a, cx| a.retry_research_request(request, cx));
+                }));
+            }
+            menu
+        }).into_any_element()
+    }
+
     pub(crate) fn topic_sidebar_row(&self, topic: &Topic, cx: &mut Context<Self>) -> AnyElement {
         let id = topic.id;
         let active = self.scope == Scope::Topic(id)
@@ -278,6 +310,11 @@ impl TaskApp {
                     .flex_1()
                     .min_w_0()
                     .h_8()
+                    .tooltip(if topic.replanned_from.is_some() { format!("Replanned topic · {}", topic.display_name()) } else { topic.display_name() })
+                    .accessibility_label(if topic.replanned_from.is_some() { format!("Replanned topic · {}", topic.display_name()) } else { topic.display_name() })
+                    .when(topic.replanned_from.is_some(), |b| b.child(
+                        gpui_kit::component::Icon::new(assets::IconName::NotebookPen)
+                            .size_4().flex_shrink_0().text_color(rgb(palette(cx).accent))))
                     .child(single_line_text(
                         format!("topic-name-{id}"),
                         self.store.topic_planning_status(id).map(|status| format!("{} · {status}", topic.display_name())).unwrap_or_else(|| topic.display_name()),
@@ -427,7 +464,7 @@ impl TaskApp {
                                             .w_4()
                                             .flex_shrink_0()
                                             .text_color(rgb(stage_color(goal.stage, cx)))
-                                            .child(goal.stage.symbol()),
+                                            .child(gpui_kit::component::Icon::new(crate::execution_status::ExecutionStatus::Stage(goal.stage).icon()).size_4()),
                                     )
                                     .child(single_line_text(
                                         format!("topic-goal-title-{goal_id}"),
@@ -442,12 +479,12 @@ impl TaskApp {
                                         },
                                         cx,
                                     )))
-                                    .child(div().flex_shrink_0().child(label("Open ›", cx))),
+                                    .child(div().flex_shrink_0().child(row().gap_1().child(label("Open", cx)).child(gpui_kit::component::Icon::new(assets::IconName::ChevronRight).size_4()))),
                             ),
                     )
                     .when_some(report, |d, report| {
                         d.child(
-                            quiet_button(format!("topic-report-{goal_id}"), "Report ›")
+                            quiet_button(format!("topic-report-{goal_id}"), "Report").icon(assets::IconName::ChevronRight)
                                 .h_8()
                                 .px_2()
                                 .on_click(
@@ -472,10 +509,15 @@ impl TaskApp {
                 && self.todo_batch.as_ref().is_none_or(|batch| !batch.contains_pending(*goal)));
         let entity = cx.entity().downgrade();
         col().size_full()
-            .child(row().px_6().pt_4().pb_2().flex_wrap().child(div().flex_1().min_w_0().text_lg().font_weight(FontWeight::SEMIBOLD).child(topic.display_name()))
+            .child(row().px_6().pt_4().pb_2().flex_wrap().child(row().gap_2().flex_1().min_w_0().text_lg().font_weight(FontWeight::SEMIBOLD)
+                .when(topic.replanned_from.is_some(), |d| d.child(div().id("topic-replanned-indicator").role(Role::Label).aria_label("Replanned topic")
+                    .flex_shrink_0().child(gpui_kit::component::Icon::new(assets::IconName::NotebookPen)
+                        .size_4().text_color(rgb(palette(cx).accent)))))
+                .child(div().flex_1().min_w_0().child(topic.display_name())))
                 .when(can_queue, |d| d.child(button("queue-topic", "Queue topic")
                     .tooltip("Queue all approved unfinished goals in this topic. Topics execute one at a time.")
                     .on_click(cx.listener(move |a, _, _, cx| a.start_topic_batch(id, cx)))))
+                .child(self.topic_plan_action(id, cx))
                 .child(self.topic_publish_button(id, cx))
                 .child(primary_button("topic-new-goal", "New research").disabled(archived).on_click(cx.listener(move |a, _, w, cx| {
                     a.open_project_plan(project, w, cx); a.planning_topic = Some(id); cx.notify();
@@ -505,6 +547,12 @@ impl TaskApp {
             .child(row().px_6().pb_2().gap_3()
                 .child(self.layout_switch(cx))
                 .child(div().flex_1().min_w_0().child(label(format!("{} research goal{}{}", goals.len(), if goals.len() == 1 { "" } else { "s" }, if archived { " · Archived topic. Existing goals and results remain available." } else { " · Open a goal to explore its steps and materials." }), cx))))
+            .when_some(topic.replanned_from, |d, source| d.child(row().px_6().pb_2()
+                .child(quiet_button("replan-source", self.store.topics.iter().find(|t| t.id == source)
+                    .map(|t| format!("From {} · Open original topic", t.display_name()))
+                    .unwrap_or_else(|| "Original topic unavailable".into()))
+                    .disabled(!self.store.topics.iter().any(|t| t.id == source))
+                    .on_click(cx.listener(move |a, _, w, cx| a.navigate(Scope::Topic(source), w, cx))))))
             .child(self.topic_publication_panel(id, cx))
             .when_some(self.store.topic_planning_status(id), |d, status| d.child(
                 col().px_6().py_3().gap_2()

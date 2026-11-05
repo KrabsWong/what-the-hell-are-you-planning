@@ -686,8 +686,8 @@ impl TaskApp {
                                 .child(
                                     quiet_button(
                                         ("recovery-request", run_id),
-                                        "Planning details →",
-                                    )
+                                        "Planning details",
+                                    ).icon(assets::IconName::ArrowRight)
                                     .on_click(cx.listener(
                                         move |a, _, w, cx| {
                                             a.navigate(Scope::Runs, w, cx);

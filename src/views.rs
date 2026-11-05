@@ -217,7 +217,7 @@ impl TaskApp {
                         } else {
                             colors.success
                         }))
-                        .child(if failed { "!" } else { "✓" }),
+                        .child(gpui_kit::component::Icon::new(if failed { assets::IconName::CircleAlert } else { assets::IconName::Check }).size_4()),
                 )
                 .child(
                     col()
@@ -232,7 +232,7 @@ impl TaskApp {
                         .child(div().text_sm().child(message.clone())),
                 )
                 .child(
-                    icon_button("dismiss-save-feedback", "×", "Dismiss save feedback").on_click(
+                    tool_icon("dismiss-save-feedback", assets::IconName::Close, "Dismiss save feedback").on_click(
                         cx.listener(|this, _, _, cx| {
                             this.save_feedback = None;
                             cx.notify();
@@ -1378,9 +1378,9 @@ impl TaskApp {
                                 } else {
                                     colors.muted
                                 }))
-                                .child(priority_symbol(t.priority)),
+                                .child(gpui_kit::component::Icon::new(priority_icon(t.priority)).size_4()),
                         )
-                        .child(label(format!("{} ›", self.store.identifier(t)), cx)),
+                        .child(row().gap_1().child(label(self.store.identifier(t), cx)).child(gpui_kit::component::Icon::new(assets::IconName::ChevronRight).size_4())),
                 ),
             )
             .child(
@@ -1695,7 +1695,7 @@ impl TaskApp {
                     .is_some_and(|r| r.kind == crate::research::ResearchKind::Goal),
                 |d| {
                     d.child(
-                        quiet_button(format!("goal-progress-{id}"), "")
+                        quiet_button(format!("goal-progress-{id}"), "").icon(assets::IconName::ArrowRight)
                             .h_auto()
                             .px_0()
                             .py_1()
@@ -1707,7 +1707,7 @@ impl TaskApp {
                                     .text_xs()
                                     .whitespace_normal()
                                     .text_left()
-                                    .child(format!("Open {} steps →", self.store.research_children(id).len())),
+                                    .child(format!("Open {} steps", self.store.research_children(id).len())),
                             )
                             .on_click(cx.listener(move |a, _, w, cx| {
                                 cx.stop_propagation();
@@ -1756,11 +1756,11 @@ impl TaskApp {
                     quiet_button(
                         format!("approve-topic-{id}"),
                         if t.parent_id.is_some() {
-                            "Approve parent goal →"
+                            "Approve parent goal"
                         } else {
-                            "Approve research →"
+                            "Approve research"
                         },
-                    )
+                    ).icon(assets::IconName::ArrowRight)
                     .on_click(cx.listener(move |this, _, _, cx| {
                         cx.stop_propagation();
                         this.approve_research_topic(id, cx);
@@ -2100,7 +2100,7 @@ impl TaskApp {
                                     && self.store.research_result(cid).is_none(),
                                 |d| d.child(chip("Needs refresh", colors.accent, cx)),
                             )
-                            .child(div().flex_shrink_0().child(label("Open ›", cx))),
+                            .child(div().flex_shrink_0().child(row().gap_1().child(label("Open", cx)).child(gpui_kit::component::Icon::new(assets::IconName::ChevronRight).size_4()))),
                     ),
             );
         }
@@ -2584,7 +2584,7 @@ impl TaskApp {
                         property_choice(
                             format!("set-{}", stage.key()),
                             if stage == Stage::InProgress { "Submit execution" } else { crate::workflow::phase_label(stage) },
-                            Some(stage.symbol()),
+                            Some(crate::execution_status::ExecutionStatus::Stage(stage).icon()),
                             self.store.task(id).is_some_and(|t| t.stage == stage),
                         )
                         .w_full()
@@ -2834,7 +2834,7 @@ impl TaskApp {
                                 "Edit task",
                             ))
                             .child(
-                                icon_button("cancel-draft", "×", "Close without saving")
+                                tool_icon("cancel-draft", assets::IconName::Close, "Close without saving")
                                     .tooltip("Close without saving")
                                     .on_click(cx.listener(|this, _, w, cx| {
                                         this.draft = None;
@@ -3060,6 +3060,7 @@ impl Render for TaskApp {
                     this.project_rename = None;
                     this.topic_move = None;
                     this.planning_project = None;
+                    this.planning_replan_source = None;
                     if matches!(
                         this.scope,
                         Scope::Runs
@@ -3096,6 +3097,7 @@ impl Render for TaskApp {
                     this.project_rename = None;
                     this.topic_move = None;
                     this.planning_project = None;
+                    this.planning_replan_source = None;
                     this.directory_project = None;
                     this.error.clear();
                     w.focus(&this.focus, cx);
@@ -3139,7 +3141,7 @@ impl Render for TaskApp {
                     .text_xs()
                     .child(
                         row()
-                            .child(div().size(px(5.)).rounded_full().bg(rgb(colors.accent)))
+                            .child(gpui_kit::component::Icon::new(assets::IconName::Dot).size_4().text_color(rgb(colors.accent)))
                             .child(muted(
                                 if !self.storage_error.is_empty() {
                                     format!("NOT SAVED: {}", self.storage_error)
@@ -3268,13 +3270,13 @@ impl Render for TaskApp {
         root.into_any_element()
     }
 }
-fn priority_symbol(p: Priority) -> &'static str {
+fn priority_icon(p: Priority) -> assets::IconName {
     match p {
-        Priority::None => "−",
-        Priority::Low => "↓",
-        Priority::Medium => "=",
-        Priority::High => "↑",
-        Priority::Urgent => "!",
+        Priority::None => assets::IconName::Minus,
+        Priority::Low => assets::IconName::ArrowDown,
+        Priority::Medium => assets::IconName::Equal,
+        Priority::High => assets::IconName::ArrowUp,
+        Priority::Urgent => assets::IconName::CircleAlert,
     }
 }
 fn append_children(tasks: &[Task], id: u64, collapsed: &[u64], out: &mut Vec<Task>) {

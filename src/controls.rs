@@ -46,18 +46,6 @@ pub fn primary_button(id: impl Into<ElementId>, text: impl Into<SharedString>) -
 pub fn link_button(id: impl Into<ElementId>, text: impl Into<SharedString>) -> Button {
     button(id, text).link().px_0().self_start().max_w_full()
 }
-pub fn icon_button(
-    id: impl Into<ElementId>,
-    glyph: impl Into<SharedString>,
-    name: impl Into<SharedString>,
-) -> Button {
-    let name = name.into();
-    button(id, glyph)
-        .w(px(32.))
-        .px_0()
-        .tooltip(name.clone())
-        .accessibility_label(name)
-}
 pub fn select_button(
     id: impl Into<ElementId>,
     text: impl Into<SharedString>,
@@ -167,7 +155,7 @@ pub fn task_menu_item(title: String) -> gpui_kit::component::menu::PopupMenuItem
 pub fn property_choice(
     id: impl Into<ElementId>,
     text: impl Into<String>,
-    icon: Option<&str>,
+    icon: Option<assets::IconName>,
     selected: bool,
 ) -> Button {
     let text = text.into();
@@ -187,7 +175,7 @@ pub fn property_choice(
                             .w_4()
                             .flex_shrink_0()
                             .text_center()
-                            .child(icon.to_string()),
+                            .child(gpui_kit::component::Icon::new(icon).size_4()),
                     )
                 })
                 .child(single_line_text("choice-label", text))
@@ -196,7 +184,7 @@ pub fn property_choice(
                         .w_4()
                         .flex_shrink_0()
                         .text_center()
-                        .child(if selected { "✓" } else { "" }),
+                        .when(selected, |d| d.child(gpui_kit::component::Icon::new(assets::IconName::Check).size_4())),
                 ),
         )
 }

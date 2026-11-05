@@ -42,3 +42,7 @@
 - 任务页默认保留开始/查看结果、状态、优先级、项目和截止日期。More details 收起低频属性和执行设置；缺少模型或工作目录时直接显示修复入口。
 - 研究页默认显示目标输入与已有研究；Advanced settings 进入配置页，Back to research 返回，输入保留。直接设置链接必须打开配置页。
 - 已完成研究步骤以 View result 为主操作；重新执行使用次按钮。目标结果入口指向有效研究步骤，不把规划 JSON 当作最终报告。
+
+## Icon source and implementation
+
+All interface icons use [Lucide](https://lucide.dev/icons/) via the pinned gpui-kit assets. Follow [Icon Guidelines](doc/ICON_GUIDELINES.md) for semantic choices, embedding, accessibility, exported reports, and verification. Replanned topics use NotebookPen with an explicit Replanned tooltip.

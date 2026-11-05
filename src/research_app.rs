@@ -380,6 +380,27 @@ impl TaskApp {
             cx.notify();
         }
     }
+    pub fn regenerate_report(&mut self, source_id: u64, style: &str, cx: &mut Context<Self>) {
+        self.error.clear();
+        if !self.ready_to_run(cx) { return; }
+        let result = research::prepare_report_regeneration(&self.store, source_id, style)
+            .and_then(|mut run| {
+                if self.task_running(run.task_id) || self.recovery_blocks_task(run.task_id) {
+                    return Err("Wait for this task to finish or resolve its previous session before regenerating.".into());
+                }
+                let files = self.prepare_run_materials(run.task_id, &mut run)?;
+                Ok((run, files))
+            });
+        match result {
+            Ok((run, files)) => {
+                self.launch_run(run, files, cx);
+                if self.error.is_empty() { self.report_regeneration = None; }
+            }
+            Err(error) => self.error = error,
+        }
+        cx.notify();
+    }
+
     pub fn prepare_run_materials(
         &self,
         id: u64,

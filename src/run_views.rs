@@ -14,45 +14,14 @@ use gpui_kit::{
     *,
 };
 
-// Fixed bounds keep status labels still while the ring expands and fades.
+// Keep the Lucide status icon in fixed bounds while its opacity pulses.
 fn running_indicator(id: &'static str, color: u32) -> AnyElement {
-    div()
-        .id(id)
-        .relative()
-        .size(px(16.))
-        .flex_shrink_0()
-        .child(
-            div()
-                .absolute()
-                .rounded_full()
-                .border_1()
-                .border_color(rgb(color))
-                .with_animation(
-                    "ripple",
-                    Animation::new(std::time::Duration::from_millis(1800)).repeat(),
-                    |ring, phase| {
-                        let size = 6. + 10. * phase;
-                        ring.size(px(size))
-                            .left(px((16. - size) / 2.))
-                            .top(px((16. - size) / 2.))
-                            .opacity(0.65 * (1. - phase))
-                    },
-                ),
-        )
-        .child(
-            div()
-                .absolute()
-                .left(px(5.))
-                .top(px(5.))
-                .size(px(6.))
-                .rounded_full()
-                .bg(rgb(color))
-                .with_animation(
-                    "breath",
-                    Animation::new(std::time::Duration::from_millis(1800)).repeat(),
-                    |dot, phase| dot.opacity(0.75 + 0.25 * (phase * std::f32::consts::TAU).cos()),
-                ),
-        )
+    div().id(id).size(px(16.)).flex_shrink_0()
+        .child(gpui_kit::component::Icon::new(assets::IconName::CircleDot)
+            .size_4().text_color(rgb(color)))
+        .with_animation("breath",
+            Animation::new(std::time::Duration::from_millis(1800)).repeat(),
+            |icon, phase| icon.opacity(0.75 + 0.25 * (phase * std::f32::consts::TAU).cos()))
         .into_any_element()
 }
 
@@ -371,7 +340,7 @@ impl TaskApp {
                     .child(row().flex_wrap().gap_3()
                         .when_some(topic_task, |d, task| {
                             let id = task.id;
-                            d.child(quiet_button("open-run-goal", "Goal details →")
+                            d.child(quiet_button("open-run-goal", "Goal details").icon(assets::IconName::ArrowRight)
                                 .h_6().px_0().text_xs().text_color(rgb(colors.accent))
                                 .on_click(cx.listener(move |a, _, w, cx| a.open_task(id, w, cx))))
                         })
@@ -826,6 +795,19 @@ impl TaskApp {
                     .on_click(cx.listener(|this, _, _, cx| this.open_ego(cx))),
             );
         }
+        if run.research_kind == Some(ResearchKind::Advise) && run.status == "Succeeded" {
+            let source_id = run.id;
+            actions = actions.child(quiet_button("regenerate-report", "Regenerate")
+                .disabled(self.task_running(id))
+                .tooltip("Rewrite this report using existing evidence and analysis")
+                .on_click(cx.listener(move |a, _, w, cx| {
+                    a.report_regeneration = Some((source_id, cx.new(|cx|
+                        gpui_kit::component::input::TextareaState::new(w, cx)
+                            .placeholder("Optional: tone, audience or length…")
+                            .rows(3))));
+                    cx.notify();
+                })));
+        }
         if active {
             if run_goal.is_some_and(|goal| self.research_sequences.contains(&goal)) {
                 actions = actions.child(
@@ -884,7 +866,7 @@ impl TaskApp {
                     menu
                 }));
         }
-        let progress = col()
+        let mut progress = col()
             .id("run-progress")
             .gap_2()
             .flex_shrink_0()
@@ -910,6 +892,28 @@ impl TaskApp {
                 d.child(label(queue_explanation.clone(), cx))
             })
             .map(observed);
+        if let Some((source_id, input)) = &self.report_regeneration {
+            if *source_id == run.id {
+                let source_id = *source_id;
+                let input = input.clone();
+                let preferences = input.clone();
+                progress = col().gap_2().child(progress).child(col().gap_2()
+                    .child(label("Rewrite only the final report. Existing evidence, analysis and earlier report versions are kept.", cx))
+                    .child(gpui_kit::component::input::Textarea::new(&input))
+                    .child(row().gap_2()
+                        .child(primary_button("confirm-regenerate-report", "Regenerate report")
+                            .disabled(self.task_running(id))
+                            .on_click(cx.listener(move |a, _, _, cx| {
+                                let style = preferences.read(cx).value().to_string();
+                                a.regenerate_report(source_id, &style, cx);
+                            })))
+                        .child(quiet_button("cancel-regenerate-report", "Cancel")
+                            .on_click(cx.listener(|a, _, _, cx| {
+                                a.report_regeneration = None;
+                                cx.notify();
+                            }))))).into_any_element();
+            }
+        }
         let goal = self
             .store
             .task(id)
@@ -961,11 +965,7 @@ impl TaskApp {
                                     div()
                                         .w(px(16.))
                                         .flex_shrink_0()
-                                        .child(if completed == tasks.len() {
-                                            "✓"
-                                        } else {
-                                            "○"
-                                        })
+                                        .child(gpui_kit::component::Icon::new(if completed == tasks.len() { assets::IconName::Check } else { assets::IconName::Circle }).size_4())
                                         .into_any_element()
                                 },
                             )

@@ -139,6 +139,9 @@ pub struct Task {
     pub id: u64,
     #[serde(default)]
     pub created_at: String,
+    /// Internal research entity owned by an automation occurrence, never a normal task.
+    #[serde(default)]
+    pub automation_id: Option<u64>,
     pub title: String,
     pub description: String,
     pub project_id: u64,
@@ -161,6 +164,16 @@ pub struct Task {
     #[serde(default)]
     pub research: Option<crate::research::ResearchTask>,
 }
+/// User projects are the only ones shown in navigation. The automation project is
+/// a generated container for automation output and is never offered as a choice.
+#[derive(Clone, Copy, Debug, Default, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "snake_case")]
+pub enum ProjectKind {
+    #[default]
+    User,
+    Automation,
+}
+
 #[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
 pub struct Project {
     pub id: u64,
@@ -170,11 +183,16 @@ pub struct Project {
     pub directory: String,
     #[serde(default)]
     pub research_brief: String,
+    #[serde(default)]
+    pub kind: ProjectKind,
 }
 #[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
 pub struct Topic {
     #[serde(default)]
     pub replanned_from: Option<u64>,
+    /// Result topics created for automations are excluded from normal research views.
+    #[serde(default)]
+    pub automation_id: Option<u64>,
     pub id: u64,
     pub project_id: u64,
     pub name: String,
@@ -195,6 +213,12 @@ pub struct StagePolicy {
 }
 #[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
 pub struct AgentRun {
+    /// Automation occurrence that owns this run, when it is not a normal research run.
+    #[serde(default)]
+    pub automation_occurrence_id: Option<u64>,
+    /// Independent deadline for a post-period report regeneration attempt.
+    #[serde(default)]
+    pub deadline_at: Option<i64>,
     /// Automatic retries in this user-started attempt chain (initial run is zero).
     #[serde(default)]
     pub auto_retry_attempt: u8,
@@ -244,6 +268,12 @@ pub struct AgentRun {
 #[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
 pub struct Store {
     #[serde(default)]
+    pub automation_schema_version: u32,
+    #[serde(default)]
+    pub automations: Vec<crate::automation::AutomationDefinition>,
+    #[serde(default)]
+    pub automation_occurrences: Vec<crate::automation::AutomationOccurrence>,
+    #[serde(default)]
     pub report_publishing: crate::report_publish::PublishingConfig,
     #[serde(default)]
     pub publications: Vec<crate::report_publish::Publication>,
@@ -275,6 +305,41 @@ pub struct Store {
 }
 
 impl Store {
+    /// Every human-facing project picker and navigation list uses this view.
+    pub fn visible_projects(&self) -> impl Iterator<Item = &Project> {
+        self.projects
+            .iter()
+            .filter(|project| project.kind == ProjectKind::User)
+    }
+    pub fn automation_project(&self) -> Option<&Project> {
+        self.projects
+            .iter()
+            .find(|project| project.kind == ProjectKind::Automation)
+    }
+    /// Automation output is stored under one generated project so it never mixes
+    /// with manually created projects and topics.
+    pub fn ensure_automation_project(&mut self, directory: String) -> Result<u64, String> {
+        if let Some(project) = self.automation_project() {
+            return Ok(project.id);
+        }
+        let id = self
+            .projects
+            .iter()
+            .map(|project| project.id)
+            .max()
+            .unwrap_or(0)
+            .checked_add(1)
+            .ok_or("No project identifiers remain.")?;
+        self.projects.push(Project {
+            id,
+            name: "Automations".into(),
+            key: format!("AUTO{id}"),
+            directory,
+            research_brief: String::new(),
+            kind: ProjectKind::Automation,
+        });
+        Ok(id)
+    }
     /// A non-empty stage override takes precedence over the workspace default.
     pub fn effective_model<'a>(&'a self, stage_override: &'a str) -> &'a str {
         if stage_override.is_empty() {
@@ -308,6 +373,9 @@ impl Store {
     /// A new workspace contains configuration, never demonstration tasks or runs.
     pub fn empty() -> Self {
         Self {
+            automation_schema_version: crate::automation::AUTOMATION_SCHEMA_VERSION,
+            automations: vec![],
+            automation_occurrences: vec![],
             report_publishing: Default::default(),
             publications: vec![],
             tasks: vec![],
@@ -317,6 +385,7 @@ impl Store {
                 key: "TASK".into(),
                 directory: String::new(),
                 research_brief: String::new(),
+                kind: ProjectKind::User,
             }],
             topics: vec![],
             research_requests: vec![],
@@ -412,6 +481,7 @@ impl Store {
         let id = self.topics.iter().map(|t| t.id).max().unwrap_or(0) + 1;
         self.topics.push(Topic {
             replanned_from: None,
+            automation_id: None,
             id,
             project_id: project,
             name,
@@ -551,6 +621,7 @@ impl Store {
         let mut included = std::collections::HashSet::new();
         for run in self.runs.iter().rev().filter(|run| {
             run.project_plan.is_none()
+                && run.automation_occurrence_id.is_none()
                 && run.research_kind != Some(crate::research::ResearchKind::Goal)
                 && self.task(run.task_id).is_some()
                 && !self.run_is_archived(run)
@@ -647,11 +718,39 @@ impl Store {
         } else {
             None
         };
+        Ok(self.insert_task(title, project_id, stage, parent_id, topic_id))
+    }
+    /// Root tasks that belong to no topic. Automation quick tasks use this so a
+    /// small recurring check never creates a topic per period.
+    pub fn create_root_task_without_topic(
+        &mut self,
+        title: impl Into<String>,
+        project_id: u64,
+        stage: Stage,
+    ) -> Result<u64, String> {
+        let title = title.into().trim().to_string();
+        if title.is_empty() {
+            return Err("Enter a task title.".into());
+        }
+        if !self.projects.iter().any(|p| p.id == project_id) {
+            return Err("Choose an existing project.".into());
+        }
+        Ok(self.insert_task(title, project_id, stage, None, None))
+    }
+    fn insert_task(
+        &mut self,
+        title: String,
+        project_id: u64,
+        stage: Stage,
+        parent_id: Option<u64>,
+        topic_id: Option<u64>,
+    ) -> u64 {
         let id = self.next_id;
         self.next_id += 1;
         self.tasks.push(Task {
             id,
             created_at: crate::opencode::timestamp(),
+            automation_id: None,
             title,
             description: String::new(),
             project_id,
@@ -670,7 +769,7 @@ impl Store {
             attachments: vec![],
             research: None,
         });
-        Ok(id)
+        id
     }
     /// A display-name edit preserves planning snapshots that are still valid.
     /// Do not refresh snapshots already invalidated by scope or destination changes.
@@ -1103,6 +1202,29 @@ fn matches_term(task: &Task, term: &str) -> bool {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn automation_project_is_generated_hidden_and_reused() {
+        let mut store = Store::empty();
+        let user_projects = store.visible_projects().count();
+        let id = store
+            .ensure_automation_project("/tmp/automations".into())
+            .unwrap();
+        assert_eq!(store.visible_projects().count(), user_projects);
+        assert!(store.visible_projects().all(|project| project.id != id));
+        assert_eq!(
+            store.automation_project().map(|project| project.name.as_str()),
+            Some("Automations")
+        );
+        // A second call never creates another container.
+        assert_eq!(store.ensure_automation_project("/other".into()).unwrap(), id);
+        assert_eq!(store.projects.iter().filter(|p| p.kind == ProjectKind::Automation).count(), 1);
+        // The container survives serialization without leaking into user projects.
+        let reopened: Store = serde_json::from_slice(&serde_json::to_vec(&store).unwrap()).unwrap();
+        assert_eq!(reopened.visible_projects().count(), user_projects);
+        assert!(reopened.automation_project().is_some());
+    }
+
     #[test]
     fn agent_configuration_migrates_and_prevents_cross_agent_model_inheritance() {
         use crate::research::ResearchKind;

@@ -45,7 +45,11 @@ impl TaskApp {
                 .child(div().text_lg().font_weight(FontWeight::SEMIBOLD).child("Rename project"))
                 .child(muted("Change the display name. Existing topics, tasks, files and running work stay connected.", cx))
                 .child(Input::new(input).id("rename-project-name"))
-                .when(!self.error.is_empty(), |d| d.child(div().text_color(rgb(colors.danger)).child(self.error.clone())))
+                .when(!self.error.is_empty(), |d| d.child(crate::views::notice(
+                    crate::views::NoticeTone::Danger,
+                    self.error.clone(),
+                    cx,
+                )))
                 .child(row().justify_end()
                     .child(button("cancel-project-rename", "Cancel").on_click(cx.listener(|a, _, w, cx| {
                         a.project_rename = None; a.error.clear(); w.focus(&a.focus, cx); cx.notify();
@@ -107,7 +111,11 @@ impl TaskApp {
                 .child(div().id("project-plan-brief").child(Textarea::new(&self.project_brief)).map(observed))
                 .child(label("Example: Analyze Intel’s latest earnings and market reaction using official disclosures and accessible analyst commentary. Give me a source-linked report.", cx))
                 .child(muted("Goals and steps are saved under the topic. Goals appear in Backlog. Move a goal to Todo to approve all its steps, then click Run. Planning never starts the research.", cx))
-                .when(!self.error.is_empty(), |d| d.child(div().text_color(rgb(colors.danger)).child(self.error.clone())))
+                .when(!self.error.is_empty(), |d| d.child(crate::views::notice(
+                    crate::views::NoticeTone::Danger,
+                    self.error.clone(),
+                    cx,
+                )))
                 .child(row().justify_end()
                     .child(button("save-project-context", "Save request for later").on_click(cx.listener(move |a, _, _, cx| {
                         let input = a.project_brief.read(cx).value().to_string();

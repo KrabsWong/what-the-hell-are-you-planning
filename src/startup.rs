@@ -48,6 +48,8 @@ fn probe_agent(agent: &str, path: &str) -> Result<String, String> {
 impl TaskApp {
     pub(crate) fn begin_workspace_open(&mut self, storage: crate::persistence::Storage, cx: &mut Context<Self>) {
         if self.startup.workspace_pending.is_some() { return; }
+        // An old workspace's clock must never dispatch into the new store.
+        self.cancel_automation_timer();
         self.workspace_required = true;
         self.startup.required = true;
         self.storage_error.clear();
@@ -273,7 +275,11 @@ impl TaskApp {
                     .when_some(self.startup.upgrade_backup.as_ref(), |view, backup| view.child(col().gap_1()
                         .child(label("Workspace data upgraded. The previous database was backed up.", cx))
                         .child(single_line_text("workspace-upgrade-backup", backup.display().to_string()))))
-                    .when(!self.storage_error.is_empty(), |view| view.child(div().text_xs().text_color(rgb(colors.danger)).child(self.storage_error.clone())))
+                    .when(!self.storage_error.is_empty(), |view| view.child(crate::views::notice(
+                        crate::views::NoticeTone::Danger,
+                        self.storage_error.clone(),
+                        cx,
+                    )))
                     .when(self.workspace_required && self.workspace_root.is_some() && !self.storage_error.is_empty(), |view| view.child(
                         button("retry-workspace-upgrade", "Retry workspace preparation").on_click(cx.listener(|this,_,_,cx| {
                             if let Some(root) = &this.workspace_root { this.begin_workspace_open(crate::persistence::Storage::new(root.join("workspace/workspace.sqlite3")), cx); }
@@ -299,7 +305,11 @@ impl TaskApp {
                             .child(link_button("startup-open-ego", "Open").icon(assets::IconName::ExternalLink).on_click(cx.listener(|this,_,_,cx| this.open_ego(cx))))))
                     .child(Input::new(&self.ego_input).id("startup-ego"))
                     .when(!ego.2.is_empty(), |view| view.child(div().text_xs().text_color(rgb(if ego.3 { colors.muted } else { ego.1 })).child(ego.2.clone())))
-                    .when(!self.error.is_empty(), |view| view.child(div().text_xs().text_color(rgb(colors.danger)).child(self.error.clone()))))
+                    .when(!self.error.is_empty(), |view| view.child(crate::views::notice(
+                        crate::views::NoticeTone::Danger,
+                        self.error.clone(),
+                        cx,
+                    ))))
                 .child(row().justify_between().gap_3()
                     .child(div().flex_1().min_w_0().text_xs().text_color(rgb(colors.muted)).child("Next: configure your model and provider in Settings."))
                     .child(row().gap_2()

@@ -60,6 +60,84 @@ pub(crate) fn chip(text: impl Into<SharedString>, color: u32, cx: &App) -> Div {
         .text_color(rgb(color))
         .child(text.into())
 }
+
+/// Semantic tones for inline notices. Every notice uses a tinted surface of its
+/// own tone so light and dark themes stay readable without extra branching.
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub(crate) enum NoticeTone {
+    Success,
+    Info,
+    Warning,
+    Danger,
+}
+impl NoticeTone {
+    pub(crate) fn color(self, colors: &crate::appearance::Palette) -> u32 {
+        match self {
+            Self::Success => colors.success,
+            Self::Info => colors.secondary,
+            Self::Warning => colors.warning,
+            Self::Danger => colors.danger,
+        }
+    }
+    /// How much of the tone color is blended into the panel surface.
+    fn tint(self) -> f32 {
+        match self {
+            Self::Success => 0.16,
+            Self::Info => 0.08,
+            Self::Warning => 0.16,
+            Self::Danger => 0.14,
+        }
+    }
+    pub(crate) fn surface(self, colors: &crate::appearance::Palette) -> u32 {
+        blend_color(self.color(colors), colors.panel, self.tint())
+    }
+}
+
+fn blend_color(foreground: u32, background: u32, weight: f32) -> u32 {
+    let channel = |shift: u32| {
+        let front = ((foreground >> shift) & 0xff) as f32;
+        let back = ((background >> shift) & 0xff) as f32;
+        ((front * weight + back * (1.0 - weight)).round() as u32) << shift
+    };
+    channel(16) | channel(8) | channel(0)
+}
+
+pub(crate) fn notice(tone: NoticeTone, text: impl Into<SharedString>, cx: &App) -> Div {
+    let colors = palette(cx);
+    let color = tone.color(&colors);
+    div()
+        .p_3()
+        .rounded_md()
+        .border_1()
+        .border_color(rgb(color))
+        .bg(rgb(tone.surface(&colors)))
+        .text_color(rgb(color))
+        .child(text.into())
+}
+
+pub(crate) fn notice_panel(
+    tone: NoticeTone,
+    title: impl Into<SharedString>,
+    body: impl Into<SharedString>,
+    cx: &App,
+) -> Div {
+    let colors = palette(cx);
+    let color = tone.color(&colors);
+    col()
+        .p_3()
+        .gap_1()
+        .rounded_md()
+        .border_1()
+        .border_color(rgb(color))
+        .bg(rgb(tone.surface(&colors)))
+        .text_color(rgb(color))
+        .child(
+            div()
+                .font_weight(FontWeight::SEMIBOLD)
+                .child(title.into()),
+        )
+        .child(div().child(body.into()))
+}
 pub(crate) fn stage_color(stage: Stage, cx: &App) -> u32 {
     let colors = palette(cx);
     match stage {
@@ -189,10 +267,11 @@ impl TaskApp {
     fn save_feedback_view(&self, cx: &mut Context<Self>) -> AnyElement {
         let colors = palette(cx);
         if let Some(feedback) = &self.save_feedback {
-            let (message, failed) = match feedback {
-                Ok(message) => (message, false),
-                Err(message) => (message, true),
+            let (message, tone) = match feedback {
+                Ok(message) => (message, NoticeTone::Success),
+                Err(message) => (message, NoticeTone::Danger),
             };
+            let color = tone.color(&colors);
             return row()
                 .id("save-feedback")
                 .mx_4()
@@ -202,29 +281,21 @@ impl TaskApp {
                 .gap_3()
                 .items_start()
                 .rounded_lg()
-                .bg(rgb(colors.panel))
+                .bg(rgb(tone.surface(&colors)))
                 .border_1()
-                .border_color(rgb(if failed {
-                    colors.danger
-                } else {
-                    colors.success
-                }))
+                .border_color(rgb(color))
                 .child(
                     div()
                         .text_lg()
-                        .text_color(rgb(if failed {
-                            colors.danger
-                        } else {
-                            colors.success
-                        }))
-                        .child(gpui_kit::component::Icon::new(if failed { assets::IconName::CircleAlert } else { assets::IconName::Check }).size_4()),
+                        .text_color(rgb(color))
+                        .child(gpui_kit::component::Icon::new(if tone == NoticeTone::Danger { assets::IconName::CircleAlert } else { assets::IconName::Check }).size_4()),
                 )
                 .child(
                     col()
                         .flex_1()
                         .min_w_0()
                         .gap_1()
-                        .child(div().font_weight(FontWeight::SEMIBOLD).child(if failed {
+                        .child(div().font_weight(FontWeight::SEMIBOLD).child(if tone == NoticeTone::Danger {
                             "Not saved"
                         } else {
                             "Saved"
@@ -290,9 +361,16 @@ impl TaskApp {
             .child(row().px_2().pb_3().child(label("Personal workspace", cx)));
         side = side.child(section("Workspace", cx));
         let count = self.store.tasks.iter()
-            .filter(|t| !self.store.task_is_archived(t.id) && t.parent_id.is_none())
+            .filter(|t| !self.store.task_is_archived(t.id) && t.parent_id.is_none() && t.automation_id.is_none())
             .count();
         side = side.child(self.nav("all", "All", Scope::All, count, cx));
+        side = side.child(self.nav(
+            "automations",
+            "Automations",
+            Scope::Automations,
+            self.store.automations.iter().filter(|a| !matches!(a.status, crate::automation::DefinitionStatus::Archived)).count(),
+            cx,
+        ));
         let cycles: std::collections::BTreeSet<_> = self
             .store
             .tasks
@@ -332,7 +410,7 @@ impl TaskApp {
                         })),
                 ),
         );
-        let mut projects: Vec<_> = self.store.projects.iter().collect();
+        let mut projects: Vec<_> = self.store.visible_projects().collect();
         projects.sort_by_key(|project| crate::display_order::newest_id(project.id));
         for project in projects {
             let count = self
@@ -343,6 +421,7 @@ impl TaskApp {
                     !self.store.task_is_archived(t.id)
                         && t.parent_id.is_none()
                         && t.project_id == project.id
+                        && t.automation_id.is_none()
                         && !matches!(t.stage, Stage::Done | Stage::Cancelled)
                 })
                 .count();
@@ -437,7 +516,7 @@ impl TaskApp {
                     .store
                     .topics
                     .iter()
-                    .filter(|t| t.project_id == pid && !t.archived)
+                    .filter(|t| t.project_id == pid && !t.archived && t.automation_id.is_none())
                     .map(|t| Some(t.id))
                     .collect();
                 // Topic IDs increase monotonically at creation, including legacy topics.
@@ -628,7 +707,7 @@ impl TaskApp {
                 "archive",
                 "Archive",
                 Scope::Archive,
-                self.store.tasks.iter().filter(|t| self.store.task_is_archived(t.id)).count(),
+                self.store.tasks.iter().filter(|t| t.automation_id.is_none() && self.store.task_is_archived(t.id)).count(),
                 cx,
             ));
         let appearance = self.store.appearance;
@@ -708,6 +787,7 @@ impl TaskApp {
             Scope::Runs => assets::IconName::ChartNoAxesCombined,
             Scope::Recovery => assets::IconName::Pause,
             Scope::Research => assets::IconName::Search,
+            Scope::Automations => assets::IconName::Clock,
             Scope::Settings => assets::IconName::Settings,
         };
         button(id, "")
@@ -786,6 +866,20 @@ impl TaskApp {
             ));
         }
         if let Some(task) = task {
+            if task.automation_id.is_some() {
+                links.push((
+                    "location-automations".into(),
+                    "Automations".into(),
+                    CrumbTarget::View(Scope::Automations),
+                ));
+                if let Some(definition) = task
+                    .automation_id
+                    .and_then(|id| self.store.automation(id))
+                {
+                    current = definition.name.clone();
+                }
+                return (links, current);
+            }
             if let Some(project) = self.store.projects.iter().find(|p| p.id == task.project_id) {
                 links.push((
                     "location-project".into(),
@@ -1991,7 +2085,11 @@ impl TaskApp {
                 .size_full()
                 .child(head)
                 .when_some(self.task_start_feedback.as_ref().filter(|(task, _)| *task == id), |d, (_, message)| {
-                    d.child(div().px_6().py_2().text_sm().text_color(rgb(colors.danger)).child(message.clone()))
+                    d.child(div().px_6().py_2().child(crate::views::notice(
+                        crate::views::NoticeTone::Danger,
+                        message.clone(),
+                        cx,
+                    )))
                 })
                 .child(self.goal_steps_view(id, cx))
                 .into_any_element();
@@ -2880,7 +2978,7 @@ impl TaskApp {
                         row()
                             .gap_3()
                             .flex_wrap()
-                            .children(self.store.projects.iter().map(|p| {
+                            .children(self.store.visible_projects().map(|p| {
                                 let id = p.id;
                                 select_button(
                                     format!("draft-project-{id}"),
@@ -3019,6 +3117,7 @@ impl Render for TaskApp {
                 Scope::Runs => self.runs(cx),
                 Scope::Recovery => self.recovery_view(cx),
                 Scope::Research => self.research_view(cx),
+                Scope::Automations => self.automations(cx),
                 Scope::Settings => self.model_settings(cx),
                 _ => self.collection(cx),
             }
@@ -3066,6 +3165,7 @@ impl Render for TaskApp {
                         Scope::Runs
                             | Scope::Recovery
                             | Scope::Research
+                            | Scope::Automations
                             | Scope::Settings
                             | Scope::Topic(_)
                     ) {
@@ -3256,6 +3356,7 @@ impl Render for TaskApp {
                                                     key: format!("P{id}"),
                                                     directory,
                                                     research_brief: String::new(),
+                                                    kind: crate::domain::ProjectKind::User,
                                                 });
                                                 this.new_project = None;
                                                 this.navigate(Scope::Project(id), w, cx);
@@ -3270,6 +3371,17 @@ impl Render for TaskApp {
         root.into_any_element()
     }
 }
+pub(crate) fn stage_color_for_definition(status: crate::automation::DefinitionStatus, cx: &App) -> u32 {
+    let colors = palette(cx);
+    match status {
+        crate::automation::DefinitionStatus::Enabled => colors.success,
+        crate::automation::DefinitionStatus::Paused => colors.warning,
+        crate::automation::DefinitionStatus::Draft => colors.secondary,
+        crate::automation::DefinitionStatus::NeedsAttention => colors.danger,
+        crate::automation::DefinitionStatus::Archived => colors.muted,
+    }
+}
+
 fn priority_icon(p: Priority) -> assets::IconName {
     match p {
         Priority::None => assets::IconName::Minus,

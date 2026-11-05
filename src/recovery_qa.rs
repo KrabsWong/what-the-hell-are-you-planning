@@ -60,6 +60,7 @@ print(json.dumps({'type':'text','part':{'text':json.dumps(result)}}),flush=True)
                 key: "OTHER".into(),
                 directory: dir.to_string_lossy().into_owned(),
                 research_brief: String::new(),
+                kind: crate::domain::ProjectKind::User,
             });
         }
     }

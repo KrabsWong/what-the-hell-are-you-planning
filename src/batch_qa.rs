@@ -63,6 +63,7 @@ pub fn run() {
         key: "OTHER".into(),
         directory: root.to_string_lossy().into_owned(),
         research_brief: String::new(),
+        kind: crate::domain::ProjectKind::User,
     });
     initial.default_model = "fixture/default".into();
     initial.research_config.models = [

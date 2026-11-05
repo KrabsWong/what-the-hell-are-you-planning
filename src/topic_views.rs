@@ -33,7 +33,7 @@ pub(crate) struct TopicMoveDialog {
 impl TaskApp {
     pub(crate) fn request_topic_move(&mut self, topic: u64, w: &mut Window, cx: &mut Context<Self>) {
         let Some(current) = self.store.topics.iter().find(|t| t.id == topic) else { return; };
-        let choices: Vec<_> = self.store.projects.iter().filter(|p| p.id != current.project_id)
+        let choices: Vec<_> = self.store.visible_projects().filter(|p| p.id != current.project_id)
             .map(|p| ProjectChoice { id: p.id, title: format!("{} · {} (#{})", p.name, p.key, p.id).into() }).collect();
         let has_destinations = !choices.is_empty();
         let projects = cx.new(|cx| SelectState::new(SearchableVec::new(choices), None, w, cx).searchable(true));
@@ -71,7 +71,7 @@ impl TaskApp {
         let topic = self.store.topics.iter().find(|t| t.id == dialog.topic);
         let name = topic.map(|t| t.display_name()).unwrap_or_default();
         let source = topic.and_then(|t| self.store.projects.iter().find(|p| p.id == t.project_id)).map(|p| p.name.clone()).unwrap_or_default();
-        let count = self.store.tasks.iter().filter(|t| self.store.task_topic(t.id).is_some_and(|t| t.id == dialog.topic)).count();
+        let count = self.store.tasks.iter().filter(|t| t.automation_id.is_none() && self.store.task_topic(t.id).is_some_and(|t| t.id == dialog.topic)).count();
         let blockers = self.store.topic_move_blockers(dialog.topic, self.todo_batch.as_ref());
         let blocked = !blockers.is_empty();
         let selected = dialog.projects.read(cx).selected_value().copied();
@@ -98,7 +98,13 @@ impl TaskApp {
                 body = body.child(muted("No other projects available. Close this dialog and create a project first.", cx));
             }
         }
-        if !self.error.is_empty() { body = body.child(div().text_color(rgb(colors.danger)).child(self.error.clone())); }
+        if !self.error.is_empty() {
+            body = body.child(crate::views::notice(
+                crate::views::NoticeTone::Danger,
+                self.error.clone(),
+                cx,
+            ));
+        }
         div().absolute().inset_0().occlude().bg(rgba(0x00000080)).flex().items_center().justify_center().p_4()
             .child(col().w(px(600.)).max_w_full().p_6().gap_4().rounded_lg().bg(rgb(colors.panel))
                 .child(div().text_lg().font_weight(FontWeight::SEMIBOLD).child(if blocked { "Cannot move topic yet" } else { "Move topic" }))
@@ -165,7 +171,11 @@ impl TaskApp {
                 .child(div().text_lg().font_weight(FontWeight::SEMIBOLD).child(if id.is_some() { "Rename topic" } else { "New topic" }))
                 .child(muted("Keep related research goals together around a company, subject or question.", cx))
                 .child(Input::new(input).id("topic-name"))
-                .when(!self.error.is_empty(), |d| d.child(div().text_color(rgb(colors.danger)).child(self.error.clone())))
+                .when(!self.error.is_empty(), |d| d.child(crate::views::notice(
+                    crate::views::NoticeTone::Danger,
+                    self.error.clone(),
+                    cx,
+                )))
                 .child(row().justify_end()
                     .child(button("cancel-topic", "Cancel").on_click(cx.listener(|a, _, w, cx| { a.topic_editor = None; a.error.clear(); w.focus(&a.focus, cx); cx.notify(); })))
                     .child(primary_button("save-topic", "Save topic").on_click(cx.listener(|a, _, w, cx| a.save_topic(w, cx))))))
@@ -204,7 +214,7 @@ impl TaskApp {
             .store
             .topics
             .iter()
-            .filter(|t| t.project_id == project && !t.archived)
+            .filter(|t| t.project_id == project && !t.archived && t.automation_id.is_none())
             .map(|t| (Some(t.id), t.display_name()))
             .collect();
         let entity = cx.entity().downgrade();

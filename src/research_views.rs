@@ -20,6 +20,7 @@ impl TaskApp {
             .iter()
             .filter(|t| {
                 !self.store.task_is_archived(t.id)
+                    && t.automation_id.is_none()
                     && t.research
                         .as_ref()
                         .is_some_and(|r| r.kind == ResearchKind::Goal)
@@ -83,7 +84,7 @@ impl TaskApp {
             .child(label("EXTRA CONTEXT · OPTIONAL", cx))
             .child(div().id("research-brief").child(Textarea::new(&self.research_brief)).map(observed))
             .child(label("PROJECT", cx))
-            .child(row().flex_wrap().children(self.store.projects.iter().map(|p|{let id=p.id;select_button(format!("research-project-{id}"),p.name.clone(),self.research_project==id).on_click(cx.listener(move|this,_,_,cx|{this.research_project=id;this.research_topic=None;cx.notify();}))})))
+            .child(row().flex_wrap().children(self.store.visible_projects().map(|p|{let id=p.id;select_button(format!("research-project-{id}"),p.name.clone(),self.research_project==id).on_click(cx.listener(move|this,_,_,cx|{this.research_project=id;this.research_topic=None;cx.notify();}))})))
             .child(label("TOPIC", cx))
             .child(self.topic_picker(None, self.research_project, cx))
             .child(row().flex_wrap().child(button("research-folder","Set working folder…").on_click(cx.listener(|this,_,w,cx|this.open_directory(this.research_project,w,cx)))).child(primary_button("create-research", "Generate research plan").on_click(cx.listener(|this,_,w,cx|this.create_research(w,cx)))))

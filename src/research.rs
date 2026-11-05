@@ -815,6 +815,8 @@ pub fn prepare_run(store: &Store, id: u64) -> Result<AgentRun, String> {
         prompt.push_str("\nFINAL RESPONSE CONTRACT: Return ONLY a JSON object {\"status\":\"complete\" or \"partial\" or \"blocked\",\"report\":\"your readable Markdown report with evidence and links\",\"blocker\":null or \"source_unavailable\" or \"browser_handoff\" or \"browser_unavailable\" or \"required_input\",\"sources\":[{\"title\":\"source title\",\"url\":\"https://original-page\",\"published_at\":\"date/time/timezone, or unknown\"}]}. Use complete when the assigned research work is fulfilled and its conclusions are adequately supported, including an evidence-grounded finding that no decision can yet be made; completion is not a positive recommendation. If required evidence remains unavailable or incomplete, use partial even if the written report is finished. Use partial when sources are unavailable or evidence is incomplete after reasonable attempts: include the useful findings, skipped URLs and reasons, missing evidence, and conclusions that cannot be drawn. Partial finishes this step so downstream work continues; downstream reports must carry those gaps forward and never turn missing evidence into facts. An empty sources array is allowed for partial, with an explicit no-evidence explanation. For blocked results, set blocker to browser_unavailable or required_input. Set blocked only for an execution-wide blocker such as an unavailable browser runtime/connection, inaccessible required local inputs; explain the recovery action. A single website login, CAPTCHA, paywall or error is not an execution-wide blocker: skip that source without bypassing access restrictions. An actual browser handoff stops browser actions only: return partial using existing evidence and gaps, with blocker set to browser_handoff. Do not take over, open another Space/browser, or use background fetching to bypass the handoff. Downstream work must continue without browser access until explicit user confirmation. This policy supersedes earlier source-failure stop instructions in session history. Complete collection requires at least one actually visited source. No prose outside JSON. The report field contains the full useful result, not just a summary. Preserve sources in downstream analysis/advice. Serialize the entire object once with a JSON serializer and validate it before answering; keep sources inside the same object. After one JSON decode, report must contain actual Markdown line breaks, not literal backslash-n sequences. Record actual retrieval times, never an estimated or future time window.");
     }
     Ok(AgentRun {
+        automation_occurrence_id: None,
+            deadline_at: None,
             auto_retry_attempt: 0,
             retry_not_before: None,
         project_plan: None,
@@ -1624,7 +1626,7 @@ mod tests {
         store.projects[0].directory = directory.to_string_lossy().into();
         store.research_config.models[0] = "deepseek/deepseek-flash".into();
         let run = store.prepare_run(goal).unwrap();
-        let active = crate::opencode::start(crate::opencode::Request { browser_executable: None,
+        let active = crate::opencode::start(crate::opencode::Request { agent: None, browser_executable: None,
             session_id: None,
             executable: crate::opencode::detect_executable().into(),
             directory,

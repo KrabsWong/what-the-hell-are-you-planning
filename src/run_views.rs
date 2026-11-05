@@ -84,7 +84,13 @@ struct RunProject<'a> {
 }
 fn run_projects(store: &Store) -> Vec<RunProject<'_>> {
     let mut groups: Vec<RunProject<'_>> = vec![];
-    for run in store.runs.iter().rev().filter(|r| !store.run_is_archived(r)) {
+    for run in store.runs.iter().rev().filter(|r| {
+        r.automation_occurrence_id.is_none()
+            && store
+                .request_for_run(r.id)
+                .is_none_or(|request| request.automation_id.is_none())
+            && !store.run_is_archived(r)
+    }) {
         let task = store.task(run.task_id);
         let project = run.project_plan.or_else(|| task.map(|t| t.project_id));
         let goal = if run.project_plan.is_some() {

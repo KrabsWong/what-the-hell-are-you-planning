@@ -198,7 +198,7 @@ mod tests {
     }
     #[test]
     fn command_resumes_only_explicit_session_and_uses_stdin() {
-        let mut request = Request { browser_executable: None, executable: "/bin/false".into(), directory: "/tmp".into(), model: "test-model".into(), prompt: "large prompt".into(), title: "title".into(), files: vec!["/tmp/evidence.pdf".into(), "/tmp/chart.png".into()], session_id: None };
+        let mut request = Request { agent: None, browser_executable: None, executable: "/bin/false".into(), directory: "/tmp".into(), model: "test-model".into(), prompt: "large prompt".into(), title: "title".into(), files: vec!["/tmp/evidence.pdf".into(), "/tmp/chart.png".into()], session_id: None };
         let mut cmd = Command::new(&request.executable);
         configure_command(&mut cmd, &request);
         let args: Vec<_> = cmd.get_args().map(|a| a.to_string_lossy().into_owned()).collect();

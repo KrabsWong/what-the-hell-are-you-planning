@@ -147,7 +147,7 @@ fn inspect(executable: &Path, run: &AgentRun) -> SessionCheck {
         if active.contains_key(session) {
             return Ok(SessionCheck::Running);
         }
-        let request = opencode::Request { browser_executable: None,
+        let request = opencode::Request { agent: None, browser_executable: None,
             executable: executable.into(),
             directory: directory.canonicalize().map_err(|e| e.to_string())?,
             model: String::new(),
@@ -179,7 +179,7 @@ pub(crate) fn inspect_codex(run: &AgentRun) -> SessionCheck {
         Ok(path) => path,
         Err(error) => return SessionCheck::Unknown(format!("Cannot inspect Codex working directory: {error}")),
     };
-    let request = opencode::Request { browser_executable: None,
+    let request = opencode::Request { agent: None, browser_executable: None,
         executable: Default::default(), directory, model: run.model.clone(),
         prompt: run.prompt.clone(), title: run.task_title.clone(), files: vec![],
         session_id: run.session_id.clone(),
@@ -205,6 +205,7 @@ impl Store {
         let mut projects: BTreeMap<u64, Vec<u64>> = BTreeMap::new();
         for task in &self.tasks {
             if self.task_is_archived(task.id)
+                || task.automation_id.is_some()
                 || task.stage.is_closed()
                 || task.parent_id.is_some()
                 || !task
@@ -323,6 +324,34 @@ impl TaskApp {
             if !current {
                 continue;
             }
+            let expired_regeneration = self
+                .store
+                .runs
+                .iter()
+                .find(|run| run.id == id)
+                .is_some_and(|run| {
+                    crate::automation_runtime::expired_regeneration(
+                        &self.store,
+                        run,
+                        Self::automation_now(),
+                    )
+                });
+            if expired_regeneration {
+                if let Some(run) = self.store.runs.iter_mut().find(|run| run.id == id) {
+                    run.status = "Cancelled".into();
+                    run.ended_at = Some(opencode::timestamp());
+                    if !run.logs.iter().any(|line| line.contains("time limit")) {
+                        run.logs.push(
+                            "[automation] Recovered report regeneration exceeded its own time limit; the previous successful report is preserved."
+                                .into(),
+                        );
+                    }
+                }
+                self.recovery.checks.remove(&id);
+                self.persist_if_changed(true);
+                cx.notify();
+                continue;
+            }
             if let SessionCheck::Complete(output) = &check {
                 let run = self.store.runs.iter_mut().find(|r| r.id == id).unwrap();
                 run.output = output.clone();
@@ -354,7 +383,9 @@ impl TaskApp {
                     run.logs.push(message);
                 }
             }
+            let automation_check = check.clone();
             self.recovery.checks.insert(id, check);
+            self.apply_automation_recovery(id, &automation_check, cx);
             cx.notify();
         }
         if disconnected
@@ -392,10 +423,77 @@ impl TaskApp {
             cx.notify();
         }
     }
+    /// Session verification must advance the owning automation, not only update the
+    /// research step. Unknown remains blocked for explicit review.
+    fn apply_automation_recovery(
+        &mut self,
+        run_id: u64,
+        check: &SessionCheck,
+        cx: &mut Context<Self>,
+    ) {
+        let Some(occurrence) = self
+            .store
+            .runs
+            .iter()
+            .find(|run| run.id == run_id)
+            .and_then(|run| run.automation_occurrence_id)
+        else {
+            return;
+        };
+        let now = Self::automation_now();
+        match check {
+            SessionCheck::Complete(_) => {
+                self.automation_after_run(occurrence, run_id, cx);
+            }
+            SessionCheck::Running => {
+                if let Some(value) = self.store.occurrence_mut(occurrence)
+                    && value.status != crate::automation::OccurrenceStatus::Running
+                {
+                    let _ = value.transition(
+                        crate::automation::OccurrenceStatus::Running,
+                        Some(crate::automation::OccurrenceReason::new(
+                            crate::automation::SkipCode::VerificationRequired,
+                            "The original session is still running; monitoring without starting another run.",
+                        )),
+                    );
+                }
+                self.persist_if_changed(true);
+            }
+            SessionCheck::Stopped => {
+                let retry = crate::automation_runtime::reconcile_occurrence(
+                    &mut self.store,
+                    occurrence,
+                    crate::automation_runtime::SessionState::Stopped,
+                    now,
+                );
+                if let Ok(commit) = retry {
+                    self.persist_if_changed(true);
+                    if self.storage_error.is_empty() {
+                        for id in commit.retry {
+                            self.enqueue_automation_occurrence(id, cx);
+                        }
+                    }
+                }
+            }
+            SessionCheck::Checking => {}
+            SessionCheck::Unknown(_) => {
+                let _ = crate::automation_runtime::reconcile_occurrence(
+                    &mut self.store,
+                    occurrence,
+                    crate::automation_runtime::SessionState::Unknown,
+                    now,
+                );
+                self.persist_if_changed(true);
+            }
+        }
+    }
+
     fn recoverable_goal(&self, goal: u64) -> bool {
         self.store
             .task(goal)
-            .is_some_and(|t| !self.store.task_is_archived(t.id) && matches!(t.stage, Stage::Planned | Stage::InProgress))
+            .is_some_and(|t| !self.store.task_is_archived(t.id)
+                && t.automation_id.is_none()
+                && matches!(t.stage, Stage::Planned | Stage::InProgress))
             && self.store.goal_execution_approved(goal)
             && !self.store.goal_tasks_complete(goal)
             && !self.goal_busy(goal)
@@ -724,7 +822,7 @@ mod tests {
         run.agent = "Codex".into();
         run.prompt = crate::opencode::new_session_id();
         run.session_id = None;
-        let request = crate::opencode::Request { browser_executable: None,
+        let request = crate::opencode::Request { agent: None, browser_executable: None,
             executable: Default::default(), directory: run.directory.clone().into(),
             model: run.model.clone(), prompt: run.prompt.clone(), title: run.task_title.clone(),
             files: vec![], session_id: None,
@@ -733,7 +831,22 @@ mod tests {
         let nonexistent = std::path::Path::new("/nonexistent/opencode-must-not-run");
         assert_eq!(super::inspect(nonexistent, &run), SessionCheck::Running);
         drop(lease);
-        assert_eq!(super::inspect(nonexistent, &run), SessionCheck::Stopped);
+        // Concurrent process tests can briefly inherit a lock descriptor between fork
+        // and exec. Retry the release check for a bounded period (same pattern as the
+        // workspace lock test) rather than treating that window as a leaked lease.
+        let deadline = std::time::Instant::now() + std::time::Duration::from_secs(2);
+        loop {
+            match super::inspect(nonexistent, &run) {
+                SessionCheck::Stopped => break,
+                other => {
+                    assert!(
+                        std::time::Instant::now() < deadline,
+                        "Codex attempt lease was not released: {other:?}"
+                    );
+                    std::thread::sleep(std::time::Duration::from_millis(10));
+                }
+            }
+        }
         run.session_id = Some("codex-thread".into());
         assert_eq!(super::inspect(nonexistent, &run), SessionCheck::Stopped);
     }

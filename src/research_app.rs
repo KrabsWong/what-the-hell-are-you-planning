@@ -179,6 +179,9 @@ impl TaskApp {
         cx.notify();
     }
     pub fn run_research_next(&mut self, goal: u64, continuous: bool, cx: &mut Context<Self>) {
+        if self.route_automation_goal(goal, cx) {
+            return;
+        }
         self.error.clear();
         self.task_start_feedback = None;
         if continuous {
@@ -383,8 +386,43 @@ impl TaskApp {
     pub fn regenerate_report(&mut self, source_id: u64, style: &str, cx: &mut Context<Self>) {
         self.error.clear();
         if !self.ready_to_run(cx) { return; }
+        let source_occurrence = self
+            .store
+            .runs
+            .iter()
+            .find(|run| run.id == source_id)
+            .and_then(|run| run.automation_occurrence_id);
+        if source_occurrence.is_some() && !self.automation_unattended_available() {
+            self.error = "Report regeneration belongs to an automation period. Unattended execution is disabled in this build until execution-layer tool denial is verified.".into();
+            cx.notify();
+            return;
+        }
         let result = research::prepare_report_regeneration(&self.store, source_id, style)
             .and_then(|mut run| {
+                if let Some(occurrence_id) = source_occurrence {
+                    let occurrence = self
+                        .store
+                        .occurrence(occurrence_id)
+                        .ok_or("The automation period for this report is no longer available.")?;
+                    let index = ResearchKind::Advise.index();
+                    run.automation_occurrence_id = Some(occurrence_id);
+                    run.deadline_at = Some(
+                        Self::automation_now()
+                            .saturating_add(occurrence.snapshot.policy.timeout_seconds),
+                    );
+                    run.model = occurrence.snapshot.models[index].clone();
+                    run.agent = occurrence
+                        .snapshot
+                        .agents
+                        .get(index)
+                        .and_then(|agent| agent.clone())
+                        .unwrap_or_else(|| self.store.research_config.default_agent.clone());
+                    run.prompt = crate::automation_execution::with_time_context(run.prompt, occurrence);
+                    run.logs.push(format!(
+                        "[automation] Report regeneration for occurrence {} keeps its approved snapshot and time window",
+                        occurrence.id
+                    ));
+                }
                 if self.task_running(run.task_id) || self.recovery_blocks_task(run.task_id) {
                     return Err("Wait for this task to finish or resolve its previous session before regenerating.".into());
                 }
@@ -609,7 +647,17 @@ impl TaskApp {
         }
         // Persist the parsed result and generated tasks before another external side effect.
         self.persist_if_changed(true);
-        if self.storage_error.is_empty()
+        let automation_occurrence = self
+            .store
+            .runs
+            .iter()
+            .find(|run| run.id == run_id)
+            .and_then(|run| run.automation_occurrence_id);
+        let automation_terminal = automation_occurrence
+            .and_then(|id| self.store.occurrence(id))
+            .is_some_and(|occurrence| occurrence.status.is_terminal());
+        if !automation_terminal
+            && self.storage_error.is_empty()
             && let Some(retry) = self.store.prepare_auto_retry(run_id, chrono::Utc::now().timestamp())
         {
             let retry_id = retry.id;
@@ -629,6 +677,18 @@ impl TaskApp {
                 if self.selected_run == Some(run_id) {
                     self.selected_run = Some(retry_id);
                 }
+                if let Some(occurrence) = automation_occurrence {
+                    let _ = self.store.wait_for_retry(
+                        occurrence,
+                        "Waiting for the approved step retry; the period, inputs and time window are unchanged.",
+                    );
+                    if let Some(value) = self.store.occurrence_mut(occurrence)
+                        && !value.run_ids.contains(&retry_id)
+                    {
+                        value.run_ids.push(retry_id);
+                    }
+                    self.persist_if_changed(true);
+                }
                 self.error.clear();
                 self.toast = format!("Retry {attempt}/3 scheduled in 30 seconds · Stop task to cancel");
                 self.start_pump(cx);
@@ -642,6 +702,11 @@ impl TaskApp {
         {
             self.retry_research_request(request, cx);
             self.toast = "Plan format incomplete · repairing once before review".into();
+            cx.notify();
+            return;
+        }
+        if let Some(occurrence) = automation_occurrence {
+            self.automation_after_run(occurrence, run_id, cx);
             cx.notify();
             return;
         }

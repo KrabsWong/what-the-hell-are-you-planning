@@ -561,6 +561,7 @@ pub fn run_migration() {
                 a.store.projects.push(crate::domain::Project {
                     id, name: format!("Destination {id}"), key: format!("P{id}"),
                     directory: String::new(), research_brief: String::new(),
+                    kind: crate::domain::ProjectKind::User,
                 });
             }
             a.request_topic_move(topic, w, cx);

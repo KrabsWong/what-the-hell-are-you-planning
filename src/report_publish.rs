@@ -113,7 +113,10 @@ fn publication_action(publication: Option<&Publication>, changed: bool) -> Publi
 
 impl Store {
     pub(crate) fn topic_share_content(&self, topic: u64) -> Option<(String, String)> {
-        let topic = self.topics.iter().find(|t| t.id == topic && !t.archived)?;
+        let topic = self
+            .topics
+            .iter()
+            .find(|t| t.id == topic && !t.archived && t.automation_id.is_none())?;
         if self.topic_planning_status(topic.id).is_some() { return None; }
         let goals: Vec<_> = self.tasks.iter().filter(|t| t.topic_id == Some(topic.id)
             && t.research.as_ref().is_some_and(|r| r.kind == ResearchKind::Goal)

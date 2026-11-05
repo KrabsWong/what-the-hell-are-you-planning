@@ -797,7 +797,7 @@ files=[args[i+1] for i,a in enumerate(args) if a=='--file']
 assert len(files)==3 and all(pathlib.Path(f).is_file() for f in files)
 assert 'Read the attached file directly' in args[-1]
 "#);
-    let running = crate::opencode::start(crate::opencode::Request { browser_executable: None,
+    let running = crate::opencode::start(crate::opencode::Request { agent: None, browser_executable: None,
         executable: cli, directory: root.clone(), model: MODELS[2].into(), prompt: run.prompt,
         title: "attachment QA".into(), files, session_id: None,
     }).unwrap();

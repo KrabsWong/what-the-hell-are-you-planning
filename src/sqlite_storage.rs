@@ -1,13 +1,14 @@
 //! Transactional workspace snapshots, split into independently inspectable entity tables.
 use crate::domain::Store;
-use rusqlite::{Connection, OptionalExtension, params};
+use rusqlite::{Connection, OptionalExtension};
 use serde_json::Value;
 use std::path::{Component, Path, PathBuf};
 use std::sync::atomic::{AtomicU64, Ordering};
 
 static BACKUP_SEQUENCE: AtomicU64 = AtomicU64::new(0);
 
-const TABLES: [&str; 4] = ["tasks", "projects", "runs", "policies"];
+const TABLES: [&str; 6] = ["tasks", "projects", "runs", "policies", "automations", "automation_occurrences"];
+const SCHEMA_VERSION: i64 = 3;
 
 pub fn load(path: &Path, root: &Path) -> Result<Option<Store>, String> {
     if !path.exists() {
@@ -25,7 +26,7 @@ fn read(path: &Path, root: &Path) -> Result<Option<Store>, Box<dyn std::error::E
 
 fn read_connection(tx: &Connection, root: &Path) -> Result<Option<Store>, Box<dyn std::error::Error>> {
     let version: i64 = tx.pragma_query_value(None, "user_version", |r| r.get(0))?;
-    if !matches!(version, 1 | 2) {
+    if !(1..=SCHEMA_VERSION).contains(&version) {
         return Err(format!("Unsupported SQLite workspace version: {version}").into());
     }
     let metadata: Option<String> = tx
@@ -36,16 +37,23 @@ fn read_connection(tx: &Connection, root: &Path) -> Result<Option<Store>, Box<dy
     };
     let mut value: Value = serde_json::from_str(&metadata)?;
     for table in TABLES {
-        let mut statement =
-            tx.prepare(&format!("SELECT payload FROM {table} ORDER BY position"))?;
-        let rows = statement.query_map([], |r| r.get::<_, String>(0))?;
+        let exists: bool = tx.query_row(
+            "SELECT EXISTS(SELECT 1 FROM sqlite_master WHERE type='table' AND name=?1)",
+            [table],
+            |r| r.get(0),
+        )?;
         let mut items = Vec::new();
-        for row in rows {
-            items.push(serde_json::from_str::<Value>(&row?)?);
+        if exists {
+            let mut statement =
+                tx.prepare(&format!("SELECT payload FROM {table} ORDER BY position"))?;
+            let rows = statement.query_map([], |r| r.get::<_, String>(0))?;
+            for row in rows {
+                items.push(serde_json::from_str::<Value>(&row?)?);
+            }
         }
         value[table] = Value::Array(items);
     }
-    if version == 2 { transform_paths(&mut value, root, false)?; }
+    if version >= 2 { transform_paths(&mut value, root, false)?; }
     Ok(Some(serde_json::from_value(value)?))
 }
 
@@ -54,12 +62,27 @@ pub fn save(path: &Path, root: &Path, store: &Store) -> Result<(), String> {
     let mut value = serde_json::to_value(store).map_err(|e| e.to_string())?;
     transform_paths(&mut value, root, true)?;
     upgrade_paths(path, root, |_| {})?;
-    write(path, root, store, &mut |_| {}).map_err(|e| format!("Cannot save SQLite workspace {}: {e}", path.display()))
+    write(path, root, store, Some(value), &mut |_| {})
+        .map_err(|e| format!("Cannot save SQLite workspace {}: {e}", path.display()))
 }
 
-fn write(path: &Path, root: &Path, store: &Store, progress: &mut impl FnMut(&'static str)) -> Result<(), Box<dyn std::error::Error>> {
-    let mut metadata = serde_json::to_value(store)?;
-    transform_paths(&mut metadata, root, true)?;
+fn write(
+    path: &Path,
+    root: &Path,
+    store: &Store,
+    prepared: Option<Value>,
+    progress: &mut impl FnMut(&'static str),
+) -> Result<(), Box<dyn std::error::Error>> {
+    // `save` already validated and path-encoded the snapshot; do not serialize the
+    // entire store twice (material on large histories).
+    let mut metadata = match prepared {
+        Some(value) => value,
+        None => {
+            let mut value = serde_json::to_value(store)?;
+            transform_paths(&mut value, root, true)?;
+            value
+        }
+    };
     // Private permissions from creation, including before SQLite opens the file.
     let mut options = std::fs::OpenOptions::new();
     options.write(true).create(true).truncate(false);
@@ -74,7 +97,7 @@ fn write(path: &Path, root: &Path, store: &Store, progress: &mut impl FnMut(&'st
     db.pragma_update(None, "journal_mode", "DELETE")?;
     db.pragma_update(None, "synchronous", "FULL")?;
     let version: i64 = db.pragma_query_value(None, "user_version", |r| r.get(0))?;
-    if !matches!(version, 0..=2) {
+    if !(0..=SCHEMA_VERSION).contains(&version) {
         return Err(format!("Unsupported SQLite workspace version: {version}").into());
     }
     let tx = db.transaction()?;
@@ -82,19 +105,39 @@ fn write(path: &Path, root: &Path, store: &Store, progress: &mut impl FnMut(&'st
     for table in TABLES {
         tx.execute_batch(&format!("CREATE TABLE IF NOT EXISTS {table} (position INTEGER PRIMARY KEY, payload TEXT NOT NULL); DELETE FROM {table};"))?;
         let items = metadata.as_object_mut().unwrap().remove(table).unwrap();
-        let mut statement = tx.prepare(&format!(
-            "INSERT INTO {table}(position,payload) VALUES (?1,?2)"
-        ))?;
-        for (position, item) in items.as_array().unwrap().iter().enumerate() {
-            statement.execute(params![position as i64, serde_json::to_string(item)?])?;
+        let items = items.as_array().unwrap();
+        // Chunked multi-row inserts keep large histories from paying one SQLite
+        // execution per row while preserving stable blueprint positions.
+        const CHUNK: usize = 128;
+        if items.is_empty() {
+            continue;
+        }
+        for (chunk_index, chunk) in items.chunks(CHUNK).enumerate() {
+            let base = chunk_index * CHUNK;
+            let sql = format!(
+                "INSERT INTO {table}(position,payload) VALUES {}",
+                (0..chunk.len())
+                    .map(|index| format!("(?{},?{})", index * 2 + 1, index * 2 + 2))
+                    .collect::<Vec<_>>()
+                    .join(",")
+            );
+            let mut values: Vec<Box<dyn rusqlite::ToSql>> = Vec::with_capacity(chunk.len() * 2);
+            for (offset, item) in chunk.iter().enumerate() {
+                values.push(Box::new((base + offset) as i64));
+                values.push(Box::new(serde_json::to_string(item)?));
+            }
+            tx.execute(
+                &sql,
+                rusqlite::params_from_iter(values.iter().map(|value| value.as_ref())),
+            )?;
         }
     }
     tx.execute(
         "INSERT OR REPLACE INTO workspace(id,payload) VALUES(1,?1)",
         [serde_json::to_string(&metadata)?],
     )?;
-    tx.pragma_update(None, "user_version", 2)?;
-    if version == 1 {
+    tx.pragma_update(None, "user_version", SCHEMA_VERSION)?;
+    if version < SCHEMA_VERSION {
         progress("Verifying upgraded data…");
         if read_connection(&tx, root)?.as_ref() != Some(store) {
             return Err("Path upgrade changed workspace data; the transaction was rolled back".into());
@@ -123,8 +166,8 @@ fn upgrade(path: &Path, root: &Path, progress: &mut impl FnMut(&'static str)) ->
     db.busy_timeout(std::time::Duration::from_secs(5))?;
     let version: i64 = db.pragma_query_value(None, "user_version", |row| row.get(0))?;
     match version {
-        2 => return Ok(None),
-        1 => {},
+        SCHEMA_VERSION => return Ok(None),
+        1 | 2 => {},
         _ => return Err(format!("Unsupported SQLite workspace version: {version}").into()),
     }
     let original = read_connection(&db, root)?.ok_or("Workspace data is missing")?;
@@ -152,7 +195,7 @@ fn upgrade(path: &Path, root: &Path, progress: &mut impl FnMut(&'static str)) ->
         #[cfg(unix)]
         std::fs::File::open(backup.parent().ok_or("Invalid backup directory")?)?.sync_all()?;
         progress("Converting workspace paths…");
-        write(path, root, &original, progress)?;
+        write(path, root, &original, None, progress)?;
         Ok(())
     })();
     result.map_err(|e| format!("{e}. Upgrade backup: {}", backup.display()))?;
@@ -348,6 +391,62 @@ mod tests {
         // An ordinary save cannot bypass the verified-backup upgrade.
         storage.save(&original).unwrap();
         assert_eq!(std::fs::read_dir(&root).unwrap().filter(|entry| entry.as_ref().unwrap().file_name().to_str().unwrap().starts_with("workspace.before-path-upgrade-")).count(), 3);
+        std::fs::remove_dir_all(root).unwrap();
+    }
+
+    #[test]
+    fn v2_upgrades_to_v3_with_verified_backup_and_automation_tables() {
+        let root = temp();
+        let storage = Storage::new(root.join("workspace.sqlite3"));
+        let mut original = Store::mock();
+        save(storage.path(), &root, &original).unwrap();
+        let db = Connection::open(storage.path()).unwrap();
+        db.execute_batch("DROP TABLE automations; DROP TABLE automation_occurrences;")
+            .unwrap();
+        db.pragma_update(None, "user_version", 2).unwrap();
+        let legacy_bytes = std::fs::read(storage.path()).unwrap();
+        drop(db);
+        let _lock = storage.acquire_lock().unwrap();
+        let mut stages = vec![];
+        let backup = storage.upgrade_paths(|stage| stages.push(stage)).unwrap().unwrap();
+        assert_eq!(
+            stages,
+            ["Backing up existing data…", "Converting workspace paths…", "Verifying upgraded data…"]
+        );
+        assert_eq!(load(&backup, &root).unwrap(), Some(original.clone()));
+        assert_eq!(
+            Connection::open(&backup)
+                .unwrap()
+                .pragma_query_value(None, "user_version", |r| r.get::<_, i64>(0))
+                .unwrap(),
+            2
+        );
+        assert_eq!(load(storage.path(), &root).unwrap(), Some(original.clone()));
+        assert_ne!(std::fs::read(storage.path()).unwrap(), legacy_bytes);
+        let migrated = load(storage.path(), &root).unwrap().unwrap();
+        assert!(migrated.automations.is_empty());
+        assert!(migrated.automation_occurrences.is_empty());
+        // New automation entities round-trip through the new tables.
+        let mut changed = migrated;
+        let id = changed
+            .create_automation_draft(
+                1,
+                crate::automation::AutomationShape::Research,
+                "Daily".into(),
+                "Track".into(),
+                "Note".into(),
+                crate::automation_schedule::Schedule {
+                    spec: crate::automation_schedule::ScheduleSpec::Interval { minutes: 5 },
+                    timezone: "UTC".into(),
+                },
+                Default::default(),
+                None,
+                100,
+            )
+            .unwrap();
+        assert_eq!(id, 1);
+        storage.save(&changed).unwrap();
+        assert_eq!(storage.load().unwrap(), Some(changed));
         std::fs::remove_dir_all(root).unwrap();
     }
 

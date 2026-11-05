@@ -6,13 +6,31 @@ use std::io::{ErrorKind, Write};
 use std::path::{Path, PathBuf};
 use std::sync::atomic::{AtomicU64, Ordering};
 
-const VERSION: u32 = 4;
+const VERSION: u32 = 5;
 static TEMP_SEQUENCE: AtomicU64 = AtomicU64::new(0);
+
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+struct FileStamp {
+    len: u64,
+    modified: Option<std::time::SystemTime>,
+}
 
 #[derive(Debug)]
 pub struct Storage {
     path: PathBuf,
     workspace_root: PathBuf,
+    /// Last successfully read or written file identity. Avoids re-reading a large
+    /// store before every save while still refusing to overwrite externally changed
+    /// or damaged data.
+    validated: std::sync::Mutex<Option<FileStamp>>,
+}
+
+fn file_stamp(path: &Path) -> Option<FileStamp> {
+    let metadata = fs::metadata(path).ok()?;
+    Some(FileStamp {
+        len: metadata.len(),
+        modified: metadata.modified().ok(),
+    })
 }
 
 #[derive(Serialize, Deserialize)]
@@ -21,11 +39,28 @@ struct WorkspaceFile {
     workspace: Store,
 }
 
+fn normalize_automation_schema(store: &mut Store) -> Result<(), String> {
+    if store.automation_schema_version == 0 {
+        store.automation_schema_version = crate::automation::AUTOMATION_SCHEMA_VERSION;
+    } else if store.automation_schema_version > crate::automation::AUTOMATION_SCHEMA_VERSION {
+        return Err(format!(
+            "Unsupported automation schema version {} (expected {}). The workspace was left unchanged.",
+            store.automation_schema_version,
+            crate::automation::AUTOMATION_SCHEMA_VERSION
+        ));
+    }
+    Ok(())
+}
+
 impl Storage {
     pub fn new(path: PathBuf) -> Self {
         let parent = path.parent().filter(|p| !p.as_os_str().is_empty()).unwrap_or(Path::new("."));
         let workspace_root = std::path::absolute(parent).unwrap_or_else(|_| parent.to_path_buf());
-        Self { path, workspace_root }
+        Self {
+            path,
+            workspace_root,
+            validated: std::sync::Mutex::new(None),
+        }
     }
 
     /// Staged installation resolves paths against the final workspace location.
@@ -85,6 +120,14 @@ impl Storage {
 
     /// A missing file is a new workspace; invalid files are never treated as empty data.
     pub fn load(&self) -> Result<Option<Store>, String> {
+        let result = self.load_uncached();
+        if result.is_ok() {
+            *self.validated.lock().unwrap_or_else(|e| e.into_inner()) = file_stamp(&self.path);
+        }
+        result
+    }
+
+    fn load_uncached(&self) -> Result<Option<Store>, String> {
         if self
             .path
             .extension()
@@ -92,13 +135,19 @@ impl Storage {
         {
             if self.path.exists() {
                 let mut loaded = crate::sqlite_storage::load(&self.path, &self.workspace_root)?;
-                if let Some(store) = &mut loaded { store.normalize_topics(); }
+                if let Some(store) = &mut loaded {
+                    normalize_automation_schema(store)?;
+                    store.validate_automation_integrity()?;
+                    store.normalize_topics();
+                }
                 return Ok(loaded);
             }
             let legacy = Storage::new(self.path.with_file_name("workspace.json"));
-            let Some(store) = legacy.load()? else {
+            let Some(mut store) = legacy.load()? else {
                 return Ok(None);
             };
+            normalize_automation_schema(&mut store)?;
+            store.validate_automation_integrity()?;
             let parent = self.ensure_parent()?;
             let temporary = parent.join(format!(
                 ".migration-{}-{}.sqlite3",
@@ -161,20 +210,38 @@ impl Storage {
                 }
             }
         }
+        normalize_automation_schema(&mut file.workspace)?;
+        file.workspace.validate_automation_integrity()?;
         file.workspace.normalize_topics();
         Ok(Some(file.workspace))
     }
 
     pub fn save(&self, workspace: &Store) -> Result<(), String> {
         // Refuse to overwrite damaged data or a file written by a newer application.
-        self.load()?;
+        // A store this instance already read or wrote is revalidated only if the file
+        // changed underneath us.
+        let current = file_stamp(&self.path);
+        let known = *self.validated.lock().unwrap_or_else(|e| e.into_inner());
+        let legacy_pending = current.is_none()
+            && self
+                .path
+                .extension()
+                .is_some_and(|extension| extension == "sqlite3")
+            && self.path.with_file_name("workspace.json").exists();
+        if known != current || legacy_pending {
+            self.load()?;
+        }
         if self
             .path
             .extension()
             .is_some_and(|extension| extension == "sqlite3")
         {
             self.ensure_parent()?;
-            return crate::sqlite_storage::save(&self.path, &self.workspace_root, workspace);
+            let result = crate::sqlite_storage::save(&self.path, &self.workspace_root, workspace);
+            if result.is_ok() {
+                *self.validated.lock().unwrap_or_else(|e| e.into_inner()) = file_stamp(&self.path);
+            }
+            return result;
         }
         let mut bytes = serde_json::to_vec_pretty(&WorkspaceFile {
             version: VERSION,
@@ -219,6 +286,7 @@ impl Storage {
                 self.path.display()
             ));
         }
+        *self.validated.lock().unwrap_or_else(|e| e.into_inner()) = file_stamp(&self.path);
         Ok(())
     }
 
@@ -511,7 +579,7 @@ mod tests {
         assert_eq!(storage.load().unwrap(), Some(expected));
         let data: serde_json::Value =
             serde_json::from_slice(&fs::read(storage.path()).unwrap()).unwrap();
-        assert_eq!(data["version"], 4);
+        assert_eq!(data["version"], 5);
     }
 
     #[test]
@@ -555,6 +623,7 @@ mod tests {
             key: "RES".into(),
             directory: "/tmp/research".into(),
             research_brief: String::new(),
+            kind: crate::domain::ProjectKind::User,
         });
         let real_id = store
             .create_research_goal("Research".into(), "Real goal".into(), 3)
@@ -608,6 +677,44 @@ mod tests {
         assert!(storage.remove_reviewed_demo(&mut store, &[12]).is_err());
         assert_eq!(store, before);
         assert_eq!(storage.load().unwrap(), Some(original));
+    }
+
+    #[test]
+    fn version_four_workspaces_gain_empty_automation_state_and_are_rewritten_as_five() {
+        let dir = TestDirectory::new();
+        let storage = dir.storage();
+        let store = Store::mock();
+        storage.save(&store).unwrap();
+        let mut data: serde_json::Value =
+            serde_json::from_slice(&fs::read(storage.path()).unwrap()).unwrap();
+        data["version"] = serde_json::json!(4);
+        for key in ["automations", "automation_occurrences", "automation_schema_version"] {
+            data["workspace"].as_object_mut().unwrap().remove(key);
+        }
+        fs::write(storage.path(), serde_json::to_vec(&data).unwrap()).unwrap();
+        let loaded = storage.load().unwrap().unwrap();
+        assert!(loaded.automations.is_empty());
+        assert!(loaded.automation_occurrences.is_empty());
+        storage.save(&loaded).unwrap();
+        let saved: serde_json::Value =
+            serde_json::from_slice(&fs::read(storage.path()).unwrap()).unwrap();
+        assert_eq!(saved["version"], 5);
+        // Unknown automation schema versions are refused as well.
+        let mut invalid = saved.clone();
+        invalid["workspace"]["automation_schema_version"] = serde_json::json!(99);
+        fs::write(storage.path(), serde_json::to_vec(&invalid).unwrap()).unwrap();
+        let invalid_bytes = fs::read(storage.path()).unwrap();
+        assert!(storage.load().is_err());
+        assert!(storage.save(&loaded).is_err());
+        assert_eq!(fs::read(storage.path()).unwrap(), invalid_bytes);
+        // Unknown newer file versions are refused without rewriting.
+        let mut future = saved;
+        future["version"] = serde_json::json!(6);
+        fs::write(storage.path(), serde_json::to_vec(&future).unwrap()).unwrap();
+        let bytes = fs::read(storage.path()).unwrap();
+        assert!(storage.load().is_err());
+        assert!(storage.save(&loaded).is_err());
+        assert_eq!(fs::read(storage.path()).unwrap(), bytes);
     }
 
     #[test]
@@ -720,7 +827,7 @@ mod tests {
         storage.save(&loaded).unwrap();
         let saved: serde_json::Value =
             serde_json::from_slice(&fs::read(storage.path()).unwrap()).unwrap();
-        assert_eq!(saved["version"], 4);
+        assert_eq!(saved["version"], 5);
     }
     #[test]
     fn upgrades_v2_with_existing_research_approved_and_project_fields_defaulted() {
@@ -754,7 +861,7 @@ mod tests {
         let saved: serde_json::Value =
             serde_json::from_slice(&fs::read(storage.path()).unwrap()).unwrap();
         assert_eq!(
-            saved["version"], 4,
+            saved["version"], 5,
             "Older binaries must refuse to drop approval gates and the global model"
         );
     }

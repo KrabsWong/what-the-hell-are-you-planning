@@ -180,7 +180,11 @@ impl TaskApp {
                         .any(|prefix| line.starts_with(prefix))
                 }).map(|line| crate::run_errors::user_message(line).to_owned());
                 if let Some(detail) = detail {
-                    panel = panel.child(div().text_sm().text_color(rgb(colors.danger)).child(detail));
+                    panel = panel.child(crate::views::notice(
+                        crate::views::NoticeTone::Danger,
+                        detail,
+                        cx,
+                    ));
                 }
             }
         }
@@ -230,7 +234,11 @@ impl TaskApp {
         }
         panel.child(actions.child(links))
             .when_some(self.task_start_feedback.as_ref().filter(|(task, _)| *task == id), |d, (_, message)| {
-                d.child(div().text_sm().text_color(rgb(colors.danger)).child(message.clone()))
+                d.child(crate::views::notice(
+                    crate::views::NoticeTone::Danger,
+                    message.clone(),
+                    cx,
+                ))
             }).map(observed).into_any_element()
     }
     pub(crate) fn open_goal_steps(&mut self, goal: u64, w: &mut Window, cx: &mut Context<Self>) {

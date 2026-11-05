@@ -48,6 +48,16 @@ While a research step runs, the progress panel lists the tasks in each phase, th
 
 Small upstream results are included directly in the next task's prompt. When their combined context exceeds 180,000 bytes, the app instead writes complete Markdown reports and source-record JSON files into the task's `.research-inputs` folder. The prompt lists the files and instructs the agent to read them in bounded sections. This threshold selects a transfer method, not a model context limit; reading files still consumes model context. Original results remain in SQLite. Before dispatch, missing copies are regenerated and existing copies are checked against the saved results; modified copies block execution rather than silently changing the evidence.
 
+## Automate a recurring check
+
+**Automations** in the sidebar turns a recurring information task into approved research periods. Describe the task and expected result, choose a project, then set an interval, a daily time or selected weekdays in an IANA time zone. The app previews the next three triggers with the same arithmetic it later uses, generates a fixed collection → analysis → report plan, and shows the effective models and permission boundary before you enable it.
+
+Creating or saving a draft never runs research. Enabling approves that exact version; later edits to scope, steps, models, materials, schedule or limits create a new version that must be reviewed again. Each period creates its own internal research goal, working directory, session and browser Space, and appears only in the automation's history rather than the normal board or task tree.
+
+Runs happen only while the app is open and the computer is awake. If periods were missed, only the newest one runs by default, and it is skipped when older than the configured allowed delay; older periods are summarized instead of replayed. Pausing never backfills. Manual runs use the same approval, limits and queue but do not move the schedule. Each automation can have one running period and one waiting request, shares the normal concurrency limit and Topic queue, and allows one immediate stop plus the existing bounded step retries.
+
+The first version is deliberately narrow: OpenCode only, no email/IM, publishing, trading, system notifications, scripts or other external writes. A generated project-local OpenCode agent restricts the run to read-only information work; the app does not modify your global OpenCode configuration. **In this build, real unattended dispatch remains disabled until execution-layer tool denial is verified: drafts and plan review are available, but enabling/running is gated, and only offline QA builds execute the fake-CLI chains.** Report contents still need human review. See [the automation contract](doc/AUTOMATION_PLAN.md) and [implementation evidence](doc/automation-tasks/evidence/05-acceptance.md) for exact limits, including unverified runtime tool denial and measured large-history performance.
+
 ## Bring your own materials
 
 Attach PDFs or screenshots to a goal or a research step. Drag files into Materials, paste an image with ⌘V after clicking the panel, or use Add Files. The application only copies the originals into the workspace; it does not perform local OCR or PDF text extraction. Parent-goal materials and relevant upstream results accompany downstream tasks.

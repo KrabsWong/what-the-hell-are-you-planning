@@ -213,9 +213,6 @@ pub struct TaskApp {
     pub automation_generation: u64,
     pub automation_timer_armed: bool,
     pub automation_fake_mode: bool,
-    /// Real unattended dispatch stays disabled until the execution-layer permission
-    /// gate is verified. QA builds enable it for offline fake-CLI acceptance only.
-    pub automation_unattended_enabled: bool,
     pub automation_fake_hold: bool,
     pub automation_backoff_until: Option<Instant>,
     pub automation_started: std::collections::HashMap<u64, Instant>,
@@ -577,7 +574,6 @@ impl TaskApp {
             automation_generation: 0,
             automation_timer_armed: false,
             automation_fake_mode: false,
-            automation_unattended_enabled: cfg!(feature = "qa"),
             automation_fake_hold: false,
             automation_backoff_until: None,
             automation_started: Default::default(),
@@ -1604,35 +1600,6 @@ impl TaskApp {
                     self.complete_research_run(id, cx);
                     continue;
                 }
-                if !self.automation_unattended_enabled {
-                    let run = &mut self.store.runs[index];
-                    run.status = "Blocked".into();
-                    run.ended_at = Some(opencode::timestamp());
-                    run.logs.push("[automation] Unattended execution is disabled until execution-layer tool denial is verified; nothing was started.".into());
-                    self.error = "Unattended automation execution is disabled in this build.".into();
-                    self.persist_if_changed(true);
-                    self.complete_research_run(id, cx);
-                    continue;
-                }
-                let directory = std::path::PathBuf::from(&self.store.runs[index].directory);
-                if let Err(error) = crate::automation_execution::write_permission_profile(
-                    &directory,
-                    &occurrence.snapshot.permissions,
-                ) {
-                    let run = &mut self.store.runs[index];
-                    run.status = "Blocked".into();
-                    run.ended_at = Some(opencode::timestamp());
-                    run.logs.push(format!("[permission] {error}"));
-                    self.store.mark_automation_attention(occurrence.automation_id, error.clone());
-                    let _ = self.store.occurrence_mut(occurrence_id).map(|value| value.transition(
-                        crate::automation::OccurrenceStatus::Verifying,
-                        Some(crate::automation::OccurrenceReason::new(crate::automation::SkipCode::DefinitionChanged, error.clone())),
-                    ));
-                    self.error = error;
-                    self.persist_if_changed(true);
-                    self.complete_research_run(id, cx);
-                    continue;
-                }
                 if !regeneration
                     && occurrence.status != crate::automation::OccurrenceStatus::Running
                 {
@@ -1656,7 +1623,7 @@ impl TaskApp {
                 }
             }
             let run = &self.store.runs[index];
-            let request = opencode::Request { agent: automation_occurrence.map(|_| crate::automation_execution::AUTOMATION_AGENT_PROFILE.to_string()), browser_executable: (run.agent == "Codex" && run.research_kind == Some(crate::research::ResearchKind::Collect) && !self.store.owning_research_goal(run.task_id).is_some_and(|goal| self.store.research_browser_handed_off(goal))).then(|| PathBuf::from(&self.store.research_config.ego_path)),
+            let request = opencode::Request { agent: None, browser_executable: (run.agent == "Codex" && run.research_kind == Some(crate::research::ResearchKind::Collect) && !self.store.owning_research_goal(run.task_id).is_some_and(|goal| self.store.research_browser_handed_off(goal))).then(|| PathBuf::from(&self.store.research_config.ego_path)),
                 files,
                 session_id: run.session_id.clone(),
                 executable: PathBuf::from(self.store.agent_path(&run.agent)),

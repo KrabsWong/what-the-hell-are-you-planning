@@ -100,7 +100,7 @@ impl TaskApp {
             });
         let toolbar = row().w_full().justify_between().flex_wrap()
             .child(row()
-                .child(div().text_sm().font_weight(FontWeight::SEMIBOLD).child("Profile"))
+                .child(div().text_sm().font_weight(FontWeight::SEMIBOLD).child(selectable("Profile")))
                 .child(picker))
             .child(row()
                 .child(quiet_button("model-profile-new", "New profile")
@@ -188,11 +188,11 @@ impl TaskApp {
             agents = agents.child(col().w_full().p_4().gap_2().rounded_md()
                 .border_1().border_color(rgb(colors.line)).bg(rgb(colors.panel))
                 .child(row().justify_between()
-                    .child(div().font_weight(FontWeight::SEMIBOLD).child(agent))
+                    .child(div().font_weight(FontWeight::SEMIBOLD).child(selectable(agent)))
                     .child(label(format!("Version · {version}"), cx)))
                 .child(row().flex_wrap()
                     .child(label("Executable", cx))
-                    .child(div().text_sm().child(if path.is_empty() { "Not configured".to_owned() } else { path.to_owned() })))
+                    .child(div().text_sm().child(selectable(if path.is_empty() { "Not configured".to_owned() } else { path.to_owned() }))))
                 .child(row().flex_wrap().justify_between().pt_2()
                     .border_t_1().border_color(rgb(colors.line))
                     .child(label(status.clone(), cx))
@@ -212,7 +212,7 @@ impl TaskApp {
     pub fn model_settings(&self, cx: &mut Context<Self>) -> AnyElement {
         let appearance = col()
             .gap_2()
-            .child(div().font_weight(FontWeight::SEMIBOLD).child("Appearance"))
+            .child(div().font_weight(FontWeight::SEMIBOLD).child(selectable("Appearance")))
             .child(label("Choose a theme. Follow system adapts automatically; changes are saved immediately.", cx))
             .child(
                 row().flex_wrap().children(
@@ -248,14 +248,14 @@ impl TaskApp {
         let general = col().gap_6()
             .child(appearance)
             .child(col().gap_2()
-                .child(div().font_weight(FontWeight::SEMIBOLD).child("Execution"))
-                .child(div().text_sm().child("Maximum simultaneous tasks"))
+                .child(div().font_weight(FontWeight::SEMIBOLD).child(selectable("Execution")))
+                .child(div().text_sm().child(selectable("Maximum simultaneous tasks")))
                 .child(row()
                     .child(button("concurrency-decrease", "−")
                         .accessibility_label("Decrease maximum simultaneous tasks")
                         .disabled(self.store.concurrency_limit() <= 1)
                         .on_click(cx.listener(|a, _, _, cx| a.set_execution_concurrency(a.store.concurrency_limit().saturating_sub(1), cx))))
-                    .child(div().w_8().text_center().child(self.store.concurrency_limit().to_string()))
+                    .child(div().w_8().text_center().child(selectable(self.store.concurrency_limit().to_string())))
                     .child(button("concurrency-increase", "+")
                         .accessibility_label("Increase maximum simultaneous tasks")
                         .disabled(self.store.concurrency_limit() >= crate::scheduler::MAX_CONCURRENT_RUNS)
@@ -263,9 +263,9 @@ impl TaskApp {
                 .child(label("1–10 tasks. Recommended: 3; try 5 after checking stability. Higher values may cause more rate-limit errors, retries and browser load.", cx))
                 .child(label("Saved immediately to this workspace. Lowering the limit lets running tasks finish. Dependencies, shared folders and browser Spaces can reduce actual concurrency.", cx)))
             .when_some(self.workspace_root.as_ref(), |view, root| view.child(col().gap_2()
-                .child(div().font_weight(FontWeight::SEMIBOLD).child("Workspace"))
+                .child(div().font_weight(FontWeight::SEMIBOLD).child(selectable("Workspace")))
                 .child(label("Projects, reports, materials and app data are stored in this folder's workspace subfolder.", cx))
-                .child(div().text_sm().child(root.to_string_lossy().into_owned()))));
+                .child(div().text_sm().child(selectable(root.to_string_lossy().into_owned())))));
         let panel = match self.settings_tab {
             SettingsTab::General => general,
             SettingsTab::Publishing => self.publishing_settings_panel(cx),
@@ -283,7 +283,7 @@ impl TaskApp {
                         div()
                             .text_2xl()
                             .font_weight(FontWeight::SEMIBOLD)
-                            .child("Settings"),
+                            .child(selectable("Settings")),
                     )
                     .child(
                         TabBar::new("settings-tabs")

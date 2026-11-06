@@ -42,9 +42,33 @@ pub(crate) fn row() -> Div {
 pub(crate) fn col() -> Div {
     div().flex().flex_col()
 }
+/// Readable text that can be selected and copied with the mouse.
+///
+/// GPUI only selects text runs that opt in, so prose and values are rendered
+/// through this helper instead of a bare string child. Controls that truncate
+/// through a canvas (`single_line_text`) keep painting their own glyphs.
+pub(crate) fn selectable(text: impl Into<SharedString>) -> impl IntoElement {
+    let text = text.into();
+    let id = text_element_id(&text);
+    gpui_kit::base::SelectableText::new(id, text)
+}
+
+/// Stable element identity for a text run, so one label keeps its selection
+/// state across frames without threading an id through every call site.
+fn text_element_id(text: &str) -> ElementId {
+    let mut hash: u64 = 0xcbf2_9ce4_8422_2325;
+    for byte in text.as_bytes() {
+        hash ^= u64::from(*byte);
+        hash = hash.wrapping_mul(0x0000_0100_0000_01b3);
+    }
+    ElementId::Name(format!("selectable-{hash:016x}").into())
+}
+
 pub(crate) fn muted(text: impl Into<SharedString>, cx: &App) -> Div {
     let colors = palette(cx);
-    div().text_color(rgb(colors.muted)).child(text.into())
+    div()
+        .text_color(rgb(colors.muted))
+        .child(selectable(text))
 }
 pub(crate) fn label(text: impl Into<SharedString>, cx: &App) -> Div {
     muted(text, cx).text_xs()
@@ -58,7 +82,7 @@ pub(crate) fn chip(text: impl Into<SharedString>, color: u32, cx: &App) -> Div {
         .bg(rgb(colors.panel))
         .text_xs()
         .text_color(rgb(color))
-        .child(text.into())
+        .child(selectable(text))
 }
 
 /// Semantic tones for inline notices. Every notice uses a tinted surface of its
@@ -112,7 +136,7 @@ pub(crate) fn notice(tone: NoticeTone, text: impl Into<SharedString>, cx: &App) 
         .border_color(rgb(color))
         .bg(rgb(tone.surface(&colors)))
         .text_color(rgb(color))
-        .child(text.into())
+        .child(selectable(text))
 }
 
 pub(crate) fn notice_panel(
@@ -134,9 +158,9 @@ pub(crate) fn notice_panel(
         .child(
             div()
                 .font_weight(FontWeight::SEMIBOLD)
-                .child(title.into()),
+                .child(selectable(title)),
         )
-        .child(div().child(body.into()))
+        .child(div().child(selectable(body)))
 }
 pub(crate) fn stage_color(stage: Stage, cx: &App) -> u32 {
     let colors = palette(cx);
@@ -300,7 +324,7 @@ impl TaskApp {
                         } else {
                             "Saved"
                         }))
-                        .child(div().text_sm().child(message.clone())),
+                        .child(div().text_sm().child(selectable(message.clone()))),
                 )
                 .child(
                     tool_icon("dismiss-save-feedback", assets::IconName::Close, "Dismiss save feedback").on_click(
@@ -355,7 +379,7 @@ impl TaskApp {
                             .text_sm()
                             .font_weight(FontWeight::SEMIBOLD)
                             .line_height(relative(1.3))
-                            .child("What the hell are you planning?"),
+                            .child(selectable("What the hell are you planning?")),
                     ),
             )
             .child(row().px_2().pb_3().child(label("Personal workspace", cx)));
@@ -601,7 +625,7 @@ impl TaskApp {
                                             .gap_2()
                                             .whitespace_normal()
                                             .child(label(heading.clone(), cx))
-                                            .child(div().font_weight(FontWeight::SEMIBOLD).child(title.clone()))
+                                            .child(div().font_weight(FontWeight::SEMIBOLD).child(selectable(title.clone())))
                                             .child(muted(reason.clone(), cx).text_sm())
                                     })
                                     .p_3()
@@ -738,7 +762,7 @@ impl TaskApp {
                             .child(row().w_full().min_w_0().gap_2()
                                 .child(gpui_kit::component::Icon::new(assets::IconName::Settings)
                                     .size(px(20.)).flex_shrink_0())
-                                .child(div().text_sm().child("Settings")))
+                                .child(div().text_sm().child(selectable("Settings"))))
                             .on_click(
                                 cx.listener(|this, _, w, cx| this.navigate(Scope::Settings, w, cx)),
                             ),
@@ -819,7 +843,7 @@ impl TaskApp {
                             .overflow_hidden()
                             .text_ellipsis()
                             .text_sm()
-                            .child(title.to_string()),
+                            .child(selectable(title.to_string())),
                     )
                     .child(
                         row()
@@ -1276,7 +1300,7 @@ impl TaskApp {
                         .items_center()
                         .justify_center()
                         .gap_3()
-                        .child(div().text_xl().child("No tasks here"))
+                        .child(div().text_xl().child(selectable("No tasks here")))
                         .child(muted("Try another filter, or create your first task.", cx))
                         .child(
                             button("clear-filters", "Reset filters").on_click(cx.listener(
@@ -1339,12 +1363,12 @@ impl TaskApp {
                 .gap_3()
                 .text_xs()
                 .text_color(rgb(colors.muted))
-                .child(div().w(px(156.)).flex_shrink_0().child("PRIORITY / ID"))
-                .child(div().flex_1().min_w_0().child("TASK"))
-                .child(div().w(px(150.)).flex_shrink_0().child("STATUS"))
-                .child(div().w(px(84.)).flex_shrink_0().child("LABELS"))
-                .child(div().w_16().flex_shrink_0().child("DUE"))
-                .child(div().w(px(156.)).flex_shrink_0().child("CREATED")),
+                .child(div().w(px(156.)).flex_shrink_0().child(selectable("PRIORITY / ID")))
+                .child(div().flex_1().min_w_0().child(selectable("TASK")))
+                .child(div().w(px(150.)).flex_shrink_0().child(selectable("STATUS")))
+                .child(div().w(px(84.)).flex_shrink_0().child(selectable("LABELS")))
+                .child(div().w_16().flex_shrink_0().child(selectable("DUE")))
+                .child(div().w(px(156.)).flex_shrink_0().child(selectable("CREATED"))),
         )
         .child(
             uniform_list(
@@ -1749,7 +1773,7 @@ impl TaskApp {
             .when(t.priority != Priority::Medium, |d| d.child(
                 label(format!("Priority: {}", t.priority.label()), cx).text_xs(),
             ))
-            .child(div().line_height(relative(1.4)).child(t.title.clone()))
+            .child(div().line_height(relative(1.4)).child(selectable(t.title.clone())))
             .child(chip(status.label(), status.execution.color(cx), cx))
             .child(label(status.reason.clone(), cx))
             .when_some(
@@ -1816,7 +1840,7 @@ impl TaskApp {
                         .text_xs()
                         .line_height(relative(1.4))
                         .text_color(rgb(colors.secondary))
-                        .child(metadata.join(" · ")),
+                        .child(selectable(metadata.join(" · "))),
                 )
             })
             .child(
@@ -1926,7 +1950,7 @@ impl TaskApp {
     fn detail(&self, id: u64, cx: &mut Context<Self>) -> AnyElement {
         let colors = palette(cx);
         let Some(t) = self.store.task(id) else {
-            return col().child("Task not found").into_any_element();
+            return col().child(selectable("Task not found")).into_any_element();
         };
         let t = t.clone();
         let is_goal = t
@@ -1979,7 +2003,7 @@ impl TaskApp {
                         .flex_shrink_0().px_2().py_0p5().rounded(px(4.))
                         .bg(rgb(colors.tag_surface)).text_xs()
                         .font_weight(FontWeight::MEDIUM)
-                        .text_color(rgb(colors.tag_text)).child(kind_label).map(observed)),
+                        .text_color(rgb(colors.tag_text)).child(selectable(kind_label)).map(observed)),
             );
         head = head.child(
             row()
@@ -2126,17 +2150,17 @@ impl TaskApp {
                     .text_xl()
                     .font_weight(FontWeight::SEMIBOLD)
                     .line_height(relative(1.3))
-                    .child(t.title.clone()),
+                    .child(selectable(t.title.clone())),
             )
             .child(
                 div()
                     .text_color(rgb(colors.secondary))
                     .line_height(relative(1.7))
-                    .child(if t.description.is_empty() {
+                    .child(selectable(if t.description.is_empty() {
                         "Add a description to give this task more context.".into()
                     } else {
                         t.description.clone()
-                    }),
+                    })),
             )
             .when(is_goal, |d| d.child(self.request_brief_view(id, cx)))
             .child(self.materials_panel(id, cx))
@@ -2226,11 +2250,11 @@ impl TaskApp {
                                 .child(
                                     div()
                                         .font_weight(FontWeight::SEMIBOLD)
-                                        .child(comment.author.clone()),
+                                        .child(selectable(comment.author.clone())),
                                 )
                                 .child(label(comment.created_at.clone(), cx)),
                         )
-                        .child(comment.body.clone()),
+                        .child(selectable(comment.body.clone())),
                 );
             }
             activity_panel = activity_panel
@@ -2302,9 +2326,9 @@ impl TaskApp {
             properties = properties.child(
                 col().gap_1()
                     .child(div().text_sm().font_weight(FontWeight::SEMIBOLD)
-                        .text_color(rgb(colors.accent)).child("Completed previously · update needed"))
+                        .text_color(rgb(colors.accent)).child(selectable("Completed previously · update needed")))
                     .child(div().text_xs().text_color(rgb(colors.muted))
-                        .child("No reusable result is available for the current inputs. Finish any prerequisite updates before running again.")),
+                        .child(selectable("No reusable result is available for the current inputs. Finish any prerequisite updates before running again."))),
             );
         }
         if self.task_running(id) {
@@ -2330,13 +2354,13 @@ impl TaskApp {
                         .p_2()
                         .border_l_2()
                         .border_color(rgb(colors.accent))
-                        .child(div().text_sm().font_weight(FontWeight::SEMIBOLD).child(
+                        .child(div().text_sm().font_weight(FontWeight::SEMIBOLD).child(selectable(
                             if previously_completed {
                                 "Task could not run again"
                             } else {
                                 "Task could not start"
                             },
-                        ))
+                        )))
                         .child({
                             let related = self.store.tasks.iter().find_map(|task| {
                                 let name =
@@ -2353,21 +2377,21 @@ impl TaskApp {
                                 col()
                                     .gap_2()
                                     .child(
-                                        div().text_sm().text_color(rgb(colors.muted)).child(before),
+                                        div().text_sm().text_color(rgb(colors.muted)).child(selectable(before)),
                                     )
                                     .child(
                                         div()
                                             .text_sm()
                                             .font_weight(FontWeight::SEMIBOLD)
                                             .text_color(rgb(colors.accent))
-                                            .child(name),
+                                            .child(selectable(name)),
                                     )
                                     .child(
-                                        div().text_sm().text_color(rgb(colors.muted)).child(after),
+                                        div().text_sm().text_color(rgb(colors.muted)).child(selectable(after)),
                                     )
                                     .into_any_element()
                             } else {
-                                div().text_sm().child(message.clone()).into_any_element()
+                                div().text_sm().child(selectable(message.clone())).into_any_element()
                             }
                         }),
                 );
@@ -2407,7 +2431,7 @@ impl TaskApp {
                 .font_weight(FontWeight::SEMIBOLD)
                 .text_color(rgb(colors.text))
                 .id("task-properties-heading")
-                .child("Task").map(observed),
+                .child(selectable("Task")).map(observed),
         );
         let status = self.display_task_status(id);
         let execution = status.execution;
@@ -2551,7 +2575,7 @@ impl TaskApp {
                             div()
                                 .text_sm()
                                 .font_weight(FontWeight::SEMIBOLD)
-                                .child("Labels"),
+                                .child(selectable("Labels")),
                         )
                         .child(
                             tool_icon("edit-labels", assets::IconName::Pencil, "Edit labels")
@@ -2573,7 +2597,7 @@ impl TaskApp {
                                 .bg(rgb(colors.tag_surface))
                                 .text_xs()
                                 .text_color(rgb(colors.tag_text))
-                                .child(name.clone())
+                                .child(selectable(name.clone()))
                         }))
                         .when(t.labels.is_empty(), |d| d.child(label("No labels", cx))),
                 )
@@ -2582,7 +2606,7 @@ impl TaskApp {
                         .pt_2()
                         .text_sm()
                         .font_weight(FontWeight::SEMIBOLD)
-                        .child("Execution settings"),
+                        .child(selectable("Execution settings")),
                 );
             let execution_field = |name: &str, value: String| {
                 row()
@@ -2602,7 +2626,7 @@ impl TaskApp {
                             .text_color(rgb(colors.text))
                             .whitespace_normal()
                             .overflow_hidden()
-                            .child(value),
+                            .child(selectable(value)),
                     )
             };
             let model_fields = |model: &str| {
@@ -2865,7 +2889,7 @@ impl TaskApp {
                     .gap_4()
                     .bg(rgb(colors.panel))
                     .rounded_lg()
-                    .child(div().text_lg().child(format!("Working folder · {name}")))
+                    .child(div().text_lg().child(selectable(format!("Working folder · {name}"))))
                     .child(muted(
                         "OpenCode will read and modify files in this folder when you run a task.",
                         cx,
@@ -3308,7 +3332,7 @@ impl Render for TaskApp {
                             .gap_4()
                             .bg(rgb(colors.panel))
                             .rounded_lg()
-                            .child(div().text_lg().child("New project"))
+                            .child(div().text_lg().child(selectable("New project")))
                             .child(Input::new(&input).id("project-name"))
                             .child(muted("Create a project to organize topics. You can add research requests later.", cx))
                             .when(!self.error.is_empty(), |d| {

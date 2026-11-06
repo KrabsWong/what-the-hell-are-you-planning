@@ -482,7 +482,9 @@ impl ScheduledTime {
         Ok(Self {
             utc,
             timezone: timezone.into(),
-            local: value.format("%Y-%m-%d %H:%M %Z").to_string(),
+            // The schedule's time zone is stated next to every schedule summary,
+            // so repeating a zone abbreviation would only add noise.
+            local: value.format("%Y-%m-%d %H:%M").to_string(),
         })
     }
 }
@@ -522,6 +524,15 @@ mod tests {
             .unwrap()
             .format("%Y-%m-%dT%H:%M:%SZ")
             .to_string()
+    }
+
+    #[test]
+    fn local_time_omits_the_zone_abbreviation() {
+        // The schedule summary beside every listing already names the zone, so a
+        // second "CST"-style suffix would only add noise and ambiguity.
+        let value = ScheduledTime::new(utc("2026-11-06T02:00:00Z"), "Asia/Shanghai").unwrap();
+        assert_eq!(value.local, "2026-11-06 10:00");
+        assert_eq!(value.timezone, "Asia/Shanghai");
     }
 
     #[test]

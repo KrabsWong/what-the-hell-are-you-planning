@@ -77,7 +77,7 @@ impl TaskApp {
             );
         }
         let composer=col().w_full().max_w(px(850.)).min_w_0().gap_4()
-            .child(div().text_2xl().font_weight(FontWeight::SEMIBOLD).child("Start with one sentence"))
+            .child(div().text_2xl().font_weight(FontWeight::SEMIBOLD).child(selectable("Start with one sentence")))
             .child(muted("Describe what you want to understand and the output you need. We will draft a complete plan in Backlog for your review.", cx))
             .child(label("RESEARCH QUESTION", cx))
             .child(Input::new(&self.research_title).id("research-title"))
@@ -89,7 +89,7 @@ impl TaskApp {
             .child(self.topic_picker(None, self.research_project, cx))
             .child(row().flex_wrap().child(button("research-folder","Set working folder…").on_click(cx.listener(|this,_,w,cx|this.open_directory(this.research_project,w,cx)))).child(primary_button("create-research", "Generate research plan").on_click(cx.listener(|this,_,w,cx|this.create_research(w,cx)))))
             .child(label("Your request is saved first. Planning does not run the research. Move selected goals to Todo, then click Run.", cx))
-            .child(div().h_4()).child(row().child(div().font_weight(FontWeight::SEMIBOLD).child("Your research goals")))
+            .child(div().h_4()).child(row().child(div().font_weight(FontWeight::SEMIBOLD).child(selectable("Your research goals"))))
             .child(goals)
             .child(self.request_history(None, cx));
         col()
@@ -101,7 +101,7 @@ impl TaskApp {
                     .border_b_1()
                     .border_color(rgb(colors.line))
                     .justify_between()
-                    .child(div().font_weight(FontWeight::SEMIBOLD).child("Market research"))
+                    .child(div().font_weight(FontWeight::SEMIBOLD).child(selectable("Market research")))
                     .child(button("research-settings-toggle", "Research settings…")
                         .on_click(cx.listener(|this, _, w, cx| this.open_model_settings(w, cx)))),
             )
@@ -189,7 +189,7 @@ impl TaskApp {
                 let input = input.clone();
                 list = list.child(div().id(format!("research-model-option-{model}"))
                     .flex_shrink_0().px_2().py_1().cursor_pointer()
-                    .hover(|d| d.bg(rgb(colors.line))).child(model.clone())
+                    .hover(|d| d.bg(rgb(colors.line))).child(selectable(model.clone()))
                     .on_mouse_down(MouseButton::Left, cx.listener(move |this, _, w, cx| {
                         w.prevent_default();
                         cx.stop_propagation();
@@ -207,13 +207,13 @@ impl TaskApp {
         let colors = palette(cx);
         let mut settings = col().gap_3()
             .child(col().gap_2()
-                .child(div().font_weight(FontWeight::SEMIBOLD).child("Global default"))
+                .child(div().font_weight(FontWeight::SEMIBOLD).child(selectable("Global default")))
                 .child(row().child(self.model_agent_picker(None, cx)).child(self.research_model_field(
                     &self.global_model, "research-global-model".into(), cx,
                 ))))
             .child(col().pt_2().gap_1()
                 .child(row().justify_between()
-                    .child(div().font_weight(FontWeight::SEMIBOLD).child("Research stage models"))
+                    .child(div().font_weight(FontWeight::SEMIBOLD).child(selectable("Research stage models")))
                     .child(button("global-model-all-stages", "Use global for all stages")
                         .disabled(self.research_models.iter().all(|m| m.read(cx).value().is_empty()) && self.store.research_config.agents.iter().all(Option::is_none))
                         .on_click(cx.listener(|this, _, w, cx| {
@@ -232,7 +232,7 @@ impl TaskApp {
             let value = self.research_models[i].read(cx).value();
             let field = self.research_model_field(&self.research_models[i], format!("research-model-{i}"), cx);
             settings = settings.child(col().gap_1()
-                .child(div().text_sm().font_weight(FontWeight::MEDIUM).child(kind.label()))
+                .child(div().text_sm().font_weight(FontWeight::MEDIUM).child(selectable(kind.label())))
                 .child(row().child(self.model_agent_picker(Some(i), cx)).child(field)
                     .child(button(format!("research-use-global-{i}"), "Use global")
                         .disabled(value.is_empty() && self.store.research_config.agents[i].is_none())
@@ -242,11 +242,11 @@ impl TaskApp {
                 }));
         }
         settings=settings
-            .child(div().pt_4().font_weight(FontWeight::SEMIBOLD).child("Agent connections"))
+            .child(div().pt_4().font_weight(FontWeight::SEMIBOLD).child(selectable("Agent connections")))
             .child(label("Local runtimes shared by all profiles.", cx))
             .child(self.agent_settings_panel(cx))
             .child(div().h_3().border_b_1().border_color(rgb(colors.line)))
-            .child(div().pt_2().font_weight(FontWeight::SEMIBOLD).child("Browser · ego(lite)"))
+            .child(div().pt_2().font_weight(FontWeight::SEMIBOLD).child(selectable("Browser · ego(lite)")))
             .child(Input::new(&self.ego_input).id("ego-path"))
             .child(row().flex_wrap().child(button("check-ego","Check runtime").disabled(self.ego_probe.is_some()).on_click(cx.listener(|this,_,_,cx|this.check_ego(cx)))).child(button("open-ego","Open browser").icon(assets::IconName::ExternalLink).on_click(cx.listener(|this,_,_,cx|this.open_ego(cx)))))
             .child(label(self.ego_status.clone(), cx))
@@ -320,7 +320,7 @@ impl TaskApp {
             } else if let Some(path) = path {
                 preview.child(img(path).w_full().h_full().object_fit(ObjectFit::Contain)
                     .with_fallback(move || div().text_xs().text_color(rgb(colors.muted))
-                        .child("Preview unavailable").into_any_element()))
+                        .child(selectable("Preview unavailable")).into_any_element()))
             } else {
                 preview.child(label("File unavailable", cx))
             };

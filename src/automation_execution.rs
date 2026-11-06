@@ -6,7 +6,7 @@
 use crate::{
     automation::{
         AutomationApproval, AutomationDefinition, AutomationGoal, AutomationMaterial,
-        AutomationOccurrence, AutomationPermissions, AutomationShape, AutomationTemplate,
+        AutomationOccurrence, AutomationShape, AutomationTemplate,
         AutomationTemplateStep, DefinitionStatus, WindowRule,
     },
     automation::{TimeWindow},
@@ -14,9 +14,7 @@ use crate::{
     domain::{AgentRun, Stage, Store},
     research::ResearchKind,
 };
-use sha2::{Digest, Sha256};
 
-pub const AUTOMATION_AGENT_PROFILE: &str = "automation-research";
 
 /// Deterministic, reviewable template. The user's objective is not re-planned each
 /// period; the app only substitutes the occurrence time window at dispatch.
@@ -231,7 +229,6 @@ pub fn approval_for(
     definition: &AutomationDefinition,
     now: i64,
     materials: Vec<AutomationMaterial>,
-    permissions: AutomationPermissions,
 ) -> Result<AutomationApproval, String> {
     definition.validate_draft()?;
     let template = definition
@@ -251,12 +248,6 @@ pub fn approval_for(
             models[index] = store.research_model(kind).to_string();
             agents[index] = Some(store.research_agent(kind).to_string());
             continue;
-        }
-        if store.research_agent(kind) != "OpenCode" {
-            return Err(
-                "Unattended automations currently support the OpenCode agent only. Choose OpenCode for the collection, analysis and report steps in Settings."
-                    .into(),
-            );
         }
         let model = store.research_model(kind).to_string();
         if model.trim().is_empty() || !store.valid_research_model(kind) {
@@ -278,7 +269,6 @@ pub fn approval_for(
         models,
         agents,
         materials,
-        permissions,
     })
 }
 
@@ -537,7 +527,6 @@ impl Store {
         &mut self,
         id: u64,
         materials: Vec<AutomationMaterial>,
-        permissions: AutomationPermissions,
         now: i64,
     ) -> Result<AutomationApproval, String> {
         let definition = self.automation(id).ok_or("Automation not found.")?.clone();
@@ -547,7 +536,7 @@ impl Store {
         if !self.projects.iter().any(|p| p.id == definition.project_id) {
             return Err("Choose an existing project.".into());
         }
-        let approval = approval_for(self, &definition, now, materials, permissions)?;
+        let approval = approval_for(self, &definition, now, materials)?;
         let first = definition.schedule.first_after(now)?;
         let definition = self.automation_mut(id).unwrap();
         definition.approval = Some(approval.clone());
@@ -617,6 +606,9 @@ impl Store {
         Ok(())
     }
 
+    /// Temporarily unexposed in the UI; the store capability stays for the
+    /// list-level workflow that will own it.
+    #[allow(dead_code)]
     pub fn archive_automation(&mut self, id: u64, now: i64) -> Result<(), String> {
         let definition = self.automation(id).ok_or("Automation not found.")?;
         if definition.status == DefinitionStatus::Archived {
@@ -645,6 +637,7 @@ impl Store {
         Ok(())
     }
 
+    #[allow(dead_code)]
     pub fn copy_automation(&mut self, id: u64, now: i64) -> Result<u64, String> {
         let source = self.automation(id).ok_or("Automation not found.")?.clone();
         let id = self.next_automation_id()?;
@@ -1018,7 +1011,7 @@ pub fn time_context_block(occurrence: &AutomationOccurrence) -> String {
             .unwrap_or_else(|| "none".into())
     };
     format!(
-        "AUTOMATION OCCURRENCE CONTEXT (authoritative; overrides general current-time wording):\n- Automation: {}\n- Occurrence: {} ({})\n- Trigger: {}\n- Period scheduled for: {} UTC\n- Actual start: {}\n- Time zone: {}\n- Reference time: {}\n- Data window: {}\n- This is one period of an approved recurring task. Interpret “yesterday”, “last week” and similar phrases against the reference time and time zone above, never against the actual start date.\n- A retry or resumed step keeps this same reference time window.\n- This run is unattended. Browser control, interactive questions and shell commands are denied. Use only read-only web fetching/search and public-data MCP tools; if a source requires sign-in or browser interaction, record it as an evidence gap instead of taking over the browser.
+        "AUTOMATION OCCURRENCE CONTEXT (authoritative; overrides general current-time wording):\n- Automation: {}\n- Occurrence: {} ({})\n- Trigger: {}\n- Period scheduled for: {} UTC\n- Actual start: {}\n- Time zone: {}\n- Reference time: {}\n- Data window: {}\n- This is one period of an approved recurring task. Interpret “yesterday”, “last week” and similar phrases against the reference time and time zone above, never against the actual start date.\n- A retry or resumed step keeps this same reference time window.\n- This period was started by a schedule, so no one is watching the session. If a source requires sign-in, a CAPTCHA or a browser handoff, record it as an evidence gap and continue with accessible sources instead of waiting for input.
 - Do not schedule, publish, send, trade, or modify external systems.",
         occurrence.snapshot.objective.chars().take(160).collect::<String>(),
         occurrence.id,
@@ -1062,85 +1055,6 @@ pub fn resolved_previous_day(reference: i64, timezone: &str) -> Result<TimeWindo
         window,
         format!("Previous local day in {timezone} (start inclusive, end exclusive); business-day validity is verified by the collection step"),
     ))
-}
-
-/// A restricted project-local agent config. OpenCode loads this from the run's
-/// working directory; the user's global configuration is never modified.
-pub fn write_permission_profile(
-    directory: &std::path::Path,
-    permissions: &AutomationPermissions,
-) -> Result<(), String> {
-    let path = directory.join("opencode.json");
-    let allowed = |action: &str| {
-        permissions
-            .allowed_actions
-            .iter()
-            .any(|value| value == action)
-    };
-    let mut rules = serde_json::Map::new();
-    rules.insert("*".into(), serde_json::json!("deny"));
-    for action in ["read", "glob", "grep", "list", "webfetch", "websearch", "lsp"] {
-        rules.insert(
-            action.into(),
-            serde_json::json!(if allowed(action) { "allow" } else { "deny" }),
-        );
-    }
-    for action in [
-        "edit",
-        "bash",
-        "task",
-        "external_directory",
-        "todowrite",
-        "question",
-        "skill",
-        "doom_loop",
-    ] {
-        rules.insert(action.into(), serde_json::json!("deny"));
-    }
-    let value = serde_json::json!({
-        "$schema": "https://opencode.ai/config.json",
-        "agent": {
-            AUTOMATION_AGENT_PROFILE: {
-                "mode": "primary",
-                "description": "Restricted unattended research agent",
-                "permission": rules,
-            }
-        }
-    });
-    let bytes = serde_json::to_vec_pretty(&value).map_err(|e| e.to_string())?;
-    match std::fs::read(&path) {
-        Ok(existing) if existing == bytes => return Ok(()),
-        Ok(_) => {
-            return Err(format!(
-                "{} already contains a different OpenCode configuration. Remove or inspect it before this automation runs.",
-                path.display()
-            ));
-        }
-        Err(error) if error.kind() == std::io::ErrorKind::NotFound => {}
-        Err(error) => return Err(format!("Cannot inspect {}: {error}", path.display())),
-    }
-    use std::io::Write;
-    let mut options = std::fs::OpenOptions::new();
-    options.write(true).create_new(true);
-    #[cfg(unix)]
-    {
-        use std::os::unix::fs::OpenOptionsExt;
-        options.mode(0o600);
-    }
-    let mut file = options
-        .open(&path)
-        .map_err(|e| format!("Cannot write {}: {e}", path.display()))?;
-    if let Err(error) = file.write_all(&bytes).and_then(|_| file.sync_all()) {
-        drop(file);
-        let _ = std::fs::remove_file(&path);
-        return Err(format!("Cannot write {}: {error}", path.display()));
-    }
-    Ok(())
-}
-
-#[allow(dead_code)] // Approval snapshots can carry material signatures; no picker yet.
-pub fn material_signature(bytes: &[u8]) -> String {
-    format!("{:x}", Sha256::digest(bytes))
 }
 
 #[cfg(test)]
@@ -1210,7 +1124,6 @@ mod tests {
                 models: std::array::from_fn(|_| "test/model".to_string()),
                 agents: Default::default(),
                 materials: vec![],
-                permissions: AutomationPermissions::restricted("OpenCode"),
                 policy: definition.policy.clone(),
                 approval_version: definition.version,
                 approval_signature: "approval".into(),
@@ -1262,7 +1175,6 @@ mod tests {
             .approve_and_enable(
                 id,
                 vec![],
-                AutomationPermissions::restricted("OpenCode"),
                 1_000,
             )
             .unwrap();
@@ -1295,7 +1207,6 @@ mod tests {
             .approve_and_enable(
                 id,
                 vec![],
-                AutomationPermissions::restricted("OpenCode"),
                 1_000,
             )
             .unwrap();
@@ -1413,7 +1324,6 @@ mod tests {
             .approve_and_enable(
                 id,
                 vec![],
-                AutomationPermissions::restricted("OpenCode"),
                 1_000,
             )
             .unwrap();
@@ -1477,7 +1387,6 @@ mod tests {
             .approve_and_enable(
                 id,
                 vec![],
-                AutomationPermissions::restricted("OpenCode"),
                 1_000,
             )
             .unwrap();
@@ -1509,7 +1418,6 @@ mod tests {
             .approve_and_enable(
                 id,
                 vec![],
-                AutomationPermissions::restricted("OpenCode"),
                 1_000,
             )
             .unwrap();
@@ -1561,7 +1469,6 @@ mod tests {
             .approve_and_enable(
                 id,
                 vec![],
-                AutomationPermissions::restricted("OpenCode"),
                 2_100,
             )
             .unwrap();
@@ -1587,7 +1494,6 @@ mod tests {
             .approve_and_enable(
                 id,
                 vec![],
-                AutomationPermissions::restricted("OpenCode"),
                 1_000,
             )
             .unwrap();
@@ -1675,41 +1581,6 @@ mod tests {
     }
 
     #[test]
-    fn permission_profile_is_private_and_never_overwritten_with_different_rules() {
-        let root = std::env::temp_dir().join(crate::opencode::new_session_id());
-        std::fs::create_dir_all(&root).unwrap();
-        let permissions = AutomationPermissions::restricted("OpenCode");
-        write_permission_profile(&root, &permissions).unwrap();
-        let value: serde_json::Value =
-            serde_json::from_slice(&std::fs::read(root.join("opencode.json")).unwrap()).unwrap();
-        assert_eq!(
-            value["agent"][AUTOMATION_AGENT_PROFILE]["permission"]["bash"],
-            "deny"
-        );
-        assert_eq!(
-            value["agent"][AUTOMATION_AGENT_PROFILE]["permission"]["read"],
-            "allow"
-        );
-        assert_eq!(
-            value["agent"][AUTOMATION_AGENT_PROFILE]["permission"]["websearch"],
-            "allow"
-        );
-        assert_eq!(
-            value["agent"][AUTOMATION_AGENT_PROFILE]["permission"]["edit"],
-            "deny"
-        );
-        assert_eq!(
-            value["agent"][AUTOMATION_AGENT_PROFILE]["permission"]["*"],
-            "deny"
-        );
-        write_permission_profile(&root, &permissions).unwrap();
-        let mut changed = permissions;
-        changed.allowed_actions = vec!["read".into()];
-        assert!(write_permission_profile(&root, &changed).is_err());
-        std::fs::remove_dir_all(root).unwrap();
-    }
-
-    #[test]
     fn deadline_blocks_new_steps_but_not_existing_validation() {
         let mut store = store();
         let id = definition(&mut store);
@@ -1741,7 +1612,6 @@ mod tests {
             .approve_and_enable(
                 id,
                 vec![],
-                AutomationPermissions::restricted("OpenCode"),
                 1_700_000_000,
             )
             .unwrap();
@@ -1828,7 +1698,6 @@ mod tests {
             .approve_and_enable(
                 id,
                 vec![],
-                AutomationPermissions::restricted("OpenCode"),
                 1_700_000_000,
             )
             .unwrap();
@@ -1847,20 +1716,18 @@ mod tests {
     }
 
     #[test]
-    fn approval_rejects_non_opencode_agents_for_unattended_runs() {
+    fn approval_uses_the_agent_selected_in_settings() {
+        // Automations reuse the research agent choice; there is no separate
+        // automation-only agent profile.
         let mut store = store();
         store.research_config.agents[1] = Some("Codex".into());
         store.research_config.models[1] = "fixture-codex".into();
         let id = definition(&mut store);
-        let error = store
-            .approve_and_enable(
-                id,
-                vec![],
-                AutomationPermissions::restricted("OpenCode"),
-                1_700_000_000,
-            )
-            .unwrap_err();
-        assert!(error.contains("OpenCode"));
+        let approval = store
+            .approve_and_enable(id, vec![], 1_700_000_000)
+            .unwrap();
+        assert_eq!(approval.agents[1].as_deref(), Some("Codex"));
+        assert_eq!(approval.models[1], "fixture-codex");
     }
 
     #[test]
@@ -1873,7 +1740,6 @@ mod tests {
             .approve_and_enable(
                 id,
                 vec![],
-                AutomationPermissions::restricted("OpenCode"),
                 1_700_000_000,
             )
             .unwrap();
@@ -1896,7 +1762,6 @@ mod tests {
             .approve_and_enable(
                 id,
                 vec![],
-                AutomationPermissions::restricted("OpenCode"),
                 1_700_000_000,
             )
             .unwrap();

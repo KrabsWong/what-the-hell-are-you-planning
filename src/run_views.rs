@@ -203,6 +203,10 @@ impl TaskApp {
                 .iter()
                 .find(|t| Some(t.id) == location.map(|l| l.1))
         });
+        // Automation periods keep their steps out of the ordinary results tree, so
+        // there is no project/topic history to put beside them. Hide the empty
+        // column instead of showing a blank pane.
+        let show_history = selected.is_some() && project.is_some() && topic.is_some();
         let mut history = col()
             .id("run-navigation")
             .w_full()
@@ -332,7 +336,7 @@ impl TaskApp {
                     .child(gpui_kit::component::button::Button::new("run-topic-picker")
                         .w_full().h_auto().py_2().px_2().dropdown_caret(true)
                         .child(div().flex_1().min_w_0().text_left().whitespace_normal()
-                            .text_sm().line_height(relative(1.4)).child(goal_title))
+                            .text_sm().line_height(relative(1.4)).child(selectable(goal_title)))
                         .tooltip("Choose goal or planning activity")
                         .dropdown_menu_with_anchor(Anchor::TopLeft, move |mut menu, _, _| {
                             for (id, name, rid) in &topic_options {
@@ -400,7 +404,7 @@ impl TaskApp {
                         .pb_1()
                         .text_lg()
                         .font_weight(FontWeight::SEMIBOLD)
-                        .child("Final report"),
+                        .child(selectable("Final report")),
                 );
                 for run in reports {
                     entries = entries.child(self.run_history_entry(run, selected, cx));
@@ -445,7 +449,7 @@ impl TaskApp {
                 .items_center()
                 .justify_center()
                 .gap_4()
-                .child(div().text_2xl().child("Your results will appear here"))
+                .child(div().text_2xl().child(selectable("Your results will appear here")))
                 .child(muted("Choose a task in your project to get started.", cx))
                 .child(
                     primary_button("runs-to-tasks", "Go to tasks")
@@ -465,7 +469,7 @@ impl TaskApp {
                                 .size(px(260.))
                                 .size_range(px(200.)..px(520.))
                                 .fixed()
-                                .visible(selected.is_some())
+                                .visible(show_history)
                                 .child(history.map(observed)),
                         )
                         .child(
@@ -1008,7 +1012,7 @@ impl TaskApp {
                         .accessibility_label(task.title.clone())
                         .tooltip(if result_run.is_some() { "Open result" } else { "Open task details" })
                         .child(div().w_full().min_w_0().text_sm().text_left().truncate()
-                            .text_color(rgb(colors.text)).child(task.title.clone()))
+                            .text_color(rgb(colors.text)).child(selectable(task.title.clone())))
                         .on_click(cx.listener(move |a, _, w, cx| {
                             if let Some(run_id) = result_run {
                                 a.show_task_result(run_id, cx);
@@ -1046,7 +1050,7 @@ impl TaskApp {
                         .font_weight(FontWeight::SEMIBOLD)
                         .line_height(relative(1.3))
                         .line_clamp(2)
-                        .child(run.task_title.clone()),
+                        .child(selectable(run.task_title.clone())),
                 ),
             )
             .child(progress)
@@ -1071,7 +1075,7 @@ impl TaskApp {
                             div()
                                 .text_lg()
                                 .font_weight(FontWeight::MEDIUM)
-                                .child(headline),
+                                .child(selectable(headline)),
                         )
                         .child(label(queue_explanation.clone(), cx))
                         .when(!ongoing && can_open && project_plan.is_none(), |d| {
@@ -1208,7 +1212,7 @@ impl TaskApp {
                         .bg(rgb(colors.side))
                         .font_family("Menlo")
                         .text_xs()
-                        .child(run.output.clone())
+                        .child(selectable(run.output.clone()))
                         .map(observed),
                 )
             })
@@ -1233,7 +1237,7 @@ impl TaskApp {
                                 } else {
                                     colors.secondary
                                 }))
-                                .child(line.clone())
+                                .child(selectable(line.clone()))
                         }))
                         .map(observed),
                 )

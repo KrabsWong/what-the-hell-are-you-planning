@@ -83,7 +83,7 @@ impl TaskApp {
             for (index, blocker) in blockers.iter().enumerate() {
                 let (title, remedy) = blocker.split_once('\n').unwrap_or((blocker, ""));
                 body = body.child(col().p_3().gap_2().rounded_md().bg(rgb(colors.side))
-                    .child(div().font_weight(FontWeight::SEMIBOLD).child(format!("{}. {title}", index + 1)))
+                    .child(div().font_weight(FontWeight::SEMIBOLD).child(selectable(format!("{}. {title}", index + 1))))
                     .child(muted(remedy.trim().to_string(), cx)));
             }
         } else {
@@ -168,7 +168,7 @@ impl TaskApp {
         let colors = palette(cx);
         div().absolute().inset_0().occlude().bg(rgba(0x00000080)).flex().items_center().justify_center()
             .child(col().w(px(460.)).p_6().gap_4().rounded_lg().bg(rgb(colors.panel))
-                .child(div().text_lg().font_weight(FontWeight::SEMIBOLD).child(if id.is_some() { "Rename topic" } else { "New topic" }))
+                .child(div().text_lg().font_weight(FontWeight::SEMIBOLD).child(selectable(if id.is_some() { "Rename topic" } else { "New topic" })))
                 .child(muted("Keep related research goals together around a company, subject or question.", cx))
                 .child(Input::new(input).id("topic-name"))
                 .when(!self.error.is_empty(), |d| d.child(crate::views::notice(
@@ -415,7 +415,7 @@ impl TaskApp {
 
     pub(crate) fn topic_view(&self, id: u64, cx: &mut Context<Self>) -> AnyElement {
         let Some(topic) = self.store.topics.iter().find(|t| t.id == id) else {
-            return div().child("Topic not found").into_any_element();
+            return div().child(selectable("Topic not found")).into_any_element();
         };
         let project = topic.project_id;
         let archived = topic.archived;
@@ -523,7 +523,7 @@ impl TaskApp {
                 .when(topic.replanned_from.is_some(), |d| d.child(div().id("topic-replanned-indicator").role(Role::Label).aria_label("Replanned topic")
                     .flex_shrink_0().child(gpui_kit::component::Icon::new(assets::IconName::NotebookPen)
                         .size_4().text_color(rgb(palette(cx).accent)))))
-                .child(div().flex_1().min_w_0().child(topic.display_name())))
+                .child(div().flex_1().min_w_0().child(selectable(topic.display_name()))))
                 .when(can_queue, |d| d.child(button("queue-topic", "Queue topic")
                     .tooltip("Queue all approved unfinished goals in this topic. Topics execute one at a time.")
                     .on_click(cx.listener(move |a, _, _, cx| a.start_topic_batch(id, cx)))))

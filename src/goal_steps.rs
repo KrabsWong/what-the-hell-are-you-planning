@@ -172,7 +172,7 @@ impl TaskApp {
             .border_l_2().border_color(rgb(state.color(cx)))
             .child(div().text_sm().font_weight(FontWeight::SEMIBOLD)
                 .text_color(rgb(state.color(cx))).child(self.display_task_status(id).label()))
-            .child(div().id("step-execution-reason").text_sm().text_color(rgb(colors.secondary)).child(reason).map(observed));
+            .child(div().id("step-execution-reason").text_sm().text_color(rgb(colors.secondary)).child(selectable(reason)).map(observed));
         if state == ExecutionStatus::Blocked {
             if let Some(run) = latest {
                 let detail = run.logs.iter().rev().find(|line| {
@@ -360,12 +360,12 @@ impl TaskApp {
                                 .whitespace_normal()
                                 .text_left()
                                 .line_height(relative(1.4))
-                                .child(task.title.clone()),
+                                .child(selectable(task.title.clone())),
                         )
                         .child(div().text_xs().text_left().whitespace_normal()
-                            .text_color(rgb(execution.color(cx))).child(status.label()))
+                            .text_color(rgb(execution.color(cx))).child(selectable(status.label())))
                         .child(div().text_xs().text_left().whitespace_normal()
-                            .text_color(rgb(colors.secondary)).child(status.reason.clone()))
+                            .text_color(rgb(colors.secondary)).child(selectable(status.reason.clone())))
                         .child(
                             row()
                                 .w_full()
@@ -443,7 +443,7 @@ impl TaskApp {
                         col().id(format!("steps-column-{}", crate::workflow::phase_label(phase)))
                             .w(px(if phase == Stage::InProgress { 350. } else { 292. })).flex_shrink_0().h_full().gap_3()
                             .child(row().h_9().gap_2()
-                                .child(div().text_color(rgb(stage_color(phase, cx))).child(crate::workflow::phase_label(phase)))
+                                .child(div().text_color(rgb(stage_color(phase, cx))).child(selectable(crate::workflow::phase_label(phase))))
                                 .child(label(matching.len().to_string(), cx))
                                 .when(phase == Stage::InProgress, |d| d.child(self.execution_status_filter(&tasks, cx))))
                             .child(col().id(format!("steps-cards-{}", crate::workflow::phase_label(phase)))

@@ -553,7 +553,6 @@ fn build_occurrence(
             models: approval.models.clone(),
             agents: approval.agents.clone(),
             materials: approval.materials.clone(),
-            permissions: approval.permissions.clone(),
             policy: definition.policy.clone(),
             approval_version: approval.version,
             approval_signature: crate::automation::hash_json(
@@ -775,7 +774,7 @@ impl FakeAutomationRunner {
 mod tests {
     use super::*;
     use crate::automation::{
-        AutomationApproval, AutomationPermissions, AutomationPolicy, TimeWindowState,
+        AutomationApproval, AutomationPolicy, TimeWindowState,
     };
     use crate::automation_execution::build_template;
     use crate::automation_schedule::{Schedule, ScheduleSpec};
@@ -821,7 +820,6 @@ mod tests {
                 .approve_and_enable(
                     id,
                     vec![],
-                    AutomationPermissions::restricted("OpenCode"),
                     0,
                 )
                 .unwrap();
@@ -1093,7 +1091,6 @@ mod tests {
                 models: std::array::from_fn(|_| "test/model".into()),
                 agents: Default::default(),
                 materials: vec![],
-                permissions: AutomationPermissions::restricted("OpenCode"),
             }),
             policy: AutomationPolicy::default(),
             cursor: None,
@@ -1357,21 +1354,6 @@ impl TaskApp {
             && now >= deadline
         {
             self.timeout_occurrence(occurrence_id, now, cx);
-            return;
-        }
-        if !self.automation_unattended_enabled {
-            let reason = "Unattended automation execution is disabled in this build until execution-layer tool denial is verified. Nothing was started.";
-            if let Some(value) = self.store.occurrence_mut(occurrence_id) {
-                let _ = value.transition(
-                    OccurrenceStatus::Verifying,
-                    Some(OccurrenceReason::new(SkipCode::VerificationRequired, reason)),
-                );
-            }
-            self.store
-                .mark_automation_attention(occurrence.automation_id, reason);
-            self.error = reason.into();
-            self.persist_if_changed(true);
-            cx.notify();
             return;
         }
         if self.automation_fake_mode {

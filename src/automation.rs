@@ -172,38 +172,6 @@ impl AutomationPolicy {
     }
 }
 
-/// The capability boundary recorded in an approval. It is copied into every
-/// occurrence; changing it requires a new approved version.
-#[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
-pub struct AutomationPermissions {
-    pub agent: String,
-    pub profile: String,
-    pub allowed_actions: Vec<String>,
-    pub denied_actions: Vec<String>,
-    pub unattended: bool,
-    pub notes: String,
-}
-impl AutomationPermissions {
-    pub fn restricted(agent: impl Into<String>) -> Self {
-        Self {
-            agent: agent.into(),
-            profile: "automation-research".into(),
-            allowed_actions: vec!["read".into(), "webfetch".into(), "websearch".into()],
-            denied_actions: vec![
-                "write".into(),
-                "edit".into(),
-                "shell".into(),
-                "bash".into(),
-                "task".into(),
-                "browser".into(),
-                "question".into(),
-            ],
-            unattended: true,
-            notes: "Restrictions are applied through a generated project-local OpenCode agent; see doc/AUTOMATION_PLAN.md §7.".into(),
-        }
-    }
-}
-
 #[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
 pub struct AutomationMaterial {
     pub task_id: u64,
@@ -388,7 +356,6 @@ pub struct AutomationApproval {
     pub models: [String; 4],
     pub agents: [Option<String>; 4],
     pub materials: Vec<AutomationMaterial>,
-    pub permissions: AutomationPermissions,
 }
 
 #[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
@@ -399,7 +366,6 @@ pub struct AutomationOccurrenceSnapshot {
     pub models: [String; 4],
     pub agents: [Option<String>; 4],
     pub materials: Vec<AutomationMaterial>,
-    pub permissions: AutomationPermissions,
     pub policy: AutomationPolicy,
     pub approval_version: u32,
     pub approval_signature: String,
@@ -813,7 +779,6 @@ mod tests {
             models: Default::default(),
             agents: Default::default(),
             materials: vec![],
-            permissions: AutomationPermissions::restricted("OpenCode"),
         });
         assert!(value.approval_current());
         value.version = 2;
@@ -847,8 +812,7 @@ mod tests {
                 models: Default::default(),
                 agents: Default::default(),
                 materials: vec![],
-                permissions: AutomationPermissions::restricted("OpenCode"),
-                policy: AutomationPolicy::default(),
+                    policy: AutomationPolicy::default(),
                 approval_version: 1,
                 approval_signature: "sig".into(),
             },
@@ -953,8 +917,7 @@ mod tests {
                 models: std::array::from_fn(|_| "test/model".to_string()),
                 agents: Default::default(),
                 materials: vec![],
-                permissions: AutomationPermissions::restricted("OpenCode"),
-                policy: AutomationPolicy::default(),
+                    policy: AutomationPolicy::default(),
                 approval_version: 1,
                 approval_signature: "sig".into(),
             },

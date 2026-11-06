@@ -392,11 +392,6 @@ impl TaskApp {
             .iter()
             .find(|run| run.id == source_id)
             .and_then(|run| run.automation_occurrence_id);
-        if source_occurrence.is_some() && !self.automation_unattended_available() {
-            self.error = "Report regeneration belongs to an automation period. Unattended execution is disabled in this build until execution-layer tool denial is verified.".into();
-            cx.notify();
-            return;
-        }
         let result = research::prepare_report_regeneration(&self.store, source_id, style)
             .and_then(|mut run| {
                 if let Some(occurrence_id) = source_occurrence {

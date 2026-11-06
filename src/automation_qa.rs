@@ -21,7 +21,7 @@ pub fn run() {
     std::fs::create_dir_all(&root).unwrap();
     pure_checks(&root);
     planning_chain(&root);
-    gated_wizard_check(&root);
+    wizard_actions_check(&root);
     execution_chain(&root);
     recovery_chain(&root);
     pause_recovery_chain(&root);
@@ -38,10 +38,10 @@ fn now() -> i64 {
     chrono::Utc::now().timestamp()
 }
 
-/// Production builds gate unattended execution. The final wizard step must still
-/// offer an obvious, working action instead of a dead end.
-fn gated_wizard_check(root: &Path) {
-    let directory = root.join("gated-wizard");
+/// The final wizard step must offer a working enable action next to saving a
+/// reviewed draft; a saved draft keeps the lifecycle controls visible but disabled.
+fn wizard_actions_check(root: &Path) {
+    let directory = root.join("wizard-actions");
     std::fs::create_dir_all(&directory).unwrap();
     let path = directory.join("workspace.sqlite3");
     let store = model_store(&directory);
@@ -57,8 +57,6 @@ fn gated_wizard_check(root: &Path) {
         .open_window(size(px(1000.), px(680.)), |w, cx| {
             let view = cx.new(|cx| TaskApp::new_mock(w, cx));
             view.update(cx, |a, cx| {
-                // This is exactly what a release build ships with.
-                a.automation_unattended_enabled = false;
                 a.attach_storage(Storage::new(path.clone()), w, cx);
                 a.scope = Scope::Automations;
                 assert!(a.storage_error.is_empty(), "{}", a.storage_error);
@@ -74,7 +72,7 @@ fn gated_wizard_check(root: &Path) {
         w.render_frame(cx);
     })
     .unwrap();
-    screenshot(&mut cx, handle, &directory, "gated-list.png");
+    screenshot(&mut cx, handle, &directory, "wizard-list.png");
     cx.update_window(handle, |_, w, cx| {
         w.click("new-automation", cx);
         w.click("automation-objective", cx);
@@ -85,15 +83,17 @@ fn gated_wizard_check(root: &Path) {
     })
     .unwrap();
     assert_eq!(read_state(&mut cx, &app, |a| a.automation_ui.step), 3);
-    screenshot(&mut cx, handle, &directory, "gated-step3.png");
+    screenshot(&mut cx, handle, &directory, "wizard-step3.png");
     cx.update_window(handle, |_, w, _| {
-        assert!(
-            w.try_find("enable-automation").is_none(),
-            "a gated build must not offer an unusable primary action"
+        let enable = w.find("enable-automation");
+        assert_ne!(
+            enable.disabled(),
+            Some(true),
+            "the final step must offer a working enable action"
         );
         let save = w
             .try_find("save-automation-draft")
-            .expect("the final step must offer a working save action");
+            .expect("the final step must also allow keeping a draft");
         assert!(
             save.bounds().origin.y < px(680.),
             "the final action row must stay inside the window"
@@ -116,14 +116,40 @@ fn gated_wizard_check(root: &Path) {
     });
     assert_eq!(saved, Some(("Check today's fuel prices in Shenzhen, Guangdong".into(), DefinitionStatus::Draft)));
     assert!(!creating, "saving finishes the wizard and opens the draft");
-    screenshot(&mut cx, handle, &directory, "gated-step3-saved.png");
+    screenshot(&mut cx, handle, &directory, "wizard-step3-saved.png");
+    // A draft keeps the lifecycle controls visible but disabled, so they do not
+    // appear to vanish before the first enable.
+    cx.update_window(handle, |_, w, cx| {
+        w.scroll(
+            "automation-detail-scroll",
+            ScrollDelta::Pixels(point(px(0.), px(-10_000.))),
+            cx,
+        );
+        w.render_frame(cx);
+    })
+    .unwrap();
+    cx.update_window(handle, |_, w, _| {
+        assert_eq!(w.find("pause-automation").disabled(), Some(true));
+        assert_eq!(w.find("run-automation").disabled(), Some(true));
+    })
+    .unwrap();
+    screenshot(&mut cx, handle, &directory, "wizard-draft-actions.png");
+    cx.update_window(handle, |_, w, cx| {
+        w.scroll(
+            "automation-detail-scroll",
+            ScrollDelta::Pixels(point(px(0.), px(10_000.))),
+            cx,
+        );
+        w.render_frame(cx);
+    })
+    .unwrap();
     // Dark theme legibility for the same success notice.
     cx.update_window(handle, |_, w, cx| {
         w.click("toggle-appearance", cx);
         w.render_frame(cx);
     })
     .unwrap();
-    screenshot(&mut cx, handle, &directory, "gated-step3-saved-dark.png");
+    screenshot(&mut cx, handle, &directory, "wizard-step3-saved-dark.png");
     // A real validation error uses the danger tone in the same layout.
     cx.update_window(handle, |_, w, cx| {
         w.click("back-automations", cx);
@@ -137,8 +163,8 @@ fn gated_wizard_check(root: &Path) {
         a.automation_ui.feedback,
         Some(Err(_))
     )));
-    screenshot(&mut cx, handle, &directory, "gated-error-dark.png");
-    println!("gated wizard passed (final step keeps a working save action)");
+    screenshot(&mut cx, handle, &directory, "wizard-error-dark.png");
+    println!("wizard actions passed (enable and save draft both reachable)");
 }
 
 
@@ -281,7 +307,6 @@ fn enable(store: &mut Store, id: u64) {
         .approve_and_enable(
             id,
             vec![],
-            crate::automation::AutomationPermissions::restricted("OpenCode"),
             now(),
         )
         .unwrap();
@@ -389,7 +414,6 @@ fn pure_checks(root: &Path) {
                     models: std::array::from_fn(|_| "qa/automation".to_string()),
                     agents: Default::default(),
                     materials: vec![],
-                    permissions: crate::automation::AutomationPermissions::restricted("OpenCode"),
                     policy: definition.policy.clone(),
                     approval_version: definition.version,
                     approval_signature: "qa".into(),
@@ -552,43 +576,13 @@ print(json.dumps({'type':'text','part':{'text':json.dumps({'status':'complete','
         .occurrence(occurrence)
         .unwrap()
         .unread));
-    // The permission profile was generated in each run directory.
-    let profile = read_state(&mut cx, &app, |a| {
-        a.store
-            .runs
-            .iter()
-            .filter(|run| run.automation_occurrence_id == Some(occurrence))
-            .map(|run| PathBuf::from(&run.directory).join("opencode.json"))
-            .collect::<Vec<_>>()
-    });
-    assert_eq!(profile.len(), 3);
-    for path in profile {
-        let value: serde_json::Value =
-            serde_json::from_slice(&std::fs::read(path).unwrap()).unwrap();
-        assert_eq!(
-            value["agent"]["automation-research"]["permission"]["bash"],
-            "deny"
-        );
-    }
-    // Report regeneration is a separate ordinary entry and must keep the occurrence
-    // snapshot/gate rather than creating a run without automation ownership.
+    // Report regeneration is an ordinary entry point and keeps the occurrence
+    // snapshot instead of creating a run without automation ownership.
     let source = read_state(&mut cx, &app, |a| {
         a.store.occurrence(occurrence).unwrap().final_run_id.unwrap()
     });
-    let runs_before = read_state(&mut cx, &app, |a| a.store.runs.len());
     cx.update_window(handle, |_, _, cx| {
         app.update(cx, |a, cx| {
-            a.automation_unattended_enabled = false;
-            a.error.clear();
-            a.regenerate_report(source, "更清楚一些", cx);
-        });
-    })
-    .unwrap();
-    assert!(read_state(&mut cx, &app, |a| a.error.contains("disabled")));
-    assert_eq!(read_state(&mut cx, &app, |a| a.store.runs.len()), runs_before);
-    cx.update_window(handle, |_, _, cx| {
-        app.update(cx, |a, cx| {
-            a.automation_unattended_enabled = true;
             a.error.clear();
             a.regenerate_report(source, "更清楚一些", cx);
         });
@@ -631,14 +625,9 @@ print(json.dumps({'type':'text','part':{'text':json.dumps({'status':'complete','
     });
     assert_eq!(final_run_id, Some(regenerated));
     assert_eq!(regenerated_model, "fixture/advise");
-    let value: serde_json::Value = serde_json::from_slice(
-        &std::fs::read(PathBuf::from(regenerated_dir).join("opencode.json")).unwrap(),
-    )
-    .unwrap();
-    assert_eq!(
-        value["agent"]["automation-research"]["permission"]["websearch"],
-        "allow"
-    );
+    // Regeneration keeps the occurrence's own working directory and leaves no
+    // automation-only agent configuration behind.
+    assert!(!PathBuf::from(&regenerated_dir).join("opencode.json").exists());
     // A regeneration gets its own deadline. A hung fake CLI must be cancelled, the
     // slot released, and the previous successful report preserved.
     let timeout_source = regenerated;
@@ -1308,7 +1297,6 @@ fn entry_route_check(root: &Path) {
         .open_window(size(px(1200.), px(800.)), |w, cx| {
             let view = cx.new(|cx| TaskApp::new_mock(w, cx));
             view.update(cx, |a, cx| {
-                a.automation_unattended_enabled = false;
                 a.attach_storage(Storage::new(path.clone()), w, cx);
                 a.automation_fake_mode = true;
                 assert!(a.storage_error.is_empty(), "{}", a.storage_error);
@@ -1335,32 +1323,6 @@ fn entry_route_check(root: &Path) {
             })
         })
         .unwrap();
-    assert!(read_state(&mut cx, &app, |a| a.error.contains("disabled")));
-    assert_eq!(
-        read_state(&mut cx, &app, |a| a
-            .store
-            .runs
-            .iter()
-            .filter(|run| run.automation_occurrence_id == Some(occurrence))
-            .count()),
-        0,
-        "gated entry must not start an occurrence run"
-    );
-    assert_eq!(
-        read_state(&mut cx, &app, |a| a
-            .automation_fake
-            .as_ref()
-            .map_or(0, |runner| runner.starts.len())),
-        0
-    );
-    cx.update_window(handle, |_, _, cx| {
-        app.update(cx, |a, cx| {
-            a.automation_unattended_enabled = true;
-            a.error.clear();
-            a.start_run(task, cx);
-        });
-    })
-    .unwrap();
     assert_eq!(
         read_state(&mut cx, &app, |a| a.store.occurrence(occurrence).unwrap().status),
         OccurrenceStatus::Succeeded
@@ -1372,7 +1334,7 @@ fn entry_route_check(root: &Path) {
     assert!(read_state(&mut cx, &app, |a| a.store.runs.iter().all(|run| {
         run.task_id != task || run.automation_occurrence_id == Some(occurrence)
     })));
-    println!("step entry routing passed (gate blocks, occurrence path owns runs)");
+    println!("step entry routing passed (ordinary entry routes through the occurrence)");
 }
 
 /// A started instance must finish its full chain even when a newer instance is
@@ -1771,7 +1733,17 @@ fn ui_interaction(root: &Path) -> PathBuf {
         DefinitionStatus::Paused
     );
     assert_eq!(read_state(&mut cx, &app, |a| a.store.automation(id).unwrap().cursor), None);
+    // A paused automation marks its next-run area instead of listing triggers.
+    cx.update_window(handle, |_, w, _| {
+        assert!(w.find("next-runs-paused").visible());
+    })
+    .unwrap();
+    screenshot(&mut cx, handle, &directory, "04a-paused.png");
     cx.update_window(handle, |_, w, cx| { w.render_frame(cx); w.click("resume-automation", cx); }).unwrap();
+    cx.update_window(handle, |_, w, _| {
+        assert!(w.try_find("next-runs-paused").is_none());
+    })
+    .unwrap();
     assert_eq!(
         read_state(&mut cx, &app, |a| a.store.automation(id).unwrap().status),
         DefinitionStatus::Enabled
@@ -1813,14 +1785,23 @@ fn ui_interaction(root: &Path) -> PathBuf {
     })
     .unwrap();
 
-    cx.update_window(handle, |_, w, cx| { w.render_frame(cx); w.click("copy-automation", cx); }).unwrap();
+    // Copy and Archive are not on the detail action row for now; the workflows
+    // they will own are still exercised directly.
+    cx.update_window(handle, |_, w, cx| {
+        app.update(cx, |a, cx| a.copy_automation_ui(id, w, cx));
+        w.render_frame(cx);
+    })
+    .unwrap();
     let copy = read_state(&mut cx, &app, |a| a.automation_ui.selected.unwrap());
     assert_ne!(copy, id);
     assert_eq!(
         read_state(&mut cx, &app, |a| a.store.automation(copy).unwrap().status),
         DefinitionStatus::Draft
     );
-    cx.update_window(handle, |_, w, cx| { w.render_frame(cx); w.click("archive-automation", cx); }).unwrap();
+    cx.update_window(handle, |_, _, cx| {
+        app.update(cx, |a, cx| a.archive_automation_ui(copy, cx));
+    })
+    .unwrap();
     assert_eq!(
         read_state(&mut cx, &app, |a| a.store.automation(copy).unwrap().status),
         DefinitionStatus::Archived
@@ -1877,7 +1858,6 @@ fn ui_interaction(root: &Path) -> PathBuf {
     screenshot(&mut cx, handle, &directory, "04-detail.png");
     cx.update_window(handle, |_, w, cx| {
         app.update(cx, |a, cx| {
-            a.automation_unattended_enabled = false;
             a.automation_ui.feedback = None;
             a.error.clear();
             a.toast = "Automations".into();
@@ -1886,17 +1866,69 @@ fn ui_interaction(root: &Path) -> PathBuf {
             cx.notify();
         });
         w.render_frame(cx);
-        assert!(
-            w.try_find("run-automation").is_none(),
-            "run action must be hidden while unattended execution is gated"
+        assert_ne!(
+            w.find("run-automation").disabled(),
+            Some(true),
+            "an approved automation exposes the manual trigger"
         );
     })
     .unwrap();
-    screenshot(&mut cx, handle, &directory, "05-permission-gate.png");
-    cx.update_window(handle, |_, _, cx| {
-        app.update(cx, |a, _| a.automation_unattended_enabled = true);
+    screenshot(&mut cx, handle, &directory, "05-detail-enabled.png");
+    // Reading text opts into window text selection, so a drag selects it and
+    // Cmd+C copies the selection.
+    cx.update_window(handle, |_, w, cx| {
+        let bounds = w.find("automation-objective").bounds();
+        let start = point(bounds.origin.x + px(2.), bounds.origin.y + px(8.));
+        let end = point(bounds.right() - px(2.), bounds.origin.y + px(8.));
+        w.drag(start, end, cx);
+        let selected = gpui_kit::base::TextSelection::selected_text(w, cx);
+        assert!(
+            selected.contains('追'),
+            "the objective should be selectable, got {selected:?}"
+        );
+        w.press("cmd-c", cx);
+        let copied = cx
+            .read_from_clipboard()
+            .and_then(|item| item.text())
+            .unwrap_or_default();
+        assert!(
+            copied.contains('追'),
+            "Cmd+C should copy the selection, got {copied:?}"
+        );
     })
     .unwrap();
+
+    // Opening one automation step shows only that step: automation periods have
+    // no project/topic history to fill the results column beside it.
+    let automation_run = read_state(&mut cx, &app, |a| {
+        a.store
+            .runs
+            .iter()
+            .rev()
+            .find(|run| run.automation_occurrence_id.is_some())
+            .map(|run| run.id)
+    });
+    let automation_run = automation_run.expect("the automation has a run to open");
+    cx.update_window(handle, |_, w, cx| {
+        app.update(cx, |a, cx| {
+            a.task_result_context = None;
+            a.scope = Scope::Runs;
+            a.selected_run = Some(automation_run);
+            a.show_run_details = false;
+            a.show_run_result = false;
+            cx.notify();
+        });
+        w.render_frame(cx);
+    })
+    .unwrap();
+    cx.update_window(handle, |_, w, _| {
+        assert!(
+            w.try_find("run-navigation").is_none(),
+            "an automation run must not show an empty project history column"
+        );
+    })
+    .unwrap();
+    screenshot(&mut cx, handle, &directory, "06-results-blank-column.png");
     path
 }
 
@@ -2017,7 +2049,6 @@ pub fn performance_fixture() {
                 models: std::array::from_fn(|_| "qa/automation".to_string()),
                 agents: Default::default(),
                 materials: vec![],
-                permissions: crate::automation::AutomationPermissions::restricted("OpenCode"),
                 policy: Default::default(),
                 approval_version: 1,
                 approval_signature: "qa".into(),

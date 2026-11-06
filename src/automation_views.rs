@@ -5,13 +5,13 @@ use crate::{
         AutomationDefinition, AutomationOccurrence, AutomationPolicy, AutomationShape,
         AutomationTemplate, DefinitionStatus, OccurrenceStatus, TimeWindowState,
     },
-    automation_execution::{build_quick_template, AUTOMATION_AGENT_PROFILE},
+    automation_execution::build_quick_template,
     automation_schedule::{parse_timezone, CatchUp, Schedule, ScheduleSpec, ScheduledTime},
     controls::*,
     domain::Store,
 };
 use crate::appearance::palette;
-use crate::views::{chip, col, label, muted, observed, row};
+use crate::views::{chip, col, label, muted, observed, row, selectable};
 use gpui_kit::{
     InteractiveElement,
     component::Disableable,
@@ -277,6 +277,93 @@ pub fn format_in_zone(utc: i64, timezone: &str) -> String {
         .unwrap_or_else(|_| utc.to_string())
 }
 
+/// Reading text for the automation overview. What the user came for keeps full
+/// contrast at body size, so supporting notes cannot be mistaken for content.
+pub fn overview_body(text: impl Into<SharedString>, cx: &App) -> Div {
+    let colors = palette(cx);
+    div()
+        .text_sm()
+        .text_color(rgb(colors.text))
+        .line_height(relative(1.55))
+        .child(selectable(text))
+}
+
+/// Secondary explanation inside the overview: how the shape works, how runs are
+/// governed. Small and muted so it supports the overview without competing.
+pub fn overview_note(text: impl Into<SharedString>, cx: &App) -> Div {
+    let colors = palette(cx);
+    div()
+        .text_xs()
+        .text_color(rgb(colors.muted))
+        .line_height(relative(1.6))
+        .child(selectable(text))
+}
+
+pub fn overview_heading(text: impl Into<SharedString>) -> Div {
+    div()
+        .text_sm()
+        .font_weight(FontWeight::SEMIBOLD)
+        .child(selectable(text))
+}
+
+/// Status, shape, version and project as one meta line under the schedule.
+/// These are read-only facts, so they must not look like tabs or filters.
+pub fn overview_meta_line(definition: &AutomationDefinition, project: &str, cx: &App) -> Div {
+    let colors = palette(cx);
+    row()
+        .flex_wrap()
+        .gap_1()
+        .text_xs()
+        .child(
+            div()
+                .font_weight(FontWeight::MEDIUM)
+                .text_color(rgb(crate::views::stage_color_for_definition(
+                    definition.status,
+                    cx,
+                )))
+                .child(selectable(definition.status.label())),
+        )
+        .child(
+            div()
+                .text_color(rgb(colors.muted))
+                .child(selectable(format!(
+                    "· {} · Version {} · {project}",
+                    definition.shape.label(),
+                    definition.version
+                ))),
+        )
+}
+
+/// Plain-language run limits, one sentence per line.
+pub fn run_policy_summary(policy: &AutomationPolicy) -> String {
+    let delay = human_duration(policy.allowed_delay_seconds);
+    let limit = human_duration(policy.timeout_seconds);
+    let failures = policy.max_consecutive_failures;
+    let missed = match policy.catch_up {
+        CatchUp::LatestOnly => format!(
+            "Missed periods: catch up on the newest one only, and skip it if it is more than {delay} late."
+        ),
+        CatchUp::SkipAll => "Missed periods: skip all of them.".to_string(),
+    };
+    format!(
+        "{missed}\nEach run stops after {limit}, and {failures} failures in a row pause the automation."
+    )
+}
+
+fn human_duration(seconds: i64) -> String {
+    let minutes = seconds.max(0) / 60;
+    if minutes >= 60 {
+        match (minutes / 60, minutes % 60) {
+            (hours, 0) => format!("{hours} h"),
+            (hours, minutes) => format!("{hours} h {minutes} min"),
+        }
+    } else if minutes > 0 {
+        format!("{minutes} min")
+    } else {
+        format!("{} s", seconds.max(0))
+    }
+}
+
 pub fn occurrence_window_label(occurrence: &AutomationOccurrence) -> String {
     match &occurrence.data_window.state {
         TimeWindowState::Resolved { start_utc, end_utc, .. } => format!(
@@ -303,10 +390,6 @@ fn definition_form_signature(
 }
 
 impl TaskApp {
-    pub(crate) fn automation_unattended_available(&self) -> bool {
-        self.automation_unattended_enabled
-    }
-
     pub fn open_automations(&mut self, window: &mut Window, cx: &mut Context<Self>) {
         self.navigate(Scope::Automations, window, cx);
         self.automation_ui.scroll.set_offset(point(px(0.), px(0.)));
@@ -826,15 +909,7 @@ impl TaskApp {
                 return;
             }
         };
-        let permissions = crate::automation::AutomationPermissions::restricted(
-            self.store.research_config.default_agent.clone(),
-        );
-        let result = self.store.approve_and_enable(
-            id,
-            vec![],
-            permissions,
-            Self::automation_now(),
-        );
+        let result = self.store.approve_and_enable(id, vec![], Self::automation_now());
         match result {
             Ok(_) => {
                 if self.storage.is_none() {
@@ -991,6 +1066,9 @@ impl TaskApp {
         cx.notify();
     }
 
+    /// Kept for the list-level workflow that will own Copy and Archive; both
+    /// actions are intentionally absent from the detail page for now.
+    #[allow(dead_code)]
     pub fn copy_automation_ui(&mut self, id: u64, window: &mut Window, cx: &mut Context<Self>) {
         let rollback = self.store.clone();
         match self.store.copy_automation(id, Self::automation_now()) {
@@ -1011,6 +1089,7 @@ impl TaskApp {
         cx.notify();
     }
 
+    #[allow(dead_code)]
     pub fn archive_automation_ui(&mut self, id: u64, cx: &mut Context<Self>) {
         let rollback = self.store.clone();
         let pending = self.queued_occurrences(id);
@@ -1172,7 +1251,7 @@ impl TaskApp {
                 .gap_4()
                 .child(
                     col().flex_1().min_w_0().gap_1()
-                        .child(div().text_xl().font_weight(FontWeight::SEMIBOLD).child("Automations"))
+                        .child(div().text_xl().font_weight(FontWeight::SEMIBOLD).child(selectable("Automations")))
                         .child(muted(
                             "Recurring information work. Runs happen only while the app is open and the computer is awake; missed periods follow the saved catch-up rule.",
                             cx,
@@ -1197,7 +1276,7 @@ impl TaskApp {
                     .border_1()
                     .border_color(rgb(colors.line))
                     .bg(rgb(colors.panel))
-                    .child(div().font_weight(FontWeight::SEMIBOLD).child("No automations yet"))
+                    .child(div().font_weight(FontWeight::SEMIBOLD).child(selectable("No automations yet")))
                     .child(muted(
                         "Quick tasks need one instruction and a schedule. Research automations plan once, then repeat the approved plan. Everything here lives under Automations, separate from your projects and topics.",
                         cx,
@@ -1208,10 +1287,14 @@ impl TaskApp {
             let id = definition.id;
             let latest = latest_occurrence(&self.store, id);
             let unread = self.store.automation_unread_count(id);
-            let next = definition
-                .cursor
-                .map(|value| format_in_zone(value, &definition.schedule.timezone))
-                .unwrap_or_else(|| "No future trigger".into());
+            let next = match definition.status {
+                DefinitionStatus::Paused => "Paused".to_string(),
+                DefinitionStatus::Archived => "Archived".to_string(),
+                _ => definition
+                    .cursor
+                    .map(|value| format_in_zone(value, &definition.schedule.timezone))
+                    .unwrap_or_else(|| "No future trigger".into()),
+            };
             let status = match definition.status {
                 DefinitionStatus::Enabled => "Enabled",
                 DefinitionStatus::Paused => "Paused",
@@ -1310,6 +1393,8 @@ impl TaskApp {
             .into_iter()
             .map(|value| format_in_zone(value, &definition.schedule.timezone))
             .collect();
+        let paused = definition.status == DefinitionStatus::Paused;
+        let archived = definition.status == DefinitionStatus::Archived;
         let project = self
             .store
             .projects
@@ -1320,50 +1405,54 @@ impl TaskApp {
         let active = self.store.automation_active(id).map(|o| o.id);
         let latest = latest_occurrence(&self.store, id);
         let mut actions = row().flex_wrap().gap_2();
-        if matches!(
-            definition.status,
-            DefinitionStatus::Enabled | DefinitionStatus::NeedsAttention
-        ) {
-            actions = actions.child(
-                button("pause-automation", "Pause")
-                    .icon(assets::IconName::Pause)
-                    .tooltip("Stop future triggers and cancel unstarted requests. A running period can finish.")
-                    .on_click(cx.listener(move |app, _, _, cx| app.pause_automation_ui(id, cx))),
-            );
-        }
-        if matches!(
-            definition.status,
-            DefinitionStatus::Paused | DefinitionStatus::NeedsAttention
-        ) {
-            actions = actions.child(
-                primary_button("resume-automation", "Resume")
-                    .icon(assets::IconName::Play)
-                    .tooltip("Enable again from now; paused time is not backfilled.")
-                    .on_click(cx.listener(move |app, _, _, cx| app.resume_automation_ui(id, cx))),
-            );
-        }
         if definition.status == DefinitionStatus::Draft {
             actions = actions.child(
-                primary_button(
-                    "enable-draft-automation",
-                    if self.automation_unattended_available() {
-                        "Review and enable"
-                    } else {
-                        "Review draft"
-                    },
-                )
+                primary_button("enable-draft-automation", "Review and enable")
                     .icon(assets::IconName::Check)
                     .on_click(cx.listener(move |app, _, window, cx| app.edit_automation(id, window, cx))),
             );
         }
-        if definition.approval_current()
-            && definition.status != DefinitionStatus::Archived
-            && self.automation_unattended_available()
-        {
+        // One lifecycle control stays in the same place: Pause while scheduled,
+        // Resume once paused or needing attention. Drafts show it disabled so
+        // the control does not appear to vanish before the first enable.
+        match definition.status {
+            DefinitionStatus::Enabled => {
+                actions = actions.child(
+                    button("pause-automation", "Pause")
+                        .icon(assets::IconName::Pause)
+                        .tooltip("Stop future triggers and cancel unstarted requests. A running period can finish.")
+                        .on_click(cx.listener(move |app, _, _, cx| app.pause_automation_ui(id, cx))),
+                );
+            }
+            DefinitionStatus::Paused | DefinitionStatus::NeedsAttention => {
+                actions = actions.child(
+                    primary_button("resume-automation", "Resume")
+                        .icon(assets::IconName::Play)
+                        .tooltip("Enable again from now; paused time is not backfilled.")
+                        .on_click(cx.listener(move |app, _, _, cx| app.resume_automation_ui(id, cx))),
+                );
+            }
+            DefinitionStatus::Draft => {
+                actions = actions.child(
+                    button("pause-automation", "Pause")
+                        .icon(assets::IconName::Pause)
+                        .disabled(true)
+                        .tooltip("Enable this automation before pausing it."),
+                );
+            }
+            DefinitionStatus::Archived => {}
+        }
+        if definition.status != DefinitionStatus::Archived {
+            // Manual trigger. It stays visible in every live state so it can be
+            // found; when it cannot start work, the reason is stated here and
+            // just below the action row.
+            let run_blocked = (!definition.approval_current())
+                .then_some("Review and enable this version before running it.");
             actions = actions.child(
                 button("run-automation", "Run now")
                     .icon(assets::IconName::Play)
-                    .tooltip("Queue one manual period. The schedule does not move.")
+                    .disabled(run_blocked.is_some())
+                    .tooltip(run_blocked.unwrap_or("Queue one manual period. The schedule does not move."))
                     .on_click(cx.listener(move |app, _, _, cx| app.run_automation_now(id, cx))),
             );
         }
@@ -1392,26 +1481,13 @@ impl TaskApp {
                 );
             }
         }
-        actions = actions
-            .child(
-                button("copy-automation", "Copy")
-                    .icon(assets::IconName::Copy)
-                    .tooltip("Copy the plan and settings as an unapproved draft without history.")
-                    .on_click(cx.listener(move |app, _, window, cx| app.copy_automation_ui(id, window, cx))),
-            );
-        if definition.status != DefinitionStatus::Archived {
-            actions = actions.child(
-                button("archive-automation", "Archive")
-                    .icon(assets::IconName::Archive)
-                    .tooltip("Stop future triggers and cancel unstarted requests. History is kept.")
-                    .on_click(cx.listener(move |app, _, _, cx| app.archive_automation_ui(id, cx))),
-            );
-        }
+        // Copy and Archive are deliberately not surfaced yet. The handlers stay
+        // for the list-level workflows that will own them.
 
         let mut panel = col().flex_1().h_full().min_h_0().min_w_0().id("automation-detail-scroll").track_scroll(&self.automation_ui.scroll).overflow_y_scroll().p_6().gap_4();
         panel = panel
             .child(
-                row().justify_between().gap_4()
+                row().justify_between().items_start().gap_4()
                     .child(col().flex_1().min_w_0().gap_1()
                         .child(
                             div()
@@ -1419,42 +1495,42 @@ impl TaskApp {
                                 .text_lg()
                                 .font_weight(FontWeight::SEMIBOLD)
                                 .line_height(relative(1.3))
-                                .child(definition.name.clone()),
+                                .child(selectable(definition.name.clone())),
                         )
-                        .child(muted(schedule_summary(&definition.schedule), cx)))
+                        .child(muted(schedule_summary(&definition.schedule), cx))
+                        .child(overview_meta_line(definition, &project, cx))
+                        .when(definition.shape.is_quick(), |d| {
+                            d.child(overview_note(
+                                "One read-only answer per period, stored under Automations — no project, topic or planning chain.",
+                                cx,
+                            ))
+                        }))
                     .child(quiet_button("back-automations", "All automations")
                         .icon(assets::IconName::ArrowLeft)
                         .on_click(cx.listener(|app, _, window, cx| app.open_automations(window, cx)))),
             )
             // Feedback belongs at the top of the content, never between actions.
             .child(self.automation_feedback(cx))
+            // Build-wide limits sit outside the card: the card only describes
+            // this one automation.
             .child(
                 col().p_4().gap_3().rounded_lg().border_1().border_color(rgb(colors.line)).bg(rgb(colors.panel))
-                    .child(row().flex_wrap().gap_2()
-                        .child(chip(definition.status.label(), crate::views::stage_color_for_definition(definition.status, cx), cx))
-                        .child(chip(definition.shape.label(), colors.secondary, cx))
-                        .child(chip(format!("Version {}", definition.version), colors.secondary, cx))
-                        .child(chip(project, colors.secondary, cx)))
-                    .when(!self.automation_unattended_available(), |d| {
-                        d.child(crate::views::notice_panel(
-                            crate::views::NoticeTone::Warning,
-                            "Build limitation",
-                            "Unattended execution is disabled in this build until execution-layer tool denial is verified. You can review and keep drafts, but enabling or running will not start work.",
-                            cx,
-                        ))
-                    })
-                    .child(div().font_weight(FontWeight::SEMIBOLD).child("What it does"))
-                    .child(label(definition.objective.clone(), cx))
-                    .child(div().font_weight(FontWeight::SEMIBOLD).child("Expected result"))
-                    .child(label(definition.expected_result.clone(), cx))
+                    .child(overview_heading("What it does"))
+                    .child(
+                        overview_body(definition.objective.clone(), cx)
+                            .id("automation-objective")
+                            .map(observed),
+                    )
+                    .child(overview_heading("Expected result"))
+                    .child(overview_body(definition.expected_result.clone(), cx))
                     .when_some(
                         definition
                             .template
                             .as_ref()
                             .filter(|_| definition.shape == AutomationShape::Research),
                         |d, template| {
-                            d.child(div().font_weight(FontWeight::SEMIBOLD).child("Approved research plan"))
-                                .child(label(
+                            d.child(overview_heading("Approved research plan"))
+                                .child(overview_body(
                                     format!(
                                         "{} goal(s) · runs unchanged each period; no replanning\n{}",
                                         template.goals.len(),
@@ -1464,24 +1540,6 @@ impl TaskApp {
                                 ))
                         },
                     )
-                    .when(definition.shape.is_quick(), |d| {
-                        d.child(muted(
-                            "Quick task: one read-only answer per period, stored under Automations. No project, topic or planning chain.",
-                            cx,
-                        ))
-                    })
-                    .child(div().font_weight(FontWeight::SEMIBOLD).child("Next runs"))
-                    .child(label(if next.is_empty() { "No future trigger".into() } else { next.join("\n") }, cx))
-                    .child(muted(format!(
-                        "Missed periods: {} · Allowed delay: {} min · Time limit: {} min · Pause after {} consecutive failures",
-                        match definition.policy.catch_up {
-                            CatchUp::LatestOnly => "run only the newest",
-                            CatchUp::SkipAll => "skip all",
-                        },
-                        definition.policy.allowed_delay_seconds / 60,
-                        definition.policy.timeout_seconds / 60,
-                        definition.policy.max_consecutive_failures,
-                    ), cx))
                     .when_some(definition.attention_reason.clone(), |d, reason| {
                         d.child(crate::views::notice(
                             crate::views::NoticeTone::Warning,
@@ -1489,9 +1547,50 @@ impl TaskApp {
                             cx,
                         ))
                     })
-                    .child(label("Runs only while the app is open and the computer is awake. Closing the window stops the process; queued and running work is reconciled when you reopen it. The app does not wake the computer.", cx)),
+                    .child(
+                        row().items_center().gap_2()
+                            .child(overview_heading("Next runs"))
+                            .when(paused, |d| {
+                                d.child(chip(
+                                    "Paused",
+                                    crate::views::stage_color_for_definition(definition.status, cx),
+                                    cx,
+                                ))
+                            }),
+                    )
+                    .child(
+                        if paused {
+                            crate::views::observed(
+                                overview_note(
+                                    "Nothing runs until you resume. Resuming schedules the next run from that moment, and time spent paused is not backfilled.",
+                                    cx,
+                                )
+                                .id("next-runs-paused"),
+                            )
+                        } else if archived {
+                            overview_note("Archived — this automation no longer runs.", cx)
+                                .into_any_element()
+                        } else {
+                            overview_body(
+                                if next.is_empty() { "No future trigger".into() } else { next.join("\n") },
+                                cx,
+                            )
+                            .into_any_element()
+                        },
+                    )
+                    .child(
+                        col().gap_2().pt_3().border_t_1().border_color(rgb(colors.subtle_line))
+                            .child(overview_heading("Run policy"))
+                            .child(overview_note(run_policy_summary(&definition.policy), cx)),
+                    ),
             )
-            .child(actions);
+            .child(actions)
+            .when(definition.status == DefinitionStatus::Draft, |d| {
+                d.child(overview_note(
+                    "Pause and Run now unlock once you review and enable this draft.",
+                    cx,
+                ))
+            });
         if let Some(approval) = &definition.approval {
             let required = definition
                 .template
@@ -1519,11 +1618,10 @@ impl TaskApp {
                 .collect::<Vec<_>>()
                 .join("\n");
             panel = panel.child(
-                col().p_4().gap_2().rounded_lg().border_1().border_color(rgb(colors.line)).bg(rgb(colors.panel))
-                    .child(div().font_weight(FontWeight::SEMIBOLD).child("Approved execution snapshot"))
-                    .child(label(models, cx))
-                    .child(muted(format!("Restricted agent profile: {}. Tools that could write files, run commands, ask questions, open the browser or take over the desktop are denied by the generated project-local OpenCode configuration.", AUTOMATION_AGENT_PROFILE), cx))
-                    .child(muted("Global model changes do not alter this enabled automation. Editing models or the plan requires a new version and approval.", cx)),
+                col().p_4().gap_3().rounded_lg().border_1().border_color(rgb(colors.line)).bg(rgb(colors.panel))
+                    .child(overview_heading("Approved execution snapshot"))
+                    .child(overview_body(models, cx))
+                    .child(overview_note("Each period runs through the same research pipeline as a manual run, with the agent and model shown above. Global model changes do not alter this enabled automation; editing the plan or the agent requires a new version and approval.", cx)),
             );
         }
 
@@ -1542,11 +1640,11 @@ impl TaskApp {
             .collect::<Vec<_>>();
         panel = panel.child(
             row().justify_between()
-                .child(div().font_weight(FontWeight::SEMIBOLD).child(format!("History · {}", occurrences.len())))
-                .when(latest.is_some(), |d| d.child(muted("Unread results are marked with a dot. Skipped and failed periods are separate from the automation's enabled state.", cx))),
+                .child(div().font_weight(FontWeight::SEMIBOLD).child(selectable(format!("History · {}", occurrences.len()))))
+                .when(latest.is_some(), |d| d.child(overview_note("Unread results are marked with a dot. Skipped and failed periods are separate from the automation's enabled state.", cx))),
         );
         if shown.is_empty() {
-            panel = panel.child(muted("No runs yet. Enabling or Run now will create the first period.", cx));
+            panel = panel.child(overview_note("No runs yet. Enabling or Run now will create the first period.", cx));
         }
         for occurrence in shown {
             panel = panel.child(self.automation_occurrence_row(occurrence, cx));
@@ -1573,11 +1671,17 @@ impl TaskApp {
                 )),
         );
         if !self.automation_ui.cleanup_preview.is_empty() {
-            panel = panel.child(muted(self.automation_ui.cleanup_preview.clone(), cx));
+            panel = panel.child(overview_note(self.automation_ui.cleanup_preview.clone(), cx));
         }
         if let Some(selected) = self.automation_ui.selected_occurrence {
             panel = panel.child(self.automation_occurrence_detail(selected, cx));
         }
+        // App-wide behaviour is fine print at the end of the page, not a
+        // per-automation setting inside the overview card.
+        panel = panel.child(overview_note(
+            "All automations run only while the app is open and the computer is awake — nothing runs in the background, missed periods are not backfilled, and the app never wakes the computer.",
+            cx,
+        ));
         panel.map(observed).into_any_element()
     }
 
@@ -1671,11 +1775,11 @@ impl TaskApp {
             .bg(rgb(colors.side))
             .child(
                 row().justify_between()
-                    .child(div().font_weight(FontWeight::SEMIBOLD).child(format!(
+                    .child(div().font_weight(FontWeight::SEMIBOLD).child(selectable(format!(
                         "Period {} · {}",
                         occurrence.id,
                         occurrence.status.label()
-                    )))
+                    ))))
                     .child(
                         quiet_button("mark-automation-read", if occurrence.unread { "Mark read" } else { "Mark unread" })
                             .icon(assets::IconName::Check)
@@ -1724,7 +1828,7 @@ impl TaskApp {
                 );
             }
             if !run.sources.is_empty() {
-                panel = panel.child(div().font_weight(FontWeight::SEMIBOLD).child(format!("Sources · {}", run.sources.len())));
+                panel = panel.child(div().font_weight(FontWeight::SEMIBOLD).child(selectable(format!("Sources · {}", run.sources.len()))));
                 for (index, source) in run.sources.iter().enumerate() {
                     let url = source.url.clone();
                     panel = panel.child(
@@ -1799,13 +1903,13 @@ impl TaskApp {
             row().justify_between()
                 .child(
                     col().gap_1()
-                        .child(div().text_xl().font_weight(FontWeight::SEMIBOLD).child(
+                        .child(div().text_xl().font_weight(FontWeight::SEMIBOLD).child(selectable(
                             if self.automation_ui.editing.is_some() {
                                 "Edit automation"
                             } else {
                                 "New automation"
                             },
-                        ))
+                        )))
                         .child(muted(format!("Step {step} of 3 · Creating or saving never starts research."), cx)),
                 )
                 .child(
@@ -1823,7 +1927,7 @@ impl TaskApp {
         content = content.child(self.automation_feedback(cx));
 
         if step == 1 {
-            content = content.child(div().font_weight(FontWeight::SEMIBOLD).child("Automation type"));
+            content = content.child(div().font_weight(FontWeight::SEMIBOLD).child(selectable("Automation type")));
             content = content.child(
                 row().flex_wrap().gap_2()
                     .child(select_button("automation-shape-quick", "Quick task", self.automation_ui.shape == AutomationShape::Quick)
@@ -1881,7 +1985,7 @@ impl TaskApp {
                 ));
             }
         } else if step == 2 {
-            content = content.child(div().font_weight(FontWeight::SEMIBOLD).child("Schedule"));
+            content = content.child(div().font_weight(FontWeight::SEMIBOLD).child(selectable("Schedule")));
             let mut kinds = row().flex_wrap().gap_2();
             for kind in AutomationKind::ALL {
                 kinds = kinds.child(
@@ -1965,7 +2069,7 @@ impl TaskApp {
                         .to_string();
                     content = content.child(
                         col().p_3().gap_1().rounded_md().bg(rgb(colors.panel))
-                            .child(div().font_weight(FontWeight::SEMIBOLD).child("Next three triggers"))
+                            .child(div().font_weight(FontWeight::SEMIBOLD).child(selectable("Next three triggers")))
                             .child(label(
                                 preview
                                     .iter()
@@ -1986,7 +2090,7 @@ impl TaskApp {
                 }
             }
             content = content
-                .child(div().font_weight(FontWeight::SEMIBOLD).child("Missed periods"))
+                .child(div().font_weight(FontWeight::SEMIBOLD).child(selectable("Missed periods")))
                 .child(
                     row().flex_wrap().gap_2()
                         .child(select_button("automation-catchup-latest", "Only the latest missed period", self.automation_ui.catch_up == CatchUp::LatestOnly)
@@ -1996,7 +2100,7 @@ impl TaskApp {
                 )
                 .child(
                     row().justify_between()
-                        .child(div().font_weight(FontWeight::SEMIBOLD).child("Advanced limits"))
+                        .child(div().font_weight(FontWeight::SEMIBOLD).child(selectable("Advanced limits")))
                         .child(quiet_button("automation-toggle-advanced",
                             if self.automation_ui.show_advanced { "Hide" } else { "Show" })
                             .on_click(cx.listener(|app, _, _, cx| {
@@ -2020,15 +2124,7 @@ impl TaskApp {
                 ));
             }
         } else {
-            content = content.child(div().font_weight(FontWeight::SEMIBOLD).child("Approved plan"));
-            if !self.automation_unattended_available() {
-                content = content.child(crate::views::notice_panel(
-                    crate::views::NoticeTone::Warning,
-                    "This build cannot enable automations yet",
-                    "Unattended execution stays disabled until execution-layer tool denial is verified. Use Save draft & finish to keep this reviewed plan; you can enable it later from the automation details.",
-                    cx,
-                ));
-            }
+            content = content.child(div().font_weight(FontWeight::SEMIBOLD).child(selectable("Approved plan")));
             if let Some(template) = &self.automation_ui.plan {
                 if self.automation_ui.shape.is_quick() {
                     content = content.child(muted(
@@ -2039,16 +2135,16 @@ impl TaskApp {
                 for (goal_index, goal) in template.goals.iter().enumerate() {
                     content = content.child(
                         col().p_3().gap_2().rounded_md().border_1().border_color(rgb(colors.line)).bg(rgb(colors.panel))
-                            .child(div().font_weight(FontWeight::SEMIBOLD).child(format!(
+                            .child(div().font_weight(FontWeight::SEMIBOLD).child(selectable(format!(
                                 "Goal {}/{} · {}",
                                 goal_index + 1,
                                 template.goals.len(),
                                 goal.title
-                            )))
+                            ))))
                             .child(muted(goal.brief.clone(), cx))
                             .children(goal.steps.iter().enumerate().map(|(index, step)| {
                                 col().gap_1()
-                                    .child(div().child(format!(
+                                    .child(div().child(selectable(format!(
                                         "{}. {} · {}",
                                         index + 1,
                                         step.title,
@@ -2058,7 +2154,7 @@ impl TaskApp {
                                             crate::research::ResearchKind::Advise => "Final report",
                                             crate::research::ResearchKind::Goal => "Plan",
                                         }
-                                    )))
+                                    ))))
                                     .child(muted(step.instructions.clone(), cx))
                                     .child(muted(format!("Depends on: {}", if step.depends_on.is_empty() { "none".into() } else { step.depends_on.iter().map(|i| (i + 1).to_string()).collect::<Vec<_>>().join(", ") }), cx))
                                     .into_any_element()
@@ -2104,7 +2200,7 @@ impl TaskApp {
                         })),
                 );
             }
-            content = content.child(div().font_weight(FontWeight::SEMIBOLD).child("Next triggers"));
+            content = content.child(div().font_weight(FontWeight::SEMIBOLD).child(selectable("Next triggers")));
             content = content.child(label(
                 self.automation_ui
                     .preview
@@ -2119,12 +2215,12 @@ impl TaskApp {
                     .join("\n"),
                 cx,
             ));
-            content = content.child(div().font_weight(FontWeight::SEMIBOLD).child("Execution and permissions"));
+            content = content.child(div().font_weight(FontWeight::SEMIBOLD).child(selectable("Execution")));
             content = content.child(muted(
                 if self.automation_ui.shape.is_quick() {
-                    "The approved snapshot fixes the instruction, effective model, time zone and limits. Each period runs one read-only step in its own folder under the Automations area. The generated restricted OpenCode agent denies file writes, shell commands, questions, browser takeover and other external actions."
+                    "The approved snapshot fixes the instruction, agent, model, time zone and limits. Each period runs one step in its own folder under the Automations area, through the same research pipeline and agent as a manual run."
                 } else {
-                    "The approved snapshot fixes every goal and step, the effective models, time zone and limits. Each period creates a new topic under Automations with its own folder, session and browser Space, and never replans. The generated restricted OpenCode agent denies file writes, shell commands, questions, browser takeover and other external actions."
+                    "The approved snapshot fixes every goal and step, the agent, models, time zone and limits. Each period creates a new topic under Automations with its own folder, session and browser Space, and never replans."
                 },
                 cx,
             ));
@@ -2143,19 +2239,18 @@ impl TaskApp {
                 div().into_any_element(),
             ),
         );
-        // A disabled primary action with no alternative is a dead end. In builds
-        // where unattended execution is gated, saving the reviewed draft is the
-        // final action and it must look like one.
-        let can_enable = self.automation_unattended_available();
         let plan_ready = self.automation_ui.plan.is_some();
         let mut actions = row().gap_2();
-        if step < 3 || can_enable {
-            actions = actions.child(
-                button("save-automation-draft", "Save draft")
-                    .icon(assets::IconName::ClipboardCheck)
-                    .on_click(cx.listener(|app, _, _, cx| app.save_automation_draft(cx))),
-            );
-        }
+        // Saving the reviewed plan as a draft stays available at every step, so a
+        // plan can be kept without enabling it.
+        actions = actions.child(
+            button(
+                "save-automation-draft",
+                if step < 3 { "Save draft" } else { "Save draft & finish" },
+            )
+            .icon(assets::IconName::ClipboardCheck)
+            .on_click(cx.listener(|app, _, _, cx| app.save_automation_draft(cx))),
+        );
         if step < 3 {
             let planning_now = step == 2
                 && self.automation_ui.shape == AutomationShape::Research
@@ -2173,7 +2268,7 @@ impl TaskApp {
                     })
                     .on_click(cx.listener(|app, _, window, cx| app.automation_wizard_next(window, cx))),
             );
-        } else if can_enable {
+        } else {
             actions = actions.child(
                 primary_button("enable-automation", "Enable automation")
                     .icon(assets::IconName::Play)
@@ -2184,13 +2279,6 @@ impl TaskApp {
                         "Review the generated plan before enabling"
                     })
                     .on_click(cx.listener(|app, _, _, cx| app.enable_automation(cx))),
-            );
-        } else {
-            actions = actions.child(
-                primary_button("save-automation-draft", "Save draft & finish")
-                    .icon(assets::IconName::ClipboardCheck)
-                    .tooltip("Keep this reviewed draft. Enabling is unavailable in this build.")
-                    .on_click(cx.listener(|app, _, _, cx| app.save_automation_draft(cx))),
             );
         }
         footer = footer.child(actions);

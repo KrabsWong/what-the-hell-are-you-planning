@@ -109,7 +109,7 @@ impl TaskApp {
                     .py_3()
                     .border_b_1()
                     .border_color(rgb(colors.line))
-                    .child(div().child(request.input.clone()))
+                    .child(div().child(selectable(request.input.clone())))
                     .child(label(format!("{} · {status}", request.submitted_at), cx))
                     .child(
                         row()
@@ -163,7 +163,7 @@ impl TaskApp {
             .child(
                 div()
                     .font_weight(FontWeight::SEMIBOLD)
-                    .child("Saved research requests"),
+                    .child(selectable("Saved research requests")),
             )
             .child(list)
             .into_any_element()
@@ -218,18 +218,18 @@ impl TaskApp {
                             format!("ORIGINAL REQUEST · {}", request.submitted_at),
                             cx,
                         ))
-                        .child(div().child(request.input.clone()))
+                        .child(div().child(selectable(request.input.clone())))
                         .child(label("EXPECTED OUTPUT", cx))
-                        .child(div().child(brief.deliverable.clone()))
+                        .child(div().child(selectable(brief.deliverable.clone())))
                         .child(label("OBJECTIVE & SCOPE", cx))
-                        .child(div().child(brief.objective.clone()))
-                        .child(div().child(brief.scope.clone()))
+                        .child(div().child(selectable(brief.objective.clone())))
+                        .child(div().child(selectable(brief.scope.clone())))
                         .when(!brief.assumptions.is_empty(), |d| {
                             d.child(label("PLANNING ASSUMPTIONS", cx)).children(
                                 brief
                                     .assumptions
                                     .iter()
-                                    .map(|s| div().child(format!("• {s}"))),
+                                    .map(|s| div().child(selectable(format!("• {s}")))),
                             )
                         })
                         .when(!brief.facts_to_verify.is_empty(), |d| {
@@ -238,7 +238,7 @@ impl TaskApp {
                                     brief
                                         .facts_to_verify
                                         .iter()
-                                        .map(|s| div().child(format!("• {s}"))),
+                                        .map(|s| div().child(selectable(format!("• {s}")))),
                                 )
                         })
                         .map(observed),

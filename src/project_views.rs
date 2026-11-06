@@ -42,7 +42,7 @@ impl TaskApp {
         let colors = palette(cx);
         div().absolute().inset_0().occlude().bg(rgba(0x00000080)).flex().items_center().justify_center().p_4()
             .child(col().w(px(460.)).max_w_full().p_6().gap_4().rounded_lg().bg(rgb(colors.panel))
-                .child(div().text_lg().font_weight(FontWeight::SEMIBOLD).child("Rename project"))
+                .child(div().text_lg().font_weight(FontWeight::SEMIBOLD).child(selectable("Rename project")))
                 .child(muted("Change the display name. Existing topics, tasks, files and running work stay connected.", cx))
                 .child(Input::new(input).id("rename-project-name"))
                 .when(!self.error.is_empty(), |d| d.child(crate::views::notice(

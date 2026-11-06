@@ -580,7 +580,7 @@ impl TaskApp {
                 .as_ref()
                 .is_none_or(|b| b.state != BatchState::Running);
         let mut view = col().flex_shrink_0().p_6().gap_2()
-            .child(row().justify_between().child(div().text_xl().font_weight(FontWeight::SEMIBOLD).child("Paused projects"))
+            .child(row().justify_between().child(div().text_xl().font_weight(FontWeight::SEMIBOLD).child(selectable("Paused projects")))
                 .child(row().gap_2().child(button("refresh-recovery", if checking { "Checking sessions…" } else { "Check progress" }).disabled(checking)
                     .on_click(cx.listener(|a, _, _, cx| a.check_interrupted_sessions(cx))))
                     .child(primary_button("resume-all-projects", "Resume all").disabled(!can_resume)
@@ -750,7 +750,7 @@ impl TaskApp {
                         .pl_4()
                         .text_sm()
                         .font_weight(FontWeight::SEMIBOLD)
-                        .child("Planning requests · no plan generated yet"),
+                        .child(selectable("Planning requests · no plan generated yet")),
                 );
             }
             for run in requests {
@@ -780,7 +780,7 @@ impl TaskApp {
                         .child(
                             row()
                                 .gap_3()
-                                .child(div().flex_1().min_w_0().whitespace_normal().child(title))
+                                .child(div().flex_1().min_w_0().whitespace_normal().child(selectable(title)))
                                 .child(
                                     quiet_button(
                                         ("recovery-request", run_id),

@@ -22,6 +22,9 @@ impl TaskApp {
     }
 
     pub fn start_goal_batch(&mut self, goal: u64, cx: &mut Context<Self>) {
+        if self.route_automation_goal(goal, cx) {
+            return;
+        }
         if self.store.task_is_archived(goal) {
             self.error = "Restore the archived topic or goal before executing.".into();
             self.task_start_feedback = Some((goal, self.error.clone()));
@@ -55,6 +58,16 @@ impl TaskApp {
         items: Vec<u64>,
         cx: &mut Context<Self>,
     ) {
+        // An automation-owned goal can never enter the ordinary batch path, even
+        // when it appears in a mixed list. Route it to its occurrence and keep only
+        // normal research goals for the batch machinery.
+        let items: Vec<u64> = items
+            .into_iter()
+            .filter(|goal| !self.route_automation_goal(*goal, cx))
+            .collect();
+        if items.is_empty() {
+            return;
+        }
         // Appending is an explicit Run action; approval alone never queues work.
         for id in &items {
             if self.store.task_is_archived(*id) || self.store.task(*id).is_none() {

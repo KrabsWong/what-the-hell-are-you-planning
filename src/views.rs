@@ -42,9 +42,33 @@ pub(crate) fn row() -> Div {
 pub(crate) fn col() -> Div {
     div().flex().flex_col()
 }
+/// Readable text that can be selected and copied with the mouse.
+///
+/// GPUI only selects text runs that opt in, so prose and values are rendered
+/// through this helper instead of a bare string child. Controls that truncate
+/// through a canvas (`single_line_text`) keep painting their own glyphs.
+pub(crate) fn selectable(text: impl Into<SharedString>) -> impl IntoElement {
+    let text = text.into();
+    let id = text_element_id(&text);
+    gpui_kit::base::SelectableText::new(id, text)
+}
+
+/// Stable element identity for a text run, so one label keeps its selection
+/// state across frames without threading an id through every call site.
+fn text_element_id(text: &str) -> ElementId {
+    let mut hash: u64 = 0xcbf2_9ce4_8422_2325;
+    for byte in text.as_bytes() {
+        hash ^= u64::from(*byte);
+        hash = hash.wrapping_mul(0x0000_0100_0000_01b3);
+    }
+    ElementId::Name(format!("selectable-{hash:016x}").into())
+}
+
 pub(crate) fn muted(text: impl Into<SharedString>, cx: &App) -> Div {
     let colors = palette(cx);
-    div().text_color(rgb(colors.muted)).child(text.into())
+    div()
+        .text_color(rgb(colors.muted))
+        .child(selectable(text))
 }
 pub(crate) fn label(text: impl Into<SharedString>, cx: &App) -> Div {
     muted(text, cx).text_xs()
@@ -58,7 +82,85 @@ pub(crate) fn chip(text: impl Into<SharedString>, color: u32, cx: &App) -> Div {
         .bg(rgb(colors.panel))
         .text_xs()
         .text_color(rgb(color))
-        .child(text.into())
+        .child(selectable(text))
+}
+
+/// Semantic tones for inline notices. Every notice uses a tinted surface of its
+/// own tone so light and dark themes stay readable without extra branching.
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub(crate) enum NoticeTone {
+    Success,
+    Info,
+    Warning,
+    Danger,
+}
+impl NoticeTone {
+    pub(crate) fn color(self, colors: &crate::appearance::Palette) -> u32 {
+        match self {
+            Self::Success => colors.success,
+            Self::Info => colors.secondary,
+            Self::Warning => colors.warning,
+            Self::Danger => colors.danger,
+        }
+    }
+    /// How much of the tone color is blended into the panel surface.
+    fn tint(self) -> f32 {
+        match self {
+            Self::Success => 0.16,
+            Self::Info => 0.08,
+            Self::Warning => 0.16,
+            Self::Danger => 0.14,
+        }
+    }
+    pub(crate) fn surface(self, colors: &crate::appearance::Palette) -> u32 {
+        blend_color(self.color(colors), colors.panel, self.tint())
+    }
+}
+
+fn blend_color(foreground: u32, background: u32, weight: f32) -> u32 {
+    let channel = |shift: u32| {
+        let front = ((foreground >> shift) & 0xff) as f32;
+        let back = ((background >> shift) & 0xff) as f32;
+        ((front * weight + back * (1.0 - weight)).round() as u32) << shift
+    };
+    channel(16) | channel(8) | channel(0)
+}
+
+pub(crate) fn notice(tone: NoticeTone, text: impl Into<SharedString>, cx: &App) -> Div {
+    let colors = palette(cx);
+    let color = tone.color(&colors);
+    div()
+        .p_3()
+        .rounded_md()
+        .border_1()
+        .border_color(rgb(color))
+        .bg(rgb(tone.surface(&colors)))
+        .text_color(rgb(color))
+        .child(selectable(text))
+}
+
+pub(crate) fn notice_panel(
+    tone: NoticeTone,
+    title: impl Into<SharedString>,
+    body: impl Into<SharedString>,
+    cx: &App,
+) -> Div {
+    let colors = palette(cx);
+    let color = tone.color(&colors);
+    col()
+        .p_3()
+        .gap_1()
+        .rounded_md()
+        .border_1()
+        .border_color(rgb(color))
+        .bg(rgb(tone.surface(&colors)))
+        .text_color(rgb(color))
+        .child(
+            div()
+                .font_weight(FontWeight::SEMIBOLD)
+                .child(selectable(title)),
+        )
+        .child(div().child(selectable(body)))
 }
 pub(crate) fn stage_color(stage: Stage, cx: &App) -> u32 {
     let colors = palette(cx);
@@ -189,10 +291,11 @@ impl TaskApp {
     fn save_feedback_view(&self, cx: &mut Context<Self>) -> AnyElement {
         let colors = palette(cx);
         if let Some(feedback) = &self.save_feedback {
-            let (message, failed) = match feedback {
-                Ok(message) => (message, false),
-                Err(message) => (message, true),
+            let (message, tone) = match feedback {
+                Ok(message) => (message, NoticeTone::Success),
+                Err(message) => (message, NoticeTone::Danger),
             };
+            let color = tone.color(&colors);
             return row()
                 .id("save-feedback")
                 .mx_4()
@@ -202,34 +305,26 @@ impl TaskApp {
                 .gap_3()
                 .items_start()
                 .rounded_lg()
-                .bg(rgb(colors.panel))
+                .bg(rgb(tone.surface(&colors)))
                 .border_1()
-                .border_color(rgb(if failed {
-                    colors.danger
-                } else {
-                    colors.success
-                }))
+                .border_color(rgb(color))
                 .child(
                     div()
                         .text_lg()
-                        .text_color(rgb(if failed {
-                            colors.danger
-                        } else {
-                            colors.success
-                        }))
-                        .child(gpui_kit::component::Icon::new(if failed { assets::IconName::CircleAlert } else { assets::IconName::Check }).size_4()),
+                        .text_color(rgb(color))
+                        .child(gpui_kit::component::Icon::new(if tone == NoticeTone::Danger { assets::IconName::CircleAlert } else { assets::IconName::Check }).size_4()),
                 )
                 .child(
                     col()
                         .flex_1()
                         .min_w_0()
                         .gap_1()
-                        .child(div().font_weight(FontWeight::SEMIBOLD).child(if failed {
+                        .child(div().font_weight(FontWeight::SEMIBOLD).child(if tone == NoticeTone::Danger {
                             "Not saved"
                         } else {
                             "Saved"
                         }))
-                        .child(div().text_sm().child(message.clone())),
+                        .child(div().text_sm().child(selectable(message.clone()))),
                 )
                 .child(
                     tool_icon("dismiss-save-feedback", assets::IconName::Close, "Dismiss save feedback").on_click(
@@ -284,15 +379,16 @@ impl TaskApp {
                             .text_sm()
                             .font_weight(FontWeight::SEMIBOLD)
                             .line_height(relative(1.3))
-                            .child("What the hell are you planning?"),
+                            .child(selectable("What the hell are you planning?")),
                     ),
             )
             .child(row().px_2().pb_3().child(label("Personal workspace", cx)));
         side = side.child(section("Workspace", cx));
         let count = self.store.tasks.iter()
-            .filter(|t| !self.store.task_is_archived(t.id) && t.parent_id.is_none())
+            .filter(|t| !self.store.task_is_archived(t.id) && t.parent_id.is_none() && t.automation_id.is_none())
             .count();
         side = side.child(self.nav("all", "All", Scope::All, count, cx));
+        side = side.child(self.automation_nav(cx));
         let cycles: std::collections::BTreeSet<_> = self
             .store
             .tasks
@@ -332,7 +428,7 @@ impl TaskApp {
                         })),
                 ),
         );
-        let mut projects: Vec<_> = self.store.projects.iter().collect();
+        let mut projects: Vec<_> = self.store.visible_projects().collect();
         projects.sort_by_key(|project| crate::display_order::newest_id(project.id));
         for project in projects {
             let count = self
@@ -343,6 +439,7 @@ impl TaskApp {
                     !self.store.task_is_archived(t.id)
                         && t.parent_id.is_none()
                         && t.project_id == project.id
+                        && t.automation_id.is_none()
                         && !matches!(t.stage, Stage::Done | Stage::Cancelled)
                 })
                 .count();
@@ -437,7 +534,7 @@ impl TaskApp {
                     .store
                     .topics
                     .iter()
-                    .filter(|t| t.project_id == pid && !t.archived)
+                    .filter(|t| t.project_id == pid && !t.archived && t.automation_id.is_none())
                     .map(|t| Some(t.id))
                     .collect();
                 // Topic IDs increase monotonically at creation, including legacy topics.
@@ -522,7 +619,7 @@ impl TaskApp {
                                             .gap_2()
                                             .whitespace_normal()
                                             .child(label(heading.clone(), cx))
-                                            .child(div().font_weight(FontWeight::SEMIBOLD).child(title.clone()))
+                                            .child(div().font_weight(FontWeight::SEMIBOLD).child(selectable(title.clone())))
                                             .child(muted(reason.clone(), cx).text_sm())
                                     })
                                     .p_3()
@@ -628,7 +725,7 @@ impl TaskApp {
                 "archive",
                 "Archive",
                 Scope::Archive,
-                self.store.tasks.iter().filter(|t| self.store.task_is_archived(t.id)).count(),
+                self.store.tasks.iter().filter(|t| t.automation_id.is_none() && self.store.task_is_archived(t.id)).count(),
                 cx,
             ));
         let appearance = self.store.appearance;
@@ -659,7 +756,7 @@ impl TaskApp {
                             .child(row().w_full().min_w_0().gap_2()
                                 .child(gpui_kit::component::Icon::new(assets::IconName::Settings)
                                     .size(px(20.)).flex_shrink_0())
-                                .child(div().text_sm().child("Settings")))
+                                .child(div().text_sm().child(selectable("Settings"))))
                             .on_click(
                                 cx.listener(|this, _, w, cx| this.navigate(Scope::Settings, w, cx)),
                             ),
@@ -708,6 +805,8 @@ impl TaskApp {
             Scope::Runs => assets::IconName::ChartNoAxesCombined,
             Scope::Recovery => assets::IconName::Pause,
             Scope::Research => assets::IconName::Search,
+            Scope::Automations => assets::IconName::Clock,
+            Scope::AutomationRuns => assets::IconName::ChartNoAxesCombined,
             Scope::Settings => assets::IconName::Settings,
         };
         button(id, "")
@@ -739,7 +838,7 @@ impl TaskApp {
                             .overflow_hidden()
                             .text_ellipsis()
                             .text_sm()
-                            .child(title.to_string()),
+                            .child(selectable(title.to_string())),
                     )
                     .child(
                         row()
@@ -765,7 +864,254 @@ impl TaskApp {
             )
             .into_any_element()
     }
+
+    /// Automations is a sibling of All: its list and results stay isolated from
+    /// the project/topic tree. The parent row expands the two child sections.
+    fn automation_nav(&self, cx: &mut Context<Self>) -> AnyElement {
+        let colors = palette(cx);
+        let active = matches!(
+            self.sidebar_scope(),
+            Scope::Automations | Scope::AutomationRuns
+        );
+        let expanded = self.automation_sidebar_expanded;
+        let count = self
+            .store
+            .automations
+            .iter()
+            .filter(|automation| {
+                !matches!(
+                    automation.status,
+                    crate::automation::DefinitionStatus::Archived
+                )
+            })
+            .count();
+        let unread = self
+            .store
+            .automation_occurrences
+            .iter()
+            .filter(|occurrence| occurrence.unread)
+            .count();
+        let mut group = col().gap_0().child(
+            row()
+                .gap_0()
+                .rounded_md()
+                .hover(|d| d.bg(rgb(colors.hover)))
+                .child(
+                    button("automations", "")
+                        .ghost()
+                        .custom(sidebar_variant(active, cx))
+                        .when(active, |b| b.font_weight(FontWeight::SEMIBOLD))
+                        .flex_1()
+                        .min_w_0()
+                        .h_8()
+                        .px_3()
+                        .tooltip("Expand or collapse automation sections")
+                        .accessibility_label("Automations")
+                        .child(
+                            row()
+                                .w_full()
+                                .min_w_0()
+                                .justify_between()
+                                .gap_2()
+                                .child(
+                                    gpui_kit::component::Icon::new(assets::IconName::Clock)
+                                        .size(px(20.))
+                                        .flex_shrink_0(),
+                                )
+                                .child(
+                                    div()
+                                        .flex_1()
+                                        .min_w_0()
+                                        .overflow_hidden()
+                                        .text_ellipsis()
+                                        .text_sm()
+                                        .child(selectable("Automations")),
+                                )
+                                .child(label(
+                                    if count > 0 {
+                                        count.to_string()
+                                    } else {
+                                        String::new()
+                                    },
+                                    cx,
+                                )),
+                        )
+                        .on_click(cx.listener(|app, _, _, cx| {
+                            app.automation_sidebar_expanded = !app.automation_sidebar_expanded;
+                            cx.notify();
+                        })),
+                )
+                .child(
+                    tool_icon(
+                        "expand-automations",
+                        if expanded {
+                            assets::IconName::ChevronDown
+                        } else {
+                            assets::IconName::ChevronRight
+                        },
+                        if expanded {
+                            "Collapse automation sections"
+                        } else {
+                            "Expand automation sections"
+                        },
+                    )
+                    .custom(sidebar_variant(active, cx))
+                    .h_8()
+                    .flex_shrink_0()
+                    .on_click(cx.listener(|app, _, _, cx| {
+                        app.automation_sidebar_expanded = !app.automation_sidebar_expanded;
+                        cx.notify();
+                    })),
+                ),
+        );
+        if expanded {
+            group = group.child(
+                col()
+                    .ml_4()
+                    .pl_1()
+                    .border_l_1()
+                    .border_color(rgb(colors.line))
+                    .gap_0()
+                    .child(self.automation_child_nav(
+                        "all-automations",
+                        "All automations",
+                        Scope::Automations,
+                        count,
+                        cx,
+                    ))
+                    .child(self.automation_child_nav(
+                        "automation-results",
+                        "Progress & results",
+                        Scope::AutomationRuns,
+                        unread,
+                        cx,
+                    )),
+            );
+        }
+        group.into_any_element()
+    }
+
+    fn automation_child_nav(
+        &self,
+        id: &'static str,
+        title: &str,
+        scope: Scope,
+        count: usize,
+        cx: &mut Context<Self>,
+    ) -> AnyElement {
+        let colors = palette(cx);
+        let active = self.sidebar_scope() == scope;
+        button(id, "")
+            .ghost()
+            .accessibility_label(title.to_string())
+            .tooltip(if scope == Scope::AutomationRuns {
+                "Automation periods with unread results".to_string()
+            } else {
+                title.to_string()
+            })
+            .w_full()
+            .h_7()
+            .px_3()
+            .custom(sidebar_variant(active, cx).hover(rgb(colors.hover).into()))
+            .when(active, |b| b.font_weight(FontWeight::SEMIBOLD))
+            .child(
+                row()
+                    .w_full()
+                    .min_w_0()
+                    .justify_between()
+                    .gap_2()
+                    .child(
+                        div()
+                            .flex_1()
+                            .min_w_0()
+                            .overflow_hidden()
+                            .text_ellipsis()
+                            .text_sm()
+                            .child(selectable(title.to_string())),
+                    )
+                    .child(
+                        row()
+                            .flex_shrink_0()
+                            .gap_2()
+                            .child(label(
+                                if count > 0 {
+                                    count.to_string()
+                                } else {
+                                    String::new()
+                                },
+                                cx,
+                            ))
+                            .child(
+                                gpui_kit::component::Icon::new(assets::IconName::ChevronRight)
+                                    .size(px(14.))
+                                    .text_color(rgb(colors.muted)),
+                            ),
+                    ),
+            )
+            .on_click(cx.listener(move |app, _, window, cx| {
+                app.navigate(scope.clone(), window, cx)
+            }))
+            .into_any_element()
+    }
+
     pub(crate) fn navigation_path(&self) -> (Vec<(String, String, CrumbTarget)>, String) {
+        // Editing an existing automation belongs to its detail page, not to the
+        // Automations list. Back and the breadcrumb return to that page.
+        if self.scope == Scope::Automations
+            && self.automation_ui.creating
+            && let Some(id) = self.automation_ui.editing
+            && let Some(definition) = self.store.automation(id)
+        {
+            return (
+                vec![
+                    ("location-all".into(), "All".into(), CrumbTarget::View(Scope::All)),
+                    (
+                        "location-automations".into(),
+                        "Automations".into(),
+                        CrumbTarget::View(Scope::Automations),
+                    ),
+                    (
+                        "location-automation".into(),
+                        definition.name.clone(),
+                        CrumbTarget::Automation(id),
+                    ),
+                ],
+                "Edit automation".into(),
+            );
+        }
+        // Automation results are a child of Automations, not of Research.
+        if self.scope == Scope::AutomationRuns {
+            return (
+                vec![
+                    ("location-all".into(), "All".into(), CrumbTarget::View(Scope::All)),
+                    (
+                        "location-automations".into(),
+                        "Automations".into(),
+                        CrumbTarget::View(Scope::Automations),
+                    ),
+                ],
+                "Automation results".into(),
+            );
+        }
+        // An automation detail sits under Automations, so the app-level Back
+        // returns to the list instead of jumping straight to All.
+        if self.scope == Scope::Automations
+            && !self.automation_ui.creating
+            && let Some(id) = self.automation_ui.selected
+            && let Some(definition) = self.store.automation(id)
+        {
+            return (
+                vec![
+                    ("location-all".into(), "All".into(), CrumbTarget::View(Scope::All)),
+                    (
+                        "location-automations".into(),
+                        "Automations".into(),
+                        CrumbTarget::View(Scope::Automations),
+                    ),
+                ],
+                definition.name.clone(),
+            );
+        }
         let mut links = vec![];
         let result = self.selected.is_none() && self.scope == Scope::Runs;
         let run = result
@@ -786,6 +1132,20 @@ impl TaskApp {
             ));
         }
         if let Some(task) = task {
+            if task.automation_id.is_some() {
+                links.push((
+                    "location-automations".into(),
+                    "Automations".into(),
+                    CrumbTarget::View(Scope::Automations),
+                ));
+                if let Some(definition) = task
+                    .automation_id
+                    .and_then(|id| self.store.automation(id))
+                {
+                    current = definition.name.clone();
+                }
+                return (links, current);
+            }
             if let Some(project) = self.store.projects.iter().find(|p| p.id == task.project_id) {
                 links.push((
                     "location-project".into(),
@@ -882,6 +1242,9 @@ impl TaskApp {
                         .on_click(cx.listener(move |a, _, w, cx| match &target {
                             CrumbTarget::View(scope) => a.navigate(scope.clone(), w, cx),
                             CrumbTarget::Task(id) => a.open_task(*id, w, cx),
+                            CrumbTarget::Automation(id) => {
+                                a.reopen_automation_settings(*id, w, cx)
+                            }
                         })),
                 )
                 .child(label("/", cx));
@@ -1182,7 +1545,7 @@ impl TaskApp {
                         .items_center()
                         .justify_center()
                         .gap_3()
-                        .child(div().text_xl().child("No tasks here"))
+                        .child(div().text_xl().child(selectable("No tasks here")))
                         .child(muted("Try another filter, or create your first task.", cx))
                         .child(
                             button("clear-filters", "Reset filters").on_click(cx.listener(
@@ -1245,12 +1608,12 @@ impl TaskApp {
                 .gap_3()
                 .text_xs()
                 .text_color(rgb(colors.muted))
-                .child(div().w(px(156.)).flex_shrink_0().child("PRIORITY / ID"))
-                .child(div().flex_1().min_w_0().child("TASK"))
-                .child(div().w(px(150.)).flex_shrink_0().child("STATUS"))
-                .child(div().w(px(84.)).flex_shrink_0().child("LABELS"))
-                .child(div().w_16().flex_shrink_0().child("DUE"))
-                .child(div().w(px(156.)).flex_shrink_0().child("CREATED")),
+                .child(div().w(px(156.)).flex_shrink_0().child(selectable("PRIORITY / ID")))
+                .child(div().flex_1().min_w_0().child(selectable("TASK")))
+                .child(div().w(px(150.)).flex_shrink_0().child(selectable("STATUS")))
+                .child(div().w(px(84.)).flex_shrink_0().child(selectable("LABELS")))
+                .child(div().w_16().flex_shrink_0().child(selectable("DUE")))
+                .child(div().w(px(156.)).flex_shrink_0().child(selectable("CREATED"))),
         )
         .child(
             uniform_list(
@@ -1655,7 +2018,7 @@ impl TaskApp {
             .when(t.priority != Priority::Medium, |d| d.child(
                 label(format!("Priority: {}", t.priority.label()), cx).text_xs(),
             ))
-            .child(div().line_height(relative(1.4)).child(t.title.clone()))
+            .child(div().line_height(relative(1.4)).child(selectable(t.title.clone())))
             .child(chip(status.label(), status.execution.color(cx), cx))
             .child(label(status.reason.clone(), cx))
             .when_some(
@@ -1722,7 +2085,7 @@ impl TaskApp {
                         .text_xs()
                         .line_height(relative(1.4))
                         .text_color(rgb(colors.secondary))
-                        .child(metadata.join(" · ")),
+                        .child(selectable(metadata.join(" · "))),
                 )
             })
             .child(
@@ -1832,7 +2195,7 @@ impl TaskApp {
     fn detail(&self, id: u64, cx: &mut Context<Self>) -> AnyElement {
         let colors = palette(cx);
         let Some(t) = self.store.task(id) else {
-            return col().child("Task not found").into_any_element();
+            return col().child(selectable("Task not found")).into_any_element();
         };
         let t = t.clone();
         let is_goal = t
@@ -1885,7 +2248,7 @@ impl TaskApp {
                         .flex_shrink_0().px_2().py_0p5().rounded(px(4.))
                         .bg(rgb(colors.tag_surface)).text_xs()
                         .font_weight(FontWeight::MEDIUM)
-                        .text_color(rgb(colors.tag_text)).child(kind_label).map(observed)),
+                        .text_color(rgb(colors.tag_text)).child(selectable(kind_label)).map(observed)),
             );
         head = head.child(
             row()
@@ -1991,7 +2354,11 @@ impl TaskApp {
                 .size_full()
                 .child(head)
                 .when_some(self.task_start_feedback.as_ref().filter(|(task, _)| *task == id), |d, (_, message)| {
-                    d.child(div().px_6().py_2().text_sm().text_color(rgb(colors.danger)).child(message.clone()))
+                    d.child(div().px_6().py_2().child(crate::views::notice(
+                        crate::views::NoticeTone::Danger,
+                        message.clone(),
+                        cx,
+                    )))
                 })
                 .child(self.goal_steps_view(id, cx))
                 .into_any_element();
@@ -2028,17 +2395,17 @@ impl TaskApp {
                     .text_xl()
                     .font_weight(FontWeight::SEMIBOLD)
                     .line_height(relative(1.3))
-                    .child(t.title.clone()),
+                    .child(selectable(t.title.clone())),
             )
             .child(
                 div()
                     .text_color(rgb(colors.secondary))
                     .line_height(relative(1.7))
-                    .child(if t.description.is_empty() {
+                    .child(selectable(if t.description.is_empty() {
                         "Add a description to give this task more context.".into()
                     } else {
                         t.description.clone()
-                    }),
+                    })),
             )
             .when(is_goal, |d| d.child(self.request_brief_view(id, cx)))
             .child(self.materials_panel(id, cx))
@@ -2128,11 +2495,11 @@ impl TaskApp {
                                 .child(
                                     div()
                                         .font_weight(FontWeight::SEMIBOLD)
-                                        .child(comment.author.clone()),
+                                        .child(selectable(comment.author.clone())),
                                 )
                                 .child(label(comment.created_at.clone(), cx)),
                         )
-                        .child(comment.body.clone()),
+                        .child(selectable(comment.body.clone())),
                 );
             }
             activity_panel = activity_panel
@@ -2204,9 +2571,9 @@ impl TaskApp {
             properties = properties.child(
                 col().gap_1()
                     .child(div().text_sm().font_weight(FontWeight::SEMIBOLD)
-                        .text_color(rgb(colors.accent)).child("Completed previously · update needed"))
+                        .text_color(rgb(colors.accent)).child(selectable("Completed previously · update needed")))
                     .child(div().text_xs().text_color(rgb(colors.muted))
-                        .child("No reusable result is available for the current inputs. Finish any prerequisite updates before running again.")),
+                        .child(selectable("No reusable result is available for the current inputs. Finish any prerequisite updates before running again."))),
             );
         }
         if self.task_running(id) {
@@ -2232,13 +2599,13 @@ impl TaskApp {
                         .p_2()
                         .border_l_2()
                         .border_color(rgb(colors.accent))
-                        .child(div().text_sm().font_weight(FontWeight::SEMIBOLD).child(
+                        .child(div().text_sm().font_weight(FontWeight::SEMIBOLD).child(selectable(
                             if previously_completed {
                                 "Task could not run again"
                             } else {
                                 "Task could not start"
                             },
-                        ))
+                        )))
                         .child({
                             let related = self.store.tasks.iter().find_map(|task| {
                                 let name =
@@ -2255,21 +2622,21 @@ impl TaskApp {
                                 col()
                                     .gap_2()
                                     .child(
-                                        div().text_sm().text_color(rgb(colors.muted)).child(before),
+                                        div().text_sm().text_color(rgb(colors.muted)).child(selectable(before)),
                                     )
                                     .child(
                                         div()
                                             .text_sm()
                                             .font_weight(FontWeight::SEMIBOLD)
                                             .text_color(rgb(colors.accent))
-                                            .child(name),
+                                            .child(selectable(name)),
                                     )
                                     .child(
-                                        div().text_sm().text_color(rgb(colors.muted)).child(after),
+                                        div().text_sm().text_color(rgb(colors.muted)).child(selectable(after)),
                                     )
                                     .into_any_element()
                             } else {
-                                div().text_sm().child(message.clone()).into_any_element()
+                                div().text_sm().child(selectable(message.clone())).into_any_element()
                             }
                         }),
                 );
@@ -2309,7 +2676,7 @@ impl TaskApp {
                 .font_weight(FontWeight::SEMIBOLD)
                 .text_color(rgb(colors.text))
                 .id("task-properties-heading")
-                .child("Task").map(observed),
+                .child(selectable("Task")).map(observed),
         );
         let status = self.display_task_status(id);
         let execution = status.execution;
@@ -2453,7 +2820,7 @@ impl TaskApp {
                             div()
                                 .text_sm()
                                 .font_weight(FontWeight::SEMIBOLD)
-                                .child("Labels"),
+                                .child(selectable("Labels")),
                         )
                         .child(
                             tool_icon("edit-labels", assets::IconName::Pencil, "Edit labels")
@@ -2475,7 +2842,7 @@ impl TaskApp {
                                 .bg(rgb(colors.tag_surface))
                                 .text_xs()
                                 .text_color(rgb(colors.tag_text))
-                                .child(name.clone())
+                                .child(selectable(name.clone()))
                         }))
                         .when(t.labels.is_empty(), |d| d.child(label("No labels", cx))),
                 )
@@ -2484,7 +2851,7 @@ impl TaskApp {
                         .pt_2()
                         .text_sm()
                         .font_weight(FontWeight::SEMIBOLD)
-                        .child("Execution settings"),
+                        .child(selectable("Execution settings")),
                 );
             let execution_field = |name: &str, value: String| {
                 row()
@@ -2504,7 +2871,7 @@ impl TaskApp {
                             .text_color(rgb(colors.text))
                             .whitespace_normal()
                             .overflow_hidden()
-                            .child(value),
+                            .child(selectable(value)),
                     )
             };
             let model_fields = |model: &str| {
@@ -2767,7 +3134,7 @@ impl TaskApp {
                     .gap_4()
                     .bg(rgb(colors.panel))
                     .rounded_lg()
-                    .child(div().text_lg().child(format!("Working folder · {name}")))
+                    .child(div().text_lg().child(selectable(format!("Working folder · {name}"))))
                     .child(muted(
                         "OpenCode will read and modify files in this folder when you run a task.",
                         cx,
@@ -2880,7 +3247,7 @@ impl TaskApp {
                         row()
                             .gap_3()
                             .flex_wrap()
-                            .children(self.store.projects.iter().map(|p| {
+                            .children(self.store.visible_projects().map(|p| {
                                 let id = p.id;
                                 select_button(
                                     format!("draft-project-{id}"),
@@ -3019,6 +3386,8 @@ impl Render for TaskApp {
                 Scope::Runs => self.runs(cx),
                 Scope::Recovery => self.recovery_view(cx),
                 Scope::Research => self.research_view(cx),
+                Scope::Automations => self.automations(cx),
+                Scope::AutomationRuns => self.automation_results(cx),
                 Scope::Settings => self.model_settings(cx),
                 _ => self.collection(cx),
             }
@@ -3066,6 +3435,7 @@ impl Render for TaskApp {
                         Scope::Runs
                             | Scope::Recovery
                             | Scope::Research
+                            | Scope::Automations
                             | Scope::Settings
                             | Scope::Topic(_)
                     ) {
@@ -3082,6 +3452,8 @@ impl Render for TaskApp {
                     && this.topic_move.is_none()
                     && this.planning_project.is_none()
                     && this.directory_project.is_none()
+                    && !this.automation_ui.settings_dialog
+                    && this.automation_ui.result_dialog.is_none()
                 {
                     this.go_back(w, cx);
                     cx.stop_propagation();
@@ -3099,6 +3471,8 @@ impl Render for TaskApp {
                     this.planning_project = None;
                     this.planning_replan_source = None;
                     this.directory_project = None;
+                    this.automation_ui.settings_dialog = false;
+                    this.automation_ui.result_dialog = None;
                     this.error.clear();
                     w.focus(&this.focus, cx);
                     cx.notify();
@@ -3208,7 +3582,7 @@ impl Render for TaskApp {
                             .gap_4()
                             .bg(rgb(colors.panel))
                             .rounded_lg()
-                            .child(div().text_lg().child("New project"))
+                            .child(div().text_lg().child(selectable("New project")))
                             .child(Input::new(&input).id("project-name"))
                             .child(muted("Create a project to organize topics. You can add research requests later.", cx))
                             .when(!self.error.is_empty(), |d| {
@@ -3256,6 +3630,7 @@ impl Render for TaskApp {
                                                     key: format!("P{id}"),
                                                     directory,
                                                     research_brief: String::new(),
+                                                    kind: crate::domain::ProjectKind::User,
                                                 });
                                                 this.new_project = None;
                                                 this.navigate(Scope::Project(id), w, cx);
@@ -3267,9 +3642,26 @@ impl Render for TaskApp {
                     .focus_trap("project-focus", &self.modal_focus),
             );
         }
+        if self.automation_ui.settings_dialog {
+            root = root.child(self.automation_settings_dialog(cx));
+        }
+        if self.automation_ui.result_dialog.is_some() {
+            root = root.child(self.automation_result_dialog(cx));
+        }
         root.into_any_element()
     }
 }
+pub(crate) fn stage_color_for_definition(status: crate::automation::DefinitionStatus, cx: &App) -> u32 {
+    let colors = palette(cx);
+    match status {
+        crate::automation::DefinitionStatus::Enabled => colors.success,
+        crate::automation::DefinitionStatus::Paused => colors.warning,
+        crate::automation::DefinitionStatus::Draft => colors.secondary,
+        crate::automation::DefinitionStatus::NeedsAttention => colors.danger,
+        crate::automation::DefinitionStatus::Archived => colors.muted,
+    }
+}
+
 fn priority_icon(p: Priority) -> assets::IconName {
     match p {
         Priority::None => assets::IconName::Minus,

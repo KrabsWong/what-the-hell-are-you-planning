@@ -113,7 +113,10 @@ fn publication_action(publication: Option<&Publication>, changed: bool) -> Publi
 
 impl Store {
     pub(crate) fn topic_share_content(&self, topic: u64) -> Option<(String, String)> {
-        let topic = self.topics.iter().find(|t| t.id == topic && !t.archived)?;
+        let topic = self
+            .topics
+            .iter()
+            .find(|t| t.id == topic && !t.archived && t.automation_id.is_none())?;
         if self.topic_planning_status(topic.id).is_some() { return None; }
         let goals: Vec<_> = self.tasks.iter().filter(|t| t.topic_id == Some(topic.id)
             && t.research.as_ref().is_some_and(|r| r.kind == ResearchKind::Goal)
@@ -305,7 +308,7 @@ impl TaskApp {
     }
     pub(crate) fn publishing_settings_panel(&self, cx: &mut Context<Self>) -> Div {
         col().gap_4()
-            .child(div().font_weight(FontWeight::SEMIBOLD).child("Report publishing"))
+            .child(div().font_weight(FontWeight::SEMIBOLD).child(selectable("Report publishing")))
             .child(label("Push finished Topic reports to a dedicated GitHub repository connected to EdgeOne. Configure Git authentication on this computer first. Original attachments and execution logs are not published.", cx))
             .child(label("GitHub repository", cx)).child(Input::new(&self.publishing_inputs[0]).id("publishing-repository"))
             .child(label("Target branch", cx)).child(Input::new(&self.publishing_inputs[1]).id("publishing-branch"))
@@ -373,7 +376,7 @@ impl TaskApp {
                     .child(link_button(format!("open-report-{}", p.id), "").icon(assets::IconName::ExternalLink).min_w_0().flex_1()
                         .accessibility_label(format!("Open report: {url}"))
                         .tooltip(url.clone())
-                        .child(div().min_w_0().text_sm().underline().overflow_hidden().text_ellipsis().whitespace_nowrap().child(url.clone()))
+                        .child(div().min_w_0().text_sm().underline().overflow_hidden().text_ellipsis().whitespace_nowrap().child(selectable(url.clone())))
                         .on_click(cx.listener(move |_, _, _, cx| cx.open_url(&open_url))))
                     .child(crate::controls::tool_icon(format!("copy-report-{}", p.id), assets::IconName::Copy, "Copy report link")
                         .on_click(cx.listener(move |a, _, _, cx| {

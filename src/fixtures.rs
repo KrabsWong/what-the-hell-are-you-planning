@@ -12,6 +12,7 @@ impl Store {
                 key: "TM".into(),
                 directory: String::new(),
                 research_brief: String::new(),
+                kind: ProjectKind::User,
             },
             Project {
                 id: 2,
@@ -19,6 +20,7 @@ impl Store {
                 key: "AG".into(),
                 directory: String::new(),
                 research_brief: String::new(),
+                kind: ProjectKind::User,
             },
         ];
         let seed = [
@@ -194,7 +196,7 @@ impl Store {
         ];
         let tasks = seed.into_iter().enumerate().map(|(i, (title, project_id, stage, priority, label, parent_id))| {
             Task {
-                id: (i + 1) as u64, created_at: "2026-10-27 09:30:00 +08:00".into(), title: title.into(),
+                id: (i + 1) as u64, created_at: "2026-10-27 09:30:00 +08:00".into(), automation_id: None, title: title.into(),
                 description: match i {
                     0 => "Make the task detail view feel at home in the workspace. Keep the parent task visible, retain navigation context, and put editable properties within reach.\n\nAcceptance criteria\n• Open a task without losing the list filter.\n• Navigate to a child and return to its parent.\n• Keep the activity history consistent across views.".into(),
                     15 => "Define a small adapter boundary for local coding agents. A run request carries task context, stage, selected agent, model and prompt.\n\nThis prototype uses simulated runs only. No process is spawned, no credentials are read, and no source files are modified.".into(),
@@ -224,6 +226,9 @@ impl Store {
             auto_start: false,
         }).collect();
         let mut store = Self {
+            automation_schema_version: crate::automation::AUTOMATION_SCHEMA_VERSION,
+            automations: vec![],
+            automation_occurrences: vec![],
             tasks,
             projects,
             topics: vec![],
@@ -258,6 +263,8 @@ impl Store {
             .ok_or("Configure this workflow stage first.")?;
         let identifier = self.identifier(task);
         let run = AgentRun {
+            automation_occurrence_id: None,
+            deadline_at: None,
             auto_retry_attempt: 0,
             retry_not_before: None,
             project_plan: None,

@@ -4,11 +4,18 @@ mod render_qa;
 #[cfg(feature = "qa")]
 mod affordance_qa;
 mod app;
+mod automation;
+mod automation_execution;
+mod automation_runtime;
+mod automation_schedule;
+mod automation_views;
 mod archive_app;
 mod appearance;
 mod attachments;
 mod batch;
 mod batch_app;
+#[cfg(feature = "qa")]
+mod automation_qa;
 #[cfg(feature = "qa")]
 mod batch_qa;
 #[cfg(feature = "qa")]
@@ -166,6 +173,16 @@ fn main() {
     #[cfg(feature = "qa")]
     if std::env::args().any(|arg| arg == "--qa-simplify") {
         simplify_qa::run();
+        return;
+    }
+    #[cfg(feature = "qa")]
+    if std::env::args().any(|arg| arg == "--qa-automation") {
+        automation_qa::run();
+        return;
+    }
+    #[cfg(feature = "qa")]
+    if std::env::args().any(|arg| arg == "--qa-automation-perf") {
+        automation_qa::performance_fixture();
         return;
     }
     #[cfg(feature = "qa")]

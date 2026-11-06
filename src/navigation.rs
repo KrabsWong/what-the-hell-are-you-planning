@@ -54,6 +54,7 @@ impl crate::domain::Store {
 pub(crate) enum CrumbTarget {
     View(Scope),
     Task(u64),
+    Automation(u64),
 }
 impl TaskApp {
     pub(crate) fn open_sidebar_task(&mut self, id: u64, window: &mut Window, cx: &mut Context<Self>) {
@@ -64,9 +65,24 @@ impl TaskApp {
     }
 
     pub(crate) fn displayed_run_id(&self) -> Option<u64> {
+        // Automation steps stay out of ordinary result navigation unless the
+        // user explicitly opened one from its period.
+        let allow_automation = self.task_result_context.is_some();
         self.selected_run
-            .filter(|id| self.store.runs.iter().any(|r| r.id == *id))
-            .or_else(|| self.store.runs.last().map(|r| r.id))
+            .filter(|id| {
+                self.store.runs.iter().any(|run| {
+                    run.id == *id
+                        && (allow_automation || run.automation_occurrence_id.is_none())
+                })
+            })
+            .or_else(|| {
+                self.store
+                    .runs
+                    .iter()
+                    .rev()
+                    .find(|run| allow_automation || run.automation_occurrence_id.is_none())
+                    .map(|run| run.id)
+            })
     }
 
     pub(crate) fn clear_navigation_overlays(&mut self) {
@@ -82,7 +98,17 @@ impl TaskApp {
         self.planning_replan_source = None;
         self.planning_topic = None;
         self.directory_project = None;
+        self.automation_ui.settings_dialog = false;
+        self.automation_ui.result_dialog = None;
         self.error.clear();
+    }
+
+    /// Return to an automation's detail page with the settings dialog that
+    /// launched Edit or Replan reopened, so the flow does not fall back to All.
+    pub(crate) fn reopen_automation_settings(&mut self, id: u64, w: &mut Window, cx: &mut Context<Self>) {
+        self.automation_ui.editing = None;
+        self.open_automation(id, w, cx);
+        self.open_automation_settings(w, cx);
     }
 
     pub(crate) fn go_back(&mut self, w: &mut Window, cx: &mut Context<Self>) {
@@ -91,6 +117,7 @@ impl TaskApp {
             match target {
                 CrumbTarget::View(scope) => self.navigate(scope.clone(), w, cx),
                 CrumbTarget::Task(id) => self.open_task(*id, w, cx),
+                CrumbTarget::Automation(id) => self.reopen_automation_settings(*id, w, cx),
             }
         }
     }

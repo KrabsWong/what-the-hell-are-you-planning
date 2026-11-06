@@ -58,6 +58,15 @@ pub fn project_directory(root: &Path, id: u64) -> Result<String, String> {
     Ok(path.to_string_lossy().into_owned())
 }
 
+/// Automation output lives in its own generated project folder so manual projects
+/// and automation results never share a directory tree.
+pub fn automation_directory(root: &Path) -> Result<String, String> {
+    let path = root.join("automations");
+    check_directory(root, &path)?;
+    fs::create_dir_all(&path).map_err(|e| e.to_string())?;
+    Ok(path.to_string_lossy().into_owned())
+}
+
 /// Import a closed legacy workspace without changing its original files. Installation is atomic.
 pub fn initialize(root: &Path, legacy: Option<&Path>) -> Result<PathBuf, String> {
     if !root.is_absolute() || !root.is_dir() { return Err("Choose an existing absolute workspace folder.".into()); }
@@ -91,7 +100,7 @@ pub fn initialize(root: &Path, legacy: Option<&Path>) -> Result<PathBuf, String>
                 let mut seen = std::collections::HashSet::new();
                 for run in &store.runs {
                     if seen.insert((run.directory.clone(), run.session_id.clone())) {
-                        session_locks.push(crate::opencode::lock_session(&crate::opencode::Request { browser_executable: None,
+                        session_locks.push(crate::opencode::lock_session(&crate::opencode::Request { agent: None, browser_executable: None,
                             directory: PathBuf::from(&run.directory), session_id: run.session_id.clone(),
                             executable: PathBuf::from(&store.opencode_path), files: vec![],
                             model: run.model.clone(), prompt: String::new(), title: String::new(),

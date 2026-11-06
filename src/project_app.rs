@@ -186,13 +186,27 @@ impl TaskApp {
         if run.status != "Succeeded" {
             return;
         }
+        let mut planned_automation = None;
         let result = if let Some(request) = self.store.request_for_run(run.id) {
             let request_id = request.id;
+            let automation = request.automation_id;
             if self.store.request_plan_signature(request_id).ok().as_ref()
                 != Some(&run.input_signature)
             {
                 self.store.runs[index].status = "Stale".into();
                 Err("Research destination changed during planning. Review the saved request and generate again.".into())
+            } else if let Some(automation) = automation {
+                // The reviewed plan becomes the frozen template for this automation.
+                // No topic or goal is created here; each period instantiates them.
+                let applied = self.store.apply_automation_template(
+                    automation,
+                    &run.output,
+                    chrono::Utc::now().timestamp(),
+                );
+                if applied.is_ok() {
+                    planned_automation = Some(automation);
+                }
+                applied.map(|_| vec![])
             } else if !request.goal_ids.is_empty() {
                 self.store.regenerate_request_plan(request_id, &run.output)
             } else {
@@ -213,6 +227,11 @@ impl TaskApp {
             Ok(ids) => {
                 // A plan is a durable external result, not part of an older UI undo snapshot.
                 self.undo.clear();
+                if let Some(automation) = planned_automation {
+                    self.automation_plan_ready(automation);
+                    self.error.clear();
+                    return;
+                }
                 if self.scope == Scope::Runs
                     && self.selected.is_none()
                     && self.displayed_run_id() == Some(run.id)

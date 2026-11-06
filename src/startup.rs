@@ -3,7 +3,7 @@ use crate::{
     app::TaskApp,
     appearance::palette,
     controls::*,
-    views::{col, label, row},
+    views::{col, label, row, selectable},
 };
 use gpui_kit::{
     component::{Disableable, button::ButtonVariants, input::Input},
@@ -48,6 +48,8 @@ fn probe_agent(agent: &str, path: &str) -> Result<String, String> {
 impl TaskApp {
     pub(crate) fn begin_workspace_open(&mut self, storage: crate::persistence::Storage, cx: &mut Context<Self>) {
         if self.startup.workspace_pending.is_some() { return; }
+        // An old workspace's clock must never dispatch into the new store.
+        self.cancel_automation_timer();
         self.workspace_required = true;
         self.startup.required = true;
         self.storage_error.clear();
@@ -165,8 +167,8 @@ impl TaskApp {
                 .items_center().justify_center().gap_4()
                 .child(self.sidebar_logo.clone())
                 .child(col().items_center().gap_2()
-                    .child(div().text_lg().font_weight(FontWeight::SEMIBOLD).child("Preparing your workspace"))
-                    .child(div().id("workspace-upgrade-phase").text_sm().text_color(rgb(colors.muted)).child(phase)))
+                    .child(div().text_lg().font_weight(FontWeight::SEMIBOLD).child(selectable("Preparing your workspace")))
+                    .child(div().id("workspace-upgrade-phase").text_sm().text_color(rgb(colors.muted)).child(selectable(phase))))
                 .child(label("Your saved work stays here. Setup continues when this is finished.", cx))
                 .into_any_element();
         }
@@ -238,13 +240,13 @@ impl TaskApp {
                 .text_xs()
                 .font_weight(FontWeight::MEDIUM)
                 .text_color(rgb(color))
-                .child(text)
+                .child(selectable(text))
         };
         let heading = |title: &'static str, state: &'static str, color: u32| {
             row()
                 .justify_between()
                 .gap_2()
-                .child(div().font_weight(FontWeight::SEMIBOLD).child(title))
+                .child(div().font_weight(FontWeight::SEMIBOLD).child(selectable(title)))
                 .child(badge(state, color))
         };
         let card = || {
@@ -259,8 +261,8 @@ impl TaskApp {
         col().id("startup").size_full().overflow_y_scroll().bg(rgb(colors.canvas)).text_color(rgb(colors.text)).text_sm().items_center()
             .child(col().w_full().max_w(px(840.)).p_6().gap_3().flex_shrink_0()
                 .child(row().justify_between()
-                    .child(div().text_2xl().font_weight(FontWeight::SEMIBOLD).child("Set up your app"))
-                    .child(div().text_sm().text_color(rgb(colors.muted)).child(format!("{ready} / 3 ready"))))
+                    .child(div().text_2xl().font_weight(FontWeight::SEMIBOLD).child(selectable("Set up your app")))
+                    .child(div().text_sm().text_color(rgb(colors.muted)).child(selectable(format!("{ready} / 3 ready")))))
                 .child(label("Check these essentials to get started.", cx))
                 .child(card()
                     .child(heading("1 · Workspace", workspace.0, workspace.1))
@@ -273,7 +275,11 @@ impl TaskApp {
                     .when_some(self.startup.upgrade_backup.as_ref(), |view, backup| view.child(col().gap_1()
                         .child(label("Workspace data upgraded. The previous database was backed up.", cx))
                         .child(single_line_text("workspace-upgrade-backup", backup.display().to_string()))))
-                    .when(!self.storage_error.is_empty(), |view| view.child(div().text_xs().text_color(rgb(colors.danger)).child(self.storage_error.clone())))
+                    .when(!self.storage_error.is_empty(), |view| view.child(crate::views::notice(
+                        crate::views::NoticeTone::Danger,
+                        self.storage_error.clone(),
+                        cx,
+                    )))
                     .when(self.workspace_required && self.workspace_root.is_some() && !self.storage_error.is_empty(), |view| view.child(
                         button("retry-workspace-upgrade", "Retry workspace preparation").on_click(cx.listener(|this,_,_,cx| {
                             if let Some(root) = &this.workspace_root { this.begin_workspace_open(crate::persistence::Storage::new(root.join("workspace/workspace.sqlite3")), cx); }
@@ -285,12 +291,12 @@ impl TaskApp {
                     .child(row().justify_between().gap_2().child(label("OpenCode CLI", cx))
                         .child(link_button("install-opencode", "Install").icon(assets::IconName::ExternalLink).on_click(|_,_,cx| cx.open_url("https://opencode.ai"))))
                     .child(Input::new(&self.executable_input).id("startup-opencode"))
-                    .when(!open.2.is_empty(), |view| view.child(div().text_xs().text_color(rgb(colors.muted)).child(open.2.clone())))
+                    .when(!open.2.is_empty(), |view| view.child(div().text_xs().text_color(rgb(colors.muted)).child(selectable(open.2.clone()))))
                     .child(heading("Codex", codex.0, codex.1))
                     .child(row().justify_between().gap_2().child(label("Codex CLI", cx))
                         .child(link_button("install-codex", "Install").icon(assets::IconName::ExternalLink).on_click(|_,_,cx| cx.open_url("https://developers.openai.com/codex/cli"))))
                     .child(Input::new(&self.codex_executable_input).id("startup-codex"))
-                    .when(!codex.2.is_empty(), |view| view.child(div().text_xs().text_color(rgb(colors.muted)).child(codex.2.clone()))))
+                    .when(!codex.2.is_empty(), |view| view.child(div().text_xs().text_color(rgb(colors.muted)).child(selectable(codex.2.clone())))))
                 .child(card()
                     .child(heading("3 · ego(lite)", ego.0, ego.1))
                     .child(row().justify_between().gap_2().child(label("Browser access · finish its first launch after installing.", cx))
@@ -298,10 +304,14 @@ impl TaskApp {
                             .when(!crate::ego::is_installed(&self.ego_input.read(cx).value()), |d| d.child(link_button("startup-install-ego", "Install").icon(assets::IconName::ExternalLink).on_click(|_,_,cx| cx.open_url("https://lite.ego.app"))))
                             .child(link_button("startup-open-ego", "Open").icon(assets::IconName::ExternalLink).on_click(cx.listener(|this,_,_,cx| this.open_ego(cx))))))
                     .child(Input::new(&self.ego_input).id("startup-ego"))
-                    .when(!ego.2.is_empty(), |view| view.child(div().text_xs().text_color(rgb(if ego.3 { colors.muted } else { ego.1 })).child(ego.2.clone())))
-                    .when(!self.error.is_empty(), |view| view.child(div().text_xs().text_color(rgb(colors.danger)).child(self.error.clone()))))
+                    .when(!ego.2.is_empty(), |view| view.child(div().text_xs().text_color(rgb(if ego.3 { colors.muted } else { ego.1 })).child(selectable(ego.2.clone()))))
+                    .when(!self.error.is_empty(), |view| view.child(crate::views::notice(
+                        crate::views::NoticeTone::Danger,
+                        self.error.clone(),
+                        cx,
+                    ))))
                 .child(row().justify_between().gap_3()
-                    .child(div().flex_1().min_w_0().text_xs().text_color(rgb(colors.muted)).child("Next: configure your model and provider in Settings."))
+                    .child(div().flex_1().min_w_0().text_xs().text_color(rgb(colors.muted)).child(selectable("Next: configure your model and provider in Settings.")))
                     .child(row().gap_2()
                         .child(button("startup-recheck", "Check again").disabled(self.workspace_required || self.startup.pending.is_some()).on_click(cx.listener(|this,_,_,cx| this.check_startup(cx))))
                         .child(button("startup-continue", "Continue").primary().disabled(!self.startup_ready(cx)).on_click(cx.listener(|this,_,_,cx| {

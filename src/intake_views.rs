@@ -17,7 +17,12 @@ impl TaskApp {
             return cards.iter().map(|t| self.goal_card(t, cx)).collect();
         }
         let mut result = Vec::new();
-        let mut topics: Vec<_> = self.store.topics.iter().collect();
+        let mut topics: Vec<_> = self
+            .store
+            .topics
+            .iter()
+            .filter(|topic| topic.automation_id.is_none())
+            .collect();
         topics.sort_by_key(|topic| (crate::display_order::newest_id(topic.project_id), crate::display_order::newest_id(topic.id)));
         for topic in topics {
             let goals: Vec<_> = cards
@@ -77,7 +82,9 @@ impl TaskApp {
             .research_requests
             .iter()
             .rev()
-            .filter(|r| project.is_none_or(|id| r.project_id == id) && !self.store.request_is_archived(r)
+            .filter(|r| project.is_none_or(|id| r.project_id == id)
+                && r.automation_id.is_none()
+                && !self.store.request_is_archived(r)
                 && match self.scope { Scope::Topic(id) => r.topic_id == Some(id) && (r.goal_ids.is_empty() || self.store.can_regenerate_request_plan(r.id)), _ => true })
         {
             let id = request.id;
@@ -102,7 +109,7 @@ impl TaskApp {
                     .py_3()
                     .border_b_1()
                     .border_color(rgb(colors.line))
-                    .child(div().child(request.input.clone()))
+                    .child(div().child(selectable(request.input.clone())))
                     .child(label(format!("{} · {status}", request.submitted_at), cx))
                     .child(
                         row()
@@ -156,7 +163,7 @@ impl TaskApp {
             .child(
                 div()
                     .font_weight(FontWeight::SEMIBOLD)
-                    .child("Saved research requests"),
+                    .child(selectable("Saved research requests")),
             )
             .child(list)
             .into_any_element()
@@ -211,18 +218,18 @@ impl TaskApp {
                             format!("ORIGINAL REQUEST · {}", request.submitted_at),
                             cx,
                         ))
-                        .child(div().child(request.input.clone()))
+                        .child(div().child(selectable(request.input.clone())))
                         .child(label("EXPECTED OUTPUT", cx))
-                        .child(div().child(brief.deliverable.clone()))
+                        .child(div().child(selectable(brief.deliverable.clone())))
                         .child(label("OBJECTIVE & SCOPE", cx))
-                        .child(div().child(brief.objective.clone()))
-                        .child(div().child(brief.scope.clone()))
+                        .child(div().child(selectable(brief.objective.clone())))
+                        .child(div().child(selectable(brief.scope.clone())))
                         .when(!brief.assumptions.is_empty(), |d| {
                             d.child(label("PLANNING ASSUMPTIONS", cx)).children(
                                 brief
                                     .assumptions
                                     .iter()
-                                    .map(|s| div().child(format!("• {s}"))),
+                                    .map(|s| div().child(selectable(format!("• {s}")))),
                             )
                         })
                         .when(!brief.facts_to_verify.is_empty(), |d| {
@@ -231,7 +238,7 @@ impl TaskApp {
                                     brief
                                         .facts_to_verify
                                         .iter()
-                                        .map(|s| div().child(format!("• {s}"))),
+                                        .map(|s| div().child(selectable(format!("• {s}")))),
                                 )
                         })
                         .map(observed),

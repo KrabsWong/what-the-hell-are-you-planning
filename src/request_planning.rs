@@ -12,6 +12,9 @@ pub struct ResearchRequest {
     pub project_id: u64,
     /// Destination topic; legacy requests may not have one yet.
     pub topic_id: Option<u64>,
+    /// Set when the plan feeds an automation template instead of a topic plan.
+    #[serde(default)]
+    pub automation_id: Option<u64>,
     /// Initial placeholder name, replaced by the planner unless the user renamed it.
     #[serde(default)]
     pub provisional_topic_name: Option<String>,
@@ -247,7 +250,59 @@ impl Store {
             id,
             project_id: project,
             topic_id: Some(topic),
+            automation_id: None,
             provisional_topic_name,
+            input,
+            submitted_at: chrono::Local::now().to_rfc3339(),
+            planning_run_id: None,
+            goal_ids: vec![],
+            brief: None,
+        });
+        Ok(id)
+    }
+
+    /// Planning for an automation template. No topic is created: the reviewed plan
+    /// is frozen into the automation and reused by every period.
+    pub fn create_automation_request(
+        &mut self,
+        automation: u64,
+        project: u64,
+        input: impl Into<String>,
+    ) -> Result<u64, String> {
+        let input = input.into().trim().to_string();
+        if input.is_empty() || input.len() > 12_000 {
+            return Err(
+                "Describe what you want to research in 1–12,000 bytes. One sentence is enough."
+                    .into(),
+            );
+        }
+        if self.automation(automation).is_none() {
+            return Err("Automation not found.".into());
+        }
+        if !self.projects.iter().any(|p| p.id == project) {
+            return Err("Choose an existing project.".into());
+        }
+        if let Some(existing) = self
+            .research_requests
+            .iter()
+            .find(|request| request.automation_id == Some(automation))
+        {
+            return Ok(existing.id);
+        }
+        let id = self
+            .research_requests
+            .iter()
+            .map(|request| request.id)
+            .max()
+            .unwrap_or(0)
+            .checked_add(1)
+            .ok_or("No research request identifiers remain.")?;
+        self.research_requests.push(ResearchRequest {
+            id,
+            project_id: project,
+            topic_id: None,
+            automation_id: Some(automation),
+            provisional_topic_name: None,
             input,
             submitted_at: chrono::Local::now().to_rfc3339(),
             planning_run_id: None,
@@ -440,6 +495,8 @@ impl Store {
             logs.push(format!("[plan repair] Correcting saved output from run {} · one automatic repair maximum", previous.id));
         }
         Ok(AgentRun {
+        automation_occurrence_id: None,
+            deadline_at: None,
             auto_retry_attempt: 0,
             retry_not_before: None,
             id: self

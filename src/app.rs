@@ -30,6 +30,8 @@ pub enum Scope {
     Runs,
     Recovery,
     Research,
+    Automations,
+    AutomationRuns,
     Settings,
 }
 #[derive(Clone, Copy, PartialEq)]
@@ -112,6 +114,7 @@ pub struct TaskApp {
     pub task_result_context: Option<u64>,
     pub tabs: Vec<u64>,
     pub expanded_sidebar_projects: Vec<u64>,
+    pub automation_sidebar_expanded: bool,
     pub collapsed_sidebar_goals: Vec<u64>,
     pub sidebar_split: Entity<gpui_kit::base::ResizableState>,
     pub results_split: Entity<gpui_kit::base::ResizableState>,
@@ -208,6 +211,14 @@ pub struct TaskApp {
     pub render_statuses: std::cell::RefCell<std::collections::HashMap<u64, crate::workflow::TaskStatus>>,
     pub board_execution_filter: Option<crate::workflow::ExecutionGroup>,
     pub show_task_activity: bool,
+    pub automation_ui: crate::automation_views::AutomationUi,
+    pub automation_generation: u64,
+    pub automation_timer_armed: bool,
+    pub automation_fake_mode: bool,
+    pub automation_fake_hold: bool,
+    pub automation_backoff_until: Option<Instant>,
+    pub automation_started: std::collections::HashMap<u64, Instant>,
+    pub automation_fake: Option<crate::automation_runtime::FakeAutomationRunner>,
     pub _subscriptions: Vec<Subscription>,
 }
 impl TaskApp {
@@ -305,12 +316,39 @@ impl TaskApp {
             None => Ok(String::new()), // Isolated QA stores configure their own directories.
         }
     }
+    /// The generated automation project keeps every automation result out of the
+    /// user's projects. It is created on demand and never shown in navigation.
+    pub fn ensure_automation_project(&mut self) -> Result<u64, String> {
+        let directory = match &self.workspace_root {
+            Some(root) => crate::workspace::automation_directory(&root.join("workspace"))?,
+            None if self.workspace_required => {
+                return Err("Set up a workspace before creating automations.".into());
+            }
+            // Isolated QA stores have no workspace root; they still need a real,
+            // writable folder because every run validates its working directory.
+            None => {
+                let fallback =
+                    std::env::temp_dir().join("what-the-hell-are-you-planning-automations");
+                std::fs::create_dir_all(&fallback).map_err(|e| e.to_string())?;
+                fallback.to_string_lossy().into_owned()
+            }
+        };
+        self.store.ensure_automation_project(directory)
+    }
     fn check_workspace_directory(&self, path: &std::path::Path) -> Result<(), String> {
         if self.workspace_required {
             return Err("Set up your workspace before running tasks.".into());
         }
         if let Some(root) = &self.workspace_root {
-            crate::workspace::check_directory(&root.join("workspace/projects"), path)?;
+            let workspace = root.join("workspace");
+            let projects = workspace.join("projects");
+            let automations = workspace.join("automations");
+            if crate::workspace::check_directory(&projects, path).is_err()
+                && crate::workspace::check_directory(&automations, path).is_err()
+            {
+                // Report the project rule; both folders are inside the workspace.
+                crate::workspace::check_directory(&projects, path)?;
+            }
         }
         Ok(())
     }
@@ -346,6 +384,7 @@ impl TaskApp {
         let research_models: [_; 4] = std::array::from_fn(|_| {
             cx.new(|cx| InputState::new(window, cx).placeholder("Global default"))
         });
+        let automation_ui = crate::automation_views::AutomationUi::new(window, cx);
         let system_appearance = cx.observe_window_appearance(window, |this, w, cx| {
             if this.store.appearance == crate::appearance::Appearance::System {
                 crate::appearance::apply(this.store.appearance, Some(w), cx);
@@ -359,6 +398,26 @@ impl TaskApp {
             release,
             system_appearance,
         ];
+        for input in [
+            &automation_ui.name,
+            &automation_ui.interval,
+            &automation_ui.hour,
+            &automation_ui.minute,
+            &automation_ui.timezone,
+            &automation_ui.delay,
+            &automation_ui.timeout,
+            &automation_ui.failures,
+            &automation_ui.retention,
+        ] {
+            subscriptions.push(cx.subscribe(input, |_, _, event, cx| {
+                if matches!(event, InputEvent::Change) { cx.notify(); }
+            }));
+        }
+        for input in [&automation_ui.objective, &automation_ui.expected] {
+            subscriptions.push(cx.subscribe(input, |_, _, event, cx| {
+                if matches!(event, InputEvent::Change) { cx.notify(); }
+            }));
+        }
         for input in research_models.iter().chain([&global_model]) {
             subscriptions.push(cx.subscribe_in(input, window, move |this, input, event, w, cx| {
                 match event {
@@ -441,6 +500,7 @@ impl TaskApp {
             task_result_context: None,
             tabs: vec![],
             expanded_sidebar_projects: vec![],
+            automation_sidebar_expanded: true,
             collapsed_sidebar_goals: vec![],
             sidebar_split: cx.new(|_| gpui_kit::base::ResizableState::default()),
             results_split: cx.new(|_| gpui_kit::base::ResizableState::default()),
@@ -513,6 +573,14 @@ impl TaskApp {
             render_statuses: Default::default(),
             board_execution_filter: None,
             show_task_activity: false,
+            automation_ui,
+            automation_generation: 0,
+            automation_timer_armed: false,
+            automation_fake_mode: false,
+            automation_fake_hold: false,
+            automation_backoff_until: None,
+            automation_started: Default::default(),
+            automation_fake: None,
             _subscriptions: subscriptions,
         }
     }
@@ -566,6 +634,18 @@ impl TaskApp {
         self.task_result_context = None;
         self.clear_navigation_overlays();
         if scope == Scope::Runs {
+            // A period step is not part of Progress & results; do not keep it as
+            // the selected run when the user enters the ordinary results view.
+            if let Some(id) = self.selected_run
+                && self
+                    .store
+                    .runs
+                    .iter()
+                    .find(|run| run.id == id)
+                    .is_some_and(|run| run.automation_occurrence_id.is_some())
+            {
+                self.selected_run = None;
+            }
             self.reveal_selected_run();
         }
         self.save_feedback = None;
@@ -579,6 +659,14 @@ impl TaskApp {
         };
         if let Some(project) = project {
             self.remember_active_project(project);
+        }
+        if matches!(scope, Scope::Automations | Scope::AutomationRuns) {
+            self.automation_sidebar_expanded = true;
+        }
+        if scope == Scope::Automations {
+            self.automation_ui.selected = None;
+            self.automation_ui.creating = false;
+            self.automation_ui.feedback = None;
         }
         self.scope = scope;
         self.selected = None;
@@ -695,10 +783,16 @@ impl TaskApp {
             Scope::Runs => "Progress & results".into(),
             Scope::Recovery => "Paused projects".into(),
             Scope::Research => "Market research".into(),
+            Scope::Automations => "Automations".into(),
+            Scope::AutomationRuns => "Automation results".into(),
             Scope::Settings => "Settings".into(),
         }
     }
     pub fn matches_scope(&self, t: &Task) -> bool {
+        // Automation research is reached from its own history, never the normal board.
+        if t.automation_id.is_some() {
+            return false;
+        }
         if self.store.task_is_archived(t.id) != (self.scope == Scope::Archive) {
             return false;
         }
@@ -932,7 +1026,12 @@ impl TaskApp {
                 self.store.recover_interrupted_runs();
                 self.recover_publications();
                 self.store.reconcile_goal_approvals();
-                let project = self.store.projects.first().map(|p| p.id).unwrap_or(0);
+                let project = self
+                    .store
+                    .visible_projects()
+                    .map(|p| p.id)
+                    .next()
+                    .unwrap_or(0);
                 self.connection_project = project;
                 self.research_project = project;
                 self.scope = Scope::All;
@@ -960,6 +1059,7 @@ impl TaskApp {
                     }
                 }
                 self.storage = Some(storage);
+                self.recover_automations(cx);
             }
             Err(e) => {
                 self.storage_error = e;
@@ -1124,6 +1224,9 @@ impl TaskApp {
         true
     }
     pub fn start_run(&mut self, id: u64, cx: &mut Context<Self>) {
+        if self.route_automation_task(id, cx) {
+            return;
+        }
         self.store.reconcile_goal_approvals();
         self.error.clear();
         self.task_start_feedback = None;
@@ -1172,6 +1275,18 @@ impl TaskApp {
         files: Vec<PathBuf>,
         cx: &mut Context<Self>,
     ) {
+        if run.automation_occurrence_id.is_none()
+            && self
+                .store
+                .task(run.task_id)
+                .is_some_and(|task| task.automation_id.is_some())
+        {
+            let error = "An automation-owned step cannot start through the ordinary research queue. Use its automation period.".to_string();
+            self.error = error.clone();
+            self.task_start_feedback = Some((run.task_id, error));
+            cx.notify();
+            return;
+        }
         if self.store.run_is_archived(&run) {
             self.error = "Restore the archived topic or goal before executing.".into();
             cx.notify();
@@ -1310,16 +1425,38 @@ impl TaskApp {
         while self.execution_slots_used() < self.store.concurrency_limit() {
             let next = self.queued_runs.iter().position(|(id, _)| {
                 let candidate = self.store.runs.iter().find(|r| r.id == *id).unwrap();
+                if let Some(automation) = candidate
+                    .automation_occurrence_id
+                    .and_then(|id| self.store.occurrence(id))
+                    .map(|occurrence| occurrence.automation_id)
+                {
+                    // At most one running period per automation; a second request waits.
+                    if self.store.automation_occurrences.iter().any(|occurrence| {
+                        occurrence.automation_id == automation
+                            && occurrence.id != candidate.automation_occurrence_id.unwrap_or(0)
+                            && occurrence.status == crate::automation::OccurrenceStatus::Running
+                    }) {
+                        return false;
+                    }
+                }
                 if candidate.project_plan.is_none() {
                     let topic = self.store.execution_topic(candidate.task_id);
                     if self.active_runs.iter().filter_map(|active| self.store.runs.iter().find(|run| run.id == active.id))
                         .chain(self.store.runs.iter().filter(|run| run.status == "Recovering" && self.store.is_recovery_candidate(run)))
                         .any(|run| run.project_plan.is_none() && self.store.execution_topic(run.task_id) != topic)
                     { return false; }
-                    let front = self.todo_batch.as_ref().and_then(|batch| batch.pending_topics(&self.store).first().copied())
-                        .or_else(|| self.queued_runs.iter().filter_map(|(id, _)| self.store.runs.iter().find(|run| run.id == *id && run.project_plan.is_none()))
-                            .next().map(|run| self.store.execution_topic(run.task_id)));
-                    if front.is_some_and(|front| front != topic) { return false; }
+                    // A later step of an already-started occurrence is a continuation of
+                    // the active period, not a new topic waiting behind the FIFO front.
+                    let continuation = candidate
+                        .automation_occurrence_id
+                        .and_then(|id| self.store.occurrence(id))
+                        .is_some_and(|occurrence| occurrence.actual_started_at.is_some());
+                    if !continuation {
+                        let front = self.todo_batch.as_ref().and_then(|batch| batch.pending_topics(&self.store).first().copied())
+                            .or_else(|| self.queued_runs.iter().filter_map(|(id, _)| self.store.runs.iter().find(|run| run.id == *id && run.project_plan.is_none()))
+                                .next().map(|run| self.store.execution_topic(run.task_id)));
+                        if front.is_some_and(|front| front != topic) { return false; }
+                    }
                 }
                 if candidate.auto_retry_attempt > 0 {
                     if candidate.retry_delay_remaining(chrono::Utc::now().timestamp()) > 0 {
@@ -1358,7 +1495,13 @@ impl TaskApp {
             let index = self.store.runs.iter().position(|r| r.id == id).unwrap();
             let run = &self.store.runs[index];
             // Queued requests are snapshots. Never execute stale approvals or evidence.
-            let valid = if let Some(request) = self.store.request_for_run(run.id) {
+            let automation_owned_without_occurrence = run.automation_occurrence_id.is_none()
+                && self
+                    .store
+                    .task(run.task_id)
+                    .is_some_and(|task| task.automation_id.is_some());
+            let valid = !automation_owned_without_occurrence
+                && if let Some(request) = self.store.request_for_run(run.id) {
                 self.store.request_plan_signature(request.id).ok().as_ref()
                     == Some(&run.input_signature)
             } else if let Some(project) = run.project_plan {
@@ -1419,8 +1562,87 @@ impl TaskApp {
                 continue;
             }
             self.store.refresh_queued_browser_control(index);
+            let automation_occurrence = self.store.runs[index].automation_occurrence_id;
+            let automation_research_kind = self.store.runs[index].research_kind;
+            if let Some(occurrence_id) = automation_occurrence {
+                let Some(occurrence) = self.store.occurrence(occurrence_id).cloned() else {
+                    let run = &mut self.store.runs[index];
+                    run.status = "Blocked".into();
+                    run.ended_at = Some(opencode::timestamp());
+                    run.logs.push("[automation] The occurrence is missing; nothing was started.".into());
+                    self.persist_if_changed(true);
+                    self.complete_research_run(id, cx);
+                    continue;
+                };
+                let now = Self::automation_now();
+                let regeneration = occurrence.status == crate::automation::OccurrenceStatus::Succeeded
+                    && automation_research_kind == Some(crate::research::ResearchKind::Advise);
+                if self.store.runs[index]
+                    .deadline_at
+                    .is_some_and(|deadline| now >= deadline)
+                {
+                    let run = &mut self.store.runs[index];
+                    run.status = "Stale".into();
+                    run.ended_at = Some(opencode::timestamp());
+                    run.logs.push(
+                        "[automation] Report regeneration exceeded its own time limit before starting; the previous report is preserved."
+                            .into(),
+                    );
+                    self.persist_if_changed(true);
+                    self.complete_research_run(id, cx);
+                    continue;
+                }
+                if !regeneration && occurrence.first_start_expired(now) {
+                    let run = &mut self.store.runs[index];
+                    run.status = "Stale".into();
+                    run.ended_at = Some(opencode::timestamp());
+                    run.logs.push("[automation] The queued request exceeded its allowed delay and was skipped.".into());
+                    let _ = self.store.occurrence_mut(occurrence_id).map(|value| value.transition(
+                        crate::automation::OccurrenceStatus::Skipped,
+                        Some(crate::automation::OccurrenceReason::new(crate::automation::SkipCode::Expired, "The queued request exceeded its allowed delay before a slot was available.")),
+                    ));
+                    self.persist_if_changed(true);
+                    self.complete_research_run(id, cx);
+                    continue;
+                }
+                if !regeneration && occurrence.deadline_at.is_some_and(|deadline| now >= deadline) {
+                    let run = &mut self.store.runs[index];
+                    run.status = "Stale".into();
+                    run.ended_at = Some(opencode::timestamp());
+                    run.logs.push("[automation] The occurrence's total time limit was reached before this step started.".into());
+                    let _ = self.store.occurrence_mut(occurrence_id).map(|value| value.transition(
+                        crate::automation::OccurrenceStatus::Failed,
+                        Some(crate::automation::OccurrenceReason::new(crate::automation::SkipCode::Expired, "The automation's total time limit was reached.")),
+                    ));
+                    self.store.note_automation_failure(occurrence.automation_id, now);
+                    self.persist_if_changed(true);
+                    self.complete_research_run(id, cx);
+                    continue;
+                }
+                if !regeneration
+                    && occurrence.status != crate::automation::OccurrenceStatus::Running
+                {
+                    let first_start = occurrence.actual_started_at.is_none();
+                    if let Some(value) = self.store.occurrence_mut(occurrence_id) {
+                        if let Err(error) = value.mark_running(now) {
+                            let run = &mut self.store.runs[index];
+                            run.status = "Blocked".into();
+                            run.ended_at = Some(opencode::timestamp());
+                            run.logs.push(format!("[automation] {error}"));
+                            self.store.mark_automation_attention(occurrence.automation_id, error);
+                            self.persist_if_changed(true);
+                            self.complete_research_run(id, cx);
+                            continue;
+                        }
+                    }
+                    if first_start {
+                        self.automation_started
+                            .insert(occurrence_id, std::time::Instant::now());
+                    }
+                }
+            }
             let run = &self.store.runs[index];
-            let request = opencode::Request { browser_executable: (run.agent == "Codex" && run.research_kind == Some(crate::research::ResearchKind::Collect) && !self.store.owning_research_goal(run.task_id).is_some_and(|goal| self.store.research_browser_handed_off(goal))).then(|| PathBuf::from(&self.store.research_config.ego_path)),
+            let request = opencode::Request { agent: None, browser_executable: (run.agent == "Codex" && run.research_kind == Some(crate::research::ResearchKind::Collect) && !self.store.owning_research_goal(run.task_id).is_some_and(|goal| self.store.research_browser_handed_off(goal))).then(|| PathBuf::from(&self.store.research_config.ego_path)),
                 files,
                 session_id: run.session_id.clone(),
                 executable: PathBuf::from(self.store.agent_path(&run.agent)),
@@ -1518,6 +1740,7 @@ impl TaskApp {
     pub fn poll_runtime(&mut self, cx: &mut Context<Self>) -> bool {
         if self.startup.workspace_pending.is_some() { cx.notify(); }
         self.poll_startup(cx);
+        self.enforce_active_run_deadlines(Self::automation_now(), cx);
         self.poll_research_io(cx);
         self.poll_recovery(cx);
         if let Some(result) = self.codex_discovery.as_ref().and_then(|rx| rx.try_recv().ok()) {
@@ -1575,6 +1798,9 @@ impl TaskApp {
         self.advance_todo_batch(cx);
         self.dispatch_runs(cx);
         self.poll_report_publishing(cx);
+        if !self.automation_timer_armed {
+            self.poll_automations(cx);
+        }
         if self.queued_runs.iter().any(|(id, _)| self.store.runs.iter()
             .any(|run| run.id == *id && run.auto_retry_attempt > 0)) {
             cx.notify();
@@ -1604,6 +1830,7 @@ impl TaskApp {
         keep
     }
     fn shutdown(&mut self) {
+        self.cancel_automation_timer();
         self.research_sequences.clear();
         for mut active in std::mem::take(&mut self.active_runs) {
             let (stopped, events) = active.handle.stop_and_wait(Duration::from_secs(5));

@@ -1,6 +1,6 @@
 # Research Workflow Strategy
 
-Last reviewed: 2026-11-04
+Last reviewed: 2026-11-05
 
 ## Purpose and status
 
@@ -214,7 +214,22 @@ A completed piece of prose is not necessarily complete research. A single inacce
 
 Rendering and publishing are separate from research completion. The publication UI distinguishes successful GitHub synchronization, waiting for deployment, site-access errors and a verified online report. A successful push is not proof of public availability. Online verification checks the report version marker; verification errors retain the successful commit so the user can check again without another push.
 
-## 7. Enforcement and limitations
+## 7. Automation occurrences
+
+Automations reuse the research workflow but have a separate approval and time model. The first version supports intervals, daily and weekly schedules in an IANA time zone; arbitrary Cron, external actions and background execution while the app is closed are not supported.
+
+- **Two shapes.** Quick tasks run one answer step per period and return the smallest complete answer: the direct value(s) or short result, its as-of time, two to five original links and at most one or two material caveats. They do not add an appendix, methodology, evidence-requirement table, scenario analysis, background history or next-step plan unless the task explicitly asks for one. Research automations keep the full collection → analysis → report contract described above. Both shapes use the same execution path and JSON result envelope.
+- **Separate approval.** A deterministic recurring template (collection → analysis → report) is reviewed and enabled by the user. Approval binds the definition version, template, schedule, effective models/agents and material signatures. Global model changes do not alter an enabled automation. Editing scope, plan, models, materials, agent or schedule creates a new version and requires approval again; running periods keep their old snapshot.
+- **One occurrence = one period.** Each occurrence creates its own internal Topic, Goal, dependency steps, working directory, session and browser Space. It is excluded from the normal board, task tree, progress list and automatic publication by persisted source relations (`automation_id`, `automation_occurrence_id`), not by title.
+- **Explicit time context.** A scheduled occurrence uses its scheduled trigger as `reference_time`; a manual run uses the request time. Retries keep the same reference time and data window. The prompt states scheduled/actual UTC times, time zone, `reference_time` and a resolved previous-local-day window; “yesterday” is interpreted against that reference, not the actual start date. Business trading days are verified by the collection step and remain unresolved if unknown.
+- **Catch-up.** Only the newest missed trigger runs by default, and it is skipped when older than the allowed delay. Older triggers are summarized by count and range; no occurrence is created per minute. Pausing and resuming does not backfill. A manual run does not move the schedule cursor.
+- **Limits.** One active occurrence and one unstarted occurrence per automation; sharing the normal concurrency limit, resource locks and Topic FIFO. Automatic retries reuse the existing step retry budget. A total occurrence deadline starts at the first actual start and survives retries, restarts and sleep. Consecutive final failures pause automatic triggering until the user resolves them.
+- **Same execution path as a manual run.** A scheduled period reuses the ordinary research pipeline: the same `prepare_run`, the agent selected in Settings (OpenCode or Codex today), the same working-directory rules and the same JSON output envelope. Quick tasks substitute the short-answer guidance for the long-report guidance; Research tasks keep the full report contract. Automations do not ship a second agent configuration or a project-local restricted profile. Unattended periods also declare that no one is watching and require recording an evidence gap instead of waiting for input when a source needs sign-in, a CAPTCHA or a browser handoff. Requesting email, publishing, trading, deletion or scripts at creation is still rejected.
+- **Recovery.** Startup distinguishes a verified running session, completed result, confirmed stop and unknown state. Completed work imports idempotently; confirmed stops may requeue the same period; unknown states enter verification and block dispatch instead of replaying. Reports, sources, sessions, materials and dedupe keys are never removed by log cleanup.
+
+Automations run only while the app is open and the computer is awake. Closing the window requests process termination through the normal shutdown path; it does not keep a daemon alive.
+
+## 8. Enforcement and limitations
 
 The application validates structured plans, required dependency relationships, research-result schemas, source-field requirements, material citation requirements and input freshness. Completed collection requires at least one source. These checks catch contract failures, not all unsupported claims.
 
@@ -222,7 +237,7 @@ Source truthfulness, independence, evidence coverage, faithful paraphrasing, rea
 
 Model substitutions do not change this policy. Assess a workflow change by evidence fidelity and reader usefulness, not by output length alone. Useful checks include whether a reader can find the answer quickly, trace material claims, see what remains uncertain and understand what would change the conclusion.
 
-## 8. Keeping this document current
+## 9. Keeping this document current
 
 Update this document in the **same change set** whenever planning behavior, research prompts, evidence rules, result contracts, report presentation or publication semantics change. Do not postpone documentation until after a release.
 
@@ -249,6 +264,11 @@ This is a contributor maintenance rule, not a background synchronization service
 | Export | [research_export.rs](../src/research_export.rs) |
 | Publication state and exact-version verification | [report_publish.rs](../src/report_publish.rs) |
 | Repository publication | [report_git.rs](../src/report_git.rs) |
+| Automation definition, occurrence and approval state | [automation.rs](../src/automation.rs) |
+| Automation schedule, preview, DST and catch-up arithmetic | [automation_schedule.rs](../src/automation_schedule.rs) |
+| Automation dispatch, queue hand-off and recovery | [automation_runtime.rs](../src/automation_runtime.rs) |
+| Automation template, snapshot and time-context injection | [automation_execution.rs](../src/automation_execution.rs) |
+| Automation management interface | [automation_views.rs](../src/automation_views.rs) |
 
 ### Change history
 
@@ -258,8 +278,14 @@ This is a contributor maintenance rule, not a background synchronization service
 
 - **2026-11-04:** Documented request-plan regeneration before approval, atomic replacement with archived prior goals, and the distinction from replanning into a separate topic.
 
+- **2026-11-05:** Added the automation occurrence contract: separate approval snapshot, per-period time context, bounded catch-up, occurrence limits, recovery states, publication exclusion and the OpenCode-only unattended boundary. Runtime tool-denial and real-model smoke tests remain unverified.
+
 - **2026-11-04:** Unified header planning actions around the topic lifecycle and changed the derived-topic indicator to a notebook-and-pen icon.
 
 - **2026-11-04:** Prioritized natural, complete explanations and evidence fidelity over the default final-body length target. Added guidance to expand analytical shorthand, remove repetition rather than sentence structure, and retain key evidence and necessary qualifications in the body.
 
 - **2026-11-04:** Added final-report regeneration with optional writing preferences, unchanged upstream research, input freshness checks and retained report history.
+
+- **2026-11-06:** Removed the automation-only restricted agent profile and the build gate that blocked enabling. Scheduled periods now reuse the manual research execution path and the agent chosen in Settings; the schedule is the only difference from a manual run.
+
+- **2026-11-06:** Added the Quick task short-answer contract. Quick periods keep the same execution path and JSON envelope but return the direct result, as-of time, a few links and material caveats without the long-report appendix, methodology or scenario sections. Research automations keep the full report contract.

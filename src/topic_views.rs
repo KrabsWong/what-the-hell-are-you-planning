@@ -33,7 +33,7 @@ pub(crate) struct TopicMoveDialog {
 impl TaskApp {
     pub(crate) fn request_topic_move(&mut self, topic: u64, w: &mut Window, cx: &mut Context<Self>) {
         let Some(current) = self.store.topics.iter().find(|t| t.id == topic) else { return; };
-        let choices: Vec<_> = self.store.projects.iter().filter(|p| p.id != current.project_id)
+        let choices: Vec<_> = self.store.visible_projects().filter(|p| p.id != current.project_id)
             .map(|p| ProjectChoice { id: p.id, title: format!("{} · {} (#{})", p.name, p.key, p.id).into() }).collect();
         let has_destinations = !choices.is_empty();
         let projects = cx.new(|cx| SelectState::new(SearchableVec::new(choices), None, w, cx).searchable(true));
@@ -71,7 +71,7 @@ impl TaskApp {
         let topic = self.store.topics.iter().find(|t| t.id == dialog.topic);
         let name = topic.map(|t| t.display_name()).unwrap_or_default();
         let source = topic.and_then(|t| self.store.projects.iter().find(|p| p.id == t.project_id)).map(|p| p.name.clone()).unwrap_or_default();
-        let count = self.store.tasks.iter().filter(|t| self.store.task_topic(t.id).is_some_and(|t| t.id == dialog.topic)).count();
+        let count = self.store.tasks.iter().filter(|t| t.automation_id.is_none() && self.store.task_topic(t.id).is_some_and(|t| t.id == dialog.topic)).count();
         let blockers = self.store.topic_move_blockers(dialog.topic, self.todo_batch.as_ref());
         let blocked = !blockers.is_empty();
         let selected = dialog.projects.read(cx).selected_value().copied();
@@ -83,7 +83,7 @@ impl TaskApp {
             for (index, blocker) in blockers.iter().enumerate() {
                 let (title, remedy) = blocker.split_once('\n').unwrap_or((blocker, ""));
                 body = body.child(col().p_3().gap_2().rounded_md().bg(rgb(colors.side))
-                    .child(div().font_weight(FontWeight::SEMIBOLD).child(format!("{}. {title}", index + 1)))
+                    .child(div().font_weight(FontWeight::SEMIBOLD).child(selectable(format!("{}. {title}", index + 1))))
                     .child(muted(remedy.trim().to_string(), cx)));
             }
         } else {
@@ -98,7 +98,13 @@ impl TaskApp {
                 body = body.child(muted("No other projects available. Close this dialog and create a project first.", cx));
             }
         }
-        if !self.error.is_empty() { body = body.child(div().text_color(rgb(colors.danger)).child(self.error.clone())); }
+        if !self.error.is_empty() {
+            body = body.child(crate::views::notice(
+                crate::views::NoticeTone::Danger,
+                self.error.clone(),
+                cx,
+            ));
+        }
         div().absolute().inset_0().occlude().bg(rgba(0x00000080)).flex().items_center().justify_center().p_4()
             .child(col().w(px(600.)).max_w_full().p_6().gap_4().rounded_lg().bg(rgb(colors.panel))
                 .child(div().text_lg().font_weight(FontWeight::SEMIBOLD).child(if blocked { "Cannot move topic yet" } else { "Move topic" }))
@@ -162,10 +168,14 @@ impl TaskApp {
         let colors = palette(cx);
         div().absolute().inset_0().occlude().bg(rgba(0x00000080)).flex().items_center().justify_center()
             .child(col().w(px(460.)).p_6().gap_4().rounded_lg().bg(rgb(colors.panel))
-                .child(div().text_lg().font_weight(FontWeight::SEMIBOLD).child(if id.is_some() { "Rename topic" } else { "New topic" }))
+                .child(div().text_lg().font_weight(FontWeight::SEMIBOLD).child(selectable(if id.is_some() { "Rename topic" } else { "New topic" })))
                 .child(muted("Keep related research goals together around a company, subject or question.", cx))
                 .child(Input::new(input).id("topic-name"))
-                .when(!self.error.is_empty(), |d| d.child(div().text_color(rgb(colors.danger)).child(self.error.clone())))
+                .when(!self.error.is_empty(), |d| d.child(crate::views::notice(
+                    crate::views::NoticeTone::Danger,
+                    self.error.clone(),
+                    cx,
+                )))
                 .child(row().justify_end()
                     .child(button("cancel-topic", "Cancel").on_click(cx.listener(|a, _, w, cx| { a.topic_editor = None; a.error.clear(); w.focus(&a.focus, cx); cx.notify(); })))
                     .child(primary_button("save-topic", "Save topic").on_click(cx.listener(|a, _, w, cx| a.save_topic(w, cx))))))
@@ -204,7 +214,7 @@ impl TaskApp {
             .store
             .topics
             .iter()
-            .filter(|t| t.project_id == project && !t.archived)
+            .filter(|t| t.project_id == project && !t.archived && t.automation_id.is_none())
             .map(|t| (Some(t.id), t.display_name()))
             .collect();
         let entity = cx.entity().downgrade();
@@ -405,7 +415,7 @@ impl TaskApp {
 
     pub(crate) fn topic_view(&self, id: u64, cx: &mut Context<Self>) -> AnyElement {
         let Some(topic) = self.store.topics.iter().find(|t| t.id == id) else {
-            return div().child("Topic not found").into_any_element();
+            return div().child(selectable("Topic not found")).into_any_element();
         };
         let project = topic.project_id;
         let archived = topic.archived;
@@ -513,7 +523,7 @@ impl TaskApp {
                 .when(topic.replanned_from.is_some(), |d| d.child(div().id("topic-replanned-indicator").role(Role::Label).aria_label("Replanned topic")
                     .flex_shrink_0().child(gpui_kit::component::Icon::new(assets::IconName::NotebookPen)
                         .size_4().text_color(rgb(palette(cx).accent)))))
-                .child(div().flex_1().min_w_0().child(topic.display_name())))
+                .child(div().flex_1().min_w_0().child(selectable(topic.display_name()))))
                 .when(can_queue, |d| d.child(button("queue-topic", "Queue topic")
                     .tooltip("Queue all approved unfinished goals in this topic. Topics execute one at a time.")
                     .on_click(cx.listener(move |a, _, _, cx| a.start_topic_batch(id, cx)))))

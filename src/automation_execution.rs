@@ -120,12 +120,12 @@ pub fn build_quick_template(objective: &str, expected: &str) -> Result<Automatio
         AutomationGoal {
             title: objective.chars().take(80).collect(),
             brief: format!(
-                "Recurring task: {objective}\n\nExpected result: {expected}\n\nAnswer directly with dated facts and sources. Do not send messages, publish, trade, delete files, or change external systems."
+                "Recurring quick check: {objective}\n\nExpected result: {expected}\n\nGive the smallest complete answer, not a research report. Do not send messages, publish, trade, delete files, or change external systems."
             ),
             steps: vec![AutomationTemplateStep {
                 title: "Answer the recurring question".into(),
                 instructions: format!(
-                    "Answer this recurring question using current, verifiable sources: {objective}\n\nFollow the occurrence time window; never substitute today for it. Record original links, observation or publication times, the retrieval time, and any evidence gap. Separate observed facts from inference. Expected result: {expected}"
+                    "Answer this recurring question directly with current, verifiable sources: {objective}\n\nFollow the occurrence time window; never substitute today for it. Give the value(s) or short result and its as-of time, 2–5 original links, and at most one or two material caveats. Do not add an appendix, methodology, background history, scenario analysis or next steps unless the task explicitly asks for them. If a value cannot be verified, name it and the reason in one sentence. Separate observed facts from inference. Expected result: {expected}"
                 ),
                 kind: ResearchKind::Advise,
                 depends_on: vec![],
@@ -1408,6 +1408,17 @@ mod tests {
                 .collect::<Vec<_>>(),
             vec![ResearchKind::Advise]
         );
+        // The period reuses the normal pipeline but must not inherit the long
+        // research-report contract that produced multi-page quick answers.
+        let step = store.research_children(goal)[0];
+        let run = store.prepare_run(step).unwrap();
+        assert!(run.prompt.contains("QUICK RECURRING ANSWER"));
+        assert!(run.prompt.contains("smallest complete answer"));
+        assert!(run.prompt.contains("FINAL RESPONSE CONTRACT"));
+        assert!(!run.prompt.contains("FINAL REPORT EDITORIAL CHECK"));
+        assert!(!run.prompt.contains("two to three pages"));
+        assert!(!run.prompt.contains("RICH REPORT FORMAT"));
+        assert!(!run.prompt.contains("clearly labeled Appendix"));
     }
 
     #[test]

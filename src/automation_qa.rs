@@ -1670,39 +1670,37 @@ fn ui_interaction(root: &Path) -> PathBuf {
         read_state(&mut cx, &app, |a| a.automation_fake.as_ref().unwrap().starts.len()),
         1
     );
-    cx.update_window(handle, |_, _w, cx| {
-        app.update(cx, |a, cx| {
-            a.automation_ui.selected_occurrence = Some(occurrence);
-            if a.store.occurrence(occurrence).is_some_and(|o| o.unread) {
-                a.store.mark_occurrence_read(occurrence);
-                a.persist_if_changed(true);
-            }
-            a.automation_ui.scroll.scroll_to_bottom();
-            cx.notify();
-        });
+    // Clicking a history row opens the result in a dialog and marks it read.
+    cx.update_window(handle, |_, w, cx| {
+        w.scroll(
+            "automation-detail-scroll",
+            ScrollDelta::Pixels(point(px(0.), px(-10_000.))),
+            cx,
+        );
+        w.render_frame(cx);
+        let open = format!("open-occurrence-{occurrence}");
+        w.click(ElementId::Name(open.into()), cx);
+        w.render_frame(cx);
     })
     .unwrap();
+    assert_eq!(
+        read_state(&mut cx, &app, |a| a.automation_ui.result_dialog),
+        Some(occurrence)
+    );
     assert!(!read_state(&mut cx, &app, |a| a.store.occurrence(occurrence).unwrap().unread));
-    cx.update_window(handle, |_, w, cx| {
-        w.render_frame(cx);
-        app.update(cx, |a, cx| {
-            a.automation_ui.scroll.set_offset(point(px(0.), px(-900.)));
-            cx.notify();
-        });
-        w.render_frame(cx);
-    })
-    .unwrap();
     screenshot(&mut cx, handle, &directory, "03-result.png");
-    cx.update_window(handle, |_, _, cx| {
-        app.update(cx, |a, cx| {
-            a.automation_ui.scroll.set_offset(point(px(0.), px(0.)));
-            cx.notify();
-        });
+    cx.update_window(handle, |_, w, cx| {
+        w.click("close-automation-result", cx);
+        w.render_frame(cx);
     })
     .unwrap();
+    assert_eq!(read_state(&mut cx, &app, |a| a.automation_ui.result_dialog), None);
 
-    // Editing creates a new version and requires a new approval.
+    // Editing creates a new version and requires a new approval. Edit is opened
+    // from the settings dialog, next to the settings it changes.
     cx.update_window(handle, |_, w, cx| {
+        w.click("automation-settings", cx);
+        w.render_frame(cx);
         w.click("edit-automation", cx);
         w.render_frame(cx);
         w.click("automation-name", cx);
@@ -1733,14 +1731,27 @@ fn ui_interaction(root: &Path) -> PathBuf {
         DefinitionStatus::Paused
     );
     assert_eq!(read_state(&mut cx, &app, |a| a.store.automation(id).unwrap().cursor), None);
-    // A paused automation marks its next-run area instead of listing triggers.
-    cx.update_window(handle, |_, w, _| {
+    // The next-run area lives in the Settings dialog; open it to check that a
+    // paused automation marks it instead of listing triggers.
+    cx.update_window(handle, |_, w, cx| {
+        w.click("automation-settings", cx);
+        w.render_frame(cx);
+    })
+    .unwrap();
+    cx.update_window(handle, |_, w, cx| {
+        w.render_frame(cx);
         assert!(w.find("next-runs-paused").visible());
     })
     .unwrap();
     screenshot(&mut cx, handle, &directory, "04a-paused.png");
+    cx.update_window(handle, |_, w, cx| {
+        w.click("close-automation-settings", cx);
+        w.render_frame(cx);
+    })
+    .unwrap();
     cx.update_window(handle, |_, w, cx| { w.render_frame(cx); w.click("resume-automation", cx); }).unwrap();
-    cx.update_window(handle, |_, w, _| {
+    cx.update_window(handle, |_, w, cx| {
+        w.render_frame(cx);
         assert!(w.try_find("next-runs-paused").is_none());
     })
     .unwrap();
@@ -1839,12 +1850,11 @@ fn ui_interaction(root: &Path) -> PathBuf {
         a.automation_ui.feedback,
         Some(Err(_))
     )));
-    cx.update_window(handle, |_, _, cx| {
+    cx.update_window(handle, |_, w, cx| {
         app.update(cx, |a, cx| {
             a.storage = Some(Storage::new(path.clone()));
             a.storage_error.clear();
-            a.automation_ui.creating = false;
-            a.automation_ui.selected = Some(id);
+            a.open_automation(id, w, cx);
             a.automation_ui.feedback = None;
             cx.notify();
         });
@@ -1861,8 +1871,7 @@ fn ui_interaction(root: &Path) -> PathBuf {
             a.automation_ui.feedback = None;
             a.error.clear();
             a.toast = "Automations".into();
-            a.automation_ui.selected = Some(id);
-            a.automation_ui.creating = false;
+            a.open_automation(id, w, cx);
             cx.notify();
         });
         w.render_frame(cx);
@@ -1871,9 +1880,28 @@ fn ui_interaction(root: &Path) -> PathBuf {
             Some(true),
             "an approved automation exposes the manual trigger"
         );
+        assert!(
+            w.try_find("automation-objective").is_none(),
+            "settings stay out of the page while periods and results are the primary content"
+        );
+        assert!(
+            w.try_find("automation-occurrence-detail").is_none(),
+            "results stay closed until a history row is opened"
+        );
     })
     .unwrap();
     screenshot(&mut cx, handle, &directory, "05-detail-enabled.png");
+    // Settings open in a modal that also owns Edit and Replan.
+    cx.update_window(handle, |_, w, cx| {
+        w.click("automation-settings", cx);
+        w.render_frame(cx);
+        assert!(
+            w.find("edit-automation").visible(),
+            "Edit lives in the settings dialog"
+        );
+    })
+    .unwrap();
+    screenshot(&mut cx, handle, &directory, "05b-detail-settings.png");
     // Reading text opts into window text selection, so a drag selects it and
     // Cmd+C copies the selection.
     cx.update_window(handle, |_, w, cx| {
@@ -1898,20 +1926,53 @@ fn ui_interaction(root: &Path) -> PathBuf {
     })
     .unwrap();
 
-    // Opening one automation step shows only that step: automation periods have
-    // no project/topic history to fill the results column beside it.
-    let automation_run = read_state(&mut cx, &app, |a| {
+    // Back from Edit returns to this automation with Settings open, not to All.
+    cx.update_window(handle, |_, w, cx| {
+        w.click("edit-automation", cx);
+        w.render_frame(cx);
+        w.click("navigation-back", cx);
+        w.render_frame(cx);
+    })
+    .unwrap();
+    assert_eq!(
+        read_state(&mut cx, &app, |a| a.scope.clone()),
+        Scope::Automations
+    );
+    assert!(!read_state(&mut cx, &app, |a| a.automation_ui.creating));
+    assert!(read_state(&mut cx, &app, |a| a.automation_ui.settings_dialog));
+    assert_eq!(
+        read_state(&mut cx, &app, |a| a.automation_ui.selected),
+        Some(id)
+    );
+
+    let (automation_run, automation_task) = read_state(&mut cx, &app, |a| {
         a.store
             .runs
             .iter()
             .rev()
             .find(|run| run.automation_occurrence_id.is_some())
-            .map(|run| run.id)
+            .map(|run| (run.id, run.task_id))
+            .expect("the automation has a run to open")
     });
-    let automation_run = automation_run.expect("the automation has a run to open");
+    // Switching to Progress & results must not keep a period step selected; the
+    // ordinary results view falls back to its own latest run.
     cx.update_window(handle, |_, w, cx| {
         app.update(cx, |a, cx| {
-            a.task_result_context = None;
+            a.selected_run = Some(automation_run);
+            a.task_result_context = Some(automation_task);
+            a.navigate(Scope::Runs, w, cx);
+        });
+        w.render_frame(cx);
+    })
+    .unwrap();
+    assert_eq!(read_state(&mut cx, &app, |a| a.selected_run), None);
+    assert_eq!(read_state(&mut cx, &app, |a| a.task_result_context), None);
+
+    // Opening one automation step from its period still shows only that step:
+    // automation periods have no project/topic history to fill the column.
+    cx.update_window(handle, |_, w, cx| {
+        app.update(cx, |a, cx| {
+            a.task_result_context = Some(automation_task);
             a.scope = Scope::Runs;
             a.selected_run = Some(automation_run);
             a.show_run_details = false;

@@ -82,14 +82,18 @@ struct RunProject<'a> {
     id: Option<u64>,
     topics: Vec<RunTopic<'a>>,
 }
+/// Automation periods own their steps and stay out of the ordinary results tree.
+fn run_is_automation(store: &Store, run: &AgentRun) -> bool {
+    run.automation_occurrence_id.is_some()
+        || store
+            .request_for_run(run.id)
+            .is_some_and(|request| request.automation_id.is_some())
+}
+
 fn run_projects(store: &Store) -> Vec<RunProject<'_>> {
     let mut groups: Vec<RunProject<'_>> = vec![];
     for run in store.runs.iter().rev().filter(|r| {
-        r.automation_occurrence_id.is_none()
-            && store
-                .request_for_run(r.id)
-                .is_none_or(|request| request.automation_id.is_none())
-            && !store.run_is_archived(r)
+        !run_is_automation(store, r) && !store.run_is_archived(r)
     }) {
         let task = store.task(run.task_id);
         let project = run.project_plan.or_else(|| task.map(|t| t.project_id));
@@ -185,11 +189,23 @@ impl TaskApp {
 
     pub(crate) fn runs(&self, cx: &mut Context<Self>) -> AnyElement {
         let colors = palette(cx);
+        // Automation steps are reachable only from their period. Without an
+        // explicit task-result context, Progress & results never selects one.
         let selected = self
             .selected_run
             .and_then(|id| self.store.runs.iter().find(|r| r.id == id))
-            .filter(|r| self.task_result_context.is_some() || !self.store.run_is_archived(r))
-            .or_else(|| self.store.runs.iter().rev().find(|r| !self.store.run_is_archived(r)));
+            .filter(|r| {
+                self.task_result_context.is_some()
+                    || (!self.store.run_is_archived(r)
+                        && !run_is_automation(&self.store, r))
+            })
+            .or_else(|| {
+                self.store
+                    .runs
+                    .iter()
+                    .rev()
+                    .find(|r| !self.store.run_is_archived(r) && !run_is_automation(&self.store, r))
+            });
         if self.task_result_context.is_some()
             && let Some(run) = selected
         {

@@ -1272,7 +1272,7 @@ impl TaskApp {
             return true;
         };
         let Some(occurrence) = self.active_automation_occurrence_for_goal(goal) else {
-            let error = "This step belongs to an automation period that is not active. Use Run now on the automation or open its history to retry the period.";
+            let error = "This step belongs to an automation period that is not active. Use Run manually on the automation or open its history to retry the period.";
             self.error = error.into();
             self.task_start_feedback = Some((task_id, error.into()));
             cx.notify();
@@ -1299,7 +1299,7 @@ impl TaskApp {
             return false;
         }
         let Some(occurrence) = self.active_automation_occurrence_for_goal(goal) else {
-            let error = "This automation period is not active. Use Run now on the automation or open its history to retry the period.";
+            let error = "This automation period is not active. Use Run manually on the automation or open its history to retry the period.";
             self.error = error.into();
             self.task_start_feedback = Some((goal, error.into()));
             cx.notify();

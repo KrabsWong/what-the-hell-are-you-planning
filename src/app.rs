@@ -631,6 +631,18 @@ impl TaskApp {
         self.task_result_context = None;
         self.clear_navigation_overlays();
         if scope == Scope::Runs {
+            // A period step is not part of Progress & results; do not keep it as
+            // the selected run when the user enters the ordinary results view.
+            if let Some(id) = self.selected_run
+                && self
+                    .store
+                    .runs
+                    .iter()
+                    .find(|run| run.id == id)
+                    .is_some_and(|run| run.automation_occurrence_id.is_some())
+            {
+                self.selected_run = None;
+            }
             self.reveal_selected_run();
         }
         self.save_feedback = None;

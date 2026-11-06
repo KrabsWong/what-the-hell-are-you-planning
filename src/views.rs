@@ -870,6 +870,25 @@ impl TaskApp {
             .into_any_element()
     }
     pub(crate) fn navigation_path(&self) -> (Vec<(String, String, CrumbTarget)>, String) {
+        // Editing an existing automation belongs to its detail page, not to the
+        // Automations list. Back and the breadcrumb return to that page.
+        if self.scope == Scope::Automations
+            && self.automation_ui.creating
+            && let Some(id) = self.automation_ui.editing
+            && let Some(definition) = self.store.automation(id)
+        {
+            return (
+                vec![
+                    ("location-all".into(), "All".into(), CrumbTarget::View(Scope::All)),
+                    (
+                        "location-automation".into(),
+                        definition.name.clone(),
+                        CrumbTarget::Automation(id),
+                    ),
+                ],
+                "Edit automation".into(),
+            );
+        }
         let mut links = vec![];
         let result = self.selected.is_none() && self.scope == Scope::Runs;
         let run = result
@@ -1000,6 +1019,9 @@ impl TaskApp {
                         .on_click(cx.listener(move |a, _, w, cx| match &target {
                             CrumbTarget::View(scope) => a.navigate(scope.clone(), w, cx),
                             CrumbTarget::Task(id) => a.open_task(*id, w, cx),
+                            CrumbTarget::Automation(id) => {
+                                a.reopen_automation_settings(*id, w, cx)
+                            }
                         })),
                 )
                 .child(label("/", cx));
@@ -3206,6 +3228,8 @@ impl Render for TaskApp {
                     && this.topic_move.is_none()
                     && this.planning_project.is_none()
                     && this.directory_project.is_none()
+                    && !this.automation_ui.settings_dialog
+                    && this.automation_ui.result_dialog.is_none()
                 {
                     this.go_back(w, cx);
                     cx.stop_propagation();
@@ -3223,6 +3247,8 @@ impl Render for TaskApp {
                     this.planning_project = None;
                     this.planning_replan_source = None;
                     this.directory_project = None;
+                    this.automation_ui.settings_dialog = false;
+                    this.automation_ui.result_dialog = None;
                     this.error.clear();
                     w.focus(&this.focus, cx);
                     cx.notify();
@@ -3391,6 +3417,12 @@ impl Render for TaskApp {
                     )
                     .focus_trap("project-focus", &self.modal_focus),
             );
+        }
+        if self.automation_ui.settings_dialog {
+            root = root.child(self.automation_settings_dialog(cx));
+        }
+        if self.automation_ui.result_dialog.is_some() {
+            root = root.child(self.automation_result_dialog(cx));
         }
         root.into_any_element()
     }

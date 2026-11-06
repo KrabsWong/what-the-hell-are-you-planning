@@ -53,7 +53,7 @@ impl TriggerSource {
     pub fn label(self) -> &'static str {
         match self {
             Self::Scheduled => "Schedule",
-            Self::Manual => "Run now",
+            Self::Manual => "Manual run",
         }
     }
 }

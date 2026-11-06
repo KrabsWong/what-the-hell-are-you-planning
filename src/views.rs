@@ -388,13 +388,7 @@ impl TaskApp {
             .filter(|t| !self.store.task_is_archived(t.id) && t.parent_id.is_none() && t.automation_id.is_none())
             .count();
         side = side.child(self.nav("all", "All", Scope::All, count, cx));
-        side = side.child(self.nav(
-            "automations",
-            "Automations",
-            Scope::Automations,
-            self.store.automations.iter().filter(|a| !matches!(a.status, crate::automation::DefinitionStatus::Archived)).count(),
-            cx,
-        ));
+        side = side.child(self.automation_nav(cx));
         let cycles: std::collections::BTreeSet<_> = self
             .store
             .tasks
@@ -812,6 +806,7 @@ impl TaskApp {
             Scope::Recovery => assets::IconName::Pause,
             Scope::Research => assets::IconName::Search,
             Scope::Automations => assets::IconName::Clock,
+            Scope::AutomationRuns => assets::IconName::ChartNoAxesCombined,
             Scope::Settings => assets::IconName::Settings,
         };
         button(id, "")
@@ -869,6 +864,196 @@ impl TaskApp {
             )
             .into_any_element()
     }
+
+    /// Automations is a sibling of All: its list and results stay isolated from
+    /// the project/topic tree. The parent row expands the two child sections.
+    fn automation_nav(&self, cx: &mut Context<Self>) -> AnyElement {
+        let colors = palette(cx);
+        let active = matches!(
+            self.sidebar_scope(),
+            Scope::Automations | Scope::AutomationRuns
+        );
+        let expanded = self.automation_sidebar_expanded;
+        let count = self
+            .store
+            .automations
+            .iter()
+            .filter(|automation| {
+                !matches!(
+                    automation.status,
+                    crate::automation::DefinitionStatus::Archived
+                )
+            })
+            .count();
+        let unread = self
+            .store
+            .automation_occurrences
+            .iter()
+            .filter(|occurrence| occurrence.unread)
+            .count();
+        let mut group = col().gap_0().child(
+            row()
+                .gap_0()
+                .rounded_md()
+                .hover(|d| d.bg(rgb(colors.hover)))
+                .child(
+                    button("automations", "")
+                        .ghost()
+                        .custom(sidebar_variant(active, cx))
+                        .when(active, |b| b.font_weight(FontWeight::SEMIBOLD))
+                        .flex_1()
+                        .min_w_0()
+                        .h_8()
+                        .px_3()
+                        .tooltip("Expand or collapse automation sections")
+                        .accessibility_label("Automations")
+                        .child(
+                            row()
+                                .w_full()
+                                .min_w_0()
+                                .justify_between()
+                                .gap_2()
+                                .child(
+                                    gpui_kit::component::Icon::new(assets::IconName::Clock)
+                                        .size(px(20.))
+                                        .flex_shrink_0(),
+                                )
+                                .child(
+                                    div()
+                                        .flex_1()
+                                        .min_w_0()
+                                        .overflow_hidden()
+                                        .text_ellipsis()
+                                        .text_sm()
+                                        .child(selectable("Automations")),
+                                )
+                                .child(label(
+                                    if count > 0 {
+                                        count.to_string()
+                                    } else {
+                                        String::new()
+                                    },
+                                    cx,
+                                )),
+                        )
+                        .on_click(cx.listener(|app, _, _, cx| {
+                            app.automation_sidebar_expanded = !app.automation_sidebar_expanded;
+                            cx.notify();
+                        })),
+                )
+                .child(
+                    tool_icon(
+                        "expand-automations",
+                        if expanded {
+                            assets::IconName::ChevronDown
+                        } else {
+                            assets::IconName::ChevronRight
+                        },
+                        if expanded {
+                            "Collapse automation sections"
+                        } else {
+                            "Expand automation sections"
+                        },
+                    )
+                    .custom(sidebar_variant(active, cx))
+                    .h_8()
+                    .flex_shrink_0()
+                    .on_click(cx.listener(|app, _, _, cx| {
+                        app.automation_sidebar_expanded = !app.automation_sidebar_expanded;
+                        cx.notify();
+                    })),
+                ),
+        );
+        if expanded {
+            group = group.child(
+                col()
+                    .ml_4()
+                    .pl_1()
+                    .border_l_1()
+                    .border_color(rgb(colors.line))
+                    .gap_0()
+                    .child(self.automation_child_nav(
+                        "all-automations",
+                        "All automations",
+                        Scope::Automations,
+                        count,
+                        cx,
+                    ))
+                    .child(self.automation_child_nav(
+                        "automation-results",
+                        "Progress & results",
+                        Scope::AutomationRuns,
+                        unread,
+                        cx,
+                    )),
+            );
+        }
+        group.into_any_element()
+    }
+
+    fn automation_child_nav(
+        &self,
+        id: &'static str,
+        title: &str,
+        scope: Scope,
+        count: usize,
+        cx: &mut Context<Self>,
+    ) -> AnyElement {
+        let colors = palette(cx);
+        let active = self.sidebar_scope() == scope;
+        button(id, "")
+            .ghost()
+            .accessibility_label(title.to_string())
+            .tooltip(if scope == Scope::AutomationRuns {
+                "Automation periods with unread results".to_string()
+            } else {
+                title.to_string()
+            })
+            .w_full()
+            .h_7()
+            .px_3()
+            .custom(sidebar_variant(active, cx).hover(rgb(colors.hover).into()))
+            .when(active, |b| b.font_weight(FontWeight::SEMIBOLD))
+            .child(
+                row()
+                    .w_full()
+                    .min_w_0()
+                    .justify_between()
+                    .gap_2()
+                    .child(
+                        div()
+                            .flex_1()
+                            .min_w_0()
+                            .overflow_hidden()
+                            .text_ellipsis()
+                            .text_sm()
+                            .child(selectable(title.to_string())),
+                    )
+                    .child(
+                        row()
+                            .flex_shrink_0()
+                            .gap_2()
+                            .child(label(
+                                if count > 0 {
+                                    count.to_string()
+                                } else {
+                                    String::new()
+                                },
+                                cx,
+                            ))
+                            .child(
+                                gpui_kit::component::Icon::new(assets::IconName::ChevronRight)
+                                    .size(px(14.))
+                                    .text_color(rgb(colors.muted)),
+                            ),
+                    ),
+            )
+            .on_click(cx.listener(move |app, _, window, cx| {
+                app.navigate(scope.clone(), window, cx)
+            }))
+            .into_any_element()
+    }
+
     pub(crate) fn navigation_path(&self) -> (Vec<(String, String, CrumbTarget)>, String) {
         // Editing an existing automation belongs to its detail page, not to the
         // Automations list. Back and the breadcrumb return to that page.
@@ -881,12 +1066,50 @@ impl TaskApp {
                 vec![
                     ("location-all".into(), "All".into(), CrumbTarget::View(Scope::All)),
                     (
+                        "location-automations".into(),
+                        "Automations".into(),
+                        CrumbTarget::View(Scope::Automations),
+                    ),
+                    (
                         "location-automation".into(),
                         definition.name.clone(),
                         CrumbTarget::Automation(id),
                     ),
                 ],
                 "Edit automation".into(),
+            );
+        }
+        // Automation results are a child of Automations, not of Research.
+        if self.scope == Scope::AutomationRuns {
+            return (
+                vec![
+                    ("location-all".into(), "All".into(), CrumbTarget::View(Scope::All)),
+                    (
+                        "location-automations".into(),
+                        "Automations".into(),
+                        CrumbTarget::View(Scope::Automations),
+                    ),
+                ],
+                "Automation results".into(),
+            );
+        }
+        // An automation detail sits under Automations, so the app-level Back
+        // returns to the list instead of jumping straight to All.
+        if self.scope == Scope::Automations
+            && !self.automation_ui.creating
+            && let Some(id) = self.automation_ui.selected
+            && let Some(definition) = self.store.automation(id)
+        {
+            return (
+                vec![
+                    ("location-all".into(), "All".into(), CrumbTarget::View(Scope::All)),
+                    (
+                        "location-automations".into(),
+                        "Automations".into(),
+                        CrumbTarget::View(Scope::Automations),
+                    ),
+                ],
+                definition.name.clone(),
             );
         }
         let mut links = vec![];
@@ -3164,6 +3387,7 @@ impl Render for TaskApp {
                 Scope::Recovery => self.recovery_view(cx),
                 Scope::Research => self.research_view(cx),
                 Scope::Automations => self.automations(cx),
+                Scope::AutomationRuns => self.automation_results(cx),
                 Scope::Settings => self.model_settings(cx),
                 _ => self.collection(cx),
             }

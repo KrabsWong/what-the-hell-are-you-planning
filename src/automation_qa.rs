@@ -152,7 +152,11 @@ fn wizard_actions_check(root: &Path) {
     screenshot(&mut cx, handle, &directory, "wizard-step3-saved-dark.png");
     // A real validation error uses the danger tone in the same layout.
     cx.update_window(handle, |_, w, cx| {
-        w.click("back-automations", cx);
+        assert!(
+            w.try_find("back-automations").is_none(),
+            "the detail relies on the app-level Back instead of a duplicate action"
+        );
+        w.click("navigation-back", cx);
         w.render_frame(cx);
         w.click("new-automation", cx);
         w.click("automation-next-step", cx);
@@ -1990,6 +1994,48 @@ fn ui_interaction(root: &Path) -> PathBuf {
     })
     .unwrap();
     screenshot(&mut cx, handle, &directory, "06-results-blank-column.png");
+
+    // Automation results are a separate sidebar section from research results.
+    cx.update_window(handle, |_, w, cx| {
+        w.click("automation-results", cx);
+        w.render_frame(cx);
+    })
+    .unwrap();
+    assert_eq!(
+        read_state(&mut cx, &app, |a| a.scope.clone()),
+        Scope::AutomationRuns
+    );
+    assert_eq!(read_state(&mut cx, &app, |a| a.title()), "Automation results");
+    let latest = read_state(&mut cx, &app, |a| {
+        a.store
+            .automation_occurrences
+            .iter()
+            .map(|occurrence| occurrence.id)
+            .max()
+            .unwrap()
+    });
+    cx.update_window(handle, |_, w, cx| {
+        let open = format!("open-occurrence-{latest}");
+        w.click(ElementId::Name(open.into()), cx);
+        w.render_frame(cx);
+    })
+    .unwrap();
+    assert_eq!(
+        read_state(&mut cx, &app, |a| a.automation_ui.result_dialog),
+        Some(latest)
+    );
+    screenshot(&mut cx, handle, &directory, "07-automation-results.png");
+    cx.update_window(handle, |_, w, cx| {
+        w.click("close-automation-result", cx);
+        w.render_frame(cx);
+        w.click("navigation-back", cx);
+        w.render_frame(cx);
+    })
+    .unwrap();
+    assert_eq!(
+        read_state(&mut cx, &app, |a| a.scope.clone()),
+        Scope::Automations
+    );
     path
 }
 

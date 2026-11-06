@@ -31,6 +31,7 @@ pub enum Scope {
     Recovery,
     Research,
     Automations,
+    AutomationRuns,
     Settings,
 }
 #[derive(Clone, Copy, PartialEq)]
@@ -113,6 +114,7 @@ pub struct TaskApp {
     pub task_result_context: Option<u64>,
     pub tabs: Vec<u64>,
     pub expanded_sidebar_projects: Vec<u64>,
+    pub automation_sidebar_expanded: bool,
     pub collapsed_sidebar_goals: Vec<u64>,
     pub sidebar_split: Entity<gpui_kit::base::ResizableState>,
     pub results_split: Entity<gpui_kit::base::ResizableState>,
@@ -498,6 +500,7 @@ impl TaskApp {
             task_result_context: None,
             tabs: vec![],
             expanded_sidebar_projects: vec![],
+            automation_sidebar_expanded: true,
             collapsed_sidebar_goals: vec![],
             sidebar_split: cx.new(|_| gpui_kit::base::ResizableState::default()),
             results_split: cx.new(|_| gpui_kit::base::ResizableState::default()),
@@ -657,6 +660,9 @@ impl TaskApp {
         if let Some(project) = project {
             self.remember_active_project(project);
         }
+        if matches!(scope, Scope::Automations | Scope::AutomationRuns) {
+            self.automation_sidebar_expanded = true;
+        }
         if scope == Scope::Automations {
             self.automation_ui.selected = None;
             self.automation_ui.creating = false;
@@ -778,6 +784,7 @@ impl TaskApp {
             Scope::Recovery => "Paused projects".into(),
             Scope::Research => "Market research".into(),
             Scope::Automations => "Automations".into(),
+            Scope::AutomationRuns => "Automation results".into(),
             Scope::Settings => "Settings".into(),
         }
     }

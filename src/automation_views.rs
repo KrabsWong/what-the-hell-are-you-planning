@@ -1485,6 +1485,66 @@ impl TaskApp {
             .into_any_element()
     }
 
+    /// All automation periods in one place, separate from project/topic results.
+    pub(crate) fn automation_results(&self, cx: &mut Context<Self>) -> AnyElement {
+        let mut occurrences: Vec<_> = self.store.automation_occurrences.iter().collect();
+        occurrences.sort_by_key(|occurrence| {
+            std::cmp::Reverse((
+                occurrence.actual_started_at.unwrap_or(occurrence.reference_time),
+                occurrence.id,
+            ))
+        });
+        let shown = occurrences
+            .iter()
+            .take(self.automation_ui.history_limit)
+            .copied()
+            .collect::<Vec<_>>();
+        let mut panel = col()
+            .id("automation-results-scroll")
+            .track_scroll(&self.automation_ui.scroll)
+            .flex_1()
+            .h_full()
+            .min_h_0()
+            .min_w_0()
+            .overflow_y_scroll()
+            .p_6()
+            .gap_4()
+            .child(
+                col().gap_1()
+                    .child(div().text_lg().font_weight(FontWeight::SEMIBOLD).child(selectable("Automation results")))
+                    .child(muted(
+                        "Every automation period, newest execution first. Open a row for its answer and sources.",
+                        cx,
+                    )),
+            );
+        if occurrences.is_empty() {
+            panel = panel.child(overview_note(
+                "No automation runs yet. Create or enable an automation to collect periods here.",
+                cx,
+            ));
+        } else {
+            panel = panel.child(
+                row().justify_between()
+                    .child(div().font_weight(FontWeight::SEMIBOLD).child(selectable(format!("Periods · {}", occurrences.len()))))
+                    .child(overview_note("Unread results are marked with a dot.", cx)),
+            );
+            for occurrence in shown {
+                panel = panel.child(self.automation_occurrence_row(occurrence, true, cx));
+            }
+            if occurrences.len() > self.automation_ui.history_limit {
+                let remaining = occurrences.len() - self.automation_ui.history_limit;
+                panel = panel.child(
+                    quiet_button("load-more-automation-results", format!("Load more · {remaining} remaining"))
+                        .on_click(cx.listener(|app, _, _, cx| {
+                            app.automation_ui.history_limit += 20;
+                            cx.notify();
+                        })),
+                );
+            }
+        }
+        panel.map(observed).into_any_element()
+    }
+
     fn automation_detail(&self, id: u64, cx: &mut Context<Self>) -> AnyElement {
         let Some(definition) = self.store.automation(id) else {
             return self.automation_list(cx);
@@ -1572,28 +1632,25 @@ impl TaskApp {
 
         let mut panel = col().flex_1().h_full().min_h_0().min_w_0().id("automation-detail-scroll").track_scroll(&self.automation_ui.scroll).overflow_y_scroll().p_6().gap_4();
         panel = panel
+            // Back is the app-level breadcrumb action; the page does not repeat it.
             .child(
-                row().justify_between().items_start().gap_4()
-                    .child(col().flex_1().min_w_0().gap_1()
-                        .child(
-                            div()
-                                .w_full()
-                                .text_lg()
-                                .font_weight(FontWeight::SEMIBOLD)
-                                .line_height(relative(1.3))
-                                .child(selectable(definition.name.clone())),
-                        )
-                        .child(muted(schedule_summary(&definition.schedule), cx))
-                        .child(overview_meta_line(definition, &project, cx))
-                        .when(definition.shape.is_quick(), |d| {
-                            d.child(overview_note(
-                                "One read-only answer per period, stored under Automations — no project, topic or planning chain.",
-                                cx,
-                            ))
-                        }))
-                    .child(quiet_button("back-automations", "All automations")
-                        .icon(assets::IconName::ArrowLeft)
-                        .on_click(cx.listener(|app, _, window, cx| app.open_automations(window, cx)))),
+                col().min_w_0().gap_1()
+                    .child(
+                        div()
+                            .w_full()
+                            .text_lg()
+                            .font_weight(FontWeight::SEMIBOLD)
+                            .line_height(relative(1.3))
+                            .child(selectable(definition.name.clone())),
+                    )
+                    .child(muted(schedule_summary(&definition.schedule), cx))
+                    .child(overview_meta_line(definition, &project, cx))
+                    .when(definition.shape.is_quick(), |d| {
+                        d.child(overview_note(
+                            "One read-only answer per period, stored under Automations — no project, topic or planning chain.",
+                            cx,
+                        ))
+                    }),
             )
             // Feedback belongs at the top of the content, never between actions.
             .child(self.automation_feedback(cx))
@@ -1642,7 +1699,7 @@ impl TaskApp {
                     .child(overview_note("Newest first. Unread results are marked with a dot.", cx)),
             );
             for occurrence in shown {
-                panel = panel.child(self.automation_occurrence_row(occurrence, cx));
+                panel = panel.child(self.automation_occurrence_row(occurrence, false, cx));
             }
             if occurrences.len() > self.automation_ui.history_limit {
                 let remaining = occurrences.len() - self.automation_ui.history_limit;
@@ -1843,6 +1900,7 @@ impl TaskApp {
     fn automation_occurrence_row(
         &self,
         occurrence: &AutomationOccurrence,
+        show_automation: bool,
         cx: &mut Context<Self>,
     ) -> AnyElement {
         let colors = palette(cx);
@@ -1861,7 +1919,7 @@ impl TaskApp {
         let skipped = (occurrence.skipped_count > 0)
             .then(|| format!(" · {} earlier summarized", occurrence.skipped_count))
             .unwrap_or_default();
-        row()
+        let mut line = row()
             .id(format!("automation-occurrence-{id}"))
             .px_3()
             .py_2()
@@ -1883,28 +1941,46 @@ impl TaskApp {
             )
             .child(
                 div()
-                    .flex_1()
-                    .min_w_0()
+                    .flex_shrink_0()
                     .text_sm()
                     .child(selectable(when)),
-            )
-            .child(
-                row().flex_shrink_0().gap_1().items_center()
-                    .child(div().text_xs().text_color(rgb(color)).child(selectable(status)))
-                    .child(label(format!("· {}{skipped}", occurrence.source.label()), cx)),
-            )
-            .child(
-                quiet_button(format!("open-occurrence-{id}"), "Open")
-                    .icon(assets::IconName::ChevronRight)
-                    .tooltip("Open this period's result")
-                    .on_click(cx.listener(move |app, _, window, cx| {
-                        app.open_occurrence_result(id, window, cx)
-                    })),
-            )
-            .on_click(cx.listener(move |app, _, window, cx| {
-                app.open_occurrence_result(id, window, cx)
-            }))
-            .into_any_element()
+            );
+        // The all-automation results view names the source automation; the
+        // per-automation history already has that context.
+        if show_automation {
+            line = line.child(
+                muted(
+                    self.store
+                        .automation(occurrence.automation_id)
+                        .map(|definition| definition.name.clone())
+                        .unwrap_or_else(|| "Automation".into()),
+                    cx,
+                )
+                .flex_1()
+                .min_w_0()
+                .overflow_hidden()
+                .text_ellipsis(),
+            );
+        } else {
+            line = line.child(div().flex_1());
+        }
+        line.child(
+            row().flex_shrink_0().gap_1().items_center()
+                .child(div().text_xs().text_color(rgb(color)).child(selectable(status)))
+                .child(label(format!("· {}{skipped}", occurrence.source.label()), cx)),
+        )
+        .child(
+            quiet_button(format!("open-occurrence-{id}"), "Open")
+                .icon(assets::IconName::ChevronRight)
+                .tooltip("Open this period's result")
+                .on_click(cx.listener(move |app, _, window, cx| {
+                    app.open_occurrence_result(id, window, cx)
+                })),
+        )
+        .on_click(cx.listener(move |app, _, window, cx| {
+            app.open_occurrence_result(id, window, cx)
+        }))
+        .into_any_element()
     }
 
     fn automation_occurrence_detail(

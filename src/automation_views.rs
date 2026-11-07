@@ -1540,11 +1540,16 @@ impl TaskApp {
             let latest_label = latest
                 .map(|occurrence| occurrence.status.label().to_string())
                 .unwrap_or_else(|| "Not run yet".into());
+            let summary = format!(
+                "{} · Next: {next} · Latest: {latest_label}",
+                schedule_summary(&definition.schedule)
+            );
             content = content.child(
                 row()
                     .id(format!("automation-row-{id}"))
-                    .p_4()
-                    .gap_4()
+                    .p_3()
+                    .gap_3()
+                    .items_center()
                     .rounded_lg()
                     .border_1()
                     .border_color(rgb(colors.line))
@@ -1556,40 +1561,56 @@ impl TaskApp {
                     .child(
                         col().flex_1().min_w_0().gap_1()
                             .child(
-                                div()
-                                    .text_base()
-                                    .font_weight(FontWeight::SEMIBOLD)
+                                row().gap_2().items_center()
+                                    .child(
+                                        div()
+                                            .flex_1()
+                                            .min_w_0()
+                                            .text_base()
+                                            .font_weight(FontWeight::SEMIBOLD)
+                                            .whitespace_nowrap()
+                                            .overflow_hidden()
+                                            .text_ellipsis()
+                                            .child(definition.name.clone()),
+                                    )
+                                    .child(
+                                        row().flex_shrink_0().gap_1().items_center()
+                                            .child(chip(
+                                                definition.shape.label(),
+                                                colors.secondary,
+                                                cx,
+                                            ))
+                                            .child(chip(
+                                                status,
+                                                crate::views::stage_color_for_definition(
+                                                    definition.status,
+                                                    cx,
+                                                ),
+                                                cx,
+                                            ))
+                                            .when(unread > 0, |d| {
+                                                d.child(chip(
+                                                    format!("{unread} unread"),
+                                                    colors.accent,
+                                                    cx,
+                                                ))
+                                            }),
+                                    ),
+                            )
+                            .child(
+                                muted(summary, cx)
+                                    .w_full()
+                                    .min_w_0()
                                     .whitespace_nowrap()
                                     .overflow_hidden()
-                                    .text_ellipsis()
-                                    .child(definition.name.clone()),
-                            )
-                            .child(muted(schedule_summary(&definition.schedule), cx))
-                            .child(muted(
-                                format!("Next: {next} · Latest: {latest_label}"),
-                                cx,
-                            )),
+                                    .text_ellipsis(),
+                            ),
                     )
                     .child(
-                        col().flex_shrink_0().items_end().gap_1()
-                            .child(chip(
-                                definition.shape.label(),
-                                colors.secondary,
-                                cx,
-                            ))
-                            .child(chip(status, crate::views::stage_color_for_definition(definition.status, cx), cx))
-                            .when(unread > 0, |d| {
-                                d.child(chip(
-                                    format!("{unread} unread"),
-                                    colors.accent,
-                                    cx,
-                                ))
-                            })
-                            .child(
-                                gpui_kit::component::Icon::new(assets::IconName::ChevronRight)
-                                    .size(px(16.))
-                                    .text_color(rgb(colors.muted)),
-                            ),
+                        gpui_kit::component::Icon::new(assets::IconName::ChevronRight)
+                            .flex_shrink_0()
+                            .size(px(16.))
+                            .text_color(rgb(colors.muted)),
                     ),
             );
         }

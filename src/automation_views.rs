@@ -12,6 +12,7 @@ use crate::{
 };
 use crate::appearance::palette;
 use crate::views::{chip, col, label, muted, observed, row, selectable};
+use std::{cell::RefCell, collections::HashMap, io::Read};
 use gpui_kit::{
     InteractiveElement,
     base::FocusTrapElement,
@@ -35,6 +36,98 @@ impl AutomationKind {
             Self::Daily => "Every day",
             Self::Weekly => "Selected weekdays",
         }
+    }
+}
+
+/// Session-only grouping colours for automation results. Hues follow the
+/// golden angle so consecutive automations land far apart on the colour wheel,
+/// and the walk is never persisted: colours change on the next start while
+/// every period of one automation stays consistent this session.
+const GOLDEN_ANGLE: f32 = 137.50776;
+const RESULT_TINT_ALPHA: u32 = 0x38;
+const RESULT_TINT_HOVER_ALPHA: u32 = 0x60;
+
+fn session_seed() -> u64 {
+    let mut bytes = [0u8; 8];
+    if std::fs::File::open("/dev/urandom")
+        .and_then(|mut file| file.read_exact(&mut bytes))
+        .is_ok()
+    {
+        return u64::from_ne_bytes(bytes);
+    }
+    std::time::SystemTime::now()
+        .duration_since(std::time::UNIX_EPOCH)
+        .map(|duration| duration.as_nanos() as u64)
+        .unwrap_or(0)
+}
+
+fn hsl_to_rgb(hue: f32, saturation: f32, lightness: f32) -> (u32, u32, u32) {
+    let chroma = (1.0 - (2.0 * lightness - 1.0).abs()) * saturation;
+    let sector = hue / 60.0;
+    let second = chroma * (1.0 - (sector % 2.0 - 1.0).abs());
+    let (red, green, blue) = match sector as u32 {
+        0 => (chroma, second, 0.0),
+        1 => (second, chroma, 0.0),
+        2 => (0.0, chroma, second),
+        3 => (0.0, second, chroma),
+        4 => (second, 0.0, chroma),
+        _ => (chroma, 0.0, second),
+    };
+    let offset = lightness - chroma / 2.0;
+    let channel = |value: f32| ((value + offset) * 255.0).round() as u32;
+    (channel(red), channel(green), channel(blue))
+}
+
+#[derive(Clone, Copy)]
+pub(crate) struct ResultTint {
+    pub base: u32,
+    pub hover: u32,
+}
+
+pub(crate) struct ResultTints {
+    base_hue: f32,
+    next: RefCell<usize>,
+    assigned: RefCell<HashMap<u64, ResultTint>>,
+}
+
+impl ResultTints {
+    fn new() -> Self {
+        Self::seeded(session_seed())
+    }
+
+    fn seeded(seed: u64) -> Self {
+        Self {
+            base_hue: (seed % 36_000) as f32 / 100.0,
+            next: RefCell::new(0),
+            assigned: RefCell::new(HashMap::new()),
+        }
+    }
+
+    /// A translucent colour keeps the row readable in both light and dark
+    /// themes. The golden-angle walk maximises separation between the first
+    /// few automations; rotating saturation and lightness keeps later picks
+    /// distinguishable when hues eventually come close again. Hover keeps the
+    /// same hue and intensifies the same tint instead of switching to a
+    /// neutral hover surface.
+    fn tint(&self, automation: u64) -> ResultTint {
+        let mut assigned = self.assigned.borrow_mut();
+        if let Some(tint) = assigned.get(&automation) {
+            return *tint;
+        }
+        let mut next = self.next.borrow_mut();
+        let index = *next;
+        *next += 1;
+        let hue = (self.base_hue + index as f32 * GOLDEN_ANGLE) % 360.0;
+        let saturation = [0.62, 0.74, 0.86][index % 3];
+        let lightness = [0.52, 0.44, 0.58][(index / 3) % 3];
+        let (red, green, blue) = hsl_to_rgb(hue, saturation, lightness);
+        let rgb = (red << 24) | (green << 16) | (blue << 8);
+        let tint = ResultTint {
+            base: rgb | RESULT_TINT_ALPHA,
+            hover: rgb | RESULT_TINT_HOVER_ALPHA,
+        };
+        assigned.insert(automation, tint);
+        tint
     }
 }
 
@@ -67,6 +160,8 @@ pub struct AutomationUi {
     pub cleanup_preview: String,
     pub feedback: Option<Result<String, String>>,
     pub scroll: ScrollHandle,
+    /// Session-only background tint per automation in the all-results list.
+    pub result_tints: ResultTints,
     pub name: Entity<InputState>,
     pub objective: Entity<TextareaState>,
     pub expected: Entity<TextareaState>,
@@ -113,6 +208,7 @@ impl AutomationUi {
             cleanup_preview: String::new(),
             feedback: None,
             scroll: ScrollHandle::new(),
+            result_tints: ResultTints::new(),
             name: input(window, cx, "e.g. Shenzhen fuel price", ""),
             objective: cx.new(|cx| {
                 TextareaState::new(window, cx)
@@ -1566,7 +1662,7 @@ impl TaskApp {
                     cx,
                 ));
             }
-            let mut history = col().gap_0();
+            let mut history = col().gap_1();
             for occurrence in shown {
                 history = history.child(self.automation_occurrence_row(occurrence, true, cx));
             }
@@ -1961,6 +2057,15 @@ impl TaskApp {
         let skipped = (occurrence.skipped_count > 0)
             .then(|| format!(" · {} earlier summarized", occurrence.skipped_count))
             .unwrap_or_default();
+        let tint = self
+            .automation_ui
+            .result_tints
+            .tint(occurrence.automation_id);
+        let hover = if show_automation {
+            rgba(tint.hover)
+        } else {
+            rgb(colors.hover)
+        };
         let mut line = row()
             .id(format!("automation-occurrence-{id}"))
             .px_2()
@@ -1968,8 +2073,9 @@ impl TaskApp {
             .gap_2()
             .items_center()
             .rounded_md()
+            .when(show_automation, |d| d.bg(rgba(tint.base)))
             .cursor_pointer()
-            .hover(|d| d.bg(rgb(colors.hover)))
+            .hover(move |d| d.bg(hover))
             .child(
                 div()
                     .w(px(8.))
@@ -2707,5 +2813,44 @@ struct ResearchKinds;
 impl ResearchKinds {
     fn labels() -> [&'static str; 4] {
         ["Plan", "Collect", "Analyze", "Report"]
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::{ResultTints, RESULT_TINT_ALPHA, RESULT_TINT_HOVER_ALPHA};
+
+    #[test]
+    fn automation_tints_stay_stable_and_distinct_within_a_session() {
+        let tints = ResultTints::seeded(42);
+        let first = tints.tint(1);
+        assert_eq!(first.base, tints.tint(1).base);
+        assert_eq!(first.hover, tints.tint(1).hover);
+        let mut colors = vec![first.base];
+        for automation in 2..=10 {
+            let tint = tints.tint(automation);
+            assert!(
+                !colors.contains(&tint.base),
+                "golden-angle assignments must not repeat in the first ten automations"
+            );
+            colors.push(tint.base);
+        }
+        for color in colors {
+            assert_eq!(color & 0xff, RESULT_TINT_ALPHA);
+        }
+        assert_eq!(first.base & 0xff, RESULT_TINT_ALPHA);
+        assert_eq!(first.hover & 0xff, RESULT_TINT_HOVER_ALPHA);
+        assert_eq!(first.base >> 8, first.hover >> 8);
+    }
+
+    #[test]
+    fn a_new_session_changes_the_starting_hue_but_keeps_rows_consistent() {
+        let first = ResultTints::seeded(1);
+        let second = ResultTints::seeded(2);
+        let first_color = first.tint(9).base;
+        let second_color = second.tint(9).base;
+        assert_eq!(first_color, first.tint(9).base);
+        assert_eq!(second_color, second.tint(9).base);
+        assert_eq!(first.tint(9).hover & 0xff, RESULT_TINT_HOVER_ALPHA);
     }
 }

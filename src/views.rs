@@ -383,12 +383,11 @@ impl TaskApp {
                     ),
             )
             .child(row().px_2().pb_3().child(label("Personal workspace", cx)));
-        side = side.child(section("Workspace", cx));
+        side = side.child(section("Research", cx));
         let count = self.store.tasks.iter()
             .filter(|t| !self.store.task_is_archived(t.id) && t.parent_id.is_none() && t.automation_id.is_none())
             .count();
-        side = side.child(self.nav("all", "All", Scope::All, count, cx));
-        side = side.child(self.automation_nav(cx));
+        side = side.child(self.nav("all", "All research", Scope::All, count, cx));
         let cycles: std::collections::BTreeSet<_> = self
             .store
             .tasks
@@ -409,10 +408,21 @@ impl TaskApp {
                 .count();
             side = side.child(self.nav(format!("cycle-{i}"), name, scope, count, cx));
         }
-        side = side.child(
+        // Projects are part of the Research domain; the left border and indent
+        // keep them visually subordinate to All research.
+        let mut projects_block = col()
+            .gap_0()
+            .ml_2()
+            .pl_1()
+            .border_l_1()
+            .border_color(rgb(colors.line));
+        projects_block = projects_block.child(
             row()
                 .justify_between()
-                .child(section("Projects", cx))
+                .pl_1()
+                .pr_3()
+                .pt_2()
+                .child(label("Projects", cx))
                 .child(
                     tool_icon("new-project", assets::IconName::Plus, "Create project")
                         .tooltip("Create project")
@@ -446,7 +456,7 @@ impl TaskApp {
             let pid = project.id;
             let expanded = self.expanded_sidebar_projects.contains(&pid);
             let active = self.sidebar_scope() == Scope::Project(pid);
-            side = side.child(
+            projects_block = projects_block.child(
                 row()
                     .gap_0()
                     .rounded_md()
@@ -701,11 +711,23 @@ impl TaskApp {
                         );
                     }
                 }
-                side = side.child(list);
+                projects_block = projects_block.child(list);
             }
         }
+        side = side.child(projects_block);
+        let automation_count = self
+            .store
+            .automations
+            .iter()
+            .filter(|automation| {
+                !matches!(
+                    automation.status,
+                    crate::automation::DefinitionStatus::Archived
+                )
+            })
+            .count();
+        let automation_periods = self.store.automation_occurrences.len();
         side = side
-            .child(section("Research", cx))
             .child(self.nav(
                 "recovery",
                 "Paused projects",
@@ -715,9 +737,24 @@ impl TaskApp {
             ))
             .child(self.nav(
                 "runs",
-                "Progress & results",
+                "Research results",
                 Scope::Runs,
                 self.store.progress_result_task_count(),
+                cx,
+            ))
+            .child(section("Automations", cx))
+            .child(self.automation_child_nav(
+                "all-automations",
+                "All automations",
+                Scope::Automations,
+                automation_count,
+                cx,
+            ))
+            .child(self.automation_child_nav(
+                "automation-results",
+                "Automation results",
+                Scope::AutomationRuns,
+                automation_periods,
                 cx,
             ))
             .child(div().flex_1())
@@ -812,8 +849,10 @@ impl TaskApp {
         button(id, "")
             .ghost()
             .accessibility_label(title.to_string())
-            .tooltip(if scope == Scope::Runs {
-                "Tasks in progress or with saved results, counted once each. Planning and retry history do not add to this number.".to_string()
+            .tooltip(if scope == Scope::All {
+                "Research tasks and goals across your projects. Automations are in their own section below.".to_string()
+            } else if scope == Scope::Runs {
+                "Research tasks in progress or with saved results, counted once each. Planning and retry history do not add to this number.".to_string()
             } else { title.to_string() })
             .w_full()
             .h_8()
@@ -865,132 +904,6 @@ impl TaskApp {
             .into_any_element()
     }
 
-    /// Automations is a sibling of All: its list and results stay isolated from
-    /// the project/topic tree. The parent row expands the two child sections.
-    fn automation_nav(&self, cx: &mut Context<Self>) -> AnyElement {
-        let colors = palette(cx);
-        let active = matches!(
-            self.sidebar_scope(),
-            Scope::Automations | Scope::AutomationRuns
-        );
-        let expanded = self.automation_sidebar_expanded;
-        let count = self
-            .store
-            .automations
-            .iter()
-            .filter(|automation| {
-                !matches!(
-                    automation.status,
-                    crate::automation::DefinitionStatus::Archived
-                )
-            })
-            .count();
-        let unread = self
-            .store
-            .automation_occurrences
-            .iter()
-            .filter(|occurrence| occurrence.unread)
-            .count();
-        let mut group = col().gap_0().child(
-            row()
-                .gap_0()
-                .rounded_md()
-                .hover(|d| d.bg(rgb(colors.hover)))
-                .child(
-                    button("automations", "")
-                        .ghost()
-                        .custom(sidebar_variant(active, cx))
-                        .when(active, |b| b.font_weight(FontWeight::SEMIBOLD))
-                        .flex_1()
-                        .min_w_0()
-                        .h_8()
-                        .px_3()
-                        .tooltip("Expand or collapse automation sections")
-                        .accessibility_label("Automations")
-                        .child(
-                            row()
-                                .w_full()
-                                .min_w_0()
-                                .justify_between()
-                                .gap_2()
-                                .child(
-                                    gpui_kit::component::Icon::new(assets::IconName::Clock)
-                                        .size(px(20.))
-                                        .flex_shrink_0(),
-                                )
-                                .child(
-                                    div()
-                                        .flex_1()
-                                        .min_w_0()
-                                        .overflow_hidden()
-                                        .text_ellipsis()
-                                        .text_sm()
-                                        .child(selectable("Automations")),
-                                )
-                                .child(label(
-                                    if count > 0 {
-                                        count.to_string()
-                                    } else {
-                                        String::new()
-                                    },
-                                    cx,
-                                )),
-                        )
-                        .on_click(cx.listener(|app, _, _, cx| {
-                            app.automation_sidebar_expanded = !app.automation_sidebar_expanded;
-                            cx.notify();
-                        })),
-                )
-                .child(
-                    tool_icon(
-                        "expand-automations",
-                        if expanded {
-                            assets::IconName::ChevronDown
-                        } else {
-                            assets::IconName::ChevronRight
-                        },
-                        if expanded {
-                            "Collapse automation sections"
-                        } else {
-                            "Expand automation sections"
-                        },
-                    )
-                    .custom(sidebar_variant(active, cx))
-                    .h_8()
-                    .flex_shrink_0()
-                    .on_click(cx.listener(|app, _, _, cx| {
-                        app.automation_sidebar_expanded = !app.automation_sidebar_expanded;
-                        cx.notify();
-                    })),
-                ),
-        );
-        if expanded {
-            group = group.child(
-                col()
-                    .ml_4()
-                    .pl_1()
-                    .border_l_1()
-                    .border_color(rgb(colors.line))
-                    .gap_0()
-                    .child(self.automation_child_nav(
-                        "all-automations",
-                        "All automations",
-                        Scope::Automations,
-                        count,
-                        cx,
-                    ))
-                    .child(self.automation_child_nav(
-                        "automation-results",
-                        "Progress & results",
-                        Scope::AutomationRuns,
-                        unread,
-                        cx,
-                    )),
-            );
-        }
-        group.into_any_element()
-    }
-
     fn automation_child_nav(
         &self,
         id: &'static str,
@@ -1001,16 +914,20 @@ impl TaskApp {
     ) -> AnyElement {
         let colors = palette(cx);
         let active = self.sidebar_scope() == scope;
+        let icon = match scope {
+            Scope::AutomationRuns => assets::IconName::ChartNoAxesCombined,
+            _ => assets::IconName::Clock,
+        };
         button(id, "")
             .ghost()
             .accessibility_label(title.to_string())
             .tooltip(if scope == Scope::AutomationRuns {
-                "Automation periods with unread results".to_string()
+                "All automation periods, newest execution first".to_string()
             } else {
-                title.to_string()
+                "Automation definitions and their schedules".to_string()
             })
             .w_full()
-            .h_7()
+            .h_8()
             .px_3()
             .custom(sidebar_variant(active, cx).hover(rgb(colors.hover).into()))
             .when(active, |b| b.font_weight(FontWeight::SEMIBOLD))
@@ -1020,6 +937,11 @@ impl TaskApp {
                     .min_w_0()
                     .justify_between()
                     .gap_2()
+                    .child(
+                        gpui_kit::component::Icon::new(icon)
+                            .size(px(20.))
+                            .flex_shrink_0(),
+                    )
                     .child(
                         div()
                             .flex_1()
@@ -1056,7 +978,7 @@ impl TaskApp {
 
     pub(crate) fn navigation_path(&self) -> (Vec<(String, String, CrumbTarget)>, String) {
         // The automation list is its own top-level section. It must not borrow
-        // Research's "All" crumb (and Back must not lead there).
+        // Research's "All research" crumb (and Back must not lead there).
         if self.scope == Scope::Automations
             && !self.automation_ui.creating
             && self.automation_ui.selected.is_none()
@@ -1143,7 +1065,7 @@ impl TaskApp {
         if self.scope != Scope::All || task.is_some() {
             links.push((
                 "location-all".into(),
-                "All".into(),
+                "All research".into(),
                 CrumbTarget::View(Scope::All),
             ));
         }

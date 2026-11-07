@@ -2,7 +2,7 @@
 
 本工具把一个研究目标拆成有依赖的任务，使用本地 OpenCode 按阶段调用模型，保存执行日志、材料、报告和来源。网页搜集由本地 ego(lite) Space 完成。
 
-日常动线：**选择项目 → 审核题目并移入 Todo → Run Todo → Progress & results 阅读成果**。需要补充证据时，打开任务添加 PDF、截图或评论，再继续研究。
+日常动线：**选择项目 → 审核题目并移入 Todo → Run Todo → Research results 阅读成果**。需要补充证据时，打开任务添加 PDF、截图或评论，再继续研究。
 
 任务页默认突出执行、材料、状态和结果。已经完成的研究步骤以 **View result** 为主操作，**Run again** 可再次执行；**More details…** 中保留模型、工作目录、Cycle、Bucket、父任务和标签。研究页右上 **Advanced settings…** 可进入模型与浏览器设置，不会清空尚未提交的目标输入。
 
@@ -23,11 +23,12 @@ AI agents 分别检测 OpenCode 和 Codex 的 `--version`，**至少一个可用
 
 | 区域 | 用途 |
 | --- | --- |
-| All / 项目 | 浏览任务、按状态筛选、列表或看板、新建研究、编辑、归档 |
+| All research / Projects | 浏览研究目标与任务、按状态筛选、列表或看板、新建研究、编辑、归档 |
 | Settings（侧栏底部） | 设置默认模型和四个研究阶段使用的模型 |
 | Market research | 提出研究目标、查看已有研究；高级配置按需打开 |
 | Settings → Research models | 查看四个研究阶段实际使用的模型，点击 Edit research models 修改 |
-| Progress & results | 看当前进展、报告与来源；技术详情中查看模型和日志 |
+| Research results | 看研究进展、报告与来源；技术详情中查看模型和日志 |
+| Automations | 独立的自动化分区：All automations 管理定义，Automation results 查看期次结果 |
 | Archive | 查看、恢复归档任务 |
 
 操作按主次呈现：项目页以执行或规划为主要操作，新建和编辑使用轻量文字入口；List / Board 是分段切换，显示选项收在调节图标中。项目规划与工作目录收在 ⋯ 菜单中。表单控件保留边框，状态和标签只作为信息显示。图标按钮提供悬停提示、键盘焦点和辅助功能名称。
@@ -36,11 +37,11 @@ AI agents 分别检测 OpenCode 和 Codex 的 `--version`，**至少一个可用
 
 全局列表按项目分组，点击分组标题可进入项目；顶部固定的 **← Back** 原路返回并恢复搜索、状态筛选和 List / Board 视图。全局看板的卡片显示项目名称。项目列表仍按父任务与子步骤组织。
 
-**Progress & results** 顶部先选择项目。研究目标标题是详情入口，点击可查看目标范围、问题、子任务和补充材料；多个目标时，旁边的 **Switch ▾** 用于切换，只有一个目标时不显示无效的切换入口。中间只展示当前范围内有执行记录的任务。每项显示任务编号、类型、最近状态和完整标题，不再用多层树混排目标与执行记录。**Planning activity** 单独收起生成题目、拆分目标等规划记录。右侧 **Latest / Earlier version** 下拉可比较同一任务的历次执行结果，切换版本不会改变任务列表。打开报告时自动定位到它所属的项目和目标。
+**Research results** 顶部先选择项目。研究目标标题是详情入口，点击可查看目标范围、问题、子任务和补充材料；多个目标时，旁边的 **Switch ▾** 用于切换，只有一个目标时不显示无效的切换入口。中间只展示当前范围内有执行记录的任务。每项显示任务编号、类型、最近状态和完整标题，不再用多层树混排目标与执行记录。**Planning activity** 单独收起生成题目、拆分目标等规划记录。右侧 **Latest / Earlier version** 下拉可比较同一任务的历次执行结果，切换版本不会改变任务列表。打开报告时自动定位到它所属的项目和目标。
 
 全局只保留左上角一个 **← Back**（快捷键 **⌘[**），按实际访问顺序返回，不固定跳回任务列表。从报告进入目标、再进入子任务，可连续返回“子任务 → 目标 → 原报告”；通过 **Open tasks** 切换任务也遵循同样规则。返回会恢复搜索、状态筛选、List / Board、设置子页、报告执行版本、来源展开状态及详情阅读位置，不会回滚任务数据。弹窗中快捷键不触发页面回退。
 
-Back 旁的单行位置路径用于显示所属关系，例如 **项目 / 父任务 / 当前任务**，报告页面显示 **Progress & results / 项目 / 研究目标 / 当前结果**。项目和父任务是可点击入口；路径跳转之后仍可使用 Back 回到来处。任务详情不再重复显示第二个返回按钮。**Open tasks** 只负责切换已打开任务，菜单底部的 **Close current task** 可关闭当前任务并返回；后台规划完成时不会抢走正在查看的其他页面。
+Back 旁的单行位置路径用于显示所属关系，例如 **项目 / 父任务 / 当前任务**，报告页面显示 **Research results / 项目 / 研究目标 / 当前结果**。项目和父任务是可点击入口；路径跳转之后仍可使用 Back 回到来处。任务详情不再重复显示第二个返回按钮。**Open tasks** 只负责切换已打开任务，菜单底部的 **Close current task** 可关闭当前任务并返回；后台规划完成时不会抢走正在查看的其他页面。
 
 报告底部 **Sources · N** 默认折叠，点击展开来源链接与发布日期，再次点击收起；切换任务或执行版本后重新折叠。报告正文中的引用和链接保持可用。
 
@@ -88,7 +89,7 @@ Check runtime 只表示本地指南可读；实际网页访问是否成功，需
 
 1. 可选填写范围、市场、时间跨度和关注问题。不填则根据项目名称规划。项目范围通过 **Save scope** 保存。
 2. 项目工作目录已自动分配，在 **Settings** 配置全局模型；如需单独的规划模型，可在 **Market research → Advanced settings… → Plan** 覆盖。项目题目规划和后续研究步骤规划共用 Plan 的有效模型。
-3. 点击 **Generate topics**，Agent 生成 1–8 个独立研究题目及各自的范围、证据需求和交付物。生成过程可在 **Progress & results** 查看实时日志或取消。
+3. 点击 **Generate topics**，Agent 生成 1–8 个独立研究题目及各自的范围、证据需求和交付物。生成过程可在 **Research results** 查看实时日志或取消。
 4. 成功后自动回到项目 Kanban。所有题目进入 **Backlog / Awaiting approval**，不开始搜集或分析。打开卡片可编辑范围、添加评论、PDF 或截图。
 5. 在卡片点击 **Approve research →**，或拖到 **Todo**，批准选中的题目。未选中的保留在 Backlog，也可移到 Cancelled 或归档。未经 Todo 批准，不能直接拖到 In progress / In review / Done 来绕过审核。
 6. 打开已批准题目，点击 **Plan research steps**，由 Agent 为这个题目生成采集、分析、报告的依赖任务。检查后使用 **Run one step / Continue research** 执行。
@@ -155,7 +156,7 @@ Board、List、左侧任务树和右侧详情共用 `Store::task_status` 的阶�
 - **Pause after this step**：当前阶段完成后暂停，不终止当前进程。
 - **Stop task**：终止本次本地 OpenCode 进程组。
 
-同一工作区同时只运行一个 Agent。执行会切换到 **Progress & results**：
+同一工作区同时只运行一个 Agent。执行会切换到 **Research results**：
 
 - 默认显示当前阶段、需要你处理的事项；完成后显示报告正文，来源列表按需展开。执行中的未解析响应不会当成报告展示。
 - 报告上方保留 **Open task**，右侧 **⋯** 打开 Technical details；来源数量旁的复制图标复制报告。先选择项目和研究目标，再查看该范围内的任务。
@@ -238,7 +239,7 @@ Board、List、左侧任务树和右侧详情共用 `Store::task_status` 的阶�
 ### 并发与会话续接
 
 - 每次只推进一个 Topic，Topic 内最多同时执行 Settings → General 中 Research 并发上限（默认 3 个）所允许的、依赖已满足且资源独立的任务。其他 Topic 可提前排队，完成当前 Topic 后自动继续。共享目录、浏览器 Space 或 session 的步骤仍串行。
-- 自动化期次有独立的并发上限（默认 2 个，只统计正在运行的期次）。Research 队列满载不会阻止自动化启动，自动化池满载也不会占用 Research 名额；排队信息和结果都在 Automations → Progress & results 中查看。两者仅在真实共享目录、浏览器 Space 或 session 时互相等待。
+- 自动化期次有独立的并发上限（默认 2 个，只统计正在运行的期次）。Research 队列满载不会阻止自动化启动，自动化池满载也不会占用 Research 名额；排队信息和结果都在 Automations → Automation results 中查看。两者仅在真实共享目录、浏览器 Space 或 session 时互相等待。
 - 新目标的文件放在项目目录下 `.research/goal-{内部ID}`。已有执行历史的目标会先安全复制到独立目录，再续接 session；复制期间会等待共用旧目录的任务释放资源。
 - 关闭后不会自动重启任务。再次启动未完成任务时，如最近一次是中断、失败、停止或阻塞，且模型、任务类型、目录仍兼容，会使用原 OpenCode session ID 继续；完整当前任务输入仍会提供给模型。成功后的重跑或更换模型会新建 session。
 - 会话 ID 在启动前保存。强制退出 App 不保证 OpenCode 子进程立即停止；同一 session 有进程锁，旧进程仍存活时会明确拒绝重复启动，待其退出后可再次续接。
@@ -265,7 +266,7 @@ SQLite 格式 v2 将 workspace 内的项目目录、运行目录、待复制源�
 
 唯一保存在系统应用目录中的配置是 `~/Library/Application Support/What the hell are you planning/workspace-location.json`，只记录所选根目录。OpenCode 自身的账户和会话数据库、ego(lite) 的浏览器配置仍由它们各自管理；临时进程锁保留在系统临时目录。
 
-排队详情显示具体占用资源及阻塞任务，并区分入队和实际开始时间。同一个 Topic 中不同 goal 或步骤在目录、浏览器 Space 和 session 均独立时可并行，最多同时运行 Settings → General 中 Research 并发上限（默认 3 个）所允许的任务数；其他 Topic 等待整个当前 Topic 完成或结束失败处理。自动化期次使用自己的并发池和 Automations → Progress & results 队列，不受此处名额影响。
+排队详情显示具体占用资源及阻塞任务，并区分入队和实际开始时间。同一个 Topic 中不同 goal 或步骤在目录、浏览器 Space 和 session 均独立时可并行，最多同时运行 Settings → General 中 Research 并发上限（默认 3 个）所允许的任务数；其他 Topic 等待整个当前 Topic 完成或结束失败处理。自动化期次使用自己的并发池和 Automations → Automation results 队列，不受此处名额影响。
 
 
 ### 结果中的图表与公式

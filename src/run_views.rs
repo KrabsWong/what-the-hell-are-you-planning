@@ -190,7 +190,7 @@ impl TaskApp {
     pub(crate) fn runs(&self, cx: &mut Context<Self>) -> AnyElement {
         let colors = palette(cx);
         // Automation steps are reachable only from their period. Without an
-        // explicit task-result context, Progress & results never selects one.
+        // explicit task-result context, Research results never selects one.
         let selected = self
             .selected_run
             .and_then(|id| self.store.runs.iter().find(|r| r.id == id))

@@ -2211,7 +2211,7 @@ fn ui_interaction(root: &Path) -> PathBuf {
             .map(|run| (run.id, run.task_id))
             .expect("the automation has a run to open")
     });
-    // Switching to Progress & results must not keep a period step selected; the
+    // Switching to Research results must not keep a period step selected; the
     // ordinary results view falls back to its own latest run.
     cx.update_window(handle, |_, w, cx| {
         app.update(cx, |a, cx| {
@@ -2298,7 +2298,7 @@ fn ui_interaction(root: &Path) -> PathBuf {
     );
 
     // A period waiting for its scheduled retry is cancellable directly from
-    // Progress & results, without pausing the automation or stopping a process.
+    // Research results, without pausing the automation or stopping a process.
     let waiting = cx
         .update_window(handle, |_, _, cx| {
             app.update(cx, |a, cx| {

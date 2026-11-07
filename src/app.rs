@@ -114,7 +114,6 @@ pub struct TaskApp {
     pub task_result_context: Option<u64>,
     pub tabs: Vec<u64>,
     pub expanded_sidebar_projects: Vec<u64>,
-    pub automation_sidebar_expanded: bool,
     pub collapsed_sidebar_goals: Vec<u64>,
     pub sidebar_split: Entity<gpui_kit::base::ResizableState>,
     pub results_split: Entity<gpui_kit::base::ResizableState>,
@@ -500,7 +499,6 @@ impl TaskApp {
             task_result_context: None,
             tabs: vec![],
             expanded_sidebar_projects: vec![],
-            automation_sidebar_expanded: true,
             collapsed_sidebar_goals: vec![],
             sidebar_split: cx.new(|_| gpui_kit::base::ResizableState::default()),
             results_split: cx.new(|_| gpui_kit::base::ResizableState::default()),
@@ -634,7 +632,7 @@ impl TaskApp {
         self.task_result_context = None;
         self.clear_navigation_overlays();
         if scope == Scope::Runs {
-            // A period step is not part of Progress & results; do not keep it as
+            // A period step is not part of Research results; do not keep it as
             // the selected run when the user enters the ordinary results view.
             if let Some(id) = self.selected_run
                 && self
@@ -659,9 +657,6 @@ impl TaskApp {
         };
         if let Some(project) = project {
             self.remember_active_project(project);
-        }
-        if matches!(scope, Scope::Automations | Scope::AutomationRuns) {
-            self.automation_sidebar_expanded = true;
         }
         if scope == Scope::Automations {
             self.automation_ui.selected = None;
@@ -763,7 +758,7 @@ impl TaskApp {
     }
     pub(crate) fn scope_title(&self, scope: &Scope) -> String {
         match scope {
-            Scope::All => "All".into(),
+            Scope::All => "All research".into(),
             Scope::Project(id) => self
                 .store
                 .projects
@@ -780,7 +775,7 @@ impl TaskApp {
                 .unwrap_or_default(),
             Scope::Cycle(c) => c.clone(),
             Scope::Archive => "Archive".into(),
-            Scope::Runs => "Progress & results".into(),
+            Scope::Runs => "Research results".into(),
             Scope::Recovery => "Paused projects".into(),
             Scope::Research => "Market research".into(),
             Scope::Automations => "Automations".into(),
@@ -1405,10 +1400,9 @@ impl TaskApp {
             self.selected = None;
             if automation_owned {
                 // Automation periods belong to Automations, not to Research's
-                // Progress & results. Follow the period to its own results list.
+                // results. Follow the period to its own results list.
                 self.scope = Scope::AutomationRuns;
                 self.selected_run = None;
-                self.automation_sidebar_expanded = true;
             } else {
                 self.scope = Scope::Runs;
                 self.selected_run = Some(run_id);

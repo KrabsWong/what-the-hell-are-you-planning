@@ -24,7 +24,7 @@
 
 ## 2. 用户流程
 
-侧栏增加「Automations」，与 All 并列属于当前工作区，并可展开为 **All automations**（自动化列表）和 **Progress & results**（全部自动化期次的结果）两个子项。自动化结果与 Research 分组下的普通 Progress & results 相互独立，后者只包含 project/topic/goal 的研究结果。自动化产物统一存放在自动生成的 **Automations 容器**（隐藏项目，目录 `<workspace>/automations`）中，不与用户手动创建的 project/topic 混排；该容器不出现在侧栏、项目选择器、研究默认项目和项目规划入口。
+侧栏按 **Research / Automations** 两个领域分区。Research 分区包含 **All research**、项目列表、**Paused projects** 与 **Research results**；Automations 是独立分区，直接包含 **All automations**（自动化列表）和 **Automation results**（全部自动化期次的结果），不再放在 Workspace 下与 All 并列。自动化结果与 Research results 相互独立，后者只包含 project/topic/goal 的研究结果。自动化产物统一存放在自动生成的 **Automations 容器**（隐藏项目，目录 `<workspace>/automations`）中，不与用户手动创建的 project/topic 混排；该容器不出现在侧栏、项目选择器、研究默认项目和项目规划入口。
 
 支持两种任务形态，共用同一执行与重试管线：
 

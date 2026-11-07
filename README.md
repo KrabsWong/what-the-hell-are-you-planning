@@ -42,7 +42,7 @@ Collection, analysis, and final reports share clear-writing and fidelity instruc
 
 Final reports adapt to the intended reader and research purpose, leading with conclusions and supported recommendations (or key findings for exploratory work). By default the main body targets two to three pages of reading—roughly 1,200–1,800 Chinese characters or 800–1,200 English words, including tables and captions—with key citations and decision-changing caveats retained. Detailed evidence, calculations, source records, and validation protocols follow in an appendix within the same report. Explicit user length requests take precedence. This is an agent writing instruction, not fixed pagination or automatic truncation; collection and analysis retain their full detail.
 
-Final reports are given priority in **Progress & results**. Supporting evidence and analysis remain accessible, while source lists and technical execution details can be expanded on demand. Reports render as readable Markdown with tables and links.
+Final reports are given priority in **Research results**. Supporting evidence and analysis remain accessible, while source lists and technical execution details can be expanded on demand. Reports render as readable Markdown with tables and links.
 
 While a research step runs, the progress panel lists the tasks in each phase, their statuses, and completion counts. Task details and the latest attempt's technical details are available beside each task. This outline remains visible when the app reconnects to a session still running in the background; completed attempts open their reports.
 

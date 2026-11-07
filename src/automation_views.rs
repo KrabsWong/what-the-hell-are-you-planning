@@ -819,7 +819,7 @@ impl TaskApp {
         self.launch_run(run, vec![], cx);
         if self.store.runs.iter().any(|candidate| candidate.id == run_id) {
             // Planning is part of creating this automation; keep the wizard visible
-            // instead of following the run into Progress & results.
+            // instead of following the run into Research results.
             self.scope = Scope::Automations;
             self.selected = None;
             self.selected_run = None;
@@ -1566,9 +1566,11 @@ impl TaskApp {
                     cx,
                 ));
             }
+            let mut history = col().gap_0();
             for occurrence in shown {
-                panel = panel.child(self.automation_occurrence_row(occurrence, true, cx));
+                history = history.child(self.automation_occurrence_row(occurrence, true, cx));
             }
+            panel = panel.child(history);
             if occurrences.len() > self.automation_ui.history_limit {
                 let remaining = occurrences.len() - self.automation_ui.history_limit;
                 panel = panel.child(
@@ -1736,9 +1738,11 @@ impl TaskApp {
                     .child(div().font_weight(FontWeight::SEMIBOLD).child(selectable(format!("History · {}", occurrences.len()))))
                     .child(overview_note("Newest first. Unread results are marked with a dot.", cx)),
             );
+            let mut history = col().gap_0();
             for occurrence in shown {
-                panel = panel.child(self.automation_occurrence_row(occurrence, false, cx));
+                history = history.child(self.automation_occurrence_row(occurrence, false, cx));
             }
+            panel = panel.child(history);
             if occurrences.len() > self.automation_ui.history_limit {
                 let remaining = occurrences.len() - self.automation_ui.history_limit;
                 panel = panel.child(
@@ -1959,14 +1963,11 @@ impl TaskApp {
             .unwrap_or_default();
         let mut line = row()
             .id(format!("automation-occurrence-{id}"))
-            .px_3()
+            .px_2()
             .py_2()
-            .gap_3()
+            .gap_2()
             .items_center()
             .rounded_md()
-            .border_1()
-            .border_color(rgb(colors.line))
-            .bg(rgb(colors.panel))
             .cursor_pointer()
             .hover(|d| d.bg(rgb(colors.hover)))
             .child(
@@ -1982,9 +1983,14 @@ impl TaskApp {
                     .flex_shrink_0()
                     .text_sm()
                     .child(selectable(when)),
+            )
+            .child(
+                row().flex_shrink_0().gap_1().items_center()
+                    .child(div().text_sm().text_color(rgb(color)).child(selectable(status)))
+                    .child(label(format!("· {}{skipped}", occurrence.source.label()), cx)),
             );
-        // The all-automation results view names the source automation; the
-        // per-automation history already has that context.
+        // The all-automation results view names the source automation after the
+        // status/source pair; the per-automation history already has that context.
         if show_automation {
             line = line.child(
                 muted(
@@ -2002,12 +2008,7 @@ impl TaskApp {
         } else {
             line = line.child(div().flex_1());
         }
-        line.child(
-            row().flex_shrink_0().gap_1().items_center()
-                .child(div().text_xs().text_color(rgb(color)).child(selectable(status)))
-                .child(label(format!("· {}{skipped}", occurrence.source.label()), cx)),
-        )
-        .when(occurrence.status.is_active(), |d| {
+        line.when(occurrence.status.is_active(), |d| {
             d.child(
                 tool_icon(
                     format!("cancel-occurrence-{id}"),

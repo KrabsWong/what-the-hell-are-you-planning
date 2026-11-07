@@ -861,7 +861,7 @@ fn run_checks(layout_only: bool) {
                     assert!(a.visible_tasks().iter().all(|t| !t.archived));
                 });
                 w.render_frame(cx);
-                assert_eq!(w.find("collection-title").label(), Some("All"));
+                assert_eq!(w.find("collection-title").label(), Some("All research"));
                 w.click("all-status-filter", cx);
                 w.click(6usize, cx); // Done
                 assert_eq!(

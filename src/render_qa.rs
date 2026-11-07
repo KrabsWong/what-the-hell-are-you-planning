@@ -38,7 +38,7 @@ pub fn run() {
         .unwrap();
     let app = entity.unwrap();
     let handle: AnyWindowHandle = window.into();
-    let mut panels = vec![("All", Scope::All), ("Recovery", Scope::Recovery)];
+    let mut panels = vec![("All research", Scope::All), ("Recovery", Scope::Recovery)];
     if let Some(project) = store.projects.last() {
         panels.push(("Project", Scope::Project(project.id)));
     }

@@ -6,13 +6,21 @@ use crate::{
 use std::path::{Path, PathBuf};
 
 pub const DEFAULT_CONCURRENT_RUNS: usize = 3;
+/// Automation periods get their own pool so a busy research queue never blocks
+/// them and vice versa. Two is the safe default for full research pipelines.
+pub const DEFAULT_CONCURRENT_AUTOMATIONS: usize = 2;
 pub const MAX_CONCURRENT_RUNS: usize = 10;
 
 pub fn default_concurrent_runs() -> usize { DEFAULT_CONCURRENT_RUNS }
+pub fn default_concurrent_automations() -> usize { DEFAULT_CONCURRENT_AUTOMATIONS }
 
 impl Store {
     pub fn concurrency_limit(&self) -> usize {
         self.max_concurrent_runs.clamp(1, MAX_CONCURRENT_RUNS)
+    }
+    /// Running automation periods are limited independently from research tasks.
+    pub fn automation_concurrency_limit(&self) -> usize {
+        self.max_concurrent_automations.clamp(1, MAX_CONCURRENT_RUNS)
     }
 
     /// New one-sentence plans isolate each step; legacy goals retain their shared workspace.
@@ -196,12 +204,16 @@ mod tests {
     fn concurrency_setting_preserves_legacy_defaults_and_bounds() {
         let mut legacy = serde_json::to_value(Store::empty()).unwrap();
         legacy.as_object_mut().unwrap().remove("max_concurrent_runs");
+        legacy.as_object_mut().unwrap().remove("max_concurrent_automations");
         let mut store: Store = serde_json::from_value(legacy).unwrap();
         assert_eq!(store.concurrency_limit(), 3);
+        assert_eq!(store.automation_concurrency_limit(), 2);
         for (configured, effective) in [(0, 1), (1, 1), (5, 5), (10, 10), (11, 10)] {
             store.max_concurrent_runs = configured;
+            store.max_concurrent_automations = configured;
             let restored: Store = serde_json::from_str(&serde_json::to_string(&store).unwrap()).unwrap();
             assert_eq!(restored.concurrency_limit(), effective);
+            assert_eq!(restored.automation_concurrency_limit(), effective);
         }
     }
 

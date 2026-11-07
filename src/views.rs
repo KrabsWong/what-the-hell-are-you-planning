@@ -1055,6 +1055,29 @@ impl TaskApp {
     }
 
     pub(crate) fn navigation_path(&self) -> (Vec<(String, String, CrumbTarget)>, String) {
+        // The automation list is its own top-level section. It must not borrow
+        // Research's "All" crumb (and Back must not lead there).
+        if self.scope == Scope::Automations
+            && !self.automation_ui.creating
+            && self.automation_ui.selected.is_none()
+        {
+            return (vec![], "Automations".into());
+        }
+        // A new automation is created from the Automations list; it is not a
+        // child of Research's All either.
+        if self.scope == Scope::Automations
+            && self.automation_ui.creating
+            && self.automation_ui.editing.is_none()
+        {
+            return (
+                vec![(
+                    "location-automations".into(),
+                    "Automations".into(),
+                    CrumbTarget::View(Scope::Automations),
+                )],
+                "New automation".into(),
+            );
+        }
         // Editing an existing automation belongs to its detail page, not to the
         // Automations list. Back and the breadcrumb return to that page.
         if self.scope == Scope::Automations
@@ -1064,7 +1087,6 @@ impl TaskApp {
         {
             return (
                 vec![
-                    ("location-all".into(), "All".into(), CrumbTarget::View(Scope::All)),
                     (
                         "location-automations".into(),
                         "Automations".into(),
@@ -1082,14 +1104,11 @@ impl TaskApp {
         // Automation results are a child of Automations, not of Research.
         if self.scope == Scope::AutomationRuns {
             return (
-                vec![
-                    ("location-all".into(), "All".into(), CrumbTarget::View(Scope::All)),
-                    (
-                        "location-automations".into(),
-                        "Automations".into(),
-                        CrumbTarget::View(Scope::Automations),
-                    ),
-                ],
+                vec![(
+                    "location-automations".into(),
+                    "Automations".into(),
+                    CrumbTarget::View(Scope::Automations),
+                )],
                 "Automation results".into(),
             );
         }
@@ -1101,14 +1120,11 @@ impl TaskApp {
             && let Some(definition) = self.store.automation(id)
         {
             return (
-                vec![
-                    ("location-all".into(), "All".into(), CrumbTarget::View(Scope::All)),
-                    (
-                        "location-automations".into(),
-                        "Automations".into(),
-                        CrumbTarget::View(Scope::Automations),
-                    ),
-                ],
+                vec![(
+                    "location-automations".into(),
+                    "Automations".into(),
+                    CrumbTarget::View(Scope::Automations),
+                )],
                 definition.name.clone(),
             );
         }

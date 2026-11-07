@@ -1389,6 +1389,7 @@ impl TaskApp {
         run.started_at.clear();
         run.status = "Queued".into();
         let run_id = run.id;
+        let automation_owned = run.automation_occurrence_id.is_some();
         self.store.runs.push(run);
         self.persist_if_changed(true);
         if !self.storage_error.is_empty() {
@@ -1402,61 +1403,135 @@ impl TaskApp {
         // Keep the recovery overview visible while its queue submits each next step.
         if self.scope != Scope::Recovery || self.selected.is_some() {
             self.selected = None;
-            self.scope = Scope::Runs;
-            self.selected_run = Some(run_id);
-            self.reveal_selected_run();
+            if automation_owned {
+                // Automation periods belong to Automations, not to Research's
+                // Progress & results. Follow the period to its own results list.
+                self.scope = Scope::AutomationRuns;
+                self.selected_run = None;
+                self.automation_sidebar_expanded = true;
+            } else {
+                self.scope = Scope::Runs;
+                self.selected_run = Some(run_id);
+                self.reveal_selected_run();
+            }
         }
         self.follow_logs = true;
         self.show_run_result = true;
         self.show_run_details = false;
-        self.toast = "Task queued · waiting for an execution slot".into();
+        self.toast = if automation_owned {
+            "Automation period queued · waiting for an automation slot".into()
+        } else {
+            "Task queued · waiting for a research execution slot".into()
+        };
         self.start_pump(cx);
         cx.notify();
     }
-    pub(crate) fn execution_slots_used(&self) -> usize {
-        self.active_runs.len() + self.store.runs.iter()
-            .filter(|run| run.status == "Recovering" && self.store.is_recovery_candidate(run))
+    fn run_is_automation_owned(&self, run_id: u64) -> bool {
+        self.store
+            .runs
+            .iter()
+            .find(|run| run.id == run_id)
+            .is_some_and(|run| run.automation_occurrence_id.is_some())
+    }
+    /// Research occupancy. Automation steps keep only their own automation pool
+    /// busy, even though both kinds share the same physical queue and resources.
+    pub(crate) fn research_slots_used(&self) -> usize {
+        self.active_runs
+            .iter()
+            .filter(|active| !self.run_is_automation_owned(active.id))
             .count()
+            + self
+                .store
+                .runs
+                .iter()
+                .filter(|run| {
+                    run.automation_occurrence_id.is_none()
+                        && run.status == "Recovering"
+                        && self.store.is_recovery_candidate(run)
+                })
+                .count()
+    }
+    /// Automation occupancy: running periods plus any automation process still
+    /// recovering. Queued periods and periods waiting for a retry do not consume
+    /// a slot. Count once per occurrence so a period that is between steps still
+    /// holds the slot it already owns.
+    pub(crate) fn automation_slots_used(&self) -> usize {
+        let mut occupied = std::collections::BTreeSet::new();
+        for occurrence in &self.store.automation_occurrences {
+            if occurrence.status == crate::automation::OccurrenceStatus::Running {
+                occupied.insert(occurrence.id);
+            }
+        }
+        for active in &self.active_runs {
+            if let Some(occurrence) = self
+                .store
+                .runs
+                .iter()
+                .find(|run| run.id == active.id)
+                .and_then(|run| run.automation_occurrence_id)
+            {
+                occupied.insert(occurrence);
+            }
+        }
+        for run in &self.store.runs {
+            if run.status == "Recovering"
+                && self.store.is_recovery_candidate(run)
+                && let Some(occurrence) = run.automation_occurrence_id
+            {
+                occupied.insert(occurrence);
+            }
+        }
+        occupied.len()
     }
     fn dispatch_runs(&mut self, cx: &mut Context<Self>) {
         if !self.storage_error.is_empty() {
             return;
         }
-        while self.execution_slots_used() < self.store.concurrency_limit() {
+        loop {
+            let research_full =
+                self.research_slots_used() >= self.store.concurrency_limit();
+            let automation_full =
+                self.automation_slots_used() >= self.store.automation_concurrency_limit();
+            if research_full && automation_full {
+                break;
+            }
             let next = self.queued_runs.iter().position(|(id, _)| {
                 let candidate = self.store.runs.iter().find(|r| r.id == *id).unwrap();
-                if let Some(automation) = candidate
-                    .automation_occurrence_id
-                    .and_then(|id| self.store.occurrence(id))
-                    .map(|occurrence| occurrence.automation_id)
-                {
+                let automation_owned = candidate.automation_occurrence_id.is_some();
+                if automation_owned {
+                    if automation_full {
+                        return false;
+                    }
                     // At most one running period per automation; a second request waits.
-                    if self.store.automation_occurrences.iter().any(|occurrence| {
-                        occurrence.automation_id == automation
-                            && occurrence.id != candidate.automation_occurrence_id.unwrap_or(0)
-                            && occurrence.status == crate::automation::OccurrenceStatus::Running
+                    let automation = candidate
+                        .automation_occurrence_id
+                        .and_then(|id| self.store.occurrence(id))
+                        .map(|occurrence| occurrence.automation_id);
+                    if automation.is_some_and(|automation| {
+                        self.store.automation_occurrences.iter().any(|occurrence| {
+                            occurrence.automation_id == automation
+                                && occurrence.id != candidate.automation_occurrence_id.unwrap_or(0)
+                                && occurrence.status == crate::automation::OccurrenceStatus::Running
+                        })
                     }) {
                         return false;
                     }
+                } else if research_full {
+                    return false;
                 }
-                if candidate.project_plan.is_none() {
+                // Research topic FIFO never counts automation periods: their
+                // own periods are isolated and gated only by the automation pool.
+                if candidate.project_plan.is_none() && !automation_owned {
                     let topic = self.store.execution_topic(candidate.task_id);
                     if self.active_runs.iter().filter_map(|active| self.store.runs.iter().find(|run| run.id == active.id))
                         .chain(self.store.runs.iter().filter(|run| run.status == "Recovering" && self.store.is_recovery_candidate(run)))
+                        .filter(|run| run.automation_occurrence_id.is_none())
                         .any(|run| run.project_plan.is_none() && self.store.execution_topic(run.task_id) != topic)
                     { return false; }
-                    // A later step of an already-started occurrence is a continuation of
-                    // the active period, not a new topic waiting behind the FIFO front.
-                    let continuation = candidate
-                        .automation_occurrence_id
-                        .and_then(|id| self.store.occurrence(id))
-                        .is_some_and(|occurrence| occurrence.actual_started_at.is_some());
-                    if !continuation {
-                        let front = self.todo_batch.as_ref().and_then(|batch| batch.pending_topics(&self.store).first().copied())
-                            .or_else(|| self.queued_runs.iter().filter_map(|(id, _)| self.store.runs.iter().find(|run| run.id == *id && run.project_plan.is_none()))
-                                .next().map(|run| self.store.execution_topic(run.task_id)));
-                        if front.is_some_and(|front| front != topic) { return false; }
-                    }
+                    let front = self.todo_batch.as_ref().and_then(|batch| batch.pending_topics(&self.store).first().copied())
+                        .or_else(|| self.queued_runs.iter().filter_map(|(id, _)| self.store.runs.iter().find(|run| run.id == *id && run.project_plan.is_none() && run.automation_occurrence_id.is_none()))
+                            .next().map(|run| self.store.execution_topic(run.task_id)));
+                    if front.is_some_and(|front| front != topic) { return false; }
                 }
                 if candidate.auto_retry_attempt > 0 {
                     if candidate.retry_delay_remaining(chrono::Utc::now().timestamp()) > 0 {
@@ -1674,8 +1749,9 @@ impl TaskApp {
                         had_error: false,
                     });
                     self.toast = format!(
-                        "{} tasks running · {} queued",
-                        self.active_runs.len(),
+                        "{} research running · {} automation running · {} queued",
+                        self.research_slots_used(),
+                        self.automation_slots_used(),
                         self.queued_runs.len()
                     );
                 }

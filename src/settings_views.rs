@@ -154,7 +154,16 @@ impl TaskApp {
         if self.store.max_concurrent_runs == limit { return; }
         self.snapshot();
         self.store.max_concurrent_runs = limit;
-        self.confirm_save("Execution limit saved · running tasks will finish normally", cx);
+        self.confirm_save("Research execution limit saved · running tasks will finish normally", cx);
+        cx.notify();
+    }
+
+    pub fn set_automation_concurrency(&mut self, limit: usize, cx: &mut Context<Self>) {
+        let limit = limit.clamp(1, crate::scheduler::MAX_CONCURRENT_RUNS);
+        if self.store.max_concurrent_automations == limit { return; }
+        self.snapshot();
+        self.store.max_concurrent_automations = limit;
+        self.confirm_save("Automation execution limit saved · running periods will finish normally", cx);
         cx.notify();
     }
 
@@ -249,19 +258,31 @@ impl TaskApp {
             .child(appearance)
             .child(col().gap_2()
                 .child(div().font_weight(FontWeight::SEMIBOLD).child(selectable("Execution")))
-                .child(div().text_sm().child(selectable("Maximum simultaneous tasks")))
+                .child(div().text_sm().child(selectable("Maximum simultaneous research tasks")))
                 .child(row()
                     .child(button("concurrency-decrease", "−")
-                        .accessibility_label("Decrease maximum simultaneous tasks")
+                        .accessibility_label("Decrease maximum simultaneous research tasks")
                         .disabled(self.store.concurrency_limit() <= 1)
                         .on_click(cx.listener(|a, _, _, cx| a.set_execution_concurrency(a.store.concurrency_limit().saturating_sub(1), cx))))
                     .child(div().w_8().text_center().child(selectable(self.store.concurrency_limit().to_string())))
                     .child(button("concurrency-increase", "+")
-                        .accessibility_label("Increase maximum simultaneous tasks")
+                        .accessibility_label("Increase maximum simultaneous research tasks")
                         .disabled(self.store.concurrency_limit() >= crate::scheduler::MAX_CONCURRENT_RUNS)
                         .on_click(cx.listener(|a, _, _, cx| a.set_execution_concurrency(a.store.concurrency_limit() + 1, cx)))))
-                .child(label("1–10 tasks. Recommended: 3; try 5 after checking stability. Higher values may cause more rate-limit errors, retries and browser load.", cx))
-                .child(label("Saved immediately to this workspace. Lowering the limit lets running tasks finish. Dependencies, shared folders and browser Spaces can reduce actual concurrency.", cx)))
+                .child(label("1–10 research tasks. Recommended: 3; try 5 after checking stability. Higher values may cause more rate-limit errors, retries and browser load.", cx))
+                .child(label("Research and automation tasks use separate limits and never occupy each other's slots. Saved immediately to this workspace. Lowering a limit lets running work finish. Dependencies, shared folders and browser Spaces can still reduce actual concurrency.", cx))
+                .child(div().text_sm().pt_2().child(selectable("Maximum simultaneous automation periods")))
+                .child(row()
+                    .child(button("automation-concurrency-decrease", "−")
+                        .accessibility_label("Decrease maximum simultaneous automation periods")
+                        .disabled(self.store.automation_concurrency_limit() <= 1)
+                        .on_click(cx.listener(|a, _, _, cx| a.set_automation_concurrency(a.store.automation_concurrency_limit().saturating_sub(1), cx))))
+                    .child(div().w_8().text_center().child(selectable(self.store.automation_concurrency_limit().to_string())))
+                    .child(button("automation-concurrency-increase", "+")
+                        .accessibility_label("Increase maximum simultaneous automation periods")
+                        .disabled(self.store.automation_concurrency_limit() >= crate::scheduler::MAX_CONCURRENT_RUNS)
+                        .on_click(cx.listener(|a, _, _, cx| a.set_automation_concurrency(a.store.automation_concurrency_limit() + 1, cx)))))
+                .child(label("Counts only periods that are actually running. Queued periods and periods waiting for a retry do not occupy a slot. Recommended: 2.", cx)))
             .when_some(self.workspace_root.as_ref(), |view, root| view.child(col().gap_2()
                 .child(div().font_weight(FontWeight::SEMIBOLD).child(selectable("Workspace")))
                 .child(label("Projects, reports, materials and app data are stored in this folder's workspace subfolder.", cx))

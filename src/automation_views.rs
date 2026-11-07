@@ -1159,7 +1159,7 @@ impl TaskApp {
                     return;
                 }
                 self.automation_ui.feedback = Some(Ok(
-                    "Manual run queued. It uses the same approval, limits and queue; the schedule did not move."
+                    "Manual run queued. It uses the same approval and automation queue; the schedule did not move."
                         .into(),
                 ));
                 self.enqueue_automation_occurrence(occurrence.id, cx);
@@ -1182,6 +1182,26 @@ impl TaskApp {
             "Stopping this period and its scheduled retries. The automation's future schedule is unchanged."
                 .into(),
         ));
+        cx.notify();
+    }
+
+    /// Cancel one active period (including one waiting for its retry) from the
+    /// results list or its result dialog. The automation keeps its schedule.
+    pub fn cancel_automation_occurrence_ui(&mut self, id: u64, cx: &mut Context<Self>) {
+        let Some(occurrence) = self.store.occurrence(id) else {
+            return;
+        };
+        if !occurrence.status.is_active() {
+            self.toast = "This period is no longer active.".into();
+            cx.notify();
+            return;
+        }
+        self.stop_automation_occurrence(id, cx);
+        self.toast = if self.storage_error.is_empty() {
+            "Period cancelled · its scheduled retry was stopped".into()
+        } else {
+            format!("Period cancelled in memory · not saved: {}", self.storage_error)
+        };
         cx.notify();
     }
 
@@ -1528,6 +1548,24 @@ impl TaskApp {
                     .child(div().font_weight(FontWeight::SEMIBOLD).child(selectable(format!("Periods · {}", occurrences.len()))))
                     .child(overview_note("Unread results are marked with a dot.", cx)),
             );
+            let queued = occurrences
+                .iter()
+                .filter(|occurrence| occurrence.status == OccurrenceStatus::Queued)
+                .count();
+            let waiting = occurrences
+                .iter()
+                .filter(|occurrence| occurrence.status == OccurrenceStatus::WaitingRetry)
+                .count();
+            if queued > 0 || waiting > 0 {
+                panel = panel.child(overview_note(
+                    format!(
+                        "Automation slots: {} of {} running · {queued} queued · {waiting} waiting to retry. Automation and research queues are independent.",
+                        self.automation_slots_used(),
+                        self.store.automation_concurrency_limit()
+                    ),
+                    cx,
+                ));
+            }
             for occurrence in shown {
                 panel = panel.child(self.automation_occurrence_row(occurrence, true, cx));
             }
@@ -1969,6 +2007,19 @@ impl TaskApp {
                 .child(div().text_xs().text_color(rgb(color)).child(selectable(status)))
                 .child(label(format!("· {}{skipped}", occurrence.source.label()), cx)),
         )
+        .when(occurrence.status.is_active(), |d| {
+            d.child(
+                tool_icon(
+                    format!("cancel-occurrence-{id}"),
+                    assets::IconName::CircleX,
+                    "Cancel this period and its scheduled retry",
+                )
+                .on_click(cx.listener(move |app, _, _, cx| {
+                    cx.stop_propagation();
+                    app.cancel_automation_occurrence_ui(id, cx);
+                })),
+            )
+        })
         .child(
             quiet_button(format!("open-occurrence-{id}"), "Open")
                 .icon(assets::IconName::ChevronRight)
@@ -2004,6 +2055,24 @@ impl TaskApp {
             panel = panel.child(crate::views::notice(
                 crate::views::NoticeTone::Warning,
                 reason.detail.clone(),
+                cx,
+            ));
+        }
+        if matches!(
+            occurrence.status,
+            OccurrenceStatus::Queued | OccurrenceStatus::WaitingRetry
+        ) {
+            let retry = if occurrence.status == OccurrenceStatus::WaitingRetry {
+                " The retry starts automatically and does not take a research slot."
+            } else {
+                " The research queue and its limit are separate."
+            };
+            panel = panel.child(overview_note(
+                format!(
+                    "Automation slots: {} of {} running.{retry}",
+                    self.automation_slots_used(),
+                    self.store.automation_concurrency_limit()
+                ),
                 cx,
             ));
         }
@@ -2140,6 +2209,19 @@ impl TaskApp {
                                 .child(muted(format!("{when} · {}", occurrence.source.label()), cx)))
                             .child(
                                 row().gap_2().items_center()
+                                    .when(occurrence.status.is_active(), |d| {
+                                        d.child(
+                                            quiet_button(
+                                                "cancel-automation-result",
+                                                "Cancel period",
+                                            )
+                                            .icon(assets::IconName::CircleX)
+                                            .tooltip("Cancel this period and its scheduled retry")
+                                            .on_click(cx.listener(move |app, _, _, cx| {
+                                                app.cancel_automation_occurrence_ui(id, cx)
+                                            })),
+                                        )
+                                    })
                                     .child(
                                         quiet_button("mark-automation-read", if occurrence.unread { "Mark read" } else { "Mark unread" })
                                             .icon(assets::IconName::Check)

@@ -132,6 +132,42 @@ pub fn run() {
                 w.click("concurrency-increase", cx);
                 w.click("concurrency-increase", cx);
                 assert_eq!(Storage::new(path.clone()).load().unwrap().unwrap().concurrency_limit(), 3);
+                // Automation periods have their own persisted pool.
+                w.scroll(
+                    "model-settings-scroll",
+                    ScrollDelta::Pixels(point(px(0.), px(-10_000.))),
+                    cx,
+                );
+                assert_eq!(app.read(cx).store.automation_concurrency_limit(), 2);
+                for limit in 3..=10 {
+                    w.click("automation-concurrency-increase", cx);
+                    assert_eq!(app.read(cx).store.automation_concurrency_limit(), limit);
+                    assert_eq!(
+                        Storage::new(path.clone())
+                            .load()
+                            .unwrap()
+                            .unwrap()
+                            .automation_concurrency_limit(),
+                        limit
+                    );
+                }
+                w.click("automation-concurrency-increase", cx);
+                assert_eq!(app.read(cx).store.automation_concurrency_limit(), 10);
+                for limit in (1..10).rev() {
+                    w.click("automation-concurrency-decrease", cx);
+                    assert_eq!(app.read(cx).store.automation_concurrency_limit(), limit);
+                }
+                w.click("automation-concurrency-decrease", cx);
+                assert_eq!(app.read(cx).store.automation_concurrency_limit(), 1);
+                w.click("automation-concurrency-increase", cx);
+                assert_eq!(
+                    Storage::new(path.clone())
+                        .load()
+                        .unwrap()
+                        .unwrap()
+                        .automation_concurrency_limit(),
+                    2
+                );
             }).unwrap();
             cx.update_window(handle, |_, w, cx| {
                 w.within("settings-tabs").click(1usize, cx);

@@ -296,6 +296,10 @@ pub struct Store {
     pub active_model_profile: Option<String>,
     #[serde(default = "crate::scheduler::default_concurrent_runs")]
     pub max_concurrent_runs: usize,
+    /// Independent pool for running automation periods. Research tasks never
+    /// consume these slots and automation periods never consume research slots.
+    #[serde(default = "crate::scheduler::default_concurrent_automations")]
+    pub max_concurrent_automations: usize,
     #[serde(default)]
     pub research_config: crate::research::ResearchConfig,
     #[serde(default)]
@@ -397,6 +401,7 @@ impl Store {
             model_profiles: vec![],
             active_model_profile: None,
             max_concurrent_runs: crate::scheduler::DEFAULT_CONCURRENT_RUNS,
+            max_concurrent_automations: crate::scheduler::DEFAULT_CONCURRENT_AUTOMATIONS,
             research_config: Default::default(),
             appearance: Default::default(),
             last_active_project: None,

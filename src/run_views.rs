@@ -655,6 +655,7 @@ impl TaskApp {
 
     fn run_content(&self, run: &AgentRun, cx: &mut Context<Self>) -> AnyElement {
         let colors = palette(cx);
+        let automation_owned = run.automation_occurrence_id.is_some();
         let active = self.active_runs.iter().any(|a| a.id == run.id)
             || self.queued_runs.iter().any(|(id, _)| *id == run.id);
         // Recovered OpenCode sessions have no local worker/queue entry, but still
@@ -723,6 +724,8 @@ impl TaskApp {
         };
         let headline = if run.status == "Queued" && run.auto_retry_attempt > 0 {
             "Waiting to retry"
+        } else if run.status == "Queued" && automation_owned {
+            "Waiting for an automation slot"
         } else { headline };
         let queue_explanation = if run.status == "Queued" && run.auto_retry_attempt > 0 {
             if self.todo_batch.as_ref().is_some_and(|batch|
@@ -768,9 +771,20 @@ impl TaskApp {
                     "Queued behind: {}. Starts automatically when this resource is free.",
                     conflicts.join("; ")
                 )
-            } else if self.execution_slots_used() >= self.store.concurrency_limit() {
+            } else if automation_owned
+                && self.automation_slots_used() >= self.store.automation_concurrency_limit()
+            {
                 format!(
-                    "All {} execution slots are busy. This task is queued and will start automatically when a slot is free.",
+                    "All {} automation slots are busy. This period is queued and will start automatically when an automation slot is free; research tasks continue independently.",
+                    self.store.automation_concurrency_limit()
+                )
+            } else if automation_owned {
+                "Waiting for this automation's previous period to finish. Research tasks are not affected.".into()
+            } else if !automation_owned
+                && self.research_slots_used() >= self.store.concurrency_limit()
+            {
+                format!(
+                    "All {} research execution slots are busy. This task is queued and will start automatically when a research slot is free.",
                     self.store.concurrency_limit()
                 )
             } else {

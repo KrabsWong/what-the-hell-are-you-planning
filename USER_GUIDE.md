@@ -142,7 +142,7 @@ Board、List、左侧任务树和右侧详情共用 `Store::task_status` 的阶�
 
 1. 在 Topic 页点击 **Queue topic**，将其中已批准、未完成的目标加入队列；也可在单个 Goal 页点击 **Run goal / Add to queue**，只加入该目标。项目页的 **Run / resume (N)** 可批量加入本项目已批准目标，执行中变为 **Add to queue (N)**。
 2. 正在运行或三个执行名额已满时仍能继续追加；重复提交不会创建重复队列项。仅批准或新建研究不会自动入队，必须明确点击执行／加入队列。
-3. 队列按 Topic 首次入队顺序推进。同一 Topic 中已提交的目标会一起完成各自的采集、分析和报告，然后进入下一个 Topic；该 Topic 内依赖已满足且资源互不冲突的步骤最多并发 3 个。未轮到的 Topic 显示 **Queued**，不会提前执行。
+3. 队列按 Topic 首次入队顺序推进。同一 Topic 中已提交的目标会一起完成各自的采集、分析和报告，然后进入下一个 Topic；该 Topic 内依赖已满足且资源互不冲突的步骤最多并发 Settings → General 中的 Research 并发上限（默认 3 个）。未轮到的 Topic 显示 **Queued**，不会提前执行。自动化期次使用独立队列与独立并发额度，不占用 Research 名额，也不进入这个 Topic 队列。
 4. 某个步骤失败后先按 30 秒间隔自动重试，最多 3 次。重试耗尽、需要用户接管或审批失效时保留失败／阻塞状态；当前 Topic 的其他可执行步骤结束后自动进入下一个 Topic。队列结束显示成功数和需要处理的目标，修复后可将失败目标重新加入队尾。
 5. **Pause after task** 暂停后续步骤及重试派发，仍可向队列追加；**Continue** 继续尚未处理的 Topic，不重跑之前已失败的 Topic；**Stop all** 停止本队列已提交任务并清空等待项，保留已有成果。保存失败会暂停队列。若下一步在创建执行记录前就无法提交（例如模型配置或上下文检查未通过），也会暂停当前 Topic，保留具体原因到 Goal 的 Activity；修复后点击 Continue，不会把这种情况当成重试耗尽而跳过。
 
@@ -237,7 +237,8 @@ Board、List、左侧任务树和右侧详情共用 `Store::task_status` 的阶�
 
 ### 并发与会话续接
 
-- 每次只推进一个 Topic，Topic 内最多同时执行 3 个依赖已满足且资源独立的任务。其他 Topic 可提前排队，完成当前 Topic 后自动继续。共享目录、浏览器 Space 或 session 的步骤仍串行。
+- 每次只推进一个 Topic，Topic 内最多同时执行 Settings → General 中 Research 并发上限（默认 3 个）所允许的、依赖已满足且资源独立的任务。其他 Topic 可提前排队，完成当前 Topic 后自动继续。共享目录、浏览器 Space 或 session 的步骤仍串行。
+- 自动化期次有独立的并发上限（默认 2 个，只统计正在运行的期次）。Research 队列满载不会阻止自动化启动，自动化池满载也不会占用 Research 名额；排队信息和结果都在 Automations → Progress & results 中查看。两者仅在真实共享目录、浏览器 Space 或 session 时互相等待。
 - 新目标的文件放在项目目录下 `.research/goal-{内部ID}`。已有执行历史的目标会先安全复制到独立目录，再续接 session；复制期间会等待共用旧目录的任务释放资源。
 - 关闭后不会自动重启任务。再次启动未完成任务时，如最近一次是中断、失败、停止或阻塞，且模型、任务类型、目录仍兼容，会使用原 OpenCode session ID 继续；完整当前任务输入仍会提供给模型。成功后的重跑或更换模型会新建 session。
 - 会话 ID 在启动前保存。强制退出 App 不保证 OpenCode 子进程立即停止；同一 session 有进程锁，旧进程仍存活时会明确拒绝重复启动，待其退出后可再次续接。
@@ -264,7 +265,7 @@ SQLite 格式 v2 将 workspace 内的项目目录、运行目录、待复制源�
 
 唯一保存在系统应用目录中的配置是 `~/Library/Application Support/What the hell are you planning/workspace-location.json`，只记录所选根目录。OpenCode 自身的账户和会话数据库、ego(lite) 的浏览器配置仍由它们各自管理；临时进程锁保留在系统临时目录。
 
-排队详情显示具体占用资源及阻塞任务，并区分入队和实际开始时间。同一个 Topic 中不同 goal 或步骤在目录、浏览器 Space 和 session 均独立时可并行，最多同时运行 3 个任务；其他 Topic 等待整个当前 Topic 完成或结束失败处理。
+排队详情显示具体占用资源及阻塞任务，并区分入队和实际开始时间。同一个 Topic 中不同 goal 或步骤在目录、浏览器 Space 和 session 均独立时可并行，最多同时运行 Settings → General 中 Research 并发上限（默认 3 个）所允许的任务数；其他 Topic 等待整个当前 Topic 完成或结束失败处理。自动化期次使用自己的并发池和 Automations → Progress & results 队列，不受此处名额影响。
 
 
 ### 结果中的图表与公式

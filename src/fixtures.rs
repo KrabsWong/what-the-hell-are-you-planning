@@ -243,6 +243,7 @@ impl Store {
             report_publishing: Default::default(),
             publications: vec![],
             max_concurrent_runs: crate::scheduler::DEFAULT_CONCURRENT_RUNS,
+            max_concurrent_automations: crate::scheduler::DEFAULT_CONCURRENT_AUTOMATIONS,
             research_config: Default::default(),
             appearance: crate::appearance::Appearance::Dark,
             last_active_project: None,

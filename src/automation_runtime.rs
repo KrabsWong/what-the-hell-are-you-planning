@@ -1309,8 +1309,9 @@ impl TaskApp {
         true
     }
 
-    /// Load a queued occurrence into the shared run queue. The occurrence stays
-    /// Queued until the queue actually starts the process.
+    /// Load a queued occurrence into the app queue. The scheduler admits it only
+    /// through the automation concurrency pool; the occurrence stays Queued until
+    /// the queue actually starts the process.
     pub(crate) fn enqueue_automation_occurrence(
         &mut self,
         occurrence_id: u64,

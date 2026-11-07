@@ -3,7 +3,7 @@ use crate::{
     app::{Scope, TaskApp},
     appearance::Appearance,
     automation::{DefinitionStatus, OccurrenceStatus},
-    domain::Store,
+    domain::{Stage, Store},
     persistence::Storage,
 };
 use gpui_kit::{test::TestWindowExt, *};
@@ -29,6 +29,7 @@ pub fn run() {
     archive_recovery_chain(&root);
     entry_route_check(&root);
     queue_chain(&root);
+    independent_pools_check(&root);
     let snapshot = ui_interaction(&root);
     render_matrix(&root, &snapshot);
     println!("Automation QA passed · {}", root.display());
@@ -1433,6 +1434,11 @@ print(json.dumps({'type':'text','part':{'text':json.dumps({'status':'complete','
             })
         })
         .unwrap();
+    assert_eq!(
+        read_state(&mut cx, &app, |a| a.scope.clone()),
+        Scope::AutomationRuns,
+        "a manual automation run follows into Automation results, not Research results"
+    );
     let running_deadline = std::time::Instant::now() + Duration::from_secs(10);
     loop {
         let running = cx
@@ -1515,6 +1521,240 @@ print(json.dumps({'type':'text','part':{'text':json.dumps({'status':'complete','
     println!("queue chain passed (same-automation A2 waits, A1 completes, then A2)");
 }
 
+const POOL_PLAN: &str = r#"{"tasks":[{"title":"Collect pool evidence","instructions":"Collect the pool fixture.","kind":"collect","depends_on":[]},{"title":"Analyze pool evidence","instructions":"Analyze the pool fixture.","kind":"analyze","depends_on":[0]},{"title":"Write pool report","instructions":"Write the pool fixture report.","kind":"advise","depends_on":[1]}]}"#;
+
+fn pool_research_goal(store: &mut Store, topic: u64, title: &str) -> u64 {
+    let id = store
+        .create_research_goal_in_topic(
+            title.into(),
+            format!("Independent pool fixture. {title}"),
+            1,
+            Some(topic),
+        )
+        .unwrap();
+    store.apply_research_plan(id, POOL_PLAN).unwrap();
+    store
+        .task_mut(id)
+        .unwrap()
+        .research
+        .as_mut()
+        .unwrap()
+        .requires_approval = true;
+    store.set_stage(id, Stage::Planned).unwrap();
+    id
+}
+
+/// Research and automation occupancy are independent pools. A full research
+/// queue must not block automation periods and vice versa.
+fn independent_pools_check(root: &Path) {
+    let directory = root.join("independent-pools");
+    std::fs::create_dir_all(&directory).unwrap();
+    let cli = directory.join("fake-opencode");
+    std::fs::write(
+        &cli,
+        r#"#!/usr/bin/python3
+import json,os,time
+root=os.getcwd()
+open(os.path.join(root,'pool-started'),'w').write('1')
+while not os.path.exists(os.path.join(root,'pool-release')):
+    time.sleep(0.02)
+print(json.dumps({'type':'text','part':{'text':json.dumps({'status':'complete','report':'Pool fixture report','sources':[{'title':'Pool fixture','url':'https://example.com/pool','published_at':'unknown'}]})}}),flush=True)
+"#,
+    )
+    .unwrap();
+    {
+        use std::os::unix::fs::PermissionsExt;
+        std::fs::set_permissions(&cli, std::fs::Permissions::from_mode(0o700)).unwrap();
+    }
+    let project = directory.join("project");
+    std::fs::create_dir_all(&project).unwrap();
+    let mut store = model_store(&project);
+    store.opencode_path = cli.to_string_lossy().into();
+    store.default_model = "fixture/automation".into();
+    store.research_config.models =
+        ["fixture/plan", "fixture/collect", "fixture/analyze", "fixture/advise"].map(String::from);
+    store.max_concurrent_runs = 1;
+    store.max_concurrent_automations = 1;
+    let topic = store.create_topic(1, "Pool research").unwrap();
+    pool_research_goal(&mut store, topic, "Research A");
+    pool_research_goal(&mut store, topic, "Research B");
+    let automations: Vec<u64> = ["Automation A", "Automation B"]
+        .into_iter()
+        .map(|name| {
+            let id = draft(&mut store, name);
+            enable(&mut store, id);
+            id
+        })
+        .collect();
+    let path = directory.join("workspace.sqlite3");
+    Storage::new(path.clone()).save(&store).unwrap();
+
+    let mut cx = HeadlessAppContext::with_platform(
+        platform::current_platform(true).text_system(),
+        Arc::new(crate::ui_assets::AppAssets),
+        platform::current_headless_renderer,
+    );
+    cx.update(init);
+    let mut app = None;
+    let window = cx
+        .open_window(size(px(1000.), px(720.)), |w, cx| {
+            let view = cx.new(|cx| TaskApp::new_mock(w, cx));
+            view.update(cx, |a, cx| {
+                a.attach_storage(Storage::new(path.clone()), w, cx);
+                assert!(a.storage_error.is_empty(), "{}", a.storage_error);
+                // Create the manual requests after startup recovery, otherwise
+                // recovery would enqueue them before the test controls the queue.
+                let now = chrono::Utc::now().timestamp();
+                for id in &automations {
+                    a.store
+                        .request_manual_occurrence(*id, &format!("pool-{id}"), now)
+                        .unwrap();
+                }
+                a.start_todo_batch(1, cx);
+                cx.notify();
+            });
+            app = Some(view.clone());
+            cx.new(|cx| base::Root::new(view, w, cx))
+        })
+        .unwrap();
+    let app = app.unwrap();
+    let handle: AnyWindowHandle = window.into();
+    let occurrences: Vec<u64> = automations
+        .iter()
+        .map(|id| {
+            let key = format!("manual:{id}:pool-{id}");
+            read_state(&mut cx, &app, |a| {
+                a.store
+                    .automation_occurrence_by_key(&key)
+                    .unwrap()
+                    .id
+            })
+        })
+        .collect();
+    let wait_for = |cx: &mut HeadlessAppContext, label: &str, done: &dyn Fn(&TaskApp) -> bool| {
+        let deadline = std::time::Instant::now() + Duration::from_secs(60);
+        loop {
+            let finished = cx
+                .update_window(handle, |_, _, cx| {
+                    app.update(cx, |a, cx| a.poll_runtime(cx));
+                    done(app.read(cx))
+                })
+                .unwrap();
+            if finished {
+                return;
+            }
+            assert!(std::time::Instant::now() < deadline, "pool check timed out: {label}");
+            std::thread::sleep(Duration::from_millis(20));
+        }
+    };
+
+    // Research limit 1: one research step runs, the second goal waits.
+    wait_for(&mut cx, "one research task running", &|a| {
+        a.research_slots_used() == 1 && !a.queued_runs.is_empty()
+    });
+    let pool_debug = read_state(&mut cx, &app, |a| {
+        (
+            a.active_runs
+                .iter()
+                .map(|active| {
+                    a.store
+                        .runs
+                        .iter()
+                        .find(|run| run.id == active.id)
+                        .map(|run| (run.id, run.task_id, run.status.clone(), run.automation_occurrence_id))
+                        .unwrap_or((active.id, 0, "missing".into(), None))
+                })
+                .collect::<Vec<_>>(),
+            a.store
+                .automation_occurrences
+                .iter()
+                .map(|occurrence| (occurrence.id, occurrence.status, occurrence.trigger_key.clone()))
+                .collect::<Vec<_>>(),
+        )
+    });
+    assert_eq!(
+        read_state(&mut cx, &app, |a| a.automation_slots_used()),
+        0,
+        "{pool_debug:?}"
+    );
+
+    // A full research pool must not prevent an automation period from starting.
+    cx.update_window(handle, |_, _, cx| {
+        app.update(cx, |a, cx| a.enqueue_automation_occurrence(occurrences[0], cx));
+    })
+    .unwrap();
+    wait_for(&mut cx, "automation A running alongside research", &|a| {
+        a.automation_slots_used() == 1
+    });
+    assert_eq!(read_state(&mut cx, &app, |a| a.research_slots_used()), 1);
+
+    // The automation pool is full: a second automation period waits without
+    // touching the queued research goal.
+    cx.update_window(handle, |_, _, cx| {
+        app.update(cx, |a, cx| a.enqueue_automation_occurrence(occurrences[1], cx));
+    })
+    .unwrap();
+    wait_for(&mut cx, "automation B queued", &|a| {
+        a.queued_runs.len() == 2
+            && a.store.occurrence(occurrences[1]).unwrap().status == OccurrenceStatus::Queued
+    });
+    assert_eq!(read_state(&mut cx, &app, |a| a.automation_slots_used()), 1);
+    assert_eq!(read_state(&mut cx, &app, |a| a.research_slots_used()), 1);
+
+    // Raising only the automation limit admits B while research stays capped.
+    cx.update_window(handle, |_, _, cx| {
+        app.update(cx, |a, cx| {
+            a.set_automation_concurrency(2, cx);
+            a.poll_runtime(cx);
+        });
+    })
+    .unwrap();
+    wait_for(&mut cx, "two automations running", &|a| {
+        a.automation_slots_used() == 2
+    });
+    assert_eq!(read_state(&mut cx, &app, |a| a.research_slots_used()), 1);
+
+    // Raising only the research limit admits the waiting research goal while
+    // both automation periods keep running.
+    cx.update_window(handle, |_, _, cx| {
+        app.update(cx, |a, cx| {
+            a.set_execution_concurrency(2, cx);
+            a.poll_runtime(cx);
+        });
+    })
+    .unwrap();
+    wait_for(&mut cx, "two research tasks running", &|a| {
+        a.research_slots_used() == 2
+    });
+    assert_eq!(read_state(&mut cx, &app, |a| a.automation_slots_used()), 2);
+
+    // Release the fixture and stop cleanly.
+    for run in read_state(&mut cx, &app, |a| {
+        a.store
+            .runs
+            .iter()
+            .filter(|run| !run.directory.is_empty())
+            .map(|run| run.directory.clone())
+            .collect::<Vec<_>>()
+    }) {
+        let _ = std::fs::write(std::path::Path::new(&run).join("pool-release"), "");
+    }
+    cx.update_window(handle, |_, _, cx| {
+        app.update(cx, |a, cx| {
+            a.todo_batch = None;
+            a.queued_runs.clear();
+            let running: Vec<u64> = a.active_runs.iter().map(|active| active.id).collect();
+            for id in running {
+                a.cancel_run_id(id, cx);
+            }
+        });
+    })
+    .unwrap();
+    std::thread::sleep(Duration::from_millis(120));
+    cx.update_window(handle, |_, w, _| w.remove_window()).unwrap();
+    println!("independent pools passed (research and automation limits do not overlap)");
+}
+
 fn screenshot(cx: &mut HeadlessAppContext, handle: AnyWindowHandle, directory: &Path, name: &str) {
     for _ in 0..4 {
         std::thread::sleep(Duration::from_millis(40));
@@ -1569,6 +1809,19 @@ fn ui_interaction(root: &Path) -> PathBuf {
     let app = app.unwrap();
     let handle: AnyWindowHandle = window.into();
     screenshot(&mut cx, handle, &directory, "00-empty-list.png");
+    // Automations is a sibling of Research's All, so its list has no All crumb
+    // and no Back action to a page it does not belong to.
+    cx.update_window(handle, |_, w, cx| {
+        let (crumbs, current) = app.read(cx).navigation_path();
+        assert!(
+            crumbs.is_empty(),
+            "automation list has no parent crumbs, found {}",
+            crumbs.len()
+        );
+        assert_eq!(current, "Automations");
+        assert!(w.try_find("navigation-back").is_none());
+    })
+    .unwrap();
 
     let long_name = "每日行业简报与异常变化追踪（面向非技术读者，包含来源、时间范围和证据缺口）";
     cx.update_window(handle, |_, w, cx| {
@@ -2006,6 +2259,13 @@ fn ui_interaction(root: &Path) -> PathBuf {
         Scope::AutomationRuns
     );
     assert_eq!(read_state(&mut cx, &app, |a| a.title()), "Automation results");
+    let (crumbs, current) = read_state(&mut cx, &app, |a| a.navigation_path());
+    assert_eq!(current, "Automation results");
+    assert_eq!(
+        crumbs.iter().map(|(_, title, _)| title.as_str()).collect::<Vec<_>>(),
+        vec!["Automations"],
+        "automation results must not borrow Research's All crumb"
+    );
     let latest = read_state(&mut cx, &app, |a| {
         a.store
             .automation_occurrences
@@ -2035,6 +2295,50 @@ fn ui_interaction(root: &Path) -> PathBuf {
     assert_eq!(
         read_state(&mut cx, &app, |a| a.scope.clone()),
         Scope::Automations
+    );
+
+    // A period waiting for its scheduled retry is cancellable directly from
+    // Progress & results, without pausing the automation or stopping a process.
+    let waiting = cx
+        .update_window(handle, |_, _, cx| {
+            app.update(cx, |a, cx| {
+                let now = chrono::Utc::now().timestamp();
+                let occurrence = a
+                    .store
+                    .request_manual_occurrence(id, "waiting-retry", now)
+                    .unwrap();
+                a.store.occurrence_mut(occurrence.id).unwrap().mark_running(now).unwrap();
+                a.store
+                    .wait_for_retry(occurrence.id, "Waiting for the approved step retry.")
+                    .unwrap();
+                a.persist_if_changed(true);
+                cx.notify();
+                occurrence.id
+            })
+        })
+        .unwrap();
+    cx.update_window(handle, |_, w, cx| {
+        w.click("automation-results", cx);
+        w.render_frame(cx);
+        let cancel = format!("cancel-occurrence-{waiting}");
+        assert!(w.try_find(ElementId::Name(cancel.clone().into())).is_some());
+        w.click(ElementId::Name(cancel.into()), cx);
+        w.render_frame(cx);
+    })
+    .unwrap();
+    assert_eq!(
+        read_state(&mut cx, &app, |a| a.store.occurrence(waiting).unwrap().status),
+        OccurrenceStatus::Cancelled
+    );
+    assert_eq!(
+        read_state(&mut cx, &app, |a| a.scope.clone()),
+        Scope::AutomationRuns,
+        "cancelling from the row keeps the user on Automation results"
+    );
+    assert_eq!(
+        read_state(&mut cx, &app, |a| a.automation_ui.result_dialog),
+        None,
+        "the row's cancel action must not also open the result dialog"
     );
     path
 }

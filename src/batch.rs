@@ -63,6 +63,7 @@ impl Store {
     pub fn todo_batch_items(&self, project: u64) -> Vec<u64> {
         self.tasks.iter().filter(|task| {
             task.project_id == project && !self.task_is_archived(task.id)
+                && task.automation_id.is_none()
                 && task.research.as_ref().is_some_and(|r| r.kind == ResearchKind::Goal)
                 && matches!(task.stage, Stage::Planned | Stage::InProgress)
                 && self.goal_execution_approved(task.id)
@@ -170,6 +171,11 @@ mod tests {
             .create_research_goal("Other".into(), "Scope".into(), p)
             .unwrap();
         s.task_mut(other).unwrap().project_id = p + 1;
+        let automation = s
+            .create_research_goal("Automation period".into(), "Scope".into(), p)
+            .unwrap();
+        s.task_mut(automation).unwrap().automation_id = Some(1);
+        s.task_mut(automation).unwrap().stage = Stage::Planned;
         assert_eq!(s.todo_batch_items(p), vec![goal]);
         assert!(s.next_todo_batch_task(p, ordinary).is_err());
         assert_eq!(s.next_todo_batch_task(p, goal), Ok(Some(steps[0])));

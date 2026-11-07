@@ -33,7 +33,7 @@ Rust/gpui-kit 原生任务工作台，支持项目自动拆题、Kanban 人工�
 
 ## Automations
 
-侧栏「Automations」与 All 并列，并可展开为 All automations 和自动化专属的 Progress & results；自动化结果与普通 project/topic/goal 的研究结果相互独立。它让用户描述一项需要周期执行的信息工作。创建先选类型：Quick task 只需一条指令与手动设置的周期；Research automation 用一句话需求生成可复核的 goals，再按同一批准计划周期执行。自动化产物统一放在自动生成的 Automations 容器中，不进入普通项目与 topic；Research 每期新建独立 topic，Quick 直接挂在期次上。计划只在创建或显式 Replan 时生成，期次不重新规划。保存草稿或生成计划不执行研究；编辑需要新版本和重新批准。
+侧栏「Automations」与 All 并列，并可展开为 All automations 和自动化专属的 Progress & results；自动化结果与普通 project/topic/goal 的研究结果相互独立。它让用户描述一项需要周期执行的信息工作。创建先选类型：Quick task 只需一条指令与手动设置的周期；Research automation 用一句话需求生成可复核的 goals，再按同一批准计划周期执行。自动化产物统一放在自动生成的 Automations 容器中，不进入普通项目与 topic；Research 每期新建独立 topic，Quick 直接挂在期次上。计划只在创建或显式 Replan 时生成，期次不重新规划。保存草稿或生成计划不执行研究；编辑需要新版本和重新批准。自动化期次使用独立并发额度（默认 2，仅统计正在运行的期次）和独立队列，不占用 Research 并发名额，也不进入 Research 的 Topic FIFO 或 Progress & results；Research 并发默认 3，两者互不影响，只有真实共享的目录、浏览器 Space 或 session 仍会串行。
 
 首版只在应用打开且电脑唤醒时运行，不提供后台守护进程。错过周期默认只补最近一次，超过允许延迟则跳过；暂停不补历史。立即运行不移动定时游标。仅支持 OpenCode，不执行发信、发布、交易、脚本或外部写操作；真实运行时工具拒绝和真实模型链路仍需独立验证。验证完成前，产品构建默认禁用真实无人值守派发：用户可以创建和检查草稿，但启用/运行受限并显示原因。
 

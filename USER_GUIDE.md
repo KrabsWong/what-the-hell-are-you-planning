@@ -1,310 +1,297 @@
-# What the hell are you planning? 操作指南
+# What the hell are you planning? User guide
 
-本工具把一个研究目标拆成有依赖的任务，使用本地 OpenCode 按阶段调用模型，保存执行日志、材料、报告和来源。网页搜集由本地 ego(lite) Space 完成。
+This tool breaks a research goal into tasks that depend on one another. It uses a local OpenCode or Codex agent, choosing the agent and model for each stage, and keeps run logs, materials, reports and sources. You can also turn repeated information checks into scheduled automations. Web research is carried out by the local ego(lite) Space.
 
-日常动线：**选择项目 → 审核题目并移入 Todo → Run Todo → Research results 阅读成果**。需要补充证据时，打开任务添加 PDF、截图或评论，再继续研究。
+Everyday flow: **choose a project → review topics and move them into Todo → Run Todo → read the results in Research results**. Recurring tasks go through **Automations → New automation**, and you check each period's results in **Automation results**. When you need more evidence, open the task, add PDFs, screenshots or comments, and then continue the research.
 
-任务页默认突出执行、材料、状态和结果。已经完成的研究步骤以 **View result** 为主操作，**Run again** 可再次执行；**More details…** 中保留模型、工作目录、Cycle、Bucket、父任务和标签。研究页右上 **Advanced settings…** 可进入模型与浏览器设置，不会清空尚未提交的目标输入。
+The task page puts running, materials, status and results first. For a research step that has already finished, the main action is **View result**, and **Run again** runs it once more. **More details…** keeps the model, working folder, Cycle, Bucket, parent task and tags. **Advanced settings…** at the top right of the research page opens the model and browser settings, and does not clear a goal you have typed but not yet submitted.
 
-## 1. 首次启动与界面
+## 1. First launch and the interface
 
-启动顺序为 **确认 Workspace 并取得锁 → 升级旧数据（如需）→ 检查 AI agents 和 ego(lite)**。旧数据库升级不依赖工具是否已安装。升级在后台进行，界面显示动态 Logo 与备份、路径转换、校验阶段；失败时停止后续检查并提供重试入口。没有升级且三类条件均已就绪时直接进入主界面；升级成功后设置页显示备份位置。
+On launch you first confirm the workspace, then check the AI agents and ego(lite).
 
-AI agents 分别检测 OpenCode 和 Codex 的 `--version`，**至少一个可用即可通过**，无需同时安装；两者都不可用时才阻止继续。ego(lite) 仍需读取本机 `ego-browser skill` 的完整指南并完成首次设置。可修改各工具路径后点击 **Check again**，更改成功 Agent 的路径会使该项检测失效；另一个已验证且路径未变的 Agent 仍可满足条件。Workspace、至少一个 Agent、ego(lite) 就绪后 **Continue** 才可用。启动检测不调用模型、不检查订阅额度、不自动切换已保存的阶段配置；进入应用后在 Settings 选择实际可用的 Agent 和模型。
+The AI agent check runs separately against OpenCode and Codex using `--version`. **Only one of them needs to work to pass**; you do not have to install both, and the app only stops you when neither is available. ego(lite) still needs to read the full guide for the local `ego-browser skill` and complete its first-time setup. You can change the path for each tool and then click **Check again**. If you change the path of an agent that was passing, that check fails; another agent that is already verified and whose path has not changed can still satisfy the requirement. **Continue** becomes available once the workspace, at least one agent and ego(lite) are ready. The launch checks do not call a model, do not check subscription limits and do not switch your saved stage settings; once you are in the app, choose the agent and model you actually want in Settings.
 
 
-运行 `cargo run`，或打开已构建的 `target/debug/what-the-hell-are-you-planning`。当前真实验证环境是 Apple Silicon macOS，需要已配置提供商的 OpenCode。
+Run `cargo run`, or open the built `target/debug/what-the-hell-are-you-planning`. The currently verified environment is Apple Silicon macOS, and it needs at least one configured OpenCode or Codex.
 
-新工作区只有一个可配置的 Workspace 项目，没有演示任务、预设模型或模拟运行。已有工作区恢复真实任务和历史。侧栏底部可切换 **Light mode / Dark mode**，偏好自动保存，默认浅色。
+A new workspace has a single default project, **Workspace**, with no demo tasks, preset models or simulated runs. An existing workspace restores your real tasks and history. The icon next to Settings at the bottom of the sidebar cycles through **System / Light / Dark**, and the choice is saved automatically.
 
-侧栏点击已完成的 Goal 会直接显示当前有效的最终报告，已完成 Task 显示自身结果；可通过 **View original goal / View original task** 查看原始任务信息。未完成、失败、阻塞、运行中或结果已失效时仍打开任务详情；手动完成但没有结果的任务也保持详情页。
+Clicking a finished Goal in the sidebar shows its current final report directly, and a finished Task shows its own result. **View original goal / View original task** shows the original task information. If a task is unfinished, failed, blocked, running or has an outdated result, its details still open; a task you completed by hand without a result also stays on its details page.
 
-侧栏启动时只展开上次使用的 Project，显示它的 Topic 列表；其他项目、Topic 内的任务和子步骤默认收起。点击箭头可手动展开，打开具体任务会展开其所在层级。首次使用或上次项目已删除时，所有项目默认收起。
+When the app starts, the sidebar expands only the Project you used last and shows its Topic list; other projects, and the tasks and sub-steps inside a Topic, are collapsed by default. Click the arrow to expand them yourself, and opening a specific task expands the levels it sits in. On first use, or if the last project has been deleted, every project is collapsed by default.
 
-| 区域 | 用途 |
+| Area | What it is for |
 | --- | --- |
-| All research / Projects | 浏览研究目标与任务、按状态筛选、列表或看板、新建研究、编辑、归档 |
-| Settings（侧栏底部） | 设置默认模型和四个研究阶段使用的模型 |
-| Market research | 提出研究目标、查看已有研究；高级配置按需打开 |
-| Settings → Research models | 查看四个研究阶段实际使用的模型，点击 Edit research models 修改 |
-| Research results | 看研究进展、报告与来源；技术详情中查看模型和日志 |
-| Automations | 独立的自动化分区：All automations 管理定义，Automation results 查看期次结果 |
-| Archive | 查看、恢复归档任务 |
+| All research / Projects | Browse research goals and tasks, filter by status, switch between list and board, start new research, edit, archive |
+| Settings (bottom of the sidebar) | Set the global Agent/model, overrides for the four research stages, concurrency and report publishing |
+| Market research | Propose a research goal and see existing research; advanced configuration opens only when you need it |
+| Settings → Agent & models | See and change the Agent and model actually used globally and by each stage |
+| Research results | Follow research progress, reports and sources; technical details show the model and logs |
+| Automations | A separate automation area: All automations manages the definitions, Automation results shows each period's results |
+| Archive | View and restore archived tasks |
 
-操作按主次呈现：项目页以执行或规划为主要操作，新建和编辑使用轻量文字入口；List / Board 是分段切换，显示选项收在调节图标中。项目规划与工作目录收在 ⋯ 菜单中。表单控件保留边框，状态和标签只作为信息显示。图标按钮提供悬停提示、键盘焦点和辅助功能名称。
+Actions are arranged by importance: on a project page, running or planning is the main action, while creating and editing use light text links; List / Board is a segmented switch, and display options are tucked into the sliders icon. Project planning and the working folder live in the ⋯ menu. Form controls keep their borders, while statuses and tags are shown as information only. Icon buttons have hover tooltips, keyboard focus and accessible names.
 
-**All** 默认包含全部未归档任务。搜索框左侧的状态下拉可选 **All statuses / Open / Backlog / Todo / In progress / In review / Done / Cancelled**；Open 排除 Done 和 Cancelled。状态筛选与搜索同时生效，归档任务仍在 Archive。All 中不再使用 Show completed，项目等其他视图仍保留此显示选项。
+**All** includes every task that is not archived by default. The status dropdown to the left of the search box offers **All statuses / Open / Backlog / Todo / In progress / In review / Done / Cancelled**; Open leaves out Done and Cancelled. The status filter and search work together, and archived tasks stay in Archive. Show completed is no longer used in All, while other views such as a project still offer this display option.
 
-全局列表按项目分组，点击分组标题可进入项目；顶部固定的 **← Back** 原路返回并恢复搜索、状态筛选和 List / Board 视图。全局看板的卡片显示项目名称。项目列表仍按父任务与子步骤组织。
+The global list groups tasks by project, and clicking a group heading takes you into that project; the fixed **← Back** at the top takes you back the way you came and restores your search, status filter and List / Board view. Cards on the global board show the project name. A project's own list is still organized by parent task and sub-steps.
 
-**Research results** 顶部先选择项目。研究目标标题是详情入口，点击可查看目标范围、问题、子任务和补充材料；多个目标时，旁边的 **Switch ▾** 用于切换，只有一个目标时不显示无效的切换入口。中间只展示当前范围内有执行记录的任务。每项显示任务编号、类型、最近状态和完整标题，不再用多层树混排目标与执行记录。**Planning activity** 单独收起生成题目、拆分目标等规划记录。右侧 **Latest / Earlier version** 下拉可比较同一任务的历次执行结果，切换版本不会改变任务列表。打开报告时自动定位到它所属的项目和目标。
+At the top of **Research results**, choose a project first. The research goal title is the way into the details: click it to see the goal's scope, questions, sub-tasks and additional materials. When there are several goals, **Switch ▾** next to the title switches between them, and when there is only one goal no useless switch is shown. The middle only lists tasks in the current scope that have run records. Each entry shows the task number, type, latest status and full title, so goals and run records are no longer mixed together in a multi-level tree. **Planning activity** separately folds away planning records such as topic generation and goal breakdowns. The **Latest / Earlier version** dropdown on the right compares the past results of the same task, and switching versions does not change the task list. Opening a report automatically takes you to the project and goal it belongs to.
 
-全局只保留左上角一个 **← Back**（快捷键 **⌘[**），按实际访问顺序返回，不固定跳回任务列表。从报告进入目标、再进入子任务，可连续返回“子任务 → 目标 → 原报告”；通过 **Open tasks** 切换任务也遵循同样规则。返回会恢复搜索、状态筛选、List / Board、设置子页、报告执行版本、来源展开状态及详情阅读位置，不会回滚任务数据。弹窗中快捷键不触发页面回退。
+There is only one **← Back** in the whole app, at the top left (shortcut **⌘[**). It goes back in the order you actually visited pages rather than always jumping to the task list. If you go from a report into a goal and then into a sub-task, you can step back through "sub-task → goal → the report you came from", and switching tasks with **Open tasks** follows the same rule. Going back restores your search, status filter, List / Board view, settings sub-page, the report version you were viewing, whether sources were expanded, and where you were reading in the details; it does not undo any task data. The shortcut does not trigger page navigation while a dialog is open.
 
-Back 旁的单行位置路径用于显示所属关系，例如 **项目 / 父任务 / 当前任务**，报告页面显示 **Research results / 项目 / 研究目标 / 当前结果**。项目和父任务是可点击入口；路径跳转之后仍可使用 Back 回到来处。任务详情不再重复显示第二个返回按钮。**Open tasks** 只负责切换已打开任务，菜单底部的 **Close current task** 可关闭当前任务并返回；后台规划完成时不会抢走正在查看的其他页面。
+The single-line location path next to Back shows where you are, for example **project / parent task / current task**, and on a report page it reads **Research results / project / research goal / current result**. Projects and parent tasks are clickable; after following the path you can still use Back to return to where you came from. Task details no longer show a second back button. **Open tasks** only switches between tasks you already have open, and **Close current task** at the bottom of the menu closes the current task and takes you back; when planning finishes in the background it does not pull you away from another page you are reading.
 
-报告底部 **Sources · N** 默认折叠，点击展开来源链接与发布日期，再次点击收起；切换任务或执行版本后重新折叠。报告正文中的引用和链接保持可用。
+**Sources · N** at the bottom of a report is collapsed by default; click it to show the source links and publication dates, and click again to collapse it. It collapses again when you switch tasks or run versions. Citations and links in the report body keep working.
 
-任务详情中的 Stage、Priority、Topic project 等属性使用文字下拉：箭头表示可修改，状态色与悬停反馈辅助辨认。执行中和归档任务的属性保持不可修改。
+Properties in task details such as Stage, Priority and Topic project use text dropdowns: the arrow means the value can be changed, and the status color and hover feedback help you tell them apart. Properties of running and archived tasks stay read-only.
 
-Project 页面右上角 **⋯ → Rename project…** 可打开应用内改名弹窗。名称去除首尾空白后须为 1–160 个字符；取消不修改数据。改名只更改展示名称，Project ID、任务编号、工作目录、Topic／任务关联和已有结果保持不变。正在执行、排队或等待恢复的有效规划同步兼容新名称；此前已经失效的规划不会重新变为有效。历史日志、提示词和报告中的旧名称保留原样。
+**⋯ → Rename project…** at the top right of a project page opens an in-app rename dialog. After trimming leading and trailing spaces the name must be 1–160 characters long; cancelling changes nothing. Renaming only changes the display name: the Project ID, task numbers, working folder, Topic/task relationships and existing results stay the same. Valid plans that are running, queued or waiting to resume work with the new name straight away; plans that were already invalid do not become valid again. Old names in historical logs, prompts and reports are left as they were.
 
-Project 的 List 视图按 Topic 分组显示 Goal，每组有独立标题和当前筛选下的 Goal 数量，点击标题可进入 Topic。迁移进来的 Topic 保持独立分组；组内沿用新内容在前的顺序，搜索后仍保留匹配 Goal 的 Topic 标题。
+A project's List view groups Goals by Topic. Each group has its own heading and a count of the Goals matching the current filter, and clicking the heading takes you into the Topic. Topics that were moved in stay as separate groups; inside a group, newer content comes first, and after a search the headings of Topics with matching Goals are still shown.
 
-跨 Project 迁移以整个 Topic 为单位：在详情的 **Topic project → Move topic…** 或 Topic 的 **⋯ → Move…** 中打开应用内迁移弹窗。先检查是否允许迁移：若存在阻止项，显示可滚动的原因与处理建议；否则显示可搜索的目标 Project 下拉列表，排除当前项目，并用项目编号区分同名项目。选定目标后点击 **Move topic** 确认；取消不会修改数据。没有其他项目时会提示先创建项目。确认后，Topic 下所有 Goal、子任务（含归档任务）、研究请求及关联一起更新，Topic 和任务 ID 保持不变。已有有效结果和批准状态保留，已失效的结果不会重新变为有效；历史报告、附件和运行目录保留原路径，不移动磁盘文件。
+Moving between projects works on whole Topics. Open the in-app move dialog from **Topic project → Move topic…** in the details, or from **⋯ → Move…** on a Topic. It first checks whether the move is allowed: if something blocks it, you see a scrollable list of reasons and suggestions for handling them; otherwise you get a searchable dropdown of target projects, excluding the current one and using project numbers to tell same-named projects apart. Pick a target and click **Move topic** to confirm; cancelling changes nothing. If there are no other projects, you are asked to create one first. Once confirmed, all Goals, sub-tasks (including archived ones), research requests and their connections under the Topic move together, while the Topic and task IDs stay the same. Existing valid results and approval status are kept, and outdated results do not become valid again; historical reports, attachments and run folders keep their old paths and no files are moved on disk.
 
-迁移确认框会先列出每一项阻止原因：任务编号、名称、运行状态／运行编号、研究请求规划，以及队列中的 Goal 和待执行子任务，并提供对应处理建议。有阻止项时只显示关闭按钮，不允许执行迁移；未阻止时显示取消和迁移按钮，确认后再次检查。
+The move confirmation dialog first lists every reason that blocks the move — task number, name, run status/run number, research request planning, plus Goals in the queue and sub-tasks waiting to run — along with a suggestion for each. When something blocks the move, only a close button is shown and the move cannot go ahead; when nothing blocks it, you get cancel and move buttons, and the checks run again after you confirm.
 
-阻止迁移的执行状态为 `Queued`（含等待重试）、`Running`、`Recovering`、`Cancelling`，以及未被更新尝试替代的 `Interrupted`。尚未完成的批量队列（含暂停队列）也会阻止迁移。排队或运行中的任务可在 Progress 使用 **Stop task**，停止中需等待完成；队列可完成后再迁移，或使用 **Stop all**，但它会停止整个批次，可能涉及其他 Topic。中断任务可从 **Paused projects** 恢复并完成；也可归档 Topic 并确认 **Stop and archive** 来放弃相关运行，等待停止完成后按需恢复 Topic。普通任务的待办、完成、取消等看板状态本身不阻止迁移。若旧数据存在跨 Topic 的任务依赖或同一研究请求关联多个 Topic，迁移会被拒绝，且不会部分修改数据。任务编辑表单不再单独更改任务所属项目，请使用上述 Topic 迁移入口。
+Run states that block a move are `Queued` (including waiting to retry), `Running`, `Recovering` and `Cancelling`, plus `Interrupted` runs that have not been replaced by a newer attempt. A batch queue that has not finished (including a paused queue) also blocks the move. A queued or running task can be stopped with **Stop task** in Progress, and you have to wait for the stop to finish. You can let the queue finish and then move, or use **Stop all**, which stops the whole batch and may affect other Topics. An interrupted task can be resumed from **Paused projects** and finished; you can also archive the Topic and confirm **Stop and archive** to give up the related runs, then restore the Topic later once the stop has finished. A normal task's board status, such as to-do, done or cancelled, does not by itself block a move. If a task depends across Topics, or a single research request is linked to several Topics, the move is refused and no data is partly changed. The task edit form no longer changes which project a task belongs to; use the Topic move entry points described above.
 
-使用 **Tab / Shift-Tab** 在控件之间移动，**Enter / Space** 激活按钮；多行表单的 Tab 用来移到下一控件。弹窗内焦点保持在弹窗中。`Generate topics` 灰显时，按钮附近会说明需要设置目录、选择模型或等待当前运行。
+Use **Tab / Shift-Tab** to move between controls and **Enter / Space** to activate buttons; in a multi-line form, Tab moves to the next control. Focus stays inside a dialog while it is open. When `Generate topics` is greyed out, the text near the button explains that you need to set a folder, choose a model or wait for the current run.
 
-**研究角色与任务状态不同**：Plan / News collection / Analysis / Investment brief 决定研究模型；Todo / In progress / Done 等表示任务状态。旧工作区中的普通任务和运行记录仍可查看。新的执行从研究目标或研究步骤发起。
+**A research role is not the same as a task status**: Plan / News collection / Analysis / Investment brief decide which model does the research, while Todo / In progress / Done and so on describe the task's status. New runs start from a research goal or a research step.
 
-## 2. 配置一次真实链路
+## 2. Set up a real run end to end
 
-1. 选择项目，应用已在 workspace 内自动分配工作目录；如需调整，通过 **项目标题旁 ⋯ → Working folder…** 选择 workspace 内的目录。Agent 会在该目录读写产物；这不是文件系统沙盒。
-2. 打开 **Settings → Agent & models**，确认 Agent 版本、路径及连接状态，点击 **Refresh local models** 更新模型目录。
-3. 在同一页选择全局 Agent 和模型；点击模型输入框可展开和搜索，修改自动保存。规划、收集、分析及最终报告默认共用它。
-4. 安装并完成 ego(lite) 首次设置，填写 `ego-browser` 路径，点击 **Check runtime**。常见路径为 `~/.local/bin/ego-browser`。
-5. **Open browser** 打开 ego(lite)。每个目标有独立 Space 名称，可在浏览器 Space 菜单中查看。运行时会读取安装版本的操作指南。
+1. Choose a project. The app has already assigned it a folder inside the workspace; to change it, use **⋯ next to the project title → Working folder…** and pick a folder inside the workspace. The agent reads and writes its output in that folder, but the app does not limit what it may do elsewhere on your system.
+2. Open **Settings → Agent & models**, check the Agent's version, path and connection status, and click **Refresh local models** to update the model list.
+3. On the same page, choose the global Agent and model; click the model field to expand it and search, and your change is saved automatically. Planning, collection, analysis and the final report share it by default.
+4. Install ego(lite) and complete its first-time setup, enter the `ego-browser` path and click **Check runtime**. The usual path is `~/.local/bin/ego-browser`.
+5. **Open browser** opens ego(lite). Each goal has its own Space name, which you can see in the browser's Space menu. When it runs, the app reads the operating guide that comes with the installed version.
 
-Check runtime 只表示本地指南可读；实际网页访问是否成功，需要看搜集任务的日志和来源。OpenCode 使用本机已有认证与权限配置，本应用不保存 API 密钥，也不替用户批准交互式权限请求。
+Check runtime only confirms that the local guide can be read; whether web access actually works is something you judge from the logs and sources of the collection task. OpenCode / Codex use the sign-in and permissions already set up on your machine, and this app does not store API keys or approve interactive permission requests on your behalf.
 
-### 全局模型与阶段覆盖
+### Global model and per-stage overrides
 
-全局设置对整个工作区的所有项目生效。可以选择本机 OpenCode 已配置的模型，或填写完整的 `provider/model`（支持 `#variant`）。例如 Tencent Token Plan 的 DeepSeek-V4.1-Flash-1017 原厂直供，对应当前本机标识 `tencent-token-plan/deepseek/deepseek-flash`；不要省略提供商前缀。
+Global settings apply to every project in the workspace. You can pick a model your local Agent has configured or can use, or type the full `provider/model` (with optional `#variant`). For example, Tencent Token Plan's DeepSeek-V4.1-Flash-1017, supplied directly by the vendor, corresponds to the local identifier `tencent-token-plan/deepseek/deepseek-flash`; do not leave out the provider prefix.
 
-- 四个研究阶段，模型输入留空时继承全局默认；填入模型后优先使用该阶段覆盖。页面会显示模型来源和完整标识。
-- **Settings → Agent & models** 集中显示全局配置及四个阶段覆盖。点击 **Use global for all stages** 清除所有阶段覆盖。
-- 单个阶段点击 **Use global** 恢复全局 Agent 与模型；已经继承时按钮禁用。所有修改自动保存。
-- 保存只影响此后启动的运行。进行中的任务继续使用启动时的模型，历史记录、研究结果和 Todo 批准状态保留；保存不会自动执行任务。
-- 旧工作区四个研究模型相同时自动迁移为全局默认；不同的阶段配置保留为覆盖。模型设置页会明确列出，便于检查。
+- For the four research stages, an empty model field inherits the global default; once you fill in a model, that stage's override is used first. The page shows where each model comes from and its full identifier.
+- **Settings → Agent & models** shows the global configuration and all four stage overrides together. Click **Use global for all stages** to clear every stage override.
+- For a single stage, click **Use global** to go back to the global Agent and model; the button is disabled when the stage already inherits them. All changes are saved automatically.
+- Saving only affects runs started afterwards. Tasks already in progress keep the Agent and model they started with, and your history, research results and Todo approvals are kept; saving never starts a task by itself.
 
-保存后，页面顶部会显示 **Saved** 或 **Not saved** 提示，可以点击 × 关闭。全局模型、阶段配置、研究设置、任务编辑和目录保存共用此反馈；成功表示已写入本地工作区，写入失败会保留错误原因。重复保存也会重新显示反馈。弹窗中的校验错误直接显示在表单内，项目范围保存也会在弹窗内显示成功提示。
+After saving, a **Saved** or **Not saved** message appears at the top of the page and you can dismiss it with ×. The global model, stage settings, research settings, task edits and folder changes all share this feedback; success means it was written to the local workspace, and a failed write keeps the reason. Saving again also shows the message again. Validation errors inside a dialog appear directly in the form, and saving a project's scope also shows a success message inside the dialog.
 
-## 3. 从项目生成候选题目，选择进入研究
+## 3. Generate candidate topics from a project and choose what to research
 
-侧栏 **Projects → +** 新建项目，例如“半导体行业研究”。创建后打开 **Plan project research**；空项目可点击 **Plan topics**，已有任务时通过 **⋯ → Plan research topics** 打开。
+Create a project with **Projects → +** in the sidebar, for example "Semiconductor industry research". After creating it, **Plan project research** opens; on an empty project you can click **Plan topics**, and if the project already has tasks you open it through **⋯ → Plan research topics**.
 
-1. 可选填写范围、市场、时间跨度和关注问题。不填则根据项目名称规划。项目范围通过 **Save scope** 保存。
-2. 项目工作目录已自动分配，在 **Settings** 配置全局模型；如需单独的规划模型，可在 **Market research → Advanced settings… → Plan** 覆盖。项目题目规划和后续研究步骤规划共用 Plan 的有效模型。
-3. 点击 **Generate topics**，Agent 生成 1–8 个独立研究题目及各自的范围、证据需求和交付物。生成过程可在 **Research results** 查看实时日志或取消。
-4. 成功后自动回到项目 Kanban。所有题目进入 **Backlog / Awaiting approval**，不开始搜集或分析。打开卡片可编辑范围、添加评论、PDF 或截图。
-5. 在卡片点击 **Approve research →**，或拖到 **Todo**，批准选中的题目。未选中的保留在 Backlog，也可移到 Cancelled 或归档。未经 Todo 批准，不能直接拖到 In progress / In review / Done 来绕过审核。
-6. 打开已批准题目，点击 **Plan research steps**，由 Agent 为这个题目生成采集、分析、报告的依赖任务。检查后使用 **Run one step / Continue research** 执行。
+1. You can optionally fill in the scope, market, time span and questions you care about. If you leave them empty, planning is based on the project name. Save the project scope with **Save scope**.
+2. The project's working folder has already been assigned; set up the global Agent and model in **Settings → Agent & models**. If you want separate settings for planning, override them in Market research → Advanced settings… → Plan. Project topic planning and later research step planning share whatever configuration Plan is using.
+3. Click **Generate topics** and the Agent produces 1–8 separate research topics, each with its own scope, evidence requirements and deliverables. You can follow the generation with live logs in **Research results**, or cancel it.
+4. On success you are taken back to the project Kanban. Every topic lands in **Backlog / Awaiting approval**, and no collection or analysis starts. Open a card to edit its scope or add comments, PDFs or screenshots.
+5. Approve the topics you want by clicking **Approve research →** on a card or dragging it to **Todo**. The ones you leave stay in Backlog, and you can also move them to Cancelled or archive them. Without approval through Todo you cannot drag a topic straight to In progress / In review / Done to skip review.
+6. Open an approved topic and click **Plan research steps**, and the Agent creates collection, analysis and report tasks for it, with their dependencies. Review them, then run them with **Run one step / Continue research**.
 
 ```mermaid
 flowchart LR
-  P[项目名称与可选范围] --> A[Agent 生成候选题目]
-  A --> B[Backlog 待审核]
-  B -->|用户批准或拖到 Todo| T[已批准研究目标]
+  P[Project name and optional scope] --> A[Agent generates candidate topics]
+  A --> B[Backlog, awaiting approval]
+  B -->|User approves or drags to Todo| T[Approved research goal]
   T --> G[Generate subtasks]
-  G --> C[采集 → 分析 → 报告]
+  G --> C[Collection → Analysis → Report]
 ```
 
-**批准不立即调用模型。** 准入检查也在执行层生效，未批准的题目和子任务不能运行。把已批准父题目退回 Backlog 会阻止后续调度；若已有步骤正在执行，它不会被立刻杀死，但撤回期间收到的结果会标记 Stale，连续执行停止。需要立即停止进程时使用 **Stop task**。重新批准后，仍然匹配输入的历史成果可以复用。
+**Approving does not call a model right away.** The approval check also applies when a task runs, so unapproved topics and sub-tasks cannot run. Moving an approved parent topic back to Backlog stops anything further being scheduled; a step that is already running is not interrupted immediately, but results that arrive while it is withdrawn are marked Stale and continued running stops. Use **Stop task** if you need to stop a run right away. After you approve again, past results that still match the inputs can be reused.
 
-每个项目目前生成一批候选题目，成功后 **⋯ → Planning details** 可查看范围；继续调整请编辑已有卡片，避免重生成覆盖你的选择。失败、取消或输入变化导致 Stale 时可重试；无效结果不会部分创建题目。题目保存生成时的项目范围快照，此后修改项目说明不会悄悄改写已批准任务。
+Each project currently generates one batch of candidate topics; after it succeeds, **⋯ → Planning details** shows the scope. To make further changes, edit the existing cards rather than generating again, so your choices are not overwritten. You can retry after a failure, a cancellation, or a Stale result caused by changed inputs; an invalid result never creates topics partially. A topic keeps a snapshot of the project scope at the time it was generated, so later edits to the project description do not quietly rewrite approved tasks.
 
-候选题目、准入状态、项目范围和规划运行均自动保存。旧工作区原有研究目标保持可执行，不要求补做审批。当前工作区版本为 4，可读取版本 1–3 并迁移；旧版程序会拒绝打开，避免丢失准入状态和全局模型配置。
+Candidate topics, approval state, project scope and planning runs are all saved automatically. A research goal does not run before it is approved.
 
-### 直接提出单个研究目标
+### Propose a single research goal directly
 
-如果已经明确研究问题，可以继续使用原有入口：
+If you already know the research question, you can still use the original entry point:
 
-在 **Market research** 填写目标标题、背景和范围。例如：
+In **Market research**, fill in the goal title, background and scope. For example:
 
-> 分析半导体存储 DRAM、NAND、HBM 在今年剩余时间的供需、价格与投资机会。覆盖主要上市公司，区分财报事实、公司指引和市场预测；列出来源、催化剂、风险及尚缺数据。
+> Analyse supply, demand, pricing and investment opportunities for semiconductor memory — DRAM, NAND and HBM — for the rest of this year. Cover the main listed companies and separate reported figures from company guidance and market forecasts; list sources, catalysts, risks and data that is still missing.
 
-明确研究年份、市场、时间范围和关键问题。点击 **Create research goal**，进入父任务；可先补充材料，再点击 **Plan research steps**。
+Be clear about the research year, market, time range and key questions. Click **Create research goal** to open the parent task; you can add materials first, then click **Plan research steps**.
 
-真实规划模型会生成 3–12 个有依赖的子任务。检查任务范围和描述，可以编辑或补充评论。依赖以生成计划为准，当前不提供图形化依赖重连器；已有计划不会重复生成覆盖原任务。
+The real planning model produces 3–12 sub-tasks with dependencies between them. Check each task's scope and description, and edit it or add comments as needed. Dependencies follow the generated plan, and there is currently no visual tool for rewiring them; an existing plan is not regenerated over your tasks.
 
-## 4. 执行与检查
+## 4. Running and checking
 
-Board 按大阶段显示 **Backlog → Todo → Execution → In review → Done**，取消的任务保留在 **Cancelled**。Execution（执行）泳道内按 **Waiting → Queued → Running** 分组，顶部展示顺序、数量和分类筛选；**Paused / Blocked** 放在 **Needs attention**，**Retrying** 放在 Queued 并标明重试次数及等待时间。空分组折叠，筛选只影响显示，不改变执行顺序。流程箭头表示先后关系，不要求所有任务经历全部状态。
+The Board shows the main stages as **Backlog → Todo → Execution → In review → Done**, and cancelled tasks stay in **Cancelled**. Inside the Execution lane, tasks are grouped by **Waiting → Queued → Running**, with the order, counts and category filters along the top; **Paused / Blocked** sit under **Needs attention**, and **Retrying** sits in Queued with its retry count and waiting time noted. Empty groups are collapsed, and filters only change what is shown, not the order things run in. The arrows show what comes before what; not every task has to pass through every status.
 
-- **Ready**：条件满足但尚未提交，留在 Todo。
-- **Waiting**：前置结果尚未就绪；已提交目标的步骤会在依赖完成后自动排队。未提交目标的步骤仍属于 Todo。
-- **Queued**：已提交，等待 Topic 顺序、重试时间或执行名额。
-- **Running**：存在真实的运行记录。目标按整条任务链汇总，某一步运行时不会因为其他步骤等待而把整个目标显示成 Waiting。
-- **Paused / Blocked**：队列暂停、运行停止或需要处理失败；卡片显示原因和下一步。
+- **Ready**: the conditions are met but it has not been submitted yet, so it stays in Todo.
+- **Waiting**: the results it depends on are not ready yet; steps of a submitted goal queue up automatically once their dependencies finish. Steps of an unsubmitted goal still belong to Todo.
+- **Queued**: submitted, waiting for its turn in the Topic order, a retry time or a free execution slot.
+- **Running**: there is a real run record. A goal is summarized across its whole task chain, so while one step is running the goal is not shown as Waiting just because its other steps are waiting.
+- **Paused / Blocked**: the queue is paused, a run was stopped, or a failure needs handling; the card shows the reason and what to do next.
 
-将已批准的研究目标从 Todo 拖入 Execution，会提交目标并按依赖顺序执行研究步骤。提交后仍留在 Board；依赖或资源不足时显示等待或排队，不会伪造 Running。即使当前筛选为 Running，拖入仍只提交执行。无效拖放会提示原因，重复提交不会创建重复运行。
+Dragging an approved research goal from Todo into Execution submits it and runs its research steps in dependency order. It stays on the Board after submission; if dependencies or resources are not ready it shows as waiting or queued, and it never pretends to be Running. Even when the current filter is Running, dragging still only submits the work. An invalid drop tells you why, and submitting again does not create a duplicate run.
 
-不能从 Backlog 直接拖入 Execution，不能将已提交或运行中的任务拖回 Todo，也不能跳过研究依赖把目标标记为 Done。Backlog → Todo 只接纳／审批，不运行；未提交的 Todo 可以退回 Backlog。暂停、继续和停止使用队列或运行操作。研究链全部产生有效结果后自动完成。内部研究步骤由调度器管理，不能手动拖动来绕过整体审批或依赖。
+You cannot drag from Backlog straight into Execution, drag a submitted or running task back to Todo, or mark a goal Done while skipping its research dependencies. Backlog → Todo only accepts and approves, it does not run; an unsubmitted Todo task can go back to Backlog. Pausing, continuing and stopping are done with queue or run actions. A research chain finishes automatically once every step has produced a valid result. Internal research steps are managed by the scheduler and cannot be dragged by hand to bypass overall approval or dependencies.
 
-Board、List、左侧任务树和右侧详情共用 `Store::task_status` 的阶段、状态、原因；List 显示状态文字并支持大阶段与执行分类筛选，侧边栏用图标和悬停说明。手动拖拽、状态菜单和编辑表单共用 `validate_manual_transition` 校验。运行完成、重试及中断恢复使用内部流转，不受手动回退规则干扰。结果页仍显示所查看的那一次运行状态，历史记录不会被当前状态覆盖。
+The Board, the List, the task tree on the left and the details on the right all show the same stage, status and reason for a task; the List shows status as text and supports filtering by main stage and by execution category, while the sidebar uses icons with hover explanations. Dragging by hand, the status menu and the edit form all follow the same rules about which changes are allowed. Runs finishing, retrying and resuming after an interruption are handled automatically and are not affected by the rules for manual changes. The results page still shows the status of the run you are looking at, so history is not overwritten by the current status.
 
-侧边栏、List、Board 使用同一套新建优先规则：项目和 Topic 按创建 ID 倒序，同组任务按创建时间倒序；时间相同按任务 ID 倒序，旧数据缺少有效时间时放在已知时间之后并按 ID 倒序。父任务仍在子任务之前，执行泳道保留状态分组，各组内部遵循相同规则。优先级仅作为属性显示，不覆盖排序。展示排序不改变依赖关系或已提交队列的执行顺序。
+The sidebar, List and Board share one newest-first ordering: projects and Topics by creation order, newest first, and tasks in the same group by creation time, newest first; when times are equal they go by task number, newest first, and tasks without a usable time go after those that have one, again newest first. A parent task still comes before its sub-tasks, the Execution lane keeps its status groups, and the same rules apply inside each group. Priority is shown only as a property and does not change the order. Display order does not change dependencies or the order in which a submitted queue runs.
 
-### 按 Topic 排队执行
+### Running in a queue by Topic
 
-1. 在 Topic 页点击 **Queue topic**，将其中已批准、未完成的目标加入队列；也可在单个 Goal 页点击 **Run goal / Add to queue**，只加入该目标。项目页的 **Run / resume (N)** 可批量加入本项目已批准目标，执行中变为 **Add to queue (N)**。
-2. 正在运行或三个执行名额已满时仍能继续追加；重复提交不会创建重复队列项。仅批准或新建研究不会自动入队，必须明确点击执行／加入队列。
-3. 队列按 Topic 首次入队顺序推进。同一 Topic 中已提交的目标会一起完成各自的采集、分析和报告，然后进入下一个 Topic；该 Topic 内依赖已满足且资源互不冲突的步骤最多并发 Settings → General 中的 Research 并发上限（默认 3 个）。未轮到的 Topic 显示 **Queued**，不会提前执行。自动化期次使用独立队列与独立并发额度，不占用 Research 名额，也不进入这个 Topic 队列。
-4. 某个步骤失败后先按 30 秒间隔自动重试，最多 3 次。重试耗尽、需要用户接管或审批失效时保留失败／阻塞状态；当前 Topic 的其他可执行步骤结束后自动进入下一个 Topic。队列结束显示成功数和需要处理的目标，修复后可将失败目标重新加入队尾。
-5. **Pause after task** 暂停后续步骤及重试派发，仍可向队列追加；**Continue** 继续尚未处理的 Topic，不重跑之前已失败的 Topic；**Stop all** 停止本队列已提交任务并清空等待项，保留已有成果。保存失败会暂停队列。若下一步在创建执行记录前就无法提交（例如模型配置或上下文检查未通过），也会暂停当前 Topic，保留具体原因到 Goal 的 Activity；修复后点击 Continue，不会把这种情况当成重试耗尽而跳过。
+1. On a Topic page, click **Queue topic** to add its approved, unfinished goals to the queue; you can also add just one goal with **Run goal / Add to queue** on that Goal's page. **Run / resume (N)** on a project page adds all approved goals in that project in one go, and changes to **Add to queue (N)** while it is running.
+2. You can keep adding while something is running or all three execution slots are full, and submitting the same thing again does not create a duplicate queue entry. Approving or creating research does not add anything to the queue by itself; you have to click run or add to queue explicitly.
+3. The queue moves through Topics in the order they were first added. Submitted goals in the same Topic finish their own collection, analysis and report together, and then the queue moves to the next Topic. Within that Topic, steps whose dependencies are met and which do not compete for the same resources run at the same time, up to the Research concurrency limit in Settings → General (3 by default). Topics that have not had their turn show as **Queued** and do not run early. Automation periods use their own queue and their own concurrency allowance, so they do not take Research slots and do not join this Topic queue.
+4. When a step fails, it is retried automatically at 30-second intervals, up to 3 times. If retries run out, or you need to take over, or an approval is no longer valid, the failed or blocked status stays; once the other runnable steps in the current Topic have finished, the queue moves on to the next Topic automatically. When the queue ends you see how many goals succeeded and which ones need attention, and after fixing them you can add the failed goals back to the end of the queue.
+5. **Pause after task** pauses further steps and retries while still letting you add to the queue; **Continue** carries on with Topics that have not been handled yet and does not re-run Topics that already failed; **Stop all** stops the tasks this queue has submitted and clears the waiting entries, keeping the results you already have. A failed save pauses the queue. If the next step cannot be submitted before a run record is even created — for example because the model settings or the context check failed — the current Topic is paused too, with the exact reason kept in the Goal's Activity; after fixing it, click Continue, and this is not treated as exhausted retries that should be skipped.
 
-状态栏显示当前 Topic、接下来的排队顺序及失败目标数。未批准的 Backlog 不执行；归档或撤回审批的等待目标会跳过。关闭应用不会恢复队列或自动执行任务，下次需重新明确提交。旧版普通任务不会进入研究队列。
+The status bar shows the current Topic, the order of what is queued next and how many goals failed. Unapproved Backlog items do not run; waiting goals that have been archived or had their approval withdrawn are skipped. Closing the app does not restore the queue or run tasks automatically, so you have to submit them explicitly again next time.
 
-### 单个研究目标
+### A single research goal
 
-- **Run one step**：执行下一项可运行的未完成／失效任务。
-- **Run goal / Add to queue**：加入 Topic 队列，轮到时按依赖连续执行。失败重试耗尽后保留结果并继续后续 Topic。
-- **Pause after this step**：当前阶段完成后暂停，不终止当前进程。
-- **Stop task**：终止本次本地 OpenCode 进程组。
+- **Run one step**: runs the next unfinished or outdated task that can run.
+- **Run goal / Add to queue**: adds the goal to the Topic queue, and when its turn comes it runs in dependency order. If retries run out, the results are kept and the queue moves on to later Topics.
+- **Pause after this step**: pauses once the current stage is finished, without interrupting a run already in progress.
+- **Stop task**: stops the current run immediately.
 
-同一工作区同时只运行一个 Agent。执行会切换到 **Research results**：
+Only one Agent runs at a time in a workspace. Running switches you to **Research results**:
 
-- 默认显示当前阶段、需要你处理的事项；完成后显示报告正文，来源列表按需展开。执行中的未解析响应不会当成报告展示。
-- 报告上方保留 **Open task**，右侧 **⋯** 打开 Technical details；来源数量旁的复制图标复制报告。先选择项目和研究目标，再查看该范围内的任务。
-- **⋯ (Technical details) → Live logs** 显示步骤、工具输出和错误；日志有长度上限，截断会显示标记。
-- **Saved output** 查看本次已保存输出；成功研究显示解析后的正文，未通过校验的尝试保留模型返回内容。点击 **Back to result** 回到阅读页。
-- 运行记录保存当次模型、输入、材料、开始／结束时间、会话和退出状态。
+- By default it shows the current stage and anything that needs you; when finished it shows the report body, with the source list expanded on demand. An unfinished response during a run is never shown as a report.
+- **Open task** stays at the top of the report, **⋯** on the right opens Technical details, and the copy icon next to the source count copies the report. Choose a project and research goal first, then look at the tasks in that scope.
+- **⋯ (Technical details) → Live logs** shows steps, tool output and errors; logs have a length limit, and a marker appears when they are cut off.
+- **Saved output** shows what was saved for this run; a successful piece of research shows the parsed body, while an attempt that failed validation keeps what the model returned. Click **Back to result** to return to the reading page.
+- A run record keeps the model used at the time, the inputs, the materials, start and end times, the conversation it used and how it exited.
 
-研究结果除进程成功外还须通过结构校验；`complete` 才完成任务，`blocked` 会停止链路并说明需要处理的事项。应用不替代事实核查，不自动交易或给出可靠性保证。执行权限由 OpenCode 本地配置决定，提示词中的限制不是操作系统级权限隔离。
+Besides finishing successfully, a research result also has to pass a structure check; only `complete` finishes the task, while `blocked` stops the chain and explains what needs handling. The app does not replace fact-checking, does not trade automatically and gives no guarantee of reliability. What the Agent is allowed to do is decided by the Agent you installed; the instructions inside the app are not system-level isolation.
 
-### 导出完整调研
+### Export a complete research package
 
-当 Goal 下全部研究步骤已完成、且结果与当前输入一致时，在 Goal 页点击 **Export ZIP**，选择保存位置即可导出。ZIP 包含：
+When every research step under a Goal has finished and the results match the current inputs, click **Export ZIP** on the Goal page and choose where to save it. The ZIP contains:
 
-- `evidence/`：各证据采集步骤的完整 Markdown。
-- `analysis/`：各分析步骤的完整 Markdown。
-- `report/`：最终报告步骤的完整 Markdown。
-- 每份 Markdown 文档末尾的引用来源：该步骤保存的来源名称、链接和发布时间。
-- `README.md`：调研说明、文档索引、任务及运行记录对应关系。
-- `引用资源/`：用户上传到该 Goal 或相关研究步骤、以及研究结果关联的原始 PDF／图片（有附件时生成）。同一附件去重，同名文件加编号避免覆盖，README 中保留原始名称和链接。
+- `evidence/`: the full Markdown from each evidence collection step.
+- `analysis/`: the full Markdown from each analysis step.
+- `report/`: the full Markdown from the final report step.
+- The cited sources at the end of each Markdown document: the source names, links and publication dates saved by that step.
+- `README.md`: an explanation of the research, an index of the documents, and how tasks map to run records.
+- `resources/`: the original PDFs/images that you uploaded to that Goal or its research steps, and those linked to the research results (only created when there are attachments). The same attachment is included only once, files with the same name get numbers so nothing is overwritten, and the README keeps the original names and links.
 
-文档名包含类型、任务编号和标题。导出采用应用中保存的完整结果，不受界面或日志截断影响，不生成 JSON 文件，不包含失败尝试、技术日志或工作目录中的其他文件。尚未完成或输入已变更的调研，需先完成／更新后导出。若关联附件缺失或无法读取，导出会提示错误，不会静默遗漏资源。
+Document names include the type, task number and title. The export uses the complete results saved in the app, is not affected by anything cut off in the interface or logs, and does not include failed attempts, technical logs or other files in the working folder. If the research is unfinished or its inputs have changed, finish or update it before exporting. If a linked attachment is missing or cannot be read, the export reports an error rather than quietly leaving it out.
 
-## 5. 补充 PDF 或截图并更新报告
+## 5. Scheduled automations
 
-1. 打开需要补充证据的子任务，进入 **Materials**，点击 **Add Files** 或拖入 PDF、PNG、JPEG、WebP；复制图片后点击 Materials 区域按 **⌘V**。
-2. 等待导入完成。仅将原文件复制到工作区 `workspace/attachments/`，不执行本地 OCR、PDF 提取或识别器编译。下次运行通过 OpenCode `--file` 将原文件交给模型读取。
-3. 可添加评论，说明材料来源、对应日期、希望核对的字段，以及哪些旧结论需要调整。截图最好保留标题、日期、单位和来源。
-4. 材料变化自动使该任务及其依赖下游的旧结果显示 **Needs refresh**。上游已完成搜集不受影响。给父目标补材料会影响整个目标链。
-5. 回到父目标点击 **Continue research**。上传不会自动调用模型或消耗额度。系统从最早失效任务开始重新分析，新的结果再传给后续简报。
-6. 在新运行的 **Result** 中核对材料名称、PDF 页码／截图页和更新结论；旧报告与旧输入快照仍保留，可以对比。
+**Automations** in the sidebar is a separate area with **All automations** (the list of definitions) and **Automation results** (results for every period), kept apart from research projects, Topics and Research results.
 
-材料通过两条路径传递：父任务材料继承给子任务；已依赖任务的原材料继续传给下游。重复引用按受管路径去重。模型收到的是带页码、提取方式和警告的文本，原文件保存在本地供查看；不再要求文本模型直接接收 PDF／图片二进制。
+When you create one, first choose a type:
 
-### 读取范围和失败处理
+- **Quick task**: enter one checking instruction and a schedule; you do not need to choose a project or review a plan. Each period runs a single read-only step that returns a direct value or conclusion, an as-of time, 2–5 original sources and at most one or two key caveats.
+- **Research automation**: describe what you need in one sentence and optionally state the expected result; the Agent generates reviewable goals once at creation, and each period after that reuses the same approved template and produces a full report.
 
-| 限制 | 行为 |
+Schedules can be a fixed interval, a set time each day, or chosen weekdays, using IANA time zones; the page previews the next three trigger times using the same calculation as the real schedule. Saving a draft or generating a plan never runs research. Turning it on means you approve the current template and schedule; later changes to the scope, steps, Agent/model, materials, schedule or limits create a new version that needs approving again. The plan is not regenerated every period; for Research you can create a new version explicitly with **Replan**.
+
+Each period uses its own working folder, conversation and browser Space. Research creates a new internal Topic for each period, while Quick hangs directly off the period. Automation results are only found in the Automations history; they do not appear on the normal board, in the task tree or in Research results.
+
+Conditions for running and catching up: automations only run while the app is open and the computer is awake; by default only the most recent missed period is caught up, and anything later than the allowed delay is skipped and recorded in a summary; pausing does not catch up on the past. Running immediately does not move the schedule forward. Each automation has at most one period running and one request waiting to start, and uses its own concurrency pool (Settings → General, 2 by default) and its own queue, so it does not take Research slots.
+
+While no one is watching, if it meets a login, a CAPTCHA or a request to take over the browser, the run records the gap in evidence and carries on instead of waiting for input. Automations reuse the normal research flow and the Agent chosen in Settings (OpenCode or Codex), and do not keep a second Agent configuration; they never send messages, publish, trade, run scripts or make other changes outside the app, and reports still need a person to review them.
+
+## 6. Add PDFs or screenshots and update the report
+
+1. Open the sub-task that needs more evidence, go to **Materials**, and click **Add Files** or drop in a PDF, PNG, JPEG or WebP; after copying an image, click in the Materials area and press **⌘V**.
+2. Wait for the import to finish. Only the original file is copied into `workspace/attachments/` in the workspace; no OCR or PDF extraction happens locally. On the next run it is passed to whichever Agent is selected: OpenCode uses `--file`; Codex gets images as `--image`, and other files are given to the model as a local path in the prompt so it can read them itself.
+3. You can add a comment explaining where the material came from, the date it refers to, which figures you want checked, and which earlier conclusions need adjusting. Screenshots are best when they still show the title, date, units and source.
+4. Changing materials automatically marks the old results of that task and of everything downstream of it as **Needs refresh**. Upstream collection that has already finished is unaffected. Adding materials to a parent goal affects the whole goal chain.
+5. Go back to the parent goal and click **Continue research**. Uploading never calls a model or uses up quota by itself. Re-analysis starts from the earliest outdated task, and the new results are then passed on to the reports that follow.
+6. In the new run's **Result**, check the material names, the PDF page numbers/screenshot pages and the updated conclusions; the old report and the old input snapshot are still kept, so you can compare them.
+
+Materials reach a task in two ways: a parent task's materials are inherited by its sub-tasks, and an upstream task's materials continue down to what depends on it. Repeated references are de-duplicated by their managed path. The original file stays in the workspace and is passed to the selected model at run time; whether PDFs and images can be read depends on that model's capabilities.
+
+### Reading limits and what happens on failure
+
+| Limit | What happens |
 | --- | --- |
-| 每个文件 25 MiB；每任务最多 12 个；单次执行最多 24 个、总计 50 MiB | 超限拒绝，说明需要减少材料 |
-| 模型能力 | 选择支持对应图片/PDF 输入的模型和提供商；无法读取时应报告 blocked，不得假装已读 |
-| 材料缺失或大小被外部修改 | 运行前拒绝，要求重新添加 |
+| 25 MiB per file; at most 12 per task; at most 24 files and 50 MiB in total per run | Over the limit it is refused, with a message saying you need to reduce the materials |
+| What the model can handle | Choose a model and provider that support the image/PDF input in question; if it cannot read the file it should report blocked rather than pretend it read it |
+| A material is missing, or its size was changed outside the app | It is refused before the run and you are asked to add it again |
 
-添加阶段不调用模型；实际运行会将原文件发送给所选模型提供商。图片、图表和 PDF 的理解由模型负责，请核对重要数字和引用。
+Adding files does not call a model; when the research actually runs, the original files are sent to the provider of the model you chose. The model is responsible for understanding images, charts and PDFs, so check important figures and citations yourself.
 
-移除附件仅删除任务引用，不删除历史副本，便于撤销及追溯。旧附件无需重新导入；既有 `material-cache` 不再读取，也不会自动删除。完整运行输入有 240 KB 上限，超过时会拒绝，不会悄悄截去证据。
+Removing an attachment only removes the task's reference to it; the historical copy is kept, so you can undo it and trace it later. A run's complete input has a 240 KB limit; anything larger is refused, and evidence is never quietly cut off.
 
-## 6. 失败、暂停与恢复
+## 7. Failures, pausing and recovery
 
-- 模型不合法／未认证：检查 `provider/model` 和 OpenCode 本地配置。
-- `Failed`：打开日志及输出，修正原因后回父目标重新运行。
-- `Blocked`：处理要求的材料、权限或浏览器接管步骤，再重试。
-- ego(lite) 返回浏览器权限交接错误时，应用会终止当前 Agent 并停止连续研究。请在原 Space 处理弹窗，确认可以接回后再恢复；不要新建 Space 或换访问方式绕过交接。
-- `Stale`：运行期间材料或上下文改变；旧输出保留，但不能作为新下游依据。
-- 取消父目标或归档后不会继续调度子任务；先恢复目标再执行。
-- 应用退出后连续执行不会自动恢复；异常退出的未完成运行标为 `Interrupted`，先检查日志和工作目录。
+- Invalid or unauthenticated model: check `provider/model` and the local configuration of the Agent you selected.
+- `Failed`: open the logs and output, fix the cause, then go back to the parent goal and run it again.
+- `Blocked`: deal with the materials, permissions or browser handover the run asks for, then try again.
+- When ego(lite) reports a browser permission handover error, the app ends the current Agent and stops continued research. Handle the dialog in the original Space and make sure you can hand control back before resuming; do not create a new Space or switch to another way of browsing to get around the handover.
+- `Stale`: materials or context changed while it was running; the old output is kept but cannot be used as the basis for anything new downstream.
+- After a parent goal is cancelled or archived, no further sub-tasks are scheduled; restore the goal first, then run it.
+- Continued running does not resume by itself after the app quits; a run that was cut off by an unexpected exit is marked `Interrupted`, so check the logs and the working folder first.
 
-## 7. 数据和备份
+## 8. Data and backups
 
-默认工作区位于 `~/Library/Application Support/What the hell are you planning/workspace.sqlite3`。附件在同目录 `attachments/`，提取缓存及本地 reader 在 `material-cache/`。任务、模型配置、主题、报告和日志自动保存。
+On first launch you choose a workspace folder; your data, attachments, project files and run output are all kept inside it. The app only records where that folder is, in the system's application folder. Tasks, model settings, themes, reports and logs are saved automatically.
 
-工作区使用独占文件锁与原子写入；不要在应用运行时手动修改 JSON。损坏或不支持的版本不会被当成空工作区覆盖。研究报告源文件通常由 Agent 写到项目工作目录，应用内每次运行结果另外保存。
+While the app is running, do not change or delete files in the workspace by hand, as this can corrupt your data. The source files of a research report are usually written into the project folder by the Agent, and each run's results are saved separately inside the app.
 
-本次清除已确认演示任务前，已在数据目录创建 `workspace.before-demo-removal.*.json` 私有备份；真实研究与运行历史保留。恢复备份应先退出应用，再备份当前文件并替换；旧版本备份可能恢复演示内容。
+Materials are passed to the selected model at run time. The original files, and any content the model reads from them, may be sent to your chosen model provider as part of the run request. Logs and reports may also contain sensitive material, so use them within the limits of what you are allowed to share.
 
-材料提取在本地完成，但提取出的内容会随运行请求发送给所选模型提供商。日志和报告也可能含敏感材料，应按自己的资料权限使用。
+## 9. Usage details
 
-## 8. 当前真实验收入口
+### Concurrency and continuing a run
 
-- `cargo run --features qa -- --materials-live`：针对本机已有存储研究补充真实财报 PDF 和截图，并运行真实模型；会产生模型用量。不是普通启动命令。
-- `cargo run --features qa -- --projects-live`：使用已保存的真实 Plan 模型，在独立 `.local/project-live-qa/` 工作区验证项目规划与批准题目的步骤规划；会消耗模型用量，不执行完整市场研究。
-- `cargo run --features qa -- --qa-display-order`：验证侧边栏、List、Board 和执行分组中新内容置顶的实际布局顺序。
-- `cargo run --features qa -- --qa-workflow`：隔离验收拖拽提交、重复提交拦截、非法回退、配置失败回退、完整依赖链自动执行，以及 Board／List／详情／步骤视图截图。
-- `cargo run --features qa -- --qa-projects`：隔离工作区验证项目创建、Kanban 批准／拖拽、未批准拦截、完整测试研究链、失效／失败／取消结果以及重开与双主题。
-- `cargo run --features qa -- --qa-affordance`：隔离工作区验收按钮、链接、禁用状态和键盘交互，输出明暗主题与 1440／1000 宽度截图，不调用真实模型。
-- `cargo run --features qa -- --qa-workspace`：隔离工作区验证空数据、主题和项目选择。
-- `cargo run --features qa -- --qa-attachments`：隔离验收图片快捷键粘贴、文件拖拽、原始文件字节、附件继承及 CLI `--file` 传递，不调用真实模型。
-- `cargo run --features qa -- --qa-research`：使用测试 CLI 验证交互、依赖和失败路径，验证原始 PDF/图片通过 `--file` 传入 CLI，不进行本地提取。
+- Only one Topic progresses at a time. Inside a Topic, up to the Research concurrency limit in Settings → General (3 by default) tasks run at once, provided their dependencies are met and they do not need the same resources. Other Topics can queue up in advance and continue automatically once the current Topic finishes. Steps that share a folder, browser Space or conversation still run one after another.
+- Automation periods have their own concurrency limit (2 by default, counting only periods that are running). A full Research queue does not stop automations from starting, and a full automation pool does not take Research slots; queued items and results are both found in Automations → Automation results. The two only wait for each other when they genuinely share a folder, browser Space or conversation.
+- Closing the app does not restart tasks automatically. When you reopen it, if the last run was interrupted, failed, stopped or blocked, and the Agent, model, task type and folder are still compatible, the app tries to continue the same conversation; running again after a successful finish, or switching models, starts a new conversation.
 
-测试夹具仅在测试／QA 构建中使用，不会出现在普通用户工作区。
+### First launch and the workspace
 
-### 并发与会话续接
+1. On first launch, choose a dedicated workspace folder, or type the absolute path of one that already exists; you can use the app only after clicking **Set workspace and continue**.
+2. A new project automatically creates `workspace/projects/project-<number>/`. Research steps then use `.research/goal-<number>/` inside that project.
+3. Data, attachments, caches and run logs are kept in `workspace/` under the folder you chose. You can see the workspace location in Settings. If the folder is unavailable, the app stays on the setup page and does not run anywhere else.
+4. You can change a project's folder within the workspace; the app only accepts folders inside the workspace. The Agent is also asked to write its output into the current folder, but this is not a system-level sandbox.
 
-- 每次只推进一个 Topic，Topic 内最多同时执行 Settings → General 中 Research 并发上限（默认 3 个）所允许的、依赖已满足且资源独立的任务。其他 Topic 可提前排队，完成当前 Topic 后自动继续。共享目录、浏览器 Space 或 session 的步骤仍串行。
-- 自动化期次有独立的并发上限（默认 2 个，只统计正在运行的期次）。Research 队列满载不会阻止自动化启动，自动化池满载也不会占用 Research 名额；排队信息和结果都在 Automations → Automation results 中查看。两者仅在真实共享目录、浏览器 Space 或 session 时互相等待。
-- 新目标的文件放在项目目录下 `.research/goal-{内部ID}`。已有执行历史的目标会先安全复制到独立目录，再续接 session；复制期间会等待共用旧目录的任务释放资源。
-- 关闭后不会自动重启任务。再次启动未完成任务时，如最近一次是中断、失败、停止或阻塞，且模型、任务类型、目录仍兼容，会使用原 OpenCode session ID 继续；完整当前任务输入仍会提供给模型。成功后的重跑或更换模型会新建 session。
-- 会话 ID 在启动前保存。强制退出 App 不保证 OpenCode 子进程立即停止；同一 session 有进程锁，旧进程仍存活时会明确拒绝重复启动，待其退出后可再次续接。
+The app only records the workspace location in the system's application folder. OpenCode/Codex account and conversation data, and ego(lite)'s browser settings, are managed by those tools themselves.
+
+Queue details show which resources are in use and which tasks are blocked, and distinguish when something was queued from when it actually started. In the same Topic, different goals or steps can run at the same time when their folders, browser Spaces and conversations are all separate, up to the number allowed by the Research concurrency limit in Settings → General (3 by default); other Topics wait until the current Topic finishes or is done handling failures. Automation periods use their own pool and the Automations → Automation results queue, and are not affected by the slots here.
 
 
-### SQLite 本地存储
+### Charts and formulas in results
 
-默认工作区使用 `workspace.sqlite3`。任务、项目、运行记录、阶段配置分别存入表；每条记录目前保留 JSON 字段，应用仍按完整工作区快照进行事务保存，并非增量 SQL 更新。使用 FULL 同步和回滚日志，保存失败时不提交半份工作区。
+The results area draws Mermaid charts and LaTeX math formulas locally, without installing a browser, Node.js or TeX. Where it helps, research reports use these formats to explain structures, processes and calculations.
 
-首次启动自动导入同目录 `workspace.json`，验证导入内容一致后才启用数据库。旧 JSON 保留为迁移前备份，不再同步更新。损坏或不支持版本的数据会报错，不会被空工作区覆盖。测试工具仍可显式使用 JSON 路径。
+- Charts: use a code block marked `mermaid`; common flowcharts, sequence diagrams and so on are supported.
+- Inline formulas: `$E=mc^2$`.
+- Standalone formulas: wrap the formula in `$$` on their own lines, or use a `math` / `latex` code block.
+- Ordinary code blocks are not treated as formulas; a dollar sign in a currency amount can be written as `\$`.
 
-SQLite 格式 v2 将 workspace 内的项目目录、运行目录、待复制源目录，以及输入签名中的目录存为相对 `workspace.sqlite3` 所在目录的路径；加载时按当前位置解析。历史提示词、日志、报告正文保持原样，已有结果不会仅因根目录变化而失效。旧 v1 数据库读取时不改写。新版启动在取得 workspace 锁后先创建独立、已校验的 `workspace.before-path-upgrade-*.sqlite3` 备份，再事务转换，并在提交前检查数据等价及数据库完整性。失败时回滚并保留备份；重复打开 v2 不重复升级。普通保存也执行相同升级保护，不能绕过备份。旧版程序会拒绝打开 v2 数据库。尚未导入 workspace 的旧外部目录保留原地址，不会猜测新的位置。
-
-跨设备搬迁：先在原设备用新版完成本地数据升级，再等待任务及 OpenCode 后台执行结束，关闭应用后复制整个 workspace 根目录（含数据库、附件与项目文件），在目标设备重新选择根目录。这里处理的是应用管理的目录引用，不会改写第三方文件内的绝对路径，也不会迁移 OpenCode session。新设备仍需配置本地 OpenCode 和浏览器；保存的 session ID 不能替代 OpenCode 自身的会话数据。新建或经旧数据导入流程复制的迁移标记使用相对路径，已有绝对标记仍兼容读取，但未提供在原目录内批量改写它们的功能。此功能不是跨设备实时同步。
-
-
-### 首次启动与 workspace
-
-1. 首次启动先选择一个专用的 workspace 根目录，也可以填写已存在的绝对路径；点击 **Set workspace and continue** 后才能使用应用。
-2. 新建项目自动建立 `workspace/projects/project-编号/`，不再要求先设置项目工作目录。研究步骤继续使用该项目内 `.research/goal-编号/`。
-3. SQLite、附件、提取缓存和运行日志保存在所选根目录下的 `workspace/`。Settings 中可查看根目录。根目录不可用时应用会停留在设置页面，不会回退到当前目录执行。
-4. 检测到旧版数据时，先确认旧应用及它的 OpenCode 会话已退出，再复制数据库、附件和项目文件。原件保留，新文件完整写入后才启用；会话 ID 保留。普通文件符号链接会复制目标文件；目录或失效的符号链接会明确报错，避免意外递归复制。
-5. 项目目录可在 workspace 内调整；应用在排队和实际执行前检查目录归属，拒绝 workspace 外的目录及目录符号链接逃逸。Agent 提示也要求产物写入当前目录。这是目录管理约束，并非对 OpenCode shell 的操作系统沙箱。
-
-唯一保存在系统应用目录中的配置是 `~/Library/Application Support/What the hell are you planning/workspace-location.json`，只记录所选根目录。OpenCode 自身的账户和会话数据库、ego(lite) 的浏览器配置仍由它们各自管理；临时进程锁保留在系统临时目录。
-
-排队详情显示具体占用资源及阻塞任务，并区分入队和实际开始时间。同一个 Topic 中不同 goal 或步骤在目录、浏览器 Space 和 session 均独立时可并行，最多同时运行 Settings → General 中 Research 并发上限（默认 3 个）所允许的任务数；其他 Topic 等待整个当前 Topic 完成或结束失败处理。自动化期次使用自己的并发池和 Automations → Automation results 队列，不受此处名额影响。
-
-
-### 结果中的图表与公式
-
-结果区会在本地渲染 Mermaid 图表和 LaTeX 数学公式，无需额外安装浏览器、Node.js 或 TeX。适合时，研究报告会使用这些格式说明架构、流程和计算关系。
-
-- 图表：使用标记为 `mermaid` 的代码块，支持常见流程图、时序图等。
-- 行内公式：`$E=mc^2$`。
-- 独立公式：使用单独成行的 `$$` 包裹公式，或使用 `math` / `latex` 代码块。
-- 普通代码块不会被当成公式；货币金额中的美元符号可写为 `\$`。
-
-示例：
+Example:
 
 ````markdown
 ```mermaid
 flowchart LR
-    A[收集证据] --> B[分析]
-    B --> C[形成结论]
+    A[Collect evidence] --> B[Analyse]
+    B --> C[Form a conclusion]
 ```
 
-加权平均值为 $\bar{x}=\frac{\sum_i w_i x_i}{\sum_i w_i}$。
+The weighted average is $\bar{x}=\frac{\sum_i w_i x_i}{\sum_i w_i}$.
 
 $$
 \sigma^2 = \frac{1}{n}\sum_{i=1}^{n}(x_i-\bar{x})^2
 $$
 ````
 
-本地渲染器支持常用 Mermaid 和 LaTeX 数学语法，并非完整 TeX 文档引擎。语法不受支持、无效或超出预览大小限制时保留源码，块级内容同时显示错误提示。复制结果和导出 Markdown 均保留原始语法。
+The local renderer supports common Mermaid and LaTeX math syntax; it is not a full TeX document engine. If the syntax is unsupported or invalid, or the preview is too large, the source is kept and block-level content also shows an error message. Copying a result and exporting Markdown both keep the original syntax.
 
-显示排序：Project、Topic、Goal 保持新到旧。单个 Goal 内的研究步骤按 Evidence → Analysis → Report 排列，同一阶段按原计划步骤顺序排列；Steps、Overview、侧栏和详情上一项／下一项保持一致。普通任务仍按新到旧显示，实际执行依赖与队列顺序不受显示排序影响。
+Display order: projects, Topics and Goals stay newest first. The research steps within a single Goal are ordered Evidence → Analysis → Report, and within a stage by their original planned order; Steps, Overview, the sidebar and previous/next in the details all agree. Ordinary tasks are still shown newest first, and the actual run dependencies and queue order are not affected by display order.
 
 
-### 混合使用 OpenCode 和 Codex
+### Mixing OpenCode and Codex
 
-在 Settings → Agent & models 中，可为全局默认及 Plan、News collection、Analysis、Investment brief 分别选择 Agent 和模型。模型下拉框只显示当前 Agent 的模型，支持搜索和手动输入，修改立即保存。Use global 同时恢复默认 Agent 与模型。切换 Agent 后需重新选择模型；历史结果与已排队的任务保持原来的 Agent 和模型。
+In Settings → Agent & models you can choose an Agent and model for the global default and separately for Plan, News collection, Analysis and Investment brief. The model dropdown only lists models for the current Agent, supports searching and typing, and saves changes immediately. Use global restores both the default Agent and the default model. After switching Agent you need to choose a model again; past results and tasks already queued keep the Agent and model they had.
 
-顶部的 **Profile** 工具栏在滚动时保持可见。下拉框应用已保存方案，包含全局 Agent、模型及四个阶段的覆盖和继承关系。点击 **New profile**，输入名称并保存当前配置；可点击 Cancel 取消。右侧 **Save profile** 始终显示，仅在配置有修改时可用，点击后更新当前方案。**Manage → Restore saved settings** 恢复已保存的方案；**Manage → Delete current profile** 仅删除方案，保留生效配置，可通过 Undo 恢复。切换前未保存到方案的修改会被替换。保存和切换成功仅在底部状态栏提示。方案随工作区保存，重启后保留；模型配置下方的 Agent connections 为所有方案共用，不随 Profile 切换。
+The **Profile** toolbar at the top stays visible as you scroll. Its dropdown applies a saved profile, covering the global Agent and model and the overrides and inheritance for the four stages. Click **New profile**, type a name and save the current configuration; you can cancel with Cancel. **Save profile** on the right is always visible but only enabled when the configuration has changed, and clicking it updates the current profile. **Manage → Restore saved settings** goes back to the saved profile; **Manage → Delete current profile** deletes only the profile and keeps the configuration in effect, which you can bring back with Undo. Changes you had not saved to a profile are replaced when you switch. Successful saves and switches are only announced in the status bar at the bottom. Profiles are saved with the workspace and survive a restart; Agent connections below the model settings are shared by all profiles and do not change when you switch Profile.
 
-Codex 使用本机 CLI 登录状态，首次使用前在终端完成 `codex login`。Codex 卡片显示版本、路径及登录状态；模型列表读取本地 Codex 缓存，缺少模型时可先在 Codex CLI 打开模型列表，再回到应用重新读取，或直接输入 CLI 支持的模型 ID。Codex 模型填写如 `gpt-6.1-sol`，无需 OpenCode provider 前缀。运行详情显示本次实际使用的 Agent 和模型。
+Codex uses the account already signed in on your machine; before using it for the first time, run `codex login` in a terminal. The Codex card shows the version, path and sign-in status. The model list is read from the local Codex cache, so if a model is missing, open the model list in Codex first and then come back and let the app read it again, or type a model ID that Codex supports. Run details show the Agent and model actually used for that run.
 
-阶段之间由应用传递证据、引用及结果，无需共享两个 Agent 的会话。Codex 与 OpenCode 使用各自的 MCP 配置。关闭应用后不会自动继续研究；异常退出后尚未保存的 Codex 最终结果需显式继续会话生成。
+The app passes evidence, citations and results between stages, so the two Agents do not need to share a conversation. Each uses its own local configuration and sign-in. Closing the app does not continue research by itself; after an unexpected exit, a Codex final result that was not saved needs the conversation to be resumed explicitly to be produced.

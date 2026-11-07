@@ -132,7 +132,7 @@ impl Store {
         materials.dedup_by(|a, b| a.relative_path == b.relative_path);
         let mut resources = vec![];
         if !materials.is_empty() {
-            index.push_str("\n## 引用资源 / Uploaded resources\n\n");
+            index.push_str("\n## Uploaded resources\n\n");
         }
         for (i, attachment) in materials.into_iter().enumerate() {
             let extension = match attachment.media_type.as_str() {
@@ -151,14 +151,14 @@ impl Store {
                 .file_stem()
                 .and_then(|s| s.to_str())
                 .unwrap_or("resource");
-            let path = format!("引用资源/{:03}_{}.{}", i + 1, filename(stem), extension);
+            let path = format!("resources/{:03}_{}.{}", i + 1, filename(stem), extension);
             index.push_str(&format!(
                 "- [{}]({path})\n",
                 markdown_text(&attachment.name)
             ));
             resources.push((path, attachment));
         }
-        index.push_str("\nEach document contains the complete saved Markdown result and its recorded references. Uploaded original files are included in 引用资源 when present. Failed attempts, technical logs and other working-directory files are excluded.\n");
+        index.push_str("\nEach document contains the complete saved Markdown result and its recorded references. Uploaded original files are included in resources when present. Failed attempts, technical logs and other working-directory files are excluded.\n");
         files.push(("README.md".into(), index.into_bytes()));
         Ok(ResearchExport {
             name: format!("{}_{}.zip", filename(&identifier), filename(&task.title)),
@@ -460,7 +460,7 @@ mod tests {
         let zip = staging.0.join("研究.zip");
         export.write_zip(&zip, Some(&staging.0)).unwrap();
         for (name, attachment) in &export.resources {
-            assert!(name.starts_with("引用资源/"));
+            assert!(name.starts_with("resources/"));
             assert!(name.ends_with(".pdf"));
             assert!(readme.contains(name));
             let extracted = Command::new("/usr/bin/unzip")

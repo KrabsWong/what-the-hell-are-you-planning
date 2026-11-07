@@ -1,102 +1,102 @@
-# 本地 OpenCode 接入
+# Local agent integration
 
-当前实现已经接通 OpenCode v2.2.0 CLI。协议以本机 `opencode run --help` 为准；官方资料见 [CLI](https://opencode.ai/docs/cli/)。不依赖常驻 HTTP 服务。
+The current implementation integrates the local OpenCode v2.2.0 CLI and Codex. The OpenCode protocol follows the local `opencode run --help`; official documentation is at [CLI](https://opencode.ai/docs/cli/). No resident HTTP service is required.
 
-## 执行链路
+## Execution path
 
 ```mermaid
 flowchart LR
-  UI[Run goal / Add to queue] --> Snapshot[读取研究阶段 / 模型 / 指令 / 工作目录]
-  Snapshot --> Save[先持久化运行快照]
-  Save --> Worker[独立工作线程]
+  UI[Run goal / Add to queue] --> Snapshot[Read research stage / model / instructions / working directory]
+  Snapshot --> Save[Persist run snapshot first]
+  Save --> Worker[Dedicated worker thread]
   Worker --> CLI[OpenCode standalone run]
-  CLI --> JSON[JSON 事件 + stderr]
-  JSON --> Queue[有界事件队列]
-  Queue --> GPUI[80ms 消费事件 / 实时日志]
-  GPUI --> Disk[合并保存 / 结束立即落盘]
+  CLI --> JSON[JSON events + stderr]
+  JSON --> Queue[Bounded event queue]
+  Queue --> GPUI[Consume events every 80ms / live log]
+  GPUI --> Disk[Coalesced save / flush immediately on finish]
 ```
 
-实际调用等价于：
+The actual invocation is equivalent to:
 
 ```text
-opencode --standalone run --format json --model provider/model --agent build --title "task / stage" -- "完整请求"
+opencode --standalone run --format json --model provider/model --agent build --title "task / stage" -- "full request"
 ```
 
-Rust `Command` 分别传递参数，不经过 shell。工作目录和 `PWD` 同时设置为已规范化的项目目录；请求中也包含该目录。每次调用使用独立会话，没有隐式 `--continue`。下一阶段依靠项目文件和任务描述交接上下文，不自动把全部历史日志拼入提示词。
+The Rust `Command` passes each argument separately and does not go through a shell. The working directory and `PWD` are both set to the canonicalized project directory; the request also contains that directory. Each invocation uses its own session, with no implicit `--continue`. The next stage hands off context through project files and the task description, and does not automatically splice the entire history log into the prompt.
 
-模型发现调用 `--version` 和 `models --standalone`，在后台线程执行并设 30 秒超时。选择列表支持筛选，仍可手工填写自定义模型标识。不同项目可能有不同的 OpenCode 配置；刷新前应选择对应项目。
+Model discovery calls `--version` and `models --standalone`, runs on a background thread, and has a 30-second timeout. The selection list supports filtering, and a custom model identifier can still be entered manually. Different projects may have different OpenCode configurations; select the corresponding project before refreshing.
 
-## 状态与生命周期
+## States and lifecycle
 
-`AgentRun` 保存 run ID、task ID/标题、阶段、agent、model、prompt、目录、开始/结束时间、session ID、退出码和日志。更新研究模型配置不会改变历史快照。
+`AgentRun` stores the run ID, task ID/title, stage, agent, model, prompt, directory, start/end time, session ID, exit code, and log. Updating the research model configuration does not change historical snapshots.
 
-运行状态包括 Running、Cancelling、Succeeded、Failed、Cancelled、Interrupted、Blocked、Stale；旧 Simulated 历史兼容读取，产品不再创建模拟运行。CLI 非零退出、顶层 error 事件或读流失败会记为 Failed。工具内部单次失败不一定表示整个 Agent 失败，因为 Agent 可能自行恢复。
+Run states include Running, Cancelling, Succeeded, Failed, Cancelled, Interrupted, Blocked and Stale. A non-zero CLI exit, a top-level error event, or a stream read failure is recorded as Failed. A single failure inside a tool does not necessarily mean the entire Agent failed, because the Agent may recover by itself.
 
-Unix 子进程通过独立 process group 启动。取消立即通知该组，worker 回收主进程；正常结束清理仍持有管道的后代，读流收尾有时间上限。退出应用等待 worker 回收，应用尚未消费的日志/Session/Finished 事件仍会写回记录。强杀应用不提供后台作业恢复保证。
+Unix child processes are started in a dedicated process group. Cancellation immediately notifies that group, and the worker reaps the main process; on normal completion, descendants still holding the pipes are cleaned up, and stream read-out has an upper time limit. Quitting the app waits for the worker to reap; log/Session/Finished events that the app has not yet consumed are still written back to the record. A hard kill of the app provides no guarantee of background job recovery.
 
-实际执行之前必须能保存运行快照。正在运行时禁止撤销和归档该任务；撤销其他内存修改时保留运行历史和单调任务 ID，不回滚文件操作。队列按 Topic 串行推进，当前 Topic 内最多并发 3 个资源独立且依赖就绪的任务。
+The run snapshot must be savable before actual execution. While a run is in progress, undoing and archiving that task are prohibited; when undoing other in-memory edits, run history and monotonic task IDs are preserved, and file operations are not rolled back. The queue advances serially per Topic, with at most 3 concurrently running tasks within the current Topic that have independent resources and ready dependencies.
 
-## Topic 执行队列
+## Topic execution queue
 
-`TodoBatch` 支持运行或暂停期间继续追加已批准目标，按 Topic 首次提交顺序分组。同一 Topic 的目标全部结束后才派发下一 Topic；同组可按依赖并发（最多 3 个），共享 session／目录／浏览器仍互斥。失败步骤先走自动重试，耗尽后记录在 failed_tasks／failed_items，当前 Topic 其他可运行分支结束后继续下一 Topic。重新提交已失败 Topic 加入队尾，不影响已完成结果。暂停不会重新激活历史失败项；停止清空整队，关闭应用仍不自动恢复执行。
+`TodoBatch` supports continuing to append approved goals while running or paused, grouped by the order of each Topic's first submission. The next Topic is dispatched only after all goals in the same Topic have finished; within a group, tasks may run concurrently by dependency (at most 3), while sharing a session/directory/browser still remains mutually exclusive. Failed steps first go through automatic retry, and after exhaustion they are recorded in failed_tasks/failed_items; other runnable branches in the current Topic continue to the next Topic after they finish. Resubmitting a failed Topic appends it to the tail of the queue and does not affect completed results. Pausing does not reactivate historical failed items; stopping clears the entire queue, and closing the app still does not automatically resume execution.
 
-`--qa-topic-queue` 使用临时数据库和本地假 CLI 验证满额追加、同 Topic 多 Goal、去重、顺序、重试耗尽、后续推进以及暂停／停止。
+`--qa-topic-queue` uses a temporary database and a local fake CLI to verify full-capacity appends, multiple Goals in the same Topic, deduplication, ordering, retry exhaustion, subsequent advancement, and pause/stop.
 
-## 存储
+## Storage
 
-### 任务失败自动重试
+### Automatic retry on task failure
 
-任务执行或结果校验得到 `Failed` 后，按原输入快照和会话排队，等待 30 秒再尝试。每次用户发起的执行链最多自动重试 3 次（加首次共 4 次）；次数与等待截止时间保存在运行记录中。重试队列复用并发上限、共享资源互斥、派发前审批及输入新鲜度校验，等待不占用执行名额。批量执行将原运行关联转交给重试，成功后继续推进，耗尽后按失败处理。
+After task execution or result validation yields `Failed`, the task is queued using the original input snapshot and session and waits 30 seconds before another attempt. Each user-initiated execution chain allows at most 3 automatic retries (4 attempts including the first); the count and the wait deadline are saved in the run record. The retry queue reuses the concurrency limit, shared-resource mutual exclusion, pre-dispatch approval, and input freshness validation; waiting does not occupy an execution slot. Batch execution transfers the original run association to the retry, continues advancing on success, and handles exhaustion as a failure.
 
-主动取消、归档、`Blocked`、`Interrupted`、`Stale` 不自动重试；项目／请求规划保留原有单次格式修复逻辑，不叠加任务重试。暂停批次会暂停重试派发，Stop task／Stop all 可取消等待，退出应用将排队工作标记为中断，重启不自动执行。用户重新手动启动会开启新的重试额度。界面显示倒计时、Retry N/3 和耗尽提示。
+Active cancellation, archiving, `Blocked`, `Interrupted`, and `Stale` are not automatically retried; project/request planning keeps its existing one-shot format-repair logic and does not layer task retries on top of it. Pausing a batch pauses retry dispatch; Stop task/Stop all can cancel the waiting; quitting the app marks queued work as interrupted, and a restart does not execute automatically. A new manual start by the user opens a new retry allowance. The interface shows a countdown, Retry N/3, and an exhaustion notice.
 
-`Storage` 采用 `{ "version": 3, "workspace": ... }`（可读版本 1／2，在保存时迁移；旧二进制拒绝版本 3，以保留人工准入约束） JSON。新增字段使用 serde 默认值；未知版本和损坏内容明确拒绝。保存使用同目录临时文件、flush/fsync、rename；同目录 `workspace.lock` 的独占锁持有到应用退出。
+`Storage` uses `{ "version": 3, "workspace": ... }` (versions 1/2 are readable and are migrated on save; older binaries reject version 3 in order to preserve the manual admission constraint) JSON. New fields use serde defaults; unknown versions and corrupted content are explicitly rejected. Saving uses a same-directory temporary file, flush/fsync, and rename; an exclusive lock on the same-directory `workspace.lock` is held until the app exits.
 
-所有被 UI 通知的 Store 修改由统一观察者保存。执行日志按约 500ms 合并，退出和终态强制保存。加载时将遗留 Running/Cancelling 标为 Interrupted，保留已收到的输出，不重新执行。
+All Store modifications that are surfaced by UI notifications are saved by a unified observer. Execution logs are coalesced at about 500 ms, and are force-saved on exit and on terminal states. On load, leftover Running/Cancelling are marked Interrupted, received output is preserved, and nothing is re-executed.
 
-## 研究执行路径
+## Research execution path
 
-`ResearchTask.kind` 有 Goal / Collect / Analyze / Advise；`ResearchConfig.models` 分别保存四种角色的模型。旧工作区的 StagePolicy 仅为读取与保存历史数据保留。Goal 运行由模型返回 JSON 计划，校验数量、标题／指令长度、前向依赖和必要角色；全部合法才创建子任务，已有计划不覆盖。研究子任务保留固定 goal 归属。
+`ResearchTask.kind` has Goal / Collect / Analyze / Advise; `ResearchConfig.models` stores the model for each of the four roles separately. The StagePolicy of old workspaces is retained only for reading and saving historical data. A Goal run has the model return a JSON plan, validating count, title/instruction length, forward dependencies, and required roles; child tasks are created only if everything is valid, and an existing plan is not overwritten. Research child tasks retain a fixed goal ownership.
 
-下游请求包含父目标、当前任务描述／评论、直接依赖的已验证正文与结构化来源、当前和父级附件。通过输入签名和依赖 run ID 递归校验新鲜度，签名不含执行产生的活动和任务状态。运行期间输入改变会得到 Stale；退出路径同样运行校验，绝不自动续跑。
+Downstream requests include the parent goal, the current task description/comments, the verified body text and structured sources of direct dependencies, and the current and parent attachments. Freshness is validated recursively via the input signature and dependency run IDs; the signature does not include activity and task state produced by execution. If inputs change during a run, the result is Stale; the exit path runs the same validation and never auto-resumes.
 
-运行结果正文来自 OpenCode text 事件（保留最后一个完整文本 part；之前的说明仍在日志中）。研究非规划角色必须返回 `{status, report, sources}`，状态为 complete 或 blocked；报表解析成功才标记步骤 Done。`ResearchConfig` 的 Browser 路径只在 Collect 角色加入请求；OpenCode 读取本机 skill 后控制独立 Space。默认不修改 OpenCode 的全局权限，不添加 --auto；被权限阻止应显式报告 blocked。
+The run result body comes from OpenCode text events (the last complete text part is kept; earlier explanations remain in the log). Research non-planning roles must return `{status, report, sources}`, with status being complete or blocked; a step is marked Done only when the report parses successfully. The Browser path of `ResearchConfig` is added to the request only in the Collect role; OpenCode reads the local skill and then controls an independent Space. By default, OpenCode's global permissions are not modified and --auto is not added; being blocked by permissions should be explicitly reported as blocked.
 
-`Run remaining` 在每个终态保存后调用同一个 next-ready-task 逻辑。失败、blocked、stale、取消、保存失败或没有可运行依赖时停止。连续意图仅在内存中，重启不会继续。新任务每次都重新取最新材料，已运行的请求保持快照。
+`Run remaining` calls the same next-ready-task logic after each terminal state is saved. It stops on failure, blocked, stale, cancellation, save failure, or when there is no runnable dependency. Consecutive intent lives only in memory and does not continue after a restart. Each new task fetches the latest material anew, while already-run requests keep their snapshot.
 
-## 可选 Longbridge MCP 查询
+## Optional Longbridge MCP queries
 
-采集、分析、报告阶段的提示词包含 Longbridge MCP 发现指引；纯规划阶段不查询。需要股票、公司、行情、估值或行业信息时，OpenCode 检查当前会话暴露的服务与工具；必要时在运行目录执行 `opencode mcp list` 确认配置和连接状态，再根据实际工具描述与参数选择只读公共信息查询。复用已有充分证据，不固定工具名称或假设市场覆盖范围。
+Prompts for the collection, analysis, and reporting stages include Longbridge MCP discovery guidance; pure planning stages do not query. When stock, company, quote, valuation, or industry information is needed, OpenCode inspects the services and tools exposed in the current session; if necessary, it runs `opencode mcp list` in the run directory to confirm configuration and connection status, then selects read-only public-information queries based on the actual tool descriptions and parameters. Reuse sufficient existing evidence; do not fix tool names or assume market coverage.
 
-复用 OpenCode 自身的 MCP 配置，不安装服务、不修改凭证或权限。服务不可用或工具不适合时回退到浏览器及已有材料；仅当所有可用来源仍无法提供必要证据时阻塞研究。提示词禁止账户、持仓、订单、交易、资金和其他写操作；这是代理行为约束，实际工具权限仍由 OpenCode／MCP 服务配置决定。
+Reuse OpenCode's own MCP configuration; do not install services, modify credentials, or change permissions. When a service is unavailable or a tool is unsuitable, fall back to the browser and existing materials; block the research only when all available sources still cannot provide the necessary evidence. The prompts prohibit account, position, order, trading, funds, and other write operations; this is an agent behavior constraint, and actual tool permissions are still determined by the OpenCode/MCP service configuration.
 
-报告记录实际查询工具、非敏感参数、标的／市场、观测与检索时间、币种／单位和数据局限，并向下游传递。工具未返回链接时在正文中注明查询来源，不伪造 URL。现有网页来源契约不变，采集完成仍至少需要一个实际访问的可核验网页来源；MCP 作为补充证据使用。
+The report records the tools actually queried, non-sensitive parameters, symbol/market, observation and retrieval time, currency/units, and data limitations, and passes these downstream. When a tool does not return a link, note the query source in the body text and do not fabricate a URL. The existing web-source contract is unchanged: completing collection still requires at least one actually visited, verifiable web source; MCP is used as supplementary evidence.
 
-## 文件和浏览器边界
+## File and browser boundaries
 
-附件复制到数据目录 `attachments/`，使用唯一文件名、create_new 和 Unix 0600。默认目录 0700；类型检查为扩展名与 magic，不等于完整文档解码。路径解析限制在受管目录，拒绝越界与目录符号链接。移除引用不删除物理文件，运行快照／撤销不会引用到被自动清理的文件。
+Attachments are copied into the data directory `attachments/`, using unique filenames, create_new, and Unix 0600. The default directory is 0700; type checking uses extension and magic, which is not equivalent to full document decoding. Path resolution is restricted to managed directories, rejecting escapes and directory symlinks. Removing a reference does not delete the physical file, and run snapshots/undo will not reference files that have been automatically cleaned up.
 
-附件链路直接使用适配器的 `--file`：添加时仅复制原文件，运行时将 PDF/图片交给支持对应格式的模型读取，不执行本地 OCR 或文字提取，不依赖 material-cache。父目标与依赖任务的材料均传入下游，并要求 complete 报告引用每份材料名称；不能读取时必须报告 blocked。
+The attachment path passes originals directly: when adding, only the original file is copied; at run time, OpenCode uses `--file`, while Codex receives images through `--image` and other files as local paths in the prompt. No local OCR or text extraction is performed. Materials from the parent goal and from dependency tasks are all passed downstream, and complete reports are required to cite each material name; when a material cannot be read, blocked must be reported.
 
-2026-10-28 已完成真实只读研究验收：读取安装版 skill guide，在同一个 ego Space 内实际导航并保存页面截图与 PDF，自动执行搜集 → 分析 → 简报，跨阶段切换模型、传递结果与来源，并验证持久化恢复。最终 Space 已正常 finish。真实模型出现“说明文字 + 单个 JSON 代码块”输出，解析器现在接受这种包装但仍严格校验 JSON、状态与来源；多块或不完整输出仍拒绝。首次解析失败记录保留，重试未重复搜集。真实接管场景尚未单独验证；当时的本地 PDF／OCR 验证属于历史路径；当前已改为传递原始附件。浏览器源码示例会随版本变化，运行时以 `ego-browser skill` 为准。官方参考：[ego-browser](https://lite.ego.app/document/en/docs/ego-browser)、[当前 Skill](https://github.com/citrolabs/ego-lite/blob/main/skills/ego-browser/SKILL.md)。
+On 2026-10-28, real read-only research acceptance was completed: the installed skill guide was read, actual navigation and saving of page screenshots and PDFs happened within the same ego Space, collection → analysis → briefing ran automatically, models were switched across stages, results and sources were passed along, and persistence recovery was verified. The final Space finished normally. The real model produced output in the form "explanatory text + a single JSON code block"; the parser now accepts this wrapper but still strictly validates the JSON, status, and sources; multiple blocks or incomplete output are still rejected. The first parse-failure record is retained, and the retry did not repeat collection. Real takeover scenarios have not yet been verified separately; the local PDF/OCR verification at that time belonged to a historical path; it has now been changed to passing raw attachments. Browser source examples change with versions; at run time, `ego-browser skill` is authoritative. Official references: [ego-browser](https://lite.ego.app/document/en/docs/ego-browser), [current Skill](https://github.com/citrolabs/ego-lite/blob/main/skills/ego-browser/SKILL.md).
 
-## 项目候选题目规划
+## Project candidate topic planning
 
-`project_planning.rs` 单独定义项目规划契约 `{tasks:[{title,brief}]}`，与研究阶段计划 `{title,instructions,kind,depends_on}` 分开。项目名称、可选范围、目录和现有题目快照构成输入签名。返回值先完整校验数量／长度／重复，随后才创建 Backlog 中 `requires_approval=true` 的研究 Goal。规划提示词只要求拆题，不要求联网或研究；本地 OpenCode 权限边界保持原样。
+`project_planning.rs` separately defines the project planning contract `{tasks:[{title,brief}]}`, kept separate from the research stage plan `{title,instructions,kind,depends_on}`. The project name, optional scope, directory, and existing-topic snapshot form the input signature. The return value is first fully validated for count/length/duplicates, and only then is a research Goal with `requires_approval=true` created in Backlog. The planning prompt only requires topic decomposition and does not require networking or research; the local OpenCode permission boundary stays as it is.
 
-项目运行使用 `AgentRun.project_plan=Some(project_id)`；兼容旧序列化的 `task_id` 在这种情况下为 0，不作为真实任务使用。旧任务运行的 `project_plan` 默认为 None。两类运行复用 `launch_run`、Request/Event、日志、取消、异常退出恢复和启动前保存。项目运行历史跳转到项目看板，不查找虚构任务。
+Project runs use `AgentRun.project_plan=Some(project_id)`; `task_id` is 0 in this case and is not used as a real task. Both kinds of runs reuse `launch_run`, Request/Event, logging, cancellation, abnormal-exit recovery, and pre-launch saving. Project run history jumps to the project board and does not look up fictitious tasks.
 
-`requires_approval` 只用于项目生成的父 Goal，默认为 false 以兼容旧研究。Backlog 表示待批准；进入 Todo 批准；未批准／已取消题目不可直接跳到执行或完成状态。子任务通过 goal_id 继承准入约束；准备请求、计划应用、下一任务选择、结果输入签名均检查父目标。退回 Backlog 后当前外部进程不会立刻取消，但该时段完成的结果失效，后续链停止。没有引入新的调度器或状态变更自动调用模型。
+`requires_approval` is used only for parent Goals generated by projects. Backlog means pending approval; entering Todo means approved; unapproved/cancelled topics cannot jump directly to the execution or completion state. Child tasks inherit the admission constraint via goal_id; request preparation, plan application, next-task selection, and result input signatures all check the parent goal. After returning to Backlog, the current external process is not cancelled immediately, but results completed during that window become invalid and the subsequent chain stops. No new scheduler or model invocation on state change was introduced.
 
-候选题目在创建时复制项目范围，防止后续修改项目说明隐式改变已批准任务。一次成功规划不重复应用，保留用户编辑；运行中项目输入改变则 Stale，失败或取消不落卡片。
+Candidate topics copy the project scope at creation time, preventing subsequent modifications to the project description from implicitly changing approved tasks. A successful plan is not applied twice and preserves user edits; if project inputs change during a run, the run is Stale, and failures or cancellations do not produce cards.
 
 
-## OpenCode / Codex 混合阶段执行
+## OpenCode / Codex mixed-stage execution
 
-设置页的全局默认和四个研究阶段均保存 Agent + 模型组合。旧配置默认 OpenCode；阶段可覆盖 Agent 和模型，Use global 同时清除两者。跨 Agent 的空模型不继承另一 Agent 的模型；切换全局 Agent 时，已有阶段模型被固定到原 Agent。已排队和历史运行保留创建时的 Agent / 模型快照。
+The global default and the four research stages on the settings page each store an Agent + model combination. Legacy configurations default to OpenCode; stages can override the Agent and model, and Use global clears both at once. An empty model for a different Agent does not inherit another Agent's model; when the global Agent is switched, existing stage models are pinned to the original Agent. Queued and historical runs keep the Agent/model snapshot from creation time.
 
-Codex 通过本地 `codex exec --json --model` 执行，沿用 CLI 登录和 MCP 配置。模型列表来自当前 CODEX_HOME 的本地 models_cache.json，只显示可见模型，不代表实时账号额度；无缓存时可手动输入模型 ID。发现仅运行版本和登录状态检查，不发送推理请求。Codex 使用 workspace-write sandbox、允许网络访问、禁止交互批准；权限不足时应返回 blocked，不启用全权限模式。
+Codex runs via the local `codex exec --json --model`, reusing the CLI login and MCP configuration. The model list comes from the models_cache.json local to the current CODEX_HOME and shows only visible models; it does not represent live account quota; when there is no cache, a model ID can be entered manually. Discovery only runs version and login-status checks and does not send inference requests. Codex uses a workspace-write sandbox, allows network access, and disallows interactive approval; when permissions are insufficient it should return blocked and not enable full-permission mode.
 
-各任务有独立会话；相同任务、Agent、模型且可恢复的失败尝试才继续原会话。OpenCode 和 Codex 通过应用保存的证据、来源和依赖文件交接，不共享会话。Codex 事件进入统一运行日志，最终内容读取私有临时 --output-last-message 文件，避免进度说明污染 JSON 契约。图片以 --image 传入，其他附件以本地文件路径作为证据传入；无法读取时明确报告 blocked。
+Each task has its own session; only a failed attempt with the same task, Agent, and model that is recoverable continues the original session. OpenCode and Codex hand off through evidence, sources, and dependency files saved by the app, and do not share sessions. Codex events enter the unified run log, and the final content is read from a private temporary --output-last-message file, avoiding progress text polluting the JSON contract. Images are passed via --image, and other attachments are passed as local file paths as evidence; when they cannot be read, blocked is reported explicitly.
 
-活动 Codex 任务可取消进程组。异常退出后通过子进程继承的 attempt lease 判断是否仍运行，停止后可显式恢复保存的 Codex 会话；不解析 Codex 私有 rollout 文件导入未保存结果。旧实例遗留且仍运行的 Codex 不能通过 OpenCode interrupt API 停止，界面会报告需等待其结束。所有恢复均不自动重跑。
+An active Codex task can cancel its process group. After an abnormal exit, the attempt lease inherited by the child process determines whether it is still running; after stopping, the saved Codex session can be explicitly resumed; Codex private rollout files are not parsed to import unsaved results. A Codex left running by an old instance cannot be stopped via the OpenCode interrupt API, and the interface reports that its completion must be waited for. None of the recoveries re-run automatically.

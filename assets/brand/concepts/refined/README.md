@@ -1,8 +1,8 @@
-# 断问与构序精修
+# Mark and sequence refinements
 
-保留原方案，新版独立存放在本目录。打开 preview.html 可比较原版、精修版、16/24/32/48 px 与侧边栏模拟，并切换单色、背景和动画。
+The original concept is preserved; the new version lives in this directory. Open `preview.html` to compare the original, the refined version, 16/24/32/48 px sizes and a sidebar mock, and to switch monochrome, background and animation modes.
 
-- 断问：线宽 20，落点间距 12；取消方块旋转，改为 3 单位轻移与 2 单位落点确认，8 秒循环。
-- 构序：模块宽 20，接缝 6；按顺序展开 3 单位再归位，9 秒循环。
-- 动态 SVG 支持 prefers-reduced-motion，静态 SVG 无动画样式。
-- 未修改应用代码；原生渲染器中的动画集成需另行实现或验证。
+- Mark: 20-unit stroke with 12-unit dot spacing; no square rotation, replaced by a 3-unit shift and 2-unit landing confirmation in an 8-second loop.
+- Sequence: 20-unit modules with 6-unit seams; expand 3 units in order and return, in a 9-second loop.
+- Animated SVG supports `prefers-reduced-motion`; static SVG has no animation styling.
+- No application code changed; integrating the animation into the native renderer still needs separate implementation or verification.

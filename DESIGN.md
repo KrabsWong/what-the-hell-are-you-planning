@@ -2,59 +2,59 @@
 
 ## Direction
 
-沿用现有原生工作台布局、系统字体和暖中性色。浅色供日间阅读、深色供暗环境使用，两种主题都必须在静止状态呈现控件边界。默认页面服务非开发者的研究流程，技术配置与诊断按需进入。保留原有配色、按钮可发现性和全部执行能力。
+Keep the existing native workspace layout, system fonts and warm neutral palette. Light mode serves daytime reading and dark mode serves dim environments; both must show control boundaries at rest. Default pages serve non-developer research workflows, with technical configuration and diagnostics on demand. Preserve the existing palette, button discoverability and all execution capabilities.
 
 ## Components
 
-- Primary：深暖色实底（深色主题采用浅暖色实底），用于创建、生成、保存、执行。一个局部操作组只强调一个推进动作。
-- Secondary：始终可见的中性底色和完整边框，用于设置、编辑、复制、关闭或返回。不能默认 ghost。
-- Selection：有边界的选择控件，选中状态使用强调色底／字和明确的视觉变化；切换控件同时设置 toggled 语义。
-- Link：带下划线的强调色文字，用于跳转、来源和文件打开；正文网址遵守同一规则。设置动作仍用按钮。
-- Icon：固定方形触达面积、完整边界、tooltip 和 accessibility_label；不要只放一个裸 × 或 +。
-- Task tab：标题与关闭图标共用一个背景和边框，内部无独立按钮边框；关闭图标始终可见，保留独立触达区域、悬停和焦点反馈。长标题按可用宽度省略，悬停可读全名，关闭区域不被压缩。
-- Danger：红色描边，用于中止运行或移除材料；普通关闭不使用危险色。
-- Disabled：保留形状，弱化填充和文字，业务原因在按钮附近说明；不允许触发操作。
-- Focus：保留组件库的焦点绘制、Tab/Enter/Space 语义；不能只用 hover。
+- Primary: solid deep warm fill (solid light warm fill in dark mode) for create, generate, save and run. Emphasize one advancing action per local action group.
+- Secondary: always-visible neutral surface and full border for settings, edit, copy, close or back. Never make these ghost buttons by default.
+- Selection: bordered selection control; the selected state uses an accent surface/text and a clear visual change. Toggle controls also set the toggled semantic state.
+- Link: underlined accent text for navigation, sources and opening files; body-text URLs follow the same rule. Settings actions remain buttons.
+- Icon: fixed square hit area, full boundary, tooltip and accessibility_label; never leave a bare × or +.
+- Task tab: the title and close icon share one background and border, with no separate button border inside. The close icon is always visible and keeps its own hit area, hover and focus feedback. Long titles ellipsize to the available width, reveal the full name on hover, and never compress the close area.
+- Danger: red outline for stopping a run or removing material; ordinary close does not use danger color.
+- Disabled: keep the shape, weaken fill and text, and explain the business reason near the button; never trigger the action.
+- Focus: keep the component library's focus drawing and Tab/Enter/Space semantics; hover alone is insufficient.
 
 ## Geometry and typography
 
-动作按钮统一约 32px 高，圆角 6px，系统字体 14px；底部状态栏的 Undo 使用 24px 紧凑按钮。工具栏保持一行，有长标题时截断标题，不压缩按钮。可横向滚动的看板保持现有列宽。表单/详情的操作行可换行。侧栏内容可滚动，主题切换固定在底部，不随项目增多被挤出窗口。
+Action buttons are about 32 px tall with 6 px radius and 14 px system font; Undo in the bottom status bar uses a compact 24 px button. Toolbars stay on one line and truncate long titles instead of compressing buttons. Horizontally scrollable boards keep their current column widths. Form/detail action rows may wrap. Sidebar content scrolls and the theme switch stays fixed at the bottom instead of being pushed out as projects grow.
 
 ## Boundaries
 
-非交互的 chip、任务状态和字段标签保持低对比、无按钮边框。可点列表/卡片需要悬停反馈和可见的打开箭头或操作，不为整篇正文添加按钮形状。快捷导航保持侧栏结构。
+Non-interactive chips, task statuses and field labels keep low contrast and no button border. Clickable lists/cards need hover feedback and a visible open arrow or action; do not give body copy a button shape. Shortcut navigation keeps the sidebar structure.
 
-阅读性文字必须可拖选并用 ⌘C 复制：正文、标题、说明、报告、设置值、自动化概要与历史都经 `views::selectable` 渲染（报告走 TextView 自带选择）。按钮文字、导航项和用 canvas 手动省略的紧凑标签不参与选择，保持点击语义与截断精度。
+Readable text must be drag-selectable and copyable with ⌘C: body copy, titles, descriptions, reports, setting values, automation summaries and history all render through `views::selectable` (reports use TextView's built-in selection). Button text, navigation items and compact labels manually ellipsized on canvas do not participate in selection, preserving click semantics and truncation accuracy.
 
 ## Source of truth
 
-`appearance.rs` 管理主题与组件色值。`controls.rs` 管理按钮/链接工厂。页面只选择操作语义和绑定行为，禁止重新引入全局 ghost 默认值。原生截图与操作验收覆盖 1440×920、1000×680 和明暗主题。
+`appearance.rs` owns theme and component colors. `controls.rs` owns button/link factories. Pages choose action semantics and bind behavior only; do not reintroduce a global ghost default. Native screenshots and interaction acceptance cover 1440×920, 1000×680 and both light and dark themes.
 
 ## Model settings
 
-全局模型入口固定在侧栏底部。全局页集中默认模型、独立搜索的本地模型列表、保存操作与现有覆盖清单。阶段输入留空表示继承，字段旁明确显示有效模型及来源；覆盖清除只有保存后生效。全局页的“所有阶段使用此模型”是显式选项，保存不会启动任务或改变历史。项目规划窗口和任务详情显示同一套有效模型规则。
+The global model entry sits at the bottom of the sidebar. The global page combines the default model, an independently searchable local model list, save actions and the current override list. An empty stage input inherits the global setting, and the field shows the effective model and its source; clearing an override takes effect only after saving. "Use this model for all stages" on the global page is an explicit option; saving never starts a task or changes history. Project planning windows and task details show the same effective-model rules.
 
-所有阶段已经继承时，复选框根据实际配置保持勾选，并作为只读状态展示；修改单个阶段覆盖后可重新统一。保存反馈放在主内容顶部的独立区域，不能悬浮遮挡编辑按钮。成功与失败同时使用图标、标题和文字说明，只有本地持久化成功才显示 Saved；反馈可以关闭，切换页面或放弃表单会清理旧提示。
+When every stage inherits, the checkbox stays checked according to the actual configuration and acts as a read-only state; changing one stage override allows unifying again. Save feedback sits in a dedicated area at the top of the main content and never floats over edit buttons. Success and failure combine an icon, title and explanation; Saved appears only after local persistence succeeds. Feedback can be dismissed, and changing pages or abandoning a form clears the old message.
 
-内联提示统一使用语义色调：成功绿、警告橙、错误红、中性信息灰。每个提示是一个带色调表面的圆角框——背景为该色调与面板色的混合，边框和文字使用同一色调；不使用“白底 + 彩色线框”的弱样式。颜色全部来自 `Palette`，深色模式下自动取深色面板与同一语义色，禁止硬编码浅色背景。
+Inline notices use semantic tones: success green, warning orange, error red, neutral information gray. Each notice is a rounded box with a tinted surface: the background blends the tone with the panel color, and the border and text use the same tone; avoid weak "white fill + colored outline" styling. All colors come from `Palette`; dark mode automatically uses the dark panel with the same semantic color, and hardcoded light backgrounds are forbidden.
 
 ## Automations
 
-- 侧栏按 **Research / Automations** 两个领域分区。Research 分区包含 **All research**（全部非自动化根任务/目标）、项目列表、**Paused projects** 与 **Research results**；Automations 是独立分区，直接包含 **All automations**（自动化列表）与 **Automation results**（全部自动化期次的结果），不再放在 Workspace 下与 All 并列，也不再有可展开的第二层父项。自动化结果与 Research results 完全分离；后者只包含 project/topic/goal 的研究结果。自动化期次使用独立的并发池（默认 2，只统计 running 期次）和独立队列，不占用 Research 并发名额，也不进入 Research 的 Topic FIFO；排队与槽位说明只出现在 Automations 页面和期次详情中。两个分区标题都是静态标签，子项直接可见、各自负责跳转。列表行显示名称、周期、下次触发、最近状态和未读数。名称可换行，长中文不得侵入右侧状态区。
-- 创建先选类型（Quick task / Research automation），再填一条指令或一句话需求；不再要求选择项目。Quick 单屏完成，Research 在复核页确认 goals 后启用。三步仍保留：任务 → 周期/时区/三次预览 → 计划与授权摘要。底部操作栏固定可见：Back、Save draft、Continue/Enable automation；保存草稿与启用是两个不同视觉等级的动作。
-- 详情头部在周期下方用一行元信息给出状态、类型、版本与所属项目，不用 chip 行冒充 tab。页面不重复放置返回按钮：返回统一使用顶部面包屑 Back，面包屑显示 Automations / 当前自动化，Back 回到 Automations 列表；All automations 与 Automation results 属于独立自动化区，不显示 Research 的 All research 面包屑或返回 All research 的按钮。页面以执行和结果为主：操作行（Pause/Resume、Run manually、Stop this run、Settings；Copy 与 Archive 暂不露出）紧随头部；历史是紧凑的单行文本列表，不使用逐行卡片边框或底色，按实际执行时间倒序（未开始则用计划或请求时间），每行只显示执行时间、状态、触发来源、活动期次的取消入口和 Open 入口，未读仍用圆点标记。排队期次的行内说明只引用自动化并发池（正在运行数 / 上限），不引用 Research 并发或队列。历史默认全部收起，点击任意一行在对话框中打开该期结果；报告、来源、步骤与技术详情都在该对话框内，技术详情折叠，单条运行的日志限高滚动。任务定义、预期结果、下三次触发、运行边界（补跑规则与每次限制）与批准快照收进 Settings 对话框，由操作行打开；Edit 与 Replan 放在该对话框底部，紧邻它们修改的设置，页面本身只保留执行动作。对话框使用模态遮罩、焦点圈定和 Escape 关闭，内容超长时在对话框内滚动。Quick 期次按短答合同输出：直接值或结论、as-of 时间、2–5 个来源和最多一两条关键限制；不写附录、方法论、证据要求表、情景分析或后续步骤。Research 期次保留完整报告合同。Quick 期次的时间上下文只显示计划/实际开始、时区和参考时间，数据窗口仅在已解析时显示。Pause 与 Run manually 在每种状态下都出现在同一位置：草稿时置灰，并在操作行下方说明解锁条件；只有草稿在批准前无法运行。定时任务与手动研究走同一条执行链路（同一 agent、工作目录、输出合同），不维护第二份 agent 配置，也不按构建或按自动化阻断启用。应用级运行前提（只在 app 打开且电脑唤醒时运行）放在页面末尾，不与单条自动化的信息混排。暂停时 Next runs 显示 Paused 标记并说明恢复后才重新排期、暂停期间不补跑。概览正文用正文字号与主色，说明性文字（Quick task 说明、运行限制、时区关闭说明）用小字号弱化色，二者不在同一视觉层级。下次触发只显示本地时间，时区已在周期摘要中给出，不重复缩写。Research 每期一个 topic，期次 topic 名称在结果对话框中显示。
-- 历史有界加载；未读用点标记；跳过、失败、运行中和已启用是不同维度，不用一个状态覆盖全部。
-- 存储失败、无效表单、缺模型/项目/权限时，反馈用独立错误区域和原因文字，不显示成功状态。日志清理必须先预览，并说明保留结果/来源。
-- 自动化内部 Task/Topic/Run 不在普通看板、侧栏树、Research results 中默认显示；从历史结果可显式打开步骤，面包屑返回 Automations。
+- The sidebar separates **Research** and **Automations**. Research contains **All research** (all non-automation root tasks/goals), the project list, **Paused projects** and **Research results**. Automations is a separate section containing **All automations** (the automation list) and **Automation results** (all automation period results) directly, not under Workspace alongside All, and with no expandable second-level parent. Automation results are fully separate from Research results; the latter contains only project/topic/goal research results. Automation periods use a separate concurrency pool (default 2, counting only running periods) and a separate queue; they consume no Research slots and never enter the Research Topic FIFO. Queue and slot explanations appear only on the Automations page and in period details. Both section titles are static labels; child items are directly visible and own their navigation. List rows use a compact two-line layout: the first line has the name plus type, status and unread labels; the second is a single-line summary of schedule, next trigger and latest result. Long names ellipsize on one line and never intrude into the right label area. The all-results list assigns a session-level background tint per automation; periods from the same automation share a color, and hover deepens the same hue. The palette is not persisted and only aids grouping in the current session.
+- Creation starts by choosing a shape (Quick task / Research automation), then entering one instruction or one-sentence request; choosing a project is no longer required. Quick finishes on one screen; Research confirms goals on a review page before enabling. Three steps remain: task → schedule/time zone/three previews → plan and authorization summary. A fixed bottom action bar shows Back, Save draft and Continue/Enable automation; saving a draft and enabling are two different visual levels.
+- The detail header gives status, type, version and owning project in one metadata line below the schedule instead of faking tabs with a chip row. Do not add a second back button: use the top breadcrumb Back, which shows Automations / current automation and returns to the Automations list. All automations and Automation results belong to the separate automation area and do not show Research's All research breadcrumb or a return-to-All-research button. The page prioritizes execution and results: the action row (Pause/Resume, Run manually, Stop this run, Settings; Copy and Archive are not exposed yet) follows the header; history is a compact single-line text list without per-row card borders or fills, ordered by actual execution time descending (planned or request time when not started). Each row shows only execution time, status, trigger source, cancel entry for an active period and Open entry; unread still uses a dot. Inline explanations for queued periods reference only the automation concurrency pool (running / limit), not Research concurrency or queues. History is fully collapsed by default; clicking any row opens that period's result in a dialog. Report, sources, steps and technical details all live in that dialog, technical details are collapsed, and a single run's logs scroll within a height limit. Definition, expected result, next three triggers, run boundaries (catch-up rule and per-run limits) and the approval snapshot live in the Settings dialog opened from the action row; Edit and Replan sit at the bottom of that dialog next to the settings they change, while the page itself keeps only execution actions. Dialogs use a modal scrim, focus trapping and Escape to close; long content scrolls inside the dialog. Quick periods use the short-answer contract: direct value or conclusion, as-of time, 2–5 sources and at most one or two material caveats; no appendix, methodology, evidence-requirement table, scenario analysis or next steps. Research periods keep the full report contract. Quick period time context shows only planned/actual start, time zone and reference time; the data window appears only when resolved. Pause and Run manually appear in the same position in every state: grayed out for drafts, with the unlock condition explained below the action row; only drafts cannot run before approval. Scheduled tasks and manual research share one execution path (same agent, working directory and output contract); do not maintain a second agent configuration and do not block enabling by build or by automation. Application-level run preconditions (runs only while the app is open and the computer is awake) sit at the end of the page, not mixed with per-automation information. While paused, Next runs shows a Paused marker and explains that resuming re-schedules, with no catch-up during the pause. Overview body text uses body size and primary color; explanatory text (Quick task description, run limits, disabled-time-zone explanation) uses smaller, muted text, and the two do not share a visual level. The next trigger shows local time only; the time zone already appears in the schedule summary, so do not repeat the abbreviation. Research creates one topic per period; the period topic name appears in the result dialog.
+- History loads with a bound; unread uses a dot; skipped, failed, running and enabled are separate dimensions, not one status covering all.
+- On storage failure, invalid forms or missing model/project/permission, use a dedicated error area with a reason and never show success. Log cleanup must preview first and state that results/sources are retained.
+- Automation-internal Tasks/Topics/Runs are hidden from the normal board, sidebar tree and Research results by default; history results can explicitly open steps, and the breadcrumb returns to Automations.
 
 ## Progressive disclosure
 
-- 日常导航使用 Research results；Settings → Agent & models 显示规划、收集、分析和报告使用的模型。
-- 执行页优先任务标题、状态、进度与报告。运行历史是紧凑列表，长标题两行显示并可悬停查看全名。运行中的研究协议不作为报告展示。
-- Technical details 内保留模型、目录、会话、时间、退出状态、Live logs 和 Saved output。一个选中的活动任务只显示一个停止按钮，批次控制始终在历史列表外可见。
-- 任务页默认保留开始/查看结果、状态、优先级、项目和截止日期。More details 收起低频属性和执行设置；缺少模型或工作目录时直接显示修复入口。
-- 研究页默认显示目标输入与已有研究；Advanced settings 进入配置页，Back to research 返回，输入保留。直接设置链接必须打开配置页。
-- 已完成研究步骤以 View result 为主操作；重新执行使用次按钮。目标结果入口指向有效研究步骤，不把规划 JSON 当作最终报告。
+- Daily navigation uses Research results; Settings → Agent & models shows the models used for planning, collection, analysis and reporting.
+- The execution page prioritizes task title, status, progress and report. Run history is a compact list; long titles use two lines and reveal the full name on hover. In-progress research protocols never render as reports.
+- Technical details keep model, directory, session, time, exit status, Live logs and Saved output. A selected active task shows only one stop button, and batch controls stay visible outside the history list.
+- The task page keeps start/view result, status, priority, project and due date by default. More details collapses low-frequency properties and execution settings; missing model or working directory shows a direct fix entry.
+- The research page shows goal input and existing research by default; Advanced settings opens the configuration page, Back to research returns, and input is preserved. Direct settings links must open the configuration page.
+- Completed research steps use View result as the primary action; rerun is secondary. The goal result entry points to a valid research step and never treats planning JSON as a final report.
 
 ## Icon source and implementation
 

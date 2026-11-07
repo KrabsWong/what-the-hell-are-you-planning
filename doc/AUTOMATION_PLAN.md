@@ -1,189 +1,120 @@
-# 定时自动化：功能规划与实现策略
+# Recurring automations: product and technical contract
 
-规划日期：2026-11-05。状态：**首版已实现并附验收证据；2026-11-05 增补任务形态（Quick / Research）与 Automations 容器。真实模型执行层与交互性能仍未验收，生产构建默认禁用真实无人值守派发**。实现记录见 [evidence/05-acceptance.md](automation-tasks/evidence/05-acceptance.md) 与 [06-task-shapes.md](automation-tasks/06-task-shapes.md)。
+This document describes the current automation behavior. The research workflow, report writing and publication semantics follow [Research Workflow Strategy](RESEARCH_WORKFLOW_STRATEGY.md); this document only adds the differences created by recurring execution.
 
-执行入口：[分阶段任务单](automation-tasks/README.md)。本文定义产品与技术契约；任务单定义实施顺序和验收证据。需求发生变化时，两处必须同步。
+## 1. Purpose and boundaries
 
-## 1. 目标与边界
+Automations let a user describe recurring information work and repeat an approved template on a schedule. Investment research is one example; a task can also track technology, produce an industry brief or organize reference material.
 
-让用户描述一项需要周期执行的工作，确认可重复执行的计划，随后查看每次运行的结果或处理异常。投资研究只是一个示例，任务也可以是技术信息追踪、行业简报、资料整理等。
+Run boundaries:
 
-用户已确认首版运行边界：**应用开着且电脑唤醒时运行；退出、休眠或离线期间错过的任务恢复后按规则处理。** 首版不增加后台守护进程，不承诺关闭窗口后仍运行，不主动唤醒电脑。窗口关闭的实际生命周期在阶段 0 核查并准确说明。
+- Runs only while the app is open and the computer is awake. Nothing runs while the app is closed, asleep or offline, and there is no background daemon.
+- Supports fixed intervals, daily times and selected weekdays; arbitrary Cron is not supported.
+- Does not send email or IM, publish, trade, run scripts or perform external-system writes.
+- When an unattended period meets a sign-in, CAPTCHA or browser handoff, it records an evidence gap and continues instead of waiting for input.
+- Report content still needs human review; automations do not claim factual correctness.
 
-首版包含：
+## 2. Two task shapes
 
-- 每隔 N 分钟、每隔 N 小时、每天指定时间、每周选定一天或多天的指定时间。
-- 明确时区、下三次触发预览、任务模板审批、模型配置快照。
-- 创建、编辑、复制、启用、暂停、归档、立即运行一次。
-- 独立运行历史、报告与来源、应用内未读结果和异常提示。
-- 有限重试、超时、补跑、去重、重启协调和有界排队。
+Both shapes share the same execution, retry, queue and result contract.
 
-首版不包含：任意 Cron、任意脚本入口、发信或 IM 推送、自动交易、外部系统写操作、系统通知、云端执行、可视化编排、通用插件框架。报告可以包含预警判断，但不会据此自动执行外部动作。
+- **Quick task:** one check instruction plus a schedule. It does not choose a project, create a goal tree or require plan review. Each period runs one read-only step and returns the direct value or conclusion, an as-of time, 2–5 original sources and at most one or two material caveats. It does not add an appendix, methodology, evidence-requirement table, scenario analysis, background history or next steps unless the task explicitly asks for them.
+- **Research automation:** a one-sentence request is expanded into reviewable goals. Each period instantiates the same approved template and returns the full report contract. Each period creates a separate internal topic; Quick does not create a topic.
 
-后续方向：先增加有明确权限和幂等策略的动作，再增加条件分支、依赖和人工确认节点；后台常驻必须先解决单写者服务与 IPC。首版只保持触发器、实例和执行动作的职责分离，不提前实现这些扩展。
+Creation flow:
 
-## 2. 用户流程
+1. Choose a shape. Quick asks only for the instruction and schedule; Research asks for the request and an optional expected result.
+2. Set the interval, time and IANA time zone. The page previews the next three triggers with the same arithmetic used by the scheduler. Frequency is always set manually, never inferred by a model.
+3. Quick derives a deterministic single-step plan; Research calls the planning pipeline once at this point and produces reviewable goals/steps.
+4. Save a draft, or explicitly enable. Saving a draft and generating a plan never run research.
 
-侧栏按 **Research / Automations** 两个领域分区。Research 分区包含 **All research**、项目列表、**Paused projects** 与 **Research results**；Automations 是独立分区，直接包含 **All automations**（自动化列表）和 **Automation results**（全部自动化期次的结果），不再放在 Workspace 下与 All 并列。自动化结果与 Research results 相互独立，后者只包含 project/topic/goal 的研究结果。自动化产物统一存放在自动生成的 **Automations 容器**（隐藏项目，目录 `<workspace>/automations`）中，不与用户手动创建的 project/topic 混排；该容器不出现在侧栏、项目选择器、研究默认项目和项目规划入口。
+The plan is generated only once. Each period instantiates the approved template and never re-plans; Research allows an explicit **Replan**, which creates a new version and requires fresh approval.
 
-支持两种任务形态，共用同一执行与重试管线：
+## 3. Schedule contract
 
-- **Quick task**：一条指令 + 周期。不选择项目、不生成 goal 树、不需要计划复核；每期只执行一个只读步骤，结果直接挂在期次上。输出采用短答合同：直接值或结论、as-of 时间、2–5 个原始来源和最多一两条关键限制；不写附录、方法论、证据要求表、情景分析、背景历史或后续步骤，除非任务明确要求。
-- **Research automation**：一句话需求由模型拆成 goals，用户复核后冻结为模板；每期在 Automations 下新建本期 topic 并实例化同一模板，保留完整报告合同。
-
-创建流程：
-
-1. 选择类型。Quick 只需指令（名称与预期答案可留空并自动生成）；Research 填写一句话需求与可选预期结果。
-2. 设置周期、时间、时区；展示下三次触发。频率始终由用户手动设置，不由模型推断。
-3. Quick 由确定性函数生成单步计划；Research 只在此刻调用一次规划链路，产出可复核的 goals/steps。
-4. 保存草稿，或明确点击「启用自动化」。生成计划、保存草稿和规划请求均不执行研究。
-
-**计划只生成一次。** 每期只实例化已批准的模板，不重新规划；Research 允许用户显式 `Replan`，生成新版本并重新批准。Research 每期新建独立 topic（`automation_id` 标记），Quick 不建 topic。期次历史按期有界加载，归档旧期次不得删除报告。
-
-启用表示批准当前模板及调度配置按规则重复执行。每期不重新自由规划并自动批准；只实例化已批准模板中的时间等明确参数。模板不适合重复执行、包含无法表达的动态规划或不支持的外部动作时，说明原因并保留草稿。
-
-列表显示名称、周期、下次运行、最近状态和未读结果。详情以执行和结果为主：操作行紧随头部；运行历史是紧凑的横向列表，按实际执行时间倒序，显示时间、状态、触发来源和打开入口，默认不展开；点击任一期次在对话框中查看报告、来源、时间上下文和步骤，日志与会话放在该对话框的技术详情中。任务定义、预期结果、下三次触发、运行边界与批准快照收进 Settings 对话框，Edit 与 Replan 也放在该对话框底部。所有队列等待、禁用和失败状态提供原因及可操作的恢复入口。
-
-每期结果在自动化历史中查看，不默认铺进普通研究看板、项目任务树和全局未完成研究列表。底层若复用 Topic/Goal，必须保存自动化来源关系，明确过滤和跳转，不靠名称前缀辨认。
-
-结果展示摘要、报告、来源、查询时间范围、实际采集时间、缺失或冲突信息。来源字段校验不等于事实正确性验证，不宣称系统能确定报告真实准确。
-
-## 3. 调度契约
-
-| 项目 | 首版规则 |
+| Item | Rule |
 | --- | --- |
-| 间隔 | 正整数分钟/小时，最小 1 分钟；检查转换溢出。以启用时刻为锚点，首次为锚点加间隔；按固定频率计算，不按完成时间漂移 |
-| 日历 | 每日一个当地时间；每周一个或多个星期几和一个当地时间；星期集合必须非空 |
-| 时区 | 保存 IANA 时区标识，默认创建时系统时区。无法识别时要求选择；不能用固定 UTC 偏移冒充时区 |
-| 时间存储 | 执行时间点存 UTC；规则保留当地时间和时区。时区不随系统时区变动 |
-| 预览 | 与实际调度共用计算函数，显示日期、时间、时区；不是模型生成的描述 |
-| 启用 | 从严格晚于启用时刻的下一次触发开始。立即执行是独立操作 |
-| 立即运行 | 新的手动实例，不移动定时游标；复用相同审批、并发、权限和超时规则 |
-| 重叠 | 同一自动化最多一个活动实例，包括重试等待或恢复核验；最多另有一个未启动实例 |
-| 合并 | 新的定时实例替代较旧的未启动定时实例；旧项记录跳过原因。已排队的手动实例不被替代，新定时项跳过并记录原因 |
-| 连续点击 | 相同手动请求 ID 去重；已有未启动实例时拒绝再次手动排队，并提示原因，不暗中取消旧项 |
-| 公共队列 | 自动化期次使用独立并发池（默认 2，仅统计 running 期次）和独立队列，不占用 Research 并发名额，也不进入 Research Topic FIFO；仅真实共享目录、浏览器 Space 或 session 仍串行。被替换项移出旧位置，新项按新入队时间排队 |
-| 暂停 | 停止未来触发，取消未启动项。当前实例及其已授权的有限重试可继续；「停止本次」单独取消当前实例和后续重试 |
-| 重新启用 | 重新确定未来游标；间隔重新锚定。主动暂停期间不补跑 |
-| 编辑 | 修改任务、计划、材料、模型、权限、时间/时区或运行策略需新版本并重新确认启用；取消旧版未启动项。当前实例继续旧快照；修改名称不影响批准 |
-| 复制/归档 | 复制为未批准草稿，不复制历史和会话。归档停止未来触发并取消未启动项，保留历史；当前实例可完成或单独停止 |
-| 项目归档/移除 | 不再派发所属自动化，说明阻塞原因；不因过滤掉项目而让自动化继续隐藏运行 |
+| Interval | Positive whole minutes or hours, minimum 1 minute; anchored to the enable time and computed at a fixed frequency, not drifting with completion time |
+| Calendar | One local time per day; one or more weekdays plus a local time per week; the weekday set must be non-empty |
+| Time zone | Store the IANA identifier, defaulting to the system zone at creation; a fixed UTC offset cannot impersonate a time zone |
+| Time storage | Execution instants are stored in UTC; rules keep local time and zone and do not follow system time-zone changes |
+| Preview | Shares the scheduler's calculation and shows date, time and time zone |
+| Enable | Starts from the first trigger strictly later than the enable time; immediate run is a separate action |
+| Immediate run | Creates a manual period and does not move the schedule cursor; uses the same approval, concurrency, permission and timeout rules |
+| Overlap | At most one active period (including retry waiting or recovery verification) and one additional unstarted period per automation |
+| Coalescing | A new scheduled period replaces an older unstarted scheduled period and records the skip reason; queued manual periods are not replaced |
+| Pause | Stops future triggers and cancels unstarted periods; the current period and its authorized retries may finish; Stop this run separately cancels the current period and later retries |
+| Re-enable | Recomputes the future cursor and re-anchors interval scheduling; no catch-up while paused |
+| Edit | Changes to task, plan, materials, Agent/model, time/zone or run policy require a new version and re-enabling; the current period keeps its old snapshot; a name-only change does not affect approval |
+| Copy/archive | Copy creates an unapproved draft without history or sessions; archive stops future triggers and cancels unstarted periods while keeping history |
 
-### 补跑与异常时钟
+### Catch-up and unusual clocks
 
-- 提供「只补最近一次」和「全部跳过」；首版没有「补跑全部」。
-- 默认只补最近一次。允许延迟默认取一个名义周期且最多 24 小时：间隔取自身、每日取 24 小时、每周取 7 天后再封顶。允许在高级设置调整为正时长。
-- 允许延迟从计划触发点算起，到真正开始执行前再次检查；超过时标记过期跳过。手动立即运行也使用该有效期，避免长时间积压后执行旧请求。
-- 大跨度错过采用数学计算或有界算法，只保留最新候选；跳过历史可以用带起止范围和计数的摘要记录，不能逐分钟制造大量实体。
-- DST 不存在的当地时刻跳过；重复当地时刻只选择第一次对应的 UTC 时间。
-- 时钟回拨不得重放已经处理的触发点；前跳和唤醒按补跑策略推进。单调时钟用于等待和运行时限，UTC 时钟用于调度判定。
-- 不依赖预先准确判断「网络已恢复」；允许按策略尝试，短暂断网走有限重试，后续到期和补跑仍遵循同一去重规则。
+- Catch up only the newest missed period by default; the allowed delay defaults to one nominal period capped at 24 hours and can be adjusted in advanced settings.
+- The allowed delay starts at the planned trigger and is checked again before execution; older periods are marked skipped. Manual immediate runs also use this validity window.
+- Large gaps keep only the newest candidate; skipped history is summarized with ranges and counts rather than creating per-minute entities.
+- Skip a local time that does not exist during DST; for a repeated local time, choose only the first corresponding UTC instant.
+- Clock rollback never replays a processed trigger; forward jumps and wake-ups follow the catch-up policy.
 
-## 4. 每期时间上下文与数据新鲜度
+## 4. Per-period time context
 
-每个实例保存 `scheduled_for`、`actual_started_at`、`timezone`、`reference_time` 和能够明确解析的 `data_window`。
+Each period stores `scheduled_for`, `actual_started_at`, `timezone`, `reference_time` and a resolvable `data_window`.
 
-- 定时和补跑以计划触发时间为基准；手动运行以请求时刻为基准。
-- 重试保持同一期基准、输入和时间范围，不能使用重试当天替换。
-- 「昨天」是指定时区下前一个自然日；建议存开始含、结束不含的时间窗。
-- 「上一个交易日」等由执行任务使用可靠日历/数据源验证；通用调度器不假设周一至周五就是交易日。
-- 业务时间范围尚未验证时保持未解析状态，由收集步骤说明验证结果；不得伪造精确范围。
-- 补跑记录真实检索时间，明确事后信息与当时已知信息的区别。
-- 新一期使用新会话、新输出目录和独立浏览器 Space。首版不自动使用上一期报告作为证据；只沿用用户批准的静态材料快照。
+- Scheduled and catch-up periods use the planned trigger as their reference; manual runs use the request time.
+- Retries keep the same period reference, inputs and time range; a retry day never replaces them.
+- "Yesterday" means the previous natural day in the scheduled time zone; prefer a start-inclusive, end-exclusive window.
+- "Previous trading day" and similar terms are verified by the execution step using a reliable calendar or data source; the generic scheduler never assumes Monday–Friday are trading days.
+- When a business time range is unverified, keep it unresolved and let the collection step explain the result; never invent a precise range.
+- Each period uses a new session, output directory and browser Space; it does not automatically reuse the previous period's report as evidence and only carries the user-approved static material snapshot.
 
-示例：周二 08:30 的实例在周二 10:00 开始，「昨天」仍为周一。下一天的实例解释为周二；第一期重试仍解释为周一。
+## 5. Approval, versions and execution
 
-## 5. 领域模型与集成
+Enabling approves the current template and schedule for repeated execution. Automation approval uses its own source and version identifier; changing an old goal's state is not a way to bypass approval. Dispatch rechecks the period snapshot, authorization and lifecycle.
 
-建议新增模块名可按现有组织微调，但职责不得混合：
+Automations reuse the normal research execution path:
 
-| 模块 | 职责 |
+- The same `prepare_run`, working-directory rules and JSON result contract.
+- Agent and model are selected per stage in Settings, with both OpenCode and Codex supported.
+- There is no second agent configuration, and enabling is not blocked by build type or by automation.
+- Plan-generated periods and manual runs share approval, concurrency and permission rules; automation only adds a trigger.
+
+Error handling:
+
+| Error | Handling |
 | --- | --- |
-| `automation.rs` | 定义、版本、实例、批准快照和状态转换 |
-| `automation_schedule.rs` | 无 UI/进程依赖的触发计算、预览、补跑及校验 |
-| `automation_runtime.rs` | 到期扫描、事务记账、排队、恢复协调 |
-| `automation_execution.rs` | 将批准模板转换为现有研究步骤，关联结果 |
-| `automation_views.rs` | 列表、创建、设置、详情和历史 |
+| Network, rate limiting and other transient errors | Reuse the bounded step retry, defaulting to at most 3 attempts 30 seconds apart; never retry early when the service gives an explicit wait time |
+| Output validation failure | Bounded correction within the same step retry budget |
+| Missing model, invalid identity, insufficient permission, browser handoff | Move to needs-attention; do not retry continuously |
+| User stop | Cancel the current period and later retries; never retrigger the same period |
+| Timeout | Stop the current period, record the reason and do not start new steps beyond that period's deadline |
+| Consecutive final failures | Pause automatic triggering after 3 consecutive periods; success clears the count, and skipped/cancelled periods do not count |
 
-核心对象：
+The default per-period deadline is 30 minutes and can be adjusted in advanced settings. It starts at the first actual start and includes waits between steps and retries. The deadline is saved and survives restarts and sleep.
 
-- `AutomationDefinition`：ID、版本、**形态（Quick / Research）**、Automations 容器项目、名称、输入、参数化计划、调度、时区、生命周期状态、批准摘要、执行配置和策略。计划由 `goals: [{title, brief, steps}]` 组成；Quick 恒为一个 goal、一个 Advise 步骤。
-- `AutomationOccurrence`：实例 ID、定义 ID/版本、触发来源、唯一触发键、计划/实际时间、时间上下文、不可变执行快照、状态及原因、关联研究目标（可多个）、最终结果引用、未读标记。
-- 继续用 `AgentRun` 记录具体步骤与尝试；一个实例可能有多个步骤，每个步骤可能有重试。不要把一次步骤失败当成整个周期再次触发。多 goal 期次按 goal 顺序推进，全部完成且每个 goal 都有通过的最终报告才算成功。
+## 6. Results, history and concurrency
 
-定义状态：草稿、已启用、已暂停、需处理、已归档。实例状态：排队、运行、等待重试、恢复核验、成功、失败、中断、已取消、已跳过；阻塞原因必须结构化记录。状态名可适配项目风格，但恢复核验不得伪装为成功或重新排队。
+- Results show the summary, report, sources, query time range, actual collection time and missing or conflicting information. Source-field validation is not factual verification.
+- Each period is viewed in automation history and never enters the normal board, project task tree, unfinished-research list or automatic publication.
+- Lists load with a bound or page, and details load on demand. Log cleanup handles only terminal periods and never deletes reports, sources, recovery inputs, session identifiers or deduplication evidence.
+- Automation periods use a separate concurrency pool (default 2, counting only running periods) and a separate queue. They consume no Research slots and never join the Research Topic FIFO.
+- The two queues wait on each other only for genuinely shared folders, browser Spaces or sessions.
 
-自动化批准需要独立来源和版本标识。不得通过随意把旧 Goal 改成 Todo、填入虚假签名等方式绕过现有审批。派发时重新核对实例快照、授权和生命周期。
+## 7. Persistence and recovery
 
-### 当前代码依据（实施前需复核）
+Each trigger saves the coalesced period, snapshot, related entities and next-trigger cursor in one Store/SQLite transaction. Only a committed transaction may be queued for execution; a save failure must not start work or leave an advanced in-memory cursor.
 
-- [scheduler.rs](../src/scheduler.rs)：资源冲突、目录和会话恢复候选，不是日历调度器。
-- [app.rs](../src/app.rs)：执行队列和并发派发；空闲时 pump 会停止。新增时钟必须能在没有运行时唤起调度，不应维持 80ms 忙轮询。
-- [sqlite_storage.rs](../src/sqlite_storage.rs)、[persistence.rs](../src/persistence.rs)：单实例工作区锁、Store 事务快照。不能增加另一个持有旧 Store 的写者。
-- [request_planning.rs](../src/request_planning.rs)：普通研究相对时间基于原始提交时间；自动化需显式时间上下文，保留普通研究原语义。
-- [retries.rs](../src/retries.rs)、[recovery.rs](../src/recovery.rs)：有限重试和精确会话核验可以复用，不可跨周期盲目恢复。
-- [opencode.rs](../src/opencode.rs)：当前 OpenCode 使用 build agent；工作目录不是沙箱。
-- [report_publish.rs](../src/report_publish.rs)：现有全局自动发布扫描必须排除自动化来源内容。
+- The scheduled uniqueness key is `(automation_id, scheduled_for_utc)`; manual periods use a separate request ID.
+- Startup verifies recovery before dispatching new work.
+- A still-running session keeps being monitored; a completed attempt imports only the matching result; a confirmed stop may enter bounded recovery according to authorization; an unknown state blocks duplicate execution and moves to needs-attention.
+- Period deduplication is not exactly-once for external operations, and the product does not promise that.
 
-## 6. 持久化、启动与恢复契约
+## 8. Implementation map
 
-每次到期用一次 Store/SQLite 事务保存「去重判断后的实例、快照及关联实体、下次触发游标」。提交成功后才可排入内存执行队列；保存失败不得启动，不可保留已前进的内存游标或幽灵实例。
-
-定时唯一键为 `(automation_id, scheduled_for_utc)`；定义版本只作为快照，不靠换版本绕过去重。手动唯一键使用独立请求 ID。快照加载也要验证唯一性；采用实体表时增加相应数据库约束。所有新增数据通过统一持久化入口读写，不旁路写入后被整库快照覆盖。
-
-新 schema 需要明确版本、经过验证的备份、迁移回滚及旧字段默认值。不对现有单次研究记录猜测或补造自动化授权。未知新版本应拒绝打开，不能静默丢弃字段。
-
-启动先恢复核验，再派发新工作：
-
-1. 仍运行：监控原会话，占用原执行资源。
-2. 已完成：只导入匹配该尝试的结果；重复导入无额外副作用。
-3. 确认停止：有保存的有效自动化授权且适用时才进入有限恢复/重试；普通手动研究保留现有恢复政策。
-4. 状态未知：阻止该自动化及冲突资源重复执行，进入需处理状态。
-
-必须覆盖「事务提交但未启动」「启动意图已保存但进程创建结果未知」「结果返回但未记账」的崩溃窗口。实例去重不等于外部操作 exactly-once；首版不承诺后者。
-
-## 7. 执行权限、错误与运行限制
-
-定时任务和手动创建的 Project/Topic 研究共用同一条执行链路：同一个 `prepare_run`、同一个 agent（设置页选定的 OpenCode / Codex，未来可扩展）、同一个工作目录规则、同一个 JSON 输出合同。自动化只在前面多一个自动触发点，不维护独立的 agent 配置，也不额外生成 `opencode.json` 或受限 agent profile。
-
-无人看管带来的实际差异只有一条：没有人能回答 agent 的提问或接管浏览器。因此运行提示词声明这是定时触发的一期，要求遇到登录墙、CAPTCHA 或需要接管的页面时记录证据缺口并继续，而不是等待输入；这与手动研究已有的来源失败策略一致。
-
-历史实现曾在运行目录生成受限 OpenCode agent 并以构建开关禁止启用，用来等待「执行层工具拒绝」验证。该方案已移除：它把调度功能挂在未完成的安全验证上，且为每条自动化维护第二份 agent 配置，与复用研究链路的方向冲突。若将来需要更窄的运行权限，应在共享执行层统一处理一次，而不是按自动化逐条阻断。
-
-| 错误 | 处理 |
+| Module | Responsibility |
 | --- | --- |
-| 网络/限流等短暂错误 | 复用有限步骤重试，首版最多 3 次、间隔 30 秒；有明确服务端等待提示时不得提前重试 |
-| 输出校验失败 | 有界纠错，纳入同一步骤重试预算 |
-| 缺模型、身份失效、权限不足、浏览器接管 | 进入需处理，不持续重试 |
-| 用户停止 | 取消当前和后续重试，不重新触发同一实例 |
-| 超时 | 停止当前实例，记录原因，不启动超出该实例时限的新步骤 |
-| 连续最终失败 | 建议默认 3 个实例后暂停自动触发；成功清零，跳过/取消不计入。用户处理后显式恢复 |
-
-建议默认单实例执行时限 30 分钟，高级设置可改为正时长；从首次实际开始算起，包含步骤间等待和重试。保存截止时间，重启/休眠不重置预算，运行时结合单调计时避免时钟回拨导致无限运行。上述数值是实施默认值，不是已上线行为；调整需同步契约和测试。
-
-外层实例不再套一轮重试，防止步骤与实例重试次数相乘。模型或 token 费用仅在有可靠计量时展示，首版不承诺无法强制执行的费用硬上限。
-
-结果默认本地保存。自动化产生的 Topic/Goal 必须从全局自动发布排除；成功状态不触发 Git 推送。外部写入、发送和发布以后单独增加动作级授权、幂等键与核验策略。
-
-## 8. 历史与性能
-
-- 列表分页/有界加载，详情按需加载。结果与来源默认保留，原始材料不随日志清理删除。
-- 提供明确的详细日志保留设置及清理预览；首版默认不静默删除历史，可建议用户选择保留 30 天日志。
-- 清理只处理终态实例的可清理日志，不删除恢复所需输入、会话标识、去重依据或运行中的数据。
-- 验证 43,200 条一分钟周期实例（30 天）及有代表性的报告/日志大小，记录生成方式、机器和性能数据。先测量 Store 全量保存成本；无法满足交互要求时做针对性存储优化，不宣称支持无限历史。
-
-## 9. 实施完成定义
-
-按 [任务单](automation-tasks/README.md) 顺序通过：执行边界调查 → 纯模型/时间计算 → 持久化与调度 → 研究适配 → 界面 → 集成验收 → 任务形态。
-
-完成必须有离线假时钟/假 CLI 的确定性测试、旧流程回归、迁移和崩溃测试、明暗主题 UI QA，以及有记录的性能结果。少量真实模型验收不能替代这些证据。研究行为实际改变时同步维护 `RESEARCH_WORKFLOW_STRATEGY.md`；当前仅新增规划，不修改它对已实现行为的描述。
-
-### 当前状态（2026-11-05）
-
-- 阶段 0–6 代码已落地；Quick / Research 两种形态、Automations 容器、每期新 topic 与“只规划一次”的模板冻结规则可用。
-- 生产构建仍关闭无人值守执行（`cfg!(feature = "qa")`），真实模型端到端验收未完成。
-- 期次 topic 归档、版本历史、归档恢复与独立改名入口仍未实现。
-- 未完成项、既有 QA 失败与待确认决策见 [07-backlog.md](automation-tasks/07-backlog.md)。
-
-
-开发实施应保护工作区已有改动；不顺手重构、不自动提交/推送、不重启用户运行中的应用。每阶段输出文件清单、实际检查命令与结果、未完成项和限制。
+| [automation.rs](../src/automation.rs) | Definitions, versions, periods, approval snapshots and state transitions |
+| [automation_schedule.rs](../src/automation_schedule.rs) | Trigger calculation, previews, catch-up and validation |
+| [automation_runtime.rs](../src/automation_runtime.rs) | Due scanning, transactional bookkeeping, queueing and recovery coordination |
+| [automation_execution.rs](../src/automation_execution.rs) | Converts an approved template into research steps and links results |
+| [automation_views.rs](../src/automation_views.rs) | List, creation, settings, detail and history |
+| [research.rs](../src/research.rs) | Shared stage prompts, result parsing and dependency context |

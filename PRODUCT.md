@@ -6,37 +6,37 @@ product
 
 ## Users
 
-主要面向没有开发者背景的桌面用户。他们用 Task Manager 组织研究项目、选择题目、补充材料，并关注研究进度和结果。界面面向持续操作的工作场景，中文任务内容与现有英文操作标签并存。
+Primarily desktop users without a developer background. They use the task manager to organize research projects, choose topics, add materials and follow research progress and results. The interface supports continuous operational work, with Chinese task content alongside the existing English action labels.
 
 ## Product Purpose
 
-Rust/gpui-kit 原生任务工作台，支持项目自动拆题、Kanban 人工准入、按阶段选择 OpenCode 模型、ego(lite) 搜集、PDF/OCR、日志和报告，以及需要周期执行的信息研究工作。界面的成功标准是用户知道下一步在哪里操作，批准与执行边界清楚，真实数据持续保存。
+A native Rust / gpui-kit task workspace for automatic topic planning, manual Kanban admission, per-stage Agent and model selection, ego(lite) collection, PDF/image materials, logs and reports, plus recurring information research. Success means the user knows where to act next, approval and execution boundaries stay clear, and real data keeps saving.
 
 ## Brand Personality
 
-沿用当前原生桌面的简洁、克制、务实方向，不做品牌重设计。系统字体、紧凑布局、现有暖中性色与明暗主题是既有实现约束。
+Keep the current native desktop direction: simple, restrained and practical. No brand redesign. System fonts, compact layout, the existing warm neutral palette and light/dark themes are implementation constraints.
 
 ## Anti-references
 
-用户明确指出：按钮和链接不可伪装成正文，不能依赖鼠标悬停才知道哪些可点击；次操作不应无边框、无颜色地消失在说明文字中。避免把状态标签做得与按钮相同。
+The user explicitly rejected buttons and links that disguise themselves as body text, interactions that only become visible on hover, and secondary actions that disappear into explanatory copy without a border or color. Status tags must not look like buttons.
 
 ## Design Principles
 
-1. 可执行操作在静止状态就能识别。
-2. 主操作、辅助操作、导航、危险操作各有一致外观。
-3. 保留布局、数据和已学会的研究流程。
-4. 禁用操作说明原因，不让用户猜测。
-5. 默认页面突出任务、进度、结果和下一步；模型路径、会话、原始日志、阶段规则等在详情与设置中保留。
-6. 主题切换、窄窗口和键盘操作保持可用。
-7. 自动化明确区分“已启用”和“本次运行失败”；周期、批准版本、下次触发和未读结果在列表可见，运行日志收进技术详情。
-8. 自动化的研究结果不进入普通看板、任务树或全局发布；只在自动化历史中查看。
+1. Actionable controls are identifiable at rest.
+2. Primary actions, secondary actions, navigation and destructive actions each have a consistent appearance.
+3. Preserve the layout, data and research workflow users already learned.
+4. Disabled actions explain why; the user should not have to guess.
+5. Default pages foreground tasks, progress, results and the next step; model paths, sessions, raw logs and stage rules stay in details and settings.
+6. Theme switching, narrow windows and keyboard use remain available.
+7. Automations clearly distinguish "enabled" from "this period failed"; schedule, approved version, next trigger and unread results are visible in the list, while run logs live in technical details.
+8. Automation results do not enter the normal board, task tree or global publishing; they appear only in automation history.
 
 ## Automations
 
-侧栏按 **Research / Automations** 两个领域分区。Research 分区包含 **All research**、项目列表、**Paused projects** 和 **Research results**；Automations 是独立分区，直接包含 **All automations** 和 **Automation results**，不再与 All 并列，也不再出现两个同名结果入口。自动化结果与普通 project/topic/goal 的研究结果相互独立。它让用户描述一项需要周期执行的信息工作。创建先选类型：Quick task 只需一条指令与手动设置的周期；Research automation 用一句话需求生成可复核的 goals，再按同一批准计划周期执行。自动化产物统一放在自动生成的 Automations 容器中，不进入普通项目与 topic；Research 每期新建独立 topic，Quick 直接挂在期次上。计划只在创建或显式 Replan 时生成，期次不重新规划。保存草稿或生成计划不执行研究；编辑需要新版本和重新批准。自动化期次使用独立并发额度（默认 2，仅统计正在运行的期次）和独立队列，不占用 Research 并发名额，也不进入 Research 的 Topic FIFO 或 Research results；Research 并发默认 3，两者互不影响，只有真实共享的目录、浏览器 Space 或 session 仍会串行。
+The sidebar separates **Research** and **Automations**. Research contains **All research**, the project list, **Paused projects** and **Research results**. Automations is a separate section containing **All automations** and **Automation results** directly, no longer alongside All or exposing two identically named result entries. Automation results are fully separate from project/topic/goal research results. A user describes recurring information work. Creation starts by choosing a shape: a **Quick task** needs one instruction and a manually set schedule; a **Research automation** expands a one-sentence request into reviewable goals and then repeats that approved plan. Automation output lives in the generated Automations container and never enters normal projects or topics; Research creates a separate topic per period, while Quick attaches directly to the period. Plans are generated only at creation or on an explicit Replan; periods never re-plan. Saving a draft or generating a plan does not run research; edits require a new version and fresh approval. Automation periods use a separate concurrency allowance (default 2, counting only running periods) and a separate queue. They consume no Research slots and never join the Research Topic FIFO or Research results; Research defaults to 3. The two pools do not affect each other, and only genuinely shared folders, browser Spaces or sessions still serialize.
 
-首版只在应用打开且电脑唤醒时运行，不提供后台守护进程。错过周期默认只补最近一次，超过允许延迟则跳过；暂停不补历史。立即运行不移动定时游标。仅支持 OpenCode，不执行发信、发布、交易、脚本或外部写操作；真实运行时工具拒绝和真实模型链路仍需独立验证。验证完成前，产品构建默认禁用真实无人值守派发：用户可以创建和检查草稿，但启用/运行受限并显示原因。
+Automation periods run only while the app is open and the computer is awake; there is no background daemon. Only the newest missed period is caught up by default, and it is skipped when older than the allowed delay; pausing does not backfill. A manual run does not move the schedule cursor. Agent and model are selected per stage in Settings, with both OpenCode and Codex supported. Automations do not send email or IM, publish, trade, run scripts or perform other external writes. When an unattended period meets a sign-in, CAPTCHA or browser handoff, it records an evidence gap and continues instead of waiting for input. Report content still needs human review.
 
 ## Accessibility & Inclusion
 
-用户未提出特定认证标准。执行文字/控件对比度检查，保持可见键盘焦点，图标提供可访问名称及提示，按钮不只靠颜色区分。桌面鼠标目标统一到约 32px，紧凑窗口允许滚动，中文与长标签需实测。
+No specific certification standard was requested. Check text and control contrast, keep keyboard focus visible, give icons accessible names and tooltips, and never rely on color alone to distinguish buttons. Desktop pointer targets are about 32 px; compact windows may scroll; Chinese text and long labels need real-device testing.

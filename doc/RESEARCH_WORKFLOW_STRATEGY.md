@@ -1,6 +1,6 @@
 # Research Workflow Strategy
 
-Last reviewed: 2026-11-07
+Last reviewed: 2026-11-08
 
 ## Purpose and status
 
@@ -119,7 +119,7 @@ Optional Longbridge queries supplement relevant public market research when tool
 
 Analysis must explain the evidence-to-conclusion argument, not just provide a verdict. Cite factual claims to original URLs or attachment names/pages. Preserve relevant assumptions, calculations and comparison methods.
 
-Assess each planned evidence requirement as **supported, limited, missing or conflicting**, with reasons and citations. For older plans without explicit requirements, derive a minimal set from the approved scope without expanding the task.
+Assess each planned evidence requirement as **supported, limited, missing or conflicting**, with reasons and citations. For plans without explicit requirements, derive a minimal set from the approved scope without expanding the task.
 
 Evaluate corroboration, contradictions, alternative explanations and counterevidence. Distinguish observations from causal interpretations. Explain which conclusions or actions are justified and which are not; further exploration is different from a commitment to act.
 
@@ -159,7 +159,7 @@ Unless the user explicitly requests another length, target roughly **two to thre
 - Include tables and captions in the main-body reading load.
 - Exclude the appendix; use a comparable reading load for other languages.
 
-This is a flexible reading target, not a hard limit, a minimum to fill or a promise of printed pagination. Natural, complete, readable explanations and evidence fidelity take priority over the default length; exceed it when needed. Shorten by removing repetition and moving detailed support to the appendix, not by deleting subjects, logical connections or necessary explanations. Do not mechanically truncate the report, reduce the evidence collected, or remove critical caveats to meet it. Older plans requesting exhaustive coverage normally place that detail in the appendix unless the user explicitly requested a long main body.
+This is a flexible reading target, not a hard limit, a minimum to fill or a promise of printed pagination. Natural, complete, readable explanations and evidence fidelity take priority over the default length; exceed it when needed. Shorten by removing repetition and moving detailed support to the appendix, not by deleting subjects, logical connections or necessary explanations. Do not mechanically truncate the report, reduce the evidence collected, or remove critical caveats to meet it. Plans requesting exhaustive coverage normally place that detail in the appendix unless the user explicitly requested a long main body.
 
 ### Body and appendix responsibilities
 
@@ -218,7 +218,7 @@ Each execution step receives the goal, relevant instructions/comments, supplied 
 
 Research results use a structured envelope containing `status`, Markdown `report`, optional `blocker`, and `sources` with title, URL and publication time. The readable content is in `report`; it must contain the useful result, not only a short summary.
 
-Partial results also receive a machine-readable evidence-gap marker in the stored output so downstream steps preserve the limitation. Reader-facing surfaces — the result view, Markdown export and published page — strip that marker and show a localized 证据说明 notice instead. The marker is an internal handoff instruction and never appears as report content.
+Partial results also receive a machine-readable evidence-gap marker in the stored output so downstream steps preserve the limitation. Reader-facing surfaces — the result view, Markdown export and published page — strip that marker and show a localized evidence notice instead (the current UI copy is Chinese). The marker is an internal handoff instruction and never appears as report content.
 
 | Result | Meaning |
 | --- | --- |
@@ -234,7 +234,7 @@ Each Topic has one permanent public URL. Publishing a new report snapshot overwr
 
 ## 7. Automation occurrences
 
-Automations reuse the research workflow but have a separate approval and time model. The first version supports intervals, daily and weekly schedules in an IANA time zone; arbitrary Cron, external actions and background execution while the app is closed are not supported.
+Automations reuse the research workflow but have a separate approval and time model. They support intervals, daily and weekly schedules in an IANA time zone; arbitrary Cron, external actions and background execution while the app is closed are not supported.
 
 - **Two shapes.** Quick tasks run one answer step per period and return the smallest complete answer: the direct value(s) or short result, its as-of time, two to five original links and at most one or two material caveats. They do not add an appendix, methodology, evidence-requirement table, scenario analysis, background history or next-step plan unless the task explicitly asks for one. Research automations keep the full collection → analysis → report contract described above. Both shapes use the same execution path and JSON result envelope.
 - **Separate approval.** A deterministic recurring template (collection → analysis → report) is reviewed and enabled by the user. Approval binds the definition version, template, schedule, effective models/agents and material signatures. Global model changes do not alter an enabled automation. Editing scope, plan, models, materials, agent or schedule creates a new version and requires approval again; running periods keep their old snapshot.
@@ -311,3 +311,5 @@ This is a contributor maintenance rule, not a background synchronization service
 - **2026-11-07:** Added the plain-answer and explicit-verdict contract for final reports: default general reader, answer-first opening, sub-question verdict table, directional answers with stated evidence strength, one qualification per point, and no coined slogan terminology or run mechanics in reader-facing prose. Reader-facing surfaces now replace the internal English evidence-gap marker with a localized notice. These remain prompt guidance and presentation changes, not a factual certification or deterministic tone validator.
 
 - **2026-11-07:** Made a Topic's published URL permanent. Republishing changed report content now overwrites the existing page and keeps previously shared links working; earlier versions stay in Git history. Duplicate publication records created by the earlier per-version URL behavior collapse into the Topic's original pushed URL on its next publish.
+
+- **2026-11-08:** Aligned the maintained documentation with current automation shapes, execution and publishing behavior; removed historical implementation snapshots and translated the remaining project documentation to English. The report system prompt is now the source of truth for the plain-answer and verdict contract.

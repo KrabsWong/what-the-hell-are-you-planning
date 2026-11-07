@@ -4,9 +4,10 @@ A local-first desktop workspace for turning research questions into actionable p
 
 Define what you want to understand, let an agent propose a plan, and decide which tasks should move forward. Follow the work from evidence collection through analysis to a final report, with the sources, materials, and execution history available when you need them.
 
-<img width="600" alt="image" src="https://github.com/user-attachments/assets/37aabf1a-e888-4e5b-997c-ff976864475b" />
-<img width="600" alt="image" src="https://github.com/user-attachments/assets/147fe163-ffd1-4781-a401-4360345509bf" />
-<img width="600" alt="image" src="https://github.com/user-attachments/assets/88d27ead-cd99-40a3-8bc8-2145432c117d" />
+<img width="600" alt="image" src="https://github.com/user-attachments/assets/a6b14a0b-b350-40aa-a0ca-e35eca932589" />
+<img width="600" alt="image" src="https://github.com/user-attachments/assets/c621590b-3be1-4b1f-baf1-48b5622dc49a" />
+<img width="600" alt="image" src="https://github.com/user-attachments/assets/017416ad-a4b9-44c9-ac9d-46387f0f94f8" />
+<img width="600" alt="image" src="https://github.com/user-attachments/assets/8261de32-9850-4a07-b9a2-e9eccbed3b21" />
 
 ## Plan with an agent, stay in control
 

@@ -1,6 +1,6 @@
 # Research Workflow Strategy
 
-Last reviewed: 2026-11-05
+Last reviewed: 2026-11-07
 
 ## Purpose and status
 
@@ -137,6 +137,20 @@ Adapt emphasis to the audience: decision makers need options and tradeoffs; prac
 
 The application supplies the title. Start the model-written report with substantive content instead of repeating the document title. Use level-two headings for major sections and level-three headings for subsections. Explain limitations to the reader in the goal language, not as instructions to another agent.
 
+### Plain answers and explicit verdicts
+
+Unless the request names a specialist audience, the default reader is an intelligent person outside the field. The main body must be understandable without decoding the author's shorthand, and it should support a conclusion or action after one reading.
+
+- **Answer first.** Open with three to six sentences of ordinary prose that answer the reader's question, state the main condition, and say what follows from the evidence. Do not open with background, definitions or a heading that restates the title.
+- **Decompose the question.** Multi-part questions get a compact table with one row per sub-question: the sub-question, its verdict, the strength of evidence and what would change the verdict. Exploratory questions receive findings rather than a forced business recommendation.
+- **Give definite verdicts.** Use one consistent scale in the goal language: yes / probably yes / probably no / no / not enough evidence, or recommend / recommend only if the named condition holds / do not recommend. State evidence strength in plain words instead of relying on repeated hedging.
+- **Prefer a direction.** When the evidence points one way, the report says which way and how confident it is. "Not enough evidence" is reserved for sub-questions the collected evidence genuinely cannot resolve, and must name the missing evidence and how to obtain it. "It depends" is incomplete unless the condition is named.
+- **Say each qualification once.** Place a limitation where it changes use of a finding, or in one limitations section. Do not attach the same disclaimer to every paragraph or end paragraphs with what the report cannot prove.
+- **Use concrete prose.** Name the actor and action, start paragraphs with their point, and avoid abstract noun chains, slash-separated labels, repeated reverse constructions and invented slogans or quoted labels. Expand acronyms and English terms at first use.
+- **Keep run mechanics out of the report.** Step numbers, run IDs, browser-handoff times and internal workspace filenames are not evidence and do not belong in the body or at the start of the appendix.
+
+These are presentation rules, not permission to overstate. A definite verdict still has to match the cited evidence; otherwise the correct verdict is "not enough evidence".
+
 ### Main-body reading budget
 
 Unless the user explicitly requests another length, target roughly **two to three pages of reading**:
@@ -188,7 +202,7 @@ Custom interactive explainers, generated illustrations and narrated videos are n
 
 Final report execution now includes a local editorial check within the existing model task: identify specific comprehension problems, revise only the affected wording, and compare changed claims with the evidence before returning the normal result. It adds no separate model call, user confirmation step, output schema or detector dependency. Collection and analysis retain their full evidence and argument records.
 
-The check targets compressed analytical shorthand, unexplained terminology, unclear comparisons, overloaded sentences and headings that overstate the supporting paragraph. Chinese prose should use ordinary complete sentences instead of forcing the reader to decode abstract noun clusters or slash-separated labels. Other languages should follow the intended audience's natural usage.
+The check targets compressed analytical shorthand, unexplained terminology, unclear comparisons, overloaded sentences and headings that overstate the supporting paragraph. It checks report shape before polishing sentences: the opening answers the question, each sub-question carries a verdict with its evidence strength, and no paragraph exists only to restate what cannot be concluded. Chinese prose should use ordinary complete sentences instead of forcing the reader to decode abstract noun clusters or slash-separated labels. Other languages should follow the intended audience's natural usage.
 
 This report-specific policy protects genuine contrasts and logical transitions. It does not ban punctuation, numbered headings, questions or words because they resemble model output. It does not manufacture irregular sentence lengths or introduce anecdotes and personal voice. Quotations, table values, equations, code, diagram data, source URLs, numerical definitions and uncertainty remain protected. Explanatory appendix prose can be clarified without deleting its technical support. Unsupported or contradictory claims require evidence review, not cosmetic polishing.
 
@@ -204,6 +218,8 @@ Each execution step receives the goal, relevant instructions/comments, supplied 
 
 Research results use a structured envelope containing `status`, Markdown `report`, optional `blocker`, and `sources` with title, URL and publication time. The readable content is in `report`; it must contain the useful result, not only a short summary.
 
+Partial results also receive a machine-readable evidence-gap marker in the stored output so downstream steps preserve the limitation. Reader-facing surfaces — the result view, Markdown export and published page — strip that marker and show a localized 证据说明 notice instead. The marker is an internal handoff instruction and never appears as report content.
+
 | Result | Meaning |
 | --- | --- |
 | `complete` | The assigned work is fulfilled and the conclusion adequately supported; this can include a justified finding that no decision can yet be made |
@@ -213,6 +229,8 @@ Research results use a structured envelope containing `status`, Markdown `report
 A completed piece of prose is not necessarily complete research. A single inaccessible site normally yields a gap, not an execution-wide blocker. An actual browser handoff stops browser actions; continue with existing evidence and disclose gaps until the user explicitly returns control. Do not bypass the handoff with another browser or background fetching.
 
 Rendering and publishing are separate from research completion. The publication UI distinguishes successful GitHub synchronization, waiting for deployment, site-access errors and a verified online report. A successful push is not proof of public availability. Online verification checks the report version marker; verification errors retain the successful commit so the user can check again without another push.
+
+Each Topic has one permanent public URL. Publishing a new report snapshot overwrites the page at that URL instead of minting a new random path, so previously shared links keep working. Earlier versions remain in the repository's Git history. The version marker still changes with the content, so verification can distinguish the new deployment from a stale cached page. Records created by the earlier per-version URL behavior are compacted into the Topic's original pushed URL the next time that Topic is published.
 
 ## 7. Automation occurrences
 
@@ -256,7 +274,7 @@ This is a contributor maintenance rule, not a background synchronization service
 | Area | Source |
 | --- | --- |
 | Request expansion, assumptions and temporal anchoring | [request_planning.rs](../src/request_planning.rs) |
-| Research type, evidence planning, shared writing and final delivery guidance | [research.rs](../src/research.rs): `RESEARCH_TYPE_GUIDANCE`, `RESEARCH_PLAN_GUIDANCE`, `CLEAR_RESEARCH_WRITING_GUIDANCE`, `REPORT_DELIVERY_GUIDANCE`, `REPORT_EDITORIAL_GUIDANCE` |
+| Research type, evidence planning, shared writing and final delivery guidance | [research.rs](../src/research.rs): `RESEARCH_TYPE_GUIDANCE`, `RESEARCH_PLAN_GUIDANCE`, `CLEAR_RESEARCH_WRITING_GUIDANCE`, `REPORT_DELIVERY_GUIDANCE`, `REPORT_ANSWER_GUIDANCE`, `REPORT_EDITORIAL_GUIDANCE` |
 | Stage prompts, result parsing, material checks and dependency context | [research.rs](../src/research.rs) |
 | Project-level planning entry point | [project_planning.rs](../src/project_planning.rs) |
 | Report HTML generation | [report_html.rs](../src/report_html.rs) |
@@ -289,3 +307,7 @@ This is a contributor maintenance rule, not a background synchronization service
 - **2026-11-06:** Removed the automation-only restricted agent profile and the build gate that blocked enabling. Scheduled periods now reuse the manual research execution path and the agent chosen in Settings; the schedule is the only difference from a manual run.
 
 - **2026-11-06:** Added the Quick task short-answer contract. Quick periods keep the same execution path and JSON envelope but return the direct result, as-of time, a few links and material caveats without the long-report appendix, methodology or scenario sections. Research automations keep the full report contract.
+
+- **2026-11-07:** Added the plain-answer and explicit-verdict contract for final reports: default general reader, answer-first opening, sub-question verdict table, directional answers with stated evidence strength, one qualification per point, and no coined slogan terminology or run mechanics in reader-facing prose. Reader-facing surfaces now replace the internal English evidence-gap marker with a localized notice. These remain prompt guidance and presentation changes, not a factual certification or deterministic tone validator.
+
+- **2026-11-07:** Made a Topic's published URL permanent. Republishing changed report content now overwrites the existing page and keeps previously shared links working; earlier versions stay in Git history. Duplicate publication records created by the earlier per-version URL behavior collapse into the Topic's original pushed URL on its next publish.

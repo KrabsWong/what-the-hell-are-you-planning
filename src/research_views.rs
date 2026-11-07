@@ -1,5 +1,10 @@
 use crate::appearance::palette;
-use crate::{app::TaskApp, domain::AgentRun, research::ResearchKind, views::*};
+use crate::{
+    app::TaskApp,
+    domain::AgentRun,
+    research::{self, ResearchKind},
+    views::*,
+};
 use gpui_kit::component::scroll::ScrollableElement;
 use gpui_kit::component::menu::{DropdownMenu, PopupMenuItem};
 use gpui_kit::{
@@ -497,7 +502,8 @@ impl TaskApp {
     }
     pub fn run_result_panel(&self, run: &AgentRun, cx: &mut Context<Self>) -> AnyElement {
         let colors = palette(cx);
-        let output = run.output.clone();
+        let evidence_gap = research::has_evidence_gap_note(&run.output);
+        let output = research::reader_markdown(&run.output).to_string();
         let sources_open = self.expanded_run_sources == Some(run.id);
         let run_id = run.id;
         col()
@@ -523,6 +529,14 @@ impl TaskApp {
                         .p_4()
                         .bg(rgb(colors.panel))
                         .rounded_md()
+                        .when(evidence_gap, |d| {
+                            d.child(notice_panel(
+                                NoticeTone::Warning,
+                                "证据说明",
+                                research::EVIDENCE_GAP_NOTICE,
+                                cx,
+                            ))
+                        })
                         .child(
                             gpui_kit::base::text::TextView::markdown(
                                 format!("result-{}", run.id),

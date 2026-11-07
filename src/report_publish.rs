@@ -145,13 +145,49 @@ impl Store {
 fn fingerprint(config: &PublishingConfig, title: &str, markdown: &str) -> String {
     format!("{:x}", Sha256::digest(serde_json::to_vec(&(&config.repository, &config.branch, &config.base_url, title, markdown)).unwrap()))
 }
-fn reuse_publication(publications: &mut Vec<Publication>, topic: u64, fingerprint: &str) -> Option<String> {
-    let index = publications.iter().position(|p| p.topic == topic && p.fingerprint == fingerprint)?;
-    // The last publication is the current version shown by the Topic header.
-    let publication = publications.remove(index);
+/// A Topic has one permanent public URL. The first successfully pushed
+/// publication owns it; earlier builds also created one record per content
+/// version, so older duplicates are treated as history rather than as new
+/// canonical URLs.
+fn current_publication_index(publications: &[Publication], topic: u64) -> Option<usize> {
+    let mut first = None;
+    for (index, publication) in publications.iter().enumerate() {
+        if publication.topic != topic { continue; }
+        if publication.commit.is_some() { return Some(index); }
+        first.get_or_insert(index);
+    }
+    first
+}
+fn claim_publication(
+    publications: &mut Vec<Publication>,
+    topic: u64,
+    config: PublishingConfig,
+    title: String,
+    markdown: String,
+    fingerprint: String,
+) -> Result<String, String> {
+    let Some(index) = current_publication_index(publications, topic) else {
+        let id = random_id()?;
+        publications.push(Publication { id: id.clone(), topic, fingerprint, config, title, markdown,
+            status: "Pending".into(), commit: None, message: String::new() });
+        return Ok(id);
+    };
+    let mut publication = publications.remove(index);
+    // The URL is now permanent, so extra records for the same Topic are no
+    // longer separate public versions. Their pages remain in Git history.
+    publications.retain(|p| p.topic != topic);
+    if publication.fingerprint != fingerprint {
+        publication.fingerprint = fingerprint;
+        publication.config = config;
+        publication.title = title;
+        publication.markdown = markdown;
+        publication.status = "Pending".into();
+        publication.commit = None;
+        publication.message.clear();
+    }
     let id = publication.id.clone();
     publications.push(publication);
-    Some(id)
+    Ok(id)
 }
 fn random_id() -> Result<String, String> {
     let mut bytes = [0u8; 16];
@@ -228,13 +264,9 @@ impl TaskApp {
             self.show_save_error("Finish all active goals and planning requests with current reports before publishing this topic.", cx); return;
         };
         let fingerprint = fingerprint(&config, &title, &markdown);
-        let id = if let Some(id) = reuse_publication(&mut self.store.publications, topic, &fingerprint) {
-            id
-        } else {
-            let id = match random_id() { Ok(id) => id, Err(error) => { self.show_save_error(error, cx); return; } };
-            self.store.publications.push(Publication { id: id.clone(), topic, fingerprint, config, title, markdown,
-                status: "Pending".into(), commit: None, message: String::new() });
-            id
+        let id = match claim_publication(&mut self.store.publications, topic, config, title, markdown, fingerprint) {
+            Ok(id) => id,
+            Err(error) => { self.show_save_error(error, cx); return; }
         };
         self.start_publication(&id, cx);
     }
@@ -302,7 +334,9 @@ impl TaskApp {
         let ready = self.store.topics.iter().find_map(|topic| {
             let (title, markdown) = self.store.topic_share_content(topic.id)?;
             let fingerprint = fingerprint(&self.store.report_publishing, &title, &markdown);
-            (!self.store.publications.iter().any(|p| p.topic == topic.id && p.fingerprint == fingerprint)).then_some(topic.id)
+            let current = current_publication_index(&self.store.publications, topic.id)
+                .map(|index| &self.store.publications[index]);
+            (current.is_none_or(|p| p.fingerprint != fingerprint)).then_some(topic.id)
         });
         if let Some(topic) = ready { self.request_topic_publication(topic, cx); }
     }
@@ -325,7 +359,7 @@ impl TaskApp {
                     a.publishing_scan_requested = true;
                     a.confirm_save("Automatic publishing preference saved", cx); a.start_pump(cx); cx.notify();
                 })))
-            .child(label("Enabling this also publishes existing completed Topics. All active goals must be complete. New report content creates a new random URL; retries keep the same URL. Anyone with the link can read it.", cx))
+            .child(label("Enabling this also publishes existing completed Topics. All active goals must be complete. A Topic keeps one report URL: new content overwrites it in place so shared links keep working, retries keep the same URL, and earlier versions remain in Git history. Anyone with the link can read it.", cx))
             .child(label("Import your existing reports into the repository before connecting EdgeOne. Git pushes never force-overwrite remote history. Keep the repository private and configure EdgeOne to deploy this branch.", cx))
     }
     pub(crate) fn topic_publish_button(&self, topic: u64, cx: &mut Context<Self>) -> impl IntoElement {
@@ -336,7 +370,8 @@ impl TaskApp {
         let ready = !goals.is_empty() && goals.iter().all(|g| g.stage == crate::domain::Stage::Done)
             && self.store.topic_planning_status(topic).is_none()
             && self.store.topics.iter().any(|t| t.id == topic && !t.archived);
-        let publication = self.store.publications.iter().rev().find(|p| p.topic == topic);
+        let publication = current_publication_index(&self.store.publications, topic)
+            .map(|index| &self.store.publications[index]);
         let busy = self.publishing_job.as_ref().is_some_and(|(id, _)| publication.is_some_and(|p| &p.id == id));
         let changed = !busy && ready && publication.is_some_and(|p| self.store.topic_share_content(topic)
             .is_some_and(|(title, markdown)| fingerprint(&self.store.report_publishing, &title, &markdown) != p.fingerprint));
@@ -361,7 +396,13 @@ impl TaskApp {
     pub(crate) fn topic_publication_panel(&self, topic: u64, cx: &mut Context<Self>) -> Div {
         let colors = crate::appearance::palette(cx);
         let mut panel = col().px_6().gap_2();
-        for p in self.store.publications.iter().filter(|p| p.topic == topic).rev().take(5) {
+        let current = current_publication_index(&self.store.publications, topic)
+            .map(|index| self.store.publications[index].id.clone());
+        let mut history: Vec<_> = self.store.publications.iter().filter(|p| p.topic == topic).collect();
+        // The Topic's permanent URL comes first; records from the earlier
+        // per-version behavior follow as history.
+        history.sort_by_key(|p| Some(&p.id) != current.as_ref());
+        for p in history.into_iter().take(5) {
             let url = p.url(); let open_url = url.clone();
             let busy = self.publishing_job.as_ref().is_some_and(|(id, _)| id == &p.id);
             let (status, description) = p.presentation();
@@ -441,25 +482,55 @@ mod tests {
         assert_eq!(publication_action(Some(&p), false), PublicationAction::Verify(p.id.clone()));
     }
     #[test]
-    fn returning_to_an_older_snapshot_makes_it_current_without_changing_its_url() {
-        use super::{Publication, PublicationAction, publication_action, reuse_publication};
-        let first = Publication { id: "a".repeat(32), topic: 1, fingerprint: "first".into(), config: Default::default(),
+    fn new_content_overwrites_the_topic_url_instead_of_creating_a_new_one() {
+        use super::{claim_publication, current_publication_index, Publication};
+        let config = PublishingConfig::default();
+        let first = Publication { id: "a".repeat(32), topic: 1, fingerprint: "first".into(), config: config.clone(),
             title: "Topic".into(), markdown: "First report".into(), status: "Online".into(), commit: Some("first-commit".into()), message: String::new() };
-        let mut second = first.clone();
-        second.id = "b".repeat(32); second.fingerprint = "second".into(); second.markdown = "Second report".into();
+        let mut stale = first.clone();
+        stale.id = "b".repeat(32); stale.fingerprint = "second".into(); stale.markdown = "Second report".into();
         let mut other_topic = first.clone();
         other_topic.id = "c".repeat(32); other_topic.topic = 2;
-        let mut publications = vec![first.clone(), second.clone(), other_topic.clone()];
-        assert_eq!(reuse_publication(&mut publications, 1, "first"), Some(first.id.clone()));
-        assert_eq!(publications, vec![second, other_topic, first.clone()]);
-        let current = publications.iter().rev().find(|p| p.topic == 1).unwrap();
-        assert_eq!(current.url(), first.url());
-        assert_eq!(publication_action(Some(current), false), PublicationAction::Open(first.url()));
-        assert_eq!(reuse_publication(&mut publications, 1, "first"), Some(first.id));
-        assert_eq!(publications.len(), 3);
-        let before = publications.clone();
-        assert_eq!(reuse_publication(&mut publications, 1, "missing"), None);
-        assert_eq!(publications, before);
+        let mut publications = vec![first.clone(), stale, other_topic];
+
+        let id = claim_publication(&mut publications, 1, config.clone(), "Topic".into(), "Third report".into(), "third".into()).unwrap();
+        assert_eq!(id, first.id);
+        let current = publications.iter().find(|p| p.topic == 1).unwrap();
+        assert_eq!(current.id, first.id);
+        assert_eq!(current.markdown, "Third report");
+        assert_eq!(current.fingerprint, "third");
+        assert_eq!(current.status, "Pending");
+        assert_eq!(current.commit, None);
+        // Duplicate records from the old per-version URL behavior are removed;
+        // other Topics keep their own publication.
+        assert_eq!(publications.iter().filter(|p| p.topic == 1).count(), 1);
+        assert_eq!(publications.iter().filter(|p| p.topic == 2).count(), 1);
+        assert_eq!(current_publication_index(&publications, 1), Some(publications.len() - 1));
+
+        // Republishing the identical snapshot keeps the URL and its live state.
+        let mut same = current.clone();
+        same.status = "Online".into(); same.commit = Some("third-commit".into());
+        *publications.last_mut().unwrap() = same;
+        let id = claim_publication(&mut publications, 1, config, "Topic".into(), "Third report".into(), "third".into()).unwrap();
+        assert_eq!(id, first.id);
+        assert_eq!(publications.last().unwrap().status, "Online");
+        assert_eq!(publications.last().unwrap().commit.as_deref(), Some("third-commit"));
+    }
+
+    #[test]
+    fn an_unpushed_earlier_record_does_not_steal_the_shared_url() {
+        use super::{claim_publication, current_publication_index, Publication};
+        let config = PublishingConfig::default();
+        let failed = Publication { id: "a".repeat(32), topic: 1, fingerprint: "failed".into(), config: config.clone(),
+            title: "Topic".into(), markdown: "Never pushed".into(), status: "Failed".into(), commit: None, message: String::new() };
+        let mut pushed = failed.clone();
+        pushed.id = "b".repeat(32); pushed.status = "Online".into(); pushed.commit = Some("commit".into());
+        let mut publications = vec![failed.clone(), pushed.clone()];
+        assert_eq!(current_publication_index(&publications, 1), Some(1));
+        let id = claim_publication(&mut publications, 1, config, "Topic".into(), "Updated".into(), "updated".into()).unwrap();
+        assert_eq!(id, pushed.id);
+        assert_eq!(publications.len(), 1);
+        assert_ne!(publications[0].id, failed.id);
     }
     #[test]
     fn settings_reject_credentials_and_non_github_remotes() {

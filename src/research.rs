@@ -30,17 +30,33 @@ Collection and analysis have NO final-report page or word budget. Preserve all t
 
 pub(crate) const REPORT_DELIVERY_GUIDANCE: &str = r#"
 READER-FOCUSED FINAL REPORT:
-During planning, infer the intended reader, their subject knowledge and the research purpose from the request; record them in the existing brief/deliverable and final-step instructions. If unspecified, assume the requester needs an informed, plain-language answer and state that assumption briefly in the plan. Do not invent their profession or force an action decision onto exploratory research.
+During planning, infer the intended reader, their subject knowledge and the research purpose from the request; record them in the existing brief/deliverable and final-step instructions. If unspecified, assume an intelligent reader outside this field who needs a plain-language answer, and state that assumption briefly in the plan. Do not invent their profession or force an action decision onto exploratory research.
 The final report has a concise main body followed by a clearly labeled Appendix (localized to the goal language), both inside the same report Markdown field. Unless the user explicitly requests a different length, target roughly two to three pages of reading: about 1,200–1,800 Chinese characters or 800–1,200 English words in the main body, including tables and captions but excluding the appendix. This is a flexible reading target, not a hard limit, guaranteed printed pagination or a minimum to fill. Natural, complete, readable explanations and evidence fidelity take priority over this default length; exceed it when needed to explain the answer and its necessary qualifications. For other languages use a comparable reading load. Do not truncate text mechanically or shrink the evidence collection/analysis to fit this final-body budget.
 Start with the answer and supported recommendation (or the key understanding for exploratory work), not background or methodology. Then give only the few findings needed to understand that answer, decision-changing risks/uncertainties and prioritized next steps. Adapt emphasis to the reader and purpose: decision makers need choices and tradeoffs; practitioners need workflow implications; technical readers need constraints and comparison results; exploratory readers need an explanation of what is known and unknown. These are examples, not mandatory sections. Avoid repetitive summaries, limitations and conclusion ceilings; say each important point once. Do not bury material qualifications in the appendix.
 Keep concise citations next to key claims in the main body. Put detailed claim-to-source mappings, full evidence-requirement assessments, source provenance/dates, calculations, long comparison tables, evaluation protocols, attachment observations and audit details in the appendix. Summarize their decision-relevant implications in the body and direct readers to the relevant appendix section. Preserve all required source links and exact attachment filenames/page references; do not silently discard evidence to shorten the report. The appendix must support verification, not repeat upstream reports wholesale or duplicate the main body.
 Write the main body as a connected explanation for the reader, not a compressed analysis outline. Develop each core finding with the evidence needed to understand it and the conditions that limit it; do not pack every analytical dimension, price, date and caveat into the opening paragraph. Shorten by removing repetition and moving detailed support to the appendix, never by deleting subjects, logical connections or necessary explanations. Before returning, check that the opening answers the user's question and that a reader can follow the reasoning on one reading, with key evidence, caveats and citations still attached to their claims. If the default reading target conflicts with these requirements, keep the explanation complete. For older plans requesting exhaustive coverage, retain that detail in the appendix unless the user explicitly requested a long main body. During planning describe this delivery contract; do not produce the report or start research.
 "#;
 
+// Keep the answer-first contract and its limits documented in doc/RESEARCH_WORKFLOW_STRATEGY.md.
+const REPORT_ANSWER_GUIDANCE: &str = r#"
+PLAIN ANSWERS AND EXPLICIT VERDICTS:
+Assume an intelligent general reader who does not work in this field unless the request names a specialist audience. The report must let that reader understand the answer and act on it after one reading.
+- Answer first. Open with three to six sentences of ordinary prose that directly answer the reader's question: what the evidence means, what the reader should conclude or do, and the main condition attached to it. Do not open with background, definitions, method history or a heading that restates the title.
+- Decompose the question. When the question has several parts, give each part a definite verdict instead of one global "it depends". Use a compact table with one row per sub-question and columns for the sub-question, the verdict, the strength of evidence and what would change the verdict. For exploratory research the verdict is a finding; do not force a business recommendation.
+- Use one consistent verdict scale in the goal language. For factual or feasibility questions: yes / probably yes / probably no / no / not enough evidence (in Chinese, for example: 是 / 大概率是 / 大概率不是 / 不是 / 证据不足). For decisions: recommend / recommend only if the named condition holds / do not recommend (建议做 / 有条件建议 / 不建议做). State evidence strength in plain words ("several independent sources agree", "one interview, not representative"), not only as a caveat.
+- Prefer a directional answer over a non-answer. If the evidence points one way, say which way and how confident you are. Reserve "not enough evidence" for sub-questions where the collected evidence genuinely cannot support a direction, and then name the missing evidence and how to obtain it. Do not let "it depends" or "further research is needed" stand as the main conclusion without naming the condition or the missing evidence.
+- Say each qualification once. Put a limitation where it changes how the reader uses the finding, or in one limitations section. Do not repeat the same disclaimer after every paragraph, and do not end each paragraph with what the report cannot prove.
+- Write concrete prose in the goal language: name the actor and the action, use complete sentences, and start each paragraph with the point it makes. Do not build the report from abstract noun chains, slash-separated labels or repeated reverse constructions such as "not X but Y".
+- Do not invent slogans, metaphors or branded names for your own summary (for example "one shared evidence base, two judging lines, three gates"), and do not put invented labels in quotation marks. If an established technical term is necessary, explain it in one plain clause at first use; expand every acronym and English term the first time it appears.
+- Keep run mechanics out of reader-facing prose. Do not cite step numbers, run IDs, browser-handoff times, internal workspace filenames or tool state as evidence or as the opening of the appendix. Mention tooling only where it materially limits what the reader can conclude.
+- This guidance changes presentation, not evidence. A definite verdict must still be supported by the cited evidence; when it is not, the verdict is "not enough evidence" rather than confident wording.
+"#;
+
 // Keep the editorial contract and its limitations documented in doc/RESEARCH_WORKFLOW_STRATEGY.md.
 const REPORT_EDITORIAL_GUIDANCE: &str = r#"
 FINAL REPORT EDITORIAL CHECK:
 Before returning the final report, review its reader-facing wording within this same task. Identify concrete comprehension problems, make local edits, then compare each changed claim with its evidence. Return only the normal research result, not an editing report. This is not a request to imitate a human author or minimize an AI-detection score.
+Check the report's shape before polishing sentences: the opening must answer the question in plain words, each sub-question must carry a definite verdict with its evidence strength, and no paragraph should exist only to restate what cannot be concluded. Replace a paragraph that stops at "cannot prove" with the directional answer plus its limitation.
 For each sentence, make the subject, comparison and implication understandable without decoding internal analysis shorthand. Explain an unfamiliar technical term at first use when needed by the intended reader. In Chinese, prefer ordinary complete sentences over compressed noun clusters, slash-separated labels and literal translations; in other languages use natural wording appropriate to the audience. Rewrite analytical labels as explicit statements: for example, “致命假设最便宜” should explain that the most consequential assumption can be tested at relatively low cost, rather than describe the assumption itself as cheap. Use such examples only to clarify supported meaning, not as stock phrases to insert. Keep precise technical terms in the appendix where useful. Do not invent definitions or resolve ambiguous evidence by guessing.
 Separate a finding, its supporting example and its qualification when nesting them in one sentence obscures their relationship. Split only where comprehension improves; do not manufacture alternating sentence lengths or abrupt paragraph transitions. Keep the same name for the same entity. Remove empty announcements or repeated conclusions only when they add no meaning. Preserve genuine contrasts, causal conditions and logical transitions; never delete a negative clause merely because it uses a contrastive phrase. Do not ban punctuation, numbered headings, questions or ordinary words by frequency alone.
 State headings as plainly and cautiously as the evidence permits. A heading must not claim causation, certainty or generality that its paragraph disclaims. If a claim conflicts with upstream evidence, qualify it from that evidence or disclose the conflict; do not silently repair unsupported facts while presenting the change as copyediting. Do not add anecdotes, personal voice, new facts or metaphors to make a report sound natural.
@@ -173,6 +189,24 @@ pub struct Source {
     pub published_at: String,
 }
 pub const BROWSER_HANDOFF_LOG: &str = "[browser-handoff] Browser control remains with the user; continue research without browser access.";
+/// Machine-readable marker prepended to partial results. Downstream steps must
+/// preserve the limitation; reader-facing surfaces strip it and show a
+/// localized notice instead of this agent instruction.
+pub const EVIDENCE_GAP_NOTE: &str = "> Evidence gaps: this step finished with incomplete evidence. Preserve its limitations in downstream conclusions.";
+/// Reader-facing wording for partial results, shared by the result view, export
+/// and published page so the notice cannot drift between surfaces.
+pub const EVIDENCE_GAP_NOTICE: &str = "本报告部分结论仍有证据缺口，请结合正文中的限制与待验证事项阅读。";
+
+pub fn has_evidence_gap_note(output: &str) -> bool {
+    output.starts_with(EVIDENCE_GAP_NOTE)
+}
+
+pub fn reader_markdown(output: &str) -> &str {
+    output
+        .strip_prefix(EVIDENCE_GAP_NOTE)
+        .map(str::trim_start)
+        .unwrap_or(output)
+}
 
 #[derive(Debug, Deserialize, PartialEq, Eq)]
 #[serde(rename_all = "snake_case")]
@@ -845,6 +879,7 @@ pub fn prepare_run(store: &Store, id: u64) -> Result<AgentRun, String> {
             prompt.push_str("\nPLAN SCHEMA CHECK: This is phase planning for ONE already approved topic, not project topic selection. Every tasks[] object MUST contain ALL FOUR keys: title (string), instructions (string), kind (exactly collect, analyze, or advise), depends_on (array of earlier zero-based indices, including [] for collection). Never omit kind or depends_on, even when the title implies a phase. Do not use brief. Prefer a concise 3–6-step plan unless the scope requires more. Before answering, verify each object has all four keys and that every analysis and final brief has the required ancestors. Missing keys cause the whole plan to fail; do not replace explicit dependency arrays with references inside instructions.");
         }
         if research.kind == ResearchKind::Advise {
+            prompt.push_str(REPORT_ANSWER_GUIDANCE);
             prompt.push_str(REPORT_EDITORIAL_GUIDANCE);
         }
         if research.kind != ResearchKind::Goal {
@@ -1041,6 +1076,7 @@ mod tests {
                 assert!(run.prompt.contains(RESEARCH_TYPE_GUIDANCE));
                 assert!(run.prompt.contains(CLEAR_RESEARCH_WRITING_GUIDANCE));
                 assert_eq!(run.prompt.contains(REPORT_DELIVERY_GUIDANCE), phase == 2);
+                assert_eq!(run.prompt.contains(REPORT_ANSWER_GUIDANCE), phase == 2);
                 assert_eq!(run.prompt.contains(REPORT_EDITORIAL_GUIDANCE), phase == 2);
                 assert!(!run.prompt.contains("You are carrying out a financial market research workflow"));
                 assert!(!run.prompt.contains("Write a decision-oriented investment research brief"));
@@ -1061,6 +1097,44 @@ mod tests {
                 store.runs.push(run);
             }
         }
+    }
+
+    #[test]
+    fn final_report_prompt_requires_plain_answers_and_explicit_verdicts() {
+        let (mut store, goal) = workspace();
+        let ids = store.apply_research_plan(goal, PLAN).unwrap();
+        for id in &ids[..2] {
+            let mut run = store.prepare_run(*id).unwrap();
+            run.status = "Succeeded".into();
+            run.output = format!("Evidence for {id}");
+            run.sources = vec![Source {
+                title: "Original source".into(),
+                url: "https://example.com/evidence".into(),
+                published_at: "unknown".into(),
+            }];
+            store.runs.push(run);
+        }
+        let run = store.prepare_run(ids[2]).unwrap();
+        for rule in [
+            "Answer first",
+            "Decompose the question",
+            "probably yes",
+            "not enough evidence",
+            "Do not invent slogans",
+            "Say each qualification once",
+            "Keep run mechanics out of reader-facing prose",
+        ] {
+            assert!(run.prompt.contains(rule), "missing report rule: {rule}");
+        }
+    }
+
+    #[test]
+    fn downstream_gap_marker_is_hidden_from_reader_markdown() {
+        let stored = format!("{EVIDENCE_GAP_NOTE}\n\n## 结论\n\n可以做。");
+        assert!(has_evidence_gap_note(&stored));
+        assert_eq!(reader_markdown(&stored), "## 结论\n\n可以做。");
+        assert!(!has_evidence_gap_note("## 结论"));
+        assert_eq!(reader_markdown("## 结论"), "## 结论");
     }
 
     #[test]

@@ -1,5 +1,9 @@
 //! Export a completed goal's validated results without exposing runtime logs or credentials.
-use crate::{app::TaskApp, domain::Store, research::ResearchKind};
+use crate::{
+    app::TaskApp,
+    domain::Store,
+    research::{self, ResearchKind},
+};
 use gpui_kit::Context;
 use std::os::unix::fs::{DirBuilderExt, OpenOptionsExt};
 use std::{
@@ -93,7 +97,13 @@ impl Store {
                 "- [{step_id} · {category}]({document}) — {}\n",
                 step.title.replace('\n', " ")
             ));
-            let mut markdown = result.output.clone();
+            let mut markdown = research::reader_markdown(&result.output).to_string();
+            if research::has_evidence_gap_note(&result.output) {
+                markdown.insert_str(
+                    0,
+                    &format!("> 证据说明：{}\n\n", research::EVIDENCE_GAP_NOTICE),
+                );
+            }
             markdown.push_str("\n\n---\n\n## References / 引用来源\n\n");
             if result.sources.is_empty() {
                 markdown.push_str(

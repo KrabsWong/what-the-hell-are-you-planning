@@ -108,13 +108,23 @@ fn diagram_images(source: &str) -> Result<String, String> {
     Ok(images)
 }
 
-const INTERNAL_GAP_NOTE: &str = "<blockquote>\n<p>Evidence gaps: this step finished with incomplete evidence. Preserve its limitations in downstream conclusions.</p>\n</blockquote>";
-const PUBLIC_GAP_NOTE: &str = "<aside class=\"evidence-notice\" aria-label=\"研究局限\"><strong>证据说明</strong><p>本报告的部分结论仍有证据缺口，请结合正文中的限制与待验证事项阅读。</p></aside>";
+fn internal_gap_html() -> String {
+    format!(
+        "<blockquote>\n<p>{}</p>\n</blockquote>",
+        crate::research::EVIDENCE_GAP_NOTE.trim_start_matches("> ")
+    )
+}
+fn public_gap_note() -> String {
+    format!(
+        "<aside class=\"evidence-notice\" aria-label=\"研究局限\"><strong>证据说明</strong><p>{}</p></aside>",
+        crate::research::EVIDENCE_GAP_NOTICE
+    )
+}
 
 // The page owns h1. Remove only a repeated report title, never repeated sections
 // separated by substantive content. A generated evidence notice is not content.
 fn normalize_headings(title: &str, html: &str) -> String {
-    let html = html.replace(INTERNAL_GAP_NOTE, PUBLIC_GAP_NOTE);
+    let html = html.replace(&internal_gap_html(), &public_gap_note());
     let mut rest = html.as_str();
     let mut result = String::new();
     let mut previous = escape(title);
@@ -128,7 +138,7 @@ fn normalize_headings(title: &str, html: &str) -> String {
         let content = &rest[start + 4..end];
         let between = &rest[..start];
         let is_title_repeat = level == 1 && heading_text(content).trim() == previous.trim()
-            && between.replace(PUBLIC_GAP_NOTE, "").replace("<hr />", "").trim().is_empty();
+            && between.replace(&public_gap_note(), "").replace("<hr />", "").trim().is_empty();
         result.push_str(between);
         if !is_title_repeat {
             let output_level = level.max(2);

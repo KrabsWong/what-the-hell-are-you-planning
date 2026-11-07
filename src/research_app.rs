@@ -583,7 +583,7 @@ impl TaskApp {
                     if report.blocker == Some(research::Blocker::BrowserHandoff) {
                         stored.logs.push(research::BROWSER_HANDOFF_LOG.into());
                     }
-                    stored.output = if report.status == "partial" { format!("> Evidence gaps: this step finished with incomplete evidence. Preserve its limitations in downstream conclusions.\n\n{}", report.report) } else { report.report };
+                    stored.output = if report.status == "partial" { format!("{}\n\n{}", research::EVIDENCE_GAP_NOTE, report.report) } else { report.report };
                     stored.sources = report.sources;
                     if report.status == "blocked" {
                         stored.status = "Blocked".into();

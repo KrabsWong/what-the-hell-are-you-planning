@@ -36,6 +36,15 @@ impl ArchiveTarget {
 }
 impl TaskApp {
     pub(crate) fn request_archive(&mut self, target: ArchiveTarget, w: &mut Window, cx: &mut Context<Self>) {
+        // Automation periods and their steps are owned by the automation, not by
+        // Research. They are archived with their automation, never individually.
+        if let ArchiveTarget::Task(id) = target
+            && self.store.task(id).is_some_and(|task| task.automation_id.is_some())
+        {
+            self.toast = "Automation steps are archived with their automation.".into();
+            cx.notify();
+            return;
+        }
         let runs = target.runs(&self.store);
         if runs.is_empty() {
             self.confirm_archive(target, cx);

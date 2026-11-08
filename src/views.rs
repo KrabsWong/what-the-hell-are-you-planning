@@ -2380,6 +2380,7 @@ impl TaskApp {
     fn task_context(&self, element: AnyElement, id: u64, cx: &mut Context<Self>) -> AnyElement {
         let entity = cx.entity().downgrade();
         let archived = self.store.task_is_archived(id);
+        let automation_owned = self.store.task(id).is_some_and(|task| task.automation_id.is_some());
         let allowed_stages = Stage::ALL.into_iter().filter(|stage| self.store.validate_manual_transition(id, *stage, self.todo_batch.as_ref()).is_ok()).collect::<Vec<_>>();
         div()
             .id(format!("task-context-{id}"))
@@ -2409,13 +2410,15 @@ impl TaskApp {
                         );
                     }
                     let target = entity.clone();
-                    menu = menu
-                        .separator()
-                        .item(
-                            PopupMenuItem::new("Archive task").on_click(move |_, w, cx| {
-                                let _ = target.update(cx, |this, cx| this.archive_task(id, w, cx));
-                            }),
-                        );
+                    if !automation_owned {
+                        menu = menu
+                            .separator()
+                            .item(
+                                PopupMenuItem::new("Archive task").on_click(move |_, w, cx| {
+                                    let _ = target.update(cx, |this, cx| this.archive_task(id, w, cx));
+                                }),
+                            );
+                    }
                 }
                 menu
             })
@@ -2458,6 +2461,9 @@ impl TaskApp {
         let task_menu_entity = cx.entity().downgrade();
         let editing_disabled = self.store.task_is_archived(id) || self.task_running(id);
         let archived = t.archived;
+        // Automation-owned steps belong to their automation; they must not be
+        // archived individually from the Research task surface.
+        let automation_owned = t.automation_id.is_some();
         let mut head = row()
             .min_h(px(44.))
             .py_2()
@@ -2530,50 +2536,53 @@ impl TaskApp {
                     .h(px(28.)).w(px(28.))
                     .dropdown_menu_with_anchor(
                         Anchor::TopRight,
-                        move |menu, _, _| {
+                        move |mut menu, _, _| {
                             let edit = task_menu_entity.clone();
                             let copy = task_menu_entity.clone();
                             let archive = task_menu_entity.clone();
-                            menu.item(
-                                PopupMenuItem::new("Edit task")
-                                    .disabled(editing_disabled)
-                                    .on_click(move |_, w, cx| {
-                                        let _ = edit.update(cx, |a, cx| {
-                                            a.begin_draft(id, w, cx)
+                            menu = menu
+                                .item(
+                                    PopupMenuItem::new("Edit task")
+                                        .disabled(editing_disabled)
+                                        .on_click(move |_, w, cx| {
+                                            let _ = edit.update(cx, |a, cx| {
+                                                a.begin_draft(id, w, cx)
+                                            });
+                                        }),
+                                )
+                                .item(
+                                    PopupMenuItem::new("Copy task link").on_click(move |_, _, cx| {
+                                        cx.write_to_clipboard(ClipboardItem::new_string(format!(
+                                            "wthayp://task/{id}"
+                                        )));
+                                        let _ = copy.update(cx, |a, cx| {
+                                            a.toast = "Task link copied".into();
+                                            cx.notify();
                                         });
                                     }),
-                            )
-                            .item(
-                                PopupMenuItem::new("Copy task link").on_click(move |_, _, cx| {
-                                    cx.write_to_clipboard(ClipboardItem::new_string(format!(
-                                        "wthayp://task/{id}"
-                                    )));
-                                    let _ = copy.update(cx, |a, cx| {
-                                        a.toast = "Task link copied".into();
-                                        cx.notify();
-                                    });
-                                }),
-                            )
-                            .separator()
-                            .item(
-                                PopupMenuItem::new(if archived {
-                                    "Restore task"
-                                } else {
-                                    "Archive task"
-                                })
-                                .on_click(move |_, w, cx| {
-                                    let _ = archive.update(cx, |a, cx| {
-                                        if a.store.task(id).is_some_and(|t| t.archived) {
-                                            a.snapshot();
-                                            a.store.task_mut(id).unwrap().archived = false;
-                                            a.toast = "Task restored".into();
-                                            cx.notify();
-                                        } else {
-                                            a.archive_task(id, w, cx);
-                                        }
-                                    });
-                                }),
-                            )
+                                );
+                            if !automation_owned {
+                                menu = menu.separator().item(
+                                    PopupMenuItem::new(if archived {
+                                        "Restore task"
+                                    } else {
+                                        "Archive task"
+                                    })
+                                    .on_click(move |_, w, cx| {
+                                        let _ = archive.update(cx, |a, cx| {
+                                            if a.store.task(id).is_some_and(|t| t.archived) {
+                                                a.snapshot();
+                                                a.store.task_mut(id).unwrap().archived = false;
+                                                a.toast = "Task restored".into();
+                                                cx.notify();
+                                            } else {
+                                                a.archive_task(id, w, cx);
+                                            }
+                                        });
+                                    }),
+                                );
+                            }
+                            menu
                         },
                     ),
                 ),

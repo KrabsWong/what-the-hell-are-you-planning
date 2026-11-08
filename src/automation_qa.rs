@@ -2075,6 +2075,30 @@ fn ui_interaction(root: &Path) -> PathBuf {
         DefinitionStatus::Archived
     );
 
+    // Automation-owned steps are archived with their automation, never on their own.
+    let step = read_state(&mut cx, &app, |a| {
+        a.store
+            .tasks
+            .iter()
+            .find(|t| t.automation_id == Some(id))
+            .map(|t| t.id)
+    })
+    .expect("automation-owned step");
+    cx.update_window(handle, |_, w, cx| {
+        app.update(cx, |a, cx| {
+            a.request_archive(crate::archive_app::ArchiveTarget::Task(step), w, cx);
+        });
+        w.render_frame(cx);
+    })
+    .unwrap();
+    assert!(
+        !read_state(&mut cx, &app, |a| a.store.task_is_archived(step)),
+        "an automation step is not a Research archive target"
+    );
+    assert!(read_state(&mut cx, &app, |a| {
+        a.toast.contains("archived with their automation")
+    }));
+
     // Invalid form cannot enable.
     cx.update_window(handle, |_, w, cx| {
         w.click("new-automation", cx);

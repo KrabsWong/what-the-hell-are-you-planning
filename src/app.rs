@@ -513,7 +513,7 @@ impl TaskApp {
                     .rows(3)
             }),
             report_regeneration: None,
-            toast: "Local workspace".into(),
+            toast: "All changes saved".into(),
             error: String::new(),
             task_start_feedback: None,
             save_feedback: None,
@@ -1044,7 +1044,7 @@ impl TaskApp {
                 match storage.save(&self.store) {
                     Ok(()) => {
                         self.last_saved = self.store.clone();
-                        self.toast = "Workspace saved locally".into();
+                        self.toast = "All changes saved".into();
                     }
                     Err(e) => {
                         self.storage_error = e;
@@ -1083,6 +1083,9 @@ impl TaskApp {
                 self.last_saved = self.store.clone();
                 let had_error = !self.storage_error.is_empty();
                 self.storage_error.clear();
+                if had_error {
+                    self.toast = "Saved · local storage recovered".into();
+                }
                 had_error
             }
             Err(e) => {
@@ -1091,6 +1094,34 @@ impl TaskApp {
                 changed
             }
         }
+    }
+    /// True while the in-memory workspace differs from the last confirmed write.
+    pub fn has_unsaved_changes(&self) -> bool {
+        self.store != self.last_saved
+    }
+    /// Explicit retry for the footer's "Not saved" state. A plain save is not
+    /// enough because the in-memory store already equals the last confirmed
+    /// snapshot, so `persist_if_changed` would skip the write.
+    pub fn retry_save(&mut self, cx: &mut Context<Self>) {
+        let result = self
+            .storage
+            .as_ref()
+            .map(|storage| storage.save(&self.store));
+        match result {
+            Some(Ok(())) => {
+                self.last_saved = self.store.clone();
+                self.storage_error.clear();
+                self.error.clear();
+                self.toast = "Saved to local workspace".into();
+            }
+            Some(Err(error)) => {
+                self.storage_error = error;
+            }
+            None => {
+                self.storage_error = "Workspace storage is unavailable. Reopen the workspace to reconnect.".into();
+            }
+        }
+        cx.notify();
     }
     pub fn task_running(&self, id: u64) -> bool {
         self.store.runs.iter().any(|r| {

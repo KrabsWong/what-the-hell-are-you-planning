@@ -180,16 +180,16 @@ Document names include the type, task number and title. The export uses the comp
 
 ## 5. Scheduled automations
 
-**Automations** in the sidebar is a separate area with **All automations** (the list of definitions) and **Automation results** (results for every period), kept apart from research projects, Topics and Research results.
+**Automations** in the sidebar is a separate area with **All automations** (the list of definitions) and **Automation results** (results for every period), kept apart from research projects, Topics and Research results. The Automation results header has an automation filter that narrows the list to one automation's periods, and the heading shows how many of the total are shown.
 
 When you create one, first choose a type:
 
 - **Quick task**: enter one checking instruction and a schedule; you do not need to choose a project or review a plan. Each period runs a single read-only step that returns a direct value or conclusion, an as-of time, 2–5 original sources and at most one or two key caveats.
 - **Research automation**: describe what you need in one sentence and optionally state the expected result; the Agent generates reviewable goals once at creation, and each period after that reuses the same approved template and produces a full report.
 
-Schedules can be a fixed interval, a set time each day, or chosen weekdays, using IANA time zones; the page previews the next three trigger times using the same calculation as the real schedule. Saving a draft or generating a plan never runs research. Turning it on means you approve the current template and schedule; later changes to the scope, steps, Agent/model, materials, schedule or limits create a new version that needs approving again. The plan is not regenerated every period; for Research you can create a new version explicitly with **Replan**.
+Schedules can be a fixed interval, a set time each day, or chosen weekdays, using IANA time zones; the page previews the next three trigger times using the same calculation as the real schedule. Saving a draft or generating a plan never runs research. Turning it on means you approve the current template and schedule; later changes to the scope, steps, Agent/model, materials, schedule or limits create a new version that needs approving again. The plan is not regenerated every period; for Research you can create a new version explicitly with **Replan**. If you leave the creation page while a plan is being generated, the saved draft keeps a **Planning…** state in the Automations list and shows the in-flight plan on its detail page; return there to review and enable it when planning finishes.
 
-Each period uses its own working folder, conversation and browser Space. Research creates a new internal Topic for each period, while Quick hangs directly off the period. Automation results are only found in the Automations history; they do not appear on the normal board, in the task tree or in Research results.
+Each period uses its own working folder, conversation and browser Space. Research creates a new internal Topic for each period, while Quick hangs directly off the period. Steps run in phase order — evidence, then analysis, then the final report — and a step also waits for its own declared prerequisites, so a later phase never starts while collection is unfinished. A research period lists every split step with its full title; opening one shows its details, and Back returns to that period rather than the automation list. When steps are unfinished, **Resume** sits above the step list: it continues the current period; if the period failed or was cancelled, Resume reopens that same period in place, keeps finished step results and runs only the unfinished work. Automation results are only found in the Automations history; they do not appear on the normal board, in the task tree or in Research results.
 
 Conditions for running and catching up: automations only run while the app is open and the computer is awake; by default only the most recent missed period is caught up, and anything later than the allowed delay is skipped and recorded in a summary; pausing does not catch up on the past. Running immediately does not move the schedule forward. Each automation has at most one period running and one request waiting to start, and uses its own concurrency pool (Settings → General, 2 by default) and its own queue, so it does not take Research slots.
 
@@ -246,10 +246,11 @@ Materials are passed to the selected model at run time. The original files, and 
 
 ### First launch and the workspace
 
-1. On first launch, choose a dedicated workspace folder, or type the absolute path of one that already exists; you can use the app only after clicking **Set workspace and continue**.
-2. A new project automatically creates `workspace/projects/project-<number>/`. Research steps then use `.research/goal-<number>/` inside that project.
-3. Data, attachments, caches and run logs are kept in `workspace/` under the folder you chose. You can see the workspace location in Settings. If the folder is unavailable, the app stays on the setup page and does not run anywhere else.
-4. You can change a project's folder within the workspace; the app only accepts folders inside the workspace. The Agent is also asked to write its output into the current folder, but this is not a system-level sandbox.
+1. On first launch, choose a dedicated workspace folder, or type the absolute path of one that already exists; you can use the app only after clicking **Set workspace and continue**. The setup page previews the exact **Data folder** before you confirm.
+2. The app always creates a `workspace` subfolder inside the folder you choose. Select the outer folder you want to keep (for example `D`), not an existing app data folder; if you choose a folder that already contains `workspace.sqlite3`, the app warns you because data would be nested at `D/workspace/workspace`.
+3. A new project automatically creates `workspace/projects/project-<number>/`. Research steps then use `.research/goal-<number>/` inside that project.
+4. Data, attachments, caches and run logs are kept in `workspace/` under the folder you chose. You can see the workspace location in Settings. If the folder is unavailable, the app stays on the setup page and does not run anywhere else.
+5. You can change a project's folder within the workspace; the app only accepts folders inside the workspace. The Agent is also asked to write its output into the current folder, but this is not a system-level sandbox.
 
 The app only records the workspace location in the system's application folder. OpenCode/Codex account and conversation data, and ego(lite)'s browser settings, are managed by those tools themselves.
 

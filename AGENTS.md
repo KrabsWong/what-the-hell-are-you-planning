@@ -2,6 +2,13 @@
 
 Read `PRODUCT.md` and `DESIGN.md` before changing the interface. Keep implementation changes scoped to the user's request.
 
+## Language: English only
+
+- All app and repository content uses English only: interface strings (buttons, menus, labels, tooltips, placeholders, empty states, errors, notices), documentation (`README`, `USER_GUIDE`, `PRODUCT`, `DESIGN`, `doc/`), code comments and doc comments, test names and QA output, generated or exported content, and commit messages.
+- Exceptions: user-authored data, quoted source text, and content the user explicitly asks to keep in another language. Never rewrite user data to satisfy this rule.
+- Convert existing non-English content when touching that file; do not add new non-English paragraphs.
+- Identifiers (variables, functions, files) are always English.
+
 ## Icons: Lucide only
 
 - Find interface icons at https://lucide.dev/icons/. Check the icon's meaning, not just its shape. Prefer familiar task semantics; do not use Git icons for research planning.

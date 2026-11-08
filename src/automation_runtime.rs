@@ -485,6 +485,44 @@ impl Store {
         Ok(self.note_automation_failure(automation, now))
     }
 
+    /// Retry a failed or cancelled period in place. Terminal periods normally
+    /// never transition again; an explicit Resume reopens the same period so
+    /// finished steps keep their results and only unfinished work runs again.
+    pub fn reopen_occurrence(&mut self, id: u64, now: i64) -> Result<(), String> {
+        let occurrence = self
+            .occurrence(id)
+            .ok_or("Automation run not found.")?
+            .clone();
+        if !matches!(
+            occurrence.status,
+            OccurrenceStatus::Failed
+                | OccurrenceStatus::Cancelled
+                | OccurrenceStatus::Interrupted
+        ) {
+            return Err("Only a failed or cancelled period can be retried in place.".into());
+        }
+        let definition = self
+            .automation(occurrence.automation_id)
+            .ok_or("Automation not found.")?;
+        if definition.status == DefinitionStatus::Archived {
+            return Err("Restore the archived automation before retrying this period.".into());
+        }
+        if !self.projects.iter().any(|p| p.id == definition.project_id) {
+            return Err("The automation's project is unavailable.".into());
+        }
+        if !definition.approval_current() {
+            return Err("Review and enable the current automation version before retrying.".into());
+        }
+        let timeout = occurrence.snapshot.policy.timeout_seconds;
+        let occurrence = self.occurrence_mut(id).unwrap();
+        // An explicit user retry is the only way a terminal period reopens.
+        occurrence.status = OccurrenceStatus::Queued;
+        occurrence.reason = None;
+        // Give the retry a fresh total time limit; finished steps stay done.
+        occurrence.deadline_at = Some(now.saturating_add(timeout));
+        Ok(())
+    }
+
     pub fn wait_for_retry(&mut self, id: u64, detail: impl Into<String>) -> Result<(), String> {
         let occurrence = self.occurrence_mut(id).ok_or("Automation run not found.")?;
         occurrence.transition(
@@ -973,6 +1011,48 @@ mod tests {
         let commit = store.commit_automation_tick(&plans[0], cursor).unwrap();
         assert_eq!(store.automation(id).unwrap().status, DefinitionStatus::NeedsAttention);
         assert_eq!(commit.attention.len(), 1);
+    }
+
+    #[test]
+    fn failed_period_reopens_in_place_and_keeps_finished_steps() {
+        let (mut store, id) = store_with(true);
+        let occurrence = store.request_manual_occurrence(id, "retry", 1_000).unwrap();
+        let goal = occurrence.research_goal_id.unwrap();
+        // Finish the first step, then fail the analysis step.
+        let mut first = store.prepare_occurrence_run(&occurrence, 1_000).unwrap();
+        assert_eq!(first.research_kind, Some(ResearchKind::Collect));
+        first.automation_occurrence_id = Some(occurrence.id);
+        first.status = "Succeeded".into();
+        first.output = "Collected evidence".into();
+        let collect = first.task_id;
+        store.runs.push(first);
+        store.set_stage(collect, Stage::Done).unwrap();
+        let mut second = store.prepare_occurrence_run(&occurrence, 1_010).unwrap();
+        assert_eq!(second.research_kind, Some(ResearchKind::Analyze));
+        let analyze = second.task_id;
+        second.status = "Failed".into();
+        store.runs.push(second);
+        store.fail_occurrence(occurrence.id, "step failed", 1_020).unwrap();
+        assert_eq!(
+            store.occurrence(occurrence.id).unwrap().status,
+            OccurrenceStatus::Failed
+        );
+        let tasks = store.tasks.len();
+        let occurrences = store.automation_occurrences.len();
+        store.reopen_occurrence(occurrence.id, 2_000).unwrap();
+        let reopened = store.occurrence(occurrence.id).unwrap();
+        assert_eq!(reopened.status, OccurrenceStatus::Queued);
+        assert!(reopened.reason.is_none());
+        assert!(reopened.deadline_at.is_some_and(|deadline| deadline > 2_000));
+        assert_eq!(store.tasks.len(), tasks, "retry must not duplicate plan steps");
+        assert_eq!(
+            store.automation_occurrences.len(),
+            occurrences,
+            "retry must reuse the same period"
+        );
+        assert_eq!(store.task(collect).unwrap().stage, Stage::Done);
+        let retry = store.prepare_occurrence_run(reopened, 2_010).unwrap();
+        assert_eq!(retry.task_id, analyze, "only unfinished work runs again");
     }
 
     #[test]

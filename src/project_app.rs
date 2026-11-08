@@ -187,6 +187,10 @@ impl TaskApp {
             return;
         }
         let mut planned_automation = None;
+        let plan_automation = self
+            .store
+            .request_for_run(run.id)
+            .and_then(|request| request.automation_id);
         let result = if let Some(request) = self.store.request_for_run(run.id) {
             let request_id = request.id;
             let automation = request.automation_id;
@@ -255,6 +259,16 @@ impl TaskApp {
                 stored.logs.push(format!("[project planning] {e}"));
                 self.error = e;
                 self.toast = "Project plan rejected · review output and retry".into();
+                // Do not leave a saved draft stuck on "Planning…" after the
+                // planner fails.
+                if let Some(automation) = plan_automation
+                    && self.automation_ui.planning_automation == Some(automation)
+                {
+                    self.automation_ui.planning_automation = None;
+                    self.automation_ui.feedback = Some(Err(
+                        "Planning failed. Open the draft and retry planning.".into(),
+                    ));
+                }
             }
         }
         self.show_run_result = true;

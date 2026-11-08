@@ -903,6 +903,39 @@ impl Store {
         Ok(occurrence)
     }
 
+    /// A period runs in phase order — every collection step, then analysis, then
+    /// the final report — even when the reviewed dependency graph would let a
+    /// later phase start first. Concurrency is one step at a time, so this only
+    /// makes the sequence explicit and keeps evidence ahead of interpretation.
+    fn phase_ordered_ready_step(&self, goal: u64, ready: &[u64]) -> Option<u64> {
+        let children = self.research_children(goal);
+        for phase in [
+            ResearchKind::Collect,
+            ResearchKind::Analyze,
+            ResearchKind::Advise,
+        ] {
+            let unfinished = children.iter().any(|id| {
+                self.task(*id).is_some_and(|task| {
+                    task.stage != Stage::Cancelled
+                        && self.research_result(*id).is_none()
+                        && task
+                            .research
+                            .as_ref()
+                            .is_some_and(|research| research.kind == phase)
+                })
+            });
+            if !unfinished {
+                continue;
+            }
+            return ready.iter().copied().find(|id| {
+                self.task(*id)
+                    .and_then(|task| task.research.as_ref())
+                    .is_some_and(|research| research.kind == phase)
+            });
+        }
+        ready.first().copied()
+    }
+
     /// Select the next runnable step and prepare a run with the snapshot's models,
     /// agent and immutable occurrence time context.
     pub fn prepare_occurrence_run(
@@ -938,7 +971,7 @@ impl Store {
         for goal in goals {
             match self.ready_research_tasks(goal) {
                 Ok(ready) => {
-                    if let Some(task) = ready.into_iter().next() {
+                    if let Some(task) = self.phase_ordered_ready_step(goal, &ready) {
                         selected = Some(task);
                         break;
                     }
@@ -1294,6 +1327,152 @@ mod tests {
         assert_eq!(template.goals.len(), 1);
         assert_eq!(template.goals[0].brief, "Brief");
         assert_eq!(template.goals[0].steps.len(), 3);
+    }
+
+    #[test]
+    fn a_period_starts_steps_only_after_their_declared_prerequisites_finish() {
+        let mut store = store();
+        let id = definition(&mut store);
+        store.approve_and_enable(id, vec![], 1_000).unwrap();
+        let occurrence = store
+            .materialize_occurrence(occurrence(&store, id, 2_000))
+            .unwrap();
+        let goal = occurrence.research_goal_id.unwrap();
+        let children = store.research_children(goal);
+        let step = |kind| {
+            children
+                .iter()
+                .copied()
+                .find(|task| {
+                    store
+                        .task(*task)
+                        .and_then(|task| task.research.as_ref())
+                        .is_some_and(|research| research.kind == kind)
+                })
+                .unwrap()
+        };
+        let collect = step(ResearchKind::Collect);
+        let analyze = step(ResearchKind::Analyze);
+        let advise = step(ResearchKind::Advise);
+        // The first run is the collection step; analysis and the report are not
+        // offered while their prerequisites have no result.
+        let first = store.prepare_occurrence_run(&occurrence, 2_060).unwrap();
+        assert_eq!(first.task_id, collect);
+        assert_ne!(first.task_id, analyze);
+        assert_ne!(first.task_id, advise);
+        // A successful prerequisite unlocks exactly the analysis step.
+        let mut run = first;
+        run.automation_occurrence_id = Some(occurrence.id);
+        run.status = "Succeeded".into();
+        run.output = "Collected evidence".into();
+        store.runs.push(run);
+        store.set_stage(collect, Stage::Done).unwrap();
+        let second = store.prepare_occurrence_run(&occurrence, 2_061).unwrap();
+        assert_eq!(second.task_id, analyze);
+        // The report still waits for analysis.
+        let mut run = second;
+        run.automation_occurrence_id = Some(occurrence.id);
+        run.status = "Succeeded".into();
+        run.output = "Analyzed evidence".into();
+        store.runs.push(run);
+        store.set_stage(analyze, Stage::Done).unwrap();
+        let third = store.prepare_occurrence_run(&occurrence, 2_062).unwrap();
+        assert_eq!(third.task_id, advise);
+    }
+
+    #[test]
+    fn a_failed_prerequisite_keeps_dependents_waiting_not_blocked() {
+        let mut store = store();
+        let id = definition(&mut store);
+        store.approve_and_enable(id, vec![], 1_000).unwrap();
+        let occurrence = store
+            .materialize_occurrence(occurrence(&store, id, 2_000))
+            .unwrap();
+        let goal = occurrence.research_goal_id.unwrap();
+        let children = store.research_children(goal);
+        let step = |kind| {
+            children
+                .iter()
+                .copied()
+                .find(|task| {
+                    store
+                        .task(*task)
+                        .and_then(|task| task.research.as_ref())
+                        .is_some_and(|research| research.kind == kind)
+                })
+                .unwrap()
+        };
+        let collect = step(ResearchKind::Collect);
+        let analyze = step(ResearchKind::Analyze);
+        let mut run = store.prepare_occurrence_run(&occurrence, 2_060).unwrap();
+        run.status = "Failed".into();
+        store.runs.push(run);
+        assert_eq!(store.step_state(collect), crate::goal_steps::StepState::Blocked);
+        assert_eq!(
+            store.step_state(analyze),
+            crate::goal_steps::StepState::Waiting,
+            "analysis has not run yet, so it must not be reported as a failed step"
+        );
+    }
+
+    #[test]
+    fn a_period_finishes_collection_before_analysis_even_when_the_graph_allows_it() {
+        let mut store = store();
+        let plan = r#"{"topic_name":"Phases","brief":{"objective":"Order phases","deliverable":"Note","scope":"Latest","assumptions":[],"facts_to_verify":[]},"goals":[{"title":"Phases","brief":"Run in phase order","tasks":[{"title":"Collect one","instructions":"Collect one","kind":"collect","depends_on":[]},{"title":"Analyze early","instructions":"Analyze the first collect","kind":"analyze","depends_on":[0]},{"title":"Collect two","instructions":"Collect two","kind":"collect","depends_on":[]},{"title":"Report","instructions":"Write the note","kind":"advise","depends_on":[1,2]}]}]}"#;
+        let parsed = crate::request_planning::parse_request_plan(plan).unwrap();
+        let template = template_from_plan(&parsed).unwrap();
+        let id = store
+            .create_automation_draft(
+                1,
+                AutomationShape::Research,
+                "Phase order".into(),
+                "Run phases in order".into(),
+                "A sourced note".into(),
+                Schedule {
+                    spec: ScheduleSpec::Daily { hour: 8, minute: 30 },
+                    timezone: "Asia/Shanghai".into(),
+                },
+                AutomationPolicy::default(),
+                Some(template),
+                1_000,
+            )
+            .unwrap();
+        store.approve_and_enable(id, vec![], 1_000).unwrap();
+        let occurrence = store
+            .materialize_occurrence(occurrence(&store, id, 2_000))
+            .unwrap();
+        let goal = occurrence.research_goal_id.unwrap();
+        let children = store.research_children(goal);
+        let by_title = |title: &str| {
+            children
+                .iter()
+                .copied()
+                .find(|task| store.task(*task).is_some_and(|task| task.title == title))
+                .unwrap()
+        };
+        let collect_one = by_title("Collect one");
+        let collect_two = by_title("Collect two");
+        let analyze = by_title("Analyze early");
+        let first = store.prepare_occurrence_run(&occurrence, 2_060).unwrap();
+        assert_eq!(first.task_id, collect_one);
+        let mut run = first;
+        run.automation_occurrence_id = Some(occurrence.id);
+        run.status = "Succeeded".into();
+        run.output = "One".into();
+        store.runs.push(run);
+        store.set_stage(collect_one, Stage::Done).unwrap();
+        // The second collection is still pending, so analysis waits even though
+        // its own dependencies are satisfied.
+        let second = store.prepare_occurrence_run(&occurrence, 2_061).unwrap();
+        assert_eq!(second.task_id, collect_two);
+        let mut run = second;
+        run.automation_occurrence_id = Some(occurrence.id);
+        run.status = "Succeeded".into();
+        run.output = "Two".into();
+        store.runs.push(run);
+        store.set_stage(collect_two, Stage::Done).unwrap();
+        let third = store.prepare_occurrence_run(&occurrence, 2_062).unwrap();
+        assert_eq!(third.task_id, analyze);
     }
 
     #[test]

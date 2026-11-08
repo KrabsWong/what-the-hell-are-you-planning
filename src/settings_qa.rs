@@ -66,7 +66,9 @@ pub fn run() {
             screenshot(&mut cx, handle, &directory, "00-appearance-cycle.png");
             cx.update_window(handle, |_, w, cx| {
                 w.render_frame(cx);
-                w.click("model-settings", cx);
+                w.click("workspace-menu", cx);
+                w.render_frame(cx);
+                w.within("popup-menu").click(3usize, cx);
                 assert_eq!(app.read(cx).scope, Scope::Settings);
                 for _ in 0..2 {
                     if app.read(cx).store.appearance == Appearance::System {
@@ -332,7 +334,9 @@ pub fn run() {
                         .update(cx, |s, cx| s.set_value("/tmp/preserve-ego", w, cx));
                     cx.notify();
                 });
-                w.click("model-settings", cx);
+                w.click("workspace-menu", cx);
+                w.render_frame(cx);
+                w.within("popup-menu").click(3usize, cx);
                 click(w, cx, "model-settings-scroll", "global-model-all-stages");
                 assert!(app.read(cx).research_models.iter().all(|m| m.read(cx).value().is_empty()));
                 let tab_top = w.within("settings-tabs").find(0usize).bounds().top();

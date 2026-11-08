@@ -192,7 +192,9 @@ pub fn run() {
             .unwrap();
             screenshot(&mut cx, handle, &directory, "07-task-property-menu.png");
             cx.update_window(handle, |_, w, cx| {
-                w.click("model-settings", cx);
+                w.click("workspace-menu", cx);
+                w.render_frame(cx);
+                w.within("popup-menu").click(3usize, cx);
                 w.within("settings-tabs").click(1usize, cx);
             })
             .unwrap();
@@ -204,7 +206,9 @@ pub fn run() {
             .unwrap();
             screenshot(&mut cx, handle, &directory, "09-research-settings.png");
             cx.update_window(handle, |_, w, cx| {
-                w.click("model-settings", cx);
+                w.click("workspace-menu", cx);
+                w.render_frame(cx);
+                w.within("popup-menu").click(3usize, cx);
                 w.within("settings-tabs").click(1usize, cx);
                 w.render_frame(cx);
                 assert!(w.try_find("research-model-0").is_some());

@@ -258,6 +258,19 @@ impl TaskApp {
                 .border_color(rgb(colors.line))
                 .bg(rgb(colors.panel))
         };
+        let chosen = self.directory_input.read(cx).value().trim().to_string();
+        let chosen_path = Path::new(&chosen);
+        let data_folder = (!chosen.is_empty()).then(|| chosen_path.join("workspace"));
+        let existing_workspace = data_folder
+            .as_ref()
+            .is_some_and(|path| path.join("workspace.sqlite3").is_file());
+        // Selecting the data folder itself would nest another `workspace` level.
+        let selects_data_folder =
+            !chosen.is_empty() && chosen_path.join("workspace.sqlite3").is_file();
+        let data_preview = data_folder
+            .as_ref()
+            .map(|path| path.display().to_string())
+            .unwrap_or_else(|| "Choose a folder above to preview its data folder.".into());
         col().id("startup").size_full().overflow_y_scroll().bg(rgb(colors.canvas)).text_color(rgb(colors.text)).text_sm().items_center()
             .child(col().w_full().max_w(px(840.)).p_6().gap_3().flex_shrink_0()
                 .child(row().justify_between()
@@ -267,10 +280,35 @@ impl TaskApp {
                 .child(card()
                     .child(heading("1 · Workspace", workspace.0, workspace.1))
                     .child(label("Stores projects, reports and local data. Existing files are preserved.", cx))
+                    .child(div().text_xs().text_color(rgb(colors.muted)).child(selectable(
+                        "The app always creates a `workspace` subfolder inside the folder you choose. Everything it creates lives there; the folder you pick stays otherwise untouched.",
+                    )))
                     .when(self.workspace_required, |view| view.child(row().gap_2()
                         .child(div().flex_1().min_w_0().child(Input::new(&self.directory_input).id("workspace-root")))
                         .child(button("browse-workspace", "Browse…").disabled(self.workspace_setup.is_some()).on_click(cx.listener(|this,_,_,cx| this.choose_workspace(cx))))
                         .child(button("setup-workspace", "Set workspace").disabled(self.workspace_setup.is_some()).on_click(cx.listener(|this,_,_,cx| this.setup_workspace(cx))))))
+                    .when(self.workspace_required, |view| view.child(
+                        col().gap_1().p_2().rounded_md().bg(rgb(colors.tag_surface))
+                            .child(
+                                row().gap_1().items_center()
+                                    .child(gpui_kit::component::Icon::new(assets::IconName::Folder).size_4().text_color(rgb(colors.muted)))
+                                    .child(div().text_xs().font_weight(FontWeight::MEDIUM).child(selectable("Data folder")))
+                            )
+                            .child(row().w_full().child(
+                                single_line_text("workspace-data-preview", data_preview.clone())
+                                    .text_sm()
+                                    .text_color(rgb(colors.text)),
+                            ))
+                            .when(existing_workspace, |view| view.child(label(
+                                "Existing workspace data found here. The app will reuse it.",
+                                cx,
+                            )))
+                            .when(selects_data_folder, |view| view.child(crate::views::notice(
+                                crate::views::NoticeTone::Warning,
+                                "This folder already contains workspace.sqlite3. It looks like an app data folder; choose its parent folder instead, otherwise data will be nested one level deeper at workspace/workspace.",
+                                cx,
+                            )))
+                    ))
                     .when(!self.workspace_required, |view| view.child(single_line_text("startup-workspace-path", self.workspace_root.as_ref().map(|p| p.display().to_string()).unwrap_or_default())))
                     .when_some(self.startup.upgrade_backup.as_ref(), |view, backup| view.child(col().gap_1()
                         .child(label("Workspace data upgraded. The previous database was backed up.", cx))

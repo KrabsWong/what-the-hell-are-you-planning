@@ -18,6 +18,7 @@ use gpui_kit::{
     base::FocusTrapElement,
     component::Disableable,
     component::input::{Input, InputState, Textarea, TextareaState},
+    component::menu::{DropdownMenu, PopupMenuItem},
     prelude::*,
     *,
 };
@@ -39,13 +40,12 @@ impl AutomationKind {
     }
 }
 
-/// Session-only grouping colours for automation results. Hues follow the
-/// golden angle so consecutive automations land far apart on the colour wheel,
-/// and the walk is never persisted: colours change on the next start while
-/// every period of one automation stays consistent this session.
+/// Session-only name colours for automation results. Hues follow the golden
+/// angle so consecutive automations land far apart on the colour wheel, and the
+/// walk is never persisted: colours change on the next start while every period
+/// of one automation stays consistent this session. Rows share one neutral
+/// surface; only the automation name carries its colour.
 const GOLDEN_ANGLE: f32 = 137.50776;
-const RESULT_TINT_ALPHA: u32 = 0x38;
-const RESULT_TINT_HOVER_ALPHA: u32 = 0x60;
 
 fn session_seed() -> u64 {
     let mut bytes = [0u8; 8];
@@ -80,14 +80,16 @@ fn hsl_to_rgb(hue: f32, saturation: f32, lightness: f32) -> (u32, u32, u32) {
 
 #[derive(Clone, Copy)]
 pub(crate) struct ResultTint {
-    pub base: u32,
-    pub hover: u32,
+    /// Solid text colour for the automation name.
+    pub text: u32,
 }
 
 pub(crate) struct ResultTints {
     base_hue: f32,
     next: RefCell<usize>,
-    assigned: RefCell<HashMap<u64, ResultTint>>,
+    /// The golden-angle walk position assigned to each automation. Colours are
+    /// computed per call so a theme switch adjusts lightness.
+    assigned: RefCell<HashMap<u64, usize>>,
 }
 
 impl ResultTints {
@@ -103,31 +105,33 @@ impl ResultTints {
         }
     }
 
-    /// A translucent colour keeps the row readable in both light and dark
-    /// themes. The golden-angle walk maximises separation between the first
-    /// few automations; rotating saturation and lightness keeps later picks
-    /// distinguishable when hues eventually come close again. Hover keeps the
-    /// same hue and intensifies the same tint instead of switching to a
-    /// neutral hover surface.
-    fn tint(&self, automation: u64) -> ResultTint {
+    /// The golden-angle walk maximises separation between the first few
+    /// automations; rotating saturation and lightness keeps later picks
+    /// distinguishable when hues eventually come close again. Light themes use
+    /// darker text and dark themes use lighter text so names stay readable.
+    fn tint(&self, automation: u64, dark: bool) -> ResultTint {
         let mut assigned = self.assigned.borrow_mut();
-        if let Some(tint) = assigned.get(&automation) {
-            return *tint;
-        }
-        let mut next = self.next.borrow_mut();
-        let index = *next;
-        *next += 1;
+        let index = match assigned.get(&automation) {
+            Some(index) => *index,
+            None => {
+                let mut next = self.next.borrow_mut();
+                let index = *next;
+                *next += 1;
+                assigned.insert(automation, index);
+                index
+            }
+        };
         let hue = (self.base_hue + index as f32 * GOLDEN_ANGLE) % 360.0;
         let saturation = [0.62, 0.74, 0.86][index % 3];
-        let lightness = [0.52, 0.44, 0.58][(index / 3) % 3];
-        let (red, green, blue) = hsl_to_rgb(hue, saturation, lightness);
-        let rgb = (red << 24) | (green << 16) | (blue << 8);
-        let tint = ResultTint {
-            base: rgb | RESULT_TINT_ALPHA,
-            hover: rgb | RESULT_TINT_HOVER_ALPHA,
+        let lightness = if dark {
+            [0.72, 0.64, 0.78][(index / 3) % 3]
+        } else {
+            [0.38, 0.30, 0.44][(index / 3) % 3]
         };
-        assigned.insert(automation, tint);
-        tint
+        let (red, green, blue) = hsl_to_rgb(hue, saturation, lightness);
+        ResultTint {
+            text: (red << 24) | (green << 16) | (blue << 8) | 0xff,
+        }
     }
 }
 
@@ -151,6 +155,9 @@ pub struct AutomationUi {
     pub preview_error: String,
     /// Period whose result is open in a dialog. `None` keeps results closed.
     pub result_dialog: Option<u64>,
+    /// Automation whose periods the all-results list is limited to. `None`
+    /// keeps every automation.
+    pub result_filter: Option<u64>,
     pub history_limit: usize,
     /// Task definition, schedule and run limits are secondary once periods exist,
     /// so they open in a dialog only when the user asks to review or change them.
@@ -201,6 +208,7 @@ impl AutomationUi {
             preview: vec![],
             preview_error: String::new(),
             result_dialog: None,
+            result_filter: None,
             history_limit: 20,
             settings_dialog: false,
             show_technical: false,
@@ -404,6 +412,22 @@ pub fn format_in_zone(utc: i64, timezone: &str) -> String {
         .unwrap_or_else(|_| utc.to_string())
 }
 
+/// Occurrence timestamps carry seconds because several periods can start inside
+/// the same minute; minute precision would make the rows indistinguishable.
+pub fn format_in_zone_precise(utc: i64, timezone: &str) -> String {
+    use chrono::TimeZone;
+    parse_timezone(timezone)
+        .ok()
+        .and_then(|zone| {
+            chrono::Utc
+                .timestamp_opt(utc, 0)
+                .single()
+                .map(|value| value.with_timezone(&zone))
+        })
+        .map(|value| value.format("%Y-%m-%d %H:%M:%S").to_string())
+        .unwrap_or_else(|| format_in_zone(utc, timezone))
+}
+
 /// Reading text for the automation overview. What the user came for keeps full
 /// contrast at body size, so supporting notes cannot be mistaken for content.
 pub fn overview_body(text: impl Into<SharedString>, cx: &App) -> Div {
@@ -515,7 +539,7 @@ fn occurrence_context(
         .unwrap_or_else(|| "Manual request".into());
     let started = occurrence
         .actual_started_at
-        .map(|value| format_in_zone(value, &occurrence.timezone))
+        .map(|value| format_in_zone_precise(value, &occurrence.timezone))
         .unwrap_or_else(|| "Not started".into());
     if definition.is_some_and(|definition| definition.shape.is_quick()) {
         let mut lines = vec![
@@ -680,6 +704,19 @@ impl TaskApp {
             "Replanning starts a new version. Adjust the request, continue, then approve the new plan."
                 .into(),
         ));
+        cx.notify();
+    }
+
+    /// Reopen the wizard on the planning step after the user leaves it. The
+    /// in-flight planner keeps its identity so its result lands in this review.
+    pub fn review_automation_planning(&mut self, id: u64, window: &mut Window, cx: &mut Context<Self>) {
+        if self.store.automation(id).is_none() {
+            return;
+        }
+        self.edit_automation(id, window, cx);
+        self.automation_ui.step = 3;
+        self.automation_ui.planning_automation = Some(id);
+        self.automation_ui.preview_error.clear();
         cx.notify();
     }
 
@@ -1240,6 +1277,59 @@ impl TaskApp {
         cx.notify();
     }
 
+    /// Continue a research period's unfinished steps. A paused automation is
+    /// resumed first; an already ended period starts a new manual period from
+    /// the same approved plan because terminal periods cannot transition again.
+    pub fn resume_automation_steps(&mut self, occurrence: u64, cx: &mut Context<Self>) {
+        let Some((automation, status)) = self
+            .store
+            .occurrence(occurrence)
+            .map(|run| (run.automation_id, run.status))
+        else {
+            return;
+        };
+        let Some(definition_status) = self.store.automation(automation).map(|d| d.status) else {
+            return;
+        };
+        if matches!(
+            definition_status,
+            DefinitionStatus::Paused | DefinitionStatus::NeedsAttention
+        ) {
+            self.resume_automation_ui(automation, cx);
+            if self
+                .automation_ui
+                .feedback
+                .as_ref()
+                .is_some_and(|feedback| feedback.is_err())
+            {
+                return;
+            }
+        }
+        if status.is_active() {
+            self.enqueue_automation_occurrence(occurrence, cx);
+            self.toast = "Resuming this period's unfinished steps.".into();
+        } else {
+            let rollback = self.store.clone();
+            match self.store.reopen_occurrence(occurrence, Self::automation_now()) {
+                Ok(()) => {
+                    self.persist_if_changed(true);
+                    if !self.storage_error.is_empty() {
+                        self.store = rollback;
+                        self.automation_ui.feedback =
+                            Some(Err(format!("Not resumed: {}", self.storage_error)));
+                        cx.notify();
+                        return;
+                    }
+                    self.enqueue_automation_occurrence(occurrence, cx);
+                    self.toast =
+                        "Retrying this period in place · finished steps keep their results.".into();
+                }
+                Err(error) => self.automation_ui.feedback = Some(Err(error)),
+            }
+        }
+        cx.notify();
+    }
+
     pub fn run_automation_now(&mut self, id: u64, cx: &mut Context<Self>) {
         let request = crate::opencode::new_session_id();
         let now = Self::automation_now();
@@ -1540,6 +1630,12 @@ impl TaskApp {
             let latest_label = latest
                 .map(|occurrence| occurrence.status.label().to_string())
                 .unwrap_or_else(|| "Not run yet".into());
+            let planning = self.automation_ui.planning_automation == Some(id);
+            let latest_label = if planning {
+                "Planning…".into()
+            } else {
+                latest_label
+            };
             let summary = format!(
                 "{} · Next: {next} · Latest: {latest_label}",
                 schedule_summary(&definition.schedule)
@@ -1588,6 +1684,12 @@ impl TaskApp {
                                                 ),
                                                 cx,
                                             ))
+                                            .when(planning, |d| {
+                                                d.child(
+                                                    chip("Planning…", colors.accent, cx)
+                                                        .id(format!("automation-planning-{id}")),
+                                                )
+                                            })
                                             .when(unread > 0, |d| {
                                                 d.child(chip(
                                                     format!("{unread} unread"),
@@ -1631,6 +1733,16 @@ impl TaskApp {
                 occurrence.id,
             ))
         });
+        let total = occurrences.len();
+        // A saved filter only applies while its automation still exists; a
+        // removed automation falls back to the unfiltered list.
+        let filter = self
+            .automation_ui
+            .result_filter
+            .filter(|id| self.store.automation(*id).is_some());
+        if let Some(id) = filter {
+            occurrences.retain(|occurrence| occurrence.automation_id == id);
+        }
         let shown = occurrences
             .iter()
             .take(self.automation_ui.history_limit)
@@ -1654,16 +1766,24 @@ impl TaskApp {
                         cx,
                     )),
             );
-        if occurrences.is_empty() {
+        if total == 0 {
             panel = panel.child(overview_note(
                 "No automation runs yet. Create or enable an automation to collect periods here.",
                 cx,
             ));
         } else {
+            let heading = match filter {
+                Some(_) => format!("Periods · {} of {total}", occurrences.len()),
+                None => format!("Periods · {total}"),
+            };
             panel = panel.child(
-                row().justify_between()
-                    .child(div().font_weight(FontWeight::SEMIBOLD).child(selectable(format!("Periods · {}", occurrences.len()))))
-                    .child(overview_note("Unread results are marked with a dot.", cx)),
+                row().justify_between().flex_wrap().gap_3()
+                    .child(div().font_weight(FontWeight::SEMIBOLD).child(selectable(heading)))
+                    .child(
+                        row().flex_shrink_0().gap_3().items_center()
+                            .child(self.automation_results_filter_control(cx))
+                            .child(overview_note("Unread results are marked with a dot.", cx)),
+                    ),
             );
             let queued = occurrences
                 .iter()
@@ -1680,6 +1800,12 @@ impl TaskApp {
                         self.automation_slots_used(),
                         self.store.automation_concurrency_limit()
                     ),
+                    cx,
+                ));
+            }
+            if occurrences.is_empty() {
+                panel = panel.child(overview_note(
+                    "No periods for this automation yet. Pick another automation or clear the filter.",
                     cx,
                 ));
             }
@@ -1702,10 +1828,58 @@ impl TaskApp {
         panel.map(observed).into_any_element()
     }
 
+    /// Narrows the all-results list to one automation. The control stays in the
+    /// results header so the filter is discoverable without a separate page.
+    fn automation_results_filter_control(&self, cx: &mut Context<Self>) -> AnyElement {
+        let selected = self.automation_ui.result_filter;
+        let label = selected
+            .and_then(|id| self.store.automation(id))
+            .map(|definition| definition.name.clone())
+            .unwrap_or_else(|| "All automations".into());
+        let mut definitions: Vec<_> = self.store.automations.iter().collect();
+        definitions.sort_by_key(|definition| definition.id);
+        let options: Vec<(Option<u64>, String)> = std::iter::once((None, "All automations".to_string()))
+            .chain(
+                definitions
+                    .into_iter()
+                    .map(|definition| (Some(definition.id), definition.name.clone())),
+            )
+            .collect();
+        let entity = cx.entity().downgrade();
+        quiet_button("automation-results-filter", label)
+            .dropdown_caret(true)
+            .font_weight(FontWeight::MEDIUM)
+            .text_color(rgb(palette(cx).accent))
+            .bg(rgb(palette(cx).accent_surface))
+            .tooltip("Filter results by automation")
+            .accessibility_label("Filter results by automation")
+            .dropdown_menu_with_anchor(Anchor::TopRight, move |mut menu, _, _| {
+                for (id, name) in &options {
+                    let value = *id;
+                    let entity = entity.clone();
+                    menu = menu.item(
+                        PopupMenuItem::new(name.clone())
+                            .checked(selected == value)
+                            .on_click(move |_, _, cx| {
+                                let _ = entity.update(cx, |app, cx| {
+                                    app.automation_ui.result_filter = value;
+                                    app.automation_ui.history_limit = 20;
+                                    app.automation_ui.scroll.set_offset(point(px(0.), px(0.)));
+                                    cx.notify();
+                                });
+                            }),
+                    );
+                }
+                menu
+            })
+            .into_any_element()
+    }
+
     fn automation_detail(&self, id: u64, cx: &mut Context<Self>) -> AnyElement {
         let Some(definition) = self.store.automation(id) else {
             return self.automation_list(cx);
         };
+        let colors = palette(cx);
         let project = self
             .store
             .projects
@@ -1809,6 +1983,28 @@ impl TaskApp {
                         ))
                     }),
             )
+            // Planning started in the wizard may finish after the user leaves it.
+            // Keep the in-flight state visible on the saved draft.
+            .when(self.automation_ui.planning_automation == Some(id), |d| {
+                d.child(
+                    col().gap_2().child(
+                        crate::views::notice_panel(
+                            crate::views::NoticeTone::Info,
+                            "Planning the research plan…",
+                            "You can leave this page; planning continues in the background. When it finishes, review the generated goals and steps before enabling this draft.",
+                            cx,
+                        ),
+                    )
+                    .child(
+                        quiet_button("review-automation-planning", "Review planning")
+                            .icon(assets::IconName::ListOrdered)
+                            .tooltip("Return to the planning step and review the plan when it finishes.")
+                            .on_click(cx.listener(move |app, _, window, cx| {
+                                app.review_automation_planning(id, window, cx)
+                            })),
+                    ),
+                )
+            })
             // Feedback belongs at the top of the content, never between actions.
             .child(self.automation_feedback(cx))
             // Attention is about this automation's state, so it stays visible
@@ -1826,7 +2022,9 @@ impl TaskApp {
                     "Pause and Run manually unlock once you review and enable this draft.",
                     cx,
                 ))
-            });
+            })
+            // Separate the definition and its actions from the run history.
+            .child(div().w_full().h(px(1.)).bg(rgb(colors.line)));
 
         // History is a compact, newest-first list. Each row opens its result in
         // a dialog; nothing expands inside the page.
@@ -1870,6 +2068,8 @@ impl TaskApp {
                         })),
                 );
             }
+            // Keep log cleanup visually separate from the run list.
+            panel = panel.child(div().w_full().h(px(1.)).bg(rgb(colors.line)));
             panel = panel.child(
                 row().gap_2()
                     .child(quiet_button("automation-cleanup-preview", "Log cleanup preview")
@@ -2068,24 +2268,41 @@ impl TaskApp {
         let color = occurrence_status_color(occurrence.status, &colors);
         // Execution time is the primary fact. A period that never started falls
         // back to its planned trigger or request time.
-        let when = format_in_zone(
+        let when = format_in_zone_precise(
             occurrence
                 .actual_started_at
                 .or(occurrence.scheduled_for)
                 .unwrap_or(occurrence.reference_time),
             &occurrence.timezone,
         );
-        let skipped = (occurrence.skipped_count > 0)
-            .then(|| format!(" · {} earlier summarized", occurrence.skipped_count))
-            .unwrap_or_default();
-        let tint = self
-            .automation_ui
-            .result_tints
-            .tint(occurrence.automation_id);
-        let hover = if show_automation {
-            rgba(tint.hover)
+        let definition = show_automation
+            .then(|| self.store.automation(occurrence.automation_id))
+            .flatten();
+        let tint = definition.map(|_| {
+            self.automation_ui
+                .result_tints
+                .tint(
+                    occurrence.automation_id,
+                    gpui_kit::component::Theme::global(cx).is_dark(),
+                )
+        });
+        // The trigger and the skipped-period count are secondary facts: an icon
+        // keeps them out of the row's reading order without hiding them.
+        let (trigger_icon, trigger_name) = match occurrence.source {
+            crate::automation::TriggerSource::Manual => {
+                (assets::IconName::MousePointerClick, "Manual run")
+            }
+            crate::automation::TriggerSource::Scheduled => {
+                (assets::IconName::CalendarClock, "Scheduled run")
+            }
+        };
+        let trigger_hint = if occurrence.skipped_count > 0 {
+            format!(
+                "{trigger_name} · {} earlier periods were summarized",
+                occurrence.skipped_count
+            )
         } else {
-            rgb(colors.hover)
+            trigger_name.into()
         };
         let mut line = row()
             .id(format!("automation-occurrence-{id}"))
@@ -2094,9 +2311,11 @@ impl TaskApp {
             .gap_2()
             .items_center()
             .rounded_md()
-            .when(show_automation, |d| d.bg(rgba(tint.base)))
+            // One neutral surface for every period; the automation name carries
+            // the session colour instead of tinting the whole row.
+            .bg(rgb(colors.panel))
             .cursor_pointer()
-            .hover(move |d| d.bg(hover))
+            .hover(|d| d.bg(rgb(colors.hover)))
             .child(
                 div()
                     .w(px(8.))
@@ -2110,56 +2329,71 @@ impl TaskApp {
                     .flex_shrink_0()
                     .text_sm()
                     .child(selectable(when)),
+            );
+        if let (Some(definition), Some(tint)) = (definition, tint) {
+            line = line
+                .child(label("·", cx).flex_shrink_0())
+                // Names are user-authored, so the fixed category leads: it tells
+                // the reader what kind of period this is before the name.
+                .child(
+                    div()
+                        .flex_shrink_0()
+                        .px(px(5.))
+                        .py(px(1.))
+                        .rounded(px(4.))
+                        .bg(rgb(colors.side))
+                        .text_size(px(11.))
+                        .font_weight(FontWeight::MEDIUM)
+                        .text_color(rgb(colors.secondary))
+                        .child(selectable(definition.shape.label())),
+                )
+                .child(
+                    div()
+                        .min_w_0()
+                        .max_w(px(420.))
+                        .text_sm()
+                        .font_weight(FontWeight::MEDIUM)
+                        .text_color(rgba(tint.text))
+                        .truncate()
+                        .child(selectable(definition.name.clone())),
+                );
+        }
+        line.child(div().flex_1().min_w(px(12.)))
+            .child(
+                div()
+                    .id(format!("occurrence-trigger-{id}"))
+                    .flex_shrink_0()
+                    .flex()
+                    .items_center()
+                    .text_color(rgb(colors.muted))
+                    .tooltip(move |window, cx| {
+                        gpui_kit::component::tooltip::Tooltip::new(trigger_hint.clone())
+                            .build(window, cx)
+                    })
+                    .child(gpui_kit::component::Icon::new(trigger_icon).size(px(14.))),
             )
             .child(
-                row().flex_shrink_0().gap_1().items_center()
-                    .child(div().text_sm().text_color(rgb(color)).child(selectable(status)))
-                    .child(label(format!("· {}{skipped}", occurrence.source.label()), cx)),
-            );
-        // The all-automation results view names the source automation after the
-        // status/source pair; the per-automation history already has that context.
-        if show_automation {
-            line = line.child(
-                muted(
-                    self.store
-                        .automation(occurrence.automation_id)
-                        .map(|definition| definition.name.clone())
-                        .unwrap_or_else(|| "Automation".into()),
-                    cx,
-                )
-                .flex_1()
-                .min_w_0()
-                .overflow_hidden()
-                .text_ellipsis(),
-            );
-        } else {
-            line = line.child(div().flex_1());
-        }
-        line.when(occurrence.status.is_active(), |d| {
-            d.child(
-                tool_icon(
-                    format!("cancel-occurrence-{id}"),
-                    assets::IconName::CircleX,
-                    "Cancel this period and its scheduled retry",
-                )
-                .on_click(cx.listener(move |app, _, _, cx| {
-                    cx.stop_propagation();
-                    app.cancel_automation_occurrence_ui(id, cx);
-                })),
+                div()
+                    .flex_shrink_0()
+                    .text_sm()
+                    .font_weight(FontWeight::MEDIUM)
+                    .text_color(rgb(color))
+                    .child(selectable(status)),
             )
-        })
-        .child(
-            quiet_button(format!("open-occurrence-{id}"), "Open")
-                .icon(assets::IconName::ChevronRight)
-                .tooltip("Open this period's result")
+            .child(
+                tool_icon(
+                    format!("open-occurrence-{id}"),
+                    assets::IconName::ChevronRight,
+                    "Open this period's result",
+                )
                 .on_click(cx.listener(move |app, _, window, cx| {
                     app.open_occurrence_result(id, window, cx)
                 })),
-        )
-        .on_click(cx.listener(move |app, _, window, cx| {
-            app.open_occurrence_result(id, window, cx)
-        }))
-        .into_any_element()
+            )
+            .on_click(cx.listener(move |app, _, window, cx| {
+                app.open_occurrence_result(id, window, cx)
+            }))
+            .into_any_element()
     }
 
     fn automation_occurrence_detail(
@@ -2240,23 +2474,9 @@ impl TaskApp {
             }
         }
         // Steps remain normal research entities but are reached only from here.
-        let mut steps = row().flex_wrap().gap_2();
-        if let Some(goal) = occurrence.research_goal_id {
-            for task in self.store.research_children(goal) {
-                let label = self
-                    .store
-                    .task(task)
-                    .map(|task| format!("{} · {}", self.store.identifier(task), task.stage.label()))
-                    .unwrap_or_else(|| format!("Task {task}"));
-                steps = steps.child(
-                    quiet_button(format!("automation-step-{task}"), label)
-                        .icon(assets::IconName::Layers)
-                        .tooltip("Open this run's technical step. Use Back to return to the automation.")
-                        .on_click(cx.listener(move |app, _, window, cx| app.open_task(task, window, cx))),
-                );
-            }
-        }
-        panel = panel.child(steps);
+        // Their full titles are shown, not just identifiers, so a research
+        // automation's split work is readable at a glance.
+        panel = panel.child(self.automation_occurrence_steps(occurrence, cx));
         let runs: Vec<_> = self
             .store
             .runs
@@ -2306,6 +2526,168 @@ impl TaskApp {
         panel.map(observed).into_any_element()
     }
 
+    /// The period's split research work as a readable list: status, kind and
+    /// identifier on the left, full step title, and one Open action. Resume
+    /// sits above the list, mirroring the ordinary goal progress page.
+    fn automation_occurrence_steps(
+        &self,
+        occurrence: &AutomationOccurrence,
+        cx: &mut Context<Self>,
+    ) -> AnyElement {
+        let colors = palette(cx);
+        let goals: Vec<u64> = if occurrence.research_goal_ids.is_empty() {
+            occurrence.research_goal_id.into_iter().collect()
+        } else {
+            occurrence.research_goal_ids.clone()
+        };
+        let mut task_ids: Vec<u64> = goals
+            .iter()
+            .flat_map(|goal| self.store.research_children(*goal))
+            .collect();
+        if task_ids.is_empty() {
+            return div().into_any_element();
+        }
+        task_ids.sort_by(|a, b| {
+            match (self.store.task(*a), self.store.task(*b)) {
+                (Some(a), Some(b)) => crate::display_order::siblings_in_display_order(a, b),
+                _ => a.cmp(b),
+            }
+        });
+        use crate::execution_status::ExecutionStatus;
+        let total = task_ids.len();
+        let completed = task_ids
+            .iter()
+            .filter(|task| self.store.research_result(**task).is_some())
+            .count();
+        let busy = occurrence.status.is_active()
+            || goals.iter().any(|goal| self.goal_busy(*goal));
+        let runnable = self.store.automation(occurrence.automation_id).is_some_and(|definition| {
+            matches!(
+                definition.status,
+                DefinitionStatus::Enabled
+                    | DefinitionStatus::Paused
+                    | DefinitionStatus::NeedsAttention
+            )
+        });
+        let resumable = occurrence.status.is_active()
+            || matches!(
+                occurrence.status,
+                OccurrenceStatus::Failed
+                    | OccurrenceStatus::Cancelled
+                    | OccurrenceStatus::Interrupted
+            );
+        let occurrence_id = occurrence.id;
+        let heading = if completed == total {
+            format!("Research complete · {completed}/{total} steps")
+        } else {
+            format!("Research steps · {completed}/{total}")
+        };
+        let mut list = col().gap_0p5();
+        for task_id in task_ids {
+            let Some(task) = self.store.task(task_id) else {
+                continue;
+            };
+            let status = self.store.execution_status(task_id, self.todo_batch.as_ref());
+            let status = if self.store.research_result(task_id).is_some()
+                && !matches!(
+                    status,
+                    ExecutionStatus::Running | ExecutionStatus::Queued | ExecutionStatus::Retrying
+                )
+            {
+                ExecutionStatus::Done
+            } else if occurrence.status.is_terminal() && status == ExecutionStatus::Running {
+                // The period is over. A run that still reports activity can only
+                // be a recovered session shutting down; showing live work here
+                // contradicts the failed/cancelled period.
+                ExecutionStatus::Stopping
+            } else {
+                status
+            };
+            let kind = match task.research.as_ref().map(|research| research.kind) {
+                Some(crate::research::ResearchKind::Collect) => "Evidence",
+                Some(crate::research::ResearchKind::Analyze) => "Analysis",
+                Some(crate::research::ResearchKind::Advise) => "Final report",
+                _ => "Step",
+            };
+            let identifier = self.store.identifier(task);
+            let title = task.title.clone();
+            list = list.child(
+                row()
+                    .id(format!("automation-step-row-{task_id}"))
+                    .px_2()
+                    .py_1()
+                    .gap_2()
+                    .items_center()
+                    .rounded_md()
+                    .cursor_pointer()
+                    .hover(|d| d.bg(rgb(colors.hover)))
+                    .on_click(cx.listener(move |app, _, window, cx| {
+                        app.open_task(task_id, window, cx)
+                    }))
+                    .child(status.icon_view(format!("automation-step-icon-{task_id}"), cx))
+                    .child(label(format!("{kind} · {identifier}"), cx).flex_shrink_0())
+                    .child(
+                        div()
+                            .flex_1()
+                            .min_w_0()
+                            .text_sm()
+                            .truncate()
+                            .child(selectable(title.clone())),
+                    )
+                    .child(
+                        quiet_button(format!("automation-step-{task_id}"), "Open")
+                            .icon(assets::IconName::ChevronRight)
+                            .tooltip("Open this step's details and result")
+                            .on_click(cx.listener(move |app, _, window, cx| {
+                                cx.stop_propagation();
+                                app.open_task(task_id, window, cx)
+                            })),
+                    ),
+            );
+        }
+        col()
+            .gap_2()
+            .child(
+                row()
+                    .justify_between()
+                    .flex_wrap()
+                    .gap_2()
+                    .child(
+                        div()
+                            .font_weight(FontWeight::SEMIBOLD)
+                            .child(selectable(heading)),
+                    )
+                    .when(completed < total && resumable, |d| {
+                        // An ended period can still have a background session
+                        // shutting down. That is not "running"; say "Stopping…"
+                        // so the control cannot be read as live period work.
+                        let winding_down = occurrence.status.is_terminal() && busy;
+                        d.child(
+                            button(
+                                "resume-automation-steps",
+                                if winding_down { "Stopping…" } else if busy { "Running…" } else { "Resume" },
+                            )
+                            .icon(assets::IconName::Play)
+                            .disabled(busy || !runnable)
+                            .tooltip(if !runnable {
+                                "Enable this automation before continuing its steps."
+                            } else if winding_down {
+                                "The last step's background session is still shutting down. Resume becomes available when it finishes; it cannot extend the period."
+                            } else if busy {
+                                "Steps are already running or queued."
+                            } else {
+                                "Retry this period in place. Finished steps keep their results; only unfinished work runs again."
+                            })
+                            .on_click(cx.listener(move |app, _, _, cx| {
+                                app.resume_automation_steps(occurrence_id, cx)
+                            })),
+                        )
+                    }),
+            )
+            .child(list)
+            .into_any_element()
+    }
+
     /// A period's report, sources and technical detail open in one modal so the
     /// history stays a compact list.
     pub(crate) fn automation_result_dialog(&self, cx: &mut Context<Self>) -> AnyElement {
@@ -2316,7 +2698,7 @@ impl TaskApp {
             return div().into_any_element();
         };
         let colors = palette(cx);
-        let when = format_in_zone(
+        let when = format_in_zone_precise(
             occurrence
                 .actual_started_at
                 .or(occurrence.scheduled_for)
@@ -2839,39 +3221,49 @@ impl ResearchKinds {
 
 #[cfg(test)]
 mod tests {
-    use super::{ResultTints, RESULT_TINT_ALPHA, RESULT_TINT_HOVER_ALPHA};
+    use super::{format_in_zone_precise, ResultTints};
+
+    #[test]
+    fn occurrence_times_keep_second_precision() {
+        // Two periods can start in the same minute; the list must tell them apart.
+        assert_eq!(
+            format_in_zone_precise(1_700_000_007, "Asia/Shanghai"),
+            "2023-11-15 06:13:27"
+        );
+        assert_eq!(format_in_zone_precise(0, "UTC"), "1970-01-01 00:00:00");
+    }
 
     #[test]
     fn automation_tints_stay_stable_and_distinct_within_a_session() {
         let tints = ResultTints::seeded(42);
-        let first = tints.tint(1);
-        assert_eq!(first.base, tints.tint(1).base);
-        assert_eq!(first.hover, tints.tint(1).hover);
-        let mut colors = vec![first.base];
+        let first = tints.tint(1, false);
+        assert_eq!(first.text, tints.tint(1, false).text);
+        let mut colors = vec![first.text];
         for automation in 2..=10 {
-            let tint = tints.tint(automation);
+            let tint = tints.tint(automation, false);
             assert!(
-                !colors.contains(&tint.base),
+                !colors.contains(&tint.text),
                 "golden-angle assignments must not repeat in the first ten automations"
             );
-            colors.push(tint.base);
+            colors.push(tint.text);
         }
         for color in colors {
-            assert_eq!(color & 0xff, RESULT_TINT_ALPHA);
+            assert_eq!(color & 0xff, 0xff, "names use opaque text colours");
         }
-        assert_eq!(first.base & 0xff, RESULT_TINT_ALPHA);
-        assert_eq!(first.hover & 0xff, RESULT_TINT_HOVER_ALPHA);
-        assert_eq!(first.base >> 8, first.hover >> 8);
+        // Text stays readable in both themes: the same automation gets a darker
+        // colour on light backgrounds and a lighter one on dark backgrounds.
+        let light = tints.tint(1, false).text;
+        let dark = tints.tint(1, true).text;
+        assert_ne!(light, dark);
     }
 
     #[test]
     fn a_new_session_changes_the_starting_hue_but_keeps_rows_consistent() {
         let first = ResultTints::seeded(1);
         let second = ResultTints::seeded(2);
-        let first_color = first.tint(9).base;
-        let second_color = second.tint(9).base;
-        assert_eq!(first_color, first.tint(9).base);
-        assert_eq!(second_color, second.tint(9).base);
-        assert_eq!(first.tint(9).hover & 0xff, RESULT_TINT_HOVER_ALPHA);
+        let first_color = first.tint(9, false).text;
+        let second_color = second.tint(9, false).text;
+        assert_eq!(first_color, first.tint(9, false).text);
+        assert_eq!(second_color, second.tint(9, false).text);
     }
 }

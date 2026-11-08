@@ -54,7 +54,7 @@ fn attempt_indicator(run: &AgentRun, cx: &App) -> AnyElement {
         .size(px(24.)).flex_shrink_0()
         .flex().items_center().justify_center()
         .aria_label(format!("Attempt: {}", status_label(&run.status)))
-        .child(status.icon_view(cx))
+        .child(status.icon_view(format!("attempt-status-icon-{}", run.id), cx))
         .tooltip(move |w, cx| gpui_kit::component::tooltip::Tooltip::new(tooltip.clone()).build(w, cx))
         .into_any_element()
 }
@@ -1036,7 +1036,7 @@ impl TaskApp {
                     .min_w_0().gap_2().px_2().h(px(32.)).rounded_md()
                     .when(current, |d| d.bg(rgb(colors.accent_surface)))
                     .tooltip(move |w, cx| gpui_kit::component::tooltip::Tooltip::new(title.clone()).build(w, cx))
-                    .child(status.icon_view(cx))
+                    .child(status.icon_view(format!("progress-task-icon-{task_id}"), cx))
                     .child(quiet_button(format!("progress-task-title-{task_id}"), "")
                         .flex_1().min_w_0().h(px(28.)).px_1()
                         .accessibility_label(task.title.clone())

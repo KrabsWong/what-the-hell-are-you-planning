@@ -232,11 +232,16 @@ print(json.dumps({'type':'text','part':{'text':json.dumps(result)}}),flush=True)
                 .unwrap()
                 .contains("interrupted")
         );
+        assert_eq!(
+            app.read(cx).store.step_state(goals[1].1[1]),
+            crate::goal_steps::StepState::Waiting,
+            "a dependent step waits for its interrupted prerequisite instead of reporting a second failure"
+        );
         assert!(
             app.read(cx)
                 .store
-                .step_block_reason(goals[1].1[1])
-                .unwrap()
+                .task_status(goals[1].1[1], None)
+                .reason
                 .contains("Waiting for")
         );
         app.update(cx, |a, cx| a.navigate(Scope::Recovery, w, cx));

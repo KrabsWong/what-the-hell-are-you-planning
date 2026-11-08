@@ -446,6 +446,25 @@ impl TaskApp {
                 self.automation_after_run(occurrence, run_id, cx);
             }
             SessionCheck::Running => {
+                // A terminal period must never be reopened by a leftover session:
+                // it already ended (for example at its total time limit) and the
+                // session cannot extend it. Keep monitoring the run so the UI can
+                // report that it is still shutting down, but leave the period alone.
+                if self
+                    .store
+                    .occurrence(occurrence)
+                    .is_some_and(|value| value.status.is_terminal())
+                {
+                    if let Some(run) = self.store.runs.iter_mut().find(|run| run.id == run_id) {
+                        let note = "[automation] The period already ended; its background session is still running and cannot extend the period.";
+                        if !run.logs.iter().any(|line| line == note) {
+                            run.logs.push(note.into());
+                        }
+                    }
+                    self.persist_if_changed(true);
+                    cx.notify();
+                    return;
+                }
                 if let Some(value) = self.store.occurrence_mut(occurrence)
                     && value.status != crate::automation::OccurrenceStatus::Running
                 {
@@ -719,7 +738,7 @@ impl TaskApp {
                                 .gap_2()
                                 .min_h(px(28.))
                                 .child(
-                                    state.icon_view(cx),
+                                    state.icon_view(format!("recovery-step-icon-{child}"), cx),
                                 )
                                 .child(
                                     recovery_title(("recovery-step", child), title, cx)

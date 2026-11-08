@@ -9,6 +9,9 @@ use crate::{
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub enum ExecutionStatus {
     Running,
+    /// The period already ended, but a session from this step is still shutting
+    /// down. It cannot extend the period, so it must not read as live work.
+    Stopping,
     Queued,
     Retrying,
     Waiting,
@@ -20,11 +23,12 @@ pub enum ExecutionStatus {
     Stage(Stage),
 }
 impl ExecutionStatus {
-    pub(crate) const ALL: [Self; 9] = [Self::Running, Self::Queued, Self::Retrying,
+    pub(crate) const ALL: [Self; 10] = [Self::Running, Self::Stopping, Self::Queued, Self::Retrying,
         Self::Waiting, Self::Ready, Self::Paused, Self::Blocked, Self::Approval, Self::Done];
     pub(crate) fn label(self) -> &'static str {
         match self {
             Self::Running => "Running",
+            Self::Stopping => "Stopping",
             Self::Queued => "Queued",
             Self::Retrying => "Retrying",
             Self::Waiting => "Waiting",
@@ -40,6 +44,7 @@ impl ExecutionStatus {
         use gpui_kit::assets::IconName;
         match self {
             Self::Running | Self::Stage(Stage::InProgress) => IconName::CircleDot,
+            Self::Stopping => IconName::Loader,
             Self::Queued => IconName::ListOrdered,
             Self::Retrying => IconName::RotateCw,
             Self::Waiting => IconName::Clock,
@@ -51,11 +56,70 @@ impl ExecutionStatus {
             _ => IconName::Circle,
         }
     }
-    pub(crate) fn icon_view(self, cx: &gpui_kit::App) -> gpui_kit::Div {
+    /// Status icon shared by every list, board and step row.
+    ///
+    /// `id` scopes the animation so each row can animate on its own. Live work
+    /// pulses and a retry turns, which reads as "still working" at a glance;
+    /// every other state stays a static glyph.
+    pub(crate) fn icon_view(
+        self,
+        id: impl Into<gpui_kit::ElementId>,
+        cx: &gpui_kit::App,
+    ) -> gpui_kit::AnyElement {
         use gpui_kit::*;
-        div().w(px(16.)).h(px(16.)).flex_shrink_0().flex().items_center().justify_center()
-            .text_color(rgb(self.color(cx)))
-            .child(component::Icon::new(self.icon()).size(px(16.)))
+        let color = self.color(cx);
+        let frame = div().w(px(16.)).h(px(16.)).flex_shrink_0().flex().items_center().justify_center()
+            .text_color(rgb(color));
+        let icon = self.icon();
+        match self {
+            Self::Running => frame
+                .relative()
+                .with_animation(
+                    id,
+                    Animation::new(std::time::Duration::from_millis(1500)).repeat_synced(),
+                    move |element, phase| {
+                        // A ripple leaves the glyph, expands outward and fades,
+                        // so live work stays visible without the glyph itself
+                        // moving. It starts and ends transparent, which also
+                        // keeps the reduced-motion frame static and clean.
+                        let size = 12. + 18. * phase;
+                        let inset = (16. - size) / 2.;
+                        let fade = (std::f32::consts::PI * phase).sin();
+                        let line = ((fade * 0.8) * 255.) as u32;
+                        let wash = ((fade * 0.16) * 255.) as u32;
+                        element
+                            .child(
+                                div()
+                                    .absolute()
+                                    .left(px(inset))
+                                    .top(px(inset))
+                                    .size(px(size))
+                                    .rounded_full()
+                                    .bg(rgba((color << 8) | wash))
+                                    .border_1()
+                                    .border_color(rgba((color << 8) | line)),
+                            )
+                            .child(component::Icon::new(icon).size(px(16.)))
+                    },
+                )
+                .into_any_element(),
+            Self::Retrying => frame
+                .with_animation(
+                    id,
+                    Animation::new(std::time::Duration::from_millis(1400)).repeat_synced(),
+                    move |element, phase| {
+                        element.child(
+                            component::Icon::new(icon)
+                                .size(px(16.))
+                                .rotate(radians(phase * std::f32::consts::TAU)),
+                        )
+                    },
+                )
+                .into_any_element(),
+            _ => frame
+                .child(component::Icon::new(icon).size(px(16.)))
+                .into_any_element(),
+        }
     }
     pub(crate) fn hint(self) -> &'static str {
         match self {
@@ -67,6 +131,9 @@ impl ExecutionStatus {
                 "Automatic retry is queued after a failure; waiting for the retry delay or an execution slot."
             }
             Self::Waiting => "Waiting for prerequisite tasks to finish successfully.",
+            Self::Stopping => {
+                "The period has ended; a background session from this step is still shutting down. It cannot extend the period."
+            }
             Self::Ready => {
                 "Ready to run; not currently queued. Run the goal or add its topic to the queue."
             }
@@ -85,6 +152,7 @@ impl ExecutionStatus {
         let p = crate::appearance::palette(cx);
         match self {
             Self::Running | Self::Retrying => p.warning,
+            Self::Stopping => p.muted,
             Self::Blocked => p.danger,
             Self::Done => p.success,
             Self::Queued => p.secondary,
@@ -225,7 +293,7 @@ impl crate::app::TaskApp {
             .aria_label(state.label())
             .size(px(24.)).flex_shrink_0()
             .flex().items_center().justify_center()
-            .child(status.icon_view(cx))
+            .child(status.icon_view(format!("execution-status-icon-{id}"), cx))
             .tooltip(move |window, cx| {
                 component::tooltip::Tooltip::new(state.label())
                     .build(window, cx)
@@ -284,7 +352,11 @@ mod tests {
         assert_eq!(s.execution_status(goal, Some(&batch)), Retrying);
         s.runs[0].status = "Failed".into();
         assert_eq!(s.execution_status(goal, Some(&batch)), Blocked);
-        assert_eq!(s.execution_status(ids[1], Some(&batch)), Blocked);
+        assert_eq!(
+            s.execution_status(ids[1], Some(&batch)),
+            Waiting,
+            "a dependent step that never ran stays Waiting, not a second failure"
+        );
         s.runs[0].status = "Succeeded".into();
         s.runs[0].output = "Verified result".into();
         s.task_mut(ids[0]).unwrap().stage = crate::domain::Stage::Done;

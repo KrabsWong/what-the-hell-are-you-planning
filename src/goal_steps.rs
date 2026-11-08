@@ -23,55 +23,42 @@ pub(crate) enum StepState {
 }
 impl Store {
     pub(crate) fn step_state(&self, id: u64) -> StepState {
-        fn resolve(store: &Store, id: u64, seen: &mut Vec<u64>) -> StepState {
-            if seen.contains(&id) {
-                return StepState::Blocked;
-            }
-            let Some(task) = store.task(id) else {
-                return StepState::Blocked;
-            };
-            let latest = store
-                .runs
-                .iter()
-                .rev()
-                .find(|r| r.task_id == id && r.project_plan.is_none());
-            if latest.is_some_and(|r| {
-                matches!(r.status.as_str(), "Running" | "Cancelling" | "Recovering")
-            }) {
-                return StepState::Running;
-            }
-            if task.stage == Stage::Done
-                && (task.research.is_none() || store.research_result(id).is_some())
-            {
-                return StepState::Done;
-            }
-            if latest.is_some_and(|r| r.status == "Queued") {
-                return StepState::Waiting;
-            }
-            if task.stage == Stage::Cancelled
-                || latest.is_some_and(|r| {
-                    matches!(
-                        r.status.as_str(),
-                        "Failed" | "Blocked" | "Cancelled" | "Interrupted"
-                    )
-                })
-            {
-                return StepState::Blocked;
-            }
-            seen.push(id);
-            let blocked = task.research.as_ref().is_some_and(|r| {
-                r.depends_on
-                    .iter()
-                    .any(|dep| resolve(store, *dep, seen) == StepState::Blocked)
-            });
-            seen.pop();
-            if blocked {
-                StepState::Blocked
-            } else {
-                StepState::Waiting
-            }
+        let Some(task) = self.task(id) else {
+            return StepState::Blocked;
+        };
+        let latest = self
+            .runs
+            .iter()
+            .rev()
+            .find(|r| r.task_id == id && r.project_plan.is_none());
+        if latest.is_some_and(|r| {
+            matches!(r.status.as_str(), "Running" | "Cancelling" | "Recovering")
+        }) {
+            return StepState::Running;
         }
-        resolve(self, id, &mut vec![])
+        if task.stage == Stage::Done
+            && (task.research.is_none() || self.research_result(id).is_some())
+        {
+            return StepState::Done;
+        }
+        if latest.is_some_and(|r| r.status == "Queued") {
+            return StepState::Waiting;
+        }
+        if task.stage == Stage::Cancelled
+            || latest.is_some_and(|r| {
+                matches!(
+                    r.status.as_str(),
+                    "Failed" | "Blocked" | "Cancelled" | "Interrupted"
+                )
+            })
+        {
+            return StepState::Blocked;
+        }
+        // Only a step that actually failed (or was cancelled) is Blocked. A step
+        // whose prerequisite failed has not run yet, so it stays Waiting: this
+        // keeps the evidence → analysis → report order legible instead of marking
+        // every downstream step as another failure.
+        StepState::Waiting
     }
     pub(crate) fn step_block_reason(&self, id: u64) -> Option<String> {
         if self.step_state(id) != StepState::Blocked {
@@ -94,15 +81,7 @@ impl Store {
             };
             if let Some(reason) = reason { return Some(reason.into()); }
         }
-        let dependencies = task.research.as_ref()?.depends_on.iter()
-            .filter(|dep| self.step_state(**dep) == StepState::Blocked)
-            .filter_map(|dep| self.task(*dep).map(|t| self.identifier(t)))
-            .collect::<Vec<_>>();
-        Some(if dependencies.is_empty() {
-            "Dependency unavailable · check the step's setup".into()
-        } else {
-            format!("Waiting for {}", dependencies.join(", "))
-        })
+        Some("This step needs attention. Open it to review the attempt.".into())
     }
 
 }
@@ -351,7 +330,7 @@ impl TaskApp {
                                         .child(self.store.identifier(task)),
                                 )
                                 .child(
-                                    execution.icon_view(cx),
+                                    execution.icon_view(format!("goal-step-icon-{id}"), cx),
                                 ),
                         )
                         .child(
@@ -390,7 +369,7 @@ impl TaskApp {
                         .w_full()
                         .min_w_0()
                         .child(
-                            execution.icon_view(cx),
+                            execution.icon_view(format!("goal-step-row-icon-{id}"), cx),
                         )
                         .child(single_line_text(format!("goal-step-title-{id}"), title))
                         .child(label(status.label(), cx))
@@ -478,9 +457,13 @@ mod tests {
         assert_eq!(s.step_state(ids[0]), StepState::Running);
         assert_eq!(s.step_state(ids[1]), StepState::Waiting);
         s.runs.last_mut().unwrap().status = "Failed".into();
-        for id in &ids {
-            assert_eq!(s.step_state(*id), StepState::Blocked);
-        }
+        assert_eq!(s.step_state(ids[0]), StepState::Blocked);
+        assert_eq!(
+            s.step_state(ids[1]),
+            StepState::Waiting,
+            "a dependent step has not run yet and must not be marked as failed"
+        );
+        assert_eq!(s.step_state(ids[2]), StepState::Waiting);
         s.runs.last_mut().unwrap().status = "Queued".into();
         assert_eq!(s.step_state(ids[2]), StepState::Waiting);
         s.runs.last_mut().unwrap().status = "Succeeded".into();

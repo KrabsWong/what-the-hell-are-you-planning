@@ -173,9 +173,9 @@ pub(crate) fn stage_color(stage: Stage, cx: &App) -> u32 {
         Stage::Cancelled => colors.cancelled,
     }
 }
-fn task_state_icon(store: &Store, task: &Task, batch: Option<&crate::batch::TodoBatch>, cx: &App) -> Div {
+fn task_state_icon(store: &Store, task: &Task, batch: Option<&crate::batch::TodoBatch>, cx: &App) -> AnyElement {
     let state = store.task_status(task.id, batch).execution;
-    state.icon_view(cx)
+    state.icon_view(format!("task-state-icon-{}", task.id), cx)
 }
 // All hierarchy levels use the same semantic card surfaces, including hover states.
 pub(crate) fn board_card_colors(stage: Stage, cx: &App) -> (u32, u32, u32) {
@@ -350,6 +350,290 @@ impl TaskApp {
         self.persist_if_changed(true);
         cx.notify();
     }
+    /// Sidebar identity row at the bottom dock. It names the workspace, is the
+    /// only entry point for the local data folder and replaces the separate
+    /// Settings nav item; the menu's Settings item opens that page. Clicking the
+    /// row opens a menu instead of acting as a plain label.
+    fn workspace_switcher(&self, cx: &mut Context<Self>) -> AnyElement {
+        let colors = palette(cx);
+        let path = self
+            .storage
+            .as_ref()
+            .map(|storage| storage.path().to_path_buf());
+        let location = path
+            .as_ref()
+            .map(|path| path.display().to_string())
+            .unwrap_or_else(|| "storage unavailable".into());
+        let entity = cx.entity().downgrade();
+        let reveal = path.clone();
+        let copy = location.clone();
+        let unavailable = path.is_none();
+        let active = self.sidebar_scope() == Scope::Settings;
+        let trigger = button("workspace-menu", "")
+            .ghost()
+            .flex_1()
+            .min_w_0()
+            .h_8()
+            .px_3()
+            .custom(sidebar_variant(active, cx).hover(rgb(colors.hover).into()))
+            .when(active, |b| b.font_weight(FontWeight::SEMIBOLD))
+            .accessibility_label("Personal workspace menu")
+            .tooltip(format!(
+                "Personal workspace · stored on this Mac at {location}"
+            ))
+            .child(
+                row()
+                    .w_full()
+                    .min_w_0()
+                    .gap_2()
+                    .child(
+                        gpui_kit::component::Icon::new(assets::IconName::HardDrive)
+                            .size(px(20.))
+                            .flex_shrink_0()
+                            .text_color(rgb(colors.muted)),
+                    )
+                    .child(
+                        div()
+                            .flex_1()
+                            .min_w_0()
+                            .overflow_hidden()
+                            .text_ellipsis()
+                            .text_sm()
+                            .child("Personal workspace"),
+                    )
+                    .child(
+                        gpui_kit::component::Icon::new(assets::IconName::ChevronDown)
+                            .size(px(14.))
+                            .flex_shrink_0()
+                            .text_color(rgb(colors.muted)),
+                    ),
+            );
+        trigger
+            .dropdown_menu_with_anchor(Anchor::BottomLeft, move |menu, _, _| {
+                let reveal = reveal.clone();
+                let mut menu = menu
+                    .item(
+                        PopupMenuItem::new("Reveal data folder")
+                            .icon(assets::IconName::Folder)
+                            .disabled(unavailable)
+                            .on_click(move |_, _, cx| {
+                                if let Some(path) = reveal.as_ref() {
+                                    cx.reveal_path(path);
+                                }
+                            }),
+                    )
+                    .item(
+                        PopupMenuItem::new("Copy data folder path")
+                            .icon(assets::IconName::Copy)
+                            .disabled(unavailable)
+                            .on_click({
+                                let source = copy.clone();
+                                let entity = entity.clone();
+                                move |_, _, cx| {
+                                    cx.write_to_clipboard(ClipboardItem::new_string(source.clone()));
+                                    let _ = entity.update(cx, |app, cx| {
+                                        app.toast = "Data folder path copied".into();
+                                        cx.notify();
+                                    });
+                                }
+                            }),
+                    );
+                menu = menu.item(PopupMenuItem::separator()).item(
+                    PopupMenuItem::new("Settings…")
+                        .icon(assets::IconName::Settings)
+                        .on_click({
+                            let entity = entity.clone();
+                            move |_, w, cx| {
+                                let _ = entity.update(cx, |app, cx| {
+                                    app.navigate(Scope::Settings, w, cx);
+                                });
+                            }
+                        }),
+                );
+                menu
+            })
+            .into_any_element()
+    }
+    /// Footer left: persistence and last-action feedback. Save failures use the
+    /// danger tone and a retry action instead of borrowing the neutral message
+    /// style, and the idle state is a real state rather than a fixed sentence.
+    fn footer_activity(&self, cx: &mut Context<Self>) -> AnyElement {
+        let colors = palette(cx);
+        let failed = !self.storage_error.is_empty();
+        if failed && self.storage.is_some() {
+            return row()
+                .gap_2()
+                .child(
+                    gpui_kit::component::Icon::new(assets::IconName::CircleAlert)
+                        .size(px(14.))
+                        .flex_shrink_0()
+                        .text_color(rgb(colors.danger)),
+                )
+                .child(
+                    div()
+                        .min_w_0()
+                        .overflow_hidden()
+                        .text_ellipsis()
+                        .text_color(rgb(colors.danger))
+                        .child(selectable(format!("Not saved · {}", self.storage_error))),
+                )
+                .child(
+                    button("retry-save", "Retry save")
+                        .small()
+                        .h(px(24.))
+                        .px_2()
+                        .tooltip("Write the workspace to local storage again")
+                        .on_click(cx.listener(|app, _, _, cx| app.retry_save(cx))),
+                )
+                .into_any_element();
+        }
+        if self.storage.is_none() {
+            return row()
+                .gap_2()
+                .child(
+                    gpui_kit::component::Icon::new(assets::IconName::CircleAlert)
+                        .size(px(14.))
+                        .flex_shrink_0()
+                        .text_color(rgb(colors.warning)),
+                )
+                .child(muted(
+                    if self.storage_error.is_empty() {
+                        "Storage unavailable · changes are only in memory".to_string()
+                    } else {
+                        format!("Not saved · {}", self.storage_error)
+                    },
+                    cx,
+                ))
+                .into_any_element();
+        }
+        if !self.error.is_empty() {
+            return row()
+                .gap_2()
+                .child(
+                    gpui_kit::component::Icon::new(assets::IconName::CircleAlert)
+                        .size(px(14.))
+                        .flex_shrink_0()
+                        .text_color(rgb(colors.danger)),
+                )
+                .child(
+                    div()
+                        .min_w_0()
+                        .overflow_hidden()
+                        .text_ellipsis()
+                        .text_color(rgb(colors.danger))
+                        .child(selectable(self.error.clone())),
+                )
+                .into_any_element();
+        }
+        let saving = self.has_unsaved_changes();
+        let message = if saving {
+            "Saving changes…".to_string()
+        } else if self.toast.is_empty() {
+            "All changes saved".to_string()
+        } else {
+            self.toast.clone()
+        };
+        row()
+            .gap_2()
+            .child(
+                gpui_kit::component::Icon::new(if saving {
+                    assets::IconName::CircleDot
+                } else {
+                    assets::IconName::CircleCheck
+                })
+                .size(px(14.))
+                .flex_shrink_0()
+                .text_color(rgb(if saving { colors.accent } else { colors.muted })),
+            )
+            .child(muted(message, cx))
+            .into_any_element()
+    }
+    /// Footer right: every item here is a real command. Shortcut hints live in
+    /// tooltips so the row cannot look like clickable text that does nothing.
+    fn footer_commands(&self, cx: &mut Context<Self>) -> AnyElement {
+        let colors = palette(cx);
+        let blocked = !self.active_runs.is_empty()
+            || !self.queued_runs.is_empty()
+            || self.todo_batch.as_ref().is_some_and(|batch| {
+                batch
+                    .items
+                    .iter()
+                    .any(|id| batch.contains_pending(*id))
+            });
+        let undo_hint = if self.undo.is_empty() {
+            "Nothing to undo"
+        } else if blocked {
+            "Stop or finish submitted work before undoing changes"
+        } else {
+            "Undo the last change"
+        };
+        row()
+            .flex_shrink_0()
+            .items_center()
+            .gap_1()
+            .child(
+                button("undo", "Undo")
+                    .small()
+                    .h(px(24.))
+                    .px_2()
+                    .disabled(self.undo.is_empty() || blocked)
+                    .tooltip(undo_hint)
+                    .on_click(cx.listener(|app, _, w, cx| app.undo_change(w, cx))),
+            )
+            .child(
+                div()
+                    .w(px(1.))
+                    .h(px(14.))
+                    .mx_1()
+                    .bg(rgb(colors.line)),
+            )
+            .child(
+                button("footer-search", "Search")
+                    .icon(assets::IconName::Search)
+                    .small()
+                    .h(px(24.))
+                    .px_2()
+                    .tooltip("Search research, projects and results · ⌘K")
+                    .on_click(cx.listener(|app, _, w, cx| app.focus_search(w, cx))),
+            )
+            .child(
+                button("footer-new-research", "New research")
+                    .icon(assets::IconName::Plus)
+                    .small()
+                    .h(px(24.))
+                    .px_2()
+                    .tooltip("Describe a research question · ⌘N")
+                    .on_click(cx.listener(|app, _, w, cx| app.open_research_intake(w, cx))),
+            )
+            .into_any_element()
+    }
+    /// Shared by the ⌘K handler and the footer Search button so the shortcut and
+    /// the visible command cannot drift apart.
+    pub(crate) fn focus_search(&mut self, window: &mut Window, cx: &mut Context<Self>) {
+        self.save_feedback = None;
+        self.selected = None;
+        self.draft = None;
+        self.editing = false;
+        self.new_project = None;
+        self.topic_editor = None;
+        self.project_rename = None;
+        self.topic_move = None;
+        self.planning_project = None;
+        self.planning_replan_source = None;
+        if matches!(
+            self.scope,
+            Scope::Runs
+                | Scope::Recovery
+                | Scope::Research
+                | Scope::Automations
+                | Scope::Settings
+                | Scope::Topic(_)
+        ) {
+            self.scope = Scope::All;
+        }
+        self.search.update(cx, |state, cx| state.focus(window, cx));
+        cx.notify();
+    }
     fn sidebar(&self, cx: &mut Context<Self>) -> AnyElement {
         let colors = palette(cx);
         let shell = col()
@@ -381,9 +665,38 @@ impl TaskApp {
                             .line_height(relative(1.3))
                             .child(selectable("What the hell are you planning?")),
                     ),
-            )
-            .child(row().px_2().pb_3().child(label("Personal workspace", cx)));
-        side = side.child(section("Research", cx));
+            );
+        // Automations lead the sidebar: it is the app's scheduled-work domain,
+        // separate from the Research domain below it.
+        let automation_count = self
+            .store
+            .automations
+            .iter()
+            .filter(|automation| {
+                !matches!(
+                    automation.status,
+                    crate::automation::DefinitionStatus::Archived
+                )
+            })
+            .count();
+        let automation_periods = self.store.automation_occurrences.len();
+        side = side
+            .child(section("Automations", cx))
+            .child(self.automation_child_nav(
+                "all-automations",
+                "All automations",
+                Scope::Automations,
+                automation_count,
+                cx,
+            ))
+            .child(self.automation_child_nav(
+                "automation-results",
+                "Automation results",
+                Scope::AutomationRuns,
+                automation_periods,
+                cx,
+            ))
+            .child(section("Research", cx));
         let count = self.store.tasks.iter()
             .filter(|t| !self.store.task_is_archived(t.id) && t.parent_id.is_none() && t.automation_id.is_none())
             .count();
@@ -715,18 +1028,6 @@ impl TaskApp {
             }
         }
         side = side.child(projects_block);
-        let automation_count = self
-            .store
-            .automations
-            .iter()
-            .filter(|automation| {
-                !matches!(
-                    automation.status,
-                    crate::automation::DefinitionStatus::Archived
-                )
-            })
-            .count();
-        let automation_periods = self.store.automation_occurrences.len();
         side = side
             .child(self.nav(
                 "recovery",
@@ -742,22 +1043,9 @@ impl TaskApp {
                 self.store.progress_result_task_count(),
                 cx,
             ))
-            .child(section("Automations", cx))
-            .child(self.automation_child_nav(
-                "all-automations",
-                "All automations",
-                Scope::Automations,
-                automation_count,
-                cx,
-            ))
-            .child(self.automation_child_nav(
-                "automation-results",
-                "Automation results",
-                Scope::AutomationRuns,
-                automation_periods,
-                cx,
-            ))
-            .child(div().flex_1())
+            // Archive only covers ordinary research tasks and goals. Keep it in
+            // the Research group so a long sidebar never makes it look like a
+            // child of the Automations section.
             .child(self.nav(
                 "archive",
                 "Archive",
@@ -781,23 +1069,7 @@ impl TaskApp {
                     .pt_1()
                     .border_t_1()
                     .border_color(rgb(colors.line))
-                    .child(
-                        quiet_button("model-settings", "")
-                            .accessibility_label("Settings")
-                            .flex_1()
-                            .min_w_0()
-                            .h_8()
-                            .px_3()
-                            .custom(sidebar_variant(self.sidebar_scope() == Scope::Settings, cx).hover(rgb(colors.hover).into()))
-                            .when(self.sidebar_scope() == Scope::Settings, |b| b.font_weight(FontWeight::SEMIBOLD))
-                            .child(row().w_full().min_w_0().gap_2()
-                                .child(gpui_kit::component::Icon::new(assets::IconName::Settings)
-                                    .size(px(20.)).flex_shrink_0())
-                                .child(div().text_sm().child(selectable("Settings"))))
-                            .on_click(
-                                cx.listener(|this, _, w, cx| this.navigate(Scope::Settings, w, cx)),
-                            ),
-                    )
+                    .child(self.workspace_switcher(cx))
                     .child(
                         tool_icon(
                             "toggle-appearance",
@@ -853,6 +1125,8 @@ impl TaskApp {
                 "Research tasks and goals across your projects. Automations are in their own section below.".to_string()
             } else if scope == Scope::Runs {
                 "Research tasks in progress or with saved results, counted once each. Planning and retry history do not add to this number.".to_string()
+            } else if scope == Scope::Archive {
+                "Archived research tasks and goals. Automation definitions are archived from their own page.".to_string()
             } else { title.to_string() })
             .w_full()
             .h_8()
@@ -879,24 +1153,14 @@ impl TaskApp {
                             .text_sm()
                             .child(selectable(title.to_string())),
                     )
-                    .child(
-                        row()
-                            .flex_shrink_0()
-                            .gap_2()
-                            .child(label(
-                                if count > 0 {
-                                    count.to_string()
-                                } else {
-                                    String::new()
-                                },
-                                cx,
-                            ))
-                            .child(
-                                gpui_kit::component::Icon::new(assets::IconName::ChevronRight)
-                                    .size(px(14.))
-                                    .text_color(rgb(colors.muted)),
-                            ),
-                    ),
+                    .child(label(
+                        if count > 0 {
+                            count.to_string()
+                        } else {
+                            String::new()
+                        },
+                        cx,
+                    )),
             )
             .on_click(
                 cx.listener(move |this, _, window, cx| this.navigate(scope.clone(), window, cx)),
@@ -951,24 +1215,14 @@ impl TaskApp {
                             .text_sm()
                             .child(selectable(title.to_string())),
                     )
-                    .child(
-                        row()
-                            .flex_shrink_0()
-                            .gap_2()
-                            .child(label(
-                                if count > 0 {
-                                    count.to_string()
-                                } else {
-                                    String::new()
-                                },
-                                cx,
-                            ))
-                            .child(
-                                gpui_kit::component::Icon::new(assets::IconName::ChevronRight)
-                                    .size(px(14.))
-                                    .text_color(rgb(colors.muted)),
-                            ),
-                    ),
+                    .child(label(
+                        if count > 0 {
+                            count.to_string()
+                        } else {
+                            String::new()
+                        },
+                        cx,
+                    )),
             )
             .on_click(cx.listener(move |app, _, window, cx| {
                 app.navigate(scope.clone(), window, cx)
@@ -982,6 +1236,8 @@ impl TaskApp {
         if self.scope == Scope::Automations
             && !self.automation_ui.creating
             && self.automation_ui.selected.is_none()
+            && self.selected.is_none()
+            && self.task_result_context.is_none()
         {
             return (vec![], "Automations".into());
         }
@@ -1023,8 +1279,12 @@ impl TaskApp {
                 "Edit automation".into(),
             );
         }
-        // Automation results are a child of Automations, not of Research.
-        if self.scope == Scope::AutomationRuns {
+        // Automation results are a child of Automations, not of Research. A step
+        // opened from a period keeps its own task path below.
+        if self.scope == Scope::AutomationRuns
+            && self.selected.is_none()
+            && self.task_result_context.is_none()
+        {
             return (
                 vec![(
                     "location-automations".into(),
@@ -1038,6 +1298,8 @@ impl TaskApp {
         // returns to the list instead of jumping straight to All.
         if self.scope == Scope::Automations
             && !self.automation_ui.creating
+            && self.selected.is_none()
+            && self.task_result_context.is_none()
             && let Some(id) = self.automation_ui.selected
             && let Some(definition) = self.store.automation(id)
         {
@@ -1062,7 +1324,9 @@ impl TaskApp {
             .or_else(|| run.map(|r| r.task_id))
             .and_then(|id| self.store.task(id));
         let mut current = self.title();
-        if self.scope != Scope::All || task.is_some() {
+        if (self.scope != Scope::All || task.is_some())
+            && !task.is_some_and(|task| task.automation_id.is_some())
+        {
             links.push((
                 "location-all".into(),
                 "All research".into(),
@@ -1070,19 +1334,36 @@ impl TaskApp {
             ));
         }
         if let Some(task) = task {
-            if task.automation_id.is_some() {
+            if let Some(automation) = task.automation_id {
                 links.push((
                     "location-automations".into(),
                     "Automations".into(),
                     CrumbTarget::View(Scope::Automations),
                 ));
-                if let Some(definition) = task
-                    .automation_id
-                    .and_then(|id| self.store.automation(id))
-                {
-                    current = definition.name.clone();
+                if let Some(definition) = self.store.automation(automation) {
+                    links.push((
+                        "location-automation".into(),
+                        definition.name.clone(),
+                        CrumbTarget::AutomationDetail(definition.id),
+                    ));
                 }
-                return (links, current);
+                let goal = task.research.as_ref().map(|research| research.goal_id);
+                if let Some(occurrence) = self.store.automation_occurrences.iter().find(|occurrence| {
+                    goal.is_some_and(|goal| {
+                        occurrence.research_goal_id == Some(goal)
+                            || occurrence.research_goal_ids.contains(&goal)
+                    })
+                }) {
+                    links.push((
+                        format!("location-automation-period-{}", occurrence.id),
+                        format!("Period {}", occurrence.id),
+                        CrumbTarget::AutomationResult {
+                            automation,
+                            occurrence: occurrence.id,
+                        },
+                    ));
+                }
+                return (links, self.task_location_label(task));
             }
             if let Some(project) = self.store.projects.iter().find(|p| p.id == task.project_id) {
                 links.push((
@@ -1182,6 +1463,16 @@ impl TaskApp {
                             CrumbTarget::Task(id) => a.open_task(*id, w, cx),
                             CrumbTarget::Automation(id) => {
                                 a.reopen_automation_settings(*id, w, cx)
+                            }
+                            CrumbTarget::AutomationDetail(id) => {
+                                a.open_automation(*id, w, cx)
+                            }
+                            CrumbTarget::AutomationResult {
+                                automation,
+                                occurrence,
+                            } => {
+                                a.open_automation(*automation, w, cx);
+                                a.open_occurrence_result(*occurrence, w, cx);
                             }
                         })),
                 )
@@ -2622,7 +2913,7 @@ impl TaskApp {
             row().justify_between()
                 .child(label("Status", cx))
                 .child(quiet_button("task-execution-status", "")
-                    .child(row().gap_2().child(execution.icon_view(cx)).child(status.label()))
+                    .child(row().gap_2().child(execution.icon_view(format!("task-status-icon-{id}"), cx)).child(status.label()))
                     .h(px(28.)).px_2().text_color(rgb(execution.color(cx)))
                     .tooltip(status.reason.clone())),
         );
@@ -3358,29 +3649,7 @@ impl Render for TaskApp {
             })
             .on_key_down(cx.listener(|this, event: &KeyDownEvent, w, cx| {
                 if event.keystroke.modifiers.platform && event.keystroke.key == "k" {
-                    this.save_feedback = None;
-                    this.selected = None;
-                    this.draft = None;
-                    this.editing = false;
-                    this.new_project = None;
-                    this.topic_editor = None;
-                    this.project_rename = None;
-                    this.topic_move = None;
-                    this.planning_project = None;
-                    this.planning_replan_source = None;
-                    if matches!(
-                        this.scope,
-                        Scope::Runs
-                            | Scope::Recovery
-                            | Scope::Research
-                            | Scope::Automations
-                            | Scope::Settings
-                            | Scope::Topic(_)
-                    ) {
-                        this.scope = Scope::All;
-                    }
-                    this.search.update(cx, |s, cx| s.focus(w, cx));
-                    cx.notify();
+                    this.focus_search(w, cx);
                 } else if event.keystroke.modifiers.platform
                     && event.keystroke.key == "["
                     && this.draft.is_none()
@@ -3450,39 +3719,16 @@ impl Render for TaskApp {
                     .border_t_1()
                     .border_color(rgb(colors.line))
                     .justify_between()
+                    .gap_4()
                     .text_xs()
                     .child(
-                        row()
-                            .child(gpui_kit::component::Icon::new(assets::IconName::Dot).size_4().text_color(rgb(colors.accent)))
-                            .child(muted(
-                                if !self.storage_error.is_empty() {
-                                    format!("NOT SAVED: {}", self.storage_error)
-                                } else if self.error.is_empty() {
-                                    self.toast.clone()
-                                } else {
-                                    self.error.clone()
-                                },
-                                cx,
-                            )),
+                        div()
+                            .flex_1()
+                            .min_w_0()
+                            .overflow_hidden()
+                            .child(self.footer_activity(cx)),
                     )
-                    .child(
-                        row()
-                            .child(
-                                button("undo", "Undo")
-                                    .small()
-                                    .h(px(24.))
-                                    .px_2()
-                                    .disabled(
-                                        self.undo.is_empty()
-                                            || !self.active_runs.is_empty()
-                                            || !self.queued_runs.is_empty(),
-                                    )
-                                    .on_click(cx.listener(|this, _, w, cx| {
-                                        this.undo_change(w, cx);
-                                    })),
-                            )
-                            .child(label("⌘K Search    ⌘N New research", cx)),
-                    ),
+                    .child(self.footer_commands(cx)),
             );
         if self.editing {
             root = root.child(self.editor_overlay(cx));

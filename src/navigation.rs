@@ -55,6 +55,8 @@ pub(crate) enum CrumbTarget {
     View(Scope),
     Task(u64),
     Automation(u64),
+    AutomationDetail(u64),
+    AutomationResult { automation: u64, occurrence: u64 },
 }
 impl TaskApp {
     pub(crate) fn open_sidebar_task(&mut self, id: u64, window: &mut Window, cx: &mut Context<Self>) {
@@ -118,6 +120,13 @@ impl TaskApp {
                 CrumbTarget::View(scope) => self.navigate(scope.clone(), w, cx),
                 CrumbTarget::Task(id) => self.open_task(*id, w, cx),
                 CrumbTarget::Automation(id) => self.reopen_automation_settings(*id, w, cx),
+                CrumbTarget::AutomationDetail(id) => self.open_automation(*id, w, cx),
+                CrumbTarget::AutomationResult { automation, occurrence } => {
+                    // A step belongs to one period; Back restores that period's
+                    // result over the automation detail instead of the list.
+                    self.open_automation(*automation, w, cx);
+                    self.open_occurrence_result(*occurrence, w, cx);
+                }
             }
         }
     }

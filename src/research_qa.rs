@@ -127,7 +127,9 @@ pub fn run() {
 
     cx.update_window(handle, |_, w, cx| {
         w.render_frame(cx);
-        w.click("model-settings", cx);
+        w.click("workspace-menu", cx);
+        w.render_frame(cx);
+        w.within("popup-menu").click(3usize, cx);
         w.within("settings-tabs").click(1usize, cx);
         for (i, model) in MODELS.iter().enumerate() {
             click_in(w, cx, "model-settings-scroll", &format!("research-model-{i}"));

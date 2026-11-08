@@ -2148,6 +2148,37 @@ fn ui_interaction(root: &Path) -> PathBuf {
     })
     .unwrap();
     screenshot(&mut cx, handle, &directory, "05-detail-enabled.png");
+    // Leaving the wizard while the planner runs must keep the in-flight state
+    // visible on the saved draft, in the list and on its detail page.
+    cx.update_window(handle, |_, w, cx| {
+        app.update(cx, |a, cx| {
+            a.automation_ui.planning_automation = Some(id);
+            a.navigate(Scope::Automations, w, cx);
+            cx.notify();
+        });
+        w.render_frame(cx);
+    })
+    .unwrap();
+    screenshot(&mut cx, handle, &directory, "05a-list-planning.png");
+    cx.update_window(handle, |_, w, cx| {
+        app.update(cx, |a, cx| a.open_automation(id, w, cx));
+        w.render_frame(cx);
+        assert!(
+            w.try_find("review-automation-planning").is_some(),
+            "the automation detail keeps the in-flight plan visible"
+        );
+        w.click("review-automation-planning", cx);
+        w.render_frame(cx);
+        assert_eq!(app.read(cx).automation_ui.step, 3);
+        assert!(app.read(cx).automation_ui.creating);
+        app.update(cx, |a, cx| {
+            a.automation_ui.planning_automation = None;
+            a.open_automation(id, w, cx);
+            cx.notify();
+        });
+        w.render_frame(cx);
+    })
+    .unwrap();
     // Settings open in a modal that also owns Edit and Replan.
     cx.update_window(handle, |_, w, cx| {
         w.click("automation-settings", cx);
@@ -2285,9 +2316,95 @@ fn ui_interaction(root: &Path) -> PathBuf {
         Some(latest)
     );
     screenshot(&mut cx, handle, &directory, "07-automation-results.png");
+    // A research period lists its split steps with full titles. Opening one and
+    // using Back restores the period result, not the automation list.
+    let step = read_state(&mut cx, &app, |a| {
+        let occurrence = a.store.occurrence(latest).unwrap();
+        occurrence
+            .research_goal_id
+            .into_iter()
+            .chain(occurrence.research_goal_ids.iter().copied())
+            .flat_map(|goal| a.store.research_children(goal))
+            .next()
+            .expect("the period has a research step")
+    });
+    cx.update_window(handle, |_, w, cx| {
+        let open = format!("automation-step-{step}");
+        assert!(
+            w.try_find(ElementId::Name(open.clone().into())).is_some(),
+            "a research period lists its split steps"
+        );
+        w.click(ElementId::Name(open.into()), cx);
+        w.render_frame(cx);
+        let (crumbs, _) = app.read(cx).navigation_path();
+        assert!(
+            crumbs
+                .iter()
+                .any(|(_, title, _)| title == &format!("Period {latest}")),
+            "a step breadcrumb points at its period"
+        );
+        assert!(
+            !crumbs.iter().any(|(_, title, _)| title == "All research"),
+            "automation steps must not claim a Research crumb"
+        );
+        w.click("navigation-back", cx);
+        w.render_frame(cx);
+    })
+    .unwrap();
+    assert_eq!(
+        read_state(&mut cx, &app, |a| a.automation_ui.result_dialog),
+        Some(latest),
+        "Back from a step returns to its period result"
+    );
+    assert_eq!(
+        read_state(&mut cx, &app, |a| a.scope.clone()),
+        Scope::Automations
+    );
     cx.update_window(handle, |_, w, cx| {
         w.click("close-automation-result", cx);
         w.render_frame(cx);
+        w.click("automation-results", cx);
+        w.render_frame(cx);
+    })
+    .unwrap();
+    // The results header narrows the list to one automation without leaving the page.
+    cx.update_window(handle, |_, w, cx| {
+        assert!(
+            w.try_find("automation-results-filter").is_some(),
+            "Automation results expose an automation filter"
+        );
+        app.update(cx, |a, cx| {
+            a.automation_ui.result_filter = Some(id);
+            cx.notify();
+        });
+        w.render_frame(cx);
+        let open = format!("open-occurrence-{latest}");
+        assert!(
+            w.try_find(ElementId::Name(open.into())).is_some(),
+            "the selected automation keeps its periods visible"
+        );
+    })
+    .unwrap();
+    screenshot(&mut cx, handle, &directory, "07b-automation-results-filtered.png");
+    cx.update_window(handle, |_, w, cx| {
+        app.update(cx, |a, cx| {
+            a.automation_ui.result_filter = Some(copy);
+            cx.notify();
+        });
+        w.render_frame(cx);
+        let open = format!("open-occurrence-{latest}");
+        assert!(
+            w.try_find(ElementId::Name(open.into())).is_none(),
+            "another automation hides periods that do not belong to it"
+        );
+        app.update(cx, |a, cx| {
+            a.automation_ui.result_filter = None;
+            cx.notify();
+        });
+        w.render_frame(cx);
+    })
+    .unwrap();
+    cx.update_window(handle, |_, w, cx| {
         w.click("navigation-back", cx);
         w.render_frame(cx);
     })
@@ -2320,9 +2437,27 @@ fn ui_interaction(root: &Path) -> PathBuf {
     cx.update_window(handle, |_, w, cx| {
         w.click("automation-results", cx);
         w.render_frame(cx);
-        let cancel = format!("cancel-occurrence-{waiting}");
-        assert!(w.try_find(ElementId::Name(cancel.clone().into())).is_some());
-        w.click(ElementId::Name(cancel.into()), cx);
+    })
+    .unwrap();
+    // Active rows stay read-only: the period dialog owns the cancel action so a
+    // running list cannot stop work with a single stray click.
+    screenshot(&mut cx, handle, &directory, "07c-automation-results-active.png");
+    cx.update_window(handle, |_, w, cx| {
+        // The period exposes its unfinished steps with a resume control above them.
+        let open = format!("open-occurrence-{waiting}");
+        w.click(ElementId::Name(open.into()), cx);
+        w.render_frame(cx);
+        assert!(
+            w.try_find("resume-automation-steps").is_some(),
+            "a period with unfinished steps offers Resume above the step list"
+        );
+        assert!(
+            w.try_find("cancel-automation-result").is_some(),
+            "the period dialog offers the cancel action for an active period"
+        );
+        w.click("cancel-automation-result", cx);
+        w.render_frame(cx);
+        w.click("close-automation-result", cx);
         w.render_frame(cx);
     })
     .unwrap();
@@ -2333,12 +2468,32 @@ fn ui_interaction(root: &Path) -> PathBuf {
     assert_eq!(
         read_state(&mut cx, &app, |a| a.scope.clone()),
         Scope::AutomationRuns,
-        "cancelling from the row keeps the user on Automation results"
+        "cancelling from the period dialog keeps the user on Automation results"
     );
     assert_eq!(
         read_state(&mut cx, &app, |a| a.automation_ui.result_dialog),
         None,
-        "the row's cancel action must not also open the result dialog"
+        "closing the dialog leaves no modal behind"
+    );
+    // Resume retries the same period in place instead of creating a new one.
+    let periods_before = read_state(&mut cx, &app, |a| a.store.automation_occurrences.len());
+    cx.update_window(handle, |_, w, cx| {
+        let open = format!("open-occurrence-{waiting}");
+        w.click(ElementId::Name(open.into()), cx);
+        w.render_frame(cx);
+        w.click("resume-automation-steps", cx);
+        w.render_frame(cx);
+    })
+    .unwrap();
+    assert_eq!(
+        read_state(&mut cx, &app, |a| a.store.automation_occurrences.len()),
+        periods_before,
+        "Resume must reopen the same period, not queue a new manual occurrence"
+    );
+    assert_ne!(
+        read_state(&mut cx, &app, |a| a.store.occurrence(waiting).unwrap().status),
+        OccurrenceStatus::Cancelled,
+        "the cancelled period is queued again in place"
     );
     path
 }
@@ -2391,6 +2546,12 @@ fn render_matrix(root: &Path, source: &Path) {
             })
             .unwrap();
             screenshot(&mut cx, handle, &directory, "detail.png");
+            cx.update_window(handle, |_, w, cx| {
+                app.update(cx, |a, cx| a.navigate(Scope::AutomationRuns, w, cx));
+                w.render_frame(cx);
+            })
+            .unwrap();
+            screenshot(&mut cx, handle, &directory, "results.png");
         }
     }
 }

@@ -1,0 +1,64 @@
+{
+  "trace": ".local/native-review/r60-settings-clean-light.trace",
+  "record_exit": 0,
+  "start_date": "2026-11-09T03:54:59.522+08:00",
+  "duration_seconds": 30.767489,
+  "candidate_manifest": "r59-native-install.json",
+  "executed_gestures": 8,
+  "recorded_gestures": 7,
+  "build_samples_in_capture": 29,
+  "busy_samples_in_capture": 0,
+  "app_hitches": 41,
+  "hitches_in_recorded_gesture_windows_plus_1s": 3,
+  "median_hitch_ms": 8.333333,
+  "max_hitch_ms": 25.000166,
+  "total_hitch_ms": 383.3329039999998,
+  "gesture_windows_plus_1s": [
+    [
+      18.682999849319458,
+      19.79099988937378
+    ],
+    [
+      25.192999839782715,
+      26.472999811172485
+    ],
+    [
+      25.472999811172485,
+      26.56499981880188
+    ],
+    [
+      25.56499981880188,
+      26.656999826431274
+    ],
+    [
+      25.656999826431274,
+      26.741999864578247
+    ],
+    [
+      25.741999864578247,
+      26.832000017166138
+    ],
+    [
+      25.832000017166138,
+      27.121999979019165
+    ]
+  ],
+  "gesture_hitches": [
+    {
+      "start_s": 25.2497145,
+      "duration_ms": 8.333291,
+      "process": "planning-native-review (12194)"
+    },
+    {
+      "start_s": 25.924714083,
+      "duration_ms": 25.000166,
+      "process": "planning-native-review (12194)"
+    },
+    {
+      "start_s": 26.999713791,
+      "duration_ms": 8.333333,
+      "process": "planning-native-review (12194)"
+    }
+  ],
+  "scope": "Controlled optimized frozen diagnostic, Light Settings Models, seven recorded scroll gestures. Eighth return gesture occurred after trace end. Not current-tree/full-surface acceptance."
+}

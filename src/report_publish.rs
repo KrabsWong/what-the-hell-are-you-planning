@@ -318,7 +318,7 @@ impl TaskApp {
             Err(mpsc::TryRecvError::Empty) => None,
         });
         if let Some((id, event)) = event {
-            if let Some(p) = self.store.publication_mut(id) {
+            if let Some(p) = self.store.publication_mut(&id) {
                 match event {
                     PublishEvent::Progress(stage, commit) => {
                         p.status = stage;
@@ -458,6 +458,24 @@ impl TaskApp {
 }
 
 #[cfg(test)]
+fn claim_publication_in_vec(
+    publications: &mut Vec<Publication>,
+    topic: u64,
+    config: PublishingConfig,
+    title: String,
+    markdown: String,
+    fingerprint: String,
+) -> Result<String, String> {
+    let mut store = Store::empty();
+    for publication in publications.drain(..) {
+        store.push_publication(publication);
+    }
+    let result = claim_publication(&mut store, topic, config, title, markdown, fingerprint);
+    *publications = store.publications().to_vec();
+    result
+}
+
+#[cfg(test)]
 mod tests {
     use super::{PublishingConfig, fingerprint};
     use crate::domain::{Store, Stage};
@@ -520,7 +538,7 @@ mod tests {
         other_topic.id = "c".repeat(32); other_topic.topic = 2;
         let mut publications = vec![first.clone(), stale, other_topic];
 
-        let id = claim_publication(&mut publications, 1, config.clone(), "Topic".into(), "Third report".into(), "third".into()).unwrap();
+        let id = super::claim_publication_in_vec(&mut publications, 1, config.clone(), "Topic".into(), "Third report".into(), "third".into()).unwrap();
         assert_eq!(id, first.id);
         let current = publications.iter().find(|p| p.topic == 1).unwrap();
         assert_eq!(current.id, first.id);
@@ -538,7 +556,7 @@ mod tests {
         let mut same = current.clone();
         same.status = "Online".into(); same.commit = Some("third-commit".into());
         *publications.last_mut().unwrap() = same;
-        let id = claim_publication(&mut publications, 1, config, "Topic".into(), "Third report".into(), "third".into()).unwrap();
+        let id = super::claim_publication_in_vec(&mut publications, 1, config, "Topic".into(), "Third report".into(), "third".into()).unwrap();
         assert_eq!(id, first.id);
         assert_eq!(publications.last().unwrap().status, "Online");
         assert_eq!(publications.last().unwrap().commit.as_deref(), Some("third-commit"));
@@ -554,7 +572,7 @@ mod tests {
         pushed.id = "b".repeat(32); pushed.status = "Online".into(); pushed.commit = Some("commit".into());
         let mut publications = vec![failed.clone(), pushed.clone()];
         assert_eq!(current_publication_index(&publications, 1), Some(1));
-        let id = claim_publication(&mut publications, 1, config, "Topic".into(), "Updated".into(), "updated".into()).unwrap();
+        let id = super::claim_publication_in_vec(&mut publications, 1, config, "Topic".into(), "Updated".into(), "updated".into()).unwrap();
         assert_eq!(id, pushed.id);
         assert_eq!(publications.len(), 1);
         assert_ne!(publications[0].id, failed.id);
@@ -604,11 +622,11 @@ mod tests {
         assert!(markdown.contains("Public final report"));
         assert!(!markdown.contains("PRIVATE_WORKING_NOTES"));
         let config = PublishingConfig::default();
-        store.publications.push(super::Publication { id: "a".repeat(32), topic,
+        store.push_publication(super::Publication { id: "a".repeat(32), topic,
             fingerprint: fingerprint(&config, &title, &markdown), config, title, markdown,
             status: "Interrupted".into(), commit: None, message: "Retry".into() });
         let restored: Store = serde_json::from_slice(&serde_json::to_vec(&store).unwrap()).unwrap();
-        assert_eq!(restored.publications, store.publications);
+        assert_eq!(restored.publications(), store.publications());
         store.task_mut(ids[0]).unwrap().description.push_str(" Changed evidence");
         assert!(store.topic_share_content(topic).is_none());
         assert!(restored.topic_share_content(topic).is_some());

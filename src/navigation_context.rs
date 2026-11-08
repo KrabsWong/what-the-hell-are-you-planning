@@ -787,7 +787,7 @@ mod tests {
     }
 
     fn add_project(store: &mut Store, id: u64, name: &str) {
-        store.projects.push(Project {
+        store.push_project(Project {
             id,
             name: name.into(),
             key: format!("P{id}"),
@@ -989,7 +989,7 @@ mod tests {
     fn deleted_task_falls_back_to_all_research() {
         let mut store = store();
         let task = store.create_task("Task", 1, Stage::Planned, None).unwrap();
-        store.tasks.retain(|value| value.id != task);
+        store.retain_tasks(|value| value.id != task);
         let resolution = validate_origin(
             Origin::ResearchTask {
                 task,
@@ -1044,7 +1044,7 @@ mod tests {
     #[test]
     fn results_project_topic_and_report_selection_are_preserved() {
         let mut store = store();
-        store.policies = Store::mock().policies;
+        store.replace_policies(Store::mock().policies().to_vec());
         let topic = store.create_topic(1, "Topic").unwrap();
         let task = store.create_task("Task", 1, Stage::Planned, None).unwrap();
         store.simulate_run(task).unwrap();
@@ -1065,7 +1065,7 @@ mod tests {
     #[test]
     fn deleted_selected_report_stays_on_results_with_a_notice() {
         let mut store = store();
-        store.policies = Store::mock().policies;
+        store.replace_policies(Store::mock().policies().to_vec());
         let task = store.create_task("Task", 1, Stage::Planned, None).unwrap();
         store.simulate_run(task).unwrap();
         let run = store.runs().last().unwrap().id;
@@ -1132,7 +1132,7 @@ mod tests {
         // A topic that belongs to another project cannot stay selected.
         let mut other_store = store();
         let topic = other_store.create_topic(1, "Other").unwrap();
-        other_store.projects.push(Project {
+        other_store.push_project(Project {
             id: 2,
             name: "Second".into(),
             key: "P2".into(),
@@ -1326,7 +1326,7 @@ mod tests {
         assert!(error.message().contains("9"));
 
         let mut empty = Store::empty();
-        empty.projects.clear();
+        empty.clear_projects();
         let error =
             resolve_creation_destination(&empty, CreationIntent::Global, &Scope::All, None)
                 .unwrap_err();

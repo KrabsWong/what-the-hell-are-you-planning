@@ -1,0 +1,75 @@
+{
+  "trace": ".local/native-review/r60-settings-clean-light.trace",
+  "pid": 12194,
+  "build_manifest": "r59-native-install.json",
+  "gestures": [
+    {
+      "direction": "down",
+      "start": 1794167718205,
+      "end": 1794167718313,
+      "relative_start_s": 18.683,
+      "relative_end_s": 18.791,
+      "inside_recording": true
+    },
+    {
+      "direction": "up",
+      "start": 1794167724715,
+      "end": 1794167724995,
+      "relative_start_s": 25.193,
+      "relative_end_s": 25.473,
+      "inside_recording": true
+    },
+    {
+      "direction": "down",
+      "start": 1794167724995,
+      "end": 1794167725087,
+      "relative_start_s": 25.473,
+      "relative_end_s": 25.565,
+      "inside_recording": true
+    },
+    {
+      "direction": "up",
+      "start": 1794167725087,
+      "end": 1794167725179,
+      "relative_start_s": 25.565,
+      "relative_end_s": 25.657,
+      "inside_recording": true
+    },
+    {
+      "direction": "down",
+      "start": 1794167725179,
+      "end": 1794167725264,
+      "relative_start_s": 25.657,
+      "relative_end_s": 25.742,
+      "inside_recording": true
+    },
+    {
+      "direction": "up",
+      "start": 1794167725264,
+      "end": 1794167725354,
+      "relative_start_s": 25.742,
+      "relative_end_s": 25.832,
+      "inside_recording": true
+    },
+    {
+      "direction": "down",
+      "start": 1794167725354,
+      "end": 1794167725644,
+      "relative_start_s": 25.832,
+      "relative_end_s": 26.122,
+      "inside_recording": true
+    },
+    {
+      "direction": "up",
+      "start": 1794167731061,
+      "end": 1794167731827,
+      "relative_start_s": 31.539,
+      "relative_end_s": 32.305,
+      "inside_recording": false
+    }
+  ],
+  "observation": "Eight successful native CUA gestures. Screenshots confirm Browser runtime at bottom and Global default at top. OpenCode execution sessions deliberately interrupted for capture, to resume after recording. Trace timestamp coverage and hitch analysis pending.",
+  "recorded_gestures": 7,
+  "capture_build_process_samples": 29,
+  "capture_busy_samples": 0
+}

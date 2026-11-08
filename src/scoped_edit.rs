@@ -2456,7 +2456,7 @@ mod tests {
         let input = input_for(&store, goal);
         assert_eq!(input.project, Some(store.task(goal).unwrap().project_id));
         assert_eq!(
-            store.project_at_mut(0).unwrap().kind,
+            store.projects()[0].kind,
             ProjectKind::User,
             "fixture uses a user project"
         );

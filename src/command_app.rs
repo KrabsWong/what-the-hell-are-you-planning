@@ -1363,12 +1363,6 @@ impl TaskApp {
     }
 
     pub(crate) fn save_current_store_durably(&mut self) -> Result<(), String> {
-        // Background lifecycle saves (after-run, recovery, timeout, auto-retry)
-        // are durable automation mutations too. Keep the accepted T04 guard
-        // until all legacy whole-store undo paths are migrated.
-        if self.automation_state_changed() {
-            self.invalidate_undo_for_automation();
-        }
         let Some(storage) = self.storage.as_ref() else {
             return Err("Workspace storage is unavailable.".into());
         };

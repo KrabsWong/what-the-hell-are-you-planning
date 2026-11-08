@@ -1859,7 +1859,8 @@ mod tests {
         store.set_default_model("test/model".into());
         store.research_config_mut().models =
             ["test/plan", "test/collect", "test/analyze", "test/advise"].map(String::from);
-        store.policies = Store::mock().policies;
+        let policies = Store::mock().policies().to_vec();
+        store.replace_policies(policies);
         store
     }
 
@@ -2109,7 +2110,9 @@ mod tests {
                 scroll(0.0),
             )
             .unwrap();
-        store.tasks.retain(|value| value.id != first);
+        let mut tasks = store.tasks().to_vec();
+        tasks.retain(|value| value.id != first);
+        store.replace_tasks(tasks);
         match state.back(&store).unwrap() {
             NavEffect::Back { restored } => {
                 assert!(matches!(
@@ -2877,7 +2880,9 @@ mod tests {
         let task = task(&mut store, "Task");
         let owner = ResultOwner::Task(task);
         let mut state = NavState::new(&store, result_route(owner, None)).unwrap();
-        store.tasks.retain(|value| value.id != task);
+        let mut tasks = store.tasks().to_vec();
+        tasks.retain(|value| value.id != task);
+        store.replace_tasks(tasks);
         let before = state.clone();
         let err = state
             .enter(
@@ -2960,7 +2965,7 @@ mod tests {
     #[test]
     fn visible_projects_are_not_required_for_navigation_validation() {
         let mut store = base_store();
-        store.projects.push(Project {
+        store.push_project(Project {
             id: 2,
             name: "Second".into(),
             key: "P2".into(),

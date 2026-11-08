@@ -1,0 +1,8 @@
+{
+  "exit_code": 0,
+  "dispatch_crash_passed": 8,
+  "v4_crash_passed": 3,
+  "source_manifest": "r60-integrated-source.json",
+  "log": "r60-crash-tests.log",
+  "scope": "Explicit integration run after full suite stopped on two unit failures; does not convert full suite to green"
+}

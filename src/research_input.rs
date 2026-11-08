@@ -409,11 +409,7 @@ pub(crate) fn preview_directory_change(
         });
     }
     let mut after = store.clone();
-    after
-        .projects
-        .iter_mut()
-        .find(|p| p.id == project)
-        .expect("validated project")
+    after.project_mut(project).unwrap()
         .directory = new_directory.into();
     let mut goals = Vec::new();
     let mut current_results = 0;

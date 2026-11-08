@@ -348,11 +348,11 @@ pub fn parse_plan(text: &str) -> Result<Plan, String> {
                     continue;
                 }
                 seen.push(dep);
-                if plan.task_at_mut(dep).unwrap().kind == required {
+                if plan.tasks[dep].kind == required {
                     found = true;
                     break;
                 }
-                pending.extend(&plan.task_at_mut(dep).unwrap().depends_on);
+                pending.extend(&plan.tasks[dep].depends_on);
             }
             if !found {
                 return Err(format!(
@@ -1371,8 +1371,8 @@ mod tests {
         s.push_run(active);
         let before = s.clone();
         s.rename_project(1, "New display name").unwrap();
-        assert_eq!(s.tasks, before.tasks);
-        assert_eq!(s.topics, before.topics);
+        assert_eq!(s.tasks(), before.tasks());
+        assert_eq!(s.topics(), before.topics());
         assert_eq!(s.runs(), before.runs());
         assert!(s.goal_execution_approved(goal));
         assert!(s.research_result(ids[0]).is_some());
@@ -1405,9 +1405,9 @@ mod tests {
         let unrelated = s.create_research_goal("Unrelated".into(), "Stay here".into(), 1).unwrap();
         let unrelated_before = s.task(unrelated).unwrap().clone();
         let old_runs = s.runs().to_vec();
-        let old_topics = s.topics.len();
+        let old_topics = s.topics().len();
         s.move_topic_project(topic, 2).unwrap();
-        assert_eq!(s.topics.len(), old_topics);
+        assert_eq!(s.topics().len(), old_topics);
         assert_eq!(s.task(unrelated).unwrap(), &unrelated_before);
         assert_eq!(s.runs().iter().find(|r| r.id == planning_id).unwrap().project_plan, Some(2));
         for id in [goal, sibling, archived].into_iter().chain(ids.iter().copied()) {
@@ -1421,7 +1421,7 @@ mod tests {
             assert_eq!(before.output, after.output);
             assert_eq!(before.session_id, after.session_id);
         }
-        assert_eq!(s.research_requests.iter().find(|r| r.id == request).unwrap().project_id, 2);
+        assert_eq!(s.research_requests().iter().find(|r| r.id == request).unwrap().project_id, 2);
         let restored: Store = serde_json::from_str(&serde_json::to_string(&s).unwrap()).unwrap();
         assert_eq!(restored, s);
         for id in ids { assert!(restored.research_result(id).is_some()); }
@@ -1662,7 +1662,7 @@ mod tests {
     fn old_goal_signature(store: &Store, id: u64) -> String {
         let goal = store.task(id).unwrap();
         let mut tasks: Vec<_> = store
-            .tasks
+            .tasks()
             .iter()
             .filter(|task| task.id != id && store.owning_research_goal(task.id) == Some(id))
             .collect();

@@ -465,11 +465,7 @@ print(json.dumps({'type':'text','part':{'text':json.dumps(result)}}),flush=True)
                 let mut run = a.store.prepare_request_plan(request).unwrap();
                 run.status = "Interrupted".into();
                 let id = run.id;
-                a.store
-                    .research_requests
-                    .iter_mut()
-                    .find(|r| r.id == request)
-                    .unwrap()
+                a.store.request_mut(request).unwrap()
                     .planning_run_id = Some(id);
                 a.store.push_run(run);
                 a.navigate(Scope::Recovery, w, cx);

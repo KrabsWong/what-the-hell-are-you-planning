@@ -1086,7 +1086,7 @@ mod tests {
         store.resume_schedule(id, 10_000).unwrap();
         let cursor = store.automation(id).unwrap().cursor.unwrap();
         assert!(cursor > 10_000);
-        store.projects.clear();
+        store.clear_projects();
         let plans = store.plan_automation_ticks(cursor);
         assert!(matches!(plans[0].action, TickAction::Attention { .. }));
         let commit = store.commit_automation_tick(&plans[0], cursor).unwrap();
@@ -1118,14 +1118,14 @@ mod tests {
             store.occurrence(occurrence.id).unwrap().status,
             OccurrenceStatus::Failed
         );
-        let tasks = store.tasks.len();
+        let tasks = store.tasks().len();
         let occurrences = store.all_occurrences().len();
         store.retry_occurrence(occurrence.id, 2_000).unwrap();
         let reopened = store.occurrence(occurrence.id).unwrap();
         assert_eq!(reopened.status, OccurrenceStatus::Queued);
         assert!(reopened.reason.is_none());
         assert!(reopened.deadline_at.is_some_and(|deadline| deadline > 2_000));
-        assert_eq!(store.tasks.len(), tasks, "retry must not duplicate plan steps");
+        assert_eq!(store.tasks().len(), tasks, "retry must not duplicate plan steps");
         assert_eq!(
             store.all_occurrences().len(),
             occurrences,
@@ -1166,7 +1166,7 @@ mod tests {
         assert_eq!(definition.status, DefinitionStatus::Paused);
         assert_eq!(definition.cursor, None);
         let before = store.occurrence(occurrence).unwrap().clone();
-        let tasks = store.tasks.len();
+        let tasks = store.tasks().len();
 
         store.retry_occurrence(occurrence, 2_000).unwrap();
         let reopened = store.occurrence(occurrence).unwrap().clone();
@@ -1181,7 +1181,7 @@ mod tests {
             Some(&definition),
             "retrying a period must not resume or otherwise change the schedule"
         );
-        assert_eq!(store.tasks.len(), tasks, "retry must not duplicate plan steps");
+        assert_eq!(store.tasks().len(), tasks, "retry must not duplicate plan steps");
         assert_eq!(store.task(collect).unwrap().stage, Stage::Done);
         // The original catch-up delay no longer applies to an explicit retry.
         assert!(!reopened.first_start_expired(

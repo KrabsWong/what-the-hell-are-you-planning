@@ -88,11 +88,11 @@ mod tests {
         store.set_max_concurrent_automations(2);
         let undo =
             apply_settings_change(&mut store, SettingsChange::ExecutionConcurrency(5)).unwrap();
-        assert_eq!(store.max_concurrent_runs, 5);
-        assert_eq!(store.max_concurrent_automations, 2);
+        assert_eq!(store.max_concurrent_runs(), 5);
+        assert_eq!(store.max_concurrent_automations(), 2);
         undo_settings_change(&mut store, &undo).unwrap();
-        assert_eq!(store.max_concurrent_runs, 3);
-        assert_eq!(store.max_concurrent_automations, 2);
+        assert_eq!(store.max_concurrent_runs(), 3);
+        assert_eq!(store.max_concurrent_automations(), 2);
     }
 
     #[test]
@@ -104,9 +104,9 @@ mod tests {
             SettingsChange::Appearance(crate::appearance::Appearance::Dark),
         )
         .unwrap();
-        assert_eq!(store.appearance, crate::appearance::Appearance::Dark);
+        assert_eq!(store.appearance(), crate::appearance::Appearance::Dark);
         undo_settings_change(&mut store, &undo).unwrap();
-        assert_eq!(store.appearance, crate::appearance::Appearance::Light);
+        assert_eq!(store.appearance(), crate::appearance::Appearance::Light);
     }
 
     #[test]
@@ -117,6 +117,6 @@ mod tests {
             apply_settings_change(&mut store, SettingsChange::ExecutionConcurrency(3)),
             Err(SettingsError::NoChange)
         );
-        assert_eq!(store.max_concurrent_runs, 3);
+        assert_eq!(store.max_concurrent_runs(), 3);
     }
 }

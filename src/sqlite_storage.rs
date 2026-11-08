@@ -477,14 +477,14 @@ mod tests {
         );
         assert_eq!(restored.runs()[0].input_signature, binding.input_signature);
         let expected_directory = restored
-            .projects
+            .projects()
             .iter()
             .find(|project| project.id == automation_project)
             .unwrap()
             .directory
             .clone();
         assert!(binding.input_signature.contains(&expected_directory));
-        assert_eq!(restored.project_at_mut(0).unwrap().directory, moved.join("projects/project-1").to_string_lossy().to_string());
+        assert_eq!(restored.projects()[0].directory, moved.join("projects/project-1").to_string_lossy().to_string());
         assert!(restored.plan_binding_problem(definition).is_none());
         assert!(restored.planning_attempt_is_current(run_id));
         let stale = restored.runs().iter().find(|run| run.id == run_id + 1).unwrap();
@@ -550,8 +550,8 @@ mod tests {
         .unwrap();
         drop(db);
         let restored = Storage::new(path.clone()).load().unwrap().unwrap();
-        assert_eq!(restored.request_at_mut(0).unwrap().expected_result, None);
-        assert_eq!(restored.request_at_mut(0).unwrap().revision, 1);
+        assert_eq!(restored.research_requests()[0].expected_result, None);
+        assert_eq!(restored.research_requests()[0].revision, 1);
         assert_eq!(
             restored.runs().iter().find(|run| run.id == owned_id).unwrap().planning_owner.as_ref().unwrap().request_id,
             request
@@ -765,7 +765,7 @@ mod tests {
         assert_eq!(phases, ["Backing up existing data…", "Converting workspace paths…", "Verifying upgraded data…"]);
         assert!(legacy.upgrade_paths(|_| panic!("must not upgrade twice")).unwrap().is_none());
         drop(lock);
-        let signatures: Vec<_> = original.tasks.iter().map(|t| (t.id, original.research_result(t.id).map(|r| r.id), original.goal_execution_approved(t.id))).collect();
+        let signatures: Vec<_> = original.tasks().iter().map(|t| (t.id, original.research_result(t.id).map(|r| r.id), original.goal_execution_approved(t.id))).collect();
         storage.save(&original).unwrap();
         assert!(storage.load().unwrap().as_ref() == Some(&original), "same-root save/load changed existing data");
         assert_eq!(crate::workspace::initialize(copy.parent().unwrap(), None).unwrap(), copy);
@@ -774,11 +774,11 @@ mod tests {
             assert_eq!(relocated.research_result(id).map(|r| r.id), result, "result validity changed for task {id}");
             assert_eq!(relocated.goal_execution_approved(id), approved, "approval changed for task {id}");
         }
-        for project in &relocated.projects {
+        for project in relocated.projects() {
             assert!(Path::new(&project.directory).starts_with(&copy));
             assert!(Path::new(&project.directory).is_dir());
         }
-        for task in &relocated.tasks {
+        for task in relocated.tasks() {
             for attachment in &task.attachments { crate::attachments::resolve(&copy, attachment).unwrap(); }
         }
         for run in relocated.runs() {
@@ -798,6 +798,6 @@ mod tests {
                 }
             }
         }
-        println!("Snapshot verified: {} projects, {} tasks, {} runs; full roundtrip, result validity, approvals, attachments, relative paths, integrity_check", original.projects.len(), original.tasks.len(), original.runs().len());
+        println!("Snapshot verified: {} projects, {} tasks, {} runs; full roundtrip, result validity, approvals, attachments, relative paths, integrity_check", original.projects().len(), original.tasks().len(), original.runs().len());
     }
 }

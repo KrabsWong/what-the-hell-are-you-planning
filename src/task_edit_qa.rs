@@ -1962,14 +1962,16 @@ fn mixed_legacy_scoped_order(root: &Path) {
     let path = directory.join("workspace.sqlite3");
     Storage::new(path.clone()).save(&store).unwrap();
     let (mut cx, handle, app) = with_app(store, &path, |app, w, cx| {
-        assert!(app.apply_domain_change(
-            |store| {
-                store.task_mut(goal).unwrap().labels = vec!["Legacy change".into()];
-                Ok(())
-            },
-            "Labels updated",
-            cx,
-        ));
+        assert!(app
+            .apply_domain_command_undoable(
+                crate::scoped_domain::DomainCommand::TaskLabels {
+                    task: goal,
+                    labels: vec!["Legacy change".into()],
+                },
+                "Labels updated",
+                cx,
+            )
+            .is_some());
         begin_editor(app, goal, w, cx);
         set_title(app, "Scoped change", w, cx);
     });

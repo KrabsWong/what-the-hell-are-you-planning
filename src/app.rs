@@ -177,47 +177,6 @@ impl UndoStack {
 
 }
 
-/// Automation ownership is a closed graph: definitions, occurrences, the
-/// generated automation project and the tasks/topics/requests they own. A
-/// whole-store snapshot that differs in any of these cannot be applied without
-/// orphaning records or rolling back schedules, so Undo rejects it instead of
-/// partially merging.
-fn automation_state_differs(a: &Store, b: &Store) -> bool {
-    a.automations() != b.automations()
-        || a.all_occurrences() != b.all_occurrences()
-        || a.projects()
-            .iter()
-            .filter(|project| project.kind == ProjectKind::Automation)
-            .collect::<Vec<_>>()
-            != b.projects()
-                .iter()
-                .filter(|project| project.kind == ProjectKind::Automation)
-                .collect::<Vec<_>>()
-        || a.tasks()
-            .iter()
-            .filter(|task| task.automation_id.is_some())
-            .collect::<Vec<_>>()
-            != b.tasks()
-                .iter()
-                .filter(|task| task.automation_id.is_some())
-                .collect::<Vec<_>>()
-        || a.topics()
-            .iter()
-            .filter(|topic| topic.automation_id.is_some())
-            .collect::<Vec<_>>()
-            != b.topics()
-                .iter()
-                .filter(|topic| topic.automation_id.is_some())
-                .collect::<Vec<_>>()
-        || a.research_requests()
-            .iter()
-            .filter(|request| request.automation_id.is_some())
-            .collect::<Vec<_>>()
-            != b.research_requests()
-                .iter()
-                .filter(|request| request.automation_id.is_some())
-                .collect::<Vec<_>>()
-}
 #[derive(Clone, Copy, Debug, PartialEq)]
 pub enum AllStatus {
     All,
@@ -973,38 +932,6 @@ impl TaskApp {
         true
     }
 
-    /// QA-only compatibility helper for older test closures. Production code
-    /// uses the typed `DomainCommand` write-set path above; this clone-based
-    /// path exists only while QA suites migrate.
-    #[cfg(feature = "qa")]
-    pub(crate) fn apply_domain_change(
-        &mut self,
-        change: impl FnOnce(&mut Store) -> Result<(), String>,
-        message: &str,
-        cx: &mut Context<Self>,
-    ) -> bool {
-        let before = self.store.clone();
-        if let Err(error) = change(&mut self.store) {
-            self.show_save_error(error, cx);
-            return false;
-        }
-        let undo = crate::scoped_domain::capture_undo(&before, &self.store);
-        if let Err(error) = self.save_current_store_durably() {
-            self.store = before;
-            self.storage_error = error.clone();
-            self.show_save_error(error, cx);
-            return false;
-        }
-        self.undo_invalidation = None;
-        if let Some(undo) = undo {
-            self.undo.push_domain(undo);
-        }
-        self.toast = message.into();
-        self.error.clear();
-        cx.notify();
-        true
-    }
-
     /// Execute a bounded domain command against the live store. The command
     /// records only its own write set; there is no whole-Store staging clone.
     /// A failed durable save rolls the command back through that same write set.
@@ -1029,7 +956,7 @@ impl TaskApp {
             return None;
         }
         self.undo_invalidation = None;
-        if undoable {
+        if undoable && outcome.undo.changed_entities() > 0 {
             self.undo.push_domain(outcome.undo.clone());
         }
         self.toast = message.into();
@@ -1065,11 +992,6 @@ impl TaskApp {
         self.undo_invalidation = None;
     }
 
-    /// True when the durable automation portion of the workspace differs from
-    /// the last confirmed write. Ordinary task/project edits leave this false.
-    pub(crate) fn automation_state_changed(&self) -> bool {
-        automation_state_differs(&self.store, &self.last_saved)
-    }
     pub fn show_save_error(&mut self, message: impl Into<String>, cx: &mut Context<Self>) {
         self.error = message.into();
         self.save_feedback = Some(Err(self.error.clone()));
@@ -1713,8 +1635,7 @@ impl TaskApp {
                 }
             }
             UndoRecord::Domain(undo) => {
-                let mut staged = self.store.clone();
-                if let Err(error) = crate::scoped_domain::apply_undo(&mut staged, &undo) {
+                if let Err(error) = crate::scoped_domain::apply_undo(&mut self.store, &undo) {
                     self.undo.push_domain(undo);
                     self.error = match error {
                         crate::scoped_edit::ScopedEditError::Rejected(message)
@@ -1723,13 +1644,16 @@ impl TaskApp {
                     cx.notify();
                     return;
                 }
-                if let Err(error) = self.save_staged_store(&staged) {
+                if let Err(error) = self.save_current_store_durably() {
+                    // Restore the state the inverse just replaced; the entry is
+                    // kept so the user can retry once storage recovers.
+                    let redo = undo.invert();
+                    let _ = crate::scoped_domain::apply_undo(&mut self.store, &redo);
                     self.undo.push_domain(undo);
                     self.storage_error = error.clone();
                     self.show_save_error(error, cx);
                     return;
                 }
-                self.adopt_saved_store(staged);
                 self.undo_invalidation = None;
                 self.tabs.retain(|id| self.store.task(*id).is_some());
                 if self
@@ -1873,16 +1797,6 @@ impl TaskApp {
         {
             let _span = crate::persistence_metrics::Span::start("persist.reconcile");
             self.store.reconcile_goal_approvals();
-        }
-        // Central safeguard for F03/T04: any durable automation change makes
-        // older whole-store undo entries unsafe, whether it came from the wizard,
-        // a lifecycle action or the scheduler.
-        let automation_changed = {
-            let _span = crate::persistence_metrics::Span::start("persist.automation_compare");
-            self.automation_state_changed()
-        };
-        if automation_changed {
-            self.invalidate_undo_for_automation();
         }
         let Some(storage) = &self.storage else {
             return false;
@@ -3234,11 +3148,19 @@ mod tests {
             crate::scoped_material::apply_material_add(&mut store, &directory, &material_plan)
                 .unwrap();
 
-        let domain_before = store.clone();
+        let domain = crate::scoped_domain::DomainCommand::TopicCreate {
+            project: 1,
+            name: "Scoped context".into(),
+        }
+        .execute(&mut store)
+        .expect("topic fixture")
+        .undo;
         let topic = store
-            .create_topic(1, "Scoped context")
-            .expect("topic fixture");
-        let domain = crate::scoped_domain::capture(&domain_before, &store).unwrap();
+            .topics()
+            .iter()
+            .find(|candidate| candidate.name == "Scoped context")
+            .expect("topic fixture")
+            .id;
 
         let mut stack = super::UndoStack::default();
         stack.push_task_edit(task_edit.undo);
@@ -3271,7 +3193,7 @@ mod tests {
         // The captured domain change removes only the topic the fixture created.
         let mut restored = store;
         crate::scoped_domain::apply_undo(&mut restored, &domain).unwrap();
-        assert!(!restored.topics.iter().any(|candidate| candidate.id == topic));
+        assert!(!restored.topics().iter().any(|candidate| candidate.id == topic));
         let _ = std::fs::remove_dir_all(directory);
     }
 

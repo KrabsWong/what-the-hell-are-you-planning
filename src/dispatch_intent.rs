@@ -13,6 +13,10 @@ pub(crate) struct AdmissionParts {
     pub run: AgentRun,
     pub occurrence: Option<AutomationOccurrence>,
     pub next_id: Option<u64>,
+    /// Reservation floor changes caused by dispatching a new run. Older intent
+    /// files deserialize with the field absent and no floor update.
+    #[serde(default)]
+    pub run_id_floor: Option<u64>,
 }
 
 impl AdmissionParts {

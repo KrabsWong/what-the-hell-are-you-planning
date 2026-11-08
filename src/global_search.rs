@@ -584,7 +584,8 @@ mod tests {
     #[test]
     fn report_bodies_and_logs_are_not_search_sources() {
         let (mut store, _goal, _automation, _period, _owned) = fixture();
-        let mut run = store.prepare_run(store.task_at_mut(0).unwrap().id).unwrap();
+        let task = store.task_at_mut(0).unwrap().id;
+        let mut run = store.prepare_run(task).unwrap();
         run.output = "topsecretreportbody".into();
         run.logs = vec!["topsecretlogline".into()];
         store.push_run(run);

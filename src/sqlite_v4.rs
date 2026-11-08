@@ -606,7 +606,7 @@ impl SqliteV4 {
             .connection
             .unchecked_transaction()
             .map_err(|error| format!("cannot start read transaction: {error}"))?;
-        let mut store = Store::empty();
+        let mut store = Store::begin_load();
         let mut meta = BTreeMap::new();
         {
             let mut statement = transaction
@@ -622,39 +622,73 @@ impl SqliteV4 {
                 meta.insert(key, value);
             }
         }
-        store.set_next_id(parse_meta(&meta, "next_id")?);
+        store.set_metadata(MetadataDelta::NextId(parse_meta(&meta, "next_id")?));
         // Databases created before reservation tracking have no run_id_floor
         // key. Their reserved range starts at zero, which is the domain default.
-        store.set_run_id_floor(parse_meta_or(&meta, "run_id_floor", 0u64)?);
-        store.set_opencode_path(parse_meta::<String>(&meta, "opencode_path")?);
-        store.set_default_model(parse_meta::<String>(&meta, "default_model")?);
-        store.load_model_profiles(parse_meta(&meta, "model_profiles")?);
-        store.set_active_model_profile(parse_meta(&meta, "active_model_profile")?);
-        store.set_max_concurrent_runs(parse_meta(&meta, "max_concurrent_runs")?);
-        store.set_max_concurrent_automations(parse_meta(&meta, "max_concurrent_automations")?);
-        store.set_research_config(parse_meta(&meta, "research_config")?);
-        store.set_appearance(parse_meta(&meta, "appearance")?);
-        store.set_last_active_project(parse_meta(&meta, "last_active_project")?);
-        store.set_automation_schema_version(parse_meta(&meta, "automation_schema_version")?);
-        store.set_report_publishing(parse_meta(&meta, "report_publishing")?);
-        store.load_publications(parse_meta(&meta, "publications")?);
-        store.load_topics(parse_meta(&meta, "topics")?)?;
-        store.load_requests(parse_meta(&meta, "research_requests")?)?;
+        store.set_metadata(MetadataDelta::RunIdFloor(parse_meta_or(
+            &meta,
+            "run_id_floor",
+            0u64,
+        )?));
+        store.set_metadata(MetadataDelta::OpenCodePath(parse_meta(&meta, "opencode_path")?));
+        store.set_metadata(MetadataDelta::DefaultModel(parse_meta(&meta, "default_model")?));
+        store.set_metadata(MetadataDelta::ModelProfiles(parse_meta(
+            &meta,
+            "model_profiles",
+        )?));
+        store.set_metadata(MetadataDelta::ActiveModelProfile(parse_meta(
+            &meta,
+            "active_model_profile",
+        )?));
+        store.set_metadata(MetadataDelta::MaxConcurrentRuns(parse_meta(
+            &meta,
+            "max_concurrent_runs",
+        )?));
+        store.set_metadata(MetadataDelta::MaxConcurrentAutomations(parse_meta(
+            &meta,
+            "max_concurrent_automations",
+        )?));
+        store.set_metadata(MetadataDelta::ResearchConfig(parse_meta(
+            &meta,
+            "research_config",
+        )?));
+        store.set_metadata(MetadataDelta::Appearance(parse_meta(&meta, "appearance")?));
+        store.set_metadata(MetadataDelta::LastActiveProject(parse_meta(
+            &meta,
+            "last_active_project",
+        )?));
+        store.set_metadata(MetadataDelta::AutomationSchemaVersion(parse_meta(
+            &meta,
+            "automation_schema_version",
+        )?));
+        store.set_metadata(MetadataDelta::PublishingConfig(parse_meta(
+            &meta,
+            "report_publishing",
+        )?));
+        store.set_metadata(MetadataDelta::Publications(parse_meta(
+            &meta,
+            "publications",
+        )?));
+        store.set_metadata(MetadataDelta::Topics(parse_meta(&meta, "topics")?));
+        store.set_metadata(MetadataDelta::ResearchRequests(parse_meta(
+            &meta,
+            "research_requests",
+        )?));
 
-        store.load_tasks(load_rows(
+        store.tasks(load_rows(
             &transaction,
             "tasks",
             &self.root,
             WorkTable::Tasks,
         )?)?;
-        store.load_projects(load_rows(
+        store.projects(load_rows(
             &transaction,
             "projects",
             &self.root,
             WorkTable::Projects,
         )?)?;
         let runs = load_runs(&transaction, &self.root)?;
-        store.load_policies(load_policies(&transaction)?)?;
+        store.policies(load_policies(&transaction)?)?;
         let automations = load_rows(
             &transaction,
             "automations",
@@ -662,11 +696,8 @@ impl SqliteV4 {
             WorkTable::Automations,
         )?;
         let occurrences = load_occurrences(&transaction)?;
-        let mut store = store
-            .with_loaded_tracked(runs, automations, occurrences)
-            .map_err(|(_, error)| error)?;
-        // Loading is the durable baseline, never a pending change.
-        store.clear_all_tracking();
+        store.runs(runs, automations, occurrences)?;
+        let store = store.finish();
         transaction
             .commit()
             .map_err(|error| format!("cannot finish read transaction: {error}"))?;
@@ -2138,7 +2169,7 @@ mod tests {
         stale.output = "stale report".into();
         store.push_run(stale);
 
-        store.research_requests.push(ResearchRequest {
+        store.push_request(ResearchRequest {
             id: 1,
             project_id: 1,
             topic_id: None,
@@ -2152,14 +2183,15 @@ mod tests {
             goal_ids: vec![goal],
             brief: None,
         });
-        store.next_id = store
+        let next_id = store
             .runs()
             .iter()
             .map(|run| run.id)
             .max()
-            .unwrap_or(store.next_id)
-            .max(store.next_id)
+            .unwrap_or(store.next_id())
+            .max(store.next_id())
             + 1;
+        store.set_next_id(next_id);
         store
     }
 
@@ -2220,6 +2252,47 @@ mod tests {
             .query_row("SELECT COUNT(*) FROM run_bodies", [], |row| row.get(0))
             .unwrap();
         assert!(body_count > 0);
+    }
+
+    #[test]
+    fn nonzero_run_floor_survives_v4_seed_reopen_and_incremental_metadata() {
+        let root = temp_root("run-floor");
+        let mut store = fixture_store(&root);
+        store.set_run_id_floor(50_001);
+        let path = root.join("workspace.sqlite3");
+        let mut database = SqliteV4::create_seeded(&path, &root, INCARNATION, &store).unwrap();
+        assert_eq!(database.load_store().unwrap().run_id_floor(), 50_001);
+        drop(database);
+
+        let reopened = SqliteV4::open(&path, &root, INCARNATION).unwrap();
+        assert_eq!(reopened.load_store().unwrap().run_id_floor(), 50_001);
+        drop(reopened);
+
+        let mut database = SqliteV4::open(&path, &root, INCARNATION).unwrap();
+        let mut journal = ChangeJournal::new(INCARNATION);
+        let group = journal
+            .stage_with_metadata(
+                Vec::new(),
+                vec![MetadataDelta::RunIdFloor(50_002)],
+                Vec::new(),
+            )
+            .unwrap();
+        assert_eq!(
+            database.commit_group(&group).unwrap(),
+            CommitOutcome::Committed { generation: 1 }
+        );
+        drop(database);
+        let reopened = SqliteV4::open(&path, &root, INCARNATION).unwrap();
+        assert_eq!(reopened.load_store().unwrap().run_id_floor(), 50_002);
+        drop(reopened);
+
+        let database = SqliteV4::open(&path, &root, INCARNATION).unwrap();
+        database
+            .connection
+            .execute("DELETE FROM meta WHERE key='run_id_floor'", [])
+            .unwrap();
+        // Missing field in an older v4 database means no reservation floor.
+        assert_eq!(database.load_store().unwrap().run_id_floor(), 0);
     }
 
     #[test]
@@ -2620,7 +2693,7 @@ mod tests {
             occurrence.final_run_id = None;
             store.push_occurrence(occurrence);
         }
-        store.set_next_id(store.next_id.max(start + count as u64));
+        store.set_next_id(store.next_id().max(start + count as u64));
     }
 
     #[test]
@@ -3018,7 +3091,7 @@ mod tests {
     fn relocation_codec_preserves_paths_and_stale_signatures() {
         let root = temp_root("relocate");
         let mut store = fixture_store(&root);
-        let project_directory = store.project_at_mut(0).unwrap().directory.clone();
+        let project_directory = store.projects()[0].directory.clone();
         let automation = store.automations()[0].id;
         let signature = format!(
             "[1,\"name\",\"brief\",\"scope\",null,\"{}\",null,null]",
@@ -3040,7 +3113,7 @@ mod tests {
             .unwrap()
             .load_store()
             .unwrap();
-        assert!(Path::new(&relocated.project_at_mut(0).unwrap().directory).starts_with(&moved));
+        assert!(Path::new(&relocated.projects()[0].directory).starts_with(&moved));
         let binding = relocated.automation(automation).unwrap().plan_binding.clone().unwrap();
         assert!(binding.input_signature.contains(moved.to_string_lossy().as_ref()));
         let stale = relocated

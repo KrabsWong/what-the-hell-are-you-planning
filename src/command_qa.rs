@@ -1204,10 +1204,7 @@ fn typed_intent_checks(root: &Path) {
             let run = a.store.prepare_request_plan(request).unwrap();
             let prepared = a.prepare_run_dispatch(run, vec![], cx).unwrap();
             if let Some(value) = a
-                .store
-                .research_requests()
-                .iter_mut()
-                .find(|value| value.id == request)
+                .store.request_mut(request)
             {
                 value.input = "A different request after preparation.".into();
             }
@@ -1526,11 +1523,16 @@ fn automation_command_invalidates_undo_check(root: &Path) {
         .unwrap();
     let (undo_len, reason, status) = cx.update(|cx| {
         app.update(cx, |a, cx| {
-            assert!(a.apply_domain_change(
-                |store| store.create_topic(1, "Undo guard").map(|_| ()),
-                "Topic created",
-                cx,
-            ));
+            assert!(a
+                .apply_domain_command_undoable(
+                    crate::scoped_domain::DomainCommand::TopicCreate {
+                        project: 1,
+                        name: "Undo guard".into(),
+                    },
+                    "Topic created",
+                    cx,
+                )
+                .is_some());
             assert_eq!(a.undo.len(), 1, "ordinary scoped edit is undoable");
             a.store.push_automation(crate::automation::AutomationDefinition {
                 id: 99,

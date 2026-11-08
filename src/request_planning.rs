@@ -165,7 +165,7 @@ pub fn parse_request_plan(text: &str) -> Result<RequestPlan, String> {
         let mut pending = vec![parsed.tasks.len() - 1];
         while let Some(index) = pending.pop() {
             if ancestors.insert(index) {
-                pending.extend(parsed.task_at_mut(index).unwrap().depends_on.iter().copied());
+                pending.extend(parsed.tasks[index].depends_on.iter().copied());
             }
         }
         if ancestors.len() != parsed.tasks.len() {
@@ -480,8 +480,11 @@ impl Store {
     /// planning context block. Never scrape arbitrary prompt text and never
     /// overwrite an existing owner.
     pub fn normalize_planning_ownership(&mut self) {
-        for request in &mut self.research_requests() {
-            request.revision = request.revision.max(1);
+        let request_ids: Vec<u64> = self.research_requests().iter().map(|request| request.id).collect();
+        for id in request_ids {
+            if let Some(request) = self.request_mut(id) {
+                request.revision = request.revision.max(1);
+            }
         }
         let mut assignments = Vec::new();
         for run in self.runs() {
@@ -908,11 +911,7 @@ impl Store {
             ));
             goals.push(goal);
         }
-        let saved = staged
-            .research_requests()
-            .iter_mut()
-            .find(|r| r.id == id)
-            .unwrap();
+        let saved = staged.request_mut(id).unwrap();
         saved.topic_id = Some(topic);
         saved.provisional_topic_name = None;
         saved.goal_ids = goals.clone();
@@ -1040,7 +1039,7 @@ mod tests {
             .unwrap();
         let mut definition = s.automation(id).unwrap().clone();
         definition.template = Some(crate::automation_execution::build_template("Objective A", "Expected A").unwrap());
-        s.research_requests.retain(|candidate| candidate.id != request);
+        s.retain_requests(|candidate| candidate.id != request);
         assert!(s.plan_binding_problem(&definition).is_none());
         let mut definition = definition;
         definition.plan_binding = Some(crate::automation::AutomationPlanBinding {
@@ -1203,34 +1202,35 @@ mod tests {
         s.push_run(run);
         s.last_run_mut().unwrap().status = "Succeeded".into();
         s.apply_request_plan(additional, PLAN).unwrap();
-        for task in &mut s.tasks { task.stage = Stage::Done; }
+        let ids: Vec<u64> = s.tasks().iter().map(|task| task.id).collect();
+        for id in ids { s.task_mut(id).unwrap().stage = Stage::Done; }
         let before = s.clone();
         assert_eq!(s.topic_replan_input(source), "Original question\n\nAdditional question");
         let manual = s.create_research_goal_in_topic("Manual goal".into(), "Additional scope".into(), 1, Some(source)).unwrap();
         assert_eq!(s.topic_replan_input(source), "Original question\n\nAdditional question\n\nManual goal\nAdditional scope");
         s.task_mut(manual).unwrap().stage = Stage::Done;
         let request = s.create_topic_replan_request(source, "Updated question".into()).unwrap();
-        let topic = s.research_requests.iter().find(|r| r.id == request).unwrap().topic_id.unwrap();
+        let topic = s.research_requests().iter().find(|r| r.id == request).unwrap().topic_id.unwrap();
         assert_ne!(topic, source);
-        assert_eq!(s.topics.iter().find(|t| t.id == topic).unwrap().replanned_from, Some(source));
+        assert_eq!(s.topics().iter().find(|t| t.id == topic).unwrap().replanned_from, Some(source));
         let goals = s.apply_request_plan(request, PLAN).unwrap();
         for goal in goals {
             assert_eq!(s.task(goal).unwrap().topic_id, Some(topic));
             assert_eq!(s.task(goal).unwrap().stage, Stage::Backlog);
             assert!(!s.goal_execution_approved(goal));
         }
-        for task in &before.tasks { assert_eq!(s.task(task.id), Some(task)); }
+        for task in before.tasks() { assert_eq!(s.task(task.id), Some(task)); }
         assert_eq!(s.task(manual).unwrap().topic_id, Some(source));
         assert_eq!(s.runs(), before.runs());
-        assert_eq!(&s.topic_at_mut(..before.topics.len()).unwrap(), &before.topics);
-        assert_eq!(&s.request_at_mut(..before.research_requests.len()).unwrap(), &before.research_requests);
+        assert_eq!(&s.topics()[..before.topics().len()], &before.topics()[..]);
+        assert_eq!(&s.research_requests()[..before.research_requests().len()], &before.research_requests()[..]);
         s.rename_topic(topic, "Renamed research").unwrap();
-        assert_eq!(s.topics.iter().find(|t| t.id == topic).unwrap().display_name(), "#Renamed research");
+        assert_eq!(s.topics().iter().find(|t| t.id == topic).unwrap().display_name(), "#Renamed research");
         let ids: Vec<u64> = s.tasks().iter().filter(|t| t.topic_id == Some(topic)).map(|t| t.id).collect();
         for id in ids { s.task_mut(id).unwrap().stage = Stage::Done; }
         let next = s.create_topic_replan_request(topic, "Next question".into()).unwrap();
-        let next_topic = s.research_requests.iter().find(|r| r.id == next).unwrap().topic_id.unwrap();
-        assert_eq!(s.topics.iter().find(|t| t.id == next_topic).unwrap().replanned_from, Some(topic));
+        let next_topic = s.research_requests().iter().find(|r| r.id == next).unwrap().topic_id.unwrap();
+        assert_eq!(s.topics().iter().find(|t| t.id == next_topic).unwrap().replanned_from, Some(topic));
     }
 
     #[test]
@@ -1248,7 +1248,7 @@ mod tests {
         assert!(s.apply_request_plan(request, "invalid plan").is_err());
         assert_eq!(s, captured);
         s.apply_request_plan(request, PLAN).unwrap();
-        assert_eq!(s.topics.len(), before.topics.len() + 1);
+        assert_eq!(s.topics().len(), before.topics().len() + 1);
     }
 
     #[test]
@@ -1284,7 +1284,7 @@ mod tests {
         let mut s = store();
         let id = s.create_research_request(1, None, "分析 Intel 财报").unwrap();
         let topic = s.request_at_mut(0).unwrap().topic_id.unwrap();
-        assert_eq!(s.topics.iter().find(|t| t.id == topic).unwrap().project_id, 1);
+        assert_eq!(s.topics().iter().find(|t| t.id == topic).unwrap().project_id, 1);
         assert_eq!(s.topic_planning_status(topic), Some("Awaiting planning"));
         let mut run = s.prepare_request_plan(id).unwrap();
         run.status = "Queued".into();
@@ -1295,9 +1295,9 @@ mod tests {
         s.run_at_mut(0).unwrap().status = "Failed".into();
         assert_eq!(s.topic_planning_status(topic), Some("Planning needs attention"));
         assert!(s.prepare_request_plan(id).is_ok());
-        let count = s.topics.len();
+        let count = s.topics().len();
         let goals = s.apply_request_plan(id, PLAN).unwrap();
-        assert_eq!(s.topics.len(), count);
+        assert_eq!(s.topics().len(), count);
         assert_eq!(s.task(goals[0]).unwrap().topic_id, Some(topic));
         assert_eq!(s.task_topic(goals[0]).unwrap().name, "Intel");
         assert_eq!(s.topic_planning_status(topic), None);
@@ -1310,7 +1310,7 @@ mod tests {
         let topic = s.request_at_mut(0).unwrap().topic_id.unwrap();
         s.rename_topic(topic, "My topic").unwrap();
         s.apply_request_plan(id, PLAN).unwrap();
-        assert_eq!(s.topics.iter().find(|t| t.id == topic).unwrap().name, "My topic");
+        assert_eq!(s.topics().iter().find(|t| t.id == topic).unwrap().name, "My topic");
         let mut old = serde_json::to_value(&s.request_at_mut(0).unwrap()).unwrap();
         old.as_object_mut().unwrap().remove("provisional_topic_name");
         old["topic_id"] = serde_json::Value::Null;
@@ -1331,13 +1331,13 @@ mod tests {
         s.push_run(request_run);
         let before = s.clone();
         s.rename_project(1, "  新项目名称  ").unwrap();
-        assert_eq!(s.project_at_mut(0).unwrap().name, "新项目名称");
-        assert_eq!(s.project_at_mut(0).unwrap().id, before.project_at_mut(0).unwrap().id);
-        assert_eq!(s.project_at_mut(0).unwrap().key, before.project_at_mut(0).unwrap().key);
-        assert_eq!(s.project_at_mut(0).unwrap().directory, before.project_at_mut(0).unwrap().directory);
-        assert_eq!(s.tasks, before.tasks);
-        assert_eq!(s.topics, before.topics);
-        assert_eq!(s.research_requests, before.research_requests);
+        assert_eq!(s.projects()[0].name, "新项目名称");
+        assert_eq!(s.projects()[0].id, before.projects()[0].id);
+        assert_eq!(s.projects()[0].key, before.projects()[0].key);
+        assert_eq!(s.projects()[0].directory, before.projects()[0].directory);
+        assert_eq!(s.tasks(), before.tasks());
+        assert_eq!(s.topics(), before.topics());
+        assert_eq!(s.research_requests(), before.research_requests());
         assert_eq!(s.runs()[0].input_signature, s.project_plan_signature(1).unwrap());
         assert_eq!(s.runs()[1].input_signature, s.request_plan_signature(request).unwrap());
         for (old, new) in before.runs().iter().zip(s.runs().iter()) {

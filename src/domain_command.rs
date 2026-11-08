@@ -1439,10 +1439,7 @@ fn apply_dispatch_request_plan(
     }
     let run_id = run.id;
     staged.push_run(run);
-    if let Some(request) = staged
-        .research_requests()
-        .iter_mut()
-        .find(|request| request.id == request_id)
+    if let Some(request) = staged.request_mut(request_id)
     {
         request.planning_run_id = Some(run_id);
     }

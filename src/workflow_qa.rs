@@ -250,7 +250,7 @@ pub fn display_order() {
             let goal = a.store.create_research_goal("Workflow order".into(), "Scope".into(), 1).unwrap();
             let steps = a.store.apply_research_plan(goal, r#"{"tasks":[{"title":"Evidence","instructions":"Collect","kind":"collect","depends_on":[]},{"title":"Analysis","instructions":"Analyze","kind":"analyze","depends_on":[0]},{"title":"Report","instructions":"Report","kind":"advise","depends_on":[1]}]}"#).unwrap();
             for (i, id) in steps.iter().enumerate() { a.store.task_mut(*id).unwrap().created_at = format!("2026-11-0{}T10:00:00Z", i + 1); }
-            a.store.tasks().reverse();
+            a.store.reverse_tasks();
             a.collapsed_sidebar_goals.retain(|id| *id != goal);
             a.open_task(goal, w, cx);
             a.goal_steps_tab = Some(goal);

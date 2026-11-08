@@ -67,7 +67,7 @@ mod tests {
         for (index, id) in ids.iter().enumerate() {
             s.task_mut(*id).unwrap().created_at = format!("2026-11-0{}T10:00:00Z", index + 1);
         }
-        s.tasks.reverse();
+        s.reverse_tasks();
         let before = s.clone();
         let mut steps: Vec<_> = ids.iter().map(|id| s.task(*id).unwrap()).collect();
         steps.sort_by(|a, b| siblings_in_display_order(a, b));
@@ -96,7 +96,7 @@ mod tests {
         ]) {
             s.task_mut(*id).unwrap().created_at = time.into();
         }
-        let mut tasks: Vec<_> = s.tasks.iter().collect();
+        let mut tasks: Vec<_> = s.tasks().iter().collect();
         tasks.sort_by(|a, b| tasks_newest_first(a, b));
         assert_eq!(
             tasks.iter().map(|t| t.id).collect::<Vec<_>>(),
@@ -117,12 +117,13 @@ mod tests {
         let c = s
             .create_task_in_topic("New topic latest task", 1, Stage::Planned, None, Some(new))
             .unwrap();
-        for t in &mut s.tasks {
-            t.created_at = "2026-11-01 10:00:00 +08:00".into();
+        let ids: Vec<u64> = s.tasks().iter().map(|task| task.id).collect();
+        for id in ids {
+            s.task_mut(id).unwrap().created_at = "2026-11-01 10:00:00 +08:00".into();
         }
-        s.tasks.reverse();
+        s.reverse_tasks();
         let before = s.clone();
-        let mut tasks: Vec<_> = s.tasks.iter().collect();
+        let mut tasks: Vec<_> = s.tasks().iter().collect();
         tasks.sort_by(|a, b| s.compare_display_tasks(a, b));
         assert_eq!(
             tasks.iter().map(|t| t.id).collect::<Vec<_>>(),

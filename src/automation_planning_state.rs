@@ -162,11 +162,7 @@ mod tests {
         let run = store.prepare_request_plan(request).unwrap();
         let id = run.id;
         store.push_run(run);
-        store
-            .research_requests
-            .iter_mut()
-            .find(|value| value.id == request)
-            .unwrap()
+        store.request_mut(request).unwrap()
             .planning_run_id = Some(id);
         id
     }
@@ -187,7 +183,7 @@ mod tests {
         let id = run.id;
         store.push_run(run);
         let revision = store
-            .research_requests
+            .research_requests()
             .iter()
             .find(|value| value.id == request)
             .unwrap()
@@ -195,18 +191,14 @@ mod tests {
         store
             .apply_automation_template(automation, request, revision, &signature, PLAN, 2_000)
             .unwrap();
-        store
-            .research_requests
-            .iter_mut()
-            .find(|value| value.id == request)
-            .unwrap()
+        store.request_mut(request).unwrap()
             .planning_run_id = Some(id);
         id
     }
 
     fn approve_current(store: &mut Store, automation: u64, request: u64) {
         let revision = store
-            .research_requests
+            .research_requests()
             .iter()
             .find(|value| value.id == request)
             .unwrap()

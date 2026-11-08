@@ -143,7 +143,7 @@ mod tests {
     const PLAN: &str = r#"{"tasks":[{"title":"Collect","instructions":"Find sources","kind":"collect","depends_on":[]},{"title":"Analyze","instructions":"Analyze evidence","kind":"analyze","depends_on":[0]},{"title":"Report","instructions":"Write report","kind":"advise","depends_on":[1]}]}"#;
     fn setup() -> (Store, u64, u64) {
         let mut store = Store::empty();
-        let project = store.project_at_mut(0).unwrap().id;
+        let project = store.projects()[0].id;
         store.project_at_mut(0).unwrap().directory = "/tmp".into();
         store.set_default_model("fixture/model".into());
         let goal = store

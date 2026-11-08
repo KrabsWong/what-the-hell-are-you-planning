@@ -240,11 +240,7 @@ fn planning_chain(root: &Path) {
     run.output = r#"{"topic_name":"Semiconductor supply","brief":{"objective":"Track supply","deliverable":"Sourced note","scope":"Latest quarter","assumptions":[],"facts_to_verify":[]},"goals":[{"title":"Foundry capacity","brief":"Track announced capacity","tasks":[{"title":"Collect","instructions":"Collect filings","kind":"collect","depends_on":[]},{"title":"Analyze","instructions":"Compare capacity","kind":"analyze","depends_on":[0]},{"title":"Report","instructions":"Write the note","kind":"advise","depends_on":[1]}]},{"title":"Equipment orders","brief":"Track equipment bookings","tasks":[{"title":"Collect","instructions":"Collect orders","kind":"collect","depends_on":[]},{"title":"Analyze","instructions":"Compare orders","kind":"analyze","depends_on":[0]},{"title":"Report","instructions":"Write the note","kind":"advise","depends_on":[1]}]}]}"#.into();
     let run_id = run.id;
     store.push_run(run);
-    store
-        .research_requests
-        .iter_mut()
-        .find(|candidate| candidate.id == request)
-        .unwrap()
+    store.request_mut(request).unwrap()
         .planning_run_id = Some(run_id);
     let topics_before = store.topics().len();
     let tasks_before = store.tasks().len();
@@ -3106,14 +3102,16 @@ fn undo_protection_check(root: &Path) {
     // stays undoable and cannot roll back schedule state.
     cx.update_window(handle, |_, w, cx| {
         app.update(cx, |a, cx| {
-            assert!(a.apply_domain_change(
-                move |store| {
-                    store.task_mut(task).unwrap().title = "Ordinary edit one".into();
-                    Ok(())
-                },
-                "Task renamed",
-                cx,
-            ));
+            assert!(a
+                .apply_domain_command_undoable(
+                    crate::scoped_domain::DomainCommand::TaskTitle {
+                        task,
+                        title: "Ordinary edit one".into(),
+                    },
+                    "Task renamed",
+                    cx,
+                )
+                .is_some());
             assert_eq!(a.undo.len(), 1, "a scoped edit is undoable");
         });
         app.update(cx, |a, cx| a.pause_automation_ui(paused, cx));
@@ -3150,14 +3148,16 @@ fn undo_protection_check(root: &Path) {
     // disturb the paused definition.
     cx.update_window(handle, |_, w, cx| {
         app.update(cx, |a, cx| {
-            assert!(a.apply_domain_change(
-                move |store| {
-                    store.task_mut(task).unwrap().title = "Ordinary edit two".into();
-                    Ok(())
-                },
-                "Task renamed",
-                cx,
-            ));
+            assert!(a
+                .apply_domain_command_undoable(
+                    crate::scoped_domain::DomainCommand::TaskTitle {
+                        task,
+                        title: "Ordinary edit two".into(),
+                    },
+                    "Task renamed",
+                    cx,
+                )
+                .is_some());
             assert!(a.undo_invalidation.is_none(), "no legacy barrier remains");
             a.undo_change(w, cx);
         });
@@ -3180,14 +3180,16 @@ fn undo_protection_check(root: &Path) {
     let occurrence_id = cx
         .update_window(handle, |_, _, cx| {
             app.update(cx, |a, cx| {
-                assert!(a.apply_domain_change(
-                    move |store| {
-                        store.task_mut(task).unwrap().title = "Ordinary edit four".into();
-                        Ok(())
-                    },
-                    "Task renamed",
-                    cx,
-                ));
+                assert!(a
+                    .apply_domain_command_undoable(
+                        crate::scoped_domain::DomainCommand::TaskTitle {
+                            task,
+                            title: "Ordinary edit four".into(),
+                        },
+                        "Task renamed",
+                        cx,
+                    )
+                    .is_some());
                 {
                     let mut definition = a.store.automation_mut(paused).unwrap();
                     definition.anchor = Some(now - 600);
@@ -3246,14 +3248,16 @@ fn undo_protection_check(root: &Path) {
     // the edit and cannot delete the draft.
     cx.update_window(handle, |_, w, cx| {
         app.update(cx, |a, cx| {
-            assert!(a.apply_domain_change(
-                move |store| {
-                    store.task_mut(task).unwrap().title = "Ordinary edit five".into();
-                    Ok(())
-                },
-                "Task renamed",
-                cx,
-            ));
+            assert!(a
+                .apply_domain_command_undoable(
+                    crate::scoped_domain::DomainCommand::TaskTitle {
+                        task,
+                        title: "Ordinary edit five".into(),
+                    },
+                    "Task renamed",
+                    cx,
+                )
+                .is_some());
             a.start_automation_create(w, cx);
             a.automation_ui.objective.update(cx, |state, cx| {
                 state.set_value("Check fuel prices every day and cite a source.", w, cx);
@@ -3290,14 +3294,16 @@ fn undo_protection_check(root: &Path) {
     // and cannot disable the automation again.
     cx.update_window(handle, |_, w, cx| {
         app.update(cx, |a, cx| {
-            assert!(a.apply_domain_change(
-                move |store| {
-                    store.task_mut(task).unwrap().title = "Ordinary edit six".into();
-                    Ok(())
-                },
-                "Task renamed",
-                cx,
-            ));
+            assert!(a
+                .apply_domain_command_undoable(
+                    crate::scoped_domain::DomainCommand::TaskTitle {
+                        task,
+                        title: "Ordinary edit six".into(),
+                    },
+                    "Task renamed",
+                    cx,
+                )
+                .is_some());
             a.edit_automation(draft_id, w, cx);
             a.enable_automation(cx);
         });
@@ -4409,11 +4415,7 @@ fn late_planning_completion_check(root: &Path) {
     run.output = r#"{"topic_name":"Semiconductor supply","brief":{"objective":"Track supply","deliverable":"Sourced note","scope":"Latest quarter","assumptions":[],"facts_to_verify":[]},"goals":[{"title":"Foundry capacity","brief":"Track announced capacity","tasks":[{"title":"Collect","instructions":"Collect filings","kind":"collect","depends_on":[]},{"title":"Analyze","instructions":"Compare capacity","kind":"analyze","depends_on":[0]},{"title":"Report","instructions":"Write the note","kind":"advise","depends_on":[1]}]},{"title":"Equipment orders","brief":"Track equipment bookings","tasks":[{"title":"Collect","instructions":"Collect orders","kind":"collect","depends_on":[]},{"title":"Analyze","instructions":"Compare orders","kind":"analyze","depends_on":[0]},{"title":"Report","instructions":"Write the note","kind":"advise","depends_on":[1]}]}]}"#.into();
     let run_id = run.id;
     store.push_run(run);
-    store
-        .research_requests
-        .iter_mut()
-        .find(|candidate| candidate.id == request)
-        .unwrap()
+    store.request_mut(request).unwrap()
         .planning_run_id = Some(run_id);
     Storage::new(path.clone()).save(&store).unwrap();
 

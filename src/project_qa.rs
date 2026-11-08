@@ -26,9 +26,9 @@ pub fn run(live: bool) {
         .expect("Read saved configuration; open the app and complete setup first")
         .expect("No saved workspace; configure OpenCode and a model in the app first");
     let mut initial = Store::empty();
-    initial.set_opencode_path(saved.opencode_path);
-    initial.set_default_model(saved.default_model);
-    initial.research_config = saved.research_config();
+    initial.set_opencode_path(saved.opencode_path().clone());
+    initial.set_default_model(saved.default_model().clone());
+    initial.set_research_config(saved.research_config().clone());
     initial.project_at_mut(0).unwrap().name = "Live research acceptance".into();
     initial.project_at_mut(0).unwrap().directory = root.join("project").to_string_lossy().into();
     std::fs::create_dir_all(&initial.projects()[0].directory).unwrap();

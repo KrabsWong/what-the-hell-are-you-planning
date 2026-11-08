@@ -1,41 +1,170 @@
 //! T13 S3e/f: bounded, command-targeted change sets for project/topic context,
 //! directory, archive/restore and settings.
 //!
-//! Each command records only the entities and fields it is about to write. There
-//! is no whole-Store snapshot or whole-domain diff. The inverse validates every
-//! recorded preimage before touching anything, then applies a fixed write set.
+//! Each command records only the fields it writes. There is no whole-Store
+//! snapshot or whole-domain diff. The inverse validates every recorded field
+//! before touching anything, then applies a fixed write set.
 
 use crate::appearance::Appearance;
-use crate::domain::{activity_event, AgentRun, Project, ResearchRequest, Store, Task, Topic};
+use crate::domain::{AgentRun, Project, ResearchRequest, Store, Task, Topic};
 use crate::model_profiles::ModelProfile;
 use crate::report_publish::PublishingConfig;
 use crate::research::ResearchConfig;
 use crate::scoped_edit::ScopedEditError;
 
 #[derive(Clone, Debug, PartialEq)]
-enum EntityDelta<T> {
-    Changed { before: T, after: T },
-    Created(T),
-    Deleted(T),
+enum ProjectDelta {
+    Name {
+        id: u64,
+        before: String,
+        after: String,
+    },
+    Directory {
+        id: u64,
+        before: String,
+        after: String,
+    },
+    Created(Project),
+    Deleted(Project),
 }
 
-impl<T> EntityDelta<T> {
-    fn key<F: Fn(&T) -> u64>(&self, id: F) -> u64 {
+impl ProjectDelta {
+    fn key(&self) -> u64 {
         match self {
-            Self::Changed { after, .. } => id(after),
-            Self::Created(value) => id(value),
-            Self::Deleted(value) => id(value),
+            Self::Name { id, .. } | Self::Directory { id, .. } => *id,
+            Self::Created(value) | Self::Deleted(value) => value.id,
         }
     }
 }
 
 #[derive(Clone, Debug, PartialEq)]
-struct RunDelta {
-    before: AgentRun,
-    after: AgentRun,
+enum TopicDelta {
+    Name {
+        id: u64,
+        before: String,
+        after: String,
+    },
+    Project {
+        id: u64,
+        before: u64,
+        after: u64,
+    },
+    Archived {
+        id: u64,
+        before: bool,
+        after: bool,
+    },
+    Created(Topic),
+    Deleted(Topic),
 }
 
-/// Optional field deltas. Each field is validated and restored independently.
+impl TopicDelta {
+    fn key(&self) -> u64 {
+        match self {
+            Self::Name { id, .. } | Self::Project { id, .. } | Self::Archived { id, .. } => *id,
+            Self::Created(value) | Self::Deleted(value) => value.id,
+        }
+    }
+}
+
+#[derive(Clone, Debug, PartialEq)]
+enum TaskDelta {
+    Title {
+        id: u64,
+        before: String,
+        after: String,
+    },
+    Labels {
+        id: u64,
+        before: Vec<String>,
+        after: Vec<String>,
+    },
+    Parent {
+        id: u64,
+        before: Option<u64>,
+        after: Option<u64>,
+    },
+    Topic {
+        id: u64,
+        before: Option<u64>,
+        after: Option<u64>,
+    },
+    Project {
+        id: u64,
+        before: u64,
+        after: u64,
+    },
+    ApprovedPlan {
+        id: u64,
+        before: Option<String>,
+        after: Option<String>,
+    },
+    Archived {
+        id: u64,
+        before: bool,
+        after: bool,
+    },
+}
+
+impl TaskDelta {
+    fn key(&self) -> u64 {
+        match self {
+            Self::Title { id, .. }
+            | Self::Labels { id, .. }
+            | Self::Parent { id, .. }
+            | Self::Topic { id, .. }
+            | Self::Project { id, .. }
+            | Self::ApprovedPlan { id, .. }
+            | Self::Archived { id, .. } => *id,
+        }
+    }
+}
+
+#[derive(Clone, Debug, PartialEq)]
+enum RequestDelta {
+    Project {
+        id: u64,
+        before: u64,
+        after: u64,
+    },
+    Topic {
+        id: u64,
+        before: Option<u64>,
+        after: Option<u64>,
+    },
+}
+
+impl RequestDelta {
+    fn key(&self) -> u64 {
+        match self {
+            Self::Project { id, .. } | Self::Topic { id, .. } => *id,
+        }
+    }
+}
+
+/// Only the user-context fields these commands may change. Runtime status,
+/// output, logs, sessions and approvals must never be restored by Undo.
+#[derive(Clone, Debug, PartialEq)]
+struct RunDelta {
+    id: u64,
+    before_input_signature: String,
+    after_input_signature: String,
+    before_project_plan: Option<u64>,
+    after_project_plan: Option<u64>,
+}
+
+impl RunDelta {
+    fn capture(before: &AgentRun, after: &AgentRun) -> Self {
+        Self {
+            id: before.id,
+            before_input_signature: before.input_signature.clone(),
+            after_input_signature: after.input_signature.clone(),
+            before_project_plan: before.project_plan,
+            after_project_plan: after.project_plan,
+        }
+    }
+}
+
 #[derive(Clone, Debug, Default, PartialEq)]
 struct SettingsDelta {
     default_model: Option<(String, String)>,
@@ -164,15 +293,38 @@ impl SettingsBefore {
 
 #[derive(Clone, Debug, PartialEq)]
 pub(crate) struct DomainUndo {
-    projects: Vec<EntityDelta<Project>>,
-    topics: Vec<EntityDelta<Topic>>,
-    tasks: Vec<EntityDelta<Task>>,
-    requests: Vec<EntityDelta<ResearchRequest>>,
+    projects: Vec<ProjectDelta>,
+    topics: Vec<TopicDelta>,
+    tasks: Vec<TaskDelta>,
+    requests: Vec<RequestDelta>,
     runs: Vec<RunDelta>,
     settings: SettingsDelta,
 }
 
 impl DomainUndo {
+    /// Swap the write set so a failed durable save can restore the state the
+    /// inverse just replaced, without cloning the Store.
+    pub(crate) fn invert(&self) -> Self {
+        Self {
+            projects: self.projects.iter().map(invert_project).collect(),
+            topics: self.topics.iter().map(invert_topic).collect(),
+            tasks: self.tasks.iter().map(invert_task).collect(),
+            requests: self.requests.iter().map(invert_request).collect(),
+            runs: self
+                .runs
+                .iter()
+                .map(|delta| RunDelta {
+                    id: delta.id,
+                    before_input_signature: delta.after_input_signature.clone(),
+                    after_input_signature: delta.before_input_signature.clone(),
+                    before_project_plan: delta.after_project_plan,
+                    after_project_plan: delta.before_project_plan,
+                })
+                .collect(),
+            settings: invert_settings(&self.settings),
+        }
+    }
+
     pub(crate) fn changed_entities(&self) -> usize {
         self.projects.len()
             + self.topics.len()
@@ -201,6 +353,8 @@ pub(crate) enum DomainCommand {
     TopicArchive { topic: u64, archived: bool },
     GoalTopic { goal: u64, topic: Option<u64> },
     TaskParent { task: u64, parent: Option<u64> },
+    TaskTitle { task: u64, title: String },
+    TaskLabels { task: u64, labels: Vec<String> },
     TaskArchive { task: u64, archived: bool },
     RestoreArchived { task: u64 },
     ModelAgent { stage: Option<usize>, agent: String },
@@ -216,8 +370,6 @@ pub(crate) enum DomainCommand {
 }
 
 impl DomainCommand {
-    /// Validate and execute against the live Store. All validation happens
-    /// before the first write; the returned undo is a fixed write set.
     pub(crate) fn execute(self, store: &mut Store) -> Result<DomainOutcome, String> {
         let mut undo = DomainUndo {
             projects: Vec::new(),
@@ -241,8 +393,12 @@ impl DomainCommand {
                 let runs_before = capture_runs(store, &run_ids);
                 store.rename_project(project, &name)?;
                 let after = store.project(project).cloned().ok_or("Project not found.")?;
-                if before != after {
-                    undo.projects.push(EntityDelta::Changed { before, after });
+                if before.name != after.name {
+                    undo.projects.push(ProjectDelta::Name {
+                        id: project,
+                        before: before.name,
+                        after: after.name,
+                    });
                 }
                 undo.runs = changed_runs(store, runs_before);
             }
@@ -253,8 +409,12 @@ impl DomainCommand {
                     .ok_or("Project not found.")?
                     .directory = directory;
                 let after = store.project(project).cloned().ok_or("Project not found.")?;
-                if before != after {
-                    undo.projects.push(EntityDelta::Changed { before, after });
+                if before.directory != after.directory {
+                    undo.projects.push(ProjectDelta::Directory {
+                        id: project,
+                        before: before.directory,
+                        after: after.directory,
+                    });
                 }
             }
             Self::ProjectCreate { name, directory } => {
@@ -278,21 +438,25 @@ impl DomainCommand {
                     kind: crate::domain::ProjectKind::User,
                 };
                 store.push_project(project.clone());
-                undo.projects.push(EntityDelta::Created(project));
+                undo.projects.push(ProjectDelta::Created(project));
                 created_project = Some(id);
             }
             Self::TopicCreate { project, name } => {
                 let id = store.create_topic(project, name)?;
                 let after = store.topic(id).cloned().ok_or("Topic not found.")?;
-                undo.topics.push(EntityDelta::Created(after));
+                undo.topics.push(TopicDelta::Created(after));
                 created_topic = Some(id);
             }
             Self::TopicRename { topic, name } => {
                 let before = store.topic(topic).cloned().ok_or("Topic not found.")?;
                 store.rename_topic(topic, name)?;
                 let after = store.topic(topic).cloned().ok_or("Topic not found.")?;
-                if before != after {
-                    undo.topics.push(EntityDelta::Changed { before, after });
+                if before.name != after.name {
+                    undo.topics.push(TopicDelta::Name {
+                        id: topic,
+                        before: before.name,
+                        after: after.name,
+                    });
                 }
             }
             Self::TopicMove { topic, project } => {
@@ -302,8 +466,12 @@ impl DomainCommand {
                 let before = store.topic(topic).cloned().ok_or("Topic not found.")?;
                 store.set_topic_archived(topic, archived)?;
                 let after = store.topic(topic).cloned().ok_or("Topic not found.")?;
-                if before != after {
-                    undo.topics.push(EntityDelta::Changed { before, after });
+                if before.archived != after.archived {
+                    undo.topics.push(TopicDelta::Archived {
+                        id: topic,
+                        before: before.archived,
+                        after: after.archived,
+                    });
                 }
             }
             Self::GoalTopic { goal, topic } => {
@@ -315,16 +483,62 @@ impl DomainCommand {
                     store.set_root_topic(goal, topic)?;
                 }
                 let after = store.task(goal).cloned().ok_or("Task not found.")?;
-                record_task_change(&mut undo, before, after);
+                if before.topic_id != after.topic_id {
+                    undo.tasks.push(TaskDelta::Topic {
+                        id: goal,
+                        before: before.topic_id,
+                        after: after.topic_id,
+                    });
+                }
             }
             Self::TaskParent { task, parent } => {
                 let before = store.task(task).cloned().ok_or("Task not found.")?;
                 let max_topic = store.topics().iter().map(|topic| topic.id).max().unwrap_or(0);
                 store.set_parent(task, parent)?;
                 let after = store.task(task).cloned().ok_or("Task not found.")?;
-                record_task_change(&mut undo, before, after);
+                if before.parent_id != after.parent_id {
+                    undo.tasks.push(TaskDelta::Parent {
+                        id: task,
+                        before: before.parent_id,
+                        after: after.parent_id,
+                    });
+                }
+                if before.topic_id != after.topic_id {
+                    undo.tasks.push(TaskDelta::Topic {
+                        id: task,
+                        before: before.topic_id,
+                        after: after.topic_id,
+                    });
+                }
                 for topic in store.topics().iter().filter(|topic| topic.id > max_topic) {
-                    undo.topics.push(EntityDelta::Created(topic.clone()));
+                    if created_topic.is_none() {
+                        created_topic = Some(topic.id);
+                    }
+                    undo.topics.push(TopicDelta::Created(topic.clone()));
+                }
+            }
+            Self::TaskTitle { task, title } => {
+                let before = store.task(task).cloned().ok_or("Task not found.")?;
+                store.task_mut(task).ok_or("Task not found.")?.title = title;
+                let after = store.task(task).cloned().ok_or("Task not found.")?;
+                if before.title != after.title {
+                    undo.tasks.push(TaskDelta::Title {
+                        id: task,
+                        before: before.title,
+                        after: after.title,
+                    });
+                }
+            }
+            Self::TaskLabels { task, labels } => {
+                let before = store.task(task).cloned().ok_or("Task not found.")?;
+                store.task_mut(task).ok_or("Task not found.")?.labels = labels;
+                let after = store.task(task).cloned().ok_or("Task not found.")?;
+                if before.labels != after.labels {
+                    undo.tasks.push(TaskDelta::Labels {
+                        id: task,
+                        before: before.labels,
+                        after: after.labels,
+                    });
                 }
             }
             Self::TaskArchive { task, archived } => {
@@ -335,7 +549,13 @@ impl DomainCommand {
                     store.restore(task)?;
                 }
                 let after = store.task(task).cloned().ok_or("Task not found.")?;
-                record_task_change(&mut undo, before, after);
+                if before.archived != after.archived {
+                    undo.tasks.push(TaskDelta::Archived {
+                        id: task,
+                        before: before.archived,
+                        after: after.archived,
+                    });
+                }
             }
             Self::RestoreArchived { task } => {
                 self::restore_archived(store, task, &mut undo)?;
@@ -409,56 +629,6 @@ impl DomainCommand {
     }
 }
 
-/// QA-only compatibility capture for test helpers that still use a closure.
-/// Production commands build their undo from the exact write set instead.
-#[cfg(feature = "qa")]
-pub(crate) fn capture_undo(before: &Store, after: &Store) -> Option<DomainUndo> {
-    fn diff<T: Clone + PartialEq>(
-        before: &[T],
-        after: &[T],
-        id: impl Fn(&T) -> u64,
-    ) -> Vec<EntityDelta<T>> {
-        let mut changes = Vec::new();
-        for old in before {
-            match after.iter().find(|value| id(value) == id(old)) {
-                Some(new) if new != old => changes.push(EntityDelta::Changed {
-                    before: old.clone(),
-                    after: new.clone(),
-                }),
-                None => changes.push(EntityDelta::Deleted(old.clone())),
-                Some(_) => {}
-            }
-        }
-        for new in after {
-            if !before.iter().any(|value| id(value) == id(new)) {
-                changes.push(EntityDelta::Created(new.clone()));
-            }
-        }
-        changes
-    }
-    let undo = DomainUndo {
-        projects: diff(before.projects(), after.projects(), |value| value.id),
-        topics: diff(before.topics(), after.topics(), |value| value.id),
-        tasks: diff(before.tasks(), after.tasks(), |value| value.id),
-        requests: diff(before.research_requests(), after.research_requests(), |value| {
-            value.id
-        }),
-        runs: diff_runs(before.runs(), after.runs()),
-        settings: {
-            let before = SettingsState::capture(before);
-            let after = SettingsState::capture(after);
-            (before != after).then_some((before, after))
-        },
-    };
-    (!undo.is_empty()).then_some(undo)
-}
-
-fn record_task_change(undo: &mut DomainUndo, before: Task, after: Task) {
-    if before != after {
-        undo.tasks.push(EntityDelta::Changed { before, after });
-    }
-}
-
 fn capture_runs(store: &Store, ids: &[u64]) -> Vec<AgentRun> {
     ids.iter()
         .filter_map(|id| store.runs().iter().find(|run| run.id == *id).cloned())
@@ -473,11 +643,11 @@ fn changed_runs(store: &Store, before: Vec<AgentRun>) -> Vec<RunDelta> {
                 .runs()
                 .iter()
                 .find(|run| run.id == before.id)
-                .filter(|after| *after != &before)
-                .map(|after| RunDelta {
-                    before,
-                    after: after.clone(),
+                .filter(|after| {
+                    after.input_signature != before.input_signature
+                        || after.project_plan != before.project_plan
                 })
+                .map(|after| RunDelta::capture(&before, after))
         })
         .collect()
 }
@@ -550,17 +720,29 @@ fn move_topic(
     store.move_topic_project(topic, project)?;
 
     let topic_after = store.topic(topic).cloned().ok_or("Topic not found.")?;
-    if topic_before != topic_after {
-        undo.topics.push(EntityDelta::Changed {
-            before: topic_before,
-            after: topic_after,
+    if topic_before.project_id != topic_after.project_id {
+        undo.topics.push(TopicDelta::Project {
+            id: topic,
+            before: topic_before.project_id,
+            after: topic_after.project_id,
         });
     }
     for before in tasks_before {
-        if let Some(after) = store.task(before.id).cloned()
-            && before != after
-        {
-            undo.tasks.push(EntityDelta::Changed { before, after });
+        if let Some(after) = store.task(before.id).cloned() {
+            if before.project_id != after.project_id {
+                undo.tasks.push(TaskDelta::Project {
+                    id: before.id,
+                    before: before.project_id,
+                    after: after.project_id,
+                });
+            }
+            if before.approved_plan != after.approved_plan {
+                undo.tasks.push(TaskDelta::ApprovedPlan {
+                    id: before.id,
+                    before: before.approved_plan,
+                    after: after.approved_plan,
+                });
+            }
         }
     }
     for before in requests_before {
@@ -569,9 +751,21 @@ fn move_topic(
             .iter()
             .find(|request| request.id == before.id)
             .cloned()
-            && before != after
         {
-            undo.requests.push(EntityDelta::Changed { before, after });
+            if before.project_id != after.project_id {
+                undo.requests.push(RequestDelta::Project {
+                    id: before.id,
+                    before: before.project_id,
+                    after: after.project_id,
+                });
+            }
+            if before.topic_id != after.topic_id {
+                undo.requests.push(RequestDelta::Topic {
+                    id: before.id,
+                    before: before.topic_id,
+                    after: after.topic_id,
+                });
+            }
         }
     }
     undo.runs = changed_runs(store, runs_before);
@@ -579,9 +773,6 @@ fn move_topic(
 }
 
 fn restore_archived(store: &mut Store, id: u64, undo: &mut DomainUndo) -> Result<(), String> {
-    // Preflight the whole ownership chain with a planning-only view of which
-    // themes/tasks would be unarchived. A cycle or unresolved owner is rejected
-    // before the first write.
     let plan = plan_archive_restore(store, id)?;
     for owner in plan {
         match owner {
@@ -589,15 +780,25 @@ fn restore_archived(store: &mut Store, id: u64, undo: &mut DomainUndo) -> Result
                 let before = store.topic(topic).cloned().ok_or("Topic not found.")?;
                 store.set_topic_archived(topic, false)?;
                 let after = store.topic(topic).cloned().ok_or("Topic not found.")?;
-                if before != after {
-                    undo.topics.push(EntityDelta::Changed { before, after });
+                if before.archived != after.archived {
+                    undo.topics.push(TopicDelta::Archived {
+                        id: topic,
+                        before: before.archived,
+                        after: after.archived,
+                    });
                 }
             }
             crate::archive_presentation::ArchivedOwner::Task(task) => {
                 let before = store.task(task).cloned().ok_or("Task not found.")?;
                 store.restore(task)?;
                 let after = store.task(task).cloned().ok_or("Task not found.")?;
-                record_task_change(undo, before, after);
+                if before.archived != after.archived {
+                    undo.tasks.push(TaskDelta::Archived {
+                        id: task,
+                        before: before.archived,
+                        after: after.archived,
+                    });
+                }
             }
         }
     }
@@ -797,6 +998,119 @@ fn delete_profile(store: &mut Store, name: &str) {
     }
 }
 
+fn invert_project(delta: &ProjectDelta) -> ProjectDelta {
+    match delta {
+        ProjectDelta::Name { id, before, after } => ProjectDelta::Name {
+            id: *id,
+            before: after.clone(),
+            after: before.clone(),
+        },
+        ProjectDelta::Directory { id, before, after } => ProjectDelta::Directory {
+            id: *id,
+            before: after.clone(),
+            after: before.clone(),
+        },
+        ProjectDelta::Created(value) => ProjectDelta::Deleted(value.clone()),
+        ProjectDelta::Deleted(value) => ProjectDelta::Created(value.clone()),
+    }
+}
+
+fn invert_topic(delta: &TopicDelta) -> TopicDelta {
+    match delta {
+        TopicDelta::Name { id, before, after } => TopicDelta::Name {
+            id: *id,
+            before: after.clone(),
+            after: before.clone(),
+        },
+        TopicDelta::Project { id, before, after } => TopicDelta::Project {
+            id: *id,
+            before: *after,
+            after: *before,
+        },
+        TopicDelta::Archived { id, before, after } => TopicDelta::Archived {
+            id: *id,
+            before: *after,
+            after: *before,
+        },
+        TopicDelta::Created(value) => TopicDelta::Deleted(value.clone()),
+        TopicDelta::Deleted(value) => TopicDelta::Created(value.clone()),
+    }
+}
+
+fn invert_task(delta: &TaskDelta) -> TaskDelta {
+    match delta {
+        TaskDelta::Title { id, before, after } => TaskDelta::Title {
+            id: *id,
+            before: after.clone(),
+            after: before.clone(),
+        },
+        TaskDelta::Labels { id, before, after } => TaskDelta::Labels {
+            id: *id,
+            before: after.clone(),
+            after: before.clone(),
+        },
+        TaskDelta::Parent { id, before, after } => TaskDelta::Parent {
+            id: *id,
+            before: *after,
+            after: *before,
+        },
+        TaskDelta::Topic { id, before, after } => TaskDelta::Topic {
+            id: *id,
+            before: *after,
+            after: *before,
+        },
+        TaskDelta::Project { id, before, after } => TaskDelta::Project {
+            id: *id,
+            before: *after,
+            after: *before,
+        },
+        TaskDelta::ApprovedPlan { id, before, after } => TaskDelta::ApprovedPlan {
+            id: *id,
+            before: after.clone(),
+            after: before.clone(),
+        },
+        TaskDelta::Archived { id, before, after } => TaskDelta::Archived {
+            id: *id,
+            before: *after,
+            after: *before,
+        },
+    }
+}
+
+fn invert_request(delta: &RequestDelta) -> RequestDelta {
+    match delta {
+        RequestDelta::Project { id, before, after } => RequestDelta::Project {
+            id: *id,
+            before: *after,
+            after: *before,
+        },
+        RequestDelta::Topic { id, before, after } => RequestDelta::Topic {
+            id: *id,
+            before: *after,
+            after: *before,
+        },
+    }
+}
+
+fn invert_settings(delta: &SettingsDelta) -> SettingsDelta {
+    fn swap<T: Clone>(value: &Option<(T, T)>) -> Option<(T, T)> {
+        value
+            .as_ref()
+            .map(|(before, after)| (after.clone(), before.clone()))
+    }
+    SettingsDelta {
+        default_model: swap(&delta.default_model),
+        research_config: swap(&delta.research_config),
+        model_profiles: swap(&delta.model_profiles),
+        active_model_profile: swap(&delta.active_model_profile),
+        max_concurrent_runs: swap(&delta.max_concurrent_runs),
+        max_concurrent_automations: swap(&delta.max_concurrent_automations),
+        appearance: swap(&delta.appearance),
+        report_publishing: swap(&delta.report_publishing),
+        opencode_path: swap(&delta.opencode_path),
+    }
+}
+
 fn conflict(message: &str) -> ScopedEditError {
     ScopedEditError::Conflict(message.into())
 }
@@ -804,116 +1118,74 @@ fn conflict(message: &str) -> ScopedEditError {
 /// Validate every recorded preimage before writing. A conflict therefore leaves
 /// the entire pre-attempt state, including dirty tracking, untouched.
 pub(crate) fn apply_undo(store: &mut Store, undo: &DomainUndo) -> Result<(), ScopedEditError> {
-    validate_entities(&undo.projects, store.projects().iter(), |v| v.id,
-        "The project changed after this action. Undo would overwrite newer work.")?;
-    validate_entities(&undo.topics, store.topics().iter(), |v| v.id,
-        "The topic changed after this action. Undo would overwrite newer work.")?;
-    validate_entities(&undo.tasks, store.tasks().iter(), |v| v.id,
-        "The task changed after this action. Undo would overwrite newer work.")?;
-    validate_entities(&undo.requests, store.research_requests().iter(), |v| v.id,
-        "The research request changed after this action. Undo would overwrite newer work.")?;
+    validate_projects(store, &undo.projects)?;
+    validate_topics(store, &undo.topics)?;
+    validate_tasks(store, &undo.tasks)?;
+    validate_requests(store, &undo.requests)?;
     for delta in &undo.runs {
         let current = store
             .runs()
             .iter()
-            .find(|run| run.id == delta.after.id)
+            .find(|run| run.id == delta.id)
             .ok_or_else(|| conflict("A run from this action is no longer available."))?;
-        if current != &delta.after {
+        if current.input_signature != delta.after_input_signature
+            || current.project_plan != delta.after_project_plan
+        {
             return Err(conflict(
-                "A run changed after this action. Undo would overwrite newer runtime history.",
+                "A run's research context changed after this action. Undo would overwrite newer context.",
             ));
         }
     }
     validate_created_parents(store, undo)?;
     undo.settings.validate(store)?;
 
-    // Restore children first so creating parents from the same inverse can be
-    // removed without treating those children as unrelated later work.
+    // Children first so a parent created and a child restored by the same
+    // inverse stay coherent.
     for delta in &undo.tasks {
-        match delta {
-            EntityDelta::Changed { before, .. } => {
-                if let Some(task) = store.task_mut(before.id) {
-                    *task = before.clone();
-                }
-            }
-            EntityDelta::Created(value) => {
-                store.remove_task(value.id);
-            }
-            EntityDelta::Deleted(value) => store.push_task(value.clone()),
-        }
+        apply_task(store, delta);
     }
     for delta in &undo.requests {
-        match delta {
-            EntityDelta::Changed { before, .. } => {
-                if let Some(request) = store.request_mut(before.id) {
-                    *request = before.clone();
-                }
-            }
-            EntityDelta::Created(value) => {
-                store.remove_request(value.id);
-            }
-            EntityDelta::Deleted(value) => store.push_request(value.clone()),
-        }
+        apply_request(store, delta);
     }
     for delta in &undo.topics {
-        match delta {
-            EntityDelta::Changed { before, .. } => {
-                if let Some(topic) = store.topic_mut(before.id) {
-                    *topic = before.clone();
-                }
-            }
-            EntityDelta::Created(value) => {
-                store.remove_topic(value.id);
-            }
-            EntityDelta::Deleted(value) => store.push_topic(value.clone()),
-        }
+        apply_topic(store, delta);
     }
     for delta in &undo.projects {
-        match delta {
-            EntityDelta::Changed { before, .. } => {
-                if let Some(project) = store.project_mut(before.id) {
-                    *project = before.clone();
-                }
-            }
-            EntityDelta::Created(value) => {
-                store.remove_project(value.id);
-            }
-            EntityDelta::Deleted(value) => store.push_project(value.clone()),
-        }
+        apply_project(store, delta);
     }
     for delta in &undo.runs {
-        if let Some(run) = store.run_mut(delta.after.id) {
-            *run = delta.before.clone();
+        if let Some(mut run) = store.run_mut(delta.id) {
+            run.input_signature = delta.before_input_signature.clone();
+            run.project_plan = delta.before_project_plan;
         }
     }
     undo.settings.apply(store);
     Ok(())
 }
 
-fn validate_entities<'a, T, I, F>(
-    deltas: &[EntityDelta<T>],
-    current: I,
-    id: F,
-    message: &str,
-) -> Result<(), ScopedEditError>
-where
-    T: Clone + PartialEq + 'a,
-    I: Iterator<Item = &'a T> + Clone,
-    F: Fn(&T) -> u64 + Copy,
-{
+fn validate_projects(store: &Store, deltas: &[ProjectDelta]) -> Result<(), ScopedEditError> {
+    let message = "The project changed after this action. Undo would overwrite newer work.";
     for delta in deltas {
-        let key = delta.key(id);
-        let existing = current.clone().find(|value| id(value) == key);
+        let current = store.project(delta.key());
         match delta {
-            EntityDelta::Changed { after, .. } | EntityDelta::Created(after) => {
-                let existing = existing.ok_or_else(|| conflict(message))?;
-                if existing != after {
+            ProjectDelta::Name { after, .. } => {
+                if current.map(|project| &project.name) != Some(after) {
                     return Err(conflict(message));
                 }
             }
-            EntityDelta::Deleted(before) => {
-                if let Some(existing) = existing
-                    && existing != before
+            ProjectDelta::Directory { after, .. } => {
+                if current.map(|project| &project.directory) != Some(after) {
+                    return Err(conflict(message));
+                }
+            }
+            ProjectDelta::Created(created) => {
+                if current != Some(created) {
+                    return Err(conflict(message));
+                }
+            }
+            ProjectDelta::Deleted(before) => {
+                if let Some(project) = current
+                    && project != before
                 {
                     return Err(conflict(message));
                 }
@@ -923,22 +1195,176 @@ where
     Ok(())
 }
 
+fn validate_topics(store: &Store, deltas: &[TopicDelta]) -> Result<(), ScopedEditError> {
+    let message = "The topic changed after this action. Undo would overwrite newer work.";
+    for delta in deltas {
+        let current = store.topic(delta.key());
+        match delta {
+            TopicDelta::Name { after, .. } => {
+                if current.map(|topic| &topic.name) != Some(after) {
+                    return Err(conflict(message));
+                }
+            }
+            TopicDelta::Project { after, .. } => {
+                if current.map(|topic| topic.project_id) != Some(*after) {
+                    return Err(conflict(message));
+                }
+            }
+            TopicDelta::Archived { after, .. } => {
+                if current.map(|topic| topic.archived) != Some(*after) {
+                    return Err(conflict(message));
+                }
+            }
+            TopicDelta::Created(created) => {
+                if current != Some(created) {
+                    return Err(conflict(message));
+                }
+            }
+            TopicDelta::Deleted(before) => {
+                if let Some(topic) = current
+                    && topic != before
+                {
+                    return Err(conflict(message));
+                }
+            }
+        }
+    }
+    Ok(())
+}
+
+fn validate_tasks(store: &Store, deltas: &[TaskDelta]) -> Result<(), ScopedEditError> {
+    let message = "The task changed after this action. Undo would overwrite newer work.";
+    for delta in deltas {
+        let Some(task) = store.task(delta.key()) else {
+            return Err(conflict(message));
+        };
+        let matches = match delta {
+            TaskDelta::Title { after, .. } => &task.title == after,
+            TaskDelta::Labels { after, .. } => &task.labels == after,
+            TaskDelta::Parent { after, .. } => task.parent_id == *after,
+            TaskDelta::Topic { after, .. } => task.topic_id == *after,
+            TaskDelta::Project { after, .. } => task.project_id == *after,
+            TaskDelta::ApprovedPlan { after, .. } => &task.approved_plan == after,
+            TaskDelta::Archived { after, .. } => task.archived == *after,
+        };
+        if !matches {
+            return Err(conflict(message));
+        }
+    }
+    Ok(())
+}
+
+fn validate_requests(store: &Store, deltas: &[RequestDelta]) -> Result<(), ScopedEditError> {
+    let message = "The research request changed after this action. Undo would overwrite newer work.";
+    for delta in deltas {
+        let Some(request) = store
+            .research_requests()
+            .iter()
+            .find(|request| request.id == delta.key())
+        else {
+            return Err(conflict(message));
+        };
+        let matches = match delta {
+            RequestDelta::Project { after, .. } => request.project_id == *after,
+            RequestDelta::Topic { after, .. } => request.topic_id == *after,
+        };
+        if !matches {
+            return Err(conflict(message));
+        }
+    }
+    Ok(())
+}
+
+fn apply_project(store: &mut Store, delta: &ProjectDelta) {
+    match delta {
+        ProjectDelta::Name { id, before, .. } => {
+            if let Some(project) = store.project_mut(*id) {
+                project.name = before.clone();
+            }
+        }
+        ProjectDelta::Directory { id, before, .. } => {
+            if let Some(project) = store.project_mut(*id) {
+                project.directory = before.clone();
+            }
+        }
+        ProjectDelta::Created(value) => {
+            store.remove_project(value.id);
+        }
+        ProjectDelta::Deleted(value) => {
+            if store.project(value.id).is_none() {
+                store.push_project(value.clone());
+            }
+        }
+    }
+}
+
+fn apply_topic(store: &mut Store, delta: &TopicDelta) {
+    match delta {
+        TopicDelta::Name { id, before, .. } => {
+            if let Some(topic) = store.topic_mut(*id) {
+                topic.name = before.clone();
+            }
+        }
+        TopicDelta::Project { id, before, .. } => {
+            if let Some(topic) = store.topic_mut(*id) {
+                topic.project_id = *before;
+            }
+        }
+        TopicDelta::Archived { id, before, .. } => {
+            if let Some(topic) = store.topic_mut(*id) {
+                topic.archived = *before;
+            }
+        }
+        TopicDelta::Created(value) => {
+            store.remove_topic(value.id);
+        }
+        TopicDelta::Deleted(value) => {
+            if store.topic(value.id).is_none() {
+                store.push_topic(value.clone());
+            }
+        }
+    }
+}
+
+fn apply_task(store: &mut Store, delta: &TaskDelta) {
+    let Some(task) = store.task_mut(delta.key()) else {
+        return;
+    };
+    match delta {
+        TaskDelta::Title { before, .. } => task.title = before.clone(),
+        TaskDelta::Labels { before, .. } => task.labels = before.clone(),
+        TaskDelta::Parent { before, .. } => task.parent_id = *before,
+        TaskDelta::Topic { before, .. } => task.topic_id = *before,
+        TaskDelta::Project { before, .. } => task.project_id = *before,
+        TaskDelta::ApprovedPlan { before, .. } => task.approved_plan = before.clone(),
+        TaskDelta::Archived { before, .. } => task.archived = *before,
+    }
+}
+
+fn apply_request(store: &mut Store, delta: &RequestDelta) {
+    let Some(request) = store.request_mut(delta.key()) else {
+        return;
+    };
+    match delta {
+        RequestDelta::Project { before, .. } => request.project_id = *before,
+        RequestDelta::Topic { before, .. } => request.topic_id = *before,
+    }
+}
+
 /// A created parent may only be removed when nothing outside this inverse still
 /// references it. Children this same inverse restores away are evaluated at
 /// their recorded `before` value.
 fn validate_created_parents(store: &Store, undo: &DomainUndo) -> Result<(), ScopedEditError> {
     for delta in &undo.topics {
-        let EntityDelta::Created(created) = delta else {
+        let TopicDelta::Created(created) = delta else {
             continue;
         };
-        let referenced = store
-            .tasks()
+        let referenced = store.tasks().iter().any(|task| {
+            task_topic_after_undo(store, task.id, undo) == Some(created.id)
+        }) || store
+            .research_requests()
             .iter()
-            .any(|task| task_topic_after_undo(task, undo) == Some(created.id))
-            || store
-                .research_requests()
-                .iter()
-                .any(|request| request_topic_after_undo(request, undo) == Some(created.id));
+            .any(|request| request_topic_after_undo(store, request.id, undo) == Some(created.id));
         if referenced {
             return Err(conflict(
                 "The newly created topic now contains work. Undo will not remove it.",
@@ -946,21 +1372,21 @@ fn validate_created_parents(store: &Store, undo: &DomainUndo) -> Result<(), Scop
         }
     }
     for delta in &undo.projects {
-        let EntityDelta::Created(created) = delta else {
+        let ProjectDelta::Created(created) = delta else {
             continue;
         };
         let referenced = store
             .topics()
             .iter()
-            .any(|topic| topic_project_after_undo(topic, undo) == created.id)
+            .any(|topic| topic_project_after_undo(store, topic.id, undo) == created.id)
             || store
                 .tasks()
                 .iter()
-                .any(|task| task_project_after_undo(task, undo) == created.id)
+                .any(|task| task_project_after_undo(store, task.id, undo) == created.id)
             || store
                 .research_requests()
                 .iter()
-                .any(|request| request_project_after_undo(request, undo) == created.id);
+                .any(|request| request_project_after_undo(store, request.id, undo) == created.id);
         if referenced {
             return Err(conflict(
                 "The newly created project now contains work. Undo will not remove it.",
@@ -970,65 +1396,122 @@ fn validate_created_parents(store: &Store, undo: &DomainUndo) -> Result<(), Scop
     Ok(())
 }
 
-fn task_topic_after_undo(task: &Task, undo: &DomainUndo) -> Option<u64> {
-    undo.tasks
-        .iter()
-        .find(|delta| delta.key(|v| v.id) == task.id)
-        .map(|delta| match delta {
-            EntityDelta::Changed { before, .. } | EntityDelta::Deleted(before) => before.topic_id,
-            EntityDelta::Created(_) => None,
-        })
-        .unwrap_or(task.topic_id)
+fn task_after_undo(store: &Store, id: u64, undo: &DomainUndo) -> Option<Task> {
+    let mut task = store.task(id)?.clone();
+    for delta in &undo.tasks {
+        if delta.key() != id {
+            continue;
+        }
+        match delta {
+            TaskDelta::Title { before, .. } => task.title = before.clone(),
+            TaskDelta::Labels { before, .. } => task.labels = before.clone(),
+            TaskDelta::Parent { before, .. } => task.parent_id = *before,
+            TaskDelta::Topic { before, .. } => task.topic_id = *before,
+            TaskDelta::Project { before, .. } => task.project_id = *before,
+            TaskDelta::ApprovedPlan { before, .. } => task.approved_plan = before.clone(),
+            TaskDelta::Archived { before, .. } => task.archived = *before,
+        }
+    }
+    Some(task)
 }
 
-fn request_topic_after_undo(request: &ResearchRequest, undo: &DomainUndo) -> Option<u64> {
-    undo.requests
-        .iter()
-        .find(|delta| delta.key(|v| v.id) == request.id)
-        .map(|delta| match delta {
-            EntityDelta::Changed { before, .. } | EntityDelta::Deleted(before) => before.topic_id,
-            EntityDelta::Created(_) => None,
-        })
-        .unwrap_or(request.topic_id)
+fn task_topic_after_undo(store: &Store, id: u64, undo: &DomainUndo) -> Option<u64> {
+    let project = task_after_undo(store, id, undo)?.project_id;
+    let mut current = Some(id);
+    let mut visited = std::collections::HashSet::new();
+    loop {
+        let task = task_after_undo(store, current?, undo)?;
+        if task.project_id != project || !visited.insert(task.id) {
+            return None;
+        }
+        if let Some(research) = &task.research {
+            if research.kind == crate::research::ResearchKind::Goal {
+                return store
+                    .topics()
+                    .iter()
+                    .find(|topic| Some(topic.id) == task.topic_id && topic.project_id == project)
+                    .map(|topic| topic.id);
+            }
+            current = Some(research.goal_id);
+        } else if let Some(parent) = task.parent_id {
+            current = Some(parent);
+        } else {
+            return store
+                .topics()
+                .iter()
+                .find(|topic| Some(topic.id) == task.topic_id && topic.project_id == project)
+                .map(|topic| topic.id);
+        }
+    }
 }
 
-fn topic_project_after_undo(topic: &Topic, undo: &DomainUndo) -> u64 {
-    undo.topics
+fn request_topic_after_undo(store: &Store, id: u64, undo: &DomainUndo) -> Option<u64> {
+    let request = store
+        .research_requests()
         .iter()
-        .find(|delta| delta.key(|v| v.id) == topic.id)
-        .map(|delta| match delta {
-            EntityDelta::Changed { before, .. } | EntityDelta::Deleted(before) => before.project_id,
-            EntityDelta::Created(_) => u64::MAX,
-        })
-        .unwrap_or(topic.project_id)
+        .find(|request| request.id == id)?;
+    let mut topic = request.topic_id;
+    for delta in &undo.requests {
+        if delta.key() == id
+            && let RequestDelta::Topic { before, .. } = delta
+        {
+            topic = *before;
+        }
+    }
+    topic
 }
 
-fn task_project_after_undo(task: &Task, undo: &DomainUndo) -> u64 {
-    undo.tasks
-        .iter()
-        .find(|delta| delta.key(|v| v.id) == task.id)
-        .map(|delta| match delta {
-            EntityDelta::Changed { before, .. } | EntityDelta::Deleted(before) => before.project_id,
-            EntityDelta::Created(_) => u64::MAX,
-        })
-        .unwrap_or(task.project_id)
+fn topic_project_after_undo(store: &Store, id: u64, undo: &DomainUndo) -> u64 {
+    let mut project = store.topic(id).map(|topic| topic.project_id).unwrap_or(u64::MAX);
+    for delta in &undo.topics {
+        if delta.key() == id
+            && let TopicDelta::Project { before, .. } = delta
+        {
+            project = *before;
+        }
+    }
+    project
 }
 
-fn request_project_after_undo(request: &ResearchRequest, undo: &DomainUndo) -> u64 {
-    undo.requests
+fn task_project_after_undo(store: &Store, id: u64, undo: &DomainUndo) -> u64 {
+    task_after_undo(store, id, undo)
+        .map(|task| task.project_id)
+        .unwrap_or(u64::MAX)
+}
+
+fn request_project_after_undo(store: &Store, id: u64, undo: &DomainUndo) -> u64 {
+    let mut project = store
+        .research_requests()
         .iter()
-        .find(|delta| delta.key(|v| v.id) == request.id)
-        .map(|delta| match delta {
-            EntityDelta::Changed { before, .. } | EntityDelta::Deleted(before) => before.project_id,
-            EntityDelta::Created(_) => u64::MAX,
-        })
-        .unwrap_or(request.project_id)
+        .find(|request| request.id == id)
+        .map(|request| request.project_id)
+        .unwrap_or(u64::MAX);
+    for delta in &undo.requests {
+        if delta.key() == id
+            && let RequestDelta::Project { before, .. } = delta
+        {
+            project = *before;
+        }
+    }
+    project
 }
 
 #[cfg(test)]
 mod tests {
     use super::*;
     use crate::domain::{Stage, Store};
+
+    fn pending(
+        store: &Store,
+    ) -> (
+        Vec<crate::persistence_journal::EntityChange>,
+        Vec<crate::persistence_journal::MetadataDelta>,
+    ) {
+        (
+            store.pending_entity_changes().unwrap(),
+            store.pending_metadata_deltas(),
+        )
+    }
 
     #[test]
     fn topic_rename_inverse_restores_exact_topic() {
@@ -1048,7 +1531,24 @@ mod tests {
     }
 
     #[test]
-    fn inverse_conflicts_and_preserves_state_when_touched_entity_changed_again() {
+    fn field_inverse_survives_unrelated_task_edit() {
+        let mut store = Store::empty();
+        let task = store.create_task("Task", 1, Stage::Backlog, None).unwrap();
+        let outcome = DomainCommand::TaskLabels {
+            task,
+            labels: vec!["Context".into()],
+        }
+        .execute(&mut store)
+        .unwrap();
+        // A later title edit is unrelated to the recorded labels field.
+        store.task_mut(task).unwrap().title = "Later title".into();
+        apply_undo(&mut store, &outcome.undo).unwrap();
+        assert!(store.task(task).unwrap().labels.is_empty());
+        assert_eq!(store.task(task).unwrap().title, "Later title");
+    }
+
+    #[test]
+    fn inverse_conflicts_and_preserves_state_when_same_field_changes_again() {
         let mut store = Store::empty();
         let topic = store.create_topic(1, "Original").unwrap();
         let outcome = DomainCommand::TopicRename {
@@ -1057,22 +1557,24 @@ mod tests {
         }
         .execute(&mut store)
         .unwrap();
-        // A later unrelated edit to the same entity must reject the inverse.
         store.rename_topic(topic, "Later edit").unwrap();
         let before_attempt = store.clone();
+        let before_pending = pending(&store);
         assert!(matches!(
             apply_undo(&mut store, &outcome.undo),
             Err(ScopedEditError::Conflict(_))
         ));
         assert_eq!(store, before_attempt);
+        assert_eq!(pending(&store), before_pending);
         assert_eq!(store.topic(topic).unwrap().name, "Later edit");
     }
 
     #[test]
     fn same_inverse_created_topic_is_removed_with_its_restored_child() {
         let mut store = Store::empty();
+        let parent = store.create_task("Parent", 1, Stage::Backlog, None).unwrap();
         let task = store.create_task("Task", 1, Stage::Backlog, None).unwrap();
-        // set_parent(None) creates a topic and assigns it to the task.
+        store.set_parent(task, Some(parent)).unwrap();
         let outcome = DomainCommand::TaskParent { task, parent: None }
             .execute(&mut store)
             .unwrap();
@@ -1081,7 +1583,7 @@ mod tests {
         apply_undo(&mut store, &outcome.undo).unwrap();
         assert!(store.topic(created).is_none());
         assert_eq!(store.task(task).unwrap().topic_id, None);
-        assert_eq!(store.task(task).unwrap().parent_id, None);
+        assert_eq!(store.task(task).unwrap().parent_id, Some(parent));
     }
 
     #[test]
@@ -1094,36 +1596,86 @@ mod tests {
         .execute(&mut store)
         .unwrap();
         let topic = outcome.created_topic.unwrap();
-        // A child added after the command is unrelated work. Associate it with
-        // the topic through the topic API, not as a parent task.
         let child = store
             .create_task("Child", 1, Stage::Backlog, None)
             .unwrap();
         store.set_root_topic(child, topic).unwrap();
         let before_attempt = store.clone();
+        let before_pending = pending(&store);
         assert!(matches!(
             apply_undo(&mut store, &outcome.undo),
             Err(ScopedEditError::Conflict(_))
         ));
         assert_eq!(store, before_attempt);
+        assert_eq!(pending(&store), before_pending);
         assert!(store.topic(topic).is_some());
+    }
+
+    #[test]
+    fn invalid_stage_index_is_rejected_before_mutation() {
+        let mut store = Store::empty();
+        store.set_default_model("provider/base".to_string());
+        let before = store.clone();
+        let before_pending = pending(&store);
+        assert!(DomainCommand::UseGlobalForStage { stage: 4 }
+            .execute(&mut store)
+            .is_err());
+        assert_eq!(store, before);
+        assert_eq!(pending(&store), before_pending);
+        assert!(DomainCommand::ModelAgent {
+            stage: Some(usize::MAX),
+            agent: "Codex".into(),
+        }
+        .execute(&mut store)
+        .is_err());
+        assert_eq!(store, before);
+        assert_eq!(pending(&store), before_pending);
+    }
+
+    #[test]
+    fn cyclic_archive_ownership_terminates_without_partial_state() {
+        let mut store = Store::empty();
+        let a = store.create_task("A", 1, Stage::Backlog, None).unwrap();
+        let b = store.create_task("B", 1, Stage::Backlog, None).unwrap();
+        {
+            let task = store.task_mut(a).unwrap();
+            task.parent_id = Some(b);
+            task.archived = true;
+        }
+        {
+            let task = store.task_mut(b).unwrap();
+            task.parent_id = Some(a);
+            task.archived = true;
+        }
+        let before = store.clone();
+        let before_pending = pending(&store);
+        match (DomainCommand::RestoreArchived { task: a }).execute(&mut store) {
+            Ok(outcome) => {
+                assert!(!store.task(a).unwrap().archived);
+                assert!(!store.task(b).unwrap().archived);
+                apply_undo(&mut store, &outcome.undo).unwrap();
+                assert!(store.task(a).unwrap().archived);
+                assert!(store.task(b).unwrap().archived);
+            }
+            Err(_) => {
+                assert_eq!(store, before);
+                assert_eq!(pending(&store), before_pending);
+            }
+        }
     }
 
     #[test]
     fn settings_conflict_validates_all_fields_before_any_entity_rollback() {
         let mut store = Store::empty();
-        store.set_default_model("provider/after");
+        store.set_default_model("provider/after".to_string());
         store.set_appearance(Appearance::Dark);
         let topic = store.create_topic(1, "After").unwrap();
         let mut undo = DomainUndo {
             projects: Vec::new(),
-            topics: vec![EntityDelta::Changed {
-                before: {
-                    let mut before = store.topic(topic).unwrap().clone();
-                    before.name = "Before".into();
-                    before
-                },
-                after: store.topic(topic).unwrap().clone(),
+            topics: vec![TopicDelta::Name {
+                id: topic,
+                before: "Before".into(),
+                after: "After".into(),
             }],
             tasks: Vec::new(),
             requests: Vec::new(),
@@ -1135,20 +1687,20 @@ mod tests {
             },
         };
         // The second settings field was changed again: the whole inverse must be
-        // rejected before the topic entity or the first setting is touched.
+        // rejected before the topic field or the first setting is touched.
         store.set_appearance(Appearance::Light);
         let before_attempt = store.clone();
+        let before_pending = pending(&store);
         assert!(matches!(
             apply_undo(&mut store, &undo),
             Err(ScopedEditError::Conflict(_))
         ));
         assert_eq!(store, before_attempt);
+        assert_eq!(pending(&store), before_pending);
         assert_eq!(store.topic(topic).unwrap().name, "After");
         assert_eq!(store.default_model(), "provider/after");
         assert_eq!(store.appearance(), Appearance::Light);
-        undo.settings.set_appearance(None);
-        // With the conflicting field removed the same entity and first setting
-        // restore together.
+        undo.settings.appearance = None;
         apply_undo(&mut store, &undo).unwrap();
         assert_eq!(store.topic(topic).unwrap().name, "Before");
         assert_eq!(store.default_model(), "provider/before");

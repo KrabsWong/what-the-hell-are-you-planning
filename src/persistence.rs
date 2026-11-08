@@ -377,12 +377,9 @@ impl Storage {
         let mut cleaned = workspace.clone();
         cleaned.retain_tasks(|task| !ids.contains(&task.id));
         let seed_projects = seed.projects().to_vec();
+        let task_projects: Vec<u64> = cleaned.tasks().iter().map(|task| task.project_id).collect();
         cleaned.retain_projects(|project| {
-            !seed_projects.contains(project)
-                || cleaned
-                    .tasks()
-                    .iter()
-                    .any(|task| task.project_id == project.id)
+            !seed_projects.contains(project) || task_projects.contains(&project.id)
         });
         if cleaned.projects().is_empty() {
             cleaned.replace_projects(Store::empty().projects().to_vec());
@@ -532,11 +529,7 @@ mod tests {
         let mut workspace = Store::mock();
         workspace.set_default_model("test/global".into());
         workspace.task_mut(1).unwrap().title = "持久化任务".into();
-        let policy = workspace
-            .policies
-            .iter_mut()
-            .find(|p| p.stage == Stage::Review)
-            .unwrap();
+        let policy = workspace.policy_mut(Stage::Review).unwrap();
         policy.agent = "OpenCode".into();
         policy.model = "provider/review-model".into();
         workspace.set_stage(1, Stage::Review).unwrap();
@@ -574,14 +567,15 @@ mod tests {
         let mut old = Store::mock();
         let common = "tencent-token-plan/deepseek/deepseek-flash";
         old.research_config_mut().models = std::array::from_fn(|_| common.into());
-        old.policies[0].agent = "OpenCode".into();
-        old.policies[0].model = common.into();
-        old.policies[1].agent = "OpenCode".into();
-        old.policies[1].model = "test/intentional-override".into();
-        old.policies[2].agent = "Manual".into();
-        old.policies[2].model = common.into();
+        old.policy_mut(Stage::ALL[0]).unwrap().agent = "OpenCode".into();
+        old.policy_mut(Stage::ALL[0]).unwrap().model = common.into();
+        old.policy_mut(Stage::ALL[1]).unwrap().agent = "OpenCode".into();
+        old.policy_mut(Stage::ALL[1]).unwrap().model = "test/intentional-override".into();
+        old.policy_mut(Stage::ALL[2]).unwrap().agent = "Manual".into();
+        old.policy_mut(Stage::ALL[2]).unwrap().model = common.into();
         old.project_at_mut(0).unwrap().directory = "/tmp".into();
-        old.set_stage(1, old.policies[0].stage).unwrap();
+        let stage0 = old.policies()[0].stage;
+        old.set_stage(1, stage0).unwrap();
         old.simulate_run(1).unwrap();
         write_legacy_workspace(&storage, &old, 3);
         let before_bytes = fs::read(storage.path()).unwrap();
@@ -589,10 +583,10 @@ mod tests {
         let mut expected = old.clone();
         expected.set_default_model(common.into());
         expected.research_config_mut().models = Default::default();
-        expected.policies[0].model.clear();
+        expected.policy_mut(Stage::ALL[0]).unwrap().model.clear();
         assert_eq!(restored, expected);
         assert!(restored.prepare_run(1).is_err());
-        assert_eq!(restored.tasks, old.tasks);
+        assert_eq!(restored.tasks(), old.tasks());
         assert_eq!(restored.runs(), old.runs());
         assert_eq!(fs::read(storage.path()).unwrap(), before_bytes);
         assert_eq!(storage.load().unwrap(), Some(expected.clone()));
@@ -638,7 +632,7 @@ mod tests {
         let storage = dir.storage();
         let _lock = storage.acquire_lock().unwrap();
         let mut store = Store::mock();
-        store.projects.push(crate::domain::Project {
+        store.push_project(crate::domain::Project {
             id: 3,
             name: "Real research".into(),
             key: "RES".into(),
@@ -649,21 +643,21 @@ mod tests {
         let real_id = store
             .create_research_goal("Research".into(), "Real goal".into(), 3)
             .unwrap();
-        store.policies[0].model = "user/configured-model".into();
+        store.policy_mut(Stage::ALL[0]).unwrap().model = "user/configured-model".into();
         storage.save(&store).unwrap();
         let original_bytes = fs::read(storage.path()).unwrap();
         let real_task = store.task(real_id).unwrap().clone();
-        let next_id = store.next_id;
+        let next_id = store.next_id();
         let backup = storage
             .remove_reviewed_demo(&mut store, &(1..=22).collect::<Vec<_>>())
             .unwrap()
             .unwrap();
         assert_eq!(fs::read(backup).unwrap(), original_bytes);
-        assert_eq!(store.tasks, vec![real_task]);
-        assert_eq!(store.projects.len(), 1);
+        assert_eq!(store.tasks(), &[real_task][..]);
+        assert_eq!(store.projects().len(), 1);
         assert_eq!(store.project_at_mut(0).unwrap().id, 3);
-        assert_eq!(store.next_id, next_id);
-        assert_eq!(store.policies[0].model, "user/configured-model");
+        assert_eq!(store.next_id(), next_id);
+        assert_eq!(store.policies()[0].model, "user/configured-model");
         // Loading upgrades approval metadata, while cleanup itself preserves the real task exactly.
         let mut expected_loaded = store.clone();
         expected_loaded.normalize_topics();

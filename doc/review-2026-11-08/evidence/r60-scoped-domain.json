@@ -1,0 +1,8 @@
+{
+  "exit_code": 0,
+  "passed": 7,
+  "failed": 0,
+  "source_manifest": "r60-integrated-source.json",
+  "scope": "scoped_domain unit tests including mixed entity/settings conflict and invalid stage preflight; not full command/UI persistence acceptance",
+  "log": "r60-scoped-domain.log"
+}

@@ -1376,7 +1376,7 @@ mod tests {
             assert!(!store.research_pending_approval(child));
             assert_eq!(store.task(child).unwrap().automation_id, Some(id));
         }
-        assert!(store.topics.iter().any(|topic| topic.id == first.research_topic_id.unwrap() && topic.automation_id == Some(id)));
+        assert!(store.topics().iter().any(|topic| topic.id == first.research_topic_id.unwrap() && topic.automation_id == Some(id)));
         // Duplicate trigger keys never create a second goal.
         assert!(store
             .materialize_occurrence(occurrence(&store, id, 2000))
@@ -1404,18 +1404,18 @@ mod tests {
                 1_000,
             )
             .unwrap();
-        let topics_before = store.topics.len();
-        let tasks_before = store.tasks.len();
+        let topics_before = store.topics().len();
+        let tasks_before = store.tasks().len();
         let request = store
             .create_automation_request(id, 1, "Track semiconductor capacity", "A cited note")
             .unwrap();
-        assert_eq!(store.topics.len(), topics_before, "planning must not create a topic");
-        assert_eq!(store.tasks.len(), tasks_before, "planning must not create goals");
+        assert_eq!(store.topics().len(), topics_before, "planning must not create a topic");
+        assert_eq!(store.tasks().len(), tasks_before, "planning must not create goals");
         let run = store.prepare_request_plan(request).unwrap();
         assert_eq!(run.project_plan, Some(1));
         assert_eq!(run.task_id, 0);
         assert!(store
-            .research_requests
+            .research_requests()
             .iter()
             .find(|candidate| candidate.id == request)
             .is_some_and(|candidate| candidate.automation_id == Some(id)));
@@ -1618,7 +1618,7 @@ mod tests {
         assert_eq!(store.automation(id).unwrap().status, DefinitionStatus::Draft);
         assert_eq!(store.automation(id).unwrap().cursor, None);
         assert_eq!(
-            store.research_requests.iter().find(|request| request.id == request_a).unwrap().expected_result.as_deref(),
+            store.research_requests().iter().find(|request| request.id == request_a).unwrap().expected_result.as_deref(),
             Some("Expected A")
         );
         assert_eq!(
@@ -1630,7 +1630,7 @@ mod tests {
         let plan_b = r#"{"topic_name":"Plan B","brief":{"objective":"Objective A","deliverable":"Expected B","scope":"Scope","assumptions":[],"facts_to_verify":[]},"goals":[{"title":"Goal B","brief":"Brief","tasks":[{"title":"Collect","instructions":"Collect","kind":"collect","depends_on":[]},{"title":"Analyze","instructions":"Analyze","kind":"analyze","depends_on":[0]},{"title":"Report","instructions":"Report","kind":"advise","depends_on":[1]}]}]}"#;
         let signature_b = store.request_plan_signature(request_b).unwrap();
         let revision_b = store
-            .research_requests
+            .research_requests()
             .iter()
             .find(|request| request.id == request_b)
             .unwrap()
@@ -1650,7 +1650,7 @@ mod tests {
             Some(request_b)
         );
         assert_eq!(
-            store.research_requests.iter().find(|request| request.id == request_a).unwrap().expected_result.as_deref(),
+            store.research_requests().iter().find(|request| request.id == request_a).unwrap().expected_result.as_deref(),
             Some("Expected A"),
             "the prior revision keeps its original expected result"
         );
@@ -1915,12 +1915,12 @@ mod tests {
                 1_000,
             )
             .unwrap();
-        let topics_before = store.topics.len();
+        let topics_before = store.topics().len();
         let occurrence = store
             .materialize_occurrence(occurrence(&store, id, 2_000))
             .unwrap();
         assert!(occurrence.research_topic_id.is_none(), "quick tasks have no topic");
-        assert_eq!(store.topics.len(), topics_before);
+        assert_eq!(store.topics().len(), topics_before);
         let goal = occurrence.research_goal_id.unwrap();
         assert_eq!(occurrence.research_goal_ids, vec![goal]);
         assert_eq!(store.research_children(goal).len(), 1);
@@ -1967,7 +1967,7 @@ mod tests {
         let second_topic = second.research_topic_id.unwrap();
         assert_ne!(first_topic, second_topic, "each period has its own topic");
         for topic in [first_topic, second_topic] {
-            let topic = store.topics.iter().find(|candidate| candidate.id == topic).unwrap();
+            let topic = store.topics().iter().find(|candidate| candidate.id == topic).unwrap();
             assert_eq!(topic.automation_id, Some(id));
             assert!(topic.name.starts_with("Daily topic"));
         }
@@ -1996,7 +1996,7 @@ mod tests {
         let request = store
             .create_automation_request(id, 1, "Track the topic", "A cited note")
             .unwrap();
-        let revision = store.research_requests.iter().find(|r| r.id == request).unwrap().revision;
+        let revision = store.research_requests().iter().find(|r| r.id == request).unwrap().revision;
         let signature = store.request_plan_signature(request).unwrap();
         let plan = r#"{"topic_name":"Semiconductor supply","brief":{"objective":"Track supply","deliverable":"Sourced note","scope":"Latest quarter","assumptions":[],"facts_to_verify":[]},"goals":[{"title":"Foundry capacity","brief":"Track announced capacity","tasks":[{"title":"Collect","instructions":"Collect filings","kind":"collect","depends_on":[]},{"title":"Analyze","instructions":"Compare capacity","kind":"analyze","depends_on":[0]},{"title":"Report","instructions":"Write the note","kind":"advise","depends_on":[1]}]},{"title":"Equipment orders","brief":"Track equipment bookings","tasks":[{"title":"Collect","instructions":"Collect orders","kind":"collect","depends_on":[]},{"title":"Analyze","instructions":"Compare orders","kind":"analyze","depends_on":[0]},{"title":"Report","instructions":"Write the note","kind":"advise","depends_on":[1]}]}]}"#;
         assert_eq!(
@@ -2338,7 +2338,7 @@ mod tests {
     fn store_schema_version_is_explicit() {
         assert_eq!(crate::automation::AUTOMATION_SCHEMA_VERSION, 1);
         assert_eq!(
-            store().automation_schema_version,
+            store().automation_schema_version(),
             crate::automation::AUTOMATION_SCHEMA_VERSION
         );
     }

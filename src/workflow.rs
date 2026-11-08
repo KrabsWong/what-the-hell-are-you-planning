@@ -559,7 +559,7 @@ mod tests {
         let id = store
             .create_task("Ordinary", 1, Stage::Planned, None)
             .unwrap();
-        store.policies = Store::mock().policies;
+        store.replace_policies(Store::mock().policies().to_vec());
         store.simulate_run(id).unwrap();
         store.last_run_mut().unwrap().status = "Succeeded".into();
         assert_eq!(store.task_status(id, None).phase, Stage::Review);

@@ -17,11 +17,7 @@ fn goal(store: &mut Store, topic: u64, title: &str) -> u64 {
     let request = store
         .create_research_request(1, Some(topic), title)
         .unwrap();
-    store
-        .research_requests()
-        .iter_mut()
-        .find(|r| r.id == request)
-        .unwrap()
+    store.request_mut(request).unwrap()
         .goal_ids
         .push(id);
     id
@@ -125,7 +121,7 @@ print(json.dumps({'type':'text','part':{'text':json.dumps({'status':'complete','
                         assert!(state.todo_batch.as_ref().unwrap().failed_items.is_empty());
                         assert!(state.task_start_feedback.as_ref().is_some_and(|(_, error)| error.contains("model")));
                         assert!(state.store.task(a1).unwrap().activity.iter().any(|event| event.contains("queue paused")));
-                        state.store.research_config().models[2].clear();
+                        state.store.research_config_mut().models[2].clear();
                         state.resume_todo_batch(cx);
                     }
                     assert!(state.active_runs.len() <= 3);

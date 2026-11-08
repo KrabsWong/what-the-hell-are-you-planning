@@ -13,6 +13,28 @@ pub(crate) struct DirtySet {
     upserts: BTreeSet<EntityKey>,
     deletes: BTreeSet<EntityKey>,
     violation: Option<String>,
+    /// Monotonic local change counter. A drained group remembers this value so
+    /// an acknowledgement cannot clear writes that arrived after the drain.
+    epoch: u64,
+}
+
+impl DirtySet {
+    fn tick(&mut self) -> u64 {
+        self.epoch = self.epoch.saturating_add(1);
+        self.epoch
+    }
+
+    fn mark_upsert(&mut self, key: EntityKey) {
+        self.tick();
+        self.deletes.remove(&key);
+        self.upserts.insert(key);
+    }
+
+    fn mark_delete(&mut self, key: EntityKey) {
+        self.tick();
+        self.upserts.remove(&key);
+        self.deletes.insert(key);
+    }
 }
 
 pub struct TrackedVec<T> {
@@ -66,8 +88,7 @@ impl<T> TrackedVec<T> {
     /// violation checked by the next `pending_changes`.
     pub(crate) fn tracked_mut(&mut self, key: EntityKey) -> Option<&mut T> {
         let index = self.items.iter().position(|item| (self.identity)(item) == key)?;
-        self.dirty.upserts.insert(key);
-        self.dirty.deletes.remove(&key);
+        self.dirty.mark_upsert(key);
         Some(&mut self.items[index])
     }
 
@@ -80,8 +101,7 @@ impl<T> TrackedVec<T> {
             return;
         }
         self.items.push(item);
-        self.dirty.upserts.insert(key);
-        self.dirty.deletes.remove(&key);
+        self.dirty.mark_upsert(key);
     }
 
     pub(crate) fn insert_tracked(&mut self, index: usize, item: T) {
@@ -93,8 +113,7 @@ impl<T> TrackedVec<T> {
             return;
         }
         self.items.insert(index, item);
-        self.dirty.upserts.insert(key);
-        self.dirty.deletes.remove(&key);
+        self.dirty.mark_upsert(key);
         self.mark_reorder_unsupported();
     }
 
@@ -127,27 +146,23 @@ impl<T> TrackedVec<T> {
             return false;
         }
         if old != key {
-            self.dirty.upserts.remove(&old);
-            self.dirty.deletes.insert(old);
+            self.dirty.mark_delete(old);
         }
-        self.dirty.upserts.insert(key);
-        self.dirty.deletes.remove(&key);
+        self.dirty.mark_upsert(key);
         true
     }
 
     pub(crate) fn pop_tracked(&mut self) -> Option<T> {
         let item = self.items.pop()?;
         let key = (self.identity)(&item);
-        self.dirty.upserts.remove(&key);
-        self.dirty.deletes.insert(key);
+        self.dirty.mark_delete(key);
         Some(item)
     }
 
     pub(crate) fn remove_tracked(&mut self, key: EntityKey) -> Option<T> {
         let index = self.items.iter().position(|item| (self.identity)(item) == key)?;
         let item = self.items.remove(index);
-        self.dirty.upserts.remove(&key);
-        self.dirty.deletes.insert(key);
+        self.dirty.mark_delete(key);
         Some(item)
     }
 
@@ -162,16 +177,14 @@ impl<T> TrackedVec<T> {
             }
         });
         for key in removed {
-            self.dirty.upserts.remove(&key);
-            self.dirty.deletes.insert(key);
+            self.dirty.mark_delete(key);
         }
     }
 
     pub(crate) fn clear_tracked(&mut self) {
         for item in &self.items {
             let key = (self.identity)(item);
-            self.dirty.upserts.remove(&key);
-            self.dirty.deletes.insert(key);
+            self.dirty.mark_delete(key);
         }
         self.items.clear();
     }
@@ -194,13 +207,11 @@ impl<T> TrackedVec<T> {
         for item in &self.items {
             let key = (self.identity)(item);
             if !seen.contains(&key) {
-                self.dirty.upserts.remove(&key);
-                self.dirty.deletes.insert(key);
+                self.dirty.mark_delete(key);
             }
         }
         for key in &seen {
-            self.dirty.deletes.remove(key);
-            self.dirty.upserts.insert(*key);
+            self.dirty.mark_upsert(*key);
         }
         self.items = items;
     }
@@ -213,9 +224,20 @@ impl<T> TrackedVec<T> {
         }
         self.items.swap(first, second);
         for item in &self.items {
-            self.dirty.upserts.insert((self.identity)(item));
+            self.dirty.mark_upsert((self.identity)(item));
         }
         true
+    }
+
+    pub(crate) fn reverse_tracked(&mut self) {
+        self.items.reverse();
+        for item in &self.items {
+            self.dirty.mark_upsert((self.identity)(item));
+        }
+    }
+
+    pub(crate) fn epoch(&self) -> u64 {
+        self.dirty.epoch
     }
 
     pub(crate) fn is_pristine(&self) -> bool {
@@ -246,7 +268,9 @@ impl<T> TrackedVec<T> {
                 .items
                 .iter()
                 .find(|item| (self.identity)(item) == key)
-                .ok_or_else(|| format!("dirty entity {key:?} disappeared before drain"))?;
+                .ok_or_else(|| {
+                    format!("dirty entity {key:?} disappeared before drain; identity changed")
+                })?;
             changes.push(EntityChange::Upsert((self.payload)(item)));
         }
         Ok(changes)
@@ -342,6 +366,7 @@ impl<T: serde::Serialize> serde::Serialize for TrackedVec<T> {
 pub struct TrackedScalar<T> {
     value: T,
     dirty: bool,
+    epoch: u64,
 }
 
 impl<T> TrackedScalar<T> {
@@ -349,6 +374,7 @@ impl<T> TrackedScalar<T> {
         Self {
             value,
             dirty: false,
+            epoch: 0,
         }
     }
 
@@ -356,6 +382,7 @@ impl<T> TrackedScalar<T> {
     pub(crate) fn load(&mut self, value: T) {
         self.value = value;
         self.dirty = false;
+        self.epoch = 0;
     }
 
     pub(crate) fn get(&self) -> &T {
@@ -368,8 +395,13 @@ impl<T> TrackedScalar<T> {
     {
         if self.value != value {
             self.value = value;
-            self.dirty = true;
+            self.mark();
         }
+    }
+
+    fn mark(&mut self) {
+        self.dirty = true;
+        self.epoch = self.epoch.saturating_add(1);
     }
 
     pub(in crate::domain) fn mutate(&mut self, apply: impl FnOnce(&mut T))
@@ -379,7 +411,7 @@ impl<T> TrackedScalar<T> {
         let before = self.value.clone();
         apply(&mut self.value);
         if self.value != before {
-            self.dirty = true;
+            self.mark();
         }
     }
 
@@ -389,6 +421,11 @@ impl<T> TrackedScalar<T> {
 
     pub(in crate::domain) fn clear_dirty(&mut self) {
         self.dirty = false;
+        self.epoch = 0;
+    }
+
+    pub(crate) fn epoch(&self) -> u64 {
+        self.epoch
     }
 
     pub(crate) fn tracked_mut(&mut self) -> TrackedScalarMut<'_, T> {
@@ -415,7 +452,7 @@ impl<T> DerefMut for TrackedScalarMut<'_, T> {
 
 impl<T> Drop for TrackedScalarMut<'_, T> {
     fn drop(&mut self) {
-        self.scalar.dirty = true;
+        self.scalar.mark();
     }
 }
 
@@ -430,7 +467,7 @@ impl<T> DerefMut for TrackedScalar<T> {
     fn deref_mut(&mut self) -> &mut Self::Target {
         // Nested-config mutation is a tracked write. Whole-value assignment
         // still cannot target `TrackedScalar<T>` directly.
-        self.dirty = true;
+        self.mark();
         &mut self.value
     }
 }
@@ -455,6 +492,7 @@ impl<T: Clone> Clone for TrackedScalar<T> {
         Self {
             value: self.value.clone(),
             dirty: self.dirty,
+            epoch: self.epoch,
         }
     }
 }
@@ -522,6 +560,7 @@ impl<'de, T: serde::Deserialize<'de>> serde::Deserialize<'de> for TrackedScalar<
 pub struct TrackedList<T> {
     items: Vec<T>,
     dirty: bool,
+    epoch: u64,
 }
 
 impl<T> TrackedList<T> {
@@ -529,6 +568,7 @@ impl<T> TrackedList<T> {
         Self {
             items: Vec::new(),
             dirty: false,
+            epoch: 0,
         }
     }
 
@@ -536,6 +576,7 @@ impl<T> TrackedList<T> {
         Self {
             items,
             dirty: false,
+            epoch: 0,
         }
     }
 
@@ -543,19 +584,24 @@ impl<T> TrackedList<T> {
         &self.items
     }
 
-    pub(crate) fn index_mut(&mut self, index: usize) -> Option<&mut T> {
+    fn mark(&mut self) {
         self.dirty = true;
+        self.epoch = self.epoch.saturating_add(1);
+    }
+
+    pub(crate) fn index_mut(&mut self, index: usize) -> Option<&mut T> {
+        self.mark();
         self.items.get_mut(index)
     }
 
     pub(crate) fn push_tracked(&mut self, item: T) {
         self.items.push(item);
-        self.dirty = true;
+        self.mark();
     }
 
     pub(crate) fn remove_tracked(&mut self, index: usize) -> Option<T> {
         let item = self.items.remove(index);
-        self.dirty = true;
+        self.mark();
         Some(item)
     }
 
@@ -563,18 +609,19 @@ impl<T> TrackedList<T> {
         let before = self.items.len();
         self.items.retain(|item| keep(item));
         if self.items.len() != before {
-            self.dirty = true;
+            self.mark();
         }
     }
 
     pub(crate) fn replace_tracked(&mut self, items: Vec<T>) {
         self.items = items;
-        self.dirty = true;
+        self.mark();
     }
 
     pub(crate) fn load(&mut self, items: Vec<T>) {
         self.items = items;
         self.dirty = false;
+        self.epoch = 0;
     }
 
     pub(crate) fn is_dirty(&self) -> bool {
@@ -583,6 +630,11 @@ impl<T> TrackedList<T> {
 
     pub(crate) fn clear_dirty(&mut self) {
         self.dirty = false;
+        self.epoch = 0;
+    }
+
+    pub(crate) fn epoch(&self) -> u64 {
+        self.epoch
     }
 }
 
@@ -612,7 +664,7 @@ impl<T> Deref for TrackedList<T> {
 
 impl<T> DerefMut for TrackedList<T> {
     fn deref_mut(&mut self) -> &mut Self::Target {
-        self.dirty = true;
+        self.mark();
         &mut self.items
     }
 }
@@ -640,6 +692,7 @@ impl<T: Clone> Clone for TrackedList<T> {
         Self {
             items: self.items.clone(),
             dirty: self.dirty,
+            epoch: self.epoch,
         }
     }
 }
@@ -694,8 +747,7 @@ impl<T> Drop for TrackedMut<'_, T> {
             ));
             return;
         }
-        self.dirty.upserts.insert(self.key);
-        self.dirty.deletes.remove(&self.key);
+        self.dirty.mark_upsert(self.key);
     }
 }
 

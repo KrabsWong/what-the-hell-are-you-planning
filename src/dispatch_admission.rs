@@ -953,11 +953,14 @@ fn extract_parts(prepared: &PreparedCommand) -> Result<AdmissionParts, String> {
     };
     let next_id = (prepared.staged.next_id() != prepared.base.store().next_id())
         .then_some(prepared.staged.next_id());
+    let run_id_floor = (prepared.staged.run_id_floor() != prepared.base.store().run_id_floor())
+        .then_some(prepared.staged.run_id_floor());
     Ok(AdmissionParts {
         operation_key: prepared.id.operation_key.clone(),
         run: staged_run,
         occurrence,
         next_id,
+        run_id_floor,
     })
 }
 
@@ -968,7 +971,11 @@ fn stage(journal: &mut ChangeJournal, parts: &AdmissionParts) -> Result<StagedGr
             occurrence.clone(),
         )));
     }
-    let metadata = parts.next_id.map(MetadataDelta::NextId).into_iter().collect();
+    let mut metadata: Vec<MetadataDelta> =
+        parts.next_id.map(MetadataDelta::NextId).into_iter().collect();
+    if let Some(floor) = parts.run_id_floor {
+        metadata.push(MetadataDelta::RunIdFloor(floor));
+    }
     journal
         .stage_with_metadata(changes, metadata, parts.effects())
         .map_err(|error| match error {
@@ -1010,6 +1017,9 @@ pub(crate) fn apply_durable_parts(
     }
     if let Some(next_id) = parts.next_id {
         store.set_next_id(store.next_id().max(next_id));
+    }
+    if let Some(floor) = parts.run_id_floor {
+        store.set_run_id_floor(store.run_id_floor().max(floor));
     }
     Ok(inserted)
 }

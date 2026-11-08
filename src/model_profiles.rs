@@ -43,7 +43,7 @@ impl Store {
     }
 
     pub fn apply_model_profile(&mut self, name: &str) {
-        let Some(profile) = self.model_profiles().iter().find(|p| p.name == name) else { return; };
+        let Some(profile) = self.model_profiles().iter().find(|p| p.name == name).cloned() else { return; };
         self.research_config_mut().default_agent = profile.default_agent.clone();
         self.set_default_model(profile.default_model.clone());
         self.research_config_mut().agents = profile.agents.clone();
@@ -77,7 +77,7 @@ mod tests {
         store.research_config_mut().agents[1] = Some("Codex".into());
         store.research_config_mut().models[1] = "codex-model".into();
         store.create_model_profile(" Mixed ").unwrap();
-        let original = store.model_profiles[0].clone();
+        let original = store.model_profiles()[0].clone();
         store.research_config_mut().default_agent = "Codex".into();
         store.set_default_model("another-model".into());
         store.research_config_mut().agents = Default::default();
@@ -89,19 +89,19 @@ mod tests {
         assert!(!store.model_profile_changed(&original));
         assert_eq!(store.research_model(crate::research::ResearchKind::ALL[0]), "provider/global");
         assert_eq!(store.research_model(crate::research::ResearchKind::ALL[1]), "codex-model");
-        assert_eq!(store.research_config_mut().ego_path, "custom-browser");
-        assert_eq!(store.research_config_mut().codex_path, "custom-codex");
+        assert_eq!(store.research_config().ego_path, "custom-browser");
+        assert_eq!(store.research_config().codex_path, "custom-codex");
         store.set_default_model("provider/updated".into());
         assert!(store.model_profile_changed(&original));
         store.update_model_profile("Mixed");
         store.apply_model_profile("Fast");
-        assert_eq!(store.default_model, "another-model");
+        assert_eq!(store.default_model(), "another-model");
         store.apply_model_profile("Mixed");
-        assert_eq!(store.default_model, "provider/updated");
+        assert_eq!(store.default_model(), "provider/updated");
         store.delete_model_profile("Mixed");
-        assert_eq!(store.active_model_profile, None);
-        assert_eq!(store.default_model, "provider/updated");
-        assert_eq!(store.model_profiles.len(), 1);
+        assert!(store.active_model_profile().is_none());
+        assert_eq!(store.default_model(), "provider/updated");
+        assert_eq!(store.model_profiles().len(), 1);
     }
 
     #[test]
@@ -116,8 +116,8 @@ mod tests {
         legacy.as_object_mut().unwrap().remove("model_profiles");
         legacy.as_object_mut().unwrap().remove("active_model_profile");
         let restored: Store = serde_json::from_value(legacy).unwrap();
-        assert!(restored.model_profiles.is_empty());
-        assert_eq!(restored.active_model_profile, None);
+        assert!(restored.model_profiles().is_empty());
+        assert!(restored.active_model_profile().is_none());
     }
 
     #[test]

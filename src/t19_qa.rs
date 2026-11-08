@@ -726,35 +726,6 @@ fn footer_retention_invalidation(root: &Path) {
             "empty undo stack disables the cached footer command"
         );
 
-        // Temporary diagnostic: reproduce the automation dirty-exit flow.
-        w.click("all-automations", cx);
-        w.render_frame(cx);
-        w.click("new-automation", cx);
-        w.render_frame(cx);
-        w.click("automation-objective", cx);
-        w.input("Check prices", cx);
-        w.click("all", cx);
-        w.render_frame(cx);
-        w.click("dirty-exit-stay", cx);
-        w.render_frame(cx);
-        w.click("all", cx);
-        w.render_frame(cx);
-        w.click("dirty-exit-discard", cx);
-        w.render_frame(cx);
-        eprintln!(
-            "T19 footer pre-nav bounds={:?} viewport={:?} visible={}",
-            w.find("footer-new-research").bounds(),
-            w.viewport_size(),
-            w.find("footer-new-research").visible()
-        );
-        w.click("project-1", cx);
-        w.render_frame(cx);
-        eprintln!(
-            "T19 footer diag bounds={:?} viewport={:?} visible={}",
-            w.find("footer-new-research").bounds(),
-            w.viewport_size(),
-            w.find("footer-new-research").visible()
-        );
         // Cached commands keep working.
         w.click("footer-search", cx);
         w.render_frame(cx);
@@ -768,20 +739,34 @@ fn footer_retention_invalidation(root: &Path) {
         w.press("escape", cx);
         w.render_frame(cx);
 
-        // A real parent notification invalidates the footer state.
+        // A real domain edit invalidates the footer; clicking the enabled Undo
+        // must execute the scoped inverse and disable the command again. This
+        // proves interactivity instead of inferring from an absent flag.
+        let topic_name = "Footer cache check";
         app.update(cx, |app, cx| {
-            app.apply_domain_change(
-                |store| store.create_topic(1, "Footer cache check").map(|_| ()),
+            app.apply_domain_command_undoable(
+                crate::scoped_domain::DomainCommand::TopicCreate {
+                    project: 1,
+                    name: topic_name.into(),
+                },
                 "Topic created",
                 cx,
             );
             cx.notify();
         });
         w.render_frame(cx);
-        assert_ne!(
+        assert!(app.read(cx).store.topics().iter().any(|t| t.name == topic_name));
+        assert!(w.find("undo").visible());
+        w.click("undo", cx);
+        w.render_frame(cx);
+        assert!(
+            !app.read(cx).store.topics().iter().any(|t| t.name == topic_name),
+            "cached Undo must remove the created topic"
+        );
+        assert_eq!(
             w.find("undo").disabled(),
             Some(true),
-            "undo state must invalidate the cached footer"
+            "consumed Undo disables the cached footer command"
         );
 
         // Persistence errors surface through the cached footer and clear again.

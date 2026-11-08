@@ -192,8 +192,9 @@ pub fn run() {
                             topic,
                         )
                         .expect("current publication");
-                        let latest = &mut a.store.publications()[index];
-                        assert_eq!(latest.id, current_id, "The header must read the publication under test");
+                        let latest_id = a.store.publications()[index].id.clone();
+                        assert_eq!(latest_id, current_id, "The header must read the publication under test");
+                        let latest = a.store.publication_mut(&latest_id).unwrap();
                         latest.status = status.into();
                         latest.commit = commit.map(str::to_string);
                         cx.notify();
@@ -265,7 +266,8 @@ pub fn run() {
                 let description_id = format!("report-description-{publication_id}");
                 let checking_bounds = w.find(description_id.clone()).bounds();
                 app.update(cx, |a, cx| {
-                    let p = a.store.publications().last_mut().unwrap();
+                    let last_id = a.store.publications().last().unwrap().id.clone();
+                    let p = a.store.publication_mut(&last_id).unwrap();
                     p.status = "Pushed · awaiting deployment".into();
                     p.message = "Check finished; deployment pending".into();
                     cx.notify();
@@ -273,7 +275,8 @@ pub fn run() {
                 w.render_frame(cx);
                 assert_eq!(w.find(description_id.clone()).bounds().size.width, checking_bounds.size.width);
                 app.update(cx, |a, cx| {
-                    let p = a.store.publications().last_mut().unwrap();
+                    let last_id = a.store.publications().last().unwrap().id.clone();
+                    let p = a.store.publication_mut(&last_id).unwrap();
                     p.status = "Pushed · verifying live page".into();
                     p.message.clear();
                     cx.notify();
@@ -281,7 +284,8 @@ pub fn run() {
                 w.render_frame(cx);
                 assert_eq!(w.find(description_id.clone()).bounds().size.width, checking_bounds.size.width);
                 app.update(cx, |a, cx| {
-                    let p = a.store.publications().last_mut().unwrap();
+                    let last_id = a.store.publications().last().unwrap().id.clone();
+                    let p = a.store.publication_mut(&last_id).unwrap();
                     p.status = "Pushed · site access error".into();
                     p.message = "Report pushed to GitHub successfully. Public page returned HTTP 545. EdgeOne reports an edge function execution error. Check the hosting service, then use Check status; no new push is needed.".into();
                     a.publishing_job = None;

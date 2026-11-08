@@ -316,7 +316,7 @@ mod tests {
             assert_eq!(research.kind, ResearchKind::Goal);
             assert_eq!(research.goal_id, id);
             assert!(research.requires_approval);
-            assert!(task.description.contains(&store.project_at_mut(0).unwrap().research_brief));
+            assert!(task.description.contains(&store.projects()[0].research_brief));
             assert!(research.depends_on.is_empty());
         }
         let restored: Store =
@@ -346,7 +346,7 @@ mod tests {
             run.input_signature,
             store.project_plan_signature(1).unwrap()
         );
-        assert!(store.tasks.is_empty());
+        assert!(store.tasks().is_empty());
         assert!(store.runs().is_empty());
         store.research_config_mut().models[0].clear();
         assert!(store.prepare_project_plan(1).is_err());
@@ -380,7 +380,7 @@ mod tests {
             store.set_default_model(invalid.into());
             assert!(store.prepare_project_plan(1).is_err());
         }
-        assert!(store.tasks.is_empty());
+        assert!(store.tasks().is_empty());
         assert!(store.runs().is_empty());
     }
 

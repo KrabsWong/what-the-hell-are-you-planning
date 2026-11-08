@@ -456,6 +456,14 @@ pub struct Store {
 
 pub use crate::request_planning::ResearchRequest;
 
+/// One staged save group and the exact dirty epoch it was drained at.
+/// Retiring the group only clears tracking when no newer write arrived.
+pub(crate) struct StoreDelta {
+    pub changes: Vec<crate::persistence_journal::EntityChange>,
+    pub metadata: Vec<crate::persistence_journal::MetadataDelta>,
+    epoch: u64,
+}
+
 impl Store {
     // ---- Read-only access. Persistent fields are private: mutations must go
     // through the tracked methods below or a typed setter. Clean hydration is
@@ -556,25 +564,25 @@ impl Store {
     /// A non-empty stage override takes precedence over the workspace default.
     pub fn effective_model<'a>(&'a self, stage_override: &'a str) -> &'a str {
         if stage_override.is_empty() {
-            &self.default_model
+            self.default_model()
         } else {
             stage_override
         }
     }
     pub fn research_model(&self, kind: crate::research::ResearchKind) -> &str {
-        let model = &self.research_config_mut().models[kind.index()];
-        if model.is_empty() && self.research_agent(kind) != self.research_config_mut().default_agent {
+        let model = &self.research_config().models[kind.index()];
+        if model.is_empty() && self.research_agent(kind) != self.research_config().default_agent {
             ""
         } else {
             self.effective_model(model)
         }
     }
     pub fn research_agent(&self, kind: crate::research::ResearchKind) -> &str {
-        self.research_config_mut().agents[kind.index()].as_deref()
-            .unwrap_or(&self.research_config_mut().default_agent)
+        self.research_config().agents[kind.index()].as_deref()
+            .unwrap_or(&self.research_config().default_agent)
     }
     pub fn agent_path(&self, agent: &str) -> &str {
-        if agent == "Codex" { &self.research_config_mut().codex_path } else { &self.opencode_path }
+        if agent == "Codex" { &self.research_config().codex_path } else { self.opencode_path() }
     }
     pub fn valid_research_model(&self, kind: crate::research::ResearchKind) -> bool {
         match self.research_agent(kind) {
@@ -921,8 +929,23 @@ impl Store {
         let id = self.research_requests.get(index)?.id;
         self.request_mut(id)
     }
+    pub fn clear_tasks(&mut self) {
+        self.tasks.clear_tracked();
+    }
+    pub fn clear_projects(&mut self) {
+        self.projects.clear_tracked();
+    }
+    pub fn clear_topics(&mut self) {
+        self.topics.clear_tracked();
+    }
+    pub fn clear_requests(&mut self) {
+        self.research_requests.clear_tracked();
+    }
     pub fn retain_tasks(&mut self, keep: impl FnMut(&Task) -> bool) {
         self.tasks.retain_tracked(keep);
+    }
+    pub fn reverse_tasks(&mut self) {
+        self.tasks.reverse_tracked();
     }
     pub fn swap_tasks(&mut self, first: usize, second: usize) -> bool {
         self.tasks.swap_tracked(first, second)
@@ -937,7 +960,7 @@ impl Store {
     pub fn replace_tasks(&mut self, tasks: Vec<Task>) {
         self.tasks.replace_tracked(tasks);
     }
-    pub fn load_tasks(&mut self, tasks: Vec<Task>) -> Result<(), String> {
+    pub(in crate::domain) fn load_tasks(&mut self, tasks: Vec<Task>) -> Result<(), String> {
         self.tasks = tracked::task_from(tasks)?;
         Ok(())
     }
@@ -962,7 +985,7 @@ impl Store {
     pub fn replace_projects(&mut self, projects: Vec<Project>) {
         self.projects.replace_tracked(projects);
     }
-    pub fn load_projects(&mut self, projects: Vec<Project>) -> Result<(), String> {
+    pub(in crate::domain) fn load_projects(&mut self, projects: Vec<Project>) -> Result<(), String> {
         self.projects = tracked::project_from(projects)?;
         Ok(())
     }
@@ -987,7 +1010,7 @@ impl Store {
     pub fn replace_topics(&mut self, topics: Vec<Topic>) {
         self.topics.replace_tracked(topics);
     }
-    pub fn load_topics(&mut self, topics: Vec<Topic>) -> Result<(), String> {
+    pub(in crate::domain) fn load_topics(&mut self, topics: Vec<Topic>) -> Result<(), String> {
         self.topics = tracked::topic_from(topics)?;
         Ok(())
     }
@@ -1015,7 +1038,7 @@ impl Store {
     pub fn replace_requests(&mut self, requests: Vec<crate::request_planning::ResearchRequest>) {
         self.research_requests.replace_tracked(requests);
     }
-    pub fn load_requests(
+    pub(in crate::domain) fn load_requests(
         &mut self,
         requests: Vec<crate::request_planning::ResearchRequest>,
     ) -> Result<(), String> {
@@ -1036,7 +1059,7 @@ impl Store {
     pub fn replace_policies(&mut self, policies: Vec<StagePolicy>) {
         self.policies.replace_tracked(policies);
     }
-    pub fn load_policies(&mut self, policies: Vec<StagePolicy>) -> Result<(), String> {
+    pub(in crate::domain) fn load_policies(&mut self, policies: Vec<StagePolicy>) -> Result<(), String> {
         self.policies = tracked::policy_from(policies)?;
         Ok(())
     }
@@ -1236,9 +1259,9 @@ impl Store {
         Ok(changes)
     }
 
-    /// Exact dirty payloads/tombstones for every tracked entity collection.
-    /// Draining is atomic: an error in any collection leaves every pending
-    /// change untouched.
+    /// Test-only convenience drain. Production uses `drain_store_delta` plus
+    /// epoch retirement so a newer write is never cleared by an older ack.
+    #[cfg(test)]
     pub fn drain_tracked_changes(
         &mut self,
     ) -> Result<Vec<crate::persistence_journal::EntityChange>, String> {
@@ -1312,6 +1335,55 @@ impl Store {
         deltas
     }
 
+    pub(crate) fn dirty_epoch(&self) -> u64 {
+        let mut epoch = self.automations.epoch()
+            .saturating_add(self.automation_occurrences.epoch())
+            .saturating_add(self.runs.epoch())
+            .saturating_add(self.tasks.epoch())
+            .saturating_add(self.projects.epoch())
+            .saturating_add(self.topics.epoch())
+            .saturating_add(self.research_requests.epoch())
+            .saturating_add(self.policies.epoch())
+            .saturating_add(self.publications.epoch())
+            .saturating_add(self.model_profiles.epoch());
+        for scalar in [
+            self.next_id.epoch(),
+            self.run_id_floor.epoch(),
+            self.default_model.epoch(),
+            self.opencode_path.epoch(),
+            self.appearance.epoch(),
+            self.last_active_project.epoch(),
+            self.automation_schema_version.epoch(),
+            self.max_concurrent_runs.epoch(),
+            self.max_concurrent_automations.epoch(),
+            self.research_config.epoch(),
+            self.active_model_profile.epoch(),
+            self.report_publishing.epoch(),
+        ] {
+            epoch = epoch.saturating_add(scalar);
+        }
+        epoch
+    }
+
+    /// Snapshot the next staged group without clearing tracking. The caller
+    /// resolves the returned group through the ordered journal; retirement is a
+    /// separate step so a newer write is never discarded by an older ack.
+    pub(crate) fn drain_store_delta(&self) -> Result<StoreDelta, String> {
+        Ok(StoreDelta {
+            changes: self.pending_entity_changes()?,
+            metadata: self.pending_metadata_deltas(),
+            epoch: self.dirty_epoch(),
+        })
+    }
+
+    /// Retire exactly the drained generation. If any newer mutation happened,
+    /// nothing is cleared and the newer group is saved later.
+    pub(crate) fn retire_store_delta(&mut self, delta: &StoreDelta) {
+        if self.dirty_epoch() == delta.epoch {
+            self.clear_all_tracking();
+        }
+    }
+
     pub(crate) fn drain_metadata_deltas(
         &mut self,
     ) -> Vec<crate::persistence_journal::MetadataDelta> {
@@ -1356,7 +1428,7 @@ impl Store {
 
     /// Acknowledged durable write: every pending entity and metadata change is
     /// now part of the durable baseline.
-    pub fn clear_all_tracking(&mut self) {
+    pub(in crate::domain) fn clear_all_tracking(&mut self) {
         self.tasks.clear_dirty();
         self.projects.clear_dirty();
         self.topics.clear_dirty();
@@ -1379,11 +1451,11 @@ impl Store {
     pub fn set_run_id_floor(&mut self, value: u64) {
         self.run_id_floor.set(value);
     }
-    pub fn set_opencode_path(&mut self, value: impl Into<String>) {
-        self.opencode_path.set(value.into());
+    pub fn set_opencode_path(&mut self, value: String) {
+        self.opencode_path.set(value);
     }
-    pub fn set_default_model(&mut self, value: impl Into<String>) {
-        self.default_model.set(value.into());
+    pub fn set_default_model(&mut self, value: String) {
+        self.default_model.set(value);
     }
     pub fn set_active_model_profile(&mut self, value: Option<String>) {
         self.active_model_profile.set(value);
@@ -1432,6 +1504,13 @@ impl Store {
             .position(|publication| publication.id == id)?;
         self.publications.index_mut(index)
     }
+    pub fn remove_publication(&mut self, id: &str) -> Option<crate::report_publish::Publication> {
+        let index = self
+            .publications
+            .iter()
+            .position(|publication| publication.id == id)?;
+        self.publications.remove_tracked(index)
+    }
     pub fn retain_publications(
         &mut self,
         keep: impl FnMut(&crate::report_publish::Publication) -> bool,
@@ -1444,7 +1523,7 @@ impl Store {
     ) {
         self.publications.replace_tracked(publications);
     }
-    pub fn load_publications(
+    pub(in crate::domain) fn load_publications(
         &mut self,
         publications: Vec<crate::report_publish::Publication>,
     ) {
@@ -1476,7 +1555,7 @@ impl Store {
     ) {
         self.model_profiles.replace_tracked(profiles);
     }
-    pub fn load_model_profiles(&mut self, profiles: Vec<crate::model_profiles::ModelProfile>) {
+    pub(in crate::domain) fn load_model_profiles(&mut self, profiles: Vec<crate::model_profiles::ModelProfile>) {
         self.model_profiles.load(profiles);
     }
 
@@ -1495,6 +1574,51 @@ impl Store {
     /// Finish loading a fresh store. Only a pristine builder is accepted, so a
     /// populated or dirty live store cannot silently reset tracked state. The
     /// store is returned with the error so the caller keeps ownership.
+    /// Capability for clean hydration. The loader owns a brand-new empty store
+    /// and cannot be pointed at live state, so ordinary command paths cannot use
+    /// it to replace populated collections without dirty tracking.
+    pub(crate) fn begin_load() -> StoreLoader {
+        StoreLoader {
+            store: Store::empty(),
+        }
+    }
+
+    pub(crate) fn apply_loaded_metadata(
+        &mut self,
+        delta: crate::persistence_journal::MetadataDelta,
+    ) {
+        use crate::persistence_journal::MetadataDelta;
+        match delta {
+            MetadataDelta::NextId(value) => self.next_id.load(value),
+            MetadataDelta::RunIdFloor(value) => self.run_id_floor.load(value),
+            MetadataDelta::DefaultModel(value) => self.default_model.load(value),
+            MetadataDelta::OpenCodePath(value) => self.opencode_path.load(value),
+            MetadataDelta::Appearance(value) => self.appearance.load(value),
+            MetadataDelta::LastActiveProject(value) => self.last_active_project.load(value),
+            MetadataDelta::AutomationSchemaVersion(value) => {
+                self.automation_schema_version.load(value)
+            }
+            MetadataDelta::MaxConcurrentRuns(value) => self.max_concurrent_runs.load(value),
+            MetadataDelta::MaxConcurrentAutomations(value) => {
+                self.max_concurrent_automations.load(value)
+            }
+            MetadataDelta::ResearchConfig(value) => self.research_config.load(value),
+            MetadataDelta::ModelProfiles(value) => {
+                self.model_profiles.load(value);
+            }
+            MetadataDelta::ActiveModelProfile(value) => self.active_model_profile.load(value),
+            MetadataDelta::Topics(value) => {
+                self.topics = tracked::topic_from(value).expect("validated loaded topics")
+            }
+            MetadataDelta::ResearchRequests(value) => {
+                self.research_requests =
+                    tracked::request_from(value).expect("validated loaded requests")
+            }
+            MetadataDelta::Publications(value) => self.publications.load(value),
+            MetadataDelta::PublishingConfig(value) => self.report_publishing.load(value),
+        }
+    }
+
     pub(crate) fn with_loaded_tracked(
         mut self,
         runs: Vec<AgentRun>,
@@ -1746,30 +1870,58 @@ impl Store {
         let planning_runs: Vec<_> = self.research_requests.iter().filter(|r| requests.contains(&r.id)).filter_map(|r| r.planning_run_id).collect();
         let approved: Vec<_> = ids.iter().copied().filter(|id| self.goal_execution_approved(*id)).collect();
         let mut valid: Vec<_> = ids.iter().filter_map(|id| self.research_result(*id).map(|r| (*id, r.id))).collect();
-        let mut staged = self.clone();
-        staged.topic_mut(topic).unwrap().project_id = project;
+        // Bounded preimage for the exact entities this move writes. There is no
+        // whole-Store clone: a defensive signature-loop failure rolls these back.
+        let topic_before = self.topic(topic).cloned().expect("validated topic");
+        let tasks_before: Vec<Task> = ids
+            .iter()
+            .filter_map(|id| self.task(*id).cloned())
+            .collect();
+        let requests_before: Vec<crate::request_planning::ResearchRequest> = requests
+            .iter()
+            .filter_map(|id| {
+                self.research_requests
+                    .iter()
+                    .find(|request| request.id == *id)
+                    .cloned()
+            })
+            .collect();
+        let mut run_ids = planning_runs.clone();
+        run_ids.extend(valid.iter().map(|(_, run)| *run));
+        run_ids.sort_unstable();
+        run_ids.dedup();
+        let runs_before: Vec<(u64, String, Option<u64>)> = run_ids
+            .iter()
+            .filter_map(|id| {
+                self.runs.iter().find(|run| run.id == *id).map(|run| {
+                    (run.id, run.input_signature.clone(), run.project_plan)
+                })
+            })
+            .collect();
+
+        self.topic_mut(topic).unwrap().project_id = project;
         for id in ids.iter().copied() {
-            let mut task = staged.task_mut(id).unwrap();
+            let mut task = self.task_mut(id).unwrap();
             task.project_id = project;
             task.activity.push(activity_event("Topic moved to another project"));
         }
         for goal in approved {
-            let signature = staged.goal_plan_signature(goal);
-            staged.task_mut(goal).unwrap().approved_plan = signature;
+            let signature = self.goal_plan_signature(goal);
+            self.task_mut(goal).unwrap().approved_plan = signature;
         }
         for id in requests.iter().copied() {
-            let mut request = staged.request_mut(id).unwrap();
+            let mut request = self.request_mut(id).unwrap();
             request.project_id = project;
             request.topic_id = Some(topic);
         }
-        let planning_ids: Vec<u64> = staged
+        let planning_ids: Vec<u64> = self
             .runs
             .iter()
             .filter(|run| planning_runs.contains(&run.id))
             .map(|run| run.id)
             .collect();
         for run_id in planning_ids {
-            if let Some(mut run) = staged.run_mut(run_id) {
+            if let Some(mut run) = self.run_mut(run_id) {
                 run.project_plan = Some(project);
             }
         }
@@ -1779,16 +1931,36 @@ impl Store {
             let before = valid.len();
             let mut kept = Vec::new();
             for (task, run) in valid.drain(..) {
-                if let Some(signature) = staged.research_signature(task) {
-                    staged.run_mut(run).unwrap().input_signature = signature;
+                if let Some(signature) = self.research_signature(task) {
+                    self.run_mut(run).unwrap().input_signature = signature;
                 } else {
                     kept.push((task, run));
                 }
             }
             valid = kept;
-            if valid.len() == before { return Err("Could not preserve research dependencies during migration.".into()); }
+            if valid.len() == before {
+                // Restore exactly the preimage captured above.
+                self.topic_mut(topic).unwrap().project_id = topic_before.project_id;
+                for task in tasks_before {
+                    if let Some(current) = self.task_mut(task.id) {
+                        *current = task;
+                    }
+                }
+                for request in requests_before {
+                    if let Some(current) = self.request_mut(request.id) {
+                        current.project_id = request.project_id;
+                        current.topic_id = request.topic_id;
+                    }
+                }
+                for (id, signature, project_plan) in runs_before {
+                    if let Some(mut run) = self.run_mut(id) {
+                        run.input_signature = signature;
+                        run.project_plan = project_plan;
+                    }
+                }
+                return Err("Could not preserve research dependencies during migration.".into());
+            }
         }
-        *self = staged;
         Ok(())
     }
 
@@ -2067,6 +2239,65 @@ impl Store {
     }
 }
 
+/// Owned clean-hydration capability. Only construction paths call this; it
+/// cannot receive an existing live `Store`.
+pub(crate) struct StoreLoader {
+    store: Store,
+}
+
+impl StoreLoader {
+    pub(crate) fn set_metadata(&mut self, delta: crate::persistence_journal::MetadataDelta) {
+        self.store.apply_loaded_metadata(delta);
+    }
+
+    pub(crate) fn tasks(&mut self, tasks: Vec<Task>) -> Result<(), String> {
+        self.store.load_tasks(tasks)
+    }
+
+    pub(crate) fn projects(&mut self, projects: Vec<Project>) -> Result<(), String> {
+        self.store.load_projects(projects)
+    }
+
+    pub(crate) fn topics(&mut self, topics: Vec<Topic>) -> Result<(), String> {
+        self.store.load_topics(topics)
+    }
+
+    pub(crate) fn requests(
+        &mut self,
+        requests: Vec<crate::request_planning::ResearchRequest>,
+    ) -> Result<(), String> {
+        self.store.load_requests(requests)
+    }
+
+    pub(crate) fn policies(&mut self, policies: Vec<StagePolicy>) -> Result<(), String> {
+        self.store.load_policies(policies)
+    }
+
+    pub(crate) fn runs(
+        &mut self,
+        runs: Vec<AgentRun>,
+        automations: Vec<crate::automation::AutomationDefinition>,
+        occurrences: Vec<crate::automation::AutomationOccurrence>,
+    ) -> Result<(), String> {
+        let store = std::mem::replace(&mut self.store, Store::empty());
+        match store.with_loaded_tracked(runs, automations, occurrences) {
+            Ok(store) => {
+                self.store = store;
+                Ok(())
+            }
+            Err((store, error)) => {
+                self.store = store;
+                Err(error)
+            }
+        }
+    }
+
+    pub(crate) fn finish(mut self) -> Store {
+        self.store.clear_all_tracking();
+        self.store
+    }
+}
+
 /// Whitespace-delimited terms with double-quoted values; conditions are ANDed.
 /// Comma-delimited values within a field are ORed. A leading minus excludes a term.
 #[cfg(test)]
@@ -2161,7 +2392,7 @@ mod tests {
         assert!(legacy.agents.iter().all(Option::is_none));
         let mut store = Store::empty();
         store.set_default_model("test/global".into());
-        store.research_config = legacy;
+        store.set_research_config(legacy);
         assert_eq!(store.research_agent(ResearchKind::Goal), "OpenCode");
         store.research_config_mut().agents[2] = Some("Codex".into());
         assert_eq!(store.research_model(ResearchKind::Analyze), "");
@@ -2180,9 +2411,11 @@ mod tests {
         let mut store = Store::mock();
         store.clear_runs();
         store.project_at_mut(0).unwrap().directory = "/tmp/test-project".into();
-        for policy in &mut store.policies {
-            policy.agent = "OpenCode".into();
-            policy.model = "test/model".into();
+        for stage in Stage::ALL {
+            if let Some(policy) = store.policy_mut(stage) {
+                policy.agent = "OpenCode".into();
+                policy.model = "test/model".into();
+            }
         }
         store.set_stage(1, Stage::InProgress).unwrap();
         store.simulate_run(1).unwrap();
@@ -2381,7 +2614,7 @@ mod tests {
         let project = store.project_at_mut(0).unwrap().id;
         let mut other = store.project_at_mut(0).unwrap().clone();
         other.id = project + 1;
-        store.projects.push(other);
+        store.push_project(other);
         let topic = store.create_topic(project, "NVIDIA").unwrap();
         let goal = store
             .create_research_goal("Earnings".into(), "Review earnings".into(), project)
@@ -2427,9 +2660,10 @@ mod tests {
             .iter()
             .map(|t| (t.id, t.title.clone(), t.description.clone(), t.stage))
             .collect();
-        store.topics.clear();
-        for task in &mut store.tasks {
-            task.topic_id = None;
+        store.clear_topics();
+        let ids: Vec<u64> = store.tasks().iter().map(|task| task.id).collect();
+        for id in ids {
+            store.task_mut(id).unwrap().topic_id = None;
         }
         store.normalize_topics();
         assert!(store.tasks.iter().all(|t| store.task_topic(t.id).is_some()));
@@ -2573,8 +2807,9 @@ mod tests {
     #[test]
     fn creation_time_is_persisted_and_legacy_tasks_stay_unknown() {
         let mut store = Store::empty();
+        let project = store.project_at_mut(0).unwrap().id;
         let id = store
-            .create_task("New task", store.project_at_mut(0).unwrap().id, Stage::Planned, None)
+            .create_task("New task", project, Stage::Planned, None)
             .unwrap();
         let task = store.task(id).unwrap();
         assert!(
@@ -2589,7 +2824,7 @@ mod tests {
     }
     #[test]
     fn new_workspace_has_no_demo_tasks_or_assumed_models() {
-        let store = Store::empty();
+        let mut store = Store::empty();
         assert!(store.tasks.is_empty());
         assert!(store.runs.is_empty());
         assert!(store.default_model.is_empty());
@@ -2740,12 +2975,7 @@ mod tests {
         let stage = store.task(1).unwrap().stage;
         store.simulate_run(1).unwrap();
         let before = store.runs[0].clone();
-        store
-            .policies
-            .iter_mut()
-            .find(|p| p.stage == stage)
-            .unwrap()
-            .model = "another-model".into();
+        store.policy_mut(stage).unwrap().model = "another-model".into();
         assert_eq!(store.runs[0], before);
         assert_eq!(store.task(1).unwrap().stage, stage);
         assert_eq!(store.runs[0].status, "Simulated");
@@ -2799,6 +3029,149 @@ mod tests {
             .expect("fresh store loads");
         assert!(!loaded.has_tracked_changes());
         assert!(loaded.runs().is_empty());
+    }
+
+    #[test]
+    fn every_persistent_scalar_and_collection_emits_typed_changes() {
+        use crate::persistence_journal::{EntityChange, EntityKey, MetadataDelta};
+        let mut store = Store::empty();
+        store.clear_all_tracking();
+        assert!(!store.has_tracked_changes());
+
+        store.set_next_id(42);
+        store.set_run_id_floor(50_001);
+        store.set_default_model("provider/model".into());
+        store.set_opencode_path("/bin/opencode".into());
+        store.set_active_model_profile(Some("review".into()));
+        store.set_max_concurrent_runs(7);
+        store.set_max_concurrent_automations(8);
+        store.set_appearance(crate::appearance::Appearance::Dark);
+        store.set_last_active_project(Some(1));
+        store.set_automation_schema_version(9);
+        store.research_config_mut().ego_path = "ego".into();
+        store.report_publishing_mut().branch = "main".into();
+        store.push_model_profile(crate::model_profiles::ModelProfile {
+            name: "review".into(),
+            default_agent: "OpenCode".into(),
+            default_model: "provider/model".into(),
+            agents: Default::default(),
+            models: Default::default(),
+        });
+        store.push_publication(crate::report_publish::Publication {
+            id: "pub".into(),
+            topic: 1,
+            fingerprint: String::new(),
+            config: Default::default(),
+            title: String::new(),
+            markdown: String::new(),
+            status: "Pending".into(),
+            commit: None,
+            message: String::new(),
+        });
+
+        let deltas = store.pending_metadata_deltas();
+        let fields: Vec<&str> = deltas.iter().map(MetadataDelta::field).collect();
+        for expected in [
+            "next_id",
+            "run_id_floor",
+            "default_model",
+            "opencode_path",
+            "active_model_profile",
+            "max_concurrent_runs",
+            "max_concurrent_automations",
+            "appearance",
+            "last_active_project",
+            "automation_schema_version",
+            "research_config",
+            "report_publishing",
+            "model_profiles",
+            "publications",
+        ] {
+            assert!(fields.contains(&expected), "missing {expected}: {fields:?}");
+        }
+
+        let topic = store.create_topic(1, "Tracked topic").unwrap();
+        let task = store
+            .create_task_in_topic("Tracked task", 1, Stage::Planned, None, Some(topic))
+            .unwrap();
+        store.task_mut(task).unwrap().title = "Changed".into();
+        store.push_project(Project {
+            id: 2,
+            name: "Second".into(),
+            key: "P2".into(),
+            directory: String::new(),
+            research_brief: String::new(),
+            kind: ProjectKind::User,
+        });
+        store.push_request(crate::request_planning::ResearchRequest {
+            id: 7,
+            project_id: 1,
+            topic_id: Some(topic),
+            automation_id: None,
+            expected_result: None,
+            revision: 1,
+            provisional_topic_name: None,
+            input: "Request".into(),
+            submitted_at: String::new(),
+            planning_run_id: None,
+            goal_ids: Vec::new(),
+            brief: None,
+        });
+        store.remove_project(2);
+
+        let changes = store.pending_entity_changes().unwrap();
+        assert!(changes.contains(&EntityChange::Upsert(
+            crate::persistence_journal::EntityPayload::Task(store.task(task).unwrap().clone())
+        )));
+        assert!(changes.contains(&EntityChange::Upsert(
+            crate::persistence_journal::EntityPayload::Topic(store.topic(topic).unwrap().clone())
+        )));
+        assert!(changes.contains(&EntityChange::Upsert(
+            crate::persistence_journal::EntityPayload::ResearchRequest(
+                store.research_requests()[0].clone()
+            )
+        )));
+        assert!(changes.contains(&EntityChange::Delete(EntityKey::Project(2))));
+        assert!(matches!(
+            store.pending_entity_changes().unwrap().iter().find(|change| {
+                matches!(change, EntityChange::Delete(EntityKey::Project(_)))
+            }),
+            Some(_)
+        ));
+    }
+
+    #[test]
+    fn acknowledgement_retires_only_the_drained_generation() {
+        let mut store = Store::mock();
+        store.clear_all_tracking();
+        store.set_default_model("first".into());
+        let drained = store.drain_store_delta().unwrap();
+        assert_eq!(drained.metadata.len(), 1);
+        store.retire_store_delta(&drained);
+        assert!(!store.has_tracked_changes());
+
+        store.set_default_model("second".into());
+        let stale = store.drain_store_delta().unwrap();
+        store.set_default_model("third".into());
+        store.retire_store_delta(&stale);
+        assert!(
+            store.has_tracked_changes(),
+            "a newer write must survive an older acknowledgement"
+        );
+        let current = store.drain_store_delta().unwrap();
+        store.retire_store_delta(&current);
+        assert!(!store.has_tracked_changes());
+    }
+
+    #[test]
+    fn run_floor_survives_json_round_trip() {
+        let mut store = Store::empty();
+        store.set_run_id_floor(50_001);
+        store.clear_all_tracking();
+        let json = serde_json::to_string(&store).unwrap();
+        let restored: Store = serde_json::from_str(&json).unwrap();
+        assert_eq!(restored.run_id_floor(), 50_001);
+        assert!(!restored.has_tracked_changes());
     }
 }
 

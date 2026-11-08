@@ -225,19 +225,21 @@ impl Store {
             }.into(),
             auto_start: false,
         }).collect();
-        let mut store = Self::empty();
-        store
-            .load_tasks(tasks)
+        let mut loader = Self::begin_load();
+        loader
+            .tasks(tasks)
             .expect("fixture tasks have unique identities");
-        store
-            .load_projects(projects)
+        loader
+            .projects(projects)
             .expect("fixture projects have unique identities");
-        store
-            .load_policies(policies)
+        loader
+            .policies(policies)
             .expect("fixture policies have unique identities");
-        store.set_next_id(23);
-        store.set_appearance(crate::appearance::Appearance::Dark);
-        store.clear_all_tracking();
+        loader.set_metadata(crate::persistence_journal::MetadataDelta::NextId(23));
+        loader.set_metadata(crate::persistence_journal::MetadataDelta::Appearance(
+            crate::appearance::Appearance::Dark,
+        ));
+        let mut store = loader.finish();
         store.normalize_topics();
         store.clear_all_tracking();
         store

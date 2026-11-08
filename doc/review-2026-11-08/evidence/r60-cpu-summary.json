@@ -1,0 +1,142 @@
+{
+  "main_samples": 12189,
+  "main_statistical_weight_ms": 12189.0,
+  "inclusive_groups_ms": {
+    "layout": 6245.0,
+    "memmove": 1526.0,
+    "paint": 5864.0,
+    "flexbox": 2030.0,
+    "sidebar": 1192.0,
+    "logo": 103.0,
+    "settings": 3.0
+  },
+  "top_self_ms": [
+    [
+      "_platform_memmove",
+      1526.0
+    ],
+    [
+      "_RNvMs_NtCs102Aak0gGwN_4gpui11bounds_treeINtB4_10BoundsTreeNtNtB6_8geometry12ScaledPixelsE6insertB6_",
+      490.0
+    ],
+    [
+      "_xzm_xzone_malloc_tiny",
+      486.0
+    ],
+    [
+      "_RINvNtNtCsh9WDnuMkoHa_5taffy7compute7flexbox22compute_flexbox_layoutINtNtNtB6_4tree10taffy_tree9TaffyViewNtNtCs102Aak0gGwN_4gpui5taffy11NodeContextNCNvMB1H_NtB1H_17TaffyLayoutEngine14compute_layouts_0EEB1J_",
+      469.0
+    ],
+    [
+      "<deduplicated_symbol>",
+      348.0
+    ],
+    [
+      "_xzm_free_main",
+      304.0
+    ],
+    [
+      "__kdebug_trace64",
+      228.0
+    ],
+    [
+      "_RINvNtNtCsh9WDnuMkoHa_5taffy7compute5block13compute_innerINtNtNtB6_4tree10taffy_tree9TaffyViewNtNtCs102Aak0gGwN_4gpui5taffy11NodeContextNCNvMB1w_NtB1w_17TaffyLayoutEngine14compute_layouts_0EEB1y_",
+      196.0
+    ],
+    [
+      "_RNvXs3u_NtCs102Aak0gGwN_4gpui6windowNtB6_9ElementIdNtNtCs9nEiEE0E2Vj_4core3cmp9PartialEq2eq",
+      176.0
+    ],
+    [
+      "_RNvXs0_NtNtNtCs9nEiEE0E2Vj_4core4iter8adapters3mapINtB5_3MapINtNtB7_6filter6FilterIBX_IBN_INtNtB7_9enumerate9EnumerateNtNtNtCsh9WDnuMkoHa_5taffy4tree10taffy_tree18TaffyTreeChildIterENCINvNtNtB1Y_7compute7flexbox29generate_anonymous_flex_itemsINtB1U_9TaffyViewNtNtCs102Aak0gGwN_4gpui5taffy11NodeContextNCNvMB4b_NtB4b_17TaffyLayoutEngine14compute_layouts_0EE0ENCB2W_s_0ENCB2W_s0_0ENCB2W_s1_0ENtNtNtB9_6traits8iterator8Iterator4nextB4d_",
+      160.0
+    ],
+    [
+      "_RINvMs6_NtCsjPjDV110NBJ_9hashbrown3rawINtB6_8RawTableTTNtNtCs102Aak0gGwN_4gpui7element15GlobalElementIdNtNtCs9nEiEE0E2Vj_4core3any6TypeIdENtNtBV_6window15ElementStateBoxEE12remove_entryNCINvNtB8_3map14equivalent_keyBQ_BQ_B2c_E0EBV_",
+      142.0
+    ],
+    [
+      "_RINvMsq_NtCs3vUkWdPtNor_5alloc4syncINtB6_3ArcSNtNtCs102Aak0gGwN_4gpui6window9ElementIdE15from_iter_exactINtNtNtNtCs9nEiEE0E2Vj_4core4iter8adapters6cloned6ClonedINtNtNtB1N_5slice4iter4IterBI_EEEBM_",
+      141.0
+    ]
+  ],
+  "near_25ms_hitch_inclusive_frames_ms": [
+    [
+      "start",
+      76.0
+    ],
+    [
+      "-[NSApplication(NSEventRouting) nextEventMatchingMask:untilDate:inMode:dequeue:]",
+      76.0
+    ],
+    [
+      "_RNvNtCs1coMeGJvsuS_3std2rt19lang_start_internal",
+      76.0
+    ],
+    [
+      "main",
+      76.0
+    ],
+    [
+      "_DPSBlockUntilNextEventMatchingListInMode",
+      76.0
+    ],
+    [
+      "-[NSApplication run]",
+      76.0
+    ],
+    [
+      "_RNvXs_NtCs9Y0ZysNn2AY_10gpui_macos8platformNtB4_11MacPlatformNtNtCs102Aak0gGwN_4gpui8platform8Platform3run",
+      76.0
+    ],
+    [
+      "_DPSNextEvent",
+      76.0
+    ],
+    [
+      "_BlockUntilNextEventMatchingListInMode",
+      76.0
+    ],
+    [
+      "_RINvMs2_NtCs102Aak0gGwN_4gpui3appNtB6_11Application3runNCNvCs5NWr3C7C71b_30what_the_hell_are_you_planning4mainsQ_0EBV_",
+      76.0
+    ],
+    [
+      "_RINvNtNtCs1coMeGJvsuS_3std3sys9backtrace28___rust_begin_short_backtraceFEuuECs5NWr3C7C71b_30what_the_hell_are_you_planning",
+      76.0
+    ],
+    [
+      "ReceiveNextEventCommon",
+      76.0
+    ],
+    [
+      "RunCurrentEventLoopInMode",
+      76.0
+    ],
+    [
+      "_RNCINvNtCs1coMeGJvsuS_3std2rt10lang_startuE0Cs5NWr3C7C71b_30what_the_hell_are_you_planning",
+      76.0
+    ],
+    [
+      "-[NSApplication(NSEventRouting) _nextEventMatchingEventMask:untilDate:inMode:dequeue:]",
+      76.0
+    ],
+    [
+      "_RNvCs5NWr3C7C71b_30what_the_hell_are_you_planning4main",
+      76.0
+    ],
+    [
+      "_CFRunLoopRunSpecificWithOptions",
+      75.0
+    ],
+    [
+      "__CFRunLoopRun",
+      75.0
+    ]
+  ],
+  "near_hitch_window_s": [
+    25.824,
+    26.025
+  ],
+  "note": "Statistical sampled weights, not measured frame durations. Inclusive groups overlap; raw Rust symbols retained. Temporal proximity does not by itself prove causality."
+}

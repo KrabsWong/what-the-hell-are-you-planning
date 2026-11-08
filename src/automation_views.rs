@@ -1331,10 +1331,7 @@ impl TaskApp {
             .any(|candidate| candidate.id == run_id)
         {
             if let Some(saved) = self
-                .store
-                .research_requests()
-                .iter_mut()
-                .find(|candidate| candidate.id == request)
+                .store.request_mut(request)
             {
                 saved.planning_run_id = None;
             }

@@ -1,0 +1,50 @@
+{
+  "trace": ".local/native-review/r59-settings-clean-light.trace",
+  "pid": 12194,
+  "build_manifest": "r59-native-install.json",
+  "gestures": [
+    {
+      "direction": "down",
+      "start": 1794167485314,
+      "end": 1794167486193
+    },
+    {
+      "direction": "up",
+      "start": 1794167493600,
+      "end": 1794167494060
+    },
+    {
+      "direction": "down",
+      "start": 1794167498890,
+      "end": 1794167499361
+    },
+    {
+      "direction": "up",
+      "start": 1794167499361,
+      "end": 1794167499459
+    },
+    {
+      "direction": "down",
+      "start": 1794167499459,
+      "end": 1794167499553
+    },
+    {
+      "direction": "up",
+      "start": 1794167499553,
+      "end": 1794167499647
+    },
+    {
+      "direction": "down",
+      "start": 1794167504577,
+      "end": 1794167504677
+    },
+    {
+      "direction": "up",
+      "start": 1794167509049,
+      "end": 1794167509144
+    }
+  ],
+  "observation": "Native screenshots confirmed Browser runtime at bottom and Global default at top. Eight successful CUA gestures; final trace timestamp coverage must be checked before attributing all gestures to the recording.",
+  "performance_acceptance": false,
+  "contamination": "Builds appeared after clean preflight. First observed busy sample at 1794167475.1927109 with cargo 13726 and rustc 13727/13728, overlapping the recording/gesture window. Do not use this trace as uncontaminated performance evidence."
+}

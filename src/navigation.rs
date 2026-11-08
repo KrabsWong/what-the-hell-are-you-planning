@@ -639,7 +639,7 @@ mod tests {
         store.project_at_mut(0).unwrap().directory = std::env::temp_dir().to_string_lossy().into_owned();
         store.set_default_model("test/model".into());
         let id = store.create_task("Task", 1, Stage::Planned, None).unwrap();
-        store.policies = Store::mock().policies;
+        store.replace_policies(Store::mock().policies().to_vec());
         store.simulate_run(id).unwrap();
         let run_id = {
             let mut run = store.last_run_mut().unwrap();
@@ -839,7 +839,7 @@ mod tests {
         let steps = store.automation_period_steps(occurrence);
         let navigation = store.task_navigation(steps[0]);
         let next_task = steps[1];
-        store.tasks.retain(|task| task.id != next_task);
+        store.retain_tasks(|task| task.id != next_task);
         assert_eq!(
             navigation.next.resolved(&store),
             Some(NeighborTarget::AutomationOverview {

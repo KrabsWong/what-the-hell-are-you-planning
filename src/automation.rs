@@ -874,6 +874,9 @@ mod tests {
 
         let mut store = Store::mock();
         store.simulate_run(1).unwrap();
+        // Setup dirt from the mock/simulation is not part of this automation-only
+        // atomicity assertion.
+        store.drain_tracked_changes().unwrap();
         store.push_automation(definition());
         let mut second = definition();
         second.id = 2;
@@ -894,13 +897,13 @@ mod tests {
         // Exact multi-entity outcome: two automation upserts, one automation
         // tombstone, one occurrence upsert and one run upsert.
         let expected = vec![
+            EntityChange::Upsert(EntityPayload::Run(store.runs()[0].clone())),
             EntityChange::Delete(EntityKey::Automation(3)),
             EntityChange::Upsert(EntityPayload::Automation(store.automation(1).unwrap().clone())),
             EntityChange::Upsert(EntityPayload::Automation(store.automation(2).unwrap().clone())),
             EntityChange::Upsert(EntityPayload::Occurrence(
                 store.occurrence(1).unwrap().clone(),
             )),
-            EntityChange::Upsert(EntityPayload::Run(store.runs()[0].clone())),
         ];
         let changes = store.drain_tracked_changes().unwrap();
         assert_eq!(changes, expected);

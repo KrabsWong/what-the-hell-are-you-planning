@@ -320,11 +320,7 @@ impl TaskApp {
                     self.open_run_progress(dispatch);
                 }
                 if !self.store.runs().iter().any(|r| r.id == run_id) {
-                    self.store
-                        .research_requests
-                        .iter_mut()
-                        .find(|r| r.id == id)
-                        .unwrap()
+                    self.store.request_mut(id).unwrap()
                         .planning_run_id = None;
                     self.persist_if_changed(true);
                 }

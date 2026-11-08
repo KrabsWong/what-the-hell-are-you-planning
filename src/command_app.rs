@@ -644,6 +644,15 @@ impl TaskApp {
                     self.dispatch_ack_pending = None;
                     changed = true;
                 }
+                crate::dispatch_admission::AdmissionUpdate::LiveSaveDurable { epoch, .. } => {
+                    self.store.retire_epoch(epoch);
+                    self.storage_error.clear();
+                    changed = true;
+                }
+                crate::dispatch_admission::AdmissionUpdate::LiveSaveError { reason, .. } => {
+                    self.storage_error = reason;
+                    changed = true;
+                }
                 crate::dispatch_admission::AdmissionUpdate::StaleAck { reason, .. }
                 | crate::dispatch_admission::AdmissionUpdate::Blocked { reason, .. }
                 | crate::dispatch_admission::AdmissionUpdate::Retained { reason, .. } => {
@@ -1363,11 +1372,13 @@ impl TaskApp {
     }
 
     pub(crate) fn save_current_store_durably(&mut self) -> Result<(), String> {
+        let receipt = self.store.drain_store_delta()?;
         let Some(storage) = self.storage.as_ref() else {
             return Err("Workspace storage is unavailable.".into());
         };
         match storage.save(&self.store) {
             Ok(()) => {
+                self.store.retire_store_delta(&receipt);
                 self.last_saved = self.store.clone();
                 self.storage_error.clear();
                 Ok(())

@@ -1,0 +1,6 @@
+{
+  "command": "cargo test --features qa scoped_domain:: --quiet",
+  "exit_code": 101,
+  "seconds": 10.987,
+  "log": "r64-command-tests.log"
+}

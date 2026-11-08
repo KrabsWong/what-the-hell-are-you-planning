@@ -629,13 +629,27 @@ impl DomainCommand {
     }
 }
 
-fn capture_runs(store: &Store, ids: &[u64]) -> Vec<AgentRun> {
+/// Bounded run preimage: only the two user-context fields a topic/project move
+/// can change. Report bodies, logs, sessions and outputs are never copied.
+struct RunPreimage {
+    id: u64,
+    input_signature: String,
+    project_plan: Option<u64>,
+}
+
+fn capture_runs(store: &Store, ids: &[u64]) -> Vec<RunPreimage> {
     ids.iter()
-        .filter_map(|id| store.runs().iter().find(|run| run.id == *id).cloned())
+        .filter_map(|id| {
+            store.runs().iter().find(|run| run.id == *id).map(|run| RunPreimage {
+                id: run.id,
+                input_signature: run.input_signature.clone(),
+                project_plan: run.project_plan,
+            })
+        })
         .collect()
 }
 
-fn changed_runs(store: &Store, before: Vec<AgentRun>) -> Vec<RunDelta> {
+fn changed_runs(store: &Store, before: Vec<RunPreimage>) -> Vec<RunDelta> {
     before
         .into_iter()
         .filter_map(|before| {
@@ -647,7 +661,13 @@ fn changed_runs(store: &Store, before: Vec<AgentRun>) -> Vec<RunDelta> {
                     after.input_signature != before.input_signature
                         || after.project_plan != before.project_plan
                 })
-                .map(|after| RunDelta::capture(&before, after))
+                .map(|after| RunDelta {
+                    id: before.id,
+                    before_input_signature: before.input_signature,
+                    after_input_signature: after.input_signature.clone(),
+                    before_project_plan: before.project_plan,
+                    after_project_plan: after.project_plan,
+                })
         })
         .collect()
 }
@@ -1662,6 +1682,121 @@ mod tests {
                 assert_eq!(pending(&store), before_pending);
             }
         }
+    }
+
+    const PLAN: &str = r#"{"tasks":[
+        {"title":"Collect","instructions":"Collect","kind":"collect","depends_on":[]},
+        {"title":"Analyze","instructions":"Analyze","kind":"analyze","depends_on":[0]},
+        {"title":"Report","instructions":"Report","kind":"advise","depends_on":[1]}
+    ]}"#;
+
+    fn research_fixture() -> (Store, u64, u64, Vec<u64>) {
+        let mut store = Store::empty();
+        store.project_mut(1).unwrap().directory = "/tmp/t13-scoped-domain".into();
+        store.research_config_mut().models = [
+            "fixture/planner",
+            "fixture/collector",
+            "fixture/analyst",
+            "fixture/adviser",
+        ]
+        .map(String::from);
+        let topic = store.create_topic(1, "Topic").unwrap();
+        let goal = store
+            .create_research_goal("Goal".into(), "Brief".into(), 1)
+            .unwrap();
+        store.set_goal_topic(goal, Some(topic)).unwrap();
+        store
+            .task_mut(goal)
+            .unwrap()
+            .research
+            .as_mut()
+            .unwrap()
+            .requires_approval = true;
+        store.set_stage(goal, Stage::Planned).unwrap();
+        store.task_mut(goal).unwrap().approved_plan = store.goal_plan_signature(goal);
+        let steps = store.apply_research_plan(goal, PLAN).unwrap();
+        // Applying the plan invalidates any earlier approval; reapprove the
+        // complete goal before preparing child runs.
+        store.set_stage(goal, Stage::Planned).unwrap();
+        store.task_mut(goal).unwrap().approved_plan = store.goal_plan_signature(goal);
+        for step in &steps {
+            store.set_stage(*step, Stage::Planned).unwrap();
+            let mut run = store.prepare_run(*step).unwrap();
+            run.status = "Succeeded".into();
+            run.output = format!("Completed report for {step}");
+            run.input_signature = store
+                .research_signature(*step)
+                .expect("the fixture has reusable inputs");
+            store.push_run(run);
+        }
+        let destination = Project {
+            id: 2,
+            name: "Destination".into(),
+            key: "P2".into(),
+            directory: "/tmp/destination".into(),
+            research_brief: String::new(),
+            kind: crate::domain::ProjectKind::User,
+        };
+        store.push_project(destination);
+        (store, topic, goal, steps)
+    }
+
+    #[test]
+    fn move_topic_refreshes_exact_prospective_signatures() {
+        let (mut store, topic, goal, steps) = research_fixture();
+        let outcome = DomainCommand::TopicMove { topic, project: 2 }
+            .execute(&mut store)
+            .unwrap();
+        let expected_goal = store.goal_plan_signature(goal);
+        assert_eq!(store.task(goal).unwrap().approved_plan, expected_goal);
+        for step in &steps {
+            let signature = store.research_signature(*step);
+            let run = store
+                .runs()
+                .iter()
+                .rev()
+                .find(|run| run.task_id == *step && run.status == "Succeeded")
+                .unwrap();
+            assert_eq!(
+                signature.as_ref(),
+                Some(&run.input_signature),
+                "prospective signature must match the real signature for {step}"
+            );
+            assert!(
+                store.research_result(*step).is_some(),
+                "an already valid completed result must stay reusable after the move"
+            );
+        }
+        apply_undo(&mut store, &outcome.undo).unwrap();
+        assert_eq!(store.topic(topic).unwrap().project_id, 1);
+        let restored_goal = store.goal_plan_signature(goal);
+        assert_eq!(store.task(goal).unwrap().approved_plan, restored_goal);
+        for step in &steps {
+            assert_eq!(store.task(*step).unwrap().project_id, 1);
+            assert!(
+                store.research_result(*step).is_some(),
+                "Undo must restore a reusable result for {step}"
+            );
+        }
+    }
+
+    #[test]
+    fn malformed_dependency_cycle_is_rejected_before_move_writes() {
+        let (mut store, topic, _goal, steps) = research_fixture();
+        {
+            let mut first = store.task_mut(steps[0]).unwrap();
+            first.research.as_mut().unwrap().depends_on = vec![steps[1]];
+        }
+        {
+            let mut second = store.task_mut(steps[1]).unwrap();
+            second.research.as_mut().unwrap().depends_on = vec![steps[0]];
+        }
+        let before = store.clone();
+        let before_pending = pending(&store);
+        assert!(store.move_topic_project(topic, 2).is_err());
+        assert_eq!(store, before);
+        assert_eq!(pending(&store), before_pending);
+        assert_eq!(store.topic(topic).unwrap().project_id, 1);
     }
 
     #[test]

@@ -18,6 +18,7 @@ pub fn run() {
     visual_matrix(&root);
     settings_retained_invalidation(&root);
     footer_retention_invalidation(&root);
+    sidebar_retained_surface(&root);
     settings_scroll_probe(&root);
     keyboard_matrix(&root);
     automation_result_keyboard(&root);
@@ -378,7 +379,7 @@ fn automation_result_keyboard(root: &Path) {
         let (opener, background) = cx
             .update_window(handle, |_, w, cx| {
                 w.render_frame(cx);
-                let background = (app.read(cx).scope(), app.read(cx).selected);
+                let background = (app.read(cx).scope(), app.read(cx).selected());
                 w.click(format!("open-occurrence-{occurrence}"), cx);
                 let opener = app
                     .read(cx)
@@ -438,7 +439,7 @@ fn automation_result_keyboard(root: &Path) {
                 "{activation}: opener not restored"
             );
             assert_eq!(
-                (app.read(cx).scope(), app.read(cx).selected),
+                (app.read(cx).scope(), app.read(cx).selected()),
                 background,
                 "{activation}: background changed"
             );
@@ -791,6 +792,89 @@ fn footer_retention_invalidation(root: &Path) {
         .unwrap();
 }
 
+fn sidebar_retained_surface(root: &Path) {
+    let directory = root.join("sidebar-retained");
+    std::fs::create_dir_all(&directory).unwrap();
+    let store = fixture(&directory);
+    let path = directory.join("workspace.sqlite3");
+    Storage::new(path.clone()).save(&store).unwrap();
+    let (mut cx, handle, app) = with_app(store, &path, 1440., 920., |app, w, cx| {
+        app.set_scope_identity(Scope::All);
+        cx.notify();
+        let _ = w;
+    });
+    cx.update_window(handle, |_, w, cx| {
+        w.render_frame(cx);
+        let brand = w.find("sidebar-brand-overlay").bounds();
+        assert!(brand.size.width > px(20.), "brand mark must stay visible");
+
+        // Pointer routing through the overlay area: a project row at the top of
+        // the retained sidebar still navigates.
+        w.click("project-1", cx);
+        w.render_frame(cx);
+        assert_eq!(app.read(cx).scope(), Scope::Project(1));
+
+        // Expanding a project and opening the bottom workspace menu prove the
+        // overlay interior does not intercept sidebar controls.
+        w.click("expand-project-1", cx);
+        w.render_frame(cx);
+        assert!(app.read(cx).expanded_sidebar_projects.contains(&1));
+        w.click("workspace-menu", cx);
+        w.render_frame(cx);
+        w.press("escape", cx);
+        w.render_frame(cx);
+
+        // Wheel scrolling moves the retained navigation and the overlay mark
+        // together; a far scroll clips the mark instead of leaving it floating.
+        let before_scroll = app.read(cx).sidebar_scroll.offset().y;
+        w.scroll(
+            "sidebar-scroll",
+            ScrollDelta::Pixels(point(px(0.), px(-200.))),
+            cx,
+        );
+        w.render_frame(cx);
+        let after_scroll = app.read(cx).sidebar_scroll.offset().y;
+        assert!(after_scroll < before_scroll - px(10.));
+        let moved = w.find("sidebar-brand-overlay").bounds();
+        assert!(moved.top() < brand.top(), "brand must follow sidebar scroll");
+        w.scroll(
+            "sidebar-scroll",
+            ScrollDelta::Pixels(point(px(0.), px(-4000.))),
+            cx,
+        );
+        w.render_frame(cx);
+        let clipped = w.find("sidebar-brand-overlay");
+        assert!(
+            !clipped.visible() || clipped.bounds().bottom() < brand.top(),
+            "brand must clip with the sidebar content"
+        );
+        w.scroll(
+            "sidebar-scroll",
+            ScrollDelta::Pixels(point(px(0.), px(8000.))),
+            cx,
+        );
+        w.render_frame(cx);
+        assert!(w.find("sidebar-brand-overlay").visible());
+
+        // Dragging the resize divider still resizes the sidebar panel.
+        let width_before = w.find("sidebar-scroll").bounds().size.width;
+        w.drag(point(px(256.), px(400.)), point(px(356.), px(400.)), cx);
+        w.render_frame(cx);
+        assert!(
+            w.find("sidebar-scroll").bounds().size.width > width_before,
+            "sidebar divider must resize the retained panel"
+        );
+
+        // Dark theme keeps the overlay mark present at the same anchor.
+        app.update(cx, |app, cx| app.set_appearance(Appearance::Dark, w, cx));
+        w.render_frame(cx);
+        assert!(w.find("sidebar-brand-overlay").visible());
+    })
+    .unwrap();
+    cx.update_window(handle, |_, w, _| w.remove_window())
+        .unwrap();
+}
+
 fn click_in_settings(w: &mut Window, cx: &mut App, id: &str) {
     w.render_frame(cx);
     for _ in 0..30 {
@@ -902,7 +986,7 @@ fn keyboard_surface(
     Storage::new(path.clone()).save(&store).unwrap();
     let (mut cx, handle, app) = with_app(store, &path, 1000., 680., |app, w, cx| {
         app.set_scope_identity(Scope::All);
-        app.selected = Some(1);
+        app.fixture_select_task(Some(1));
         cx.notify();
     });
     let mut opener: Option<FocusHandle> = None;
@@ -912,7 +996,7 @@ fn keyboard_surface(
         w.click("project-1", cx);
         w.render_frame(cx);
         opener = w.focused(cx);
-        background = (app.read(cx).scope(), app.read(cx).selected);
+        background = (app.read(cx).scope(), app.read(cx).selected());
         assert!(opener.is_some(), "{surface}: real opener focus required");
         app.update(cx, |app, cx| open(app, w, cx));
         w.render_frame(cx);
@@ -1034,7 +1118,7 @@ fn keyboard_surface(
             "{surface}: opener not restored after Cancel"
         );
         assert_eq!(
-            (app.read(cx).scope(), app.read(cx).selected),
+            (app.read(cx).scope(), app.read(cx).selected()),
             background.clone(),
             "{surface}: background moved after Cancel"
         );
@@ -1061,7 +1145,7 @@ fn keyboard_surface(
             "{surface}: opener not restored after Escape"
         );
         assert_eq!(
-            (app.read(cx).scope(), app.read(cx).selected),
+            (app.read(cx).scope(), app.read(cx).selected()),
             background.clone(),
             "{surface}: background moved after Escape"
         );
@@ -1176,7 +1260,7 @@ fn task_form_dirty_keyboard(root: &Path) {
         w.render_frame(cx);
         assert!(app.read(cx).navigation.pending_exit.is_none());
         assert!(app.read(cx).draft.is_some());
-        assert_eq!(app.read(cx).selected, Some(1));
+        assert_eq!(app.read(cx).selected(), Some(1));
         w.press("escape", cx);
         w.render_frame(cx);
         if app.read(cx).draft.is_some() {

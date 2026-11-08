@@ -461,7 +461,7 @@ pub use crate::request_planning::ResearchRequest;
 pub(crate) struct StoreDelta {
     pub changes: Vec<crate::persistence_journal::EntityChange>,
     pub metadata: Vec<crate::persistence_journal::MetadataDelta>,
-    epoch: u64,
+    pub epoch: u64,
 }
 
 impl Store {
@@ -1046,6 +1046,20 @@ impl Store {
         Ok(())
     }
 
+    pub fn policy(&self, stage: Stage) -> Option<&StagePolicy> {
+        self.policies.iter().find(|policy| policy.stage == stage)
+    }
+    pub fn remove_policy(&mut self, stage: Stage) -> Option<StagePolicy> {
+        self.policies
+            .remove_tracked(crate::persistence_journal::EntityKey::policy(stage))
+    }
+    pub fn replace_policy(&mut self, policy: StagePolicy) {
+        if let Some(slot) = self.policy_mut(policy.stage) {
+            *slot = policy;
+        } else {
+            self.push_policy(policy);
+        }
+    }
     pub fn policy_mut(&mut self, stage: Stage) -> Option<&mut StagePolicy> {
         self.policies
             .tracked_mut(crate::persistence_journal::EntityKey::policy(stage))
@@ -1335,6 +1349,106 @@ impl Store {
         deltas
     }
 
+    /// Apply one typed journal change to a durable-base replica. Used by the
+    /// persistence worker; never for UI dirty discovery.
+    pub(crate) fn apply_entity_change(&mut self, change: &crate::persistence_journal::EntityChange) {
+        use crate::persistence_journal::{EntityChange, EntityKey, EntityPayload};
+        match change {
+            EntityChange::Delete(key) => match key {
+                EntityKey::Task(id) => {
+                    self.remove_task(*id);
+                }
+                EntityKey::Project(id) => {
+                    self.remove_project(*id);
+                }
+                EntityKey::Topic(id) => {
+                    self.remove_topic(*id);
+                }
+                EntityKey::ResearchRequest(id) => {
+                    self.remove_request(*id);
+                }
+                EntityKey::Run(id) => {
+                    self.remove_run(*id);
+                }
+                EntityKey::Policy(stage) => {
+                    self.policies
+                        .remove_tracked(crate::persistence_journal::EntityKey::Policy(*stage));
+                }
+                EntityKey::Automation(id) => {
+                    self.remove_automation(*id);
+                }
+                EntityKey::Occurrence(id) => {
+                    self.remove_occurrence(*id);
+                }
+            },
+            EntityChange::Upsert(payload) => match payload {
+                EntityPayload::Task(value) => {
+                    if let Some(slot) = self.task_mut(value.id) {
+                        *slot = value.clone();
+                    } else {
+                        self.push_task(value.clone());
+                    }
+                }
+                EntityPayload::Project(value) => {
+                    if let Some(slot) = self.project_mut(value.id) {
+                        *slot = value.clone();
+                    } else {
+                        self.push_project(value.clone());
+                    }
+                }
+                EntityPayload::Topic(value) => {
+                    if let Some(slot) = self.topic_mut(value.id) {
+                        *slot = value.clone();
+                    } else {
+                        self.push_topic(value.clone());
+                    }
+                }
+                EntityPayload::ResearchRequest(value) => {
+                    if let Some(slot) = self.request_mut(value.id) {
+                        *slot = value.clone();
+                    } else {
+                        self.push_request(value.clone());
+                    }
+                }
+                EntityPayload::Run(value) => {
+                    if let Some(slot) = self.run_mut(value.id) {
+                        *slot = value.clone();
+                    } else {
+                        self.push_run(value.clone());
+                    }
+                }
+                EntityPayload::Policy(value) => {
+                    if self.policy(value.stage).is_some() {
+                        self.replace_policy(value.clone());
+                    } else {
+                        self.push_policy(value.clone());
+                    }
+                }
+                EntityPayload::Automation(value) => {
+                    if let Some(slot) = self.automation_mut(value.id) {
+                        *slot = value.clone();
+                    } else {
+                        self.push_automation(value.clone());
+                    }
+                }
+                EntityPayload::Occurrence(value) => {
+                    if let Some(slot) = self.occurrence_mut(value.id) {
+                        *slot = value.clone();
+                    } else {
+                        self.push_occurrence(value.clone());
+                    }
+                }
+            },
+        }
+    }
+
+    pub(crate) fn apply_metadata_delta(
+        &mut self,
+        delta: crate::persistence_journal::MetadataDelta,
+    ) {
+        self.apply_loaded_metadata(delta);
+    }
+
     pub(crate) fn dirty_epoch(&self) -> u64 {
         let mut epoch = self.automations.epoch()
             .saturating_add(self.automation_occurrences.epoch())
@@ -1368,6 +1482,14 @@ impl Store {
     /// Snapshot the next staged group without clearing tracking. The caller
     /// resolves the returned group through the ordered journal; retirement is a
     /// separate step so a newer write is never discarded by an older ack.
+    /// Consume a store whose exact snapshot was just written durably. Only the
+    /// consumed copy loses its tracking, so a caller cannot clear unrelated
+    /// pending changes on a different live store.
+    pub(crate) fn into_durably_saved(mut self) -> Store {
+        self.clear_all_tracking();
+        self
+    }
+
     pub(crate) fn drain_store_delta(&self) -> Result<StoreDelta, String> {
         Ok(StoreDelta {
             changes: self.pending_entity_changes()?,
@@ -1379,7 +1501,12 @@ impl Store {
     /// Retire exactly the drained generation. If any newer mutation happened,
     /// nothing is cleared and the newer group is saved later.
     pub(crate) fn retire_store_delta(&mut self, delta: &StoreDelta) {
-        if self.dirty_epoch() == delta.epoch {
+        self.retire_epoch(delta.epoch);
+    }
+
+    /// Retire tracking only when no newer write arrived after `epoch`.
+    pub(crate) fn retire_epoch(&mut self, epoch: u64) {
+        if self.dirty_epoch() == epoch {
             self.clear_all_tracking();
         }
     }
@@ -1858,6 +1985,212 @@ impl Store {
     }
 
     /// Move a topic atomically while preserving stable IDs and existing result provenance.
+    /// Goal-plan signature after a topic move, using the destination project for
+    /// moved goals. Mirrors `research::goal_plan_signature`.
+    fn goal_plan_signature_after(
+        &self,
+        id: u64,
+        moved: &std::collections::HashSet<u64>,
+        new_project: u64,
+    ) -> Option<String> {
+        let goal = self.task(id)?;
+        if goal.research.as_ref()?.kind != crate::research::ResearchKind::Goal {
+            return None;
+        }
+        let mut tasks: Vec<_> = self
+            .tasks()
+            .iter()
+            .filter(|task| task.id != id && self.owning_research_goal(task.id) == Some(id))
+            .collect();
+        tasks.sort_by_key(|task| task.id);
+        let content: Vec<_> = tasks
+            .iter()
+            .map(|task| {
+                serde_json::json!([
+                    task.id,
+                    task.title,
+                    task.description,
+                    task.comments,
+                    crate::attachments::signature_payload(&task.attachments),
+                    task.parent_id,
+                    task.archived,
+                    task.research.as_ref().map(|r| (r.kind, &r.depends_on)),
+                ])
+            })
+            .collect();
+        let project = if moved.contains(&id) {
+            new_project
+        } else {
+            goal.project_id
+        };
+        serde_json::to_string(&(
+            &goal.title,
+            &goal.description,
+            &goal.comments,
+            crate::attachments::legacy_signature_payload(&goal.attachments),
+            project,
+            content,
+        ))
+        .ok()
+    }
+
+    /// Prospective research signature after the topic's tasks move to
+    /// `new_project`. Used as a preflight; no store field is mutated.
+    fn research_signature_after_move(
+        &self,
+        id: u64,
+        moved: &std::collections::HashSet<u64>,
+        new_project: u64,
+        approved: &mut std::collections::HashMap<u64, Option<String>>,
+        memo: &mut std::collections::HashMap<u64, Option<String>>,
+        visiting: &mut Vec<u64>,
+    ) -> Option<String> {
+        if let Some(cached) = memo.get(&id) {
+            return cached.clone();
+        }
+        if visiting.contains(&id) {
+            return None;
+        }
+        if let Some(goal) = self.owning_research_goal(id) {
+            let signature = approved.entry(goal).or_insert_with(|| {
+                self.goal_plan_signature_after(goal, moved, new_project)
+            });
+            let approved_now = self.task(goal).is_some_and(|task| {
+                let Some(research) = &task.research else {
+                    return false;
+                };
+                if research.kind != crate::research::ResearchKind::Goal
+                    || self.task_is_archived(goal)
+                    || matches!(task.stage, Stage::Backlog | Stage::Cancelled)
+                {
+                    return false;
+                }
+                // The move rewrites an approved moved goal's approved_plan to
+                // the prospective signature; compare that projection, not the
+                // old persisted value.
+                let approved_after = if moved.contains(&goal) {
+                    signature.clone()
+                } else {
+                    task.approved_plan.clone()
+                };
+                !research.requires_approval || approved_after.as_ref() == signature.as_ref()
+            });
+            if !approved_now {
+                memo.insert(id, None);
+                return None;
+            }
+        }
+        let task = self
+            .task(id)
+            .filter(|task| !task.archived && task.stage != Stage::Cancelled)?;
+        let research = task.research.as_ref()?;
+        let mut parents = vec![];
+        let mut cursor = Some(id);
+        let mut ancestors = vec![];
+        while let Some(current) = cursor {
+            if ancestors.contains(&current) {
+                memo.insert(id, None);
+                return None;
+            }
+            ancestors.push(current);
+            let ancestor = self
+                .task(current)
+                .filter(|task| !task.archived && task.stage != Stage::Cancelled)?;
+            let project = if moved.contains(&ancestor.id) {
+                new_project
+            } else {
+                ancestor.project_id
+            };
+            parents.push(serde_json::json!([
+                ancestor.id,
+                ancestor.title,
+                ancestor.description,
+                ancestor.comments,
+                crate::attachments::signature_payload(&ancestor.attachments),
+                project,
+            ]));
+            cursor = ancestor.parent_id;
+        }
+        let mut dependencies = vec![];
+        for dependency in &research.depends_on {
+            let signature = {
+                visiting.push(id);
+                let value = self.research_signature_after_move(
+                    *dependency,
+                    moved,
+                    new_project,
+                    approved,
+                    memo,
+                    visiting,
+                );
+                visiting.pop();
+                value?
+            };
+            let result = self
+                .runs()
+                .iter()
+                .rev()
+                .find(|run| run.task_id == *dependency && run.status != "Simulated")
+                .filter(|run| run.status == "Succeeded" && !run.output.trim().is_empty())?;
+            if !moved.contains(dependency) && result.input_signature != signature {
+                memo.insert(id, None);
+                return None;
+            }
+            dependencies.push(result.id);
+        }
+        let project = if moved.contains(&task.id) {
+            new_project
+        } else {
+            task.project_id
+        };
+        let directory = &self
+            .projects()
+            .iter()
+            .find(|candidate| candidate.id == project)?
+            .directory;
+        let signature = serde_json::to_string(&(
+            parents,
+            dependencies,
+            directory,
+            research.kind,
+            research.goal_id,
+        ))
+        .ok();
+        memo.insert(id, signature.clone());
+        signature
+    }
+
+    /// Cycle check for the dependency subgraph touched by a topic move. Called
+    /// before any write so a malformed graph is rejected without mutation.
+    fn dependency_cycle(&self, ids: &[u64]) -> bool {
+        fn visit(
+            store: &Store,
+            id: u64,
+            ids: &[u64],
+            state: &mut std::collections::HashMap<u64, u8>,
+        ) -> bool {
+            match state.get(&id).copied() {
+                Some(1) => return true,
+                Some(2) => return false,
+                _ => {}
+            }
+            state.insert(id, 1);
+            if let Some(task) = store.task(id)
+                && let Some(research) = &task.research
+            {
+                for dependency in &research.depends_on {
+                    if ids.contains(dependency) && visit(store, *dependency, ids, state) {
+                        return true;
+                    }
+                }
+            }
+            state.insert(id, 2);
+            false
+        }
+        let mut state = std::collections::HashMap::new();
+        ids.iter().any(|id| visit(self, *id, ids, &mut state))
+    }
+
     pub fn move_topic_project(&mut self, topic: u64, project: u64) -> Result<(), String> {
         let source = self.topics.iter().find(|t| t.id == topic).ok_or("Topic not found.")?.project_id;
         if !self.projects.iter().any(|p| p.id == project) { return Err("Project not found.".into()); }
@@ -1869,35 +2202,36 @@ impl Store {
         if !blockers.is_empty() { return Err(blockers.join("\n\n")); }
         let planning_runs: Vec<_> = self.research_requests.iter().filter(|r| requests.contains(&r.id)).filter_map(|r| r.planning_run_id).collect();
         let approved: Vec<_> = ids.iter().copied().filter(|id| self.goal_execution_approved(*id)).collect();
-        let mut valid: Vec<_> = ids.iter().filter_map(|id| self.research_result(*id).map(|r| (*id, r.id))).collect();
-        // Bounded preimage for the exact entities this move writes. There is no
-        // whole-Store clone: a defensive signature-loop failure rolls these back.
-        let topic_before = self.topic(topic).cloned().expect("validated topic");
-        let tasks_before: Vec<Task> = ids
-            .iter()
-            .filter_map(|id| self.task(*id).cloned())
-            .collect();
-        let requests_before: Vec<crate::request_planning::ResearchRequest> = requests
-            .iter()
-            .filter_map(|id| {
-                self.research_requests
-                    .iter()
-                    .find(|request| request.id == *id)
-                    .cloned()
-            })
-            .collect();
-        let mut run_ids = planning_runs.clone();
-        run_ids.extend(valid.iter().map(|(_, run)| *run));
-        run_ids.sort_unstable();
-        run_ids.dedup();
-        let runs_before: Vec<(u64, String, Option<u64>)> = run_ids
-            .iter()
-            .filter_map(|id| {
-                self.runs.iter().find(|run| run.id == *id).map(|run| {
-                    (run.id, run.input_signature.clone(), run.project_plan)
-                })
-            })
-            .collect();
+        let valid: Vec<_> = ids.iter().filter_map(|id| self.research_result(*id).map(|r| (*id, r.id))).collect();
+        // Compute every refreshed signature before writing. A malformed graph
+        // is rejected while the store and tracking state are still untouched.
+        let moved: std::collections::HashSet<u64> = ids.iter().copied().collect();
+        let mut approved_signatures: std::collections::HashMap<u64, Option<String>> =
+            std::collections::HashMap::new();
+        for goal in &approved {
+            approved_signatures.insert(
+                *goal,
+                self.goal_plan_signature_after(*goal, &moved, project),
+            );
+        }
+        let mut memo = std::collections::HashMap::new();
+        let mut signatures = std::collections::HashMap::new();
+        for (task, run) in &valid {
+            let signature = self
+                .research_signature_after_move(
+                    *task,
+                    &moved,
+                    project,
+                    &mut approved_signatures,
+                    &mut memo,
+                    &mut Vec::new(),
+                )
+                .ok_or("Could not preserve research dependencies during migration.")?;
+            signatures.insert(*run, signature);
+        }
+        if dependency_cycle(self, &ids) {
+            return Err("Could not preserve research dependencies during migration.".into());
+        }
 
         self.topic_mut(topic).unwrap().project_id = project;
         for id in ids.iter().copied() {
@@ -1906,8 +2240,8 @@ impl Store {
             task.activity.push(activity_event("Topic moved to another project"));
         }
         for goal in approved {
-            let signature = self.goal_plan_signature(goal);
-            self.task_mut(goal).unwrap().approved_plan = signature;
+            self.task_mut(goal).unwrap().approved_plan =
+                approved_signatures.get(&goal).cloned().flatten();
         }
         for id in requests.iter().copied() {
             let mut request = self.request_mut(id).unwrap();
@@ -1925,40 +2259,11 @@ impl Store {
                 run.project_plan = Some(project);
             }
         }
-        // Refresh only results that were reusable before the move, in dependency order.
-        // Historical directories, sessions, reports and attachment paths remain intact.
-        while !valid.is_empty() {
-            let before = valid.len();
-            let mut kept = Vec::new();
-            for (task, run) in valid.drain(..) {
-                if let Some(signature) = self.research_signature(task) {
-                    self.run_mut(run).unwrap().input_signature = signature;
-                } else {
-                    kept.push((task, run));
-                }
-            }
-            valid = kept;
-            if valid.len() == before {
-                // Restore exactly the preimage captured above.
-                self.topic_mut(topic).unwrap().project_id = topic_before.project_id;
-                for task in tasks_before {
-                    if let Some(current) = self.task_mut(task.id) {
-                        *current = task;
-                    }
-                }
-                for request in requests_before {
-                    if let Some(current) = self.request_mut(request.id) {
-                        current.project_id = request.project_id;
-                        current.topic_id = request.topic_id;
-                    }
-                }
-                for (id, signature, project_plan) in runs_before {
-                    if let Some(mut run) = self.run_mut(id) {
-                        run.input_signature = signature;
-                        run.project_plan = project_plan;
-                    }
-                }
-                return Err("Could not preserve research dependencies during migration.".into());
+        // Refresh only results that were reusable before the move. Historical
+        // directories, sessions, reports and attachment paths remain intact.
+        for (_, run) in valid {
+            if let Some(signature) = signatures.remove(&run) {
+                self.run_mut(run).unwrap().input_signature = signature;
             }
         }
         Ok(())
@@ -3164,6 +3469,101 @@ mod tests {
     }
 
     #[test]
+    fn same_identity_edit_after_drain_survives_an_older_ack() {
+        use crate::persistence_journal::{EntityChange, EntityPayload};
+        let mut store = Store::empty();
+        store.clear_all_tracking();
+        let topic = store.create_topic(1, "Topic").unwrap();
+        let task = store
+            .create_task_in_topic("First title", 1, Stage::Planned, None, Some(topic))
+            .unwrap();
+        let receipt = store.drain_store_delta().unwrap();
+        // Same id, edited after the group was drained but before it is acked.
+        store.task_mut(task).unwrap().title = "Second title".into();
+        store.retire_store_delta(&receipt);
+        assert!(store.has_tracked_changes());
+        let changes = store.pending_entity_changes().unwrap();
+        assert!(changes.iter().any(|change| matches!(
+            change,
+            EntityChange::Upsert(EntityPayload::Task(value))
+                if value.id == task && value.title == "Second title"
+        )));
+
+        let current = store.drain_store_delta().unwrap();
+        store.retire_store_delta(&current);
+        assert!(!store.has_tracked_changes());
+    }
+
+    #[test]
+    fn stale_scalar_receipt_cannot_clear_a_new_generation() {
+        let mut store = Store::empty();
+        store.clear_all_tracking();
+        store.set_default_model("first".into());
+        let first = store.drain_store_delta().unwrap();
+        store.retire_store_delta(&first);
+        assert!(!store.has_tracked_changes());
+
+        store.set_default_model("second".into());
+        store.retire_store_delta(&first);
+        assert!(
+            store.has_tracked_changes(),
+            "a retired receipt must not match a later generation after ABA"
+        );
+        store.retire_store_delta(&first);
+        assert!(store.has_tracked_changes());
+    }
+
+    #[test]
+    fn stale_list_receipt_and_out_of_order_ack_are_safe() {
+        let mut store = Store::empty();
+        store.clear_all_tracking();
+        store.push_publication(crate::report_publish::Publication {
+            id: "a".into(),
+            topic: 1,
+            fingerprint: String::new(),
+            config: Default::default(),
+            title: String::new(),
+            markdown: String::new(),
+            status: "Pending".into(),
+            commit: None,
+            message: String::new(),
+        });
+        let first = store.drain_store_delta().unwrap();
+        store.retire_store_delta(&first);
+        store.push_publication(crate::report_publish::Publication {
+            id: "b".into(),
+            topic: 1,
+            fingerprint: String::new(),
+            config: Default::default(),
+            title: String::new(),
+            markdown: String::new(),
+            status: "Pending".into(),
+            commit: None,
+            message: String::new(),
+        });
+        let second = store.drain_store_delta().unwrap();
+        // Out-of-order: older ack after newer drain, then newer ack.
+        store.retire_store_delta(&first);
+        assert!(store.has_tracked_changes());
+        store.retire_store_delta(&second);
+        assert!(!store.has_tracked_changes());
+        // Duplicate ack of a retired generation is harmless.
+        store.retire_store_delta(&first);
+        assert!(!store.has_tracked_changes());
+    }
+
+    #[test]
+    fn unchanged_setter_is_not_dirty() {
+        let mut store = Store::empty();
+        store.clear_all_tracking();
+        store.set_max_concurrent_runs(store.max_concurrent_runs());
+        store.set_appearance(store.appearance());
+        store.set_default_model(store.default_model().clone());
+        assert!(!store.has_tracked_changes());
+        assert!(store.pending_metadata_deltas().is_empty());
+    }
+
+    #[test]
     fn run_floor_survives_json_round_trip() {
         let mut store = Store::empty();
         store.set_run_id_floor(50_001);
@@ -3209,4 +3609,35 @@ mod activity_time_tests {
             "Todo → Done · Time not recorded"
         );
     }
+}
+
+/// Cycle check for the dependency subgraph touched by a topic move. Called
+/// before any write so a malformed graph is rejected without mutation.
+fn dependency_cycle(store: &Store, ids: &[u64]) -> bool {
+    fn visit(
+        store: &Store,
+        id: u64,
+        ids: &[u64],
+        state: &mut std::collections::HashMap<u64, u8>,
+    ) -> bool {
+        match state.get(&id).copied() {
+            Some(1) => return true,
+            Some(2) => return false,
+            _ => {}
+        }
+        state.insert(id, 1);
+        if let Some(task) = store.task(id)
+            && let Some(research) = &task.research
+        {
+            for dependency in &research.depends_on {
+                if ids.contains(dependency) && visit(store, *dependency, ids, state) {
+                    return true;
+                }
+            }
+        }
+        state.insert(id, 2);
+        false
+    }
+    let mut state = std::collections::HashMap::new();
+    ids.iter().any(|id| visit(store, *id, ids, &mut state))
 }

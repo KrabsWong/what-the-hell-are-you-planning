@@ -427,9 +427,9 @@ impl TaskApp {
     pub(crate) fn displayed_run_id(&self) -> Option<u64> {
         resolved_result_run_id(
             &self.store,
-            self.task_result_context,
+            self.task_result_context(),
             self.automation_ui.result_dialog,
-            self.selected_run,
+            self.selected_run(),
         )
     }
 
@@ -493,7 +493,7 @@ impl TaskApp {
         }
     }
     pub(crate) fn close_current_task(&mut self, w: &mut Window, cx: &mut Context<Self>) {
-        let Some(id) = self.selected else {
+        let Some(id) = self.selected() else {
             return;
         };
         self.tabs.retain(|task| *task != id);

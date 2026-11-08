@@ -65,7 +65,7 @@ pub fn run() {
                     a.open_goal_steps(goal.unwrap(), w, cx);
                 }
                 if name == "Report" {
-                    a.selected_run = result.map(|r| r.id);
+                    a.note_selected_run(result.map(|r| r.id));
                     a.show_run_result = true;
                     a.show_run_details = false;
                     a.reveal_selected_run();

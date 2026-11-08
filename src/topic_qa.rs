@@ -142,7 +142,7 @@ pub fn run() {
         .unwrap();
     cx.update_window(handle, |_, w, cx| {
         w.click(format!("topic-goal-{goal}"), cx);
-        assert_eq!(app.read(cx).selected, Some(goal));
+        assert_eq!(app.read(cx).selected(), Some(goal));
         let (crumbs, _) = app.read(cx).navigation_path();
         assert!(crumbs.iter().any(|(_, name, _)| name == "#英伟达 NVIDIA"));
         w.render_frame(cx);
@@ -158,7 +158,7 @@ pub fn run() {
         let child = app.read(cx).store.research_children(goal)[0];
         let before = app.read(cx).store.runs().len();
         w.click(format!("goal-step-{child}"), cx);
-        assert_eq!(app.read(cx).selected, Some(child));
+        assert_eq!(app.read(cx).selected(), Some(child));
         w.render_frame(cx);
         w.click("navigation-back", cx);
         w.render_frame(cx);
@@ -170,7 +170,7 @@ pub fn run() {
         w.render_frame(cx);
         w.click(format!("goal-progress-{goal}"), cx);
         w.render_frame(cx);
-        assert_eq!(app.read(cx).selected, Some(goal));
+        assert_eq!(app.read(cx).selected(), Some(goal));
         assert!(w.try_find("goal-steps-board").is_some());
         assert_eq!(
             app.read(cx).store.runs().len(),
@@ -437,7 +437,7 @@ fn steps_screenshot(
                 });
                 w.render_frame(cx);
                 w.click("task-progress", cx);
-                assert_eq!(app.read(cx).selected, Some(goal));
+                assert_eq!(app.read(cx).selected(), Some(goal));
                 assert_eq!(app.read(cx).goal_steps_tab, Some(goal));
                 assert!(app.read(cx).steps_layout == crate::app::Layout::List);
                 w.render_frame(cx);
@@ -718,64 +718,64 @@ pub fn goal_actions() {
         w.render_frame(cx);
         assert!(w.find(format!("topic-export-{goal}")).visible());
         w.click(format!("topic-goal-{unfinished}"), cx);
-        assert_eq!(app.read(cx).selected, Some(unfinished));
-        assert_eq!(app.read(cx).task_result_context, None);
+        assert_eq!(app.read(cx).selected(), Some(unfinished));
+        assert_eq!(app.read(cx).task_result_context(), None);
         app.update(cx, |a, cx| a.navigate(Scope::Topic(topic), w, cx));
         w.render_frame(cx);
         w.click(format!("topic-goal-{goal}"), cx);
-        assert_eq!(app.read(cx).task_result_context, Some(goal));
+        assert_eq!(app.read(cx).task_result_context(), Some(goal));
         assert!(app.read(cx).show_run_result);
         w.render_frame(cx);
         assert!(w.find("previous-task").visible());
         assert!(w.find("next-task").visible());
         w.click("next-task", cx);
-        assert_eq!(app.read(cx).task_result_context, Some(steps[0]));
+        assert_eq!(app.read(cx).task_result_context(), Some(steps[0]));
         w.render_frame(cx);
         w.click("next-task", cx);
-        assert_eq!(app.read(cx).task_result_context, Some(steps[1]));
+        assert_eq!(app.read(cx).task_result_context(), Some(steps[1]));
         w.render_frame(cx);
         w.click("previous-task", cx);
-        assert_eq!(app.read(cx).task_result_context, Some(steps[0]));
+        assert_eq!(app.read(cx).task_result_context(), Some(steps[0]));
         app.update(cx, |a, cx| a.open_sidebar_task(report, w, cx));
         w.render_frame(cx);
         w.click("next-task", cx);
-        assert_eq!(app.read(cx).selected, Some(unfinished));
-        assert_eq!(app.read(cx).task_result_context, None);
+        assert_eq!(app.read(cx).selected(), Some(unfinished));
+        assert_eq!(app.read(cx).task_result_context(), None);
         app.update(cx, |a, cx| a.open_task(report, w, cx));
         w.render_frame(cx);
         w.click("task-view-result", cx);
         let expected = {
             let a = app.read(cx);
-            (a.scope(), a.selected, a.selected_run, a.task_result_context,
+            (a.scope(), a.selected(), a.selected_run(), a.task_result_context(),
                 a.show_run_result, a.show_run_details)
         };
         app.update(cx, |a, cx| a.navigate(Scope::Topic(topic), w, cx));
         w.render_frame(cx);
         w.click(format!("topic-report-{goal}"), cx);
         let a = app.read(cx);
-        assert_eq!((a.scope(), a.selected, a.selected_run, a.task_result_context,
+        assert_eq!((a.scope(), a.selected(), a.selected_run(), a.task_result_context(),
             a.show_run_result, a.show_run_details), expected);
         assert!(a.show_run_result);
-        assert_eq!(a.task_result_context, Some(report));
+        assert_eq!(a.task_result_context(), Some(report));
         w.render_frame(cx);
         w.click(format!("sidebar-task-{goal}"), cx);
-        assert_eq!(app.read(cx).selected, None);
-        assert_eq!(app.read(cx).task_result_context, Some(goal));
-        assert_eq!(app.read(cx).selected_run, expected.2);
+        assert_eq!(app.read(cx).selected(), None);
+        assert_eq!(app.read(cx).task_result_context(), Some(goal));
+        assert_eq!(app.read(cx).selected_run(), expected.2);
         w.render_frame(cx);
         w.click("run-actions-menu", cx);
         w.render_frame(cx);
         w.click(1usize, cx);
-        assert_eq!(app.read(cx).selected, Some(goal));
-        assert_eq!(app.read(cx).task_result_context, None);
+        assert_eq!(app.read(cx).selected(), Some(goal));
+        assert_eq!(app.read(cx).task_result_context(), None);
         w.render_frame(cx);
         w.click(format!("sidebar-task-{report}"), cx);
-        assert_eq!(app.read(cx).task_result_context, Some(report));
+        assert_eq!(app.read(cx).task_result_context(), Some(report));
         w.render_frame(cx);
         w.click("run-actions-menu", cx);
         w.render_frame(cx);
         w.click(1usize, cx);
-        assert_eq!(app.read(cx).selected, Some(report));
+        assert_eq!(app.read(cx).selected(), Some(report));
         // An old successful report is insufficient when the latest attempt failed.
         app.update(cx, |a, cx| {
             { let index = a.store.runs().len() - 1; a.store.run_at_mut(index).unwrap().status = "Failed".into(); }
@@ -783,12 +783,12 @@ pub fn goal_actions() {
         });
         w.render_frame(cx);
         w.click(format!("sidebar-task-{report}"), cx);
-        assert_eq!(app.read(cx).selected, Some(report));
-        assert_eq!(app.read(cx).task_result_context, None);
+        assert_eq!(app.read(cx).selected(), Some(report));
+        assert_eq!(app.read(cx).task_result_context(), None);
         w.render_frame(cx);
         w.click(format!("sidebar-task-{goal}"), cx);
-        assert_eq!(app.read(cx).selected, Some(goal));
-        assert_eq!(app.read(cx).task_result_context, None);
+        assert_eq!(app.read(cx).selected(), Some(goal));
+        assert_eq!(app.read(cx).task_result_context(), None);
         app.update(cx, |a, cx| {
             a.navigate(Scope::Topic(topic), w, cx);
             a.store.clear_runs();
@@ -829,7 +829,7 @@ pub fn goal_actions() {
         cx.update_window(handle, |_, w, cx| w.render_frame(cx)).unwrap();
     }
     cx.update_window(handle, |_, w, cx| {
-        assert_eq!(app.read(cx).task_result_context, Some(steps[0]));
+        assert_eq!(app.read(cx).task_result_context(), Some(steps[0]));
         let bounds = w.find(format!("sidebar-task-{}", steps[0])).bounds();
         let viewport = app.read(cx).sidebar_scroll.bounds();
         assert!(bounds.top() >= viewport.top() && bounds.bottom() <= viewport.bottom(), "row={bounds:?} viewport={viewport:?} offset={:?} pending={:?}", app.read(cx).sidebar_scroll.offset(), app.read(cx).sidebar_reveal);
@@ -841,7 +841,7 @@ pub fn goal_actions() {
     }
     let offset = cx.update(|cx| app.read(cx).sidebar_scroll.offset());
     cx.update_window(handle, |_, w, cx| {
-        assert_eq!(app.read(cx).task_result_context, Some(goal));
+        assert_eq!(app.read(cx).task_result_context(), Some(goal));
         app.update(cx, |a, cx| a.open_sidebar_task(goal, w, cx));
     }).unwrap();
     for _ in 0..4 {
@@ -866,7 +866,7 @@ pub fn goal_actions() {
             cx.update_window(handle, |_, w, cx| w.render_frame(cx)).unwrap();
         }
         cx.update_window(handle, |_, w, cx| {
-            assert_eq!(app.read(cx).selected, Some(neighbor));
+            assert_eq!(app.read(cx).selected(), Some(neighbor));
             let bounds = w.find(format!("sidebar-task-{neighbor}")).bounds();
             let viewport = app.read(cx).sidebar_scroll.bounds();
             assert!(bounds.top() >= viewport.top() && bounds.bottom() <= viewport.bottom());

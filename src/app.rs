@@ -250,8 +250,6 @@ pub struct TaskApp {
     pub sidebar_selected_row: ScrollHandle,
     pub detail_scroll: ScrollHandle,
     pub result_scroll: ScrollHandle,
-    pub selected: Option<u64>,
-    pub task_result_context: Option<u64>,
     pub tabs: Vec<u64>,
     pub expanded_sidebar_projects: Vec<u64>,
     pub collapsed_sidebar_goals: Vec<u64>,
@@ -397,7 +395,6 @@ pub struct TaskApp {
     discovery: Option<mpsc::Receiver<(PathBuf, Discovery)>>,
     pub active_runs: Vec<ActiveRun>,
     pub queued_runs: Vec<(u64, Vec<PathBuf>)>,
-    pub selected_run: Option<u64>,
     pub expanded_run_sources: Option<u64>,
     pub show_planning_activity: bool,
     pub log_scroll: ScrollHandle,
@@ -416,6 +413,7 @@ pub struct TaskApp {
     pub todo_batch: Option<crate::batch::TodoBatch>,
     pub(crate) recovery: crate::recovery::Recovery,
     pub sidebar_logo: Entity<crate::brand::SidebarLogo>,
+    pub(crate) sidebar_surface: Option<Entity<crate::shell_surfaces::SidebarSurface>>,
     pub(crate) content_surface: Option<Entity<crate::shell_surfaces::ContentSurface>>,
     pub(crate) footer_bar: Option<Entity<crate::shell_surfaces::FooterBar>>,
     pub materials_focus: FocusHandle,
@@ -754,7 +752,6 @@ impl TaskApp {
             discovery: None,
             active_runs: vec![],
             queued_runs: vec![],
-            selected_run: None,
             expanded_run_sources: None,
             show_planning_activity: false,
             log_scroll: ScrollHandle::new(),
@@ -769,8 +766,6 @@ impl TaskApp {
             sidebar_selected_row: ScrollHandle::new(),
             detail_scroll: ScrollHandle::new(),
             result_scroll: ScrollHandle::new(),
-            selected: None,
-            task_result_context: None,
             tabs: vec![],
             expanded_sidebar_projects: vec![],
             collapsed_sidebar_goals: vec![],
@@ -877,6 +872,7 @@ impl TaskApp {
             todo_batch: None,
             recovery: Default::default(),
             sidebar_logo: cx.new(|_| crate::brand::SidebarLogo),
+            sidebar_surface: None,
             content_surface: None,
             footer_bar: None,
             materials_focus: cx.focus_handle(),
@@ -1032,6 +1028,124 @@ impl TaskApp {
         self.nav.route().legacy_scope()
     }
 
+    /// Task detail identity is the typed `ResearchTask` route; there is no
+    /// separate writable `selected` field.
+    pub(crate) fn selected(&self) -> Option<u64> {
+        match self.nav.route() {
+            crate::navigation_route::Route::ResearchTask(page) => Some(page.task()),
+            _ => None,
+        }
+    }
+
+    /// Task or Goal context of the displayed result page.
+    pub(crate) fn task_result_context(&self) -> Option<u64> {
+        let crate::navigation_route::Route::ResearchResult(page) = self.nav.route() else {
+            return None;
+        };
+        match page.owner() {
+            crate::navigation_route::ResultOwner::Task(task)
+            | crate::navigation_route::ResultOwner::Goal { goal: task }
+            | crate::navigation_route::ResultOwner::AutomationTask { task, .. } => Some(task),
+            _ => None,
+        }
+    }
+
+    pub(crate) fn selected_run(&self) -> Option<u64> {
+        match self.nav.route() {
+            crate::navigation_route::Route::ResearchResult(page) => page.run(),
+            _ => self.navigation.selected_attempt,
+        }
+    }
+
+    /// Record a run selection that is not a result page (planning/report
+    /// payload pending the S4 overlay migration). A result page still owns its
+    /// selection in the typed route.
+    pub(crate) fn note_selected_run(&mut self, run: Option<u64>) {
+        match self.nav.route() {
+            crate::navigation_route::Route::ResearchResult(_) => self.set_selected_run(run),
+            _ => self.navigation.selected_attempt = run,
+        }
+    }
+
+    /// Open one task detail over the current page family. Selection is the
+    /// typed route identity, so no writable `selected` field survives.
+    pub(crate) fn set_task_identity(
+        &mut self,
+        task: u64,
+        panel: crate::navigation_route::TaskPanel,
+        steps_layout: Layout,
+    ) {
+        let base = self.scope();
+        let route =
+            crate::navigation_route::Route::research_task_from(task, base, panel, steps_layout);
+        self.install_route(route);
+    }
+
+    /// Select an ordinary/task/goal result page. `context` is the explicit task
+    /// or Goal identity; `None` means the global Research results page.
+    pub(crate) fn set_result_selection(&mut self, context: Option<u64>, run: Option<u64>) {
+        use crate::navigation_route::{ResultOwner, Route};
+        let owner = match context {
+            Some(context) => {
+                let task = self.store.task(context);
+                if let Some(task) = task
+                    && let Some(automation) = task.automation_id
+                    && let Some((_, occurrence)) = self.store.automation_period_for_task(context)
+                {
+                    ResultOwner::AutomationTask {
+                        automation,
+                        occurrence,
+                        task: context,
+                    }
+                } else if run.is_some_and(|id| {
+                    self.store
+                        .runs()
+                        .iter()
+                        .find(|run| run.id == id)
+                        .is_some_and(|run| run.task_id != context)
+                }) {
+                    ResultOwner::Goal { goal: context }
+                } else {
+                    ResultOwner::Task(context)
+                }
+            }
+            None => ResultOwner::OrdinaryPage,
+        };
+        self.install_route(Route::research_result(owner, run));
+    }
+
+    /// Update only the selected run while keeping the current result owner.
+    pub(crate) fn set_selected_run(&mut self, run: Option<u64>) {
+        use crate::navigation_route::Route;
+        let Route::ResearchResult(page) = self.nav.route() else {
+            return;
+        };
+        let owner = page.owner();
+        self.install_route(Route::research_result(owner, run));
+    }
+
+    /// QA/fixture entry point for the previously writable task selection.
+    /// Production code uses `open_task`; tests that used to assign `selected`
+    /// directly now open or close the typed task page through the same mutator.
+    pub(crate) fn fixture_select_task(&mut self, task: Option<u64>) {
+        match task {
+            Some(task) => {
+                let layout = self.steps_layout;
+                self.set_task_identity(
+                    task,
+                    crate::navigation_route::TaskPanel::Overview,
+                    layout,
+                );
+            }
+            None => {
+                if let crate::navigation_route::Route::ResearchTask(page) = self.nav.route() {
+                    let base = page.base().clone();
+                    self.set_scope_identity(base);
+                }
+            }
+        }
+    }
+
     fn initial_nav(store: &Store) -> crate::navigation_route::NavState {
         use crate::navigation_route::{NavState, Route};
         let preferred = Route::for_scope(
@@ -1049,6 +1163,22 @@ impl TaskApp {
     }
 
     fn route_for_scope(&self, scope: &Scope) -> crate::navigation_route::Route {
+        if matches!(scope, Scope::Runs) {
+            let selection = match self.nav.route() {
+                crate::navigation_route::Route::ResearchResult(page) => page.run().filter(|id| {
+                    self.store
+                        .runs()
+                        .iter()
+                        .find(|run| run.id == *id)
+                        .is_some_and(|run| self.store.run_is_ordinary_result(run))
+                }),
+                _ => None,
+            };
+            return crate::navigation_route::Route::research_result(
+                crate::navigation_route::ResultOwner::OrdinaryPage,
+                selection,
+            );
+        }
         crate::navigation_route::Route::for_scope(
             scope,
             self.all_status,
@@ -1079,24 +1209,26 @@ impl TaskApp {
         self.install_route(route);
     }
 
+    /// Repair the typed route after Undo or a reload replaced the Store.
+    fn reconcile_nav_after_store_change(&mut self) {
+        use crate::navigation_route::{NavState, Route};
+        let route = self.nav.route().clone();
+        if self.nav.replace_route(&self.store, route).is_ok() {
+            return;
+        }
+        let fallback =
+            Route::for_scope(&Scope::All, self.all_status, self.layout, None, 20);
+        self.nav = NavState::new(&self.store, fallback)
+            .expect("All research is a valid route after a store replacement");
+    }
+
     pub fn navigate(&mut self, scope: Scope, window: &mut Window, cx: &mut Context<Self>) {
         self.park_current_comment(cx);
         self.park_research_composer(cx);
-        self.task_result_context = None;
         self.clear_navigation_overlays();
         if scope == Scope::Runs {
-            // A period step is not part of Research results; do not keep it as
-            // the selected run when the user enters the ordinary results view.
-            if let Some(id) = self.selected_run
-                && self
-                    .store
-                    .runs()
-                    .iter()
-                    .find(|run| run.id == id)
-                    .is_some_and(|run| self.store.run_is_automation_owned(run))
-            {
-                self.selected_run = None;
-            }
+            // `route_for_scope` keeps only an ordinary selected run; an
+            // automation step cannot leak into the ordinary results page.
             self.reveal_selected_run();
         }
         self.save_feedback = None;
@@ -1123,7 +1255,6 @@ impl TaskApp {
         }
         let route = self.route_for_scope(&scope);
         self.install_route(route);
-        self.selected = None;
         self.editing = false;
         self.draft = None;
         self.property = None;
@@ -1149,7 +1280,7 @@ impl TaskApp {
     pub(crate) fn sidebar_scope(&self) -> Scope {
         self.nav
             .task()
-            .or(self.selected.or(self.task_result_context))
+            .or(self.selected().or(self.task_result_context()))
             .and_then(|id| self.store.task(id))
             .map(|task| Scope::Project(task.project_id))
             .unwrap_or_else(|| self.scope())
@@ -1214,20 +1345,25 @@ impl TaskApp {
         if self.store.task(id).is_none() {
             return;
         }
-        if self.selected != Some(id) {
+        if self.selected() != Some(id) {
             self.park_current_comment(cx);
         }
-        if self.selected != Some(id) && self.task_result_context != Some(id) {
+        if self.selected() != Some(id) && self.task_result_context() != Some(id) {
             self.detail_scroll.set_offset(point(px(0.), px(0.)));
         }
-        self.task_result_context = None;
         self.clear_navigation_overlays();
         self.tabs.retain(|task| *task != id);
         self.tabs.push(id);
         self.show_task_details = false;
         self.expanded_request_brief = None;
         self.show_task_activity = false;
-        self.selected = Some(id);
+        let (panel, steps_layout) = match self.nav.route() {
+            crate::navigation_route::Route::ResearchTask(page) if page.task() == id => {
+                (page.panel(), page.steps_layout())
+            }
+            _ => (crate::navigation_route::TaskPanel::Overview, self.steps_layout),
+        };
+        self.set_task_identity(id, panel, steps_layout);
         self.navigation
             .recent_surfaces
             .insert(id, crate::navigation_context::RecentSurface::Task);
@@ -1324,11 +1460,9 @@ impl TaskApp {
         }
         if stage == Stage::InProgress {
             // Submit through the existing scheduler; never manufacture Running.
-            let scope = self.scope();
-            let selected = self.selected;
+            let route = self.nav.route().clone();
             self.start_goal_batch(id, cx);
-            self.set_scope_identity(scope);
-            self.selected = selected;
+            self.install_route(route);
             if self.error.is_empty()
                 && self.store.task_status(id, self.todo_batch.as_ref()).phase == Stage::InProgress
             {
@@ -1548,12 +1682,7 @@ impl TaskApp {
                 self.undo_invalidation = None;
                 crate::appearance::apply(self.store.appearance(), Some(window), cx);
                 self.tabs.retain(|id| self.store.task(*id).is_some());
-                if self
-                    .selected
-                    .is_some_and(|id| self.store.task(id).is_none())
-                {
-                    self.selected = None;
-                }
+                self.reconcile_nav_after_store_change();
                 self.draft = None;
                 self.editing = false;
                 self.property = None;
@@ -1656,12 +1785,7 @@ impl TaskApp {
                 }
                 self.undo_invalidation = None;
                 self.tabs.retain(|id| self.store.task(*id).is_some());
-                if self
-                    .selected
-                    .is_some_and(|id| self.store.task(id).is_none())
-                {
-                    self.selected = None;
-                }
+                self.reconcile_nav_after_store_change();
                 if let Scope::Project(id) = self.scope()
                     && !self.store.projects().iter().any(|p| p.id == id)
                 {
@@ -1740,6 +1864,8 @@ impl TaskApp {
                 self.refresh_global_model_input(window, cx);
                 match storage.save(&self.store) {
                     Ok(()) => {
+                        self.store =
+                            std::mem::replace(&mut self.store, Store::empty()).into_durably_saved();
                         self.last_saved = self.store.clone();
                         self.toast = "All changes saved".into();
                     }
@@ -1783,7 +1909,7 @@ impl TaskApp {
     /// Adopt a store that was just confirmed durable. Runtime state that lives
     /// outside `Store` (active runs, queues) is untouched.
     pub(crate) fn adopt_saved_store(&mut self, staged: Store) {
-        self.store = staged;
+        self.store = staged.into_durably_saved();
         self.last_saved = self.store.clone();
         self.storage_error.clear();
     }
@@ -1801,10 +1927,7 @@ impl TaskApp {
         let Some(storage) = &self.storage else {
             return false;
         };
-        let unchanged = {
-            let _span = crate::persistence_metrics::Span::start("persist.store_compare");
-            self.store == self.last_saved
-        };
+        let unchanged = !self.store.has_tracked_changes();
         if unchanged {
             crate::persistence_metrics::bump("persist.skip.unchanged", 1);
             return false;
@@ -1816,6 +1939,13 @@ impl TaskApp {
             crate::persistence_metrics::bump("persist.skip.throttle", 1);
             return false;
         }
+        let receipt = match self.store.drain_store_delta() {
+            Ok(receipt) => receipt,
+            Err(error) => {
+                self.storage_error = error;
+                return false;
+            }
+        };
         self.last_save = Instant::now();
         let result = {
             let _span = crate::persistence_metrics::Span::start("persist.storage_save");
@@ -1824,6 +1954,7 @@ impl TaskApp {
         match result {
             Ok(()) => {
                 crate::persistence_metrics::bump("persist.commit.ok", 1);
+                self.store.retire_store_delta(&receipt);
                 {
                     let _span = crate::persistence_metrics::Span::start("persist.clone_last_saved");
                     self.last_saved = self.store.clone();
@@ -1845,8 +1976,9 @@ impl TaskApp {
     }
     /// True while the in-memory workspace differs from the last confirmed write.
     pub fn has_unsaved_changes(&self) -> bool {
-        self.store != self.last_saved
+        self.store.has_tracked_changes()
     }
+
     /// Explicit retry for the footer's "Not saved" state. A plain save is not
     /// enough because the in-memory store already equals the last confirmed
     /// snapshot, so `persist_if_changed` would skip the write.
@@ -1882,12 +2014,21 @@ impl TaskApp {
             cx.notify();
             return;
         }
+        let receipt = match self.store.drain_store_delta() {
+            Ok(receipt) => receipt,
+            Err(error) => {
+                self.storage_error = error;
+                cx.notify();
+                return;
+            }
+        };
         let result = self
             .storage
             .as_ref()
             .map(|storage| storage.save(&self.store));
         match result {
             Some(Ok(())) => {
+                self.store.retire_store_delta(&receipt);
                 self.last_saved = self.store.clone();
                 self.storage_error.clear();
                 self.error.clear();
@@ -2114,16 +2255,13 @@ impl TaskApp {
     /// Open the progress surface requested by an explicit user command. Only
     /// callers that handled a user action use this; dispatch itself never routes.
     pub(crate) fn open_run_progress(&mut self, dispatch: RunDispatch) {
-        self.selected = None;
         self.follow_logs = true;
         self.show_run_result = true;
         self.show_run_details = false;
         if dispatch.automation_owned {
             self.set_scope_identity(Scope::AutomationRuns);
-            self.selected_run = None;
         } else {
-            self.set_scope_identity(Scope::Runs);
-            self.selected_run = Some(dispatch.run_id);
+            self.set_result_selection(None, Some(dispatch.run_id));
             self.reveal_selected_run();
         }
     }

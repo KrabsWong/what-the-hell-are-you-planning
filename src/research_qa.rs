@@ -305,7 +305,7 @@ pub fn run() {
             assert_eq!(ids.len(), 3);
             assert_eq!(state.store.runs().len(), 1, "only planning has run before explicit execution");
             assert_eq!(state.store.runs().last().unwrap().status, "Succeeded");
-            assert_eq!(state.selected, Some(goal));
+            assert_eq!(state.selected(), Some(goal));
             let saved = Storage::new(root.join("workspace.json"))
                 .load()
                 .unwrap()
@@ -1092,7 +1092,7 @@ assert 'Read the attached file directly' in args[-1]
         let run_id = running.id;
         a.store.push_run(running);
         a.queued_runs.push((run_id, vec![]));
-        a.selected_run = Some(run_id);
+        a.note_selected_run(Some(run_id));
         a.show_run_details = false;
         a.show_run_result = true;
         a.navigate(crate::app::Scope::Runs, w, cx);
@@ -1108,7 +1108,7 @@ assert 'Read the attached file directly' in args[-1]
     cx.update_window(handle, |_, w, cx| {
         app.update(cx, |a, cx| {
             a.queued_runs.clear();
-            let run_id = a.selected_run.unwrap();
+            let run_id = a.selected_run().unwrap();
             a.store.run_mut(run_id).unwrap().status = "Recovering".into();
             cx.notify();
         });
@@ -1125,21 +1125,21 @@ assert 'Read the attached file directly' in args[-1]
     }).unwrap();
     screenshot(&mut cx, handle, &root, "recovering-stage-tasks.png");
     cx.update_window(handle, |_, w, cx| {
-        let running = app.read(cx).selected_run.unwrap();
+        let running = app.read(cx).selected_run().unwrap();
         w.click(format!("progress-task-title-{}", steps[0]), cx);
         assert!(app.read(cx).show_run_result);
         assert!(!app.read(cx).show_run_details);
-        assert_eq!(app.read(cx).store.runs().iter().find(|r| r.id == app.read(cx).selected_run.unwrap()).unwrap().task_id, steps[0]);
+        assert_eq!(app.read(cx).store.runs().iter().find(|r| r.id == app.read(cx).selected_run().unwrap()).unwrap().task_id, steps[0]);
         app.update(cx, |a, cx| { a.show_task_result(running, cx); });
         w.render_frame(cx);
         w.click(format!("progress-task-title-{}", steps[1]), cx);
-        assert_eq!(app.read(cx).selected, Some(steps[1]));
+        assert_eq!(app.read(cx).selected(), Some(steps[1]));
         app.update(cx, |a, cx| { a.show_task_result(running, cx); });
         w.render_frame(cx);
         assert_eq!(app.read(cx).displayed_run_id(), Some(running),
             "Opening a run must resolve that run after visiting a task");
         w.click(format!("progress-task-title-{}", steps[2]), cx);
-        assert_eq!(app.read(cx).selected, Some(steps[2]));
+        assert_eq!(app.read(cx).selected(), Some(steps[2]));
         app.update(cx, |a, cx| { a.show_task_result(running, cx); });
         w.render_frame(cx);
         assert_eq!(app.read(cx).displayed_run_id(), Some(running),
@@ -1149,7 +1149,7 @@ assert 'Read the attached file directly' in args[-1]
     cx.update_window(handle, |_, w, cx| {
         w.click(format!("progress-technical-details-{}", steps[0]), cx);
         assert!(app.read(cx).show_run_details);
-        let selected = app.read(cx).selected_run.unwrap();
+        let selected = app.read(cx).selected_run().unwrap();
         assert_eq!(app.read(cx).displayed_run_id(), Some(selected),
             "Technical details must display the run selected by the row");
         assert_eq!(app.read(cx).store.runs().iter().find(|r| r.id == selected).unwrap().task_id, steps[0]);
@@ -1193,7 +1193,7 @@ assert 'Read the attached file directly' in args[-1]
     cx.update_window(handle, |_, w, cx| {
         w.render_frame(cx);
         w.click(1usize, cx);
-        assert!(app.read(cx).selected.is_some());
+        assert!(app.read(cx).selected().is_some());
     }).unwrap();
     println!("ATTACHMENT QA PASSED: paste shortcut, file drop, original bytes, blank PDF, inheritance, CLI --file; no OCR/cache. {}", root.display());
 }

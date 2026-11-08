@@ -175,10 +175,12 @@ impl TaskApp {
     }
 
     fn select_run(&mut self, id: u64, cx: &mut Context<Self>) {
-        if self.task_result_context.is_some() {
-            self.task_result_context = self.result_context_for_run(id);
-        }
-        self.selected_run = Some(id);
+        let context = if self.task_result_context().is_some() {
+            self.result_context_for_run(id)
+        } else {
+            None
+        };
+        self.set_result_selection(context, Some(id));
         self.reveal_selected_run();
         self.show_run_details = false;
         self.show_run_result = true;
@@ -193,7 +195,7 @@ impl TaskApp {
         let selected = self
             .displayed_run_id()
             .and_then(|id| self.store.runs().iter().find(|run| run.id == id));
-        if self.task_result_context.is_some()
+        if self.task_result_context().is_some()
             && let Some(run) = selected
         {
             return self.run_content(run, cx);
@@ -794,7 +796,7 @@ impl TaskApp {
         } else {
             explanation.to_string()
         };
-        let context_task = self.task_result_context;
+        let context_task = self.task_result_context();
         let inline_task_actions = ongoing && !readable && !self.show_run_details && !planning
             && run_goal.is_some() && run.research_kind.is_some();
         let origin_label = if project_plan.is_some() { "Project details" }

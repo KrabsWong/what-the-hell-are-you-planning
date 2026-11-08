@@ -315,8 +315,8 @@ impl TaskApp {
         let id = topic.id;
         let active = self.scope() == Scope::Topic(id)
             || self
-                .selected
-                .or(self.task_result_context)
+                .selected()
+                .or(self.task_result_context())
                 .and_then(|id| self.store.task_topic(id))
                 .is_some_and(|t| t.id == id);
         row()

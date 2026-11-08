@@ -1629,8 +1629,8 @@ fn dispatch_ui_state(
         DispatchUiState {
             scope: a.scope(),
             layout: a.layout,
-            selected: a.selected,
-            selected_run: a.selected_run,
+            selected: a.selected(),
+            selected_run: a.selected_run(),
             automation_selected: a.automation_ui.selected,
             creating: a.automation_ui.creating,
             step: a.automation_ui.step,
@@ -1739,14 +1739,14 @@ print(json.dumps({'type':'text','part':{'text':json.dumps({'status':'complete','
                     "settings" => a.set_scope_identity(Scope::Settings),
                     "report" => {
                         a.set_scope_identity(Scope::Runs);
-                        a.selected = None;
-                        a.selected_run = Some(report_run_id);
+                        a.fixture_select_task(None);
+                        a.note_selected_run(Some(report_run_id));
                         a.show_run_result = true;
                         a.show_run_details = false;
                     }
                     "dirty-form" => {
                         a.set_scope_identity(Scope::Automations);
-                        a.selected = None;
+                        a.fixture_select_task(None);
                         a.automation_ui.selected = None;
                         a.automation_ui.creating = true;
                         a.automation_ui.step = 2;
@@ -1757,7 +1757,7 @@ print(json.dumps({'type':'text','part':{'text':json.dumps({'status':'complete','
                     }
                     "period-dialog" => {
                         a.set_scope_identity(Scope::Automations);
-                        a.selected = None;
+                        a.fixture_select_task(None);
                         a.automation_ui.selected = Some(id);
                         a.automation_ui.result_dialog = Some(history.id);
                     }
@@ -1847,15 +1847,15 @@ print(json.dumps({'type':'text','part':{'text':json.dumps({'status':'complete','
             cx.update_window(handle, |_, _, cx| {
                 app.update(cx, |a, cx| {
                     a.set_scope_identity(Scope::Settings);
-                    a.selected = None;
-                    a.selected_run = None;
+                    a.fixture_select_task(None);
+                    a.note_selected_run(None);
                     a.start_run(report_steps[1], cx);
                 });
             })
             .unwrap();
             let manual_run = read_state(&mut cx, &app, |a| {
                 assert_eq!(a.scope(), Scope::Runs);
-                a.selected_run.expect("manual submission opens its run")
+                a.selected_run().expect("manual submission opens its run")
             });
             assert!(
                 read_state(&mut cx, &app, |a| a
@@ -2396,8 +2396,8 @@ print(json.dumps({'type':'text','part':{'text':json.dumps({'status':'complete','
                 a.detail_scroll.set_offset(point(px(0.), px(-120.)));
                 a.result_scroll.set_offset(point(px(0.), px(-120.)));
                 a.automation_ui.scroll.set_offset(point(px(0.), px(-120.)));
-                a.selected = None;
-                a.selected_run = None;
+                a.fixture_select_task(None);
+                a.note_selected_run(None);
                 assert!(a.storage_error.is_empty(), "{}", a.storage_error);
                 cx.notify();
             });
@@ -2473,7 +2473,7 @@ print(json.dumps({'type':'text','part':{'text':json.dumps({'status':'complete','
     // Failure auto-retry is also background work: schedule the retry without
     // moving away from the dirty draft or changing the selected attempt.
     cx.update_window(handle, |_, w, cx| {
-        app.update(cx, |a, _| a.selected_run = Some(failed_id));
+        app.update(cx, |a, _| a.note_selected_run(Some(failed_id)));
         w.render_frame(cx);
     })
     .unwrap();
@@ -2487,7 +2487,7 @@ print(json.dumps({'type':'text','part':{'text':json.dumps({'status':'complete','
     .unwrap();
     let retry_id = read_state(&mut cx, &app, |a| {
         assert_eq!(a.scope(), Scope::Automations);
-        assert_eq!(a.selected_run, Some(failed_id));
+        assert_eq!(a.selected_run(), Some(failed_id));
         a.queued_runs
             .iter()
             .find(|(id, _)| {
@@ -2567,12 +2567,12 @@ fn completion_boundary_check(root: &Path) {
                     let view = cx.new(|cx| TaskApp::new_mock(w, cx));
                     view.update(cx, |a, cx| {
                         a.attach_storage(Storage::new(path.clone()), w, cx);
-                        a.selected = None;
-                        a.selected_run = None;
+                        a.fixture_select_task(None);
+                        a.note_selected_run(None);
                         a.layout = Layout::List;
                         if route == "progress" {
                             a.set_scope_identity(Scope::Runs);
-                            a.selected_run = Some(run_id);
+                            a.note_selected_run(Some(run_id));
                             a.show_run_result = true;
                             a.show_run_details = false;
                             a.layout = Layout::Board;
@@ -2580,7 +2580,6 @@ fn completion_boundary_check(root: &Path) {
                             a.result_scroll.set_offset(point(px(0.), px(-130.)));
                         } else {
                             a.set_scope_identity(Scope::Settings);
-                            a.selected = if kind == "goal-plan" { Some(target) } else { None };
                             a.show_run_result = false;
                             a.show_run_details = true;
                         }
@@ -2636,7 +2635,7 @@ fn completion_boundary_check(root: &Path) {
                 app.update(cx, |a, cx| {
                     if kind == "goal-plan" {
                         a.open_task(target, w, cx);
-                        assert_eq!(a.selected, Some(target));
+                        assert_eq!(a.selected(), Some(target));
                     } else {
                         a.open_collection_project(1, w, cx);
                         assert_eq!(a.scope(), Scope::Project(1));
@@ -3190,6 +3189,8 @@ fn undo_protection_check(root: &Path) {
                         cx,
                     )
                     .is_some());
+                // Resume the paused schedule before planning its next tick.
+                a.store.resume_schedule(paused, now).unwrap();
                 {
                     let mut definition = a.store.automation_mut(paused).unwrap();
                     definition.anchor = Some(now - 600);
@@ -5087,23 +5088,23 @@ fn ui_interaction(root: &Path) -> PathBuf {
     // ordinary results view falls back to its own latest run.
     cx.update_window(handle, |_, w, cx| {
         app.update(cx, |a, cx| {
-            a.selected_run = Some(automation_run);
-            a.task_result_context = Some(automation_task);
+            a.note_selected_run(Some(automation_run));
+            a.set_result_selection(Some(automation_task), a.selected_run());
             a.navigate(Scope::Runs, w, cx);
         });
         w.render_frame(cx);
     })
     .unwrap();
-    assert_eq!(read_state(&mut cx, &app, |a| a.selected_run), None);
-    assert_eq!(read_state(&mut cx, &app, |a| a.task_result_context), None);
+    assert_eq!(read_state(&mut cx, &app, |a| a.selected_run()), None);
+    assert_eq!(read_state(&mut cx, &app, |a| a.task_result_context()), None);
 
     // Opening one automation step from its period still shows only that step:
     // automation periods have no project/topic history to fill the column.
     cx.update_window(handle, |_, w, cx| {
         app.update(cx, |a, cx| {
-            a.task_result_context = Some(automation_task);
+            a.set_result_selection(Some(automation_task), a.selected_run());
             a.set_scope_identity(Scope::Runs);
-            a.selected_run = Some(automation_run);
+            a.note_selected_run(Some(automation_run));
             a.show_run_details = false;
             a.show_run_result = false;
             cx.notify();

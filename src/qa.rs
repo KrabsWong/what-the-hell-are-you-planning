@@ -126,8 +126,8 @@ pub fn run_research_live() {
     cx.update_window(handle, |_, w, cx| {
         app.update(cx, |a, cx| {
             a.set_scope_identity(crate::app::Scope::Runs);
-            a.selected = None;
-            a.selected_run = a.store.runs().last().map(|r| r.id);
+            a.fixture_select_task(None);
+            a.note_selected_run(a.store.runs().last().map(|r| r.id));
             a.show_run_result = true;
             cx.notify();
         });

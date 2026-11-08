@@ -420,7 +420,7 @@ impl TaskApp {
             // Clear only the exact draft this save owned. A newer draft typed
             // after a failed retry, or another task's cached comment, survives.
             let current = self.comment.read(cx).value().trim().to_string();
-            if self.selected == Some(prepared.task) && current == prepared.body {
+            if self.selected() == Some(prepared.task) && current == prepared.body {
                 self.comment
                     .update(cx, |state, cx| state.set_value("", window, cx));
             }

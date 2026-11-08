@@ -429,6 +429,11 @@ impl TaskApp {
                 {
                     // No pending owner exists; retain ownership via a cleanup
                     // request bound to the original root rather than leaking.
+                    // Preserve the verification/submission error so no success
+                    // toast is shown before the material is actually attached.
+                    if same_root && !self.error.is_empty() {
+                        errors.push(self.error.clone());
+                    }
                     self.submit_material_cleanup_for_root(
                         bound_root.clone(),
                         imported.clone(),
@@ -807,7 +812,7 @@ impl TaskApp {
     }
     pub(crate) fn result_context_for_run(&self, run_id: u64) -> Option<u64> {
         // Browsing the global results page keeps its project/topic history.
-        let context = self.selected.or(self.task_result_context)?;
+        let context = self.selected().or(self.task_result_context())?;
         let owner = self.store.runs().iter()
             .find(|run| run.id == run_id)
             .map(|run| run.task_id)
@@ -826,16 +831,14 @@ impl TaskApp {
     pub(crate) fn show_task_result(&mut self, run_id: u64, cx: &mut Context<Self>) {
         self.park_current_comment(cx);
         self.show_run_details = false;
-        self.selected_run = Some(run_id);
         self.show_run_result = true;
-        self.task_result_context = self.result_context_for_run(run_id);
-        if let Some(task) = self.task_result_context {
+        let context = self.result_context_for_run(run_id);
+        if let Some(task) = context {
             self.navigation
                 .recent_surfaces
                 .insert(task, crate::navigation_context::RecentSurface::Result);
         }
-        self.selected = None;
-        self.set_scope_identity(Scope::Runs);
+        self.set_result_selection(context, Some(run_id));
         self.reveal_selected_run();
         cx.notify();
     }

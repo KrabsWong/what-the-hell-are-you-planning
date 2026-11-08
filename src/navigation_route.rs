@@ -82,6 +82,9 @@ pub(crate) enum ResultOwner {
     OrdinaryPage,
     /// An ordinary research task's report. The task must not be automation-owned.
     Task(TaskId),
+    /// A Goal report or one of its ordinary child-step reports. The goal is a
+    /// TaskId; the selected run may belong to the goal itself or to a child.
+    Goal { goal: TaskId },
     /// An automation step's report. All three identities are explicit.
     AutomationTask {
         automation: AutomationId,
@@ -119,19 +122,28 @@ impl ResearchListPage {
     }
 }
 
-#[derive(Clone, Copy, Debug, PartialEq)]
+#[derive(Clone, Debug, PartialEq)]
 pub(crate) struct ResearchTaskPage {
     task: TaskId,
     panel: TaskPanel,
     steps_layout: Layout,
+    /// Page family the task was opened from. Kept private so the page remains a
+    /// single identity while `scope()` still projects the structural base.
+    base: Scope,
 }
 
 impl ResearchTaskPage {
-    pub(crate) fn new(task: TaskId, panel: TaskPanel, steps_layout: Layout) -> Self {
+    pub(crate) fn new(
+        task: TaskId,
+        panel: TaskPanel,
+        steps_layout: Layout,
+        base: Scope,
+    ) -> Self {
         Self {
             task,
             panel,
             steps_layout,
+            base,
         }
     }
     pub(crate) fn task(&self) -> TaskId {
@@ -142,6 +154,9 @@ impl ResearchTaskPage {
     }
     pub(crate) fn steps_layout(&self) -> Layout {
         self.steps_layout
+    }
+    pub(crate) fn base(&self) -> &Scope {
+        &self.base
     }
 }
 
@@ -264,10 +279,18 @@ impl Route {
         Self::ResearchList(ResearchListPage::new(scope, all_status, layout))
     }
     pub(crate) fn research_task(task: TaskId) -> Self {
-        Self::ResearchTask(ResearchTaskPage::new(task, TaskPanel::Overview, Layout::List))
+        Self::research_task_from(task, Scope::All, TaskPanel::Overview, Layout::List)
+    }
+    pub(crate) fn research_task_from(
+        task: TaskId,
+        base: Scope,
+        panel: TaskPanel,
+        steps_layout: Layout,
+    ) -> Self {
+        Self::ResearchTask(ResearchTaskPage::new(task, panel, steps_layout, base))
     }
     pub(crate) fn research_task_steps(task: TaskId, layout: Layout) -> Self {
-        Self::ResearchTask(ResearchTaskPage::new(task, TaskPanel::Steps, layout))
+        Self::research_task_from(task, Scope::All, TaskPanel::Steps, layout)
     }
     pub(crate) fn research_result(owner: ResultOwner, run: Option<RunId>) -> Self {
         Self::ResearchResult(ResearchResultPage::new(
@@ -296,12 +319,22 @@ impl Route {
                 ResearchScope::Cycle(name) => DataScope::Cycle(name.clone()),
                 ResearchScope::Archive => DataScope::Archive,
             },
-            Self::ResearchTask(page) => store
-                .task(page.task())
-                .map(|task| DataScope::Project(task.project_id))
-                .unwrap_or(DataScope::All),
+            Self::ResearchTask(page) => match page.base() {
+                Scope::All => DataScope::All,
+                Scope::Project(id) => DataScope::Project(*id),
+                Scope::Topic(id) => DataScope::Topic(*id),
+                Scope::Cycle(name) => DataScope::Cycle(name.clone()),
+                Scope::Archive => DataScope::Archive,
+                Scope::Runs => DataScope::Results,
+                Scope::Recovery => DataScope::Paused,
+                Scope::Research => DataScope::MarketResearch,
+                Scope::Automations | Scope::AutomationRuns => DataScope::Automations,
+                Scope::Settings => DataScope::Settings,
+            },
             Self::ResearchResult(page) => match page.owner() {
-                ResultOwner::Task(task) | ResultOwner::AutomationTask { task, .. } => store
+                ResultOwner::Task(task)
+                | ResultOwner::Goal { goal: task }
+                | ResultOwner::AutomationTask { task, .. } => store
                     .task(task)
                     .map(|task| DataScope::Project(task.project_id))
                     .unwrap_or(DataScope::Results),
@@ -320,7 +353,9 @@ impl Route {
         match self {
             Self::ResearchTask(page) => Some(page.task()),
             Self::ResearchResult(page) => match page.owner() {
-                ResultOwner::Task(task) | ResultOwner::AutomationTask { task, .. } => Some(task),
+                ResultOwner::Task(task)
+                | ResultOwner::Goal { goal: task }
+                | ResultOwner::AutomationTask { task, .. } => Some(task),
                 _ => None,
             },
             _ => None,
@@ -363,16 +398,11 @@ impl Route {
     /// The typed route is the authority; this never gets stored beside it.
     pub(crate) fn legacy_scope(&self) -> Scope {
         match self {
-            Self::ResearchList(page) => match page.scope() {
-                ResearchScope::All => Scope::All,
-                ResearchScope::Project(id) => Scope::Project(*id),
-                ResearchScope::Topic(id) => Scope::Topic(*id),
-                ResearchScope::Cycle(name) => Scope::Cycle(name.clone()),
-                ResearchScope::Archive => Scope::Archive,
-            },
-            // Task and result pages project to the closest legacy family until
-            // S3 moves the selection fields into the typed page.
-            Self::ResearchTask(_) | Self::ResearchResult(_) => Scope::Runs,
+            Self::ResearchList(page) => research_scope_legacy(page.scope()),
+            Self::ResearchTask(page) => page.base().clone(),
+            // Result pages project to the results family until S3's typed
+            // selection is the only reader.
+            Self::ResearchResult(_) => Scope::Runs,
             Self::PausedProjects => Scope::Recovery,
             Self::MarketResearch => Scope::Research,
             Self::Settings(_) => Scope::Settings,
@@ -381,6 +411,16 @@ impl Route {
             | Self::AutomationEditor(_) => Scope::Automations,
             Self::AutomationResults(_) => Scope::AutomationRuns,
         }
+    }
+}
+
+fn research_scope_legacy(scope: &ResearchScope) -> Scope {
+    match scope {
+        ResearchScope::All => Scope::All,
+        ResearchScope::Project(id) => Scope::Project(*id),
+        ResearchScope::Topic(id) => Scope::Topic(*id),
+        ResearchScope::Cycle(name) => Scope::Cycle(name.clone()),
+        ResearchScope::Archive => Scope::Archive,
     }
 }
 
@@ -1226,6 +1266,15 @@ fn validate_route(route: &Route, store: &Store) -> Result<(), NavReject> {
             _ => Ok(()),
         },
         Route::ResearchTask(page) => {
+            match page.base() {
+                Scope::Project(id) if !store.projects().iter().any(|p| p.id == *id) => {
+                    return Err(NavReject::missing("project", *id));
+                }
+                Scope::Topic(id) if !store.topics().iter().any(|t| t.id == *id) => {
+                    return Err(NavReject::missing("topic", *id));
+                }
+                _ => {}
+            }
             if store.task(page.task()).is_none() {
                 Err(NavReject::missing("task", page.task()))
             } else {
@@ -1280,6 +1329,16 @@ fn validate_result_owner(owner: ResultOwner, store: &Store) -> Result<(), NavRej
         ResultOwner::OrdinaryPage => Ok(()),
         ResultOwner::Task(task) => {
             let value = store.task(task).ok_or_else(|| NavReject::missing("task", task))?;
+            if value.automation_id.is_some() {
+                Err(NavReject::InvalidOwnership {
+                    reason: "an automation task needs an explicit period owner",
+                })
+            } else {
+                Ok(())
+            }
+        }
+        ResultOwner::Goal { goal } => {
+            let value = store.task(goal).ok_or_else(|| NavReject::missing("task", goal))?;
             if value.automation_id.is_some() {
                 Err(NavReject::InvalidOwnership {
                     reason: "an automation task needs an explicit period owner",
@@ -1359,6 +1418,19 @@ fn validate_result_run(owner: ResultOwner, run: RunId, store: &Store) -> Result<
             if store.run_is_automation_owned(value) {
                 return Err(NavReject::InvalidOwnership {
                     reason: "automation run cannot use a task-only result owner",
+                });
+            }
+            Ok(())
+        }
+        ResultOwner::Goal { goal } => {
+            if store.run_is_automation_owned(value) {
+                return Err(NavReject::InvalidOwnership {
+                    reason: "automation run cannot use a goal result owner",
+                });
+            }
+            if value.task_id != goal && store.owning_research_goal(value.task_id) != Some(goal) {
+                return Err(NavReject::InvalidOwnership {
+                    reason: "run does not belong to the named goal",
                 });
             }
             Ok(())
@@ -1584,6 +1656,7 @@ fn validate_overlay_base(base: &Route, overlay: Overlay) -> Result<(), NavReject
             Route::ResearchTask(page) if page.task() == task => Ok(()),
             Route::ResearchResult(page) => match page.owner() {
                 ResultOwner::Task(owner) if owner == task => Ok(()),
+                ResultOwner::Goal { goal: owner } if owner == task => Ok(()),
                 ResultOwner::AutomationTask { task: owner, .. } if owner == task => Ok(()),
                 _ => Err(NavReject::InvalidStack),
             },
@@ -1766,9 +1839,9 @@ fn structural_parent(route: &Route, store: &Store) -> Option<Route> {
             ))
         }
         Route::ResearchResult(page) => match page.owner() {
-            ResultOwner::Task(task) | ResultOwner::AutomationTask { task, .. } => {
-                Some(Route::research_task(task))
-            }
+            ResultOwner::Task(task)
+            | ResultOwner::Goal { goal: task }
+            | ResultOwner::AutomationTask { task, .. } => Some(Route::research_task(task)),
             ResultOwner::OrdinaryPage | ResultOwner::PlanningProgress { .. } => None,
         },
         Route::PausedProjects | Route::MarketResearch | Route::Settings(_) => None,
@@ -1806,7 +1879,9 @@ fn validate_frame(mut frame: ReturnFrame, store: &Store) -> Restored {
                 Route::research_list(ResearchScope::All, AllStatus::All, Layout::List)
             }
             Route::ResearchResult(page) => match page.owner() {
-                ResultOwner::Task(_) | ResultOwner::AutomationTask { .. } => {
+                ResultOwner::Task(_)
+                | ResultOwner::Goal { .. }
+                | ResultOwner::AutomationTask { .. } => {
                     Route::research_list(ResearchScope::All, AllStatus::All, Layout::List)
                 }
                 ResultOwner::OrdinaryPage => {

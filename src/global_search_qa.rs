@@ -317,7 +317,7 @@ fn research_list_origin(
 ) {
     let (mut cx, handle, app) = with_app(&fixture.store, path, width, height, |a, _, _| {
         a.set_scope_identity(Scope::All);
-        a.selected = None;
+        a.fixture_select_task(None);
         a.layout = Layout::Board;
         a.all_status = AllStatus::Open;
     });
@@ -403,7 +403,7 @@ fn research_scope_origin(
         let initial_scope = scope.clone();
         let (mut cx, handle, app) = with_app(&fixture.store, path, width, height, |a, w, cx| {
             a.set_scope_identity(initial_scope.clone());
-            a.selected = None;
+            a.fixture_select_task(None);
             a.layout = Layout::Board;
             a.all_status = AllStatus::Open;
             a.search
@@ -490,13 +490,13 @@ fn research_detail_origin(
         w.render_frame(cx);
         focus_search_input(w, cx);
         assert!(app.read(cx).global_search_ui.open);
-        assert_eq!(app.read(cx).selected, Some(fixture.goal));
+        assert_eq!(app.read(cx).selected(), Some(fixture.goal));
         assert_eq!(w.find("global-search-input").focused(), Some(true));
         // Closing restores the opener route, selection, scroll and focus.
         w.press("escape", cx);
         w.render_frame(cx);
         assert!(!app.read(cx).global_search_ui.open);
-        assert_eq!(app.read(cx).selected, Some(fixture.goal));
+        assert_eq!(app.read(cx).selected(), Some(fixture.goal));
         assert_eq!(app.read(cx).detail_scroll.offset(), scroll);
         assert_eq!(w.focused(cx), opener);
         // A chosen research title opens its owning project/topic path.
@@ -523,7 +523,7 @@ fn research_detail_origin(
     cx.update_window(handle, |_, w, cx| {
         w.render_frame(cx);
         assert!(!app.read(cx).global_search_ui.open);
-        assert_eq!(app.read(cx).selected, Some(fixture.step));
+        assert_eq!(app.read(cx).selected(), Some(fixture.step));
         let (crumbs, _) = app.read(cx).navigation_path();
         assert!(crumbs
             .iter()
@@ -554,8 +554,8 @@ fn research_result_origin(
 ) {
     let (mut cx, handle, app) = with_app(&fixture.store, path, width, height, |a, _, _| {
         a.set_scope_identity(Scope::Runs);
-        a.task_result_context = Some(fixture.step);
-        a.selected_run = Some(fixture.run);
+        a.set_result_selection(Some(fixture.step), a.selected_run());
+        a.note_selected_run(Some(fixture.run));
         a.show_run_result = true;
     });
     cx.update_window(handle, |_, w, cx| {
@@ -566,12 +566,12 @@ fn research_result_origin(
         focus_search_input(w, cx);
         assert!(app.read(cx).global_search_ui.open);
         assert_eq!(app.read(cx).scope(), Scope::Runs);
-        assert_eq!(app.read(cx).selected_run, Some(fixture.run));
+        assert_eq!(app.read(cx).selected_run(), Some(fixture.run));
         w.press("escape", cx);
         w.render_frame(cx);
         assert_eq!(app.read(cx).scope(), Scope::Runs);
-        assert_eq!(app.read(cx).task_result_context, Some(fixture.step));
-        assert_eq!(app.read(cx).selected_run, Some(fixture.run));
+        assert_eq!(app.read(cx).task_result_context(), Some(fixture.step));
+        assert_eq!(app.read(cx).selected_run(), Some(fixture.run));
         assert_eq!(w.focused(cx), opener);
     })
     .unwrap();
@@ -961,7 +961,7 @@ fn dirty_task_form(
         w.render_frame(cx);
         assert!(!app.read(cx).global_search_ui.open, "Discard activates the target");
         assert!(app.read(cx).draft.is_none());
-        assert_eq!(app.read(cx).selected, Some(fixture.step));
+        assert_eq!(app.read(cx).selected(), Some(fixture.step));
     })
     .unwrap();
     cx.update_window(handle, |_, w, _| w.remove_window()).unwrap();
@@ -1147,7 +1147,7 @@ fn empty_and_deleted_targets(
             .message
             .as_deref()
             .is_some_and(|message| message.contains("no longer exists")));
-        assert_eq!(app.read(cx).selected, Some(fixture.goal));
+        assert_eq!(app.read(cx).selected(), Some(fixture.goal));
     })
     .unwrap();
     cx.update_window(handle, |_, w, _| w.remove_window()).unwrap();

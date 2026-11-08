@@ -174,7 +174,7 @@ fn impact_dialog(root: &Path, mode: Appearance, width: f32, height: f32) {
             "Collect A revised",
             "Cancel keeps the edited text"
         );
-        assert_eq!(app.selected, Some(steps[0]), "Cancel keeps the route");
+        assert_eq!(app.selected(), Some(steps[0]), "Cancel keeps the route");
         assert_eq!(app.store, baseline, "Cancel leaves the store unchanged");
     })
     .unwrap();
@@ -191,7 +191,7 @@ fn impact_dialog(root: &Path, mode: Appearance, width: f32, height: f32) {
         assert!(!app.read(cx).research_save_is_pending());
         assert!(!app.read(cx).store.goal_execution_approved(goal));
         assert_eq!(
-            app.read(cx).selected,
+            app.read(cx).selected(),
             Some(steps[0]),
             "confirmed save stays on the edited step"
         );
@@ -795,7 +795,7 @@ fn keyboard_dialogs(root: &Path) {
         assert!(w.try_find("research-save-impact").is_none());
         assert_eq!(w.focused(cx), opener, "Escape returns the opener");
         assert!(app.read(cx).draft.is_some(), "Escape cancels review only");
-        assert_eq!(app.read(cx).selected, Some(steps[0]));
+        assert_eq!(app.read(cx).selected(), Some(steps[0]));
     })
     .unwrap();
     cx.update_window(handle, |_, w, cx| {
@@ -820,7 +820,7 @@ fn keyboard_dialogs(root: &Path) {
             "Enter activates focused Close"
         );
         assert_eq!(w.focused(cx), opener, "Enter Close returns the opener");
-        assert_eq!(app.read(cx).selected, Some(goal));
+        assert_eq!(app.read(cx).selected(), Some(goal));
         w.click("previous-versions-open", cx);
         w.render_frame(cx);
         assert_eq!(
@@ -848,7 +848,7 @@ fn keyboard_dialogs(root: &Path) {
         w.render_frame(cx);
         assert!(w.try_find("previous-versions").is_none());
         assert_eq!(w.focused(cx), opener, "Escape returns history opener");
-        assert_eq!(app.read(cx).selected, Some(goal));
+        assert_eq!(app.read(cx).selected(), Some(goal));
     })
     .unwrap();
     cx.update_window(handle, |_, w, _| w.remove_window())

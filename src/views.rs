@@ -653,7 +653,7 @@ impl TaskApp {
     pub(crate) fn focus_search(&mut self, window: &mut Window, cx: &mut Context<Self>) {
         self.open_global_search(window, cx);
     }
-    fn sidebar(&self, cx: &mut Context<Self>) -> AnyElement {
+    pub(crate) fn sidebar_surface(&self, cx: &mut Context<Self>) -> AnyElement {
         #[cfg(feature = "qa")]
         crate::brand::note_sidebar_render();
         let colors = palette(cx);
@@ -676,7 +676,7 @@ impl TaskApp {
                     .min_h(px(60.))
                     .px_2()
                     .gap_3()
-                    .child(self.sidebar_logo.clone())
+                    .child(div().size(px(32.)).flex_shrink_0())
                     .child(
                         div()
                             .flex_1()
@@ -949,7 +949,7 @@ impl TaskApp {
                             format!("{} · {}", self.store.identifier(task), status.label(),);
                         let hint_title = task.title.clone();
                         let hint_reason = status.reason;
-                        let active = self.selected.or(self.task_result_context) == Some(tid);
+                        let active = self.selected().or(self.task_result_context()) == Some(tid);
                         let task_button = row_button(format!("sidebar-task-{tid}"), "")
                             .custom(sidebar_variant(active, cx))
                             .when(active, |b| b.font_weight(FontWeight::SEMIBOLD))
@@ -1291,8 +1291,8 @@ impl TaskApp {
         if self.scope() == Scope::Automations
             && !self.automation_ui.creating
             && self.automation_ui.selected.is_none()
-            && self.selected.is_none()
-            && self.task_result_context.is_none()
+            && self.selected().is_none()
+            && self.task_result_context().is_none()
         {
             return (vec![], "Automations".into());
         }
@@ -1337,8 +1337,8 @@ impl TaskApp {
         // Automation results are a child of Automations, not of Research. A step
         // opened from a period keeps its own task path below.
         if self.scope() == Scope::AutomationRuns
-            && self.selected.is_none()
-            && self.task_result_context.is_none()
+            && self.selected().is_none()
+            && self.task_result_context().is_none()
         {
             return (
                 vec![(
@@ -1353,8 +1353,8 @@ impl TaskApp {
         // returns to the list instead of jumping straight to All.
         if self.scope() == Scope::Automations
             && !self.automation_ui.creating
-            && self.selected.is_none()
-            && self.task_result_context.is_none()
+            && self.selected().is_none()
+            && self.task_result_context().is_none()
             && let Some(id) = self.automation_ui.selected
             && let Some(definition) = self.store.automation(id)
         {
@@ -1368,14 +1368,14 @@ impl TaskApp {
             );
         }
         let mut links = vec![];
-        let result = self.selected.is_none() && self.scope() == Scope::Runs;
+        let result = self.selected().is_none() && self.scope() == Scope::Runs;
         let run = result
             .then(|| self.displayed_run_id())
             .flatten()
             .and_then(|id| self.store.runs().iter().find(|r| r.id == id));
         let task = self
-            .selected
-            .or(self.task_result_context)
+            .selected()
+            .or(self.task_result_context())
             .or_else(|| run.map(|r| r.task_id))
             .and_then(|id| self.store.task(id));
         let mut current = self.title();
@@ -1599,7 +1599,7 @@ impl TaskApp {
             .collect();
         if !options.is_empty() {
             let entity = cx.entity().downgrade();
-            let selected = self.selected;
+            let selected = self.selected();
             header = header.child(
                 quiet_button("open-tasks-menu", "Recently opened")
                     .dropdown_caret(true)
@@ -1773,7 +1773,7 @@ impl TaskApp {
     /// Every branch is rebuilt when a real parent notification reaches the
     /// surface; animation frames reuse the retained subtree.
     pub(crate) fn main_content(&self, cx: &mut Context<Self>) -> AnyElement {
-        if let Some(id) = self.selected {
+        if let Some(id) = self.selected() {
             self.detail(id, cx)
         } else {
             match self.scope() {
@@ -4113,7 +4113,7 @@ impl Render for TaskApp {
             let entity = cx.entity().downgrade();
             cx.defer(move |cx| {
                 let _ = entity.update(cx, |a, cx| {
-                    if a.selected.or(a.task_result_context) != Some(id) {
+                    if a.selected().or(a.task_result_context()) != Some(id) {
                         return;
                     }
                     let Some(bounds) = a.sidebar_selected_row.bounds_for_item(0) else {
@@ -4296,7 +4296,7 @@ impl Render for TaskApp {
                                 .size(px(260.))
                                 .size_range(px(220.)..px(480.))
                                 .fixed()
-                                .child(self.sidebar(cx)),
+                                .child(self.retained_sidebar(cx)),
                         )
                         .child(
                             resizable_panel().size_range(px(480.)..Pixels::MAX).child(

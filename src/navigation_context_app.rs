@@ -53,6 +53,10 @@ pub(crate) struct NavigationState {
     pub decision_return_focus: Option<FocusHandle>,
     /// Exit to perform after a T21 impact confirmation and confirmed save.
     pub after_save_target: Option<(ExitTarget, bool)>,
+    /// Selected run while the visible page is not the typed result page (for
+    /// example a planning attempt reviewed from Settings). S4 replaces this
+    /// payload with a typed overlay; it is never route identity.
+    pub selected_attempt: Option<u64>,
 }
 
 impl NavigationState {
@@ -72,6 +76,7 @@ impl NavigationState {
             pending_exit: None,
             decision_return_focus: None,
             after_save_target: None,
+            selected_attempt: None,
         }
     }
 
@@ -171,15 +176,15 @@ impl TaskApp {
                 },
             };
         }
-        if let Some(task) = self.task_result_context {
+        if let Some(task) = self.task_result_context() {
             // A report opened from a task is its own page. Its caller context is
             // the task/run, not a filtered results list; project/topic stay
             // unset so Back does not silently filter the results page.
-            return self.report_origin(Some(task), self.selected_run);
+            return self.report_origin(Some(task), self.selected_run());
         }
         // A selected task is the visible task page even when the underlying
         // scope is Runs; capture that page rather than the results list.
-        if let Some(task) = self.selected {
+        if let Some(task) = self.selected() {
             return Origin::ResearchTask {
                 task,
                 steps_tab: self.goal_steps_tab,
@@ -190,7 +195,7 @@ impl TaskApp {
                 },
             };
         }
-        if let Some(run) = self.selected_run
+        if let Some(run) = self.selected_run()
             && self.scope() == Scope::Runs
         {
             return self.results_origin(Some(run));
@@ -409,22 +414,16 @@ impl TaskApp {
                 match (task, run) {
                     (Some(task), Some(run)) => {
                         self.open_task(task, w, cx);
-                        self.selected = None;
-                        self.task_result_context = Some(task);
-                        self.selected_run = Some(run);
-                        self.set_scope_identity(Scope::Runs);
+                        self.set_result_selection(Some(task), Some(run));
                         self.show_run_result = true;
                         self.show_run_details = false;
                     }
                     (Some(task), None) => {
                         self.open_task(task, w, cx);
-                        self.navigate(Scope::Runs, w, cx);
-                        self.task_result_context = Some(task);
+                        self.set_result_selection(Some(task), None);
                     }
                     (None, Some(run)) => {
-                        self.navigate(Scope::Runs, w, cx);
-                        self.selected_run = Some(run);
-                        self.task_result_context = None;
+                        self.set_result_selection(None, Some(run));
                         self.show_run_result = true;
                         self.show_run_details = false;
                     }
@@ -695,7 +694,7 @@ impl TaskApp {
                 return Some(DraftSurface::PlanningRequest);
             }
         }
-        if let Some(task) = self.selected.or(self.task_result_context) {
+        if let Some(task) = self.selected().or(self.task_result_context()) {
             let current = self.comment.read(cx).value().to_string();
             if crate::draft_exit::comment_draft_dirty(&current) {
                 return Some(DraftSurface::Comment { task });
@@ -1184,7 +1183,7 @@ impl TaskApp {
     }
 
     pub(crate) fn park_current_comment(&mut self, cx: &App) {
-        if let Some(task) = self.selected {
+        if let Some(task) = self.selected() {
             let text = self.comment.read(cx).value().to_string();
             self.navigation.comments.set(task, text);
         }

@@ -1,0 +1,9 @@
+{
+  "exit_code": 0,
+  "seconds": 28.335,
+  "log": "r63-sidebar-revised-build.log",
+  "binary": "/Users/fuxingxing/workspaces/what-the-hell-are-you-planning/.local/opencode-dispatch/r63-sidebar-revised-candidate",
+  "sha256": "44afa43487e8537d93327c6ec07f212e7190ddf0f60af606a98d87019d2f02c8",
+  "guard_exit": 2,
+  "guard_passed": true
+}

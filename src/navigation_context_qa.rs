@@ -335,7 +335,7 @@ pub fn run() {
         w.click(format!("task-row-{id}"), cx);
         w.render_frame(cx);
         assert_eq!(
-            app.read(cx).selected,
+            app.read(cx).selected(),
             Some(id),
             "row click did not open the task; pending={:?} origins={}",
             app.read(cx).navigation.pending_exit,
@@ -425,7 +425,7 @@ pub fn run() {
             .id;
         w.click(format!("topic-goal-{row_id}"), cx);
         w.render_frame(cx);
-        assert_eq!(app.read(cx).selected, Some(row_id));
+        assert_eq!(app.read(cx).selected(), Some(row_id));
         w.click("navigation-back", cx);
         w.render_frame(cx);
         assert_eq!(app.read(cx).scope(), Scope::Topic(fixture.topic));
@@ -756,8 +756,8 @@ pub fn run() {
         w.click("navigation-back", cx);
         w.render_frame(cx);
         assert_eq!(app.read(cx).scope(), Scope::Runs);
-        assert!(app.read(cx).selected.is_none());
-        assert!(app.read(cx).task_result_context.is_none());
+        assert!(app.read(cx).selected().is_none());
+        assert!(app.read(cx).task_result_context().is_none());
     }).unwrap();
 
     // 9. Every task-edit field participates in the same dirty decision, and
@@ -848,7 +848,7 @@ pub fn run() {
         w.input(" routed", cx);
         w.render_frame(cx);
         let location = app.read(cx).scope().clone();
-        let selected = app.read(cx).selected;
+        let selected = app.read(cx).selected();
         for blocked in ["navigation-back", "all", "open-tasks-menu"] {
             w.click(blocked, cx);
             w.render_frame(cx);
@@ -866,7 +866,7 @@ pub fn run() {
                 "{blocked} behind the editor must not activate the page underneath"
             );
             assert_eq!(
-                app.read(cx).selected,
+                app.read(cx).selected(),
                 selected,
                 "{blocked} behind the editor must not change the selection"
             );

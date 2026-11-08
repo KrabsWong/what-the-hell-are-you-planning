@@ -7,6 +7,7 @@
 //! whole-Store saved comparison are never cached independently.
 
 use crate::app::TaskApp;
+use crate::views::{col, observed};
 use gpui_kit::*;
 
 pub(crate) struct ContentSurface {
@@ -31,6 +32,32 @@ impl Render for ContentSurface {
         };
         parent
             .update(cx, |app, cx| app.main_content(cx))
+            .into_any_element()
+    }
+}
+
+pub(crate) struct SidebarSurface {
+    parent: WeakEntity<TaskApp>,
+    _parent_subscription: Subscription,
+}
+
+impl SidebarSurface {
+    pub(crate) fn new(parent: Entity<TaskApp>, cx: &mut Context<Self>) -> Self {
+        let subscription = cx.observe(&parent, |_, _, cx| cx.notify());
+        Self {
+            parent: parent.downgrade(),
+            _parent_subscription: subscription,
+        }
+    }
+}
+
+impl Render for SidebarSurface {
+    fn render(&mut self, _window: &mut Window, cx: &mut Context<Self>) -> impl IntoElement {
+        let Some(parent) = self.parent.upgrade() else {
+            return div().into_any_element();
+        };
+        parent
+            .update(cx, |app, cx| app.sidebar_surface(cx))
             .into_any_element()
     }
 }
@@ -62,6 +89,50 @@ impl Render for FooterBar {
 }
 
 impl TaskApp {
+    /// The navigation sidebar is retained as a sibling of the animated brand
+    /// mark. The mark is painted as an overlay that follows the sidebar scroll
+    /// offset; animation therefore dirties only the cheap overlay branch, not
+    /// the navigation tree. Semantic changes still notify the parent and
+    /// rebuild the cached sidebar.
+    pub(crate) fn retained_sidebar(&mut self, cx: &mut Context<Self>) -> AnyElement {
+        if self.sidebar_surface.is_none() {
+            let parent = cx.entity();
+            self.sidebar_surface = Some(
+                cx.new(|cx| crate::shell_surfaces::SidebarSurface::new(parent, cx)),
+            );
+        }
+        let offset = self.sidebar_scroll.offset().y;
+        col()
+            .relative()
+            .size_full()
+            .child(
+                self.sidebar_surface
+                    .clone()
+                    .expect("sidebar surface initialized")
+                    .cached(StyleRefinement::default().size_full()),
+            )
+            .child(
+                div()
+                    .absolute()
+                    .top(px(12.))
+                    .left(px(12.))
+                    .right(px(12.))
+                    .bottom(px(12.))
+                    .overflow_hidden()
+                    .child(
+                        div()
+                            .id("sidebar-brand-overlay")
+                            .absolute()
+                            .top(px(14.) + offset)
+                            .left(px(8.))
+                            .size(px(32.))
+                            .map(observed)
+                            .child(self.sidebar_logo.clone()),
+                    ),
+            )
+            .into_any_element()
+    }
+
     pub(crate) fn retained_content(&mut self, cx: &mut Context<Self>) -> AnyElement {
         if self.content_surface.is_none() {
             let parent = cx.entity();

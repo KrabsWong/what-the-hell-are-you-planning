@@ -157,8 +157,8 @@ print(json.dumps({'type':'text','part':{'text':json.dumps(result)}}),flush=True)
     cx.update_window(handle, |_, w, cx| {
         app.update(cx, |a, cx| {
             a.navigate(Scope::Runs, w, cx);
-            a.selected_run = Some(3);
-            a.task_result_context = None;
+            a.note_selected_run(Some(3));
+            a.set_result_selection(None, a.selected_run());
             a.reveal_selected_run();
             a.show_run_details = false;
         });
@@ -170,15 +170,15 @@ print(json.dumps({'type':'text','part':{'text':json.dumps(result)}}),flush=True)
     cx.capture_screenshot(handle).unwrap().save(root.join("interrupted-result-navigation.png")).unwrap();
     cx.update_window(handle, |_, w, cx| {
         w.click("run-resolve-task", cx);
-        assert_eq!(app.read(cx).selected, Some(goals[1].1[0]));
+        assert_eq!(app.read(cx).selected(), Some(goals[1].1[0]));
         app.update(cx, |a, cx| a.navigate(Scope::Recovery, w, cx));
         w.render_frame(cx);
     }).unwrap();
     cx.update_window(handle, |_, w, cx| {
         app.update(cx, |a, cx| {
             a.navigate(Scope::Runs, w, cx);
-            a.selected_run = Some(2);
-            a.task_result_context = None;
+            a.note_selected_run(Some(2));
+            a.set_result_selection(None, a.selected_run());
         });
         w.render_frame(cx);
         assert!(w.try_find("run-topic-filter").is_some());
@@ -189,7 +189,7 @@ print(json.dumps({'type':'text','part':{'text':json.dumps(result)}}),flush=True)
     cx.run_until_parked();
     cx.update_window(handle, |_, w, cx| {
         let a = app.read(cx);
-        let run = a.store.runs().iter().find(|r| Some(r.id) == a.selected_run).unwrap();
+        let run = a.store.runs().iter().find(|r| Some(r.id) == a.selected_run()).unwrap();
         assert_eq!(a.store.task(run.task_id).unwrap().project_id, 1);
         assert_ne!(a.store.task_topic(run.task_id).unwrap().id, a.store.task_topic(goals[0].0).unwrap().id);
         w.render_frame(cx);
@@ -261,12 +261,12 @@ print(json.dumps({'type':'text','part':{'text':json.dumps(result)}}),flush=True)
         app.update(cx, |a, cx| a.navigate(Scope::Recovery, w, cx));
         w.render_frame(cx);
         w.click(("recovery-goal", goals[0].0), cx);
-        assert_eq!(app.read(cx).selected, Some(goals[0].0));
+        assert_eq!(app.read(cx).selected(), Some(goals[0].0));
         assert_ne!(app.read(cx).goal_steps_tab, Some(goals[0].0));
         app.update(cx, |a, cx| a.navigate(Scope::Recovery, w, cx));
         w.render_frame(cx);
         w.click(("recovery-step", goals[0].1[0]), cx);
-        assert_eq!(app.read(cx).selected, Some(goals[0].1[0]));
+        assert_eq!(app.read(cx).selected(), Some(goals[0].1[0]));
         assert_eq!(app.read(cx).store.runs().len(), runs_before_navigation);
         app.update(cx, |a, cx| a.navigate(Scope::Recovery, w, cx));
         w.render_frame(cx);
@@ -295,7 +295,7 @@ print(json.dumps({'type':'text','part':{'text':json.dumps(result)}}),flush=True)
         assert_eq!(app.read(cx).store.runs().len(), runs_before_navigation);
         w.click(format!("step-prerequisite-{}", goals[1].1[0]), cx);
         w.render_frame(cx);
-        assert_eq!(app.read(cx).selected, Some(goals[1].1[0]));
+        assert_eq!(app.read(cx).selected(), Some(goals[1].1[0]));
         assert!(w.try_find("step-attempt-details").is_some());
         let execution = w.try_find("step-execution-panel").unwrap().bounds();
         let properties = w.try_find("task-properties-heading").unwrap().bounds();
@@ -487,13 +487,13 @@ print(json.dumps({'type':'text','part':{'text':json.dumps(result)}}),flush=True)
         .unwrap();
     cx.update_window(handle, |_, w, cx| {
         w.click(("recovery-request", planning_run), cx);
-        assert_eq!(app.read(cx).selected_run, Some(planning_run));
+        assert_eq!(app.read(cx).selected_run(), Some(planning_run));
         assert_eq!(app.read(cx).scope(), Scope::Runs);
     })
     .unwrap();
     cx.update_window(handle, |_, w, cx| {
         app.update(cx, |a, cx| {
-            a.task_result_context = None;
+            a.set_result_selection(None, a.selected_run());
             a.show_run_details = false;
             cx.notify();
         });
@@ -504,7 +504,7 @@ print(json.dumps({'type':'text','part':{'text':json.dumps(result)}}),flush=True)
     cx.run_until_parked();
     cx.update_window(handle, |_, w, cx| {
         w.click(0usize, cx);
-        assert_eq!(app.read(cx).selected_run, Some(planning_run));
+        assert_eq!(app.read(cx).selected_run(), Some(planning_run));
     }).unwrap();
     // Archiving a finished batch item must not prematurely finish the remaining goal.
     cx.update_window(handle, |_, _, cx| {
@@ -639,7 +639,7 @@ pub fn scroll() {
         cx.capture_screenshot(handle).unwrap().save(output.join(format!("bottom-{width}.png"))).unwrap();
         cx.update_window(handle, |_, w, cx| {
             w.click(("recovery-step", last_step), cx);
-            assert_eq!(app.read(cx).selected, Some(last_step));
+            assert_eq!(app.read(cx).selected(), Some(last_step));
         }).unwrap();
     }
     println!("Recovery scroll passed at both window sizes; screenshots: {}", output.display());

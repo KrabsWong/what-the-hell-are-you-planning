@@ -157,7 +157,7 @@ impl TaskApp {
     }
 
     pub(crate) fn open_research_intake(&mut self, w: &mut Window, cx: &mut Context<Self>) {
-        let context_task = self.selected.or(self.task_result_context);
+        let context_task = self.selected().or(self.task_result_context());
         match crate::navigation_context::resolve_creation_destination(
             &self.store,
             CreationIntent::Global,

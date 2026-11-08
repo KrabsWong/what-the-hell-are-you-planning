@@ -123,7 +123,7 @@ fn ordinary_status_check(directory: &Path, mode: Appearance, width: f32, height:
     Storage::new(path.clone()).save(&store).unwrap();
     let (mut cx, handle, _app) = with_app(store, &path, width, height, |a, _, _| {
         a.set_scope_identity(Scope::Project(1));
-        a.selected = Some(task);
+        a.fixture_select_task(Some(task));
     });
     cx.update_window(handle, |_, w, cx| {
         w.render_frame(cx);
@@ -240,7 +240,7 @@ fn detail_and_restore(directory: &Path, mode: Appearance, width: f32, height: f3
     Storage::new(path.clone()).save(&store).unwrap();
     let (mut cx, handle, app) = with_app(store, &path, width, height, |a, _, _| {
         a.set_scope_identity(Scope::Archive);
-        a.selected = Some(goal);
+        a.fixture_select_task(Some(goal));
         a.layout = Layout::List;
     });
     cx.update_window(handle, |_, w, cx| {
@@ -339,7 +339,7 @@ fn detail_and_restore(directory: &Path, mode: Appearance, width: f32, height: f3
     cx.update_window(handle, |_, w, cx| {
         w.render_frame(cx);
         assert!(w.find("research-result-scroll").visible());
-        assert_eq!(app.read(cx).task_result_context, Some(goal));
+        assert_eq!(app.read(cx).task_result_context(), Some(goal));
     })
     .unwrap();
     screenshot(&mut cx, handle, directory, &format!("archive-retained-result-{mode:?}-{width}.png"));
@@ -424,7 +424,7 @@ fn ancestor_archive_material_check(root: &Path) {
     let step = steps[0];
     let (mut cx, handle, app) = with_app(store, &path, 1000., 680., |a, _, _| {
         a.set_scope_identity(Scope::Archive);
-        a.selected = Some(step);
+        a.fixture_select_task(Some(step));
     });
     cx.update_window(handle, |_, w, cx| {
         w.render_frame(cx);
@@ -457,7 +457,7 @@ fn active_archive_confirmation(root: &Path) {
     Storage::new(path.clone()).save(&store).unwrap();
     let (mut cx, handle, app) = with_app(store, &path, 1000., 680., |a, _, _| {
         a.set_scope_identity(Scope::Archive);
-        a.selected = Some(goal);
+        a.fixture_select_task(Some(goal));
     });
     // Headless platform prompts are queued but not rendered by `has_active_prompt`.
     // Use GPUI's supported fallback prompt renderer so Cancel/Confirm are real clicks.

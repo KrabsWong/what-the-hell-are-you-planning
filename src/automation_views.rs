@@ -840,7 +840,6 @@ impl TaskApp {
             return;
         }
         self.install_route(crate::navigation_route::Route::automation_detail(id));
-        self.selected = None;
         self.automation_ui.selected = Some(id);
         self.automation_ui.creating = false;
         self.automation_ui.settings_dialog = false;
@@ -966,7 +965,6 @@ impl TaskApp {
 
     pub fn start_automation_create(&mut self, window: &mut Window, cx: &mut Context<Self>) {
         self.install_route(crate::navigation_route::Route::automation_editor(None));
-        self.selected = None;
         self.automation_ui.selected = None;
         self.automation_ui.creating = true;
         self.automation_ui.editing = None;

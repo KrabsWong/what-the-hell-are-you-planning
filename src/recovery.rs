@@ -824,8 +824,7 @@ impl TaskApp {
                                     ).icon(assets::IconName::ArrowRight)
                                     .on_click(cx.listener(
                                         move |a, _, w, cx| {
-                                            a.navigate(Scope::Runs, w, cx);
-                                            a.selected_run = Some(run_id);
+                                            a.set_result_selection(None, Some(run_id));
                                             a.show_run_result = true;
                                             a.show_run_details = false;
                                             a.reveal_selected_run();

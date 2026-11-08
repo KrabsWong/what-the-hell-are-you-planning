@@ -228,14 +228,14 @@ fn exercise(
 
         w.click("next-task", cx);
         assert_eq!(
-            app.read(cx).selected,
+            app.read(cx).selected(),
             Some(middle),
             "{theme}: next stays inside the period"
         );
         w.render_frame(cx);
         w.click("next-task", cx);
         assert_eq!(
-            app.read(cx).selected,
+            app.read(cx).selected(),
             Some(last),
             "{theme}: the last step remains inside the period"
         );
@@ -247,7 +247,7 @@ fn exercise(
         );
         w.click("previous-task", cx);
         assert_eq!(
-            app.read(cx).selected,
+            app.read(cx).selected(),
             Some(middle),
             "{theme}: previous returns to the preceding period step"
         );
@@ -294,7 +294,7 @@ fn exercise(
         app.update(cx, |a, cx| a.open_sidebar_task(middle, w, cx));
         w.render_frame(cx);
         assert_eq!(
-            app.read(cx).task_result_context,
+            app.read(cx).task_result_context(),
             Some(middle),
             "{theme}: completed steps open their report"
         );
@@ -303,7 +303,7 @@ fn exercise(
         assert!(w.find("period-overview").visible());
         w.click("next-task", cx);
         assert_eq!(
-            app.read(cx).task_result_context,
+            app.read(cx).task_result_context(),
             Some(last),
             "{theme}: report navigation stays inside the period"
         );
@@ -388,8 +388,8 @@ fn exercise(
             w.render_frame(cx);
             let a = app.read(cx);
             (
-                a.selected,
-                a.selected.and_then(|id| a.store.automation_period_for_task(id)),
+                a.selected(),
+                a.selected().and_then(|id| a.store.automation_period_for_task(id)),
             )
         })
         .unwrap();
@@ -423,8 +423,8 @@ fn exercise(
             w.render_frame(cx);
             let a = app.read(cx);
             (
-                a.selected,
-                a.selected.and_then(|id| a.store.automation_period_for_task(id)),
+                a.selected(),
+                a.selected().and_then(|id| a.store.automation_period_for_task(id)),
             )
         })
         .unwrap();

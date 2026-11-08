@@ -95,6 +95,7 @@ impl Storage {
         &self.path
     }
 
+
     /// Keep the returned file alive for the application's lifetime. Never unlink the lock file:
     /// other instances must lock the same inode even after the current holder exits.
     pub fn acquire_lock(&self) -> Result<fs::File, String> {

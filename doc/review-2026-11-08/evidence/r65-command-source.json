@@ -1,0 +1,9 @@
+{
+  "source": "/Users/fuxingxing/workspaces/what-the-hell-are-you-planning/.local/r65-command-source",
+  "base": ".local/r62-epoch-fixed-source",
+  "change": "Only current topic-move methods/helpers plus scoped_domain, including corrected fixture; exclude concurrent persistence migration",
+  "files": {
+    "src/domain.rs": "4e97112aadb81ba0d5fb942495ab20344b16b60f57ac6147378e107457efe1ad",
+    "src/scoped_domain.rs": "7e460c940125611affa9147f77096504bbd61c798b17f2cbbcfcbdabf90c68f3"
+  }
+}

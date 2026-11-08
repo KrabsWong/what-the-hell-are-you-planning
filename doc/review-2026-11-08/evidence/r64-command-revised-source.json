@@ -1,0 +1,6 @@
+{
+  "source": "/Users/fuxingxing/workspaces/what-the-hell-are-you-planning/.local/r64-command-revised-source",
+  "base": ".local/r62-epoch-fixed-source",
+  "change": "Only topic-move methods/helpers from r64 frozen domain plus scoped_domain; exclude concurrent persistence API migration",
+  "domain_sha256": "a0800181123c77b2a09b94faa2306c9394c2372a141d823cdfbb16a67bcf492b"
+}

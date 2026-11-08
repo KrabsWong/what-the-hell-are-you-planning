@@ -79,6 +79,12 @@ pub(crate) enum AdmissionUpdate {
     Blocked { id: AdmissionId, reason: String },
     Retained { id: AdmissionId, reason: String },
     StaleAck { id: AdmissionId, reason: String },
+    /// An ordinary live save group became durable. `epoch` is the dirty epoch
+    /// captured when the group was staged.
+    LiveSaveDurable { generation: u64, epoch: u64 },
+    /// A live save group was blocked, rejected, returned or failed. The UI
+    /// keeps the dirty state and retries later.
+    LiveSaveError { generation: u64, epoch: u64, reason: String },
 }
 
 #[derive(Debug)]
@@ -112,6 +118,8 @@ pub(crate) struct DispatchAdmissionAdapter {
     launch_claims: BTreeSet<String>,
     resolutions: BTreeMap<String, (bool, Option<u64>)>,
     status_pending: BTreeMap<u64, StatusPending>,
+    live_saves: BTreeMap<u64, u64>,
+    live_retained: Option<(StagedGroup, u64)>,
     resolution_keys: BTreeMap<String, String>,
     known_keys: BTreeSet<String>,
     max_pending: usize,
@@ -179,6 +187,8 @@ impl DispatchAdmissionAdapter {
             launch_claims: BTreeSet::new(),
             resolutions: BTreeMap::new(),
             status_pending: BTreeMap::new(),
+            live_saves: BTreeMap::new(),
+            live_retained: None,
             resolution_keys: BTreeMap::new(),
             known_keys: BTreeSet::new(),
             max_pending: options.max_retained_groups.max(1),
@@ -272,6 +282,7 @@ impl DispatchAdmissionAdapter {
 
     /// Bounded, non-blocking poll. It never joins and never sleeps.
     pub(crate) fn poll(&mut self) -> Vec<AdmissionUpdate> {
+        self.retry_live_group();
         self.retry_status_groups();
         let mut updates = Vec::new();
         for event in self.worker.poll() {
@@ -370,6 +381,15 @@ impl DispatchAdmissionAdapter {
                     error,
                     ..
                 } => {
+                    if let Some(epoch) = self.live_saves.get(&generation).copied() {
+                        self.last_error = Some(format!("live save blocked: {error}"));
+                        updates.push(AdmissionUpdate::LiveSaveError {
+                            generation,
+                            epoch,
+                            reason: format!("live save blocked: {error}"),
+                        });
+                        continue;
+                    }
                     if let Some(pending) = self.status_pending.get_mut(&generation) {
                         updates.push(AdmissionUpdate::ResolutionStatusFailed {
                             operation_key: pending.operation_key.clone(),
@@ -390,6 +410,16 @@ impl DispatchAdmissionAdapter {
                 }
                 WorkerEvent::Returned { group, .. } => {
                     let generation = group.generation();
+                    if let Some(epoch) = self.live_saves.remove(&generation) {
+                        self.live_retained = Some((group, epoch));
+                        updates.push(AdmissionUpdate::LiveSaveError {
+                            generation,
+                            epoch,
+                            reason: "worker returned the live save group before durability; it is retained"
+                                .into(),
+                        });
+                        continue;
+                    }
                     if let Some(pending) = self.status_pending.get_mut(&generation) {
                         pending.group = group;
                         pending.submitted = false;
@@ -415,6 +445,15 @@ impl DispatchAdmissionAdapter {
                 }
                 WorkerEvent::Rejected { reason, group, .. } => {
                     let generation = group.generation();
+                    if let Some(epoch) = self.live_saves.remove(&generation) {
+                        self.live_retained = Some((group, epoch));
+                        updates.push(AdmissionUpdate::LiveSaveError {
+                            generation,
+                            epoch,
+                            reason: format!("live save group rejected and retained: {reason:?}"),
+                        });
+                        continue;
+                    }
                     if let Some(pending) = self.status_pending.get_mut(&generation) {
                         pending.group = group;
                         pending.submitted = false;
@@ -439,6 +478,13 @@ impl DispatchAdmissionAdapter {
                 }
                 WorkerEvent::Failed { message } => {
                     self.last_error = Some(message.clone());
+                    for (generation, epoch) in std::mem::take(&mut self.live_saves) {
+                        updates.push(AdmissionUpdate::LiveSaveError {
+                            generation,
+                            epoch,
+                            reason: message.clone(),
+                        });
+                    }
                     for pending in self.status_pending.values_mut() {
                         pending.submitted = false;
                         updates.push(AdmissionUpdate::ResolutionStatusFailed {
@@ -807,6 +853,13 @@ impl DispatchAdmissionAdapter {
     }
 
     fn on_durable(&mut self, receipt: DurableReceipt, updates: &mut Vec<AdmissionUpdate>) {
+        if let Some(epoch) = self.live_saves.remove(&receipt.generation) {
+            updates.push(AdmissionUpdate::LiveSaveDurable {
+                generation: receipt.generation,
+                epoch,
+            });
+            return;
+        }
         if let Some(pending) = self.status_pending.get(&receipt.generation) {
             if receipt.workspace == self.workspace
                 && receipt.effects == vec![pending.run.id, RESOLUTION_STATUS_TAG]
@@ -882,6 +935,65 @@ impl DispatchAdmissionAdapter {
             receipt,
             parts,
         }));
+    }
+
+    /// Stage and submit one ordinary live change group. This shares the same
+    /// journal and worker as dispatch admission, so generations stay ordered and
+    /// a dispatch can never overtake an earlier edit.
+    pub(crate) fn submit_live_group(
+        &mut self,
+        changes: Vec<crate::persistence_journal::EntityChange>,
+        metadata: Vec<crate::persistence_journal::MetadataDelta>,
+        epoch: u64,
+    ) -> Result<u64, String> {
+        if changes.is_empty() && metadata.is_empty() {
+            return Err("live save group is empty".into());
+        }
+        if let Some((_, pending_epoch)) = &self.live_retained {
+            return Err(format!(
+                "a previous live save group is retained (epoch {pending_epoch})"
+            ));
+        }
+        let Some(journal) = self.journal.as_mut() else {
+            return Err("live persistence is not ready".into());
+        };
+        let group = journal
+            .stage_with_metadata(changes, metadata, Vec::new())
+            .map_err(|error| format!("cannot stage live save group: {error:?}"))?;
+        let generation = group.generation();
+        self.live_saves.insert(generation, epoch);
+        match self.worker.submit(group) {
+            SubmitOutcome::Accepted => Ok(generation),
+            SubmitOutcome::NotReady(group) | SubmitOutcome::Backpressure(group) => {
+                self.live_retained = Some((group, epoch));
+                Ok(generation)
+            }
+            SubmitOutcome::Closed(_) => {
+                self.live_saves.remove(&generation);
+                Err("live persistence worker is closed".into())
+            }
+        }
+    }
+
+    pub(crate) fn live_pending(&self) -> bool {
+        !self.live_saves.is_empty() || self.live_retained.is_some()
+    }
+
+    fn retry_live_group(&mut self) {
+        let Some((group, epoch)) = self.live_retained.take() else {
+            return;
+        };
+        let generation = group.generation();
+        match self.worker.submit(group) {
+            SubmitOutcome::Accepted => {}
+            SubmitOutcome::NotReady(group) | SubmitOutcome::Backpressure(group) => {
+                self.live_retained = Some((group, epoch));
+            }
+            SubmitOutcome::Closed(_) => {
+                self.live_saves.remove(&generation);
+                self.last_error = Some("live persistence worker is closed".into());
+            }
+        }
     }
 
     fn retain_unstaged(&mut self, key: &str, reason: String, updates: &mut Vec<AdmissionUpdate>) {

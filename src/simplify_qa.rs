@@ -87,7 +87,7 @@ pub fn header_layout() {
                         a.open_task(goal, w, cx);
                         a.open_task(steps[2], w, cx);
                         a.view_task_result(steps[2], cx);
-                        a.selected_run = Some(report_id);
+                        a.note_selected_run(Some(report_id));
                         cx.notify();
                     });
                     app = Some(view.clone());
@@ -207,7 +207,7 @@ pub fn header_layout() {
             })
             .unwrap();
             cx.update_window(handle, |_, _, cx| {
-                assert_eq!(app.read(cx).selected, Some(goal));
+                assert_eq!(app.read(cx).selected(), Some(goal));
             })
             .unwrap();
             cx.update_window(handle, |_, w, _| w.remove_window())
@@ -295,7 +295,7 @@ fn run_checks(layout_only: bool) {
                     view.update(cx, |a, cx| {
                         a.attach_storage(Storage::new(path.clone()), w, cx);
                         assert!(a.storage_error.is_empty(), "{}", a.storage_error);
-                        a.selected_run = Some(report_id);
+                        a.note_selected_run(Some(report_id));
                         a.navigate(Scope::Runs, w, cx);
                     });
                     entity = Some(view.clone());
@@ -449,7 +449,7 @@ fn run_checks(layout_only: bool) {
             cx.update_window(handle, |_, w, cx| {
                 let state = app.read(cx);
                 assert_eq!(
-                    state.selected_run,
+                    state.selected_run(),
                     Some(report_id),
                     "selected run changed before history selection"
                 );
@@ -565,7 +565,7 @@ fn run_checks(layout_only: bool) {
             .unwrap();
             choose_menu(&mut cx, handle, "run-topic-filter", 1); // Standalone task
             cx.update_window(handle, |_, w, cx| {
-                assert_eq!(app.read(cx).selected_run, Some(active_id));
+                assert_eq!(app.read(cx).selected_run(), Some(active_id));
                 assert_eq!(w.find_all("cancel-run").len(), 1);
                 w.click("cancel-run", cx);
             })
@@ -605,24 +605,24 @@ fn run_checks(layout_only: bool) {
                 );
                 let before = app.read(cx).store.clone();
                 w.click("research-task-result", cx);
-                assert_eq!(app.read(cx).selected_run, Some(report_id));
+                assert_eq!(app.read(cx).selected_run(), Some(report_id));
                 assert_eq!(app.read(cx).scope(), Scope::Runs);
                 assert!(w.find("research-result-scroll").visible());
                 assert_eq!(app.read(cx).store, before);
-                assert_eq!(app.read(cx).task_result_context, Some(goal));
+                assert_eq!(app.read(cx).task_result_context(), Some(goal));
                 assert_eq!(app.read(cx).sidebar_scope(), Scope::Project(1));
                 assert!(w.try_find("run-navigation").is_none());
                 w.click("navigation-back", cx);
                 let state = app.read(cx);
                 assert_eq!(
-                    state.selected,
+                    state.selected(),
                     Some(goal),
                     "scope={:?} context={:?} tabs={:?}",
                     state.scope(),
-                    state.task_result_context,
+                    state.task_result_context(),
                     state.tabs
                 );
-                assert!(state.task_result_context.is_none());
+                assert!(state.task_result_context().is_none());
                 app.update(cx, |a, cx| a.open_task(steps[2], w, cx));
                 w.render_frame(cx);
                 assert_eq!(
@@ -642,7 +642,7 @@ fn run_checks(layout_only: bool) {
                 .unwrap();
             cx.update_window(handle, |_, w, cx| {
                 w.click("task-view-result", cx);
-                assert_eq!(app.read(cx).task_result_context, Some(steps[0]));
+                assert_eq!(app.read(cx).task_result_context(), Some(steps[0]));
                 assert_eq!(app.read(cx).sidebar_scope(), Scope::Project(1));
                 assert!(w.try_find("run-navigation").is_none());
             })
@@ -652,11 +652,11 @@ fn run_checks(layout_only: bool) {
                 w.click("run-actions-menu", cx);
                 w.render_frame(cx);
                 w.click(1usize, cx);
-                assert_eq!(app.read(cx).selected, Some(steps[0]));
+                assert_eq!(app.read(cx).selected(), Some(steps[0]));
                 assert_eq!(app.read(cx).detail_scroll.offset(), task_scroll);
                 app.update(cx, |a, cx| a.navigate(Scope::Runs, w, cx));
                 w.render_frame(cx);
-                assert!(app.read(cx).task_result_context.is_none());
+                assert!(app.read(cx).task_result_context().is_none());
                 assert!(w.try_find("run-navigation").is_some());
                 app.update(cx, |a, cx| a.open_task(steps[0], w, cx));
             })
@@ -674,12 +674,12 @@ fn run_checks(layout_only: bool) {
                 assert!(app.read(cx).expanded_sidebar_projects.contains(&1));
                 assert!(w.try_find(format!("sidebar-task-{}", steps[0])).is_some());
                 let scope = app.read(cx).scope();
-                let selected = app.read(cx).selected;
+                let selected = app.read(cx).selected();
                 click_in(w, cx, "sidebar-scroll", "expand-project-1");
                 assert!(w.try_find(format!("sidebar-task-{goal}")).is_none());
                 click_in(w, cx, "sidebar-scroll", "expand-project-1");
                 assert_eq!(app.read(cx).scope(), scope);
-                assert_eq!(app.read(cx).selected, selected);
+                assert_eq!(app.read(cx).selected(), selected);
                 assert!(w.try_find(format!("sidebar-task-{goal}")).is_some());
             })
             .unwrap();
@@ -714,11 +714,11 @@ fn run_checks(layout_only: bool) {
                     "sidebar-scroll",
                     &format!("sidebar-task-{}", steps[0]),
                 );
-                assert_eq!(app.read(cx).selected, None);
-                assert_eq!(app.read(cx).task_result_context, Some(steps[0]));
+                assert_eq!(app.read(cx).selected(), None);
+                assert_eq!(app.read(cx).task_result_context(), Some(steps[0]));
                 assert_eq!(app.read(cx).scope(), Scope::Runs);
                 click_in(w, cx, "sidebar-scroll", "project-1");
-                assert_eq!(app.read(cx).selected, None);
+                assert_eq!(app.read(cx).selected(), None);
                 assert_eq!(app.read(cx).scope(), Scope::Project(1));
                 assert!(app.read(cx).expanded_sidebar_projects.contains(&1));
                 click_in(w, cx, "sidebar-scroll", "expand-project-1");
@@ -742,7 +742,7 @@ fn run_checks(layout_only: bool) {
             screenshot(&mut cx, handle, &directory, "08-compact-subtasks.png");
             cx.update_window(handle, |_, w, cx| {
                 w.click(format!("subtask-{}", steps[0]), cx);
-                assert_eq!(app.read(cx).selected, Some(steps[0]));
+                assert_eq!(app.read(cx).selected(), Some(steps[0]));
             })
             .unwrap();
 
@@ -845,7 +845,7 @@ fn run_checks(layout_only: bool) {
             screenshot(&mut cx, handle, &directory, "12-compact-research-goals.png");
             cx.update_window(handle, |_, w, cx| {
                 w.click(format!("research-goal-{goal}"), cx);
-                assert_eq!(app.read(cx).selected, Some(goal));
+                assert_eq!(app.read(cx).selected(), Some(goal));
                 w.click("project-1", cx);
                 assert_eq!(app.read(cx).scope(), Scope::Project(1));
                 assert!(w.try_find("run-project-todo").is_some());
@@ -985,7 +985,7 @@ fn run_checks(layout_only: bool) {
                             "Continue after handling the browser permission prompt.".into();
                         let latest_id = latest.id;
                         a.store.push_run(latest);
-                        a.selected_run = Some(latest_id);
+                        a.note_selected_run(Some(latest_id));
                         a.navigate(Scope::Runs, w, cx);
                         (latest_id, other_id)
                     });
@@ -1005,14 +1005,14 @@ fn run_checks(layout_only: bool) {
                 .unwrap();
             choose_menu(&mut cx, handle, "run-version-picker", 1);
             cx.update_window(handle, |_, w, cx| {
-                assert_eq!(app.read(cx).selected_run, Some(report_id));
+                assert_eq!(app.read(cx).selected_run(), Some(report_id));
                 assert!(w.find("research-result-scroll").visible());
                 assert!(w.try_find(format!("run-{latest_id}")).is_some());
             })
             .unwrap();
             choose_menu(&mut cx, handle, "run-version-picker", 0);
             cx.update_window(handle, |_, _, cx| {
-                assert_eq!(app.read(cx).selected_run, Some(latest_id));
+                assert_eq!(app.read(cx).selected_run(), Some(latest_id));
                 assert_eq!(
                     app.read(cx).store,
                     before,
@@ -1023,7 +1023,7 @@ fn run_checks(layout_only: bool) {
             choose_menu(&mut cx, handle, "run-project-planning", 0);
             cx.update_window(handle, |_, w, cx| {
                 assert!(app.read(cx).show_planning_activity);
-                let selected = app.read(cx).selected_run.expect("planning record selected");
+                let selected = app.read(cx).selected_run().expect("planning record selected");
                 let selected_run = app
                     .read(cx)
                     .store
@@ -1079,7 +1079,7 @@ fn run_checks(layout_only: bool) {
 
             cx.update_window(handle, |_, w, cx| {
                 app.update(cx, |a, cx| {
-                    a.selected_run = Some(report_id);
+                    a.note_selected_run(Some(report_id));
                     a.reveal_selected_run();
                     cx.notify();
                 });
@@ -1092,7 +1092,7 @@ fn run_checks(layout_only: bool) {
                 w.click(1usize, cx); // Other project
                 assert!(w.try_find(format!("run-{other_run_id}")).is_some());
                 assert_eq!(
-                    app.read(cx).selected_run,
+                    app.read(cx).selected_run(),
                     Some(other_run_id),
                     "Same titles in different projects stay independent"
                 );
@@ -1166,24 +1166,24 @@ fn run_checks(layout_only: bool) {
                 });
                 w.render_frame(cx);
                 assert!(w.find("location-all").visible());
-                assert_eq!(app.read(cx).task_result_context, Some(steps[2]));
+                assert_eq!(app.read(cx).task_result_context(), Some(steps[2]));
             })
             .unwrap();
-            let original_result = cx.update(|cx| app.read(cx).selected_run);
+            let original_result = cx.update(|cx| app.read(cx).selected_run());
             assert!(original_result.is_some());
             choose_menu(&mut cx, handle, "run-actions-menu", 1);
             cx.update_window(handle, |_, w, cx| {
                 println!("Result origin before Back: {:?}; history: {:?}", app.read(cx).capture_origin(), app.read(cx).navigation.origins);
-                assert_eq!(app.read(cx).selected, Some(steps[2]));
+                assert_eq!(app.read(cx).selected(), Some(steps[2]));
                 w.render_frame(cx);
                 w.click("navigation-back", cx);
             })
             .unwrap();
             cx.run_until_parked();
             cx.update_window(handle, |_, w, cx| {
-                assert!(app.read(cx).selected.is_none(), "Back must restore result; selected={:?}, origin={:?}, history={:?}, notice={}", app.read(cx).selected, app.read(cx).capture_origin(), app.read(cx).navigation.origins, app.read(cx).toast);
-                assert_eq!(app.read(cx).selected_run, original_result);
-                assert_eq!(app.read(cx).task_result_context, Some(steps[2]));
+                assert!(app.read(cx).selected().is_none(), "Back must restore result; selected={:?}, origin={:?}, history={:?}, notice={}", app.read(cx).selected(), app.read(cx).capture_origin(), app.read(cx).navigation.origins, app.read(cx).toast);
+                assert_eq!(app.read(cx).selected_run(), original_result);
+                assert_eq!(app.read(cx).task_result_context(), Some(steps[2]));
                 assert!(app.read(cx).show_run_result);
                 w.render_frame(cx);
                 w.click("navigation-back", cx);
@@ -1191,14 +1191,14 @@ fn run_checks(layout_only: bool) {
             .unwrap();
             cx.run_until_parked();
             cx.update_window(handle, |_, w, cx| {
-                assert_eq!(app.read(cx).selected, Some(steps[2]));
+                assert_eq!(app.read(cx).selected(), Some(steps[2]));
                 w.render_frame(cx);
                 w.click("navigation-back", cx);
             })
             .unwrap();
             cx.run_until_parked();
             cx.update_window(handle, |_, w, cx| {
-                assert_eq!(app.read(cx).selected, Some(goal));
+                assert_eq!(app.read(cx).selected(), Some(goal));
                 w.render_frame(cx);
                 w.click("navigation-back", cx);
             })
@@ -1213,7 +1213,7 @@ fn run_checks(layout_only: bool) {
             cx.run_until_parked();
             cx.update_window(handle, |_, _, cx| {
                 assert_eq!(app.read(cx).scope(), Scope::Project(1));
-                assert!(app.read(cx).selected.is_none());
+                assert!(app.read(cx).selected().is_none());
                 app.update(cx, |a, cx| a.view_task_result(steps[2], cx));
             })
             .unwrap();
@@ -1315,7 +1315,7 @@ fn run_checks(layout_only: bool) {
                 assert_eq!(app.read(cx).scope(), Scope::Topic(1));
                 w.click("navigation-back", cx);
                 assert_eq!(app.read(cx).scope(), Scope::Project(1));
-                assert!(app.read(cx).selected.is_none());
+                assert!(app.read(cx).selected().is_none());
                 assert!(app.read(cx).layout == crate::app::Layout::Board);
             })
             .unwrap();
@@ -1474,7 +1474,7 @@ fn run_checks(layout_only: bool) {
                     planning.id = a.store.runs().iter().map(|r| r.id).max().unwrap() + 1;
                     planning.status = "Failed".into();
                     a.store.push_run(planning);
-                    a.selected_run = None;
+                    a.note_selected_run(None);
                     a.navigate(Scope::Runs, w, cx);
                 });
                 w.render_frame(cx);
@@ -1516,7 +1516,7 @@ fn run_checks(layout_only: bool) {
                         Scope::Topic(a.store.task_topic(ordinary).unwrap().id),
                         "Back falls back to the task's structural topic"
                     );
-                    assert!(a.selected.is_none(), "Back uses ownership, not previously visited tasks");
+                    assert!(a.selected().is_none(), "Back uses ownership, not previously visited tasks");
                 });
                 w.press("cmd-k", cx);
             }).unwrap();
@@ -1556,14 +1556,14 @@ fn navigation_checks(
         assert!(w.find("location-all").visible());
         assert!(w.find("location-task").visible());
         w.click("navigation-back", cx);
-        assert_eq!(app.read(cx).selected, Some(report_task));
+        assert_eq!(app.read(cx).selected(), Some(report_task));
         w.click("navigation-back", cx);
-        assert_eq!(app.read(cx).selected, Some(goal));
+        assert_eq!(app.read(cx).selected(), Some(goal));
         w.click("navigation-back", cx);
         assert_eq!(app.read(cx).scope(), Scope::Topic(topic));
         w.click("navigation-back", cx);
         assert_eq!(app.read(cx).scope(), Scope::Project(project));
-        assert!(app.read(cx).selected.is_none());
+        assert!(app.read(cx).selected().is_none());
         w.press("cmd-[", cx);
         assert_eq!(app.read(cx).scope(), Scope::All);
         assert!(w.try_find("navigation-back").is_none());
@@ -1579,7 +1579,7 @@ fn navigation_checks(
         w.render_frame(cx);
         assert!(w.try_find("location-parent").is_some());
         w.click("navigation-back", cx);
-        assert_eq!(app.read(cx).selected, Some(goal));
+        assert_eq!(app.read(cx).selected(), Some(goal));
         assert_eq!(app.read(cx).store, before);
         app.update(cx, |a, cx| {
             let nested = a
@@ -1599,7 +1599,7 @@ fn navigation_checks(
                 "All, project, topic, goal and parent must all be present"
             );
             a.go_back(w, cx);
-            assert_eq!(a.selected, Some(child));
+            assert_eq!(a.selected(), Some(child));
             a.store = before.clone();
             a.tabs.retain(|id| *id != nested);
             a.open_task(goal, w, cx);
@@ -1609,7 +1609,7 @@ fn navigation_checks(
     screenshot(cx, handle, directory, "00-goal-details.png");
     cx.update_window(handle, |_, w, cx| {
         app.update(cx, |a, cx| {
-            a.selected_run = Some(report);
+            a.note_selected_run(Some(report));
             a.navigate(Scope::Runs, w, cx);
             a.expanded_run_sources = None;
             a.result_scroll.set_offset(point(px(0.), px(0.)));

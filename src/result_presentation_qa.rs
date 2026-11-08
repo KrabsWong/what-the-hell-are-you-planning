@@ -1111,8 +1111,8 @@ fn screenshot_ordinary(
 ) {
     let (mut cx, handle) = with_app(store, path, width, height, |a, _, _| {
         a.set_scope_identity(Scope::Runs);
-        a.task_result_context = Some(task);
-        a.selected_run = Some(run);
+        a.set_result_selection(Some(task), a.selected_run());
+        a.note_selected_run(Some(run));
         a.show_run_details = false;
         a.show_run_result = true;
     });
@@ -1148,8 +1148,8 @@ fn copy_result_check(root: &Path) {
     Storage::new(path.clone()).save(&store).unwrap();
     let (mut cx, handle) = with_app(store, &path, 1000., 680., |a, _, _| {
         a.set_scope_identity(Scope::Runs);
-        a.task_result_context = Some(task);
-        a.selected_run = Some(run);
+        a.set_result_selection(Some(task), a.selected_run());
+        a.note_selected_run(Some(run));
         a.show_run_details = false;
         a.show_run_result = true;
     });

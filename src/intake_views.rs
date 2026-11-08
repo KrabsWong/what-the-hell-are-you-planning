@@ -148,8 +148,7 @@ impl TaskApp {
                                 d.child(
                                     button(format!("request-run-{id}"), "Planning details")
                                         .on_click(cx.listener(move |a, _, w, cx| {
-                                            a.navigate(Scope::Runs, w, cx);
-                                            a.selected_run = Some(run);
+                                            a.set_result_selection(None, Some(run));
                                             a.show_run_result = true;
                                             cx.notify();
                                         })),

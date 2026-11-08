@@ -4,7 +4,7 @@
 //! SQLite v4 database and a fake local launch recorder. No model, network or
 //! production workspace is touched.
 
-use crate::app::{LaunchIntent, PreparedRunDispatch, TaskApp};
+use crate::app::{LaunchIntent, PendingDispatch, PreparedRunDispatch, TaskApp};
 use crate::dispatch_admission::{AdmissionId, AdmissionUpdate, DispatchAdmissionAdapter};
 use crate::domain_command::{Command, CommandClass};
 use crate::persistence_worker::WorkerOptions;
@@ -39,6 +39,7 @@ pub fn run() {
     resolve_claimed_ambiguity(&root);
     rerun_resolution_admits_distinct_attempt(&root);
     persisted_status_gates_claim_cleanup(&root);
+    reserved_dispatch_survives_prepare_failure(&root);
     backpressure_retains_intent(&root);
     println!("DISPATCH_ADMISSION_QA status=ok root={}", root.display());
 }
@@ -587,6 +588,66 @@ fn persisted_status_gates_claim_cleanup(root: &Path) {
     panic!("claim was not released after the persisted Running status");
 }
 
+fn reserved_dispatch_survives_prepare_failure(root: &Path) {
+    let (store, task) = fixture(root);
+    let mut run = queued_run(&store, task, 8_000);
+    run.directory = root.join("missing-directory").to_string_lossy().into_owned();
+    let mut harness = AppHarness::new("reserved-prepare", store);
+    harness
+        .cx
+        .update_window(harness.handle, |_, _, cx| {
+            harness.app.update(cx, |a, cx| {
+                a.dispatch_recovery_done = true;
+                a.pending_dispatch = Some(PendingDispatch {
+                    intent: LaunchIntent::Task(task),
+                    files: Vec::new(),
+                });
+                a.pending_dispatch_reserved =
+                    Some((LaunchIntent::Task(task), run.clone(), Vec::new()));
+                a.qa_retry_pending(cx);
+            })
+        })
+        .unwrap();
+    harness
+        .cx
+        .update_window(harness.handle, |_, _, cx| {
+            harness.app.update(cx, |a, _| {
+                let reserved = a
+                    .pending_dispatch_reserved
+                    .as_ref()
+                    .expect("failed preparation must retain the exact reserved run");
+                assert_eq!(reserved.1.id, 8_000);
+            })
+        })
+        .unwrap();
+    // Repair the working folder and retry the same reserved identity.
+    harness
+        .cx
+        .update_window(harness.handle, |_, _, cx| {
+            harness.app.update(cx, |a, cx| {
+                if let Some((intent, mut run, files)) = a.pending_dispatch_reserved.take() {
+                    run.directory = root.to_string_lossy().into_owned();
+                    a.pending_dispatch_reserved = Some((intent, run, files));
+                }
+                a.qa_retry_pending(cx);
+            })
+        })
+        .unwrap();
+    assert!(
+        harness.poll_until(Duration::from_secs(15), |a| {
+            a.qa_dispatch_fake
+                .as_ref()
+                .is_some_and(|fake| fake.starts.contains(&8_000))
+        }),
+        "reserved dispatch did not launch after repair"
+    );
+    assert!(
+        !harness.starts().iter().any(|id| *id != 8_000),
+        "preparation retry allocated a different run id: {:?}",
+        harness.starts()
+    );
+}
+
 fn backpressure_retains_intent(root: &Path) {
     let (store, task) = fixture(root);
     let first = queued_run(&store, task, 3_000);
@@ -634,6 +695,10 @@ pub fn crash_child() {
     if phase == "restart-failed" || phase == "restart-rerun" {
         restart_execute(&root, phase == "restart-rerun");
         return;
+    }
+    if phase.starts_with("restart-crash-") {
+        restart_execute(&root, phase.contains("rerun"));
+        panic!("crash point was not reached");
     }
     let (store, task) = fixture(&root);
     let run = queued_run(&store, task, 4_000);

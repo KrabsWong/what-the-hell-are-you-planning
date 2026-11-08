@@ -1,0 +1,37 @@
+{
+  "sha256": "7cce8f5ea01339ce8958299eec454e9b10489e00b8de68c7a480d048651dbe04",
+  "guard_exit": 2,
+  "source_manifest": "r55-owner-snapshot.json",
+  "results": [
+    {
+      "flag": "--qa-attachments",
+      "exit_code": 101,
+      "seconds": 1.798,
+      "log": "r55-fixed-attachments.log"
+    },
+    {
+      "flag": "--qa-navigation-context",
+      "exit_code": 101,
+      "seconds": 11.189,
+      "log": "r55-fixed-navigation-context.log"
+    },
+    {
+      "flag": "--qa-simplify",
+      "exit_code": 101,
+      "seconds": 9.097,
+      "log": "r55-fixed-simplify.log"
+    },
+    {
+      "flag": "--qa-archived-research",
+      "exit_code": 0,
+      "seconds": 8.321,
+      "log": "r55-fixed-archived-research.log"
+    },
+    {
+      "flag": "--qa-global-search",
+      "exit_code": 0,
+      "seconds": 22.296,
+      "log": "r55-fixed-global-search.log"
+    }
+  ]
+}

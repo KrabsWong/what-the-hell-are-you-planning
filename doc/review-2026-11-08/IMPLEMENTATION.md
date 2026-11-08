@@ -4,7 +4,7 @@ The authoritative scope and acceptance criteria remain in [TASKS.md](TASKS.md). 
 
 ## Development checkpoint policy
 
-All work for this optimization goal uses `feature/review-2026-11-08-optimization`. The user authorized periodic checkpoint commits and pushes on 2026-11-09 to prevent code loss. Checkpoints may contain unfinished work and failing acceptance cases; they are not releases or task sign-off. Root owns Git staging, commits and pushes. Implementers continue on this same shared branch. Local `.local/` workspaces, binaries, runtime traces and credentials remain excluded by repository policy.
+All work for this optimization goal uses `feature/review-2026-11-08-optimization`. The user authorized periodic checkpoint commits and pushes on 2026-11-09 to prevent code loss. Checkpoints may contain unfinished work and failing acceptance cases; they are not releases or task sign-off. Root owns Git staging, commits and pushes. Implementers continue on this same shared branch. Local `.local/` workspaces, binaries, runtime traces and credentials remain excluded by repository policy. Validation screenshots also remain local and must not be committed or pushed. The initial checkpoint predated this screenshot instruction; cleanup commit `e60ab38` removed all 60 tracked review screenshots from the branch tip and added ignore rules, preserving local copies. Earlier Git history was not rewritten.
 
 ## Current full-scope status
 
@@ -12,7 +12,7 @@ All 25 tasks remain in scope. Accepted means the reviewed candidate met its task
 
 | Task | Scope | Current disposition |
 | --- | --- | --- |
-| T01 | Repair and classify regression coverage | Implementing; focused regressions still failing; full 33-entry gate pending |
+| T01 | Repair and classify regression coverage | r53 full 33-entry diagnostic gate: 32 pass; newer r55 attachment flow independently passes; current navigation/cache regressions and release rerun pending |
 | T02 | Remove background navigation from run submission | Code, automated checks and native completion verified; final sign-off awaits T01 |
 | T03 | Separate retrying a period from resuming its schedule | Accepted in reviewed working-tree candidate; integration/release gates remain |
 | T04 | Prevent whole-Store Undo from erasing automation changes | Correction independently passes full automation at r5 and r12; final source review and legacy snapshot removal integration remain pending |
@@ -21,7 +21,7 @@ All 25 tasks remain in scope. Accepted means the reviewed candidate met its task
 | T07 | Keep task neighbors within the active navigation domain | Accepted in reviewed working-tree candidate; integration/release gates remain |
 | T08 | Give Search a stable global contract | Full global-search QA independently passes at r39 and r49; final integration and release gate pending |
 | T09 | Reset new forms from one explicit default model | Accepted in reviewed working-tree candidate; integration/release gates remain |
-| T10 | Preserve origin, dirty drafts and creation destination | Six navigation suites independently pass at r49; remaining full route/theme/native matrix and final integration pending |
+| T10 | Preserve origin, dirty drafts and creation destination | Six navigation suites independently pass at r49; r55 retained-footer navigation regression returned; full route/theme/native integration pending |
 | T11 | Restore consistent action affordances and visual hierarchy | Accepted in reviewed working-tree candidate; integration/release gates remain |
 | T12 | Extract a typed navigation controller | Pure S1 independently accepted (28 tests); live typed-authority migration active with explicit result ownership and save-outcome policies; not accepted |
 | T13 | Extract domain commands and scoped undo | S3b/S3c and S3d material task-edit QA independently pass (r27); remaining material cases, settings/context/archive and final snapshot removal pending |
@@ -1730,3 +1730,29 @@ The previous turn verified live OpenCode processes and actual tool-call events; 
 
 - The newer immutable T19 candidate `48baa703e851f10fe131bb8a13de15b7713f996ebf90fe5755b2c3f5da251f1e` independently passed `--qa-keyboard-visual` (18.012 seconds) and `--qa-settings` (21.418 seconds), after the invalid-QA guard exited 2. This does not supersede the failed native r52 performance result. [Results](evidence/r53-t19-checks.json).
 - The r53 diagnostic full gate on the older r49 candidate failed `--qa-attachments` with exit 101: `Timed out: paste shortcut` after the suite's internal 300-second deadline. The material owner received the exact evidence and must rerun the real attachment flow on a current immutable candidate. The full gate continues; later suites are not skipped.
+
+## r54 independent full test checkpoint and development backup
+
+- Created and pushed `feature/review-2026-11-08-optimization`, checkpoint `7504231fdb6b0febf860cbd7407374d91e2ceb8c`; a subsequent remote-head lookup confirmed the exact hash. This is an unfinished-work backup. All subsequent implementation and checkpoint pushes stay on the same branch. Implementers continue after the snapshot, so uncommitted changes are expected.
+- Independent `cargo test --features qa --quiet` passed: 646 unit tests, 2 explicitly ignored tests, 6 dispatch crash subprocess tests and 3 persistence crash subprocess tests. Exit 0. This supersedes the r49 full-test failure for the compiled checkpoint, not for later edits or unimplemented live activation. [Summary](evidence/r54-full-tests.json), [log](evidence/r54-full-tests.log).
+- The complete r53 33-entry diagnostic gate finished with 32 passed and 1 failed (`--qa-attachments`: paste shortcut timeout). Recovery, simplify, automation, publishing, workspace and all other original entries passed on the fixed r49 binary. Full process exit 1 is preserved; no failing entry was omitted or reclassified as passed. [Full ledger](evidence/r53-full-gate.json); local per-suite logs remain in `.local/opencode-dispatch/r53-full-gate/`.
+- Newer T13 candidate `8ad91b082a52aa2108c525f91620cad62499473a8011ecd215af57ab17f8a03b` passed independent `--qa-task-edit` in 7.155 seconds. Its attachment suite was still running at this checkpoint; no attachment acceptance is claimed. [Candidate ledger](evidence/r53-t13-checks.json).
+- The material review additionally identified loss of original workspace identity during the earlier import-copy stage: the completion event contains only task ID/results and obtains the current data directory. The implementation must carry the root from import initiation through copy, verification, apply and cleanup, including cancellation, and test switching before copy completes. Optimistic included-material feedback before verified durable apply was also returned.
+- T14's prior process completed; the same OpenCode session was resumed for full live tracking, async receipts/startup migration and indexed/lazy history UI. These required tasks remain open despite the corrected passing foundation tests.
+
+## r55 attachment regression diagnosis and screenshot policy
+
+- Screenshot cleanup commit `e60ab38` was pushed on the same development branch. All 60 review screenshots were removed from Git tracking and retained locally; ignore rules prevent future review-image staging. The earlier checkpoint remains in history.
+- The newer r53 T13 candidate also failed attachment paste after 300.358 seconds, exit 101. The next implementation added visible impact-confirmation handling to the attachment QA instead of weakening the T21 confirmation contract.
+- Root added a one-time pending-state diagnostic after two seconds to the QA wait helper, preserving its predicate and 300-second failure bound. The immutable r55 diagnostic candidate passed all three material imports, then failed in 2.007 seconds at the progress technical-details entry. [Result](evidence/r55-attachments.json).
+- Independent diagnosis: `show_task_result` copied the previously selected sibling task into result context even when explicitly opening another task's run. The strict shared resolver then rejected the unrelated context, leaving the requested result absent. Root corrected the destination to use the requested run's owner, preserving an ordinary goal context only when it actually owns the run. Added assertions check the displayed run identity after visiting both active and unstarted sibling tasks. Verification is pending.
+- A concurrent import-event signature change interrupted the first root compile; it was not treated as a product-test result. Root captured a byte-consistent source snapshot for the rerun so subsequent agent edits cannot change compilation inputs. [Snapshot manifest](evidence/r55-owner-snapshot.json).
+- Previous T12/T13/T14 sessions had terminated with remaining work explicitly open. Fresh OpenCode sessions now have concrete live-route, complete tracking and material/scoped-Undo coding batches. Their smaller context does not reduce the authoritative task scope.
+
+### r55 revised root correction: focused acceptance
+
+- The first frozen correction exposed two additional distinctions: raw `selected_run` QA writes no longer establish a valid task context, and global Results must retain its project/topic/history sidebar instead of becoming a task-only reader. Root corrected the entry semantics and restored QA through the real result command. No existing assertion or timeout was removed.
+- `show_task_result` and scoped `select_run` now share requested-run context resolution. With no explicit task context, global browsing remains global. Existing task context is reconciled against the requested run owner, preserving an ordinary goal only for its own reports. Technical-details QA now asserts the displayed run identity, not only the stored selected ID.
+- Revised immutable candidate `ace395c87fddbc9e9e711e3b84610348ad812c2b940049e97bf5bb4a24da1ddd`, guard exit 2: `--qa-attachments` passed in 2.106 seconds; `--qa-simplify` passed in 51.803 seconds. The candidate derives from the prior frozen source plus the isolated root fixes, preventing concurrent implementation from changing these test inputs. [Results](evidence/r55-owner-revised-checks.json), [source derivation](evidence/r55-owner-revised-snapshot.json).
+- The preceding frozen candidate independently passed archived-research and global-search, but navigation-context failed because the cached footer's New research entry was not visible. That regression was returned to T19, and no full navigation or scrolling acceptance is claimed. The original first-attempt simplify failure was caused by root's unconditional task-context fallback and is superseded by the revised passing simplify result. [First-attempt ledger](evidence/r55-owner-fixed-checks.json).
+- `python3 script/check_icons.py` passed with 51 registered icons. No new icon asset was introduced by the root result-entry correction.

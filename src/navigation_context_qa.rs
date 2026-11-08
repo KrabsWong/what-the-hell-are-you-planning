@@ -555,6 +555,13 @@ pub fn run() {
         w.click("project-1", cx);
         w.render_frame(cx);
         assert_eq!(app.read(cx).scope, Scope::Project(1));
+        eprintln!(
+            "NAVCTX footer bounds={:?} visible={} viewport={:?} planning={:?}",
+            w.find("footer-new-research").bounds(),
+            w.find("footer-new-research").visible(),
+            w.viewport_size(),
+            app.read(cx).planning_project
+        );
         w.click("footer-new-research", cx);
         w.render_frame(cx);
         let before = app.read(cx).scope.clone();
@@ -1080,6 +1087,13 @@ fn size_theme_pass(
     cx.update_window(handle, |_, w, cx| {
         w.click("close-automation-result", cx);
         w.render_frame(cx);
+        eprintln!(
+            "NAVCTX size footer bounds={:?} visible={} viewport={:?} scope={:?}",
+            w.find("footer-new-research").bounds(),
+            w.find("footer-new-research").visible(),
+            w.viewport_size(),
+            app.read(cx).scope
+        );
         w.click("footer-new-research", cx);
         w.render_frame(cx);
         let before = app.read(cx).scope.clone();

@@ -21,8 +21,16 @@ fn temp_root(name: &str) -> PathBuf {
 }
 
 fn child(phase: &str, root: &Path) -> ExitStatus {
-    let mut child = Command::new(env!("CARGO_BIN_EXE_what-the-hell-are-you-planning"))
-        .args(["--qa-dispatch-crash", phase, root.to_str().unwrap()])
+    child_with_crash(phase, root, None)
+}
+
+fn child_with_crash(phase: &str, root: &Path, crash: Option<&str>) -> ExitStatus {
+    let mut command = Command::new(env!("CARGO_BIN_EXE_what-the-hell-are-you-planning"));
+    command.args(["--qa-dispatch-crash", phase, root.to_str().unwrap()]);
+    if let Some(point) = crash {
+        command.env("T14_LB_CRASH", point);
+    }
+    let mut child = command
         .spawn()
         .expect("spawn dispatch crash child");
     let deadline = Instant::now() + Duration::from_secs(20);
@@ -170,6 +178,45 @@ fn resolution_rerun_intent_keeps_a_stable_replacement_identity() {
     let keys = intent_keys(&root);
     assert!(!keys.iter().any(|key| key.starts_with("resolve:")));
     assert!(!keys.iter().any(|key| key == "launch:dispatch:None:run:4000"));
+    let _ = std::fs::remove_dir_all(root);
+}
+
+#[test]
+fn restart_crash_after_resolution_status_and_claim_release_recovers() {
+    let root = temp_root("restart-crash-status");
+    let path = root.join("workspace.sqlite3");
+    assert_eq!(
+        child("resolution-failed", &root).signal(),
+        Some(libc::SIGABRT)
+    );
+    let status = child_with_crash("restart-crash-failed", &root, Some("status"));
+    assert_eq!(status.signal(), Some(libc::SIGABRT));
+    assert_eq!(run_status(&path), "Blocked");
+    let keys = intent_keys(&root);
+    assert!(keys.iter().any(|key| key == "launch:dispatch:None:run:4000"));
+    assert!(keys.iter().any(|key| key.starts_with("resolve:")));
+    let status = child("restart-failed", &root);
+    assert!(status.success(), "recovery after status crash failed: {status:?}");
+    assert!(!root.join("launches.log").exists());
+    let _ = std::fs::remove_dir_all(root);
+}
+
+#[test]
+fn restart_crash_after_claim_release_completes_rerun_once() {
+    let root = temp_root("restart-crash-claim");
+    let path = root.join("workspace.sqlite3");
+    assert_eq!(
+        child("resolution-rerun", &root).signal(),
+        Some(libc::SIGABRT)
+    );
+    let status = child_with_crash("restart-crash-rerun", &root, Some("claim"));
+    assert_eq!(status.signal(), Some(libc::SIGABRT));
+    assert_eq!(run_status(&path), "Blocked");
+    assert!(!root.join("launches.log").exists());
+    let status = child("restart-rerun", &root);
+    assert!(status.success(), "rerun recovery failed: {status:?}");
+    let launch = std::fs::read_to_string(root.join("launches.log")).unwrap();
+    assert_eq!(launch.lines().collect::<Vec<_>>(), vec!["5000"]);
     let _ = std::fs::remove_dir_all(root);
 }
 

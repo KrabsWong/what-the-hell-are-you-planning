@@ -1,0 +1,19 @@
+{
+  "sha256": "ace395c87fddbc9e9e711e3b84610348ad812c2b940049e97bf5bb4a24da1ddd",
+  "guard_exit": 2,
+  "source_manifest": "r55-owner-revised-snapshot.json",
+  "results": [
+    {
+      "flag": "--qa-attachments",
+      "exit_code": 0,
+      "seconds": 2.106,
+      "log": "r55-revised-attachments.log"
+    },
+    {
+      "flag": "--qa-simplify",
+      "exit_code": 0,
+      "seconds": 51.803,
+      "log": "r55-revised-simplify.log"
+    }
+  ]
+}

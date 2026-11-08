@@ -288,7 +288,9 @@ impl TaskApp {
         self.attachment_import = Some(rx);
         self.attachment_started = Some(std::time::Instant::now());
         self.attachment_status = "Copying materials locally…".into();
+        let import_root = root.clone();
         std::thread::spawn(move || {
+            let root = import_root.clone();
             let total = paths.len() + images.len();
             let mut results = Vec::new();
             for (index, source) in paths.into_iter().map(Ok).chain(images.into_iter().map(Err)).enumerate() {
@@ -309,7 +311,7 @@ impl TaskApp {
                 eprintln!("Material import {}/{}: {:.2}s, success={}", index + 1, total, started.elapsed().as_secs_f64(), result.is_ok());
                 results.push(result);
             }
-            let _ = tx.send(AttachmentImport::Complete(id, results));
+            let _ = tx.send(AttachmentImport::Complete(id, import_root, results));
         });
         self.toast = "Adding materials locally; progress is shown in Materials.".into();
         self.start_pump(cx);
@@ -356,29 +358,40 @@ impl TaskApp {
                 }
                 _ => break,
             };
-            let (id, results) = match event {
+            let (id, bound_root, results) = match event {
                 AttachmentImport::Progress(status) => {
                     self.attachment_status = status;
                     cx.notify();
                     continue;
                 }
-                AttachmentImport::Complete(id, results) => (id, results),
+                AttachmentImport::Complete(id, root, results) => (id, root, results),
             };
             self.attachment_import = None;
             let elapsed = self.attachment_started.take().map(|t| t.elapsed().as_secs()).unwrap_or(0);
             self.attachment_status.clear();
+            // Copies were written under the root captured at import start. If the
+            // user switched workspaces while copying, that root stays authoritative
+            // for cleanup; never re-derive it from the current workspace.
+            let current_root = self.data_dir().ok();
+            let same_root = current_root.as_ref() == Some(&bound_root);
             let mut errors = vec![];
             let mut attachments = vec![];
             let mut orphans = vec![];
             for result in results {
                 match result {
                     Ok(attachment) => {
-                        if self.store.task_is_archived(id) || self.store.task(id).is_none() {
+                        if !same_root
+                            || self.store.task_is_archived(id)
+                            || self.store.task(id).is_none()
+                        {
                             orphans.push(attachment);
-                            errors.push(
+                            errors.push(if same_root {
                                 "The task was archived or removed before the material import finished; the material was not attached."
-                                    .into(),
-                            );
+                                    .into()
+                            } else {
+                                "The workspace changed before the material import finished; the material was not attached."
+                                    .into()
+                            });
                         } else {
                             attachments.push(attachment);
                         }
@@ -386,38 +399,42 @@ impl TaskApp {
                     Err(error) => errors.push(error),
                 }
             }
-            let data_dir = match self.data_dir() {
-                Ok(path) => path,
-                Err(error) => {
-                    self.error = error;
-                    cx.notify();
-                    continue;
-                }
-            };
             let mut orphan_copies = vec![];
             for attachment in &orphans {
-                if let Ok(copy) = crate::scoped_material::imported_copy(&data_dir, id, attachment) {
+                if let Ok(copy) = crate::scoped_material::imported_copy(&bound_root, id, attachment) {
                     orphan_copies.push(copy);
                 }
             }
             if !orphan_copies.is_empty() {
-                self.submit_material_cleanup(orphan_copies, cx);
+                self.submit_material_cleanup_for_root(bound_root.clone(), orphan_copies, cx);
             }
             let mut imported = vec![];
             for attachment in &attachments {
-                match crate::scoped_material::imported_copy(&data_dir, id, attachment) {
+                match crate::scoped_material::imported_copy(&bound_root, id, attachment) {
                     Ok(copy) => imported.push(copy),
                     Err(error) => errors.push(error),
                 }
             }
             if imported.len() == attachments.len() && !attachments.is_empty() {
-                if !self.submit_material_add_verify(id, attachments, imported.clone(), cx) {
+                if !same_root
+                    || !self.submit_material_add_verify_for_root(
+                        bound_root.clone(),
+                        id,
+                        attachments,
+                        imported.clone(),
+                        cx,
+                    )
+                {
                     // No pending owner exists; retain ownership via a cleanup
-                    // request rather than leaking silently.
-                    self.submit_material_cleanup(imported.clone(), cx);
+                    // request bound to the original root rather than leaking.
+                    self.submit_material_cleanup_for_root(
+                        bound_root.clone(),
+                        imported.clone(),
+                        cx,
+                    );
                 }
             } else if !imported.is_empty() {
-                self.submit_material_cleanup(imported.clone(), cx);
+                self.submit_material_cleanup_for_root(bound_root.clone(), imported.clone(), cx);
             }
             if errors.is_empty() {
                 self.toast = format!("{elapsed}s · materials included in the next run");
@@ -786,12 +803,30 @@ impl TaskApp {
             self.show_task_result(run_id, cx);
         }
     }
+    pub(crate) fn result_context_for_run(&self, run_id: u64) -> Option<u64> {
+        // Browsing the global results page keeps its project/topic history.
+        let context = self.selected.or(self.task_result_context)?;
+        let owner = self.store.runs().iter()
+            .find(|run| run.id == run_id)
+            .map(|run| run.task_id)
+            .filter(|task| self.store.task(*task).is_some());
+        // The requested run determines the destination. Keep a goal context
+        // only when it actually owns this ordinary report; a previously opened
+        // sibling task must never make the requested result disappear.
+        Some(context)
+            .filter(|context| owner.is_some_and(|task| {
+                *context == task
+                    || (self.store.task(*context).is_some_and(|task| task.automation_id.is_none())
+                        && self.store.owning_research_goal(task) == Some(*context))
+            }))
+            .or(owner)
+    }
     pub(crate) fn show_task_result(&mut self, run_id: u64, cx: &mut Context<Self>) {
         self.park_current_comment(cx);
         self.show_run_details = false;
         self.selected_run = Some(run_id);
         self.show_run_result = true;
-        self.task_result_context = self.selected;
+        self.task_result_context = self.result_context_for_run(run_id);
         if let Some(task) = self.task_result_context {
             self.navigation
                 .recent_surfaces

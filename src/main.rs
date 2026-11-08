@@ -122,7 +122,7 @@ mod retry_qa;
 mod topic_queue_qa;
 #[cfg(feature = "qa")]
 mod settings_qa;
-mod settings_content;
+mod shell_surfaces;
 mod settings_views;
 mod model_profiles;
 #[cfg(feature = "qa")]

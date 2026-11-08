@@ -870,6 +870,7 @@ fn wait_until(
     label: &str,
 ) {
     let started = Instant::now();
+    let mut reported_pending_state = false;
     loop {
         let done = cx
             .update_window(handle, |_, _, cx| {
@@ -881,6 +882,26 @@ fn wait_until(
             .unwrap();
         if done {
             return;
+        }
+        if !reported_pending_state && started.elapsed() >= Duration::from_secs(2) {
+            cx.update_window(handle, |_, _, cx| {
+                let state = app.read(cx);
+                let materials: Vec<_> = state.store.tasks.iter()
+                    .filter(|task| !task.attachments.is_empty())
+                    .map(|task| (task.id, task.attachments.len()))
+                    .collect();
+                eprintln!(
+                    "Waiting for {label}: import={}, verification={}, material_edit={}, impact_confirmation={}, cleanup_obligations={}, attached_counts={materials:?}, error={:?}, storage_error={:?}",
+                    state.attachment_import.is_some(),
+                    state.pending_material_job.is_some(),
+                    state.pending_material_edit.is_some(),
+                    state.research_save_impact.is_some(),
+                    state.pending_cleanup_retry.len(),
+                    state.error,
+                    state.storage_error,
+                );
+            }).unwrap();
+            reported_pending_state = true;
         }
         assert!(
             started.elapsed() < Duration::from_secs(300),
@@ -963,8 +984,15 @@ pub fn attachments_only() {
         click_in(w, cx, "detail-scroll", "material-drop-hint");
         w.press("cmd-v", cx);
     }).unwrap();
-    wait_until(&mut cx, handle, &app, |a| a.attachment_import.is_none() && a.pending_material_job.is_none()
-        && a.store.task(goal).unwrap().attachments.len() == 1, "paste shortcut");
+    wait_until(&mut cx, handle, &app, |a| a.attachment_import.is_none() && a.pending_material_job.is_none(), "paste shortcut import");
+    cx.update_window(handle, |_, w, cx| {
+        if app.read(cx).research_save_is_pending() {
+            w.render_frame(cx);
+            w.click("research-save-impact-confirm", cx);
+            w.render_frame(cx);
+        }
+    }).unwrap();
+    wait_until(&mut cx, handle, &app, |a| a.store.task(goal).unwrap().attachments.len() == 1, "paste shortcut saved");
     let pdf = root.join("original.pdf");
     std::fs::write(&pdf, include_bytes!("test-fixtures/blank.pdf")).unwrap();
     cx.update_window(handle, |_, w, cx| {
@@ -972,8 +1000,15 @@ pub fn attachments_only() {
         click_in(w, cx, "detail-scroll", "material-drop-hint");
         w.press("cmd-v", cx);
     }).unwrap();
-    wait_until(&mut cx, handle, &app, |a| a.attachment_import.is_none() && a.pending_material_job.is_none()
-        && a.store.task(goal).unwrap().attachments.len() == 2, "repeat paste shortcut");
+    wait_until(&mut cx, handle, &app, |a| a.attachment_import.is_none() && a.pending_material_job.is_none(), "repeat paste import");
+    cx.update_window(handle, |_, w, cx| {
+        if app.read(cx).research_save_is_pending() {
+            w.render_frame(cx);
+            w.click("research-save-impact-confirm", cx);
+            w.render_frame(cx);
+        }
+    }).unwrap();
+    wait_until(&mut cx, handle, &app, |a| a.store.task(goal).unwrap().attachments.len() == 2, "repeat paste saved");
     cx.update_window(handle, |_, w, cx| {
         click_in(w, cx, "detail-scroll", "material-drop-hint");
         let position = w.find("material-drop-hint").bounds().center();
@@ -984,6 +1019,14 @@ pub fn attachments_only() {
         w.dispatch_event(PlatformInput::FileDrop(FileDropEvent::Submit { position }), cx);
     }).unwrap();
     wait_until(&mut cx, handle, &app, |a| a.attachment_import.is_none() && a.pending_material_job.is_none(), "file import");
+    cx.update_window(handle, |_, w, cx| {
+        if app.read(cx).research_save_is_pending() {
+            w.render_frame(cx);
+            w.click("research-save-impact-confirm", cx);
+            w.render_frame(cx);
+        }
+    }).unwrap();
+    wait_until(&mut cx, handle, &app, |a| a.store.task(goal).unwrap().attachments.len() == 3, "file import saved");
     let (run, files) = cx.update_window(handle, |_, _, cx| app.update(cx, |a, _| {
         assert_eq!(a.store.task(goal).unwrap().attachments.len(), 3);
         a.store.set_stage(goal, crate::domain::Stage::Planned).unwrap();
@@ -1087,31 +1130,35 @@ assert 'Read the attached file directly' in args[-1]
         assert!(app.read(cx).show_run_result);
         assert!(!app.read(cx).show_run_details);
         assert_eq!(app.read(cx).store.runs().iter().find(|r| r.id == app.read(cx).selected_run.unwrap()).unwrap().task_id, steps[0]);
-        app.update(cx, |a, cx| { a.selected_run = Some(running); cx.notify(); });
+        app.update(cx, |a, cx| { a.show_task_result(running, cx); });
         w.render_frame(cx);
         w.click(format!("progress-task-title-{}", steps[1]), cx);
         assert_eq!(app.read(cx).selected, Some(steps[1]));
         app.update(cx, |a, cx| { a.show_task_result(running, cx); });
         w.render_frame(cx);
+        assert_eq!(app.read(cx).displayed_run_id(), Some(running),
+            "Opening a run must resolve that run after visiting a task");
         w.click(format!("progress-task-title-{}", steps[2]), cx);
         assert_eq!(app.read(cx).selected, Some(steps[2]));
         app.update(cx, |a, cx| { a.show_task_result(running, cx); });
         w.render_frame(cx);
+        assert_eq!(app.read(cx).displayed_run_id(), Some(running),
+            "A sibling task selection must not hide the requested run");
     }).unwrap();
 
     cx.update_window(handle, |_, w, cx| {
         w.click(format!("progress-technical-details-{}", steps[0]), cx);
         assert!(app.read(cx).show_run_details);
         let selected = app.read(cx).selected_run.unwrap();
+        assert_eq!(app.read(cx).displayed_run_id(), Some(selected),
+            "Technical details must display the run selected by the row");
         assert_eq!(app.read(cx).store.runs().iter().find(|r| r.id == selected).unwrap().task_id, steps[0]);
     }).unwrap();
 
     cx.update_window(handle, |_, w, cx| {
         app.update(cx, |a, cx| {
             a.queued_runs.clear();
-            a.selected_run = Some(a.store.runs()[0].id);
-            a.show_run_details = false;
-            a.show_run_result = true;
+            a.show_task_result(a.store.runs()[0].id, cx);
             cx.notify();
         });
         w.render_frame(cx);

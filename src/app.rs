@@ -16,7 +16,14 @@ pub struct ActiveRun {
 }
 pub enum AttachmentImport {
     Progress(String),
-    Complete(u64, Vec<Result<crate::attachments::Attachment, String>>),
+    /// Completion carries the workspace root captured when the import started.
+    /// Later events must clean up or attach against that original root, never a
+    /// root derived after the user switched workspaces.
+    Complete(
+        u64,
+        PathBuf,
+        Vec<Result<crate::attachments::Attachment, String>>,
+    ),
 }
 type Discovery = Result<(String, Vec<String>), String>;
 
@@ -473,7 +480,8 @@ pub struct TaskApp {
     pub todo_batch: Option<crate::batch::TodoBatch>,
     pub(crate) recovery: crate::recovery::Recovery,
     pub sidebar_logo: Entity<crate::brand::SidebarLogo>,
-    pub(crate) settings_content: Option<Entity<crate::settings_content::SettingsContent>>,
+    pub(crate) content_surface: Option<Entity<crate::shell_surfaces::ContentSurface>>,
+    pub(crate) footer_bar: Option<Entity<crate::shell_surfaces::FooterBar>>,
     pub materials_focus: FocusHandle,
     pub attachment_status: String,
     pub attachment_started: Option<Instant>,
@@ -932,7 +940,8 @@ impl TaskApp {
             todo_batch: None,
             recovery: Default::default(),
             sidebar_logo: cx.new(|_| crate::brand::SidebarLogo),
-            settings_content: None,
+            content_surface: None,
+            footer_bar: None,
             materials_focus: cx.focus_handle(),
             attachment_status: String::new(),
             attachment_started: None,

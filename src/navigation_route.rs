@@ -17,7 +17,7 @@
 
 use std::collections::BTreeMap;
 
-use crate::app::{AllStatus, Layout};
+use crate::app::{AllStatus, Layout, Scope};
 use crate::domain::Store;
 
 pub(crate) type ProjectId = u64;

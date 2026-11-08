@@ -526,6 +526,8 @@ impl TaskApp {
                         if let Some(adapter) = self.dispatch_admission.as_mut() {
                             let _ = adapter.release_resolution(&old_key);
                         }
+                        #[cfg(feature = "qa")]
+                        Self::qa_crash_at("admission");
                         self.dispatch_resolution_launch_pending = Some(operation_key);
                         changed = true;
                         continue;
@@ -534,6 +536,8 @@ impl TaskApp {
                     changed = true;
                 }
                 crate::dispatch_admission::AdmissionUpdate::LaunchClaimReleased { operation_key } => {
+                    #[cfg(feature = "qa")]
+                    Self::qa_crash_at("claim");
                     if let Some((key, run_id, rerun, replacement)) =
                         self.dispatch_resolution_pending.clone()
                         && key == operation_key
@@ -564,6 +568,8 @@ impl TaskApp {
                         self.dispatch_resolution_pending = None;
                         self.dispatch_resolution_new = None;
                     }
+                    #[cfg(feature = "qa")]
+                    Self::qa_crash_at("decision");
                     if let Some(launch_key) = self.dispatch_resolution_launch_pending.take() {
                         self.launch_claimed(&launch_key, cx);
                     }
@@ -598,6 +604,8 @@ impl TaskApp {
                         *saved = run;
                     }
                     let key = operation_key;
+                    #[cfg(feature = "qa")]
+                    Self::qa_crash_at("status");
                     let claimed = self
                         .dispatch_admission
                         .as_ref()
@@ -1031,6 +1039,12 @@ impl TaskApp {
         changed
     }
 
+    /// QA-only bridge to the real pending-save retry path.
+    #[cfg(feature = "qa")]
+    pub(crate) fn qa_retry_pending(&mut self, cx: &mut Context<Self>) {
+        self.retry_pending_saves(cx);
+    }
+
     /// Retry retained/blocked dispatch groups without blocking the UI.
     pub(crate) fn retry_dispatch_admission(&mut self) -> bool {
         let Some(adapter) = self.dispatch_admission.as_mut() else {
@@ -1042,6 +1056,13 @@ impl TaskApp {
                 self.dispatch_admission_error = Some(error);
                 false
             }
+        }
+    }
+
+    #[cfg(feature = "qa")]
+    fn qa_crash_at(point: &str) {
+        if std::env::var("T14_LB_CRASH").ok().as_deref() == Some(point) {
+            std::process::abort();
         }
     }
 

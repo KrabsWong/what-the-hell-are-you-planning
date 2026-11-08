@@ -332,6 +332,18 @@ impl TaskApp {
         prepared: PreparedMaterialSave,
     ) -> Result<PreparedMaterialSave, String> {
         let data_dir = self.material_data_dir()?;
+        // The imported copies belong to the root captured when the change was
+        // prepared. A workspace switch keeps the pending intent until the user
+        // returns; it must never re-prepare against another workspace's store.
+        if let Some(pending) = &self.pending_material_edit
+            && !pending.root.as_os_str().is_empty()
+            && pending.root != data_dir
+        {
+            return Err(
+                "The workspace changed while this material change was pending. Return to the original workspace to finish it."
+                    .into(),
+            );
+        }
         match prepared {
             PreparedMaterialSave::Add(plan) => prepare_material_add(
                 &self.store,
@@ -491,7 +503,7 @@ impl TaskApp {
         self.submit_material_cleanup_for_root(root, copies, cx)
     }
 
-    fn submit_material_cleanup_for_root(
+    pub(crate) fn submit_material_cleanup_for_root(
         &mut self,
         root: PathBuf,
         copies: Vec<crate::scoped_material::ImportedCopy>,
@@ -531,8 +543,11 @@ impl TaskApp {
         }
     }
 
-    pub(crate) fn submit_material_add_verify(
+    /// Submit an add verification bound to the root captured when the import
+    /// started. A workspace switch during copy must not rebind the copies.
+    pub(crate) fn submit_material_add_verify_for_root(
         &mut self,
+        root: PathBuf,
         task: u64,
         attachments: Vec<Attachment>,
         imported: Vec<crate::scoped_material::ImportedCopy>,
@@ -543,11 +558,12 @@ impl TaskApp {
             cx.notify();
             return false;
         }
-        let Ok(root) = self.material_data_dir() else {
-            self.error = "Workspace storage is unavailable.".into();
+        if self.material_data_dir().ok().as_ref() != Some(&root) {
+            self.error =
+                "The workspace changed before materials were verified. Nothing was attached.".into();
             cx.notify();
             return false;
-        };
+        }
         let files = imported
             .iter()
             .map(|copy| VerifyFile {

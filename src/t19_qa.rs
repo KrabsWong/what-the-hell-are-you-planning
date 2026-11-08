@@ -17,6 +17,7 @@ pub fn run() {
     std::fs::create_dir_all(&root).unwrap();
     visual_matrix(&root);
     settings_retained_invalidation(&root);
+    footer_retention_invalidation(&root);
     settings_scroll_probe(&root);
     keyboard_matrix(&root);
     automation_result_keyboard(&root);
@@ -501,6 +502,19 @@ fn visual_settings(root: &Path, mode: Appearance, width: f32, height: f32) {
     })
     .unwrap();
     screenshot(&mut cx, handle, &directory, "settings-publishing.png");
+    cx.update_window(handle, |_, w, cx| {
+        app.update(cx, |app, cx| {
+            app.show_save_error("Could not save settings. Check the workspace folder.", cx)
+        });
+        w.render_frame(cx);
+        assert!(w.find("save-feedback").visible(), "error banner must render");
+        assert!(
+            w.find("dismiss-save-feedback").visible(),
+            "error banner keeps its dismiss action"
+        );
+    })
+    .unwrap();
+    screenshot(&mut cx, handle, &directory, "settings-save-error.png");
     cx.update_window(handle, |_, w, _| w.remove_window())
         .unwrap();
 }
@@ -684,6 +698,103 @@ fn settings_retained_invalidation(root: &Path) {
         assert!(
             gpui_kit::component::Theme::global(cx).is_dark(),
             "theme survives the remaining semantic transitions"
+        );
+    })
+    .unwrap();
+    cx.update_window(handle, |_, w, _| w.remove_window())
+        .unwrap();
+}
+
+fn footer_retention_invalidation(root: &Path) {
+    let directory = root.join("footer-retention");
+    std::fs::create_dir_all(&directory).unwrap();
+    let store = fixture(&directory);
+    let path = directory.join("workspace.sqlite3");
+    Storage::new(path.clone()).save(&store).unwrap();
+    let (mut cx, handle, app) = with_app(store, &path, 1440., 920., |app, w, cx| {
+        app.scope = Scope::All;
+        cx.notify();
+        let _ = w;
+    });
+    cx.update_window(handle, |_, w, cx| {
+        w.render_frame(cx);
+        w.find("footer-new-research");
+        w.find("footer-search");
+        assert_eq!(
+            w.find("undo").disabled(),
+            Some(true),
+            "empty undo stack disables the cached footer command"
+        );
+
+        // Temporary diagnostic: reproduce the automation dirty-exit flow.
+        w.click("all-automations", cx);
+        w.render_frame(cx);
+        w.click("new-automation", cx);
+        w.render_frame(cx);
+        w.click("automation-objective", cx);
+        w.input("Check prices", cx);
+        w.click("all", cx);
+        w.render_frame(cx);
+        w.click("dirty-exit-stay", cx);
+        w.render_frame(cx);
+        w.click("all", cx);
+        w.render_frame(cx);
+        w.click("dirty-exit-discard", cx);
+        w.render_frame(cx);
+        eprintln!(
+            "T19 footer pre-nav bounds={:?} viewport={:?} visible={}",
+            w.find("footer-new-research").bounds(),
+            w.viewport_size(),
+            w.find("footer-new-research").visible()
+        );
+        w.click("project-1", cx);
+        w.render_frame(cx);
+        eprintln!(
+            "T19 footer diag bounds={:?} viewport={:?} visible={}",
+            w.find("footer-new-research").bounds(),
+            w.viewport_size(),
+            w.find("footer-new-research").visible()
+        );
+        // Cached commands keep working.
+        w.click("footer-search", cx);
+        w.render_frame(cx);
+        assert!(app.read(cx).global_search_ui.open);
+        w.press("escape", cx);
+        w.render_frame(cx);
+        assert!(!app.read(cx).global_search_ui.open);
+        w.click("footer-new-research", cx);
+        w.render_frame(cx);
+        assert!(app.read(cx).planning_project.is_some());
+        w.press("escape", cx);
+        w.render_frame(cx);
+
+        // A real parent notification invalidates the footer state.
+        app.update(cx, |app, cx| {
+            app.snapshot();
+            cx.notify();
+        });
+        w.render_frame(cx);
+        assert_ne!(
+            w.find("undo").disabled(),
+            Some(true),
+            "undo state must invalidate the cached footer"
+        );
+
+        // Persistence errors surface through the cached footer and clear again.
+        app.update(cx, |app, cx| {
+            app.storage_error = "T19 footer storage failure".into();
+            cx.notify();
+        });
+        w.render_frame(cx);
+        w.find("retry-save");
+        app.update(cx, |app, cx| {
+            app.storage_error.clear();
+            cx.notify();
+        });
+        w.render_frame(cx);
+        assert!(
+            w.try_find("retry-save").is_none(),
+            "clearing the storage error invalidates the cached footer"
         );
     })
     .unwrap();

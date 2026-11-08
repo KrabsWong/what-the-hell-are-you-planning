@@ -475,6 +475,30 @@ impl TaskApp {
             })
             .into_any_element()
     }
+    /// The retained footer surface. Its definite height lets the cached view
+    /// reuse layout and paint; each real parent notification re-evaluates the
+    /// whole-Store saved comparison and every command state.
+    pub(crate) fn footer_bar(&self, cx: &mut Context<Self>) -> AnyElement {
+        let colors = palette(cx);
+        row()
+            .h(px(30.))
+            .px_4()
+            .bg(rgb(colors.side))
+            .border_t_1()
+            .border_color(rgb(colors.line))
+            .justify_between()
+            .gap_4()
+            .text_xs()
+            .child(
+                div()
+                    .flex_1()
+                    .min_w_0()
+                    .overflow_hidden()
+                    .child(self.footer_activity(cx)),
+            )
+            .child(self.footer_commands(cx))
+            .into_any_element()
+    }
     /// Footer left: persistence and last-action feedback. Save failures use the
     /// danger tone and a retry action instead of borrowing the neutral message
     /// style, and the idle state is a real state rather than a fixed sentence.
@@ -1742,6 +1766,25 @@ impl TaskApp {
                 menu
             })
             .into_any_element()
+    }
+    /// The single content boundary rendered inside the retained content surface.
+    /// Every branch is rebuilt when a real parent notification reaches the
+    /// surface; animation frames reuse the retained subtree.
+    pub(crate) fn main_content(&self, cx: &mut Context<Self>) -> AnyElement {
+        if let Some(id) = self.selected {
+            self.detail(id, cx)
+        } else {
+            match self.scope {
+                Scope::Topic(id) => self.topic_view(id, cx),
+                Scope::Runs => self.runs(cx),
+                Scope::Recovery => self.recovery_view(cx),
+                Scope::Research => self.research_view(cx),
+                Scope::Automations => self.automations(cx),
+                Scope::AutomationRuns => self.automation_results(cx),
+                Scope::Settings => self.model_settings(cx),
+                _ => self.collection(cx),
+            }
+        }
     }
     fn collection(&self, cx: &mut Context<Self>) -> AnyElement {
         let colors = palette(cx);
@@ -4134,20 +4177,8 @@ impl Render for TaskApp {
             }
             return self.startup_view(cx);
         }
-        let content = if let Some(id) = self.selected {
-            self.detail(id, cx)
-        } else {
-            match self.scope {
-                Scope::Topic(id) => self.topic_view(id, cx),
-                Scope::Runs => self.runs(cx),
-                Scope::Recovery => self.recovery_view(cx),
-                Scope::Research => self.research_view(cx),
-                Scope::Automations => self.automations(cx),
-                Scope::AutomationRuns => self.automation_results(cx),
-                Scope::Settings => self.retained_settings(cx),
-                _ => self.collection(cx),
-            }
-        };
+        let content = self.retained_content(cx);
+
         let mut root = col()
             .id("app")
             .tab_group()
@@ -4273,25 +4304,7 @@ impl Render for TaskApp {
                         ),
                 ),
             )
-            .child(
-                row()
-                    .h(px(30.))
-                    .px_4()
-                    .bg(rgb(colors.side))
-                    .border_t_1()
-                    .border_color(rgb(colors.line))
-                    .justify_between()
-                    .gap_4()
-                    .text_xs()
-                    .child(
-                        div()
-                            .flex_1()
-                            .min_w_0()
-                            .overflow_hidden()
-                            .child(self.footer_activity(cx)),
-                    )
-                    .child(self.footer_commands(cx)),
-            );
+            .child(self.retained_footer(cx));
         if self.editing {
             root = root.child(self.editor_overlay(cx));
         }

@@ -175,6 +175,9 @@ impl TaskApp {
     }
 
     fn select_run(&mut self, id: u64, cx: &mut Context<Self>) {
+        if self.task_result_context.is_some() {
+            self.task_result_context = self.result_context_for_run(id);
+        }
         self.selected_run = Some(id);
         self.reveal_selected_run();
         self.show_run_details = false;

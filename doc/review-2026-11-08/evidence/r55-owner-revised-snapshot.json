@@ -1,0 +1,10 @@
+{
+  "path": "/Users/fuxingxing/workspaces/what-the-hell-are-you-planning/.local/r55-owner-revised-snapshot",
+  "base_manifest": "r55-owner-snapshot.json",
+  "root_patched_files": {
+    "src/research_app.rs": "26c75ef21d93849ea41ad701d134fd3289bc028e62fd35d1ffa7d094328871f5",
+    "src/run_views.rs": "3a4871796cd7faa9c625e619ad07883ee96fb721cf173687cc8b3007a5ee821f",
+    "src/research_qa.rs": "1ded12ac75321f1d24e33600ee55d855e2558fbf5aa1bc9923f56c4ef26ffcf0"
+  },
+  "note": "Frozen prior snapshot plus isolated root result-owner correction and real-command QA restoration. Retained-footer experimental changes in base remain separately rejected."
+}

@@ -108,6 +108,29 @@ struct PendingAdmission {
     state: AdmissionState,
 }
 
+#[derive(Debug, PartialEq, Eq)]
+enum LiveReceiptMatch {
+    None,
+    Durable(u64),
+    Mismatch(u64),
+}
+
+/// A live receipt is validated before its mapping is removed. A foreign
+/// workspace or non-empty effect list can never retire a live group.
+fn classify_live_receipt(
+    live: &BTreeMap<u64, u64>,
+    workspace: u64,
+    receipt: &DurableReceipt,
+) -> LiveReceiptMatch {
+    let Some(epoch) = live.get(&receipt.generation).copied() else {
+        return LiveReceiptMatch::None;
+    };
+    if receipt.workspace != workspace || !receipt.effects.is_empty() {
+        return LiveReceiptMatch::Mismatch(epoch);
+    }
+    LiveReceiptMatch::Durable(epoch)
+}
+
 pub(crate) struct DispatchAdmissionAdapter {
     worker: PersistenceWorker,
     journal: Option<ChangeJournal>,
@@ -410,7 +433,7 @@ impl DispatchAdmissionAdapter {
                 }
                 WorkerEvent::Returned { group, .. } => {
                     let generation = group.generation();
-                    if let Some(epoch) = self.live_saves.remove(&generation) {
+                    if let Some(epoch) = self.live_saves.get(&generation).copied() {
                         self.live_retained = Some((group, epoch));
                         updates.push(AdmissionUpdate::LiveSaveError {
                             generation,
@@ -445,7 +468,7 @@ impl DispatchAdmissionAdapter {
                 }
                 WorkerEvent::Rejected { reason, group, .. } => {
                     let generation = group.generation();
-                    if let Some(epoch) = self.live_saves.remove(&generation) {
+                    if let Some(epoch) = self.live_saves.get(&generation).copied() {
                         self.live_retained = Some((group, epoch));
                         updates.push(AdmissionUpdate::LiveSaveError {
                             generation,
@@ -478,6 +501,7 @@ impl DispatchAdmissionAdapter {
                 }
                 WorkerEvent::Failed { message } => {
                     self.last_error = Some(message.clone());
+                    self.live_retained = None;
                     for (generation, epoch) in std::mem::take(&mut self.live_saves) {
                         updates.push(AdmissionUpdate::LiveSaveError {
                             generation,
@@ -853,12 +877,26 @@ impl DispatchAdmissionAdapter {
     }
 
     fn on_durable(&mut self, receipt: DurableReceipt, updates: &mut Vec<AdmissionUpdate>) {
-        if let Some(epoch) = self.live_saves.remove(&receipt.generation) {
-            updates.push(AdmissionUpdate::LiveSaveDurable {
-                generation: receipt.generation,
-                epoch,
-            });
-            return;
+        match classify_live_receipt(&self.live_saves, self.workspace, &receipt) {
+            LiveReceiptMatch::Durable(epoch) => {
+                self.live_saves.remove(&receipt.generation);
+                updates.push(AdmissionUpdate::LiveSaveDurable {
+                    generation: receipt.generation,
+                    epoch,
+                });
+                return;
+            }
+            LiveReceiptMatch::Mismatch(epoch) => {
+                // Keep the mapping: the exact retained intent may still become
+                // durable with a correctly addressed receipt.
+                updates.push(AdmissionUpdate::LiveSaveError {
+                    generation: receipt.generation,
+                    epoch,
+                    reason: "stale or mismatched live save receipt; group retained".into(),
+                });
+                return;
+            }
+            LiveReceiptMatch::None => {}
         }
         if let Some(pending) = self.status_pending.get(&receipt.generation) {
             if receipt.workspace == self.workspace
@@ -1705,6 +1743,54 @@ mod tests {
             store.runs()[0].status,
             "Succeeded",
             "newer state must not be overwritten by a replay"
+        );
+    }
+
+    #[test]
+    fn live_receipt_validation_rejects_foreign_workspace_same_generation() {
+        let mut live = BTreeMap::new();
+        live.insert(7u64, 41u64);
+        let receipt = DurableReceipt {
+            workspace: 2,
+            generation: 7,
+            effects: Vec::new(),
+        };
+        assert_eq!(
+            classify_live_receipt(&live, 1, &receipt),
+            LiveReceiptMatch::Mismatch(41)
+        );
+        assert_eq!(live.get(&7), Some(&41), "mapping must not be retired");
+    }
+
+    #[test]
+    fn live_receipt_validation_requires_exact_epoch_and_empty_effects() {
+        let mut live = BTreeMap::new();
+        live.insert(9u64, 55u64);
+        let foreign_effects = DurableReceipt {
+            workspace: 1,
+            generation: 9,
+            effects: vec![1],
+        };
+        assert_eq!(
+            classify_live_receipt(&live, 1, &foreign_effects),
+            LiveReceiptMatch::Mismatch(55)
+        );
+        let exact = DurableReceipt {
+            workspace: 1,
+            generation: 9,
+            effects: Vec::new(),
+        };
+        assert_eq!(
+            classify_live_receipt(&live, 1, &exact),
+            LiveReceiptMatch::Durable(55)
+        );
+        assert_eq!(
+            classify_live_receipt(&live, 1, &DurableReceipt {
+                workspace: 1,
+                generation: 10,
+                effects: Vec::new(),
+            }),
+            LiveReceiptMatch::None
         );
     }
 }

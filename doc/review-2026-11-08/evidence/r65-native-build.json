@@ -1,0 +1,10 @@
+{
+  "command": "cargo build --release --features qa --quiet",
+  "exit_code": 0,
+  "seconds": 53.898,
+  "log": "r65-native-build.log",
+  "binary": "/Users/fuxingxing/workspaces/what-the-hell-are-you-planning/.local/native-review/r65-candidate",
+  "sha256": "ef805d6f9d28708875b62e6269f5c3f93cf2479f3dd00b4b9d843cc79c0203ac",
+  "guard_exit": 2,
+  "guard_passed": true
+}

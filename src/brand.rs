@@ -67,6 +67,11 @@ pub(crate) fn note_sidebar_render() {
 }
 
 #[cfg(feature = "qa")]
+pub(crate) fn note_logo_render() {
+    render_probe::logo();
+}
+
+#[cfg(feature = "qa")]
 pub(crate) fn note_settings_render() {
     render_probe::settings();
 }

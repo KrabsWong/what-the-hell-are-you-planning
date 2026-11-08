@@ -357,7 +357,7 @@ fn visual_automation_result(root: &Path, mode: Appearance, width: f32, height: f
     cx.update_window(handle, |_, w, cx| {
         w.press("escape", cx);
         w.render_frame(cx);
-        assert!(app.read(cx).automation_ui.result_dialog.is_none());
+        assert!(app.read(cx).period_overlay().is_none());
     })
     .unwrap();
     cx.update_window(handle, |_, w, _| w.remove_window())
@@ -393,7 +393,7 @@ fn automation_result_keyboard(root: &Path) {
         cx.run_until_parked();
         cx.update_window(handle, |_, w, cx| {
             w.render_frame(cx);
-            assert_eq!(app.read(cx).automation_ui.result_dialog, Some(occurrence));
+            assert_eq!(app.read(cx).period_overlay(), Some(occurrence));
             assert_eq!(
                 w.focused(cx),
                 Some(app.read(cx).dialog_first_focus.clone()),
@@ -430,7 +430,7 @@ fn automation_result_keyboard(root: &Path) {
         cx.update_window(handle, |_, w, cx| {
             w.render_frame(cx);
             assert!(
-                app.read(cx).automation_ui.result_dialog.is_none(),
+                app.read(cx).period_overlay().is_none(),
                 "{activation}: result did not close"
             );
             assert_eq!(
@@ -835,26 +835,41 @@ fn sidebar_retained_surface(root: &Path) {
         w.render_frame(cx);
         let after_scroll = app.read(cx).sidebar_scroll.offset().y;
         assert!(after_scroll < before_scroll - px(10.));
+        let clip = w.find("sidebar-logo-clip").bounds();
         let moved = w.find("sidebar-brand-overlay").bounds();
-        assert!(moved.top() < brand.top(), "brand must follow sidebar scroll");
-        w.scroll(
-            "sidebar-scroll",
-            ScrollDelta::Pixels(point(px(0.), px(-4000.))),
-            cx,
-        );
-        w.render_frame(cx);
-        let clipped = w.find("sidebar-brand-overlay");
         assert!(
-            !clipped.visible() || clipped.bounds().bottom() < brand.top(),
-            "brand must clip with the sidebar content"
+            moved.top() < brand.top(),
+            "brand must follow sidebar scroll"
         );
-        w.scroll(
-            "sidebar-scroll",
-            ScrollDelta::Pixels(point(px(0.), px(8000.))),
-            cx,
+        assert!(
+            (moved.top() - clip.top() - px(46.) - after_scroll).abs() <= px(0.5),
+            "brand offset must match the sidebar scroll offset"
         );
-        w.render_frame(cx);
-        assert!(w.find("sidebar-brand-overlay").visible());
+        // Scroll to the content end; the mark either remains inside the clip
+        // rectangle or is clipped once its anchor leaves the viewport.
+        for _ in 0..20 {
+            let before = app.read(cx).sidebar_scroll.offset().y;
+            w.scroll(
+                "sidebar-scroll",
+                ScrollDelta::Pixels(point(px(0.), px(-400.))),
+                cx,
+            );
+            w.render_frame(cx);
+            if app.read(cx).sidebar_scroll.offset().y == before {
+                break;
+            }
+        }
+        let end = app.read(cx).sidebar_scroll.offset().y;
+        let clipped = w.find("sidebar-brand-overlay");
+        if px(46.) + end + px(32.) <= px(0.) {
+            assert!(
+                clipped.bounds().bottom() <= clip.top(),
+                "brand must be clipped above the viewport edge"
+            );
+        } else {
+            assert!(clipped.visible(), "brand must remain inside the clip");
+            assert!(clipped.bounds().bottom() <= clip.bottom());
+        }
 
         // Dragging the resize divider still resizes the sidebar panel.
         let width_before = w.find("sidebar-scroll").bounds().size.width;

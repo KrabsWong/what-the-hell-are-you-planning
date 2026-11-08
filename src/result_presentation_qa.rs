@@ -1058,7 +1058,7 @@ fn screenshot_automation(
     let (mut cx, handle) = with_app(store, path, width, height, |a, _, _| {
         a.set_scope_identity(Scope::AutomationRuns);
         a.automation_ui.selected = Some(99);
-        a.automation_ui.result_dialog = Some(occurrence);
+        a.push_period_overlay(occurrence);
     });
     screenshot(&mut cx, handle, directory, name);
     cx.update_window(handle, |_, w, _| {

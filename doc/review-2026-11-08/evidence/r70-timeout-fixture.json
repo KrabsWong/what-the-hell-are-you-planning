@@ -1,0 +1,22 @@
+{
+  "fixture": "/var/folders/2b/5rzlcbd94xd5dp2b2rjsqbb00000gn/T/t14-l1b-crash-resolution-failed-44713-1794170016749613000",
+  "intent": {
+    "items": [
+      {
+        "key": "launch:dispatch:None:run:4000",
+        "parts": null
+      },
+      {
+        "key": "resolve:dispatch:None:run:4000:failed",
+        "parts": null
+      }
+    ]
+  },
+  "runs": [
+    {
+      "id": 4000,
+      "status": "Blocked"
+    }
+  ],
+  "note": "Read-only observation of retained r69 timeout fixture; cause not established by this state alone"
+}

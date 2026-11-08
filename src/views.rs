@@ -668,6 +668,11 @@ impl TaskApp {
         let mut side = col()
             .id("sidebar-scroll")
             .track_scroll(&self.sidebar_scroll)
+            .on_scroll(cx.listener(|this, _, _, cx| {
+                if let Some(overlay) = &this.brand_overlay {
+                    overlay.update(cx, |_, cx| cx.notify());
+                }
+            }))
             .flex_1()
             .min_h_0()
             .overflow_y_scroll()
@@ -4250,7 +4255,7 @@ impl Render for TaskApp {
                     && this.planning_destination_error.is_none()
                     && this.directory_project.is_none()
                     && !this.automation_ui.settings_dialog
-                    && this.automation_ui.result_dialog.is_none()
+                    && this.period_overlay().is_none()
                 {
                     this.request_back(w, cx);
                     cx.stop_propagation();
@@ -4277,7 +4282,7 @@ impl Render for TaskApp {
                     this.planning_destination_error = None;
                     this.directory_project = None;
                     this.automation_ui.settings_dialog = false;
-                    this.automation_ui.result_dialog = None;
+                    this.close_period_overlay();
                     this.error.clear();
                     if let Some(opener) = planning_opener {
                         w.focus(&opener, cx);
@@ -4422,7 +4427,7 @@ impl Render for TaskApp {
         if self.automation_ui.settings_dialog {
             root = root.child(self.automation_settings_dialog(cx));
         }
-        if self.automation_ui.result_dialog.is_some() {
+        if self.period_overlay().is_some() {
             root = root.child(self.automation_result_dialog(cx));
         }
         if self.automation_ui.planning_attempt_dialog.is_some() {

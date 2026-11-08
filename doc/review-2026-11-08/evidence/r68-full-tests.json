@@ -1,0 +1,6 @@
+{
+  "command": "cargo test --features qa --quiet",
+  "exit_code": 101,
+  "seconds": 59.961,
+  "log": "r68-full-tests.log"
+}

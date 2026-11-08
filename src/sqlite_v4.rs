@@ -853,6 +853,31 @@ impl SqliteV4 {
             .map_err(|error| error.to_string())
     }
 
+    /// Cheap startup validation: structure and page consistency without loading
+    /// every historical row/body. Use `load_store` only at the single normal
+    /// startup hydration point.
+    pub(crate) fn verify_integrity(&self) -> Result<(), String> {
+        let result: String = self
+            .connection
+            .query_row("PRAGMA quick_check", [], |row| row.get(0))
+            .map_err(|error| format!("cannot verify database integrity: {error}"))?;
+        if result != "ok" {
+            return Err(format!("workspace integrity check failed: {result}"));
+        }
+        let tables: i64 = self
+            .connection
+            .query_row(
+                "SELECT COUNT(*) FROM sqlite_master WHERE type='table' AND name IN ('tasks','projects','runs','automations','automation_occurrences','meta')",
+                [],
+                |row| row.get(0),
+            )
+            .map_err(|error| error.to_string())?;
+        if tables != 6 {
+            return Err("workspace v4 schema is incomplete".into());
+        }
+        Ok(())
+    }
+
     pub(crate) fn checkpoint(&self) -> Result<(), String> {
         self.connection
             .query_row("PRAGMA wal_checkpoint(TRUNCATE)", [], |row| {
@@ -1681,7 +1706,37 @@ pub(crate) fn migrate_v3_to_v4(
     root: &Path,
     incarnation: u64,
 ) -> Result<MigrationOutcome, String> {
-    migrate_inner(path, root, incarnation, MigrationFault::None)
+    migrate_inner(path, root, incarnation, MigrationFault::None, false)
+}
+
+/// Same migration while the caller already owns the workspace lock. Startup
+/// uses this after `Storage::acquire_lock`; re-locking the same file would fail.
+pub(crate) fn migrate_v3_to_v4_locked(
+    path: &Path,
+    root: &Path,
+    incarnation: u64,
+) -> Result<MigrationOutcome, String> {
+    migrate_inner(path, root, incarnation, MigrationFault::None, true)
+}
+
+pub(crate) fn schema_version(path: &Path) -> Result<u32, String> {
+    let version = read_user_version(path)?;
+    u32::try_from(version).map_err(|_| format!("invalid schema version {version}"))
+}
+
+/// Read the immutable identity of an existing v4 database.
+pub(crate) fn read_incarnation(path: &Path) -> Result<u64, String> {
+    let connection = Connection::open_with_flags(
+        path,
+        rusqlite::OpenFlags::SQLITE_OPEN_READ_ONLY,
+    )
+    .map_err(|error| format!("cannot read {}: {error}", path.display()))?;
+    let value: i64 = connection
+        .query_row("SELECT incarnation FROM database_identity WHERE id=1", [], |row| {
+            row.get(0)
+        })
+        .map_err(|error| format!("cannot read workspace incarnation: {error}"))?;
+    u64::try_from(value).map_err(|_| "workspace incarnation is out of range".to_string())
 }
 
 fn migrate_inner(
@@ -1689,6 +1744,7 @@ fn migrate_inner(
     root: &Path,
     incarnation: u64,
     fault: MigrationFault,
+    already_locked: bool,
 ) -> Result<MigrationOutcome, String> {
     ensure_absolute(root)?;
     if !path.is_file() {
@@ -1697,7 +1753,11 @@ fn migrate_inner(
     // Exclusive ownership for the whole read/backup/replace sequence. The lock
     // is the same workspace lock the live app uses, so a running app or another
     // cooperative migrator prevents replacement instead of racing it.
-    let _lock = crate::persistence::Storage::new(path.to_path_buf()).acquire_lock()?;
+    let _lock = if already_locked {
+        None
+    } else {
+        Some(crate::persistence::Storage::new(path.to_path_buf()).acquire_lock()?)
+    };
     let version = read_user_version(path)?;
     if version == SCHEMA_VERSION {
         let current = SqliteV4::open(path, root, incarnation)?;
@@ -2968,7 +3028,7 @@ mod tests {
             assert!(wal.exists() && fs::metadata(&wal).unwrap().len() > 0);
             let main_before = file_hash(&path);
             let wal_before = file_hash(&wal);
-            assert!(migrate_inner(&path, &root, INCARNATION, fault).is_err());
+            assert!(migrate_inner(&path, &root, INCARNATION, fault, false).is_err());
             // Only the pre-backup failure is required to leave the source bytes
             // untouched. Later stages may checkpoint the source after the
             // verified backup; logical latest state remains authoritative.
@@ -3059,7 +3119,7 @@ mod tests {
             let path = root.join(format!("{fault:?}.sqlite3"));
             fs::copy(&base, &path).unwrap();
             let before = fs::read(&path).unwrap();
-            assert!(migrate_inner(&path, &root, INCARNATION, fault).is_err());
+            assert!(migrate_inner(&path, &root, INCARNATION, fault, false).is_err());
             assert_eq!(fs::read(&path).unwrap(), before);
             assert_eq!(
                 crate::sqlite_storage::load(&path, &root).unwrap().unwrap(),
@@ -3206,7 +3266,7 @@ pub fn crash_child() {
             fail("mid-group fault returned instead of aborting".into());
         }
         "migration-crash" => {
-            let _ = migrate_inner(&path, &root, incarnation, MigrationFault::CrashAfterCheckpoint);
+            let _ = migrate_inner(&path, &root, incarnation, MigrationFault::CrashAfterCheckpoint, false);
             fail("migration crash fault returned instead of aborting".into());
         }
         other => fail(format!("unknown mode {other}")),

@@ -705,7 +705,7 @@ pub fn run() {
         w.click("navigation-back", cx);
         w.render_frame(cx);
         assert_eq!(app.read(cx).scope(), Scope::AutomationRuns);
-        assert_eq!(app.read(cx).automation_ui.result_dialog, Some(fixture.period));
+        assert_eq!(app.read(cx).period_overlay(), Some(fixture.period));
         assert_eq!(
             app.read(cx).automation_ui.scroll.offset().y,
             before_scroll,
@@ -1072,7 +1072,7 @@ fn size_theme_pass(
         w.click("navigation-back", cx);
         w.render_frame(cx);
         assert_eq!(app.read(cx).scope(), Scope::AutomationRuns);
-        assert_eq!(app.read(cx).automation_ui.result_dialog, Some(fixture.period));
+        assert_eq!(app.read(cx).period_overlay(), Some(fixture.period));
     })
     .unwrap();
 

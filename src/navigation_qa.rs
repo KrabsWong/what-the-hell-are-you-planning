@@ -256,7 +256,7 @@ fn exercise(
         w.click("period-overview", cx);
         let (overview_owner, overview_dialog) = {
             let a = app.read(cx);
-            (a.automation_ui.selected, a.automation_ui.result_dialog)
+            (a.automation_ui.selected, a.period_overlay())
         };
         assert_eq!(
             overview_owner,
@@ -279,7 +279,7 @@ fn exercise(
         w.click("navigation-back", cx);
         let (scope, automation, dialog) = {
             let a = app.read(cx);
-            (a.scope(), a.automation_ui.selected, a.automation_ui.result_dialog)
+            (a.scope(), a.automation_ui.selected, a.period_overlay())
         };
         assert_eq!(scope, Scope::Automations, "{theme}: Back opens the owning automation");
         assert_eq!(automation, Some(fixture.first_automation));

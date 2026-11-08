@@ -796,7 +796,7 @@ fn automation_modal_and_period(
         assert!(!app.read(cx).automation_ui.settings_dialog);
         assert_eq!(app.read(cx).scope(), Scope::Automations);
         assert_eq!(app.read(cx).automation_ui.selected, Some(fixture.automation));
-        assert_eq!(app.read(cx).automation_ui.result_dialog, Some(fixture.period));
+        assert_eq!(app.read(cx).period_overlay(), Some(fixture.period));
         let (crumbs, current) = app.read(cx).navigation_path();
         assert_eq!(current, "Fuel price watch");
         assert_eq!(
@@ -808,7 +808,7 @@ fn automation_modal_and_period(
     cx.update_window(handle, |_, w, cx| {
         w.press("escape", cx);
         w.render_frame(cx);
-        assert_eq!(app.read(cx).automation_ui.result_dialog, None);
+        assert_eq!(app.read(cx).period_overlay(), None);
         assert_eq!(app.read(cx).scope(), Scope::Automations);
         assert_eq!(app.read(cx).automation_ui.selected, Some(fixture.automation));
     })

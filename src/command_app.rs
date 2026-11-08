@@ -537,6 +537,13 @@ impl TaskApp {
                 crate::dispatch_admission::AdmissionUpdate::LaunchClaimReleased { operation_key } => {
                     #[cfg(feature = "qa")]
                     Self::qa_crash_at("claim");
+                    if self
+                        .dispatch_status_durable
+                        .as_ref()
+                        .is_some_and(|(key, _)| key == &operation_key)
+                    {
+                        self.dispatch_status_durable = None;
+                    }
                     if let Some((key, run_id, rerun, replacement)) =
                         self.dispatch_resolution_pending.clone()
                         && key == operation_key
@@ -566,6 +573,7 @@ impl TaskApp {
                     {
                         self.dispatch_resolution_pending = None;
                         self.dispatch_resolution_new = None;
+                        self.dispatch_status_durable = None;
                     }
                     #[cfg(feature = "qa")]
                     Self::qa_crash_at("decision");
@@ -609,21 +617,7 @@ impl TaskApp {
                         .dispatch_admission
                         .as_ref()
                         .is_some_and(|adapter| adapter.launch_claim_exists(&key));
-                    if let Some(adapter) = self.dispatch_admission.as_mut() {
-                        let _ = adapter.release_dispatch_intent(&key);
-                    }
-                    if claimed {
-                        let _ = self
-                            .dispatch_admission
-                            .as_mut()
-                            .map(|adapter| adapter.release_launch_claim(&key));
-                    } else if let Some((run_id, rerun, replacement)) = self
-                        .dispatch_resolution_pending
-                        .as_ref()
-                        .map(|(_, run_id, rerun, replacement)| (*run_id, *rerun, *replacement))
-                    {
-                        self.finish_resolution(&key, run_id, rerun, replacement, cx);
-                    }
+                    self.dispatch_status_durable = Some((key, claimed));
                     changed = true;
                 }
                 crate::dispatch_admission::AdmissionUpdate::Acknowledged { operation_key } => {
@@ -669,20 +663,18 @@ impl TaskApp {
         {
             self.begin_acknowledgement(id);
         }
-        // A failed/backpressured claim-release request is retried on the next
-        // bounded poll instead of dropping the resolution obligation.
-        if let Some((key, _, rerun, _)) = self.dispatch_resolution_pending.clone()
+        // A failed/backpressured dispatch-intent retirement is retried on the
+        // next bounded poll. The launch claim and resolution marker are retired
+        // only from the matching ResolutionStatusDurable handler: releasing them
+        // here races the status write and can leave a crashed restart with no
+        // claim/key identity for the pending resolution.
+        if let Some((key, _, _, _)) = self.dispatch_resolution_pending.clone()
             && let Some(adapter) = self.dispatch_admission.as_mut()
         {
-            // Retry idempotent deletions after backpressure. For a failed
-            // decision the marker can be retired immediately; for rerun it stays
-            // until the replacement claim is durable.
             let _ = adapter.release_dispatch_intent(&key);
-            if adapter.launch_claim_exists(&key) {
-                let _ = adapter.release_launch_claim(&key);
-            } else if !rerun || self.dispatch_resolution_launch_pending.is_some() {
-                let _ = adapter.release_resolution(&key);
-            }
+        }
+        if self.retry_status_completion(cx) {
+            changed = true;
         }
         changed |= self.cleanup_launch_claims();
         if !self.dispatch_recovery_done && self.dispatch_admission.is_some() {
@@ -1016,6 +1008,46 @@ impl TaskApp {
     /// and no longer needs the retired claim as its identity anchor.
     fn claims_removed_marker(&self) {}
 
+    /// Retry the exact claim/marker retirement after a durable status receipt.
+    /// A failed enqueue leaves this obligation in place; it never rewrites the
+    /// status group or loses the resolution marker.
+    fn retry_status_completion(&mut self, cx: &mut Context<Self>) -> bool {
+        let Some((key, had_claim)) = self.dispatch_status_durable.clone() else {
+            return false;
+        };
+        let Some(adapter) = self.dispatch_admission.as_mut() else {
+            return false;
+        };
+        let _ = adapter.release_dispatch_intent(&key);
+        if had_claim {
+            if adapter.release_launch_claim(&key).is_err() {
+                return false;
+            }
+            // `LaunchClaimReleased` finishes the resolution after the removal is
+            // actually durable; the obligation stays until that update arrives.
+            return false;
+        }
+        if let Some((run_id, rerun, replacement)) = self
+            .dispatch_resolution_pending
+            .as_ref()
+            .map(|(_, run_id, rerun, replacement)| (*run_id, *rerun, *replacement))
+        {
+            if rerun {
+                self.finish_resolution(&key, run_id, rerun, replacement, cx);
+                self.dispatch_status_durable = None;
+                return true;
+            }
+        }
+        let Some(adapter) = self.dispatch_admission.as_mut() else {
+            return false;
+        };
+        if adapter.release_resolution(&key).is_err() {
+            return false;
+        }
+        self.dispatch_status_durable = None;
+        true
+    }
+
     /// Claims are removed once the run reaches a confirmed state so they cannot
     /// grow without bound.
     pub(crate) fn cleanup_launch_claims(&mut self) -> bool {
@@ -1032,6 +1064,23 @@ impl TaskApp {
             let Some(run_id) = run_id else {
                 continue;
             };
+            let resolving = self
+                .dispatch_admission
+                .as_ref()
+                .is_some_and(|adapter| adapter.resolution(&operation_key).is_some())
+                || self
+                    .dispatch_resolution_pending
+                    .as_ref()
+                    .is_some_and(|(key, ..)| key == &operation_key)
+                || self
+                    .dispatch_resolution_new
+                    .as_ref()
+                    .is_some_and(|(key, _)| key == &operation_key);
+            if resolving {
+                // The claim anchors the still-pending resolution; it may only be
+                // retired after that resolution status is durable.
+                continue;
+            }
             let confirmed = self.last_saved.runs().iter().find(|run| run.id == run_id).is_some_and(|run| {
                 matches!(
                     run.status.as_str(),

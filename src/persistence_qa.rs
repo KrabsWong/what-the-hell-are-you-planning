@@ -1062,7 +1062,7 @@ fn app_suite(
         .map_err(|_| "dialog open failed".to_string())?;
         dialog_opened = cx
             .update_window(handle, |_, _, cx| {
-                app.read_with(cx, |a, _| a.automation_ui.result_dialog == Some(dialog_id))
+                app.read_with(cx, |a, _| a.period_overlay() == Some(dialog_id))
             })
             .map_err(|_| "cannot read dialog state".to_string())?;
         metrics::record_external("app.dialog_open_wall", started.elapsed());

@@ -1634,7 +1634,7 @@ fn dispatch_ui_state(
             automation_selected: a.automation_ui.selected,
             creating: a.automation_ui.creating,
             step: a.automation_ui.step,
-            result_dialog: a.automation_ui.result_dialog,
+            result_dialog: a.period_overlay(),
             settings_dialog: a.automation_ui.settings_dialog,
             objective: a.automation_ui.objective.read(cx).value().to_string(),
             follow_logs: a.follow_logs,
@@ -1759,7 +1759,7 @@ print(json.dumps({'type':'text','part':{'text':json.dumps({'status':'complete','
                         a.set_scope_identity(Scope::Automations);
                         a.fixture_select_task(None);
                         a.automation_ui.selected = Some(id);
-                        a.automation_ui.result_dialog = Some(history.id);
+                        a.push_period_overlay(history.id);
                     }
                     _ => {}
                 }
@@ -1837,7 +1837,7 @@ print(json.dumps({'type':'text','part':{'text':json.dumps({'status':'complete','
             app.update(cx, |a, cx| {
                 assert!(a.open_automation_progress_for_goal(goal.unwrap(), w, cx));
                 assert_eq!(a.scope(), Scope::Automations);
-                assert_eq!(a.automation_ui.result_dialog, Some(occurrence));
+                assert_eq!(a.period_overlay(), Some(occurrence));
             });
         })
         .unwrap();
@@ -1953,7 +1953,7 @@ fn retry_scope_check(root: &Path) {
                 a.automation_fake_mode = true;
                 a.set_scope_identity(Scope::Automations);
                 a.automation_ui.selected = Some(id);
-                a.automation_ui.result_dialog = Some(occurrence.id);
+                a.push_period_overlay(occurrence.id);
                 assert!(a.storage_error.is_empty(), "{}", a.storage_error);
                 cx.notify();
             });
@@ -1989,7 +1989,7 @@ fn retry_scope_check(root: &Path) {
         w.render_frame(cx);
         assert_eq!(app.read(cx).scope(), Scope::Automations, "retry stays in its period");
         assert_eq!(
-            app.read(cx).automation_ui.result_dialog,
+            app.read(cx).period_overlay(),
             Some(occurrence.id)
         );
     })
@@ -4759,7 +4759,7 @@ fn ui_interaction(root: &Path) -> PathBuf {
     })
     .unwrap();
     assert_eq!(
-        read_state(&mut cx, &app, |a| a.automation_ui.result_dialog),
+        read_state(&mut cx, &app, |a| a.period_overlay()),
         Some(occurrence)
     );
     assert!(!read_state(&mut cx, &app, |a| a.store.occurrence(occurrence).unwrap().unread));
@@ -4769,7 +4769,7 @@ fn ui_interaction(root: &Path) -> PathBuf {
         w.render_frame(cx);
     })
     .unwrap();
-    assert_eq!(read_state(&mut cx, &app, |a| a.automation_ui.result_dialog), None);
+    assert_eq!(read_state(&mut cx, &app, |a| a.period_overlay()), None);
 
     // Editing creates a new version and requires a new approval. Edit is opened
     // from the settings dialog, next to the settings it changes.
@@ -5247,7 +5247,7 @@ fn ui_interaction(root: &Path) -> PathBuf {
             w.click(format!("open-occurrence-{latest}"), cx);
             w.render_frame(cx);
             assert_eq!(
-                app.read(cx).automation_ui.result_dialog,
+                app.read(cx).period_overlay(),
                 Some(latest),
                 "clicking the visible period row opens its result"
             );
@@ -5255,7 +5255,7 @@ fn ui_interaction(root: &Path) -> PathBuf {
         })
         .unwrap();
     assert_eq!(
-        read_state(&mut cx, &app, |a| a.automation_ui.result_dialog),
+        read_state(&mut cx, &app, |a| a.period_overlay()),
         Some(latest)
     );
     screenshot(&mut cx, handle, &directory, "07-automation-results.png");
@@ -5295,7 +5295,7 @@ fn ui_interaction(root: &Path) -> PathBuf {
     })
     .unwrap();
     assert_eq!(
-        read_state(&mut cx, &app, |a| a.automation_ui.result_dialog),
+        read_state(&mut cx, &app, |a| a.period_overlay()),
         Some(latest),
         "Back from a step returns to its period result"
     );
@@ -5375,7 +5375,7 @@ fn ui_interaction(root: &Path) -> PathBuf {
         w.click("navigation-back", cx);
         w.render_frame(cx);
         assert_eq!(app.read(cx).scope(), Scope::Automations);
-        assert_eq!(app.read(cx).automation_ui.result_dialog, Some(latest));
+        assert_eq!(app.read(cx).period_overlay(), Some(latest));
         w.click("close-automation-result", cx);
         w.render_frame(cx);
         assert_eq!(app.read(cx).scope(), Scope::Automations);
@@ -5503,7 +5503,7 @@ fn ui_interaction(root: &Path) -> PathBuf {
         "cancelling from the period dialog keeps the user on Automation results"
     );
     assert_eq!(
-        read_state(&mut cx, &app, |a| a.automation_ui.result_dialog),
+        read_state(&mut cx, &app, |a| a.period_overlay()),
         None,
         "closing the dialog leaves no modal behind"
     );

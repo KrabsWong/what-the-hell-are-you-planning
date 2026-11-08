@@ -62,6 +62,45 @@ impl Render for SidebarSurface {
     }
 }
 
+pub(crate) struct BrandOverlay {
+    parent: WeakEntity<TaskApp>,
+}
+
+impl BrandOverlay {
+    pub(crate) fn new(parent: Entity<TaskApp>, cx: &mut Context<Self>) -> Self {
+        let _ = cx;
+        Self {
+            parent: parent.downgrade(),
+        }
+    }
+}
+
+impl Render for BrandOverlay {
+    fn render(&mut self, _window: &mut Window, cx: &mut Context<Self>) -> impl IntoElement {
+        #[cfg(feature = "qa")]
+        crate::brand::note_logo_render();
+        let Some(parent) = self.parent.upgrade() else {
+            return div().into_any_element();
+        };
+        let (offset, accent) = parent.read_with(cx, |app, cx| {
+            (app.sidebar_scroll.offset().y, crate::appearance::palette(cx).accent)
+        });
+        // The sidebar reserves a 32px macOS title bar before the scroll area;
+        // the mark is centered in the 60px identity row below it.
+        let brand_top = if cfg!(target_os = "macos") { 46. } else { 14. };
+        observed(
+            div()
+                .id("sidebar-brand-overlay")
+                .absolute()
+                .top(px(brand_top) + offset)
+                .left(px(8.))
+                .size(px(32.))
+                .child(crate::brand::sidebar_logo(accent)),
+        )
+        .into_any_element()
+    }
+}
+
 pub(crate) struct FooterBar {
     parent: WeakEntity<TaskApp>,
     _parent_subscription: Subscription,
@@ -101,7 +140,12 @@ impl TaskApp {
                 cx.new(|cx| crate::shell_surfaces::SidebarSurface::new(parent, cx)),
             );
         }
-        let offset = self.sidebar_scroll.offset().y;
+        if self.brand_overlay.is_none() {
+            let parent = cx.entity();
+            self.brand_overlay = Some(
+                cx.new(|cx| crate::shell_surfaces::BrandOverlay::new(parent, cx)),
+            );
+        }
         col()
             .relative()
             .size_full()
@@ -111,8 +155,9 @@ impl TaskApp {
                     .expect("sidebar surface initialized")
                     .cached(StyleRefinement::default().size_full()),
             )
-            .child(
+            .child(observed(
                 div()
+                    .id("sidebar-logo-clip")
                     .absolute()
                     .top(px(12.))
                     .left(px(12.))
@@ -120,16 +165,11 @@ impl TaskApp {
                     .bottom(px(12.))
                     .overflow_hidden()
                     .child(
-                        div()
-                            .id("sidebar-brand-overlay")
-                            .absolute()
-                            .top(px(14.) + offset)
-                            .left(px(8.))
-                            .size(px(32.))
-                            .map(observed)
-                            .child(self.sidebar_logo.clone()),
+                        self.brand_overlay
+                            .clone()
+                            .expect("brand overlay initialized"),
                     ),
-            )
+            ))
             .into_any_element()
     }
 

@@ -42,7 +42,7 @@ pub fn run() {
                             crate::automation::OccurrenceStatus::Running;
                         a.store.occurrence_mut(1).unwrap().reason = None;
                         a.store.mark_occurrence_read(1);
-                        a.automation_ui.result_dialog = Some(1);
+                        a.push_period_overlay(1);
                         cx.notify();
                     });
                     app = Some(view.clone());

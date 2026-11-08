@@ -271,8 +271,6 @@ pub struct AutomationUi {
     pub plan: Option<AutomationTemplate>,
     pub preview: Vec<i64>,
     pub preview_error: String,
-    /// Period whose result is open in a dialog. `None` keeps results closed.
-    pub result_dialog: Option<u64>,
     /// Planning attempt run open in a read-only history dialog.
     pub planning_attempt_dialog: Option<u64>,
     /// Whether closing that attempt should restore the Settings dialog that
@@ -340,7 +338,6 @@ impl AutomationUi {
             plan: None,
             preview: vec![],
             preview_error: String::new(),
-            result_dialog: None,
             planning_attempt_dialog: None,
             planning_attempt_origin_settings: false,
             settings_scroll: ScrollHandle::new(),
@@ -845,7 +842,7 @@ impl TaskApp {
         self.automation_ui.settings_dialog = false;
         // Results stay closed by default; the newest period is still first in
         // the history, and a row opens its result in a dialog.
-        self.automation_ui.result_dialog = None;
+        let _ = self.close_period_overlay();
         self.automation_ui.show_technical = false;
         self.automation_ui.feedback = None;
         self.automation_ui.scroll.set_offset(point(px(0.), px(0.)));
@@ -858,7 +855,7 @@ impl TaskApp {
         }
         self.remember_dialog_opener(window, cx);
         self.automation_ui.settings_dialog = true;
-        self.automation_ui.result_dialog = None;
+        let _ = self.close_period_overlay();
         self.automation_ui.feedback = None;
         window.focus(&self.modal_focus, cx);
         cx.notify();
@@ -875,7 +872,7 @@ impl TaskApp {
             return;
         }
         self.remember_dialog_opener(window, cx);
-        self.automation_ui.result_dialog = Some(id);
+        let _ = self.push_period_overlay(id);
         self.automation_ui.settings_dialog = false;
         self.automation_ui.show_technical = false;
         self.automation_ui.feedback = None;
@@ -920,7 +917,7 @@ impl TaskApp {
     }
 
     pub fn close_occurrence_result(&mut self, window: &mut Window, cx: &mut Context<Self>) {
-        self.automation_ui.result_dialog = None;
+        let _ = self.close_period_overlay();
         self.automation_ui.show_technical = false;
         self.restore_dialog_opener(window, cx);
         cx.notify();
@@ -939,7 +936,7 @@ impl TaskApp {
         self.automation_ui.planning_attempt_return_run = Some(run_id);
         self.automation_ui.planning_attempt_dialog = Some(run_id);
         self.automation_ui.settings_dialog = false;
-        self.automation_ui.result_dialog = None;
+        let _ = self.close_period_overlay();
         window.focus(&self.modal_focus, cx);
         cx.notify();
     }
@@ -3521,7 +3518,7 @@ impl TaskApp {
     /// A period's report, sources and technical detail open in one modal so the
     /// history stays a compact list.
     pub(crate) fn automation_result_dialog(&self, cx: &mut Context<Self>) -> AnyElement {
-        let Some(id) = self.automation_ui.result_dialog else {
+        let Some(id) = self.period_overlay() else {
             return div().into_any_element();
         };
         let Some(occurrence) = self.store.occurrence(id) else {

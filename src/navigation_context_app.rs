@@ -146,7 +146,7 @@ impl TaskApp {
     /// Snapshot the current page for a later Back. Only user drill-down handlers
     /// call this.
     pub(crate) fn capture_origin(&self) -> Origin {
-        if let Some(occurrence_id) = self.automation_ui.result_dialog
+        if let Some(occurrence_id) = self.period_overlay()
             && let Some(occurrence) = self.store.occurrence(occurrence_id)
         {
             let under = if self.scope() == Scope::AutomationRuns {
@@ -1124,7 +1124,7 @@ impl TaskApp {
             ExitTarget::Dismiss(D::TaskEditor)
         } else if self.automation_ui.planning_attempt_dialog.is_some() {
             ExitTarget::Dismiss(D::PlanningAttempt)
-        } else if self.automation_ui.result_dialog.is_some() {
+        } else if self.period_overlay().is_some() {
             ExitTarget::Dismiss(D::TaskResult)
         } else if self.automation_ui.settings_dialog {
             ExitTarget::Dismiss(D::AutomationSettings)

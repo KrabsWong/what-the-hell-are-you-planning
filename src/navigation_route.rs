@@ -96,6 +96,15 @@ pub(crate) enum ResultOwner {
     PlanningProgress { request: RequestId },
 }
 
+impl ResultOwner {
+    /// Whether this owner can display the run under its ordinary/period/goal
+    /// ownership rules. Used by the adapter to reject a stale selected run
+    /// without making the explicit page unconstructible.
+    pub(crate) fn allows_run(&self, store: &Store, run: &crate::domain::AgentRun) -> bool {
+        validate_result_run(*self, run.id, store).is_ok()
+    }
+}
+
 #[derive(Clone, Debug, PartialEq)]
 pub(crate) struct ResearchListPage {
     scope: ResearchScope,
@@ -757,8 +766,42 @@ impl NavState {
         *self = candidate;
         Ok(())
     }
+
+    /// Install a known-safe fallback page. Return frames are kept so Back can
+    /// still restore a valid prior page; only overlays that cannot belong to the
+    /// fallback base are dismissed (a rejected destination reports separately).
+    pub(crate) fn reset_route_for_fallback(&mut self, route: Route) {
+        self.route = route;
+        self.overlays.clear();
+    }
     pub(crate) fn overlays(&self) -> &[Overlay] {
         &self.overlays
+    }
+    pub(crate) fn overlay(&self, kind: OverlayKind) -> Option<Overlay> {
+        self.overlays.iter().copied().find(|overlay| overlay.kind() == kind)
+    }
+    pub(crate) fn clear_overlays(&mut self) {
+        self.overlays.clear();
+    }
+    /// Remove one overlay by kind while preserving the rest of the stack.
+    /// Atomic: a stack that would become invalid leaves the state unchanged.
+    pub(crate) fn remove_overlay(
+        &mut self,
+        store: &Store,
+        kind: OverlayKind,
+    ) -> Result<Option<Overlay>, NavReject> {
+        let Some(index) = self
+            .overlays
+            .iter()
+            .position(|overlay| overlay.kind() == kind)
+        else {
+            return Ok(None);
+        };
+        let mut candidate = self.clone();
+        let removed = candidate.overlays.remove(index);
+        candidate.validate(store)?;
+        *self = candidate;
+        Ok(Some(removed))
     }
     pub(crate) fn top_overlay(&self) -> Option<Overlay> {
         self.overlays.last().copied()

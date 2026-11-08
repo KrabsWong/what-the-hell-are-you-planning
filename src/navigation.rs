@@ -428,7 +428,7 @@ impl TaskApp {
         resolved_result_run_id(
             &self.store,
             self.task_result_context(),
-            self.automation_ui.result_dialog,
+            self.period_overlay(),
             self.selected_run(),
         )
     }
@@ -451,7 +451,7 @@ impl TaskApp {
         self.planning_opener_focus = None;
         self.directory_project = None;
         self.automation_ui.settings_dialog = false;
-        self.automation_ui.result_dialog = None;
+        self.clear_typed_overlays();
         self.automation_ui.planning_attempt_dialog = None;
         self.error.clear();
     }

@@ -1876,3 +1876,53 @@ Root froze the corrected topic-move methods/helpers and scoped-command module ag
 Root rejected the new `LiveSaveWorker` as the final T14/T15 direction: it duplicates the existing bounded worker with unbounded channels, clones the full replica and calls legacy `storage.save` per group, waits synchronously for command receipts, joins on shutdown, and resets pending count even when requests may remain in flight. Ordinary `persist_if_changed` still saves synchronously. OpenCode was instructed to wire the existing ordered incremental worker with bounded submissions, asynchronous command continuations, workspace/generation guards and correct pending/durable/failed presentation. A parallel compatibility adapter is not completion of the agreed architecture.
 
 Root prepared an optimized native diagnostic source from the installed r59 baseline with only retained-sidebar changes. The isolated bootstrap path is preserved. The release build is running; no application has been replaced or restarted in this round. This derivation enables a closer sidebar-only comparison while current-tree migration continues. [Native source](evidence/r65-native-source.json).
+
+
+## r66 optimized sidebar candidate prepared; native interaction awaits unlock
+
+The optimized r65 sidebar-only build completed successfully in 53.898 seconds. Its invalid-QA guard exited 2; independent navigation-context passed in 11.299 seconds and keyboard/visual passed in 12.204 seconds. Unsigned candidate SHA-256: `ef805d6f9d28708875b62e6269f5c3f93cf2479f3dd00b4b9d843cc79c0203ac`. Root verified the exact old isolated executable and process identity before stopping PID 12194, kept its signed backup, replaced only Planning Native Review, signed it, and reran the guard successfully. Signed SHA-256: `3899b2c6efc71ca8faf016f654b6776f88d5db6aa86cb773d0634316267b08bf`. The isolated bootstrap is unchanged. [Build](evidence/r65-native-build.json), [checks](evidence/r66-native-checks.json), [installation](evidence/r66-native-install.json).
+
+Computer reported that the Mac is locked and automatic unlock failed. Root requested manual unlock; no native click, scroll, resize or new hitch capture has been completed for this installed candidate. No native acceptance is claimed. The UI handoff remains pending; source review and offline work can continue.
+
+T14's session became terminal after removing the rejected parallel worker and reporting that live activation remains absent. Root verified its terminal outcome and explicitly resumed the same session for full startup migration, existing-worker activation, asynchronous command continuations and indexed history/body loading. All four sessions were then confirmed running. The reported foundation work is not blanket T14/T15 acceptance.
+
+Typed task/result selection is now projected from routes in the active source. Root returned remaining S4–S6 concerns: `install_route` must not silently discard origin/page/overlay state via a new navigation controller after a failed replacement; result ownership must use actual Goal/child relationships rather than infer Goal solely from mismatched task IDs. Final route and restoration acceptance remains open. Checkpoint `6fe95f1` was successfully pushed to the same development branch; screenshots and traces remain local.
+
+
+## r67 integrated compile correction and live-receipt boundary audit
+
+Root froze 402 files from the current integrated source. The full test command stopped at compilation: `Stateful<Div>.map(observed)` is not a valid builder call in the pinned toolkit. Root corrected the live sidebar overlay to wrap its complete element in `observed(...)`, preserving its child and test identity. The failed full run remains recorded; no integrated test success is inferred from the correction. [Source](evidence/r67-integrated-source.json), [failed full run](evidence/r67-full-tests.json).
+
+The live-save admission seam handles ordinary-save receipts before the existing dispatch/status workspace checks. Root added an independent same-generation foreign-workspace receipt regression to a frozen diagnostic, with only the sidebar compile correction in addition. It failed with exit 101 (0 passed, 1 failed): `foreign workspace receipt was accepted as a durable live save`. This reproduces the receipt-validation defect through the adapter boundary. [Regression result](evidence/r67-live-receipt-tests.json). Root also returned a source concern: Returned/Rejected live groups remove their generation-to-epoch mapping, but accepted resubmission does not restore it, so a later receipt may lose its ordinary-save identity. Required checks include exact-intent retry, workspace/effect validation before retirement, backpressure and durable acknowledgement. These are acceptance boundaries for the unfinished live integration, not claims of observed user-data loss. [Diagnostic source](evidence/r67-live-receipt-source.json).
+
+The native manual-unlock handoff remains pending. All four OpenCode sessions were revalidated as running; independent source and offline verification continue without reducing the native acceptance requirement.
+
+
+## r68 acknowledgement fix and current integration verification
+
+Root froze 407 files after the sidebar compile correction and the new live-receipt classifier. Full integrated tests completed with 673 unit tests passed and 2 ignored, then 7 dispatch crash tests passed and 1 failed: `restart_crash_after_resolution_status_and_claim_release_recovers` expected the launch-claim key to remain after the status crash. The command exited 101 before v4 crash tests. [Full result](evidence/r68-full-tests.json). The classifier now checks workspace and empty expected effects before retiring the ordinary-save generation. Root prepared the exact unchanged r67 foreign-workspace regression against the updated adapter in a separate frozen derivation; the unchanged independent regression passed (exit 0, 1 passed), proving the specific foreign-workspace rejection fix for this derivation. [Receipt result](evidence/r68-live-receipt-tests.json). [Integrated source](evidence/r68-integrated-source.json), [receipt derivation](evidence/r68-live-receipt-source.json).
+
+The startup selector remains uncalled outside its own tests at this observation. Both selection paths load and discard the complete Store. Root returned requirements to avoid repeated whole-history/body hydration in normal startup, perform expensive migration/integrity work off the UI thread under the workspace lock, and activate the existing bounded worker with coherent workspace incarnation/data. This remains incomplete T14/T15 integration.
+
+Codex usage was verified at 98% used, exactly 2% remaining. The user's reset threshold is strictly below 2%, so no reset was consumed. Native interaction remains awaiting the manual-unlock handoff; independent code verification continues.
+
+
+The failed crash test passed when rerun alone with `--exact --test-threads=1` (2.396 seconds), leaving the earlier failure unresolved. Root inspected the retained failed fixture: only the resolution marker remained, with the launch claim absent. Two older leftover failed fixtures had the same marker shape. These observations were returned to T14 for crash-boundary/claim-retirement timing analysis; no assertions were removed and no full-suite success is claimed. [Focused rerun](evidence/r68-crash-focused.json).
+
+
+## r69 crash-ordering fix and reset threshold
+
+Source review identified the crash-test race: the bounded poll could release the launch claim while resolution status was still pending. The cleanup sweep could also classify the old attempt's terminal-looking saved status without respecting the pending resolution marker. OpenCode now removes the premature release from that poll and skips resolving keys in the generic cleanup sweep. Root froze only `command_app.rs` over r68 and independently passed all 8 dispatch crash subprocess tests (exit 0). Three repeated concurrent-suite runs completed: the first failed with 7 passed and 1 timeout (`resolution_failed_intent_survives_crash_before_execution`, child `restart-failed` exceeded the existing 20-second bound); the next two passed all 8 tests. Stable acceptance remains rejected. The timeout was returned without increasing waits or weakening assertions. [Repeated results](evidence/r69-crash-repeat.json). [Source](evidence/r69-crash-source.json), [first result](evidence/r69-crash-tests.json).
+
+The fix still requires explicit release-failure/backpressure coverage: removing unconditional retry must not leave a durably resolved attempt permanently pending when the claim-release enqueue fails. Root returned this requirement with receipt-gated continuation/retry expectations; a green first crash run is not full T14 acceptance.
+
+Computer again reported the Mac locked. Codex usage is now 99% used (1% remaining), meeting the user's strictly-below-2% reset condition. The exact authorized Dec 1 03:56 GMT+8 credit remains available and unused. No consumption action is exposed by available tools, and native UI access is blocked by the lock; root recorded eligibility without claiming consumption or using the other credit. The OpenAI Docs skill was consulted, but official documentation did not establish an alternative banked-reset execution API. Source/testing work continues while manual unlock remains pending.
+
+
+## r70 retained timeout state and retirement-phase review
+
+Root read the retained r69 timeout fixture without changing it: run 4000 is durably `Blocked`, while both its launch claim and failed-resolution marker remain. This narrows the stalled state but does not by itself prove which transition failed. [Fixture observation](evidence/r70-timeout-fixture.json).
+
+The live retry addition introduces `dispatch_status_durable`, but source review found remaining obligation gaps: the launch-release handler clears that obligation before `finish_resolution`, which can ignore a failed decision-marker removal enqueue; the no-claim branch clears it after enqueue success rather than durable removal. Root returned explicit retirement phases and in-flight deduplication requirements, with injected enqueue-rejection and asynchronous-removal-failure tests through `ResolutionReleased`. No acceptance was added.
+
+The crash parent and child both use a 20-second bound, allowing the parent to kill the child before its terminal diagnostic is emitted. Root requested one early bounded diagnostic snapshot of the pending resolution/receipt phase and adapter state, preserving the existing timeout and assertions. All four OpenCode sessions remain running; `git diff --check` passed. Native unlock and the eligible but unused reset remain pending.

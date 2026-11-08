@@ -1,0 +1,6 @@
+{
+  "base": ".local/r68-integrated-source",
+  "source": "/Users/fuxingxing/workspaces/what-the-hell-are-you-planning/.local/r69-crash-source",
+  "change": "Current command_app crash ordering fix only",
+  "command_app_sha256": "ce13c06d9bb321b348547fb5e0c5c2fb264b712ad52c1c4420db5c8456c58b64"
+}

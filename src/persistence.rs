@@ -95,6 +95,10 @@ impl Storage {
         &self.path
     }
 
+    pub(crate) fn workspace_root(&self) -> &Path {
+        &self.workspace_root
+    }
+
 
     /// Keep the returned file alive for the application's lifetime. Never unlink the lock file:
     /// other instances must lock the same inode even after the current holder exits.

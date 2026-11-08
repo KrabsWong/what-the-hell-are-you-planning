@@ -76,6 +76,7 @@ mod opencode;
 mod codex;
 mod persistence;
 mod persistence_journal;
+mod persistence_live;
 mod persistence_metrics;
 mod persistence_worker;
 #[cfg(feature = "qa")]

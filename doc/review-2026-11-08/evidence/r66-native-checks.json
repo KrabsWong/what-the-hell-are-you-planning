@@ -1,0 +1,17 @@
+{
+  "sha256": "ef805d6f9d28708875b62e6269f5c3f93cf2479f3dd00b4b9d843cc79c0203ac",
+  "results": [
+    {
+      "flag": "--qa-navigation-context",
+      "exit_code": 0,
+      "seconds": 11.299,
+      "log": "r66-native-navigation-context.log"
+    },
+    {
+      "flag": "--qa-keyboard-visual",
+      "exit_code": 0,
+      "seconds": 12.204,
+      "log": "r66-native-keyboard-visual.log"
+    }
+  ]
+}

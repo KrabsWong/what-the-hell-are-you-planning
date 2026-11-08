@@ -1,0 +1,6 @@
+{
+  "command": "cargo test --features qa reviewed_live_save_rejects_foreign_workspace_receipt --quiet",
+  "exit_code": 0,
+  "seconds": 42.199,
+  "log": "r68-live-receipt-tests.log"
+}

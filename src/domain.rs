@@ -2229,7 +2229,7 @@ impl Store {
                 .ok_or("Could not preserve research dependencies during migration.")?;
             signatures.insert(*run, signature);
         }
-        if dependency_cycle(self, &ids) {
+        if self.dependency_cycle(&ids) {
             return Err("Could not preserve research dependencies during migration.".into());
         }
 
@@ -3609,35 +3609,4 @@ mod activity_time_tests {
             "Todo → Done · Time not recorded"
         );
     }
-}
-
-/// Cycle check for the dependency subgraph touched by a topic move. Called
-/// before any write so a malformed graph is rejected without mutation.
-fn dependency_cycle(store: &Store, ids: &[u64]) -> bool {
-    fn visit(
-        store: &Store,
-        id: u64,
-        ids: &[u64],
-        state: &mut std::collections::HashMap<u64, u8>,
-    ) -> bool {
-        match state.get(&id).copied() {
-            Some(1) => return true,
-            Some(2) => return false,
-            _ => {}
-        }
-        state.insert(id, 1);
-        if let Some(task) = store.task(id)
-            && let Some(research) = &task.research
-        {
-            for dependency in &research.depends_on {
-                if ids.contains(dependency) && visit(store, *dependency, ids, state) {
-                    return true;
-                }
-            }
-        }
-        state.insert(id, 2);
-        false
-    }
-    let mut state = std::collections::HashMap::new();
-    ids.iter().any(|id| visit(store, *id, ids, &mut state))
 }

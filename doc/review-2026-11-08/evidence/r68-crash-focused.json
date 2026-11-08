@@ -1,0 +1,6 @@
+{
+  "command": "cargo test --features qa --test dispatch_admission_crash restart_crash_after_resolution_status_and_claim_release_recovers -- --exact --test-threads=1",
+  "exit_code": 0,
+  "seconds": 2.396,
+  "log": "r68-crash-focused.log"
+}

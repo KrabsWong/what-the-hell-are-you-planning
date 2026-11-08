@@ -329,6 +329,9 @@ pub struct TaskApp {
     pub(crate) dispatch_ack_pending: Option<crate::dispatch_admission::AdmissionId>,
     pub(crate) dispatch_resolution_pending: Option<(String, u64, bool, Option<u64>)>,
     pub(crate) dispatch_resolution_new: Option<(String, u64)>,
+    /// Status receipt is durable; claim/marker retirement is retried until the
+    /// enqueue succeeds. `had_claim` selects the exact retirement path.
+    pub(crate) dispatch_status_durable: Option<(String, bool)>,
     pub(crate) dispatch_resolution_launch_pending: Option<String>,
     pub(crate) dispatch_claim_pending: Option<(
         crate::dispatch_admission::AdmissionId,
@@ -414,6 +417,7 @@ pub struct TaskApp {
     pub(crate) recovery: crate::recovery::Recovery,
     pub sidebar_logo: Entity<crate::brand::SidebarLogo>,
     pub(crate) sidebar_surface: Option<Entity<crate::shell_surfaces::SidebarSurface>>,
+    pub(crate) brand_overlay: Option<Entity<crate::shell_surfaces::BrandOverlay>>,
     pub(crate) content_surface: Option<Entity<crate::shell_surfaces::ContentSurface>>,
     pub(crate) footer_bar: Option<Entity<crate::shell_surfaces::FooterBar>>,
     pub materials_focus: FocusHandle,
@@ -824,6 +828,7 @@ impl TaskApp {
             dispatch_ack_pending: None,
             dispatch_resolution_pending: None,
             dispatch_resolution_new: None,
+            dispatch_status_durable: None,
             dispatch_resolution_launch_pending: None,
             dispatch_claim_pending: None,
             dispatch_recovery_done: false,
@@ -873,6 +878,7 @@ impl TaskApp {
             recovery: Default::default(),
             sidebar_logo: cx.new(|_| crate::brand::SidebarLogo),
             sidebar_surface: None,
+            brand_overlay: None,
             content_surface: None,
             footer_bar: None,
             materials_focus: cx.focus_handle(),
@@ -1074,57 +1080,127 @@ impl TaskApp {
         task: u64,
         panel: crate::navigation_route::TaskPanel,
         steps_layout: Layout,
-    ) {
+    ) -> bool {
         let base = self.scope();
         let route =
             crate::navigation_route::Route::research_task_from(task, base, panel, steps_layout);
-        self.install_route(route);
+        self.install_route(route)
     }
 
     /// Select an ordinary/task/goal result page. `context` is the explicit task
     /// or Goal identity; `None` means the global Research results page.
     pub(crate) fn set_result_selection(&mut self, context: Option<u64>, run: Option<u64>) {
         use crate::navigation_route::{ResultOwner, Route};
+        let selected_run = run.and_then(|id| self.store.runs().iter().find(|run| run.id == id));
         let owner = match context {
-            Some(context) => {
-                let task = self.store.task(context);
-                if let Some(task) = task
-                    && let Some(automation) = task.automation_id
-                    && let Some((_, occurrence)) = self.store.automation_period_for_task(context)
-                {
-                    ResultOwner::AutomationTask {
-                        automation,
-                        occurrence,
-                        task: context,
+            Some(context) => match self.store.task(context) {
+                None => ResultOwner::OrdinaryPage,
+                Some(task) if task.automation_id.is_some() => {
+                    match self.store.automation_period_for_task(context) {
+                        Some((automation, occurrence)) => ResultOwner::AutomationTask {
+                            automation,
+                            occurrence,
+                            task: context,
+                        },
+                        None => ResultOwner::OrdinaryPage,
                     }
-                } else if run.is_some_and(|id| {
-                    self.store
-                        .runs()
-                        .iter()
-                        .find(|run| run.id == id)
-                        .is_some_and(|run| run.task_id != context)
-                }) {
-                    ResultOwner::Goal { goal: context }
-                } else {
-                    ResultOwner::Task(context)
                 }
-            }
+                Some(_) => match selected_run {
+                    Some(run)
+                        if run.task_id == context
+                            && !self.store.run_is_automation_owned(run) =>
+                    {
+                        ResultOwner::Task(context)
+                    }
+                    Some(run)
+                        if !self.store.run_is_automation_owned(run)
+                            && self.store.owning_research_goal(run.task_id) == Some(context) =>
+                    {
+                        ResultOwner::Goal { goal: context }
+                    }
+                    // A stale/unrelated run must not make the explicit context
+                    // page unconstructible; keep the context and let its own
+                    // resolver choose a valid result.
+                    _ => ResultOwner::Task(context),
+                },
+            },
             None => ResultOwner::OrdinaryPage,
         };
+        let run = selected_run
+            .filter(|run| owner.allows_run(&self.store, run))
+            .map(|run| run.id);
         self.install_route(Route::research_result(owner, run));
+        self.navigation.selected_attempt = run;
     }
 
     /// Update only the selected run while keeping the current result owner.
     pub(crate) fn set_selected_run(&mut self, run: Option<u64>) {
         use crate::navigation_route::Route;
         let Route::ResearchResult(page) = self.nav.route() else {
+            self.navigation.selected_attempt = run;
             return;
         };
         let owner = page.owner();
         self.install_route(Route::research_result(owner, run));
+        self.navigation.selected_attempt = run;
     }
 
-    /// QA/fixture entry point for the previously writable task selection.
+    /// Occurrence currently open in the period overlay, if any.
+    pub(crate) fn period_overlay(&self) -> Option<u64> {
+        match self
+            .nav
+            .overlay(crate::navigation_route::OverlayKind::AutomationPeriod)
+        {
+            Some(crate::navigation_route::Overlay::AutomationPeriod { occurrence, .. }) => {
+                Some(occurrence)
+            }
+            _ => None,
+        }
+    }
+
+    /// Push the period overlay over its explicit detail/results base. A period
+    /// opened from anywhere else installs the owning detail page first.
+    pub(crate) fn push_period_overlay(&mut self, occurrence: u64) -> bool {
+        use crate::navigation_route::{Overlay, OverlayKind, Route};
+        let Some(value) = self.store.occurrence(occurrence) else {
+            return false;
+        };
+        let automation = value.automation_id;
+        let base_ok = match self.nav.route() {
+            Route::AutomationDetail(page) => page.automation() == automation,
+            Route::AutomationResults(_) => true,
+            _ => false,
+        };
+        if !base_ok {
+            let route = Route::automation_detail(automation);
+            if !self.install_route(route) {
+                return false;
+            }
+            self.automation_ui.selected = Some(automation);
+        }
+        self.nav
+            .push_overlay(
+                &self.store,
+                Overlay::AutomationPeriod {
+                    automation,
+                    occurrence,
+                },
+            )
+            .is_ok()
+    }
+
+    pub(crate) fn close_period_overlay(&mut self) -> bool {
+        self.nav
+            .remove_overlay(
+                &self.store,
+                crate::navigation_route::OverlayKind::AutomationPeriod,
+            )
+            .is_ok()
+    }
+
+    pub(crate) fn clear_typed_overlays(&mut self) {
+        self.nav.clear_overlays();
+    }
     /// Production code uses `open_task`; tests that used to assign `selected`
     /// directly now open or close the typed task page through the same mutator.
     pub(crate) fn fixture_select_task(&mut self, task: Option<u64>) {
@@ -1165,15 +1241,16 @@ impl TaskApp {
     fn route_for_scope(&self, scope: &Scope) -> crate::navigation_route::Route {
         if matches!(scope, Scope::Runs) {
             let selection = match self.nav.route() {
-                crate::navigation_route::Route::ResearchResult(page) => page.run().filter(|id| {
-                    self.store
-                        .runs()
-                        .iter()
-                        .find(|run| run.id == *id)
-                        .is_some_and(|run| self.store.run_is_ordinary_result(run))
-                }),
-                _ => None,
-            };
+                crate::navigation_route::Route::ResearchResult(page) => page.run(),
+                _ => self.navigation.selected_attempt,
+            }
+            .filter(|id| {
+                self.store
+                    .runs()
+                    .iter()
+                    .find(|run| run.id == *id)
+                    .is_some_and(|run| self.store.run_is_ordinary_result(run))
+            });
             return crate::navigation_route::Route::research_result(
                 crate::navigation_route::ResultOwner::OrdinaryPage,
                 selection,
@@ -1188,16 +1265,34 @@ impl TaskApp {
         )
     }
 
-    /// Apply a route derived from the current page preferences. A route whose
-    /// owner disappeared is skipped; if the current overlay stack cannot sit on
-    /// the new base, the controller starts a clean page (the structural
-    /// navigation callers already clear overlays).
-    pub(crate) fn install_route(&mut self, route: crate::navigation_route::Route) {
-        use crate::navigation_route::NavState;
-        if self.nav.replace_route(&self.store, route.clone()).is_err()
-            && let Ok(nav) = NavState::new(&self.store, route)
-        {
-            self.nav = nav;
+    /// Apply a route derived from the current page preferences. A rejected
+    /// destination falls back predictably inside the same family and keeps the
+    /// return history; the caller may surface the returned `false` as a notice.
+    pub(crate) fn install_route(&mut self, route: crate::navigation_route::Route) -> bool {
+        if self.nav.replace_route(&self.store, route.clone()).is_ok() {
+            return true;
+        }
+        let fallback = self.fallback_route(&route);
+        self.nav.reset_route_for_fallback(fallback);
+        false
+    }
+
+    fn fallback_route(&self, route: &crate::navigation_route::Route) -> crate::navigation_route::Route {
+        use crate::navigation_route::{ResearchScope, ResultOwner, Route};
+        match route {
+            Route::ResearchList(_) | Route::ResearchTask(_) => {
+                Route::research_list(ResearchScope::All, self.all_status, Layout::List)
+            }
+            Route::ResearchResult(_) => {
+                Route::research_result(ResultOwner::OrdinaryPage, None)
+            }
+            Route::AutomationDetail(_) | Route::AutomationEditor(_) => Route::AutomationList,
+            Route::AutomationResults(_) => {
+                Route::automation_results(None, self.automation_ui.history_limit.max(1))
+            }
+            Route::PausedProjects | Route::MarketResearch | Route::Settings(_) | Route::AutomationList => {
+                Route::research_list(ResearchScope::All, self.all_status, Layout::List)
+            }
         }
     }
 
@@ -1210,16 +1305,16 @@ impl TaskApp {
     }
 
     /// Repair the typed route after Undo or a reload replaced the Store.
+    /// A disappeared owner falls back inside the same family; return frames are
+    /// retained and validated again when Back is used.
     fn reconcile_nav_after_store_change(&mut self) {
-        use crate::navigation_route::{NavState, Route};
+        use crate::navigation_route::Route;
         let route = self.nav.route().clone();
-        if self.nav.replace_route(&self.store, route).is_ok() {
+        if self.nav.replace_route(&self.store, route.clone()).is_ok() {
             return;
         }
-        let fallback =
-            Route::for_scope(&Scope::All, self.all_status, self.layout, None, 20);
-        self.nav = NavState::new(&self.store, fallback)
-            .expect("All research is a valid route after a store replacement");
+        let fallback = self.fallback_route(&route);
+        self.nav.reset_route_for_fallback(fallback);
     }
 
     pub fn navigate(&mut self, scope: Scope, window: &mut Window, cx: &mut Context<Self>) {
@@ -1254,7 +1349,9 @@ impl TaskApp {
             self.automation_ui.feedback = None;
         }
         let route = self.route_for_scope(&scope);
-        self.install_route(route);
+        if !self.install_route(route) {
+            self.toast = "That page is no longer available. Returned to a safe parent.".into();
+        }
         self.editing = false;
         self.draft = None;
         self.property = None;
@@ -1364,6 +1461,9 @@ impl TaskApp {
             _ => (crate::navigation_route::TaskPanel::Overview, self.steps_layout),
         };
         self.set_task_identity(id, panel, steps_layout);
+        if self.selected() != Some(id) {
+            self.toast = "That task is no longer available. Returned to a safe parent.".into();
+        }
         self.navigation
             .recent_surfaces
             .insert(id, crate::navigation_context::RecentSurface::Task);

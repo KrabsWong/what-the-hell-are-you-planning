@@ -138,7 +138,7 @@ pub fn initialize(root: &Path, legacy: Option<&Path>) -> Result<PathBuf, String>
         let storage = Storage::new(destination.join("workspace.sqlite3"));
         let _lock = storage.acquire_lock()?;
         let store = storage.load()?.ok_or("The selected folder contains an incomplete workspace.")?;
-        for project in &store.projects {
+        for project in store.projects() {
             check_project_directory(&destination, project)?;
             if !Path::new(&project.directory).is_dir() { return Err(format!("Project folder is missing: {}", project.name)); }
         }
@@ -164,7 +164,7 @@ pub fn initialize(root: &Path, legacy: Option<&Path>) -> Result<PathBuf, String>
                     if seen.insert((run.directory.clone(), run.session_id.clone())) {
                         session_locks.push(crate::opencode::lock_session(&crate::opencode::Request { agent: None, browser_executable: None,
                             directory: PathBuf::from(&run.directory), session_id: run.session_id.clone(),
-                            executable: PathBuf::from(&store.opencode_path), files: vec![],
+                            executable: PathBuf::from(&store.opencode_path()), files: vec![],
                             model: run.model.clone(), prompt: String::new(), title: String::new(),
                         })?);
                     }
@@ -173,7 +173,7 @@ pub fn initialize(root: &Path, legacy: Option<&Path>) -> Result<PathBuf, String>
             copy_tree(&source, &staging)?;
             mappings.push((source.to_string_lossy().into_owned(), destination.to_string_lossy().into_owned()));
         }
-        for project in &mut store.projects {
+        for project in &mut store.projects() {
             let relative = kind_relative_path(project.kind, project.id);
             let target = staging.join(&relative);
             if !project.directory.is_empty() {
@@ -279,7 +279,7 @@ mod tests {
         let root = temp("new");
         let data = initialize(&root, None).unwrap();
         let store = Storage::new(data.join("workspace.sqlite3")).load().unwrap().unwrap();
-        assert!(Path::new(&store.projects[0].directory).is_dir());
+        assert!(Path::new(&store.project_at_mut(0).unwrap().directory).is_dir());
         assert!(Path::new(&project_directory(&data, 42).unwrap()).starts_with(&data));
         assert!(check_directory(&data, &root.join("outside")).is_err());
         assert!(check_directory(&data, &data.join("../outside")).is_err());
@@ -292,14 +292,14 @@ mod tests {
         fs::write(project.join("report.md"), "original report").unwrap();
         fs::create_dir(old.join("attachments")).unwrap();
         fs::write(old.join("attachments/material.pdf"), "material").unwrap();
-        let mut store = Store::empty(); store.projects[0].directory = project.to_string_lossy().into_owned();
+        let mut store = Store::empty(); store.project_at_mut(0).unwrap().directory = project.to_string_lossy().into_owned();
         let storage = Storage::new(old.join("workspace.sqlite3")); storage.save(&store).unwrap();
         let lock = storage.acquire_lock().unwrap();
         assert!(initialize(&root, Some(&old)).is_err());
         assert!(!root.join("workspace").exists()); drop(lock);
         let data = initialize(&root, Some(&old)).unwrap();
         let migrated = Storage::new(data.join("workspace.sqlite3")).load().unwrap().unwrap();
-        assert_eq!(fs::read_to_string(Path::new(&migrated.projects[0].directory).join("report.md")).unwrap(), "original report");
+        assert_eq!(fs::read_to_string(Path::new(&migrated.project_at_mut(0).unwrap().directory).join("report.md")).unwrap(), "original report");
         assert_eq!(storage.load().unwrap().unwrap(), store);
         assert!(data.join("attachments/material.pdf").is_file());
         for p in [root, old, project] { fs::remove_dir_all(p).unwrap(); }
@@ -308,8 +308,8 @@ mod tests {
     fn legacy_import_relocates_signature_paths_and_markers_without_refreshing_inputs() {
         let root = temp("signature-import"); let old = temp("signature-old"); let project = temp("signature-project");
         let mut store = Store::empty();
-        store.projects[0].directory = project.to_string_lossy().into_owned();
-        store.default_model = "fixture/model".into();
+        store.project_at_mut(0).unwrap().directory = project.to_string_lossy().into_owned();
+        store.set_default_model("fixture/model".into());
         let mut template = store.prepare_project_plan(1).unwrap();
         template.status = "Succeeded".into();
         template.prompt = format!("Historical path: {}", project.display());
@@ -336,16 +336,16 @@ mod tests {
         let restored = Storage::new(data.join("workspace.sqlite3")).load().unwrap().unwrap();
         for (index, signature) in signatures.into_iter().enumerate() {
             let mut expected = signature;
-            expected[[3, 5, 2][index]] = serde_json::Value::String(restored.projects[0].directory.clone());
+            expected[[3, 5, 2][index]] = serde_json::Value::String(restored.project_at_mut(0).unwrap().directory.clone());
             assert_eq!(restored.runs()[index].input_signature, expected.to_string());
             assert_eq!(restored.runs()[index].prompt, template.prompt);
             assert_eq!(restored.runs()[index].output, template.output);
         }
         assert_eq!(fs::read(storage.path()).unwrap(), original);
         assert_eq!(fs::read_to_string(marker).unwrap(), project.to_string_lossy());
-        let execution = Path::new(&restored.projects[0].directory).join(".research/goal-1");
+        let execution = Path::new(&restored.project_at_mut(0).unwrap().directory).join(".research/goal-1");
         assert_eq!(fs::read_to_string(execution.join(".workspace-migrated")).unwrap(), "../..");
-        assert_eq!(crate::scheduler::migrated_workspace_source(&execution).unwrap(), restored.projects[0].directory);
+        assert_eq!(crate::scheduler::migrated_workspace_source(&execution).unwrap(), restored.project_at_mut(0).unwrap().directory);
         let moved = root.with_extension("moved");
         fs::rename(&root, &moved).unwrap();
         let project_after_move = moved.join("workspace/projects/project-1");
@@ -383,7 +383,7 @@ mod tests {
         let automation_dir = automation_directory(&data).unwrap();
         fs::write(Path::new(&automation_dir).join("quick.md"), "automation data").unwrap();
         let mut store = Store::empty();
-        store.projects[0].directory = user_dir.clone();
+        store.project_at_mut(0).unwrap().directory = user_dir.clone();
         let automation_project = store.ensure_automation_project(automation_dir.clone()).unwrap();
         let schedule = crate::automation_schedule::Schedule {
             spec: crate::automation_schedule::ScheduleSpec::Interval { minutes: 10 },
@@ -426,7 +426,7 @@ mod tests {
         // Set workspace again after the bootstrap location was removed.
         assert_eq!(initialize(&root, None).unwrap(), data);
         let loaded = Storage::new(data.join("workspace.sqlite3")).load().unwrap().unwrap();
-        assert_eq!(loaded.projects[0].directory, user_dir);
+        assert_eq!(loaded.project_at_mut(0).unwrap().directory, user_dir);
         assert_eq!(loaded.automation_project().unwrap().directory, automation_dir);
         assert_eq!(loaded.automations().len(), 2);
         assert!(loaded.automations().iter().any(|automation| automation.shape == crate::automation::AutomationShape::Quick && automation.name == "Quick index check"));
@@ -444,13 +444,13 @@ mod tests {
         let user_dir = project_directory(&data, 1).unwrap();
         fs::write(Path::new(&user_dir).join("goal.md"), "user data").unwrap();
         let mut store = Store::empty();
-        store.projects[0].directory = user_dir.clone();
+        store.project_at_mut(0).unwrap().directory = user_dir.clone();
         Storage::new(data.join("workspace.sqlite3")).save(&store).unwrap();
 
         assert_eq!(initialize(&root, None).unwrap(), data);
         let loaded = Storage::new(data.join("workspace.sqlite3")).load().unwrap().unwrap();
         assert!(loaded.automation_project().is_none());
-        assert_eq!(loaded.projects[0].directory, user_dir);
+        assert_eq!(loaded.project_at_mut(0).unwrap().directory, user_dir);
         fs::remove_dir_all(root).unwrap();
     }
 
@@ -466,7 +466,7 @@ mod tests {
         let automation_dir = automation_directory(&data).unwrap();
         fs::write(Path::new(&automation_dir).join("quick.md"), "automation data").unwrap();
         let mut store = Store::empty();
-        store.projects[0].directory = user_dir;
+        store.project_at_mut(0).unwrap().directory = user_dir;
         store.ensure_automation_project(automation_dir).unwrap();
         Storage::new(data.join("workspace.sqlite3")).save(&store).unwrap();
 
@@ -477,7 +477,7 @@ mod tests {
         let loaded = Storage::new(reopened.join("workspace.sqlite3")).load().unwrap().unwrap();
         let moved_user = moved.join("workspace/projects/project-1");
         let moved_automation = moved.join("workspace/automations");
-        assert_eq!(PathBuf::from(&loaded.projects[0].directory), moved_user);
+        assert_eq!(PathBuf::from(&loaded.project_at_mut(0).unwrap().directory), moved_user);
         assert_eq!(PathBuf::from(&loaded.automation_project().unwrap().directory), moved_automation);
         assert_eq!(fs::read_to_string(moved_user.join("goal.md")).unwrap(), "user data");
         assert_eq!(fs::read_to_string(moved_automation.join("quick.md")).unwrap(), "automation data");
@@ -574,7 +574,7 @@ mod tests {
         fs::write(user_source.join("goal.md"), "user report").unwrap();
         fs::write(automation_source.join("quick.md"), "automation report").unwrap();
         let mut store = Store::empty();
-        store.projects[0].directory = user_source.to_string_lossy().into_owned();
+        store.project_at_mut(0).unwrap().directory = user_source.to_string_lossy().into_owned();
         store.ensure_automation_project(automation_source.to_string_lossy().into_owned()).unwrap();
         let legacy_storage = Storage::new(old.join("workspace.sqlite3"));
         legacy_storage.save(&store).unwrap();
@@ -582,10 +582,10 @@ mod tests {
 
         let data = initialize(&root, Some(&old)).unwrap();
         let migrated = Storage::new(data.join("workspace.sqlite3")).load().unwrap().unwrap();
-        assert_eq!(PathBuf::from(&migrated.projects[0].directory), data.join("projects/project-1"));
+        assert_eq!(PathBuf::from(&migrated.project_at_mut(0).unwrap().directory), data.join("projects/project-1"));
         let automation = migrated.automation_project().unwrap();
         assert_eq!(PathBuf::from(&automation.directory), data.join("automations"));
-        assert_eq!(fs::read_to_string(Path::new(&migrated.projects[0].directory).join("goal.md")).unwrap(), "user report");
+        assert_eq!(fs::read_to_string(Path::new(&migrated.project_at_mut(0).unwrap().directory).join("goal.md")).unwrap(), "user report");
         assert_eq!(fs::read_to_string(Path::new(&automation.directory).join("quick.md")).unwrap(), "automation report");
         // The original legacy workspace and its project folders are untouched.
         assert_eq!(fs::read(legacy_storage.path()).unwrap(), original);

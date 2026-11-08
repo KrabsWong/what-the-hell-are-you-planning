@@ -15,7 +15,7 @@ pub fn run() {
     let root = std::env::temp_dir().join(format!("planning-topic-qa-{}", std::process::id()));
     std::fs::create_dir_all(&root).unwrap();
     let mut store = Store::empty();
-    store.projects[0].name = "投资研究".into();
+    store.project_at_mut(0).unwrap().name = "投资研究".into();
     let goal = store
         .create_research_goal(
             "英伟达季度财报与基本面研究".into(),
@@ -56,8 +56,8 @@ pub fn run() {
         w.click("project-name", cx);
         w.input("财报", cx);
         w.click("create-project", cx);
-        let project = app.read(cx).store.projects.last().unwrap().id;
-        assert_eq!(app.read(cx).scope, Scope::Project(project));
+        let project = app.read(cx).store.projects().last().unwrap().id;
+        assert_eq!(app.read(cx).scope(), Scope::Project(project));
         assert!(
             app.read(cx).planning_project.is_none(),
             "Creating a project must not launch research intake"
@@ -65,11 +65,11 @@ pub fn run() {
         assert!(
             !app.read(cx)
                 .store
-                .tasks
+                .tasks()
                 .iter()
                 .any(|t| t.project_id == project)
         );
-        assert!(app.read(cx).store.research_requests.is_empty());
+        assert!(app.read(cx).store.research_requests().is_empty());
         app.update(cx, |a, cx| a.navigate(Scope::Project(1), w, cx));
     })
     .unwrap();
@@ -185,8 +185,8 @@ pub fn run() {
         .unwrap();
     // Isolated display fixtures, no scheduler or external processes are started.
     let mut fixture = cx.update(|cx| app.read(cx).store.clone());
-    fixture.default_model = "fixture/model".into();
-    fixture.projects[0].directory = root.to_string_lossy().into_owned();
+    fixture.set_default_model("fixture/model".into());
+    fixture.project_at_mut(0).unwrap().directory = root.to_string_lossy().into_owned();
     fixture
         .set_stage(goal, crate::domain::Stage::Planned)
         .unwrap();
@@ -245,7 +245,7 @@ pub fn run() {
     cx.update_window(handle, |_, w, cx| {
         app.update(cx, |a, cx| {
             a.show_task_details = true;
-            a.store.default_model = "tencent-token-plan/deepseek/deepseek-flash".into();
+            a.store.set_default_model("tencent-token-plan/deepseek/deepseek-flash".into());
             a.detail_scroll.set_offset(point(px(0.), px(-560.)));
             cx.notify();
         });
@@ -258,7 +258,7 @@ pub fn run() {
         .unwrap();
     cx.update_window(handle, |_, w, cx| {
         w.click("navigation-back", cx);
-        assert_eq!(app.read(cx).scope, Scope::Topic(topic));
+        assert_eq!(app.read(cx).scope(), Scope::Topic(topic));
         w.render_frame(cx);
         w.click("topic-actions-menu", cx);
         w.render_frame(cx);
@@ -275,7 +275,7 @@ pub fn run() {
         assert_eq!(
             app.read(cx)
                 .store
-                .topics
+                .topics()
                 .iter()
                 .find(|t| t.id == topic)
                 .unwrap()
@@ -294,7 +294,7 @@ pub fn run() {
         assert!(
             app.read(cx)
                 .store
-                .topics
+                .topics()
                 .iter()
                 .find(|t| t.id == topic)
                 .unwrap()
@@ -302,16 +302,16 @@ pub fn run() {
         );
         assert!(!app.read(cx).store.task(goal).unwrap().archived);
         app.update(cx, |a, cx| {
-            a.scope = Scope::All;
+            a.set_scope_identity(Scope::All);
             assert!(!a.visible_tasks().iter().any(|t| t.id == goal));
-            a.scope = Scope::Archive;
+            a.set_scope_identity(Scope::Archive);
             a.layout = crate::app::Layout::List;
             assert!(a.visible_tasks().iter().any(|t| t.id == goal));
             cx.notify();
         });
         w.render_frame(cx);
         w.click(SharedString::from(format!("topic-link-{topic}")), cx);
-        assert_eq!(app.read(cx).scope, Scope::Topic(topic));
+        assert_eq!(app.read(cx).scope(), Scope::Topic(topic));
     })
     .unwrap();
     cx.run_until_parked();
@@ -324,7 +324,7 @@ pub fn run() {
         assert!(
             !app.read(cx)
                 .store
-                .topics
+                .topics()
                 .iter()
                 .find(|t| t.id == topic)
                 .unwrap()
@@ -342,7 +342,7 @@ pub fn run() {
         assert_eq!(
             app.read(cx)
                 .store
-                .research_requests
+                .research_requests()
                 .last()
                 .unwrap()
                 .topic_id,
@@ -356,7 +356,7 @@ pub fn run() {
         w.render_frame(cx);
         w.press("cmd-k", cx);
         // Opening Search is an overlay: it must not rewrite the caller's page.
-        assert_eq!(app.read(cx).scope, Scope::Topic(topic));
+        assert_eq!(app.read(cx).scope(), Scope::Topic(topic));
         assert!(app.read(cx).global_search_ui.open);
         app.update(cx, |a, cx| a.navigate(Scope::Topic(topic), w, cx));
         Theme::change(ThemeMode::Dark, Some(w), cx);
@@ -373,7 +373,7 @@ pub fn run() {
         .unwrap();
     let saved = Storage::new(path).load().unwrap().unwrap();
     assert_eq!(
-        saved.topics.iter().find(|t| t.id == topic).unwrap().name,
+        saved.topics().iter().find(|t| t.id == topic).unwrap().name,
         "英伟达长期研究"
     );
     assert_eq!(saved.task(goal).unwrap().topic_id, Some(topic));
@@ -481,17 +481,17 @@ pub fn sidebar() {
     // Navigation survives a storage reload, while expansion is reset to one project.
     cx.update_window(handle, |_, w, cx| {
         app.update(cx, |a, cx| {
-            let other = a.store.projects.last().unwrap().id;
+            let other = a.store.projects().last().unwrap().id;
             a.navigate(Scope::Project(other), w, cx);
-            assert_eq!(a.store.last_active_project, Some(other));
+            assert_eq!(a.store.last_active_project(), Some(other));
             a.navigate(Scope::Topic(topic), w, cx);
-            assert_eq!(a.store.last_active_project, Some(1));
+            assert_eq!(a.store.last_active_project(), Some(1));
             a.navigate(Scope::All, w, cx);
-            assert_eq!(a.store.last_active_project, Some(1));
+            assert_eq!(a.store.last_active_project(), Some(1));
             a.persist_if_changed(true);
             let loaded = Storage::new(path.clone()).load().unwrap().unwrap();
-            assert_eq!(loaded.last_active_project, Some(1));
-            a.expanded_sidebar_projects = a.store.projects.iter().map(|p| p.id).collect();
+            assert_eq!(loaded.last_active_project(), Some(1));
+            a.expanded_sidebar_projects = a.store.projects().iter().map(|p| p.id).collect();
             a.collapsed_sidebar_topics.clear();
             a.collapsed_sidebar_goals.clear();
             // Open a persisted copy to exercise startup without sharing the live lock.
@@ -499,18 +499,18 @@ pub fn sidebar() {
             reopened.save(&loaded).unwrap();
             a.attach_storage(reopened, w, cx);
             assert_eq!(a.expanded_sidebar_projects, vec![1]);
-            assert!(a.store.topics.iter().all(|t| a.collapsed_sidebar_topics.contains(&t.id)));
+            assert!(a.store.topics().iter().all(|t| a.collapsed_sidebar_topics.contains(&t.id)));
             assert!(a.collapsed_sidebar_goals.contains(&goal));
             a.open_task(goal, w, cx);
             assert!(!a.collapsed_sidebar_topics.contains(&topic));
-            a.store.last_active_project = Some(u64::MAX);
+            a.store.set_last_active_project(Some(u64::MAX));
             a.restore_sidebar();
             assert!(a.expanded_sidebar_projects.is_empty());
-            a.store.last_active_project = None;
+            a.store.set_last_active_project(None);
             a.restore_sidebar();
             assert!(a.expanded_sidebar_projects.is_empty());
             a.open_task(goal, w, cx);
-            assert_eq!(a.store.last_active_project, Some(1));
+            assert_eq!(a.store.last_active_project(), Some(1));
         });
     }).unwrap();
     println!("Sidebar startup QA passed");
@@ -572,7 +572,7 @@ pub fn run_migration() {
     cx.update_window(handle, |_, w, cx| {
         w.click("save-project-rename", cx);
         assert!(app.read(cx).project_rename.is_none());
-        assert_eq!(app.read(cx).store.projects[0].name, "Renamed research project");
+        assert_eq!(app.read(cx).store.projects()[0].name, "Renamed research project");
         app.update(cx, |a, cx| a.navigate(Scope::Topic(topic), w, cx));
     }).unwrap();
     // Exercise the in-app migration modal with enough projects to require search.
@@ -580,7 +580,7 @@ pub fn run_migration() {
         let before = app.read(cx).store.clone();
         app.update(cx, |a, cx| {
             for id in 100..200 {
-                a.store.projects.push(crate::domain::Project {
+                a.store.push_project(crate::domain::Project {
                     id, name: format!("Destination {id}"), key: format!("P{id}"),
                     directory: String::new(), research_brief: String::new(),
                     kind: crate::domain::ProjectKind::User,
@@ -608,7 +608,7 @@ pub fn run_migration() {
         w.render_frame(cx);
         if app.read(cx).topic_move.is_some() { w.click("cancel-topic-move", cx); }
         assert!(app.read(cx).topic_move.is_none());
-        assert_eq!(app.read(cx).store.topics, before_move.topics);
+        assert_eq!(app.read(cx).store.topics(), before_move.topics());
         app.update(cx, |a, cx| {
             a.request_topic_move(topic, w, cx);
             let select = a.topic_move.as_ref().unwrap().projects.clone();
@@ -639,9 +639,9 @@ pub fn run_migration() {
     let (moved_topic, moved_goal) = cx.update_window(handle, |_, w, cx| {
         let ids = app.update(cx, |a, cx| {
             a.todo_batch = None;
-            let mut project = a.store.projects[0].clone();
+            let mut project = a.store.projects()[0].clone();
             project.id = 2; project.name = "Source project".into();
-            a.store.projects.push(project);
+            a.store.push_project(project);
             let moved_topic = a.store.create_topic(2, "Moved market research topic with a long descriptive title").unwrap();
             let moved_goal = a.store.create_task_in_topic("Moved goal one", 2, crate::domain::Stage::Planned, None, Some(moved_topic)).unwrap();
             a.store.create_task_in_topic("Moved goal two", 2, crate::domain::Stage::Planned, None, Some(moved_topic)).unwrap();
@@ -666,7 +666,7 @@ pub fn run_migration() {
     cx.capture_screenshot(handle).unwrap().save(root.join("project-topic-groups.png")).unwrap();
     cx.update_window(handle, |_, w, cx| {
         w.click(format!("collection-topic-{moved_topic}"), cx);
-        assert_eq!(app.read(cx).scope, Scope::Topic(moved_topic));
+        assert_eq!(app.read(cx).scope(), Scope::Topic(moved_topic));
         app.update(cx, |a, cx| {
             a.navigate(Scope::Project(1), w, cx);
             a.query = "Moved goal one".into(); cx.notify();
@@ -683,8 +683,8 @@ pub fn run_migration() {
 /// The Topic shortcut must match the report task’s View final report action.
 pub fn goal_actions() {
     let mut store = Store::empty();
-    store.projects[0].directory = std::env::temp_dir().to_string_lossy().into_owned();
-    store.default_model = "test/model".into();
+    store.project_at_mut(0).unwrap().directory = std::env::temp_dir().to_string_lossy().into_owned();
+    store.set_default_model("test/model".into());
     let goal = store.create_research_goal("Completed research".into(), "Scope".into(), 1).unwrap();
     let steps = store.apply_research_plan(goal, r#"{"tasks":[{"title":"Evidence","instructions":"Collect","kind":"collect","depends_on":[]},{"title":"Analysis","instructions":"Analyze","kind":"analyze","depends_on":[0]},{"title":"Report","instructions":"Report","kind":"advise","depends_on":[1]}]}"#).unwrap();
     for id in &steps {
@@ -746,14 +746,14 @@ pub fn goal_actions() {
         w.click("task-view-result", cx);
         let expected = {
             let a = app.read(cx);
-            (a.scope.clone(), a.selected, a.selected_run, a.task_result_context,
+            (a.scope(), a.selected, a.selected_run, a.task_result_context,
                 a.show_run_result, a.show_run_details)
         };
         app.update(cx, |a, cx| a.navigate(Scope::Topic(topic), w, cx));
         w.render_frame(cx);
         w.click(format!("topic-report-{goal}"), cx);
         let a = app.read(cx);
-        assert_eq!((a.scope.clone(), a.selected, a.selected_run, a.task_result_context,
+        assert_eq!((a.scope(), a.selected, a.selected_run, a.task_result_context,
             a.show_run_result, a.show_run_details), expected);
         assert!(a.show_run_result);
         assert_eq!(a.task_result_context, Some(report));
@@ -902,7 +902,7 @@ pub fn board_directory() {
                     let goal = a.store.create_research_goal(title.into(), "研究行业趋势".into(), 1).unwrap();
                     topics.push(a.store.task_topic(goal).unwrap().id);
                 }
-                a.store.topics.iter_mut().find(|t| t.id == topics[4]).unwrap().replanned_from = Some(topics[0]);
+                a.store.topic_mut(topics[4]).unwrap().replanned_from = Some(topics[0]);
                 a.navigate(Scope::Project(1), w, cx);
                 a.layout = crate::app::Layout::Board;
                 crate::appearance::apply(if dark { crate::appearance::Appearance::Dark }
@@ -922,7 +922,7 @@ pub fn board_directory() {
             .save(root.join(format!("board-{width}-{dark}.png"))).unwrap();
         cx.update_window(handle, |_, w, cx| {
             w.click(format!("board-topic-todo-{}", topics[4]), cx);
-            assert_eq!(app.read(cx).scope, Scope::Topic(topics[4]));
+            assert_eq!(app.read(cx).scope(), Scope::Topic(topics[4]));
             app.update(cx, |a, cx| {
                 a.navigate(Scope::Project(1), w, cx);
                 a.layout = crate::app::Layout::List;
@@ -937,7 +937,7 @@ pub fn board_directory() {
             .save(root.join(format!("list-{width}-{dark}.png"))).unwrap();
         cx.update_window(handle, |_, w, cx| {
             w.click(format!("collection-topic-{}", topics[4]), cx);
-            assert_eq!(app.read(cx).scope, Scope::Topic(topics[4]));
+            assert_eq!(app.read(cx).scope(), Scope::Topic(topics[4]));
             app.update(cx, |a, cx| {
                 a.expanded_sidebar_projects.push(1);
                 cx.notify();
@@ -946,7 +946,7 @@ pub fn board_directory() {
         cx.run_until_parked();
         cx.update_window(handle, |_, w, cx| {
             w.render_frame(cx);
-            assert_eq!(w.find(format!("topic-{}", topics[4])).label(), Some(format!("Replanned topic · {}", app.read(cx).store.topics.iter().find(|t| t.id == topics[4]).unwrap().display_name()).as_str()));
+            assert_eq!(w.find(format!("topic-{}", topics[4])).label(), Some(format!("Replanned topic · {}", app.read(cx).store.topics().iter().find(|t| t.id == topics[4]).unwrap().display_name()).as_str()));
         }).unwrap();
         cx.update_window(handle, |_, w, cx| {
             assert!(w.try_find("replan-topic").is_none(), "Todo goals must hide Replan");
@@ -954,20 +954,29 @@ pub fn board_directory() {
             app.update(cx, |a, cx| {
                 let request = a.store.create_research_request(1, Some(topics[4]), "Review this research plan").unwrap();
                 let mut goals = Vec::new();
-                for goal in a.store.tasks.iter_mut().filter(|t| t.topic_id == Some(topics[4]) && t.parent_id.is_none()) {
+                let ids: Vec<u64> = a.store.tasks().iter()
+                    .filter(|t| t.topic_id == Some(topics[4]) && t.parent_id.is_none())
+                    .map(|t| t.id)
+                    .collect();
+                for id in ids {
+                    let goal = a.store.task_mut(id).unwrap();
                     goal.stage = crate::domain::Stage::Backlog;
                     goal.approved_plan = None;
                     goals.push(goal.id);
                 }
-                a.store.research_requests.iter_mut().find(|r| r.id == request).unwrap().goal_ids = goals;
+                a.store.request_mut(request).unwrap().goal_ids = goals;
                 cx.notify();
             });
             w.render_frame(cx);
             assert_eq!(w.find("regenerate-topic-plan").label(), Some("Regenerate"));
             assert!(w.try_find("replan-topic").is_none());
             app.update(cx, |a, cx| {
-                for goal in a.store.tasks.iter_mut().filter(|t| t.topic_id == Some(topics[4]) && t.parent_id.is_none()) {
-                    goal.stage = crate::domain::Stage::Done;
+                let ids: Vec<u64> = a.store.tasks().iter()
+                    .filter(|t| t.topic_id == Some(topics[4]) && t.parent_id.is_none())
+                    .map(|t| t.id)
+                    .collect();
+                for id in ids {
+                    a.store.task_mut(id).unwrap().stage = crate::domain::Stage::Done;
                 }
                 cx.notify();
             });

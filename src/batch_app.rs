@@ -115,7 +115,7 @@ impl TaskApp {
     }
 
     pub fn start_topic_batch(&mut self, topic: u64, cx: &mut Context<Self>) {
-        let Some(project) = self.store.topics.iter().find(|t| t.id == topic && !t.archived).map(|t| t.project_id) else { return; };
+        let Some(project) = self.store.topics().iter().find(|t| t.id == topic && !t.archived).map(|t| t.project_id) else { return; };
         if !self.ready_to_run(cx) { return; }
         let items = self.store.todo_batch_items(project).into_iter()
             .filter(|id| self.store.task_topic(*id).is_some_and(|t| t.id == topic)).collect::<Vec<_>>();
@@ -432,7 +432,7 @@ impl TaskApp {
             })
             .children(batch.pending_topics(&self.store).into_iter().take(5).enumerate().map(|(position, topic)| {
                 let name = match topic {
-                    crate::batch::ExecutionTopic::Topic(id) => self.store.topics.iter().find(|t| t.id == id).map(|t| t.display_name()).unwrap_or_else(|| "Missing topic".into()),
+                    crate::batch::ExecutionTopic::Topic(id) => self.store.topics().iter().find(|t| t.id == id).map(|t| t.display_name()).unwrap_or_else(|| "Missing topic".into()),
                     crate::batch::ExecutionTopic::Task(id) => self.store.task(id).map(|t| t.title.clone()).unwrap_or_else(|| "Missing goal".into()),
                 };
                 label(format!("{} · {} · {}", position + 1, if position == 0 { "Current" } else { "Queued" }, name), cx)

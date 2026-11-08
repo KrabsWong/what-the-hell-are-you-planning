@@ -28,28 +28,28 @@ pub(crate) fn apply_settings_change(
     let before = match change {
         SettingsChange::ExecutionConcurrency(limit) => {
             let limit = limit.clamp(1, crate::scheduler::MAX_CONCURRENT_RUNS);
-            if store.max_concurrent_runs == limit {
+            if store.max_concurrent_runs() == limit {
                 return Err(SettingsError::NoChange);
             }
-            let before = store.max_concurrent_runs;
-            store.max_concurrent_runs = limit;
+            let before = store.max_concurrent_runs();
+            store.set_max_concurrent_runs(limit);
             SettingsChange::ExecutionConcurrency(before)
         }
         SettingsChange::AutomationConcurrency(limit) => {
             let limit = limit.clamp(1, crate::scheduler::MAX_CONCURRENT_RUNS);
-            if store.max_concurrent_automations == limit {
+            if store.max_concurrent_automations() == limit {
                 return Err(SettingsError::NoChange);
             }
-            let before = store.max_concurrent_automations;
-            store.max_concurrent_automations = limit;
+            let before = store.max_concurrent_automations();
+            store.set_max_concurrent_automations(limit);
             SettingsChange::AutomationConcurrency(before)
         }
         SettingsChange::Appearance(mode) => {
-            if store.appearance == mode {
+            if store.appearance() == mode {
                 return Err(SettingsError::NoChange);
             }
-            let before = store.appearance;
-            store.appearance = mode;
+            let before = store.appearance();
+            store.set_appearance(mode);
             SettingsChange::Appearance(before)
         }
     };
@@ -65,13 +65,13 @@ pub(crate) fn undo_settings_change(
 ) -> Result<(), SettingsError> {
     match undo.before {
         SettingsChange::ExecutionConcurrency(limit) => {
-            store.max_concurrent_runs = limit.clamp(1, crate::scheduler::MAX_CONCURRENT_RUNS);
+            store.set_max_concurrent_runs(limit.clamp(1, crate::scheduler::MAX_CONCURRENT_RUNS));
         }
         SettingsChange::AutomationConcurrency(limit) => {
-            store.max_concurrent_automations = limit.clamp(1, crate::scheduler::MAX_CONCURRENT_RUNS);
+            store.set_max_concurrent_automations(limit.clamp(1, crate::scheduler::MAX_CONCURRENT_RUNS));
         }
         SettingsChange::Appearance(mode) => {
-            store.appearance = mode;
+            store.set_appearance(mode);
         }
     }
     Ok(())
@@ -84,8 +84,8 @@ mod tests {
     #[test]
     fn settings_undo_restores_only_the_changed_limit() {
         let mut store = Store::empty();
-        store.max_concurrent_runs = 3;
-        store.max_concurrent_automations = 2;
+        store.set_max_concurrent_runs(3);
+        store.set_max_concurrent_automations(2);
         let undo =
             apply_settings_change(&mut store, SettingsChange::ExecutionConcurrency(5)).unwrap();
         assert_eq!(store.max_concurrent_runs, 5);
@@ -98,7 +98,7 @@ mod tests {
     #[test]
     fn appearance_undo_restores_only_theme() {
         let mut store = Store::empty();
-        store.appearance = crate::appearance::Appearance::Light;
+        store.set_appearance(crate::appearance::Appearance::Light);
         let undo = apply_settings_change(
             &mut store,
             SettingsChange::Appearance(crate::appearance::Appearance::Dark),
@@ -112,7 +112,7 @@ mod tests {
     #[test]
     fn same_limit_is_a_no_op() {
         let mut store = Store::empty();
-        store.max_concurrent_runs = 3;
+        store.set_max_concurrent_runs(3);
         assert_eq!(
             apply_settings_change(&mut store, SettingsChange::ExecutionConcurrency(3)),
             Err(SettingsError::NoChange)

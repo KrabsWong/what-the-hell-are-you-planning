@@ -467,8 +467,8 @@ mod tests {
     #[test]
     fn states_follow_runs_dependencies_and_valid_results() {
         let mut s = Store::empty();
-        s.default_model = "fixture/model".into();
-        s.projects[0].directory = std::env::temp_dir().to_string_lossy().into();
+        s.set_default_model("fixture/model".into());
+        s.project_at_mut(0).unwrap().directory = std::env::temp_dir().to_string_lossy().into();
         let goal = s
             .create_research_goal("Review".into(), "Analyze earnings".into(), 1)
             .unwrap();

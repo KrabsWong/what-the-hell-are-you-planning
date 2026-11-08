@@ -165,7 +165,7 @@ pub fn parse_request_plan(text: &str) -> Result<RequestPlan, String> {
         let mut pending = vec![parsed.tasks.len() - 1];
         while let Some(index) = pending.pop() {
             if ancestors.insert(index) {
-                pending.extend(parsed.tasks[index].depends_on.iter().copied());
+                pending.extend(parsed.task_at_mut(index).unwrap().depends_on.iter().copied());
             }
         }
         if ancestors.len() != parsed.tasks.len() {
@@ -190,10 +190,10 @@ fn structured_prompt_request_id(prompt: &str) -> Option<u64> {
 
 impl Store {
     pub fn topic_replan_input(&self, topic: u64) -> String {
-        let requests: Vec<_> = self.research_requests.iter()
+        let requests: Vec<_> = self.research_requests().iter()
             .filter(|r| r.topic_id == Some(topic)).collect();
         let mut inputs: Vec<_> = requests.iter().map(|r| r.input.clone()).collect();
-        inputs.extend(self.tasks.iter().filter(|t| t.topic_id == Some(topic)
+        inputs.extend(self.tasks().iter().filter(|t| t.topic_id == Some(topic)
             && !self.task_is_archived(t.id)
             && t.research.as_ref().is_some_and(|r| r.kind == ResearchKind::Goal)
             && !requests.iter().any(|r| r.goal_ids.contains(&t.id)))
@@ -202,12 +202,12 @@ impl Store {
     }
 
     pub fn can_replan_topic(&self, topic: u64) -> bool {
-        if !self.topics.iter().any(|t| t.id == topic && !t.archived) { return false; }
-        let goals: Vec<_> = self.tasks.iter().filter(|t| t.topic_id == Some(topic)
+        if !self.topics().iter().any(|t| t.id == topic && !t.archived) { return false; }
+        let goals: Vec<_> = self.tasks().iter().filter(|t| t.topic_id == Some(topic)
             && !self.task_is_archived(t.id)
             && t.research.as_ref().is_some_and(|r| r.kind == ResearchKind::Goal)).collect();
         !goals.is_empty() && goals.iter().all(|goal| goal.stage == Stage::Done)
-            && self.research_requests.iter().filter(|r| r.topic_id == Some(topic)).all(|r|
+            && self.research_requests().iter().filter(|r| r.topic_id == Some(topic)).all(|r|
                 !r.goal_ids.is_empty() && !r.planning_run_id.is_some_and(|id| self.runs().iter()
                     .any(|run| run.id == id && matches!(run.status.as_str(), "Queued" | "Running" | "Cancelling"))))
     }
@@ -216,12 +216,12 @@ impl Store {
         if !self.can_replan_topic(source) {
             return Err("Complete all goals in this topic before replanning.".into());
         }
-        let original = self.topics.iter().find(|t| t.id == source)
+        let original = self.topics().iter().find(|t| t.id == source)
             .ok_or("Source topic not found.")?.clone();
         // Commit the new topic and request together; validation must never leave an empty copy.
         let mut staged = self.clone();
         let topic = staged.create_topic(original.project_id, original.name)?;
-        staged.topics.iter_mut().find(|t| t.id == topic).unwrap().replanned_from = Some(source);
+        staged.topic_mut(topic).unwrap().replanned_from = Some(source);
         let request = staged.create_research_request(original.project_id, Some(topic), input)?;
         *self = staged;
         Ok(request)
@@ -240,12 +240,12 @@ impl Store {
                     .into(),
             );
         }
-        if !self.projects.iter().any(|p| p.id == project) {
+        if !self.projects().iter().any(|p| p.id == project) {
             return Err("Choose an existing project.".into());
         }
         if let Some(topic) = topic {
             if !self
-                .topics
+                .topics()
                 .iter()
                 .any(|t| t.id == topic && t.project_id == project && !t.archived)
             {
@@ -253,7 +253,7 @@ impl Store {
             }
         }
         let id = self
-            .research_requests
+            .research_requests()
             .iter()
             .map(|r| r.id)
             .max()
@@ -267,7 +267,7 @@ impl Store {
             Some(id) => id,
             None => self.create_topic(project, provisional_topic_name.as_ref().unwrap())?,
         };
-        self.research_requests.push(ResearchRequest {
+        self.push_request(ResearchRequest {
             id,
             project_id: project,
             topic_id: Some(topic),
@@ -308,18 +308,18 @@ impl Store {
         if self.automation(automation).is_none() {
             return Err("Automation not found.".into());
         }
-        if !self.projects.iter().any(|p| p.id == project) {
+        if !self.projects().iter().any(|p| p.id == project) {
             return Err("Choose an existing project.".into());
         }
         let mut revisions: Vec<_> = self
-            .research_requests
+            .research_requests()
             .iter()
             .filter(|request| request.automation_id == Some(automation))
             .map(|request| request.revision)
             .collect();
         revisions.sort_unstable();
         if let Some(latest) = self
-            .research_requests
+            .research_requests()
             .iter()
             .filter(|request| request.automation_id == Some(automation))
             .max_by_key(|request| (request.revision, request.id))
@@ -333,14 +333,14 @@ impl Store {
         }
         let revision = revisions.last().copied().unwrap_or(0).saturating_add(1).max(1);
         let id = self
-            .research_requests
+            .research_requests()
             .iter()
             .map(|request| request.id)
             .max()
             .unwrap_or(0)
             .checked_add(1)
             .ok_or("No research request identifiers remain.")?;
-        self.research_requests.push(ResearchRequest {
+        self.push_request(ResearchRequest {
             id,
             project_id: project,
             topic_id: None,
@@ -358,7 +358,7 @@ impl Store {
     }
 
     pub fn topic_planning_status(&self, topic: u64) -> Option<&'static str> {
-        let pending: Vec<_> = self.research_requests.iter()
+        let pending: Vec<_> = self.research_requests().iter()
             .filter(|r| r.topic_id == Some(topic) && r.goal_ids.is_empty()).collect();
         if pending.is_empty() { return None; }
         if pending.iter().any(|r| r.planning_run_id.is_some_and(|id| self.runs().iter()
@@ -379,12 +379,12 @@ impl Store {
             .and_then(|run| run.planning_owner.as_ref())
         {
             return self
-                .research_requests
+                .research_requests()
                 .iter()
                 .find(|request| request.id == owner.request_id);
         }
         if let Some(request) = self
-            .research_requests
+            .research_requests()
             .iter()
             .find(|r| r.planning_run_id == Some(run_id))
         {
@@ -398,7 +398,7 @@ impl Store {
             .find(|run| run.id == run_id)
             .map(|run| run.input_signature.as_str())
             .filter(|signature| !signature.is_empty())?;
-        let mut matches = self.research_requests.iter().filter(|request| {
+        let mut matches = self.research_requests().iter().filter(|request| {
             self.request_plan_signature(request.id)
                 .ok()
                 .as_deref()
@@ -409,7 +409,7 @@ impl Store {
     }
 
     pub fn latest_planning_request(&self, automation: u64) -> Option<&ResearchRequest> {
-        self.research_requests
+        self.research_requests()
             .iter()
             .filter(|request| request.automation_id == Some(automation))
             .max_by_key(|request| (request.revision, request.id))
@@ -449,7 +449,7 @@ impl Store {
             return false;
         };
         let Some(request) = self
-            .research_requests
+            .research_requests()
             .iter()
             .find(|request| request.id == owner.request_id)
         else {
@@ -480,7 +480,7 @@ impl Store {
     /// planning context block. Never scrape arbitrary prompt text and never
     /// overwrite an existing owner.
     pub fn normalize_planning_ownership(&mut self) {
-        for request in &mut self.research_requests {
+        for request in &mut self.research_requests() {
             request.revision = request.revision.max(1);
         }
         let mut assignments = Vec::new();
@@ -489,7 +489,7 @@ impl Store {
                 continue;
             }
             let pointer = self
-                .research_requests
+                .research_requests()
                 .iter()
                 .find(|request| request.planning_run_id == Some(run.id))
                 .map(|request| request.id);
@@ -497,7 +497,7 @@ impl Store {
                 None
             } else {
                 let matches: Vec<_> = self
-                    .research_requests
+                    .research_requests()
                     .iter()
                     .filter(|request| {
                         self.request_plan_signature(request.id)
@@ -514,7 +514,7 @@ impl Store {
                 }
             };
             let context = structured_prompt_request_id(&run.prompt).filter(|request_id| {
-                self.research_requests.iter().any(|request| {
+                self.research_requests().iter().any(|request| {
                     request.id == *request_id && Some(request.project_id) == run.project_plan
                 })
             });
@@ -525,7 +525,7 @@ impl Store {
         }
         for (run_id, request_id) in assignments {
             let Some(request) = self
-                .research_requests
+                .research_requests()
                 .iter()
                 .find(|request| request.id == request_id)
                 .map(|request| (request.revision, request.automation_id))
@@ -553,7 +553,7 @@ impl Store {
                     && run.planning_owner.is_none()
                     && run
                         .project_plan
-                        .and_then(|project| self.projects.iter().find(|value| value.id == project))
+                        .and_then(|project| self.projects().iter().find(|value| value.id == project))
                         .is_some_and(|project| project.kind == ProjectKind::Automation)
             })
             .collect()
@@ -606,7 +606,7 @@ impl Store {
         }
         if binding.project_id != latest.project_id
             || definition.project_id != latest.project_id
-            || !self.projects.iter().any(|project| project.id == latest.project_id)
+            || !self.projects().iter().any(|project| project.id == latest.project_id)
         {
             return Some(
                 "The reviewed plan's project is no longer valid for this automation. Use Replan to review a current plan."
@@ -641,18 +641,18 @@ impl Store {
 
     pub fn request_plan_signature(&self, id: u64) -> Result<String, String> {
         let request = self
-            .research_requests
+            .research_requests()
             .iter()
             .find(|r| r.id == id)
             .ok_or("Research request not found.")?;
         let project = self
-            .projects
+            .projects()
             .iter()
             .find(|p| p.id == request.project_id)
             .ok_or("Project not found.")?;
         let topic = match request.topic_id {
             Some(id) => Some(
-                self.topics
+                self.topics()
                     .iter()
                     .find(|t| t.id == id && t.project_id == project.id && !t.archived)
                     .ok_or("The selected Topic is no longer active in this project.")?,
@@ -708,12 +708,12 @@ impl Store {
     }
 
     pub fn can_regenerate_request_plan(&self, id: u64) -> bool {
-        let Some(request) = self.research_requests.iter().find(|r| r.id == id) else { return false; };
+        let Some(request) = self.research_requests().iter().find(|r| r.id == id) else { return false; };
         !self.request_is_archived(request) && !request.goal_ids.is_empty()
-            && self.tasks.iter().filter(|t| t.topic_id == request.topic_id && !self.task_is_archived(t.id)
+            && self.tasks().iter().filter(|t| t.topic_id == request.topic_id && !self.task_is_archived(t.id)
                 && t.research.as_ref().is_some_and(|r| r.kind == ResearchKind::Goal))
                 .all(|goal| goal.stage == Stage::Backlog && goal.approved_plan.is_none())
-            && self.research_requests.iter().filter(|r| r.topic_id == request.topic_id)
+            && self.research_requests().iter().filter(|r| r.topic_id == request.topic_id)
                 .all(|r| !r.goal_ids.is_empty())
             && !self.runs().iter().any(|run| self.owning_research_goal(run.task_id)
                 .and_then(|goal| self.task(goal)).is_some_and(|goal| goal.topic_id == request.topic_id))
@@ -729,7 +729,7 @@ impl Store {
         }
         // Keep the previous plan intact on malformed output or any late validation failure.
         let mut staged = self.clone();
-        let request = staged.research_requests.iter_mut().find(|r| r.id == id).unwrap();
+        let request = staged.request_mut(id).unwrap();
         let old_goals = std::mem::take(&mut request.goal_ids);
         for goal in old_goals { staged.archive(goal)?; }
         let goals = staged.apply_request_plan(id, text)?;
@@ -739,7 +739,7 @@ impl Store {
 
     pub fn prepare_request_plan(&self, id: u64) -> Result<AgentRun, String> {
         let request = self
-            .research_requests
+            .research_requests()
             .iter()
             .find(|r| r.id == id)
             .ok_or("Research request not found.")?;
@@ -757,7 +757,7 @@ impl Store {
             return Err("This request is already being planned.".into());
         }
         let project = self
-            .projects
+            .projects()
             .iter()
             .find(|p| p.id == request.project_id)
             .ok_or("Project not found.")?;
@@ -776,7 +776,7 @@ impl Store {
         }
         let topic = request
             .topic_id
-            .and_then(|id| self.topics.iter().find(|t| t.id == id));
+            .and_then(|id| self.topics().iter().find(|t| t.id == id));
         let context = serde_json::json!({
             "request_id": request.id, "revision": request.revision,
             "submitted_at": request.submitted_at,
@@ -869,7 +869,7 @@ impl Store {
     pub fn apply_request_plan(&mut self, id: u64, text: &str) -> Result<Vec<u64>, String> {
         let plan = parse_request_plan(text)?;
         let request = self
-            .research_requests
+            .research_requests()
             .iter()
             .find(|r| r.id == id)
             .ok_or("Research request not found.")?
@@ -884,7 +884,7 @@ impl Store {
             Some(topic) => topic,
             None => staged.create_topic(request.project_id, &plan.topic_name)?,
         };
-        if staged.topics.iter().find(|t| t.id == topic).is_some_and(|t| {
+        if staged.topics().iter().find(|t| t.id == topic).is_some_and(|t| {
             request.provisional_topic_name.as_ref() == Some(&t.name)
         }) {
             staged.rename_topic(topic, &plan.topic_name)?;
@@ -909,7 +909,7 @@ impl Store {
             goals.push(goal);
         }
         let saved = staged
-            .research_requests
+            .research_requests()
             .iter_mut()
             .find(|r| r.id == id)
             .unwrap();
@@ -929,8 +929,8 @@ mod tests {
 
     fn store() -> Store {
         let mut s = Store::empty();
-        s.projects[0].directory = std::env::temp_dir().to_string_lossy().into();
-        s.default_model = "fixture/planner".into();
+        s.project_at_mut(0).unwrap().directory = std::env::temp_dir().to_string_lossy().into();
+        s.set_default_model("fixture/planner".into());
         s
     }
 
@@ -961,7 +961,7 @@ mod tests {
         let first = s
             .create_automation_request(id, 1, "Objective A", "Expected A")
             .unwrap();
-        assert_eq!(s.research_requests[0].revision, 1);
+        assert_eq!(s.request_at_mut(0).unwrap().revision, 1);
         assert_eq!(
             s.create_automation_request(id, 1, "Objective A", "Expected A")
                 .unwrap(),
@@ -971,15 +971,15 @@ mod tests {
             .create_automation_request(id, 1, "Objective A", "Expected B")
             .unwrap();
         assert_ne!(expected_only, first);
-        assert_eq!(s.research_requests[1].revision, 2);
+        assert_eq!(s.request_at_mut(1).unwrap().revision, 2);
         assert_eq!(
-            s.research_requests[1].expected_result.as_deref(),
+            s.request_at_mut(1).unwrap().expected_result.as_deref(),
             Some("Expected B")
         );
         let objective_b = s
             .create_automation_request(id, 1, "Objective B", "Expected B")
             .unwrap();
-        assert_eq!(s.research_requests[2].revision, 3);
+        assert_eq!(s.request_at_mut(2).unwrap().revision, 3);
         assert_ne!(
             s.request_plan_signature(first).unwrap(),
             s.request_plan_signature(expected_only).unwrap()
@@ -1019,12 +1019,12 @@ mod tests {
         first.status = "Succeeded".into();
         let first_id = first.id;
         s.push_run(first);
-        s.research_requests[0].planning_run_id = Some(first_id);
+        s.request_at_mut(0).unwrap().planning_run_id = Some(first_id);
         let mut second = s.prepare_request_plan(request).unwrap();
         second.status = "Succeeded".into();
         let second_id = second.id;
         s.push_run(second);
-        s.research_requests[0].planning_run_id = Some(second_id);
+        s.request_at_mut(0).unwrap().planning_run_id = Some(second_id);
         assert_eq!(s.request_for_run(first_id).unwrap().id, request);
         assert!(!s.planning_attempt_is_current(first_id));
         assert!(s.planning_attempt_is_current(second_id));
@@ -1103,7 +1103,7 @@ mod tests {
     fn topic_plan_actions_follow_all_goal_lifecycle() {
         let mut s = store();
         let request = s.create_research_request(1, None, "Research").unwrap();
-        let topic = s.research_requests[0].topic_id.unwrap();
+        let topic = s.request_at_mut(0).unwrap().topic_id.unwrap();
         assert!(!s.can_replan_topic(topic));
         assert!(!s.can_regenerate_request_plan(request));
         let goals = s.apply_request_plan(request, PLAN).unwrap();
@@ -1148,7 +1148,7 @@ mod tests {
         assert_eq!(s.task(new[0]).unwrap().topic_id, topic);
         assert_eq!(s.task(new[0]).unwrap().stage, Stage::Backlog);
         assert!(!s.goal_execution_approved(new[0]));
-        assert_eq!(s.research_requests[0].goal_ids, new);
+        assert_eq!(s.request_at_mut(0).unwrap().goal_ids, new);
         assert!(s.can_regenerate_request_plan(request));
     }
 
@@ -1222,11 +1222,12 @@ mod tests {
         for task in &before.tasks { assert_eq!(s.task(task.id), Some(task)); }
         assert_eq!(s.task(manual).unwrap().topic_id, Some(source));
         assert_eq!(s.runs(), before.runs());
-        assert_eq!(&s.topics[..before.topics.len()], &before.topics);
-        assert_eq!(&s.research_requests[..before.research_requests.len()], &before.research_requests);
+        assert_eq!(&s.topic_at_mut(..before.topics.len()).unwrap(), &before.topics);
+        assert_eq!(&s.request_at_mut(..before.research_requests.len()).unwrap(), &before.research_requests);
         s.rename_topic(topic, "Renamed research").unwrap();
         assert_eq!(s.topics.iter().find(|t| t.id == topic).unwrap().display_name(), "#Renamed research");
-        for task in s.tasks.iter_mut().filter(|t| t.topic_id == Some(topic)) { task.stage = Stage::Done; }
+        let ids: Vec<u64> = s.tasks().iter().filter(|t| t.topic_id == Some(topic)).map(|t| t.id).collect();
+        for id in ids { s.task_mut(id).unwrap().stage = Stage::Done; }
         let next = s.create_topic_replan_request(topic, "Next question".into()).unwrap();
         let next_topic = s.research_requests.iter().find(|r| r.id == next).unwrap().topic_id.unwrap();
         assert_eq!(s.topics.iter().find(|t| t.id == next_topic).unwrap().replanned_from, Some(topic));
@@ -1269,8 +1270,8 @@ mod tests {
     #[test]
     fn topic_planning_uses_stage_agent_and_model() {
         let mut s = store();
-        s.research_config.agents[0] = Some("Codex".into());
-        s.research_config.models[0] = "fixture-codex".into();
+        s.research_config_mut().agents[0] = Some("Codex".into());
+        s.research_config_mut().models[0] = "fixture-codex".into();
         let id = s.create_research_request(1, None, "Research evidence").unwrap();
         let run = s.prepare_request_plan(id).unwrap();
         assert_eq!(run.agent, "Codex");
@@ -1282,12 +1283,12 @@ mod tests {
     fn pending_topic_survives_reload_failure_retry_and_is_filled_in_place() {
         let mut s = store();
         let id = s.create_research_request(1, None, "分析 Intel 财报").unwrap();
-        let topic = s.research_requests[0].topic_id.unwrap();
+        let topic = s.request_at_mut(0).unwrap().topic_id.unwrap();
         assert_eq!(s.topics.iter().find(|t| t.id == topic).unwrap().project_id, 1);
         assert_eq!(s.topic_planning_status(topic), Some("Awaiting planning"));
         let mut run = s.prepare_request_plan(id).unwrap();
         run.status = "Queued".into();
-        s.research_requests[0].planning_run_id = Some(run.id);
+        s.request_at_mut(0).unwrap().planning_run_id = Some(run.id);
         s.push_run(run);
         assert_eq!(s.topic_planning_status(topic), Some("Planning…"));
         let mut s: Store = serde_json::from_str(&serde_json::to_string(&s).unwrap()).unwrap();
@@ -1306,11 +1307,11 @@ mod tests {
     fn placeholder_does_not_override_user_name_and_old_requests_still_load() {
         let mut s = store();
         let id = s.create_research_request(1, None, "Review Intel").unwrap();
-        let topic = s.research_requests[0].topic_id.unwrap();
+        let topic = s.request_at_mut(0).unwrap().topic_id.unwrap();
         s.rename_topic(topic, "My topic").unwrap();
         s.apply_request_plan(id, PLAN).unwrap();
         assert_eq!(s.topics.iter().find(|t| t.id == topic).unwrap().name, "My topic");
-        let mut old = serde_json::to_value(&s.research_requests[0]).unwrap();
+        let mut old = serde_json::to_value(&s.request_at_mut(0).unwrap()).unwrap();
         old.as_object_mut().unwrap().remove("provisional_topic_name");
         old["topic_id"] = serde_json::Value::Null;
         let restored: ResearchRequest = serde_json::from_value(old).unwrap();
@@ -1326,14 +1327,14 @@ mod tests {
         let request = s.create_research_request(1, None, "Review latest earnings").unwrap();
         let mut request_run = s.prepare_request_plan(request).unwrap();
         request_run.status = "Queued".into();
-        s.research_requests[0].planning_run_id = Some(request_run.id);
+        s.request_at_mut(0).unwrap().planning_run_id = Some(request_run.id);
         s.push_run(request_run);
         let before = s.clone();
         s.rename_project(1, "  新项目名称  ").unwrap();
-        assert_eq!(s.projects[0].name, "新项目名称");
-        assert_eq!(s.projects[0].id, before.projects[0].id);
-        assert_eq!(s.projects[0].key, before.projects[0].key);
-        assert_eq!(s.projects[0].directory, before.projects[0].directory);
+        assert_eq!(s.project_at_mut(0).unwrap().name, "新项目名称");
+        assert_eq!(s.project_at_mut(0).unwrap().id, before.project_at_mut(0).unwrap().id);
+        assert_eq!(s.project_at_mut(0).unwrap().key, before.project_at_mut(0).unwrap().key);
+        assert_eq!(s.project_at_mut(0).unwrap().directory, before.project_at_mut(0).unwrap().directory);
         assert_eq!(s.tasks, before.tasks);
         assert_eq!(s.topics, before.topics);
         assert_eq!(s.research_requests, before.research_requests);
@@ -1356,9 +1357,9 @@ mod tests {
         let mut s = store();
         let request = s.create_research_request(1, None, "Original scope").unwrap();
         let run = s.prepare_request_plan(request).unwrap();
-        s.research_requests[0].planning_run_id = Some(run.id);
+        s.request_at_mut(0).unwrap().planning_run_id = Some(run.id);
         s.push_run(run);
-        s.research_requests[0].input = "Changed scope".into();
+        s.request_at_mut(0).unwrap().input = "Changed scope".into();
         let old_signature = s.runs()[0].input_signature.clone();
         s.rename_project(1, "Renamed").unwrap();
         assert_eq!(s.runs()[0].input_signature, old_signature);
@@ -1389,7 +1390,7 @@ mod tests {
         failed.output = output.clone();
         failed.status = "Failed".into();
         failed.exit_code = Some(0);
-        s.research_requests[0].planning_run_id = Some(failed.id);
+        s.request_at_mut(0).unwrap().planning_run_id = Some(failed.id);
         let failed_id = failed.id;
         s.push_run(failed);
         assert_eq!(s.request_plan_auto_repair(failed_id), Some(id));
@@ -1402,7 +1403,7 @@ mod tests {
         repair.exit_code = Some(0);
         repair.output = output;
         let repair_id = repair.id;
-        s.research_requests[0].planning_run_id = Some(repair_id);
+        s.request_at_mut(0).unwrap().planning_run_id = Some(repair_id);
         s.push_run(repair);
         assert_eq!(s.request_plan_auto_repair(repair_id), None, "No repair loop");
         assert!(s.apply_request_plan(id, PLAN).is_ok());
@@ -1421,9 +1422,9 @@ mod tests {
         run.exit_code = Some(0);
         run.output = plan.to_string();
         let run_id = run.id;
-        s.research_requests[0].planning_run_id = Some(run_id);
+        s.request_at_mut(0).unwrap().planning_run_id = Some(run_id);
         s.push_run(run);
-        s.research_requests[0].input = "另一个研究对象".into();
+        s.request_at_mut(0).unwrap().input = "另一个研究对象".into();
         assert_eq!(s.request_plan_auto_repair(run_id), None);
         assert!(!s.prepare_request_plan(id).unwrap().prompt.contains("REPAIR THE PREVIOUS PLAN"));
     }
@@ -1434,7 +1435,7 @@ mod tests {
         let id = s
             .create_research_request(1, None, "Intel 昨天财报后大跌，分析原因")
             .unwrap();
-        let stamp = s.research_requests[0].submitted_at.clone();
+        let stamp = s.request_at_mut(0).unwrap().submitted_at.clone();
         chrono::DateTime::parse_from_rfc3339(&stamp).unwrap();
         let run = s.prepare_request_plan(id).unwrap();
         assert!(run.prompt.contains(&stamp));
@@ -1511,7 +1512,7 @@ mod tests {
             .unwrap();
         let mut run = s.prepare_request_plan(id).unwrap();
         run.status = "Queued".into();
-        s.research_requests[0].planning_run_id = Some(run.id);
+        s.request_at_mut(0).unwrap().planning_run_id = Some(run.id);
         assert_eq!(s.request_for_run(run.id).unwrap().id, id);
         s.push_run(run);
         assert!(s.prepare_request_plan(id).is_err());

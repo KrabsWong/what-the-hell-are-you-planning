@@ -114,11 +114,11 @@ fn publication_action(publication: Option<&Publication>, changed: bool) -> Publi
 impl Store {
     pub(crate) fn topic_share_content(&self, topic: u64) -> Option<(String, String)> {
         let topic = self
-            .topics
+            .topics()
             .iter()
             .find(|t| t.id == topic && !t.archived && t.automation_id.is_none())?;
         if self.topic_planning_status(topic.id).is_some() { return None; }
-        let goals: Vec<_> = self.tasks.iter().filter(|t| t.topic_id == Some(topic.id)
+        let goals: Vec<_> = self.tasks().iter().filter(|t| t.topic_id == Some(topic.id)
             && t.research.as_ref().is_some_and(|r| r.kind == ResearchKind::Goal)
             && !self.task_is_archived(t.id)).collect();
         if goals.is_empty() || goals.iter().any(|g| !self.goal_tasks_complete(g.id)) { return None; }
@@ -159,23 +159,25 @@ pub(crate) fn current_publication_index(publications: &[Publication], topic: u64
     first
 }
 fn claim_publication(
-    publications: &mut Vec<Publication>,
+    store: &mut Store,
     topic: u64,
     config: PublishingConfig,
     title: String,
     markdown: String,
     fingerprint: String,
 ) -> Result<String, String> {
-    let Some(index) = current_publication_index(publications, topic) else {
+    let Some(index) = current_publication_index(store.publications(), topic) else {
         let id = random_id()?;
-        publications.push(Publication { id: id.clone(), topic, fingerprint, config, title, markdown,
+        store.push_publication(Publication { id: id.clone(), topic, fingerprint, config, title, markdown,
             status: "Pending".into(), commit: None, message: String::new() });
         return Ok(id);
     };
-    let mut publication = publications.remove(index);
+    let mut publication = store.publications()[index].clone();
+    let id = publication.id.clone();
+    store.remove_publication(&id);
     // The URL is now permanent, so extra records for the same Topic are no
     // longer separate public versions. Their pages remain in Git history.
-    publications.retain(|p| p.topic != topic);
+    store.retain_publications(|p| p.topic != topic);
     if publication.fingerprint != fingerprint {
         publication.fingerprint = fingerprint;
         publication.config = config;
@@ -186,7 +188,7 @@ fn claim_publication(
         publication.message.clear();
     }
     let id = publication.id.clone();
-    publications.push(publication);
+    store.push_publication(publication);
     Ok(id)
 }
 fn random_id() -> Result<String, String> {
@@ -229,15 +231,21 @@ fn verify_page(publication: &Publication, commit: String) -> PublishOutcome {
 impl TaskApp {
     pub(crate) fn recover_publications(&mut self) {
         self.publishing_scan_requested = true;
-        for publication in &mut self.store.publications {
-            if matches!(publication.status.as_str(), "Publishing" | "Generating HTML" | "Fetching repository" | "Preparing report commit" | "Checking outgoing history" | "Pushing to GitHub" | "Pushed · verifying live page") {
-                publication.status = if publication.commit.is_some() { "Pushed · site access error" } else { "Interrupted" }.into();
-                publication.message = if publication.commit.is_some() { "Report pushed to GitHub successfully. Page verification was interrupted. Use Check status; no new push is needed." } else { "Publishing was interrupted. Retry safely using the same report URL." }.into();
-            }
+        let ids: Vec<String> = self
+            .store
+            .publications()
+            .iter()
+            .filter(|publication| matches!(publication.status.as_str(), "Publishing" | "Generating HTML" | "Fetching repository" | "Preparing report commit" | "Checking outgoing history" | "Pushing to GitHub" | "Pushed · verifying live page"))
+            .map(|publication| publication.id.clone())
+            .collect();
+        for id in ids {
+            let Some(publication) = self.store.publication_mut(&id) else { continue; };
+            publication.status = if publication.commit.is_some() { "Pushed · site access error" } else { "Interrupted" }.into();
+            publication.message = if publication.commit.is_some() { "Report pushed to GitHub successfully. Page verification was interrupted. Use Check status; no new push is needed." } else { "Publishing was interrupted. Retry safely using the same report URL." }.into();
         }
     }
     pub(crate) fn refresh_publishing_inputs(&mut self, w: &mut Window, cx: &mut Context<Self>) {
-        let config = &self.store.report_publishing;
+        let config = &self.store.report_publishing();
         for (input, value) in self.publishing_inputs.iter().zip([config.repository.clone(), config.branch.clone(), config.base_url.clone()]) {
             input.update(cx, |s, cx| s.set_value(value, w, cx));
         }
@@ -247,24 +255,32 @@ impl TaskApp {
             repository: self.publishing_inputs[0].read(cx).value().trim().into(),
             branch: self.publishing_inputs[1].read(cx).value().trim().into(),
             base_url: self.publishing_inputs[2].read(cx).value().trim().trim_end_matches('/').into(),
-            automatic: self.store.report_publishing.automatic,
+            automatic: self.store.report_publishing().automatic,
         };
         if let Err(error) = config.validate() { self.show_save_error(error, cx); return; }
-        self.store.report_publishing = config;
+        if self
+            .apply_domain_command_undoable(
+                crate::scoped_domain::DomainCommand::Publishing { config },
+                "Report publishing settings saved",
+                cx,
+            )
+            .is_none()
+        {
+            return;
+        }
         self.publishing_scan_requested = true;
-        self.confirm_save("Report publishing settings saved", cx);
         self.start_pump(cx);
         cx.notify();
     }
     pub(crate) fn request_topic_publication(&mut self, topic: u64, cx: &mut Context<Self>) {
         if self.publishing_job.is_some() { return; }
-        let config = self.store.report_publishing.clone();
+        let config = self.store.report_publishing().clone();
         if let Err(error) = config.validate() { self.show_save_error(error, cx); return; }
         let Some((title, markdown)) = self.store.topic_share_content(topic) else {
             self.show_save_error("Finish all active goals and planning requests with current reports before publishing this topic.", cx); return;
         };
         let fingerprint = fingerprint(&config, &title, &markdown);
-        let id = match claim_publication(&mut self.store.publications, topic, config, title, markdown, fingerprint) {
+        let id = match claim_publication(&mut self.store, topic, config, title, markdown, fingerprint) {
             Ok(id) => id,
             Err(error) => { self.show_save_error(error, cx); return; }
         };
@@ -277,7 +293,7 @@ impl TaskApp {
         if self.publishing_job.is_some() { return; }
         let Some(root) = self.workspace_root.clone() else { self.show_save_error("Choose a persistent workspace before publishing.", cx); return; };
         if self.storage.is_none() { self.show_save_error("Workspace storage is unavailable. Reopen your workspace before publishing.", cx); return; }
-        let Some(p) = self.store.publications.iter_mut().find(|p| p.id == id) else { return; };
+        let Some(p) = self.store.publication_mut(id) else { return; };
         p.status = if verify_only { "Pushed · verifying live page" } else { "Generating HTML" }.into(); p.message.clear();
         let publication = p.clone();
         self.persist_if_changed(true);
@@ -302,7 +318,7 @@ impl TaskApp {
             Err(mpsc::TryRecvError::Empty) => None,
         });
         if let Some((id, event)) = event {
-            if let Some(p) = self.store.publications.iter_mut().find(|p| p.id == id) {
+            if let Some(p) = self.store.publication_mut(id) {
                 match event {
                     PublishEvent::Progress(stage, commit) => {
                         p.status = stage;
@@ -328,14 +344,14 @@ impl TaskApp {
             }
             self.persist_if_changed(true); cx.notify();
         }
-        if !self.publishing_scan_requested || self.publishing_job.is_some() || !self.store.report_publishing.automatic || self.store.report_publishing.repository.is_empty()
+        if !self.publishing_scan_requested || self.publishing_job.is_some() || !self.store.report_publishing().automatic || self.store.report_publishing().repository.is_empty()
             || self.workspace_root.is_none() || self.storage.is_none() || !self.storage_error.is_empty() { return; }
         self.publishing_scan_requested = false;
-        let ready = self.store.topics.iter().find_map(|topic| {
+        let ready = self.store.topics().iter().find_map(|topic| {
             let (title, markdown) = self.store.topic_share_content(topic.id)?;
-            let fingerprint = fingerprint(&self.store.report_publishing, &title, &markdown);
-            let current = current_publication_index(&self.store.publications, topic.id)
-                .map(|index| &self.store.publications[index]);
+            let fingerprint = fingerprint(&self.store.report_publishing(), &title, &markdown);
+            let current = current_publication_index(&self.store.publications(), topic.id)
+                .map(|index| &self.store.publications()[index]);
             (current.is_none_or(|p| p.fingerprint != fingerprint)).then_some(topic.id)
         });
         if let Some(topic) = ready { self.request_topic_publication(topic, cx); }
@@ -348,33 +364,44 @@ impl TaskApp {
             .child(label("Target branch", cx)).child(Input::new(&self.publishing_inputs[1]).id("publishing-branch"))
             .child(label("Public site URL", cx)).child(Input::new(&self.publishing_inputs[2]).id("publishing-url"))
             .child(button("save-publishing", "Save publishing settings").disabled(self.publishing_job.is_some()).on_click(cx.listener(|a, _, _, cx| a.save_publishing_settings(cx))))
-            .child(select_button("automatic-publishing", "Publish completed Topics automatically", self.store.report_publishing.automatic, cx)
-                .when(self.store.report_publishing.automatic, |b| b.icon(assets::IconName::Check))
+            .child(select_button("automatic-publishing", "Publish completed Topics automatically", self.store.report_publishing().automatic, cx)
+                .when(self.store.report_publishing().automatic, |b| b.icon(assets::IconName::Check))
                 .disabled(self.publishing_job.is_some())
                 .on_click(cx.listener(|a, _, _, cx| {
-                    if !a.store.report_publishing.automatic {
-                        if let Err(error) = a.store.report_publishing.validate() { a.show_save_error(error, cx); return; }
+                    if !a.store.report_publishing().automatic {
+                        if let Err(error) = a.store.report_publishing().validate() { a.show_save_error(error, cx); return; }
                     }
-                    a.store.report_publishing.automatic = !a.store.report_publishing.automatic;
-                    a.publishing_scan_requested = true;
-                    a.confirm_save("Automatic publishing preference saved", cx); a.start_pump(cx); cx.notify();
+                    let automatic = !a.store.report_publishing().automatic;
+                    if a
+                        .apply_domain_command_undoable(
+                            crate::scoped_domain::DomainCommand::PublishingAutomatic {
+                                automatic,
+                            },
+                            "Automatic publishing preference saved",
+                            cx,
+                        )
+                        .is_none()
+                    {
+                        return;
+                    }
+                    a.publishing_scan_requested = true; a.start_pump(cx); cx.notify();
                 })))
             .child(label("Enabling this also publishes existing completed Topics. All active goals must be complete. A Topic keeps one report URL: new content overwrites it in place so shared links keep working, retries keep the same URL, and earlier versions remain in Git history. Anyone with the link can read it.", cx))
             .child(label("Import your existing reports into the repository before connecting EdgeOne. Git pushes never force-overwrite remote history. Keep the repository private and configure EdgeOne to deploy this branch.", cx))
     }
     pub(crate) fn topic_publish_button(&self, topic: u64, cx: &mut Context<Self>) -> impl IntoElement {
         // Rendering only checks workflow state; exact input signatures are validated on publish.
-        let goals: Vec<_> = self.store.tasks.iter().filter(|t| t.topic_id == Some(topic)
+        let goals: Vec<_> = self.store.tasks().iter().filter(|t| t.topic_id == Some(topic)
             && t.research.as_ref().is_some_and(|r| r.kind == ResearchKind::Goal)
             && !self.store.task_is_archived(t.id)).collect();
         let ready = !goals.is_empty() && goals.iter().all(|g| g.stage == crate::domain::Stage::Done)
             && self.store.topic_planning_status(topic).is_none()
-            && self.store.topics.iter().any(|t| t.id == topic && !t.archived);
-        let publication = current_publication_index(&self.store.publications, topic)
-            .map(|index| &self.store.publications[index]);
+            && self.store.topics().iter().any(|t| t.id == topic && !t.archived);
+        let publication = current_publication_index(&self.store.publications(), topic)
+            .map(|index| &self.store.publications()[index]);
         let busy = self.publishing_job.as_ref().is_some_and(|(id, _)| publication.is_some_and(|p| &p.id == id));
         let changed = !busy && ready && publication.is_some_and(|p| self.store.topic_share_content(topic)
-            .is_some_and(|(title, markdown)| fingerprint(&self.store.report_publishing, &title, &markdown) != p.fingerprint));
+            .is_some_and(|(title, markdown)| fingerprint(&self.store.report_publishing(), &title, &markdown) != p.fingerprint));
         let action = publication_action(publication, changed);
         let text = if busy {
             if publication.is_some_and(|p| p.status == "Pushed · verifying live page") { "Checking…" } else { "Publishing…" }
@@ -396,9 +423,9 @@ impl TaskApp {
     pub(crate) fn topic_publication_panel(&self, topic: u64, cx: &mut Context<Self>) -> Div {
         let colors = crate::appearance::palette(cx);
         let mut panel = col().px_6().gap_2();
-        let current = current_publication_index(&self.store.publications, topic)
-            .map(|index| self.store.publications[index].id.clone());
-        let mut history: Vec<_> = self.store.publications.iter().filter(|p| p.topic == topic).collect();
+        let current = current_publication_index(&self.store.publications(), topic)
+            .map(|index| self.store.publications()[index].id.clone());
+        let mut history: Vec<_> = self.store.publications().iter().filter(|p| p.topic == topic).collect();
         // The Topic's permanent URL comes first; records from the earlier
         // per-version behavior follow as history.
         history.sort_by_key(|p| Some(&p.id) != current.as_ref());
@@ -560,8 +587,8 @@ mod tests {
     #[test]
     fn only_current_complete_topic_reports_are_shared_and_snapshots_persist() {
         let mut store = Store::empty();
-        store.projects[0].directory = "/tmp".into();
-        store.default_model = "test/model".into();
+        store.project_at_mut(0).unwrap().directory = "/tmp".into();
+        store.set_default_model("test/model".into());
         let topic = store.create_topic(1, "Research").unwrap();
         let goal = store.create_research_goal_in_topic("Goal".into(), "Scope".into(), 1, Some(topic)).unwrap();
         let ids = store.apply_research_plan(goal, r#"{"tasks":[{"title":"Evidence","instructions":"Collect","kind":"collect","depends_on":[]},{"title":"Analysis","instructions":"Analyze","kind":"analyze","depends_on":[0]},{"title":"Report","instructions":"Report","kind":"advise","depends_on":[1]}]}"#).unwrap();

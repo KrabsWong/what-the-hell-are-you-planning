@@ -1,0 +1,11 @@
+{
+  "test": "reserved_run_floor_survives_v4_seed_and_reopen",
+  "exit_code": 101,
+  "failed": 1,
+  "expected": 50001,
+  "log": "r56-run-floor-regression.log",
+  "source": "r56-run-floor-source.json",
+  "r55_source_restored": true,
+  "observed_failure": "create_seeded returned: seeded v4 database did not round-trip its store",
+  "implication": "Nonzero run_id_floor prevents v4 migration/seeding; missing loaded value is inferred from the explicit mapping omission, not a returned Store in this failing test"
+}

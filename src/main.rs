@@ -40,6 +40,7 @@ mod dispatch_intent;
 #[cfg(feature = "qa")]
 mod dispatch_admission_qa;
 mod domain_command;
+mod scoped_domain;
 mod scoped_edit;
 mod task_edit_app;
 mod material_app;

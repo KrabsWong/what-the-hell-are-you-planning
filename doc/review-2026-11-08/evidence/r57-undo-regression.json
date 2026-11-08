@@ -1,0 +1,9 @@
+{
+  "exit_code": 101,
+  "result": "failed",
+  "test": "scoped_domain::root_atomic_regression::rejected_settings_inverse_must_not_partially_restore",
+  "observed": "Undo returned Err for a newer opencode_path, but had already reset default_model from after-model to empty.",
+  "source_manifest": "r57-undo-source.json",
+  "log": "r57-undo-regression.log",
+  "scope": "Frozen reviewed module with compile-only import/mut-binding adaptations; not a full current-tree test."
+}

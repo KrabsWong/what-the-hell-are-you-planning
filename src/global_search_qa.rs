@@ -97,12 +97,12 @@ pub fn run() {
 
 fn fixture(directory: &Path, mode: Appearance) -> Fixture {
     let mut store = Store::empty();
-    store.projects[0].name = "Semiconductor desk".into();
-    store.projects[0].directory = directory.to_string_lossy().into();
-    store.default_model = "qa/global-search".into();
-    store.research_config.models =
+    store.project_at_mut(0).unwrap().name = "Semiconductor desk".into();
+    store.project_at_mut(0).unwrap().directory = directory.to_string_lossy().into();
+    store.set_default_model("qa/global-search".into());
+    store.research_config_mut().models =
         ["qa/plan", "qa/collect", "qa/analyze", "qa/advise"].map(String::from);
-    store.appearance = mode;
+    store.set_appearance(mode);
     let topic = store.create_topic(1, "Memory supply").unwrap();
     let goal = store
         .create_research_goal_in_topic(
@@ -258,7 +258,7 @@ where
         platform::current_headless_renderer,
     );
     cx.update(init);
-    let appearance = store.appearance;
+    let appearance = store.appearance();
     let mut app = None;
     let handle = cx
         .open_window(size(px(width), px(height)), |w, cx| {
@@ -316,7 +316,7 @@ fn research_list_origin(
     height: f32,
 ) {
     let (mut cx, handle, app) = with_app(&fixture.store, path, width, height, |a, _, _| {
-        a.scope = Scope::All;
+        a.set_scope_identity(Scope::All);
         a.selected = None;
         a.layout = Layout::Board;
         a.all_status = AllStatus::Open;
@@ -330,7 +330,7 @@ fn research_list_origin(
         w.render_frame(cx);
         focus_search_input(w, cx);
         assert!(app.read(cx).global_search_ui.open);
-        assert_eq!(app.read(cx).scope, Scope::All);
+        assert_eq!(app.read(cx).scope(), Scope::All);
         assert_eq!(app.read(cx).layout, Layout::Board);
         assert_eq!(app.read(cx).all_status, AllStatus::Open);
         assert_eq!(w.find("global-search-input").focused(), Some(true));
@@ -377,7 +377,7 @@ fn research_list_origin(
         w.press("escape", cx);
         w.render_frame(cx);
         assert!(!app.read(cx).global_search_ui.open);
-        assert_eq!(app.read(cx).scope, Scope::All);
+        assert_eq!(app.read(cx).scope(), Scope::All);
         assert_eq!(app.read(cx).layout, Layout::Board);
         assert_eq!(app.read(cx).all_status, AllStatus::Open);
         assert_eq!(w.focused(cx), opener);
@@ -402,7 +402,7 @@ fn research_scope_origin(
     for (entry_label, use_footer) in [("footer", true), ("cmdk", false)] {
         let initial_scope = scope.clone();
         let (mut cx, handle, app) = with_app(&fixture.store, path, width, height, |a, w, cx| {
-            a.scope = initial_scope.clone();
+            a.set_scope_identity(initial_scope.clone());
             a.selected = None;
             a.layout = Layout::Board;
             a.all_status = AllStatus::Open;
@@ -415,7 +415,7 @@ fn research_scope_origin(
         cx.update_window(handle, |_, w, cx| {
             w.render_frame(cx);
             opener = w.focused(cx);
-            assert_eq!(app.read(cx).scope, scope);
+            assert_eq!(app.read(cx).scope(), scope);
             if use_footer {
                 w.click("footer-search", cx);
             } else {
@@ -424,7 +424,7 @@ fn research_scope_origin(
             w.render_frame(cx);
             focus_search_input(w, cx);
             assert!(app.read(cx).global_search_ui.open);
-            assert_eq!(app.read(cx).scope, scope);
+            assert_eq!(app.read(cx).scope(), scope);
             assert_eq!(app.read(cx).layout, Layout::Board);
             assert_eq!(app.read(cx).all_status, AllStatus::Open);
             assert_eq!(app.read(cx).query, "supply");
@@ -453,7 +453,7 @@ fn research_scope_origin(
             w.press("escape", cx);
             w.render_frame(cx);
             assert!(!app.read(cx).global_search_ui.open);
-            assert_eq!(app.read(cx).scope, scope);
+            assert_eq!(app.read(cx).scope(), scope);
             assert_eq!(app.read(cx).layout, Layout::Board);
             assert_eq!(app.read(cx).all_status, AllStatus::Open);
             assert_eq!(app.read(cx).query, "supply");
@@ -530,7 +530,7 @@ fn research_detail_origin(
             .any(|(_, title, _)| title.as_str() == "Semiconductor desk"));
         let topic_name = fixture
             .store
-            .topics
+            .topics()
             .iter()
             .find(|topic| topic.id == fixture.topic)
             .map(|topic| topic.display_name())
@@ -553,7 +553,7 @@ fn research_result_origin(
     height: f32,
 ) {
     let (mut cx, handle, app) = with_app(&fixture.store, path, width, height, |a, _, _| {
-        a.scope = Scope::Runs;
+        a.set_scope_identity(Scope::Runs);
         a.task_result_context = Some(fixture.step);
         a.selected_run = Some(fixture.run);
         a.show_run_result = true;
@@ -565,11 +565,11 @@ fn research_result_origin(
         w.render_frame(cx);
         focus_search_input(w, cx);
         assert!(app.read(cx).global_search_ui.open);
-        assert_eq!(app.read(cx).scope, Scope::Runs);
+        assert_eq!(app.read(cx).scope(), Scope::Runs);
         assert_eq!(app.read(cx).selected_run, Some(fixture.run));
         w.press("escape", cx);
         w.render_frame(cx);
-        assert_eq!(app.read(cx).scope, Scope::Runs);
+        assert_eq!(app.read(cx).scope(), Scope::Runs);
         assert_eq!(app.read(cx).task_result_context, Some(fixture.step));
         assert_eq!(app.read(cx).selected_run, Some(fixture.run));
         assert_eq!(w.focused(cx), opener);
@@ -659,7 +659,7 @@ fn automation_list_origin(
     cx.update_window(handle, |_, w, cx| {
         w.render_frame(cx);
         assert!(!app.read(cx).global_search_ui.open);
-        assert_eq!(app.read(cx).scope, Scope::Automations);
+        assert_eq!(app.read(cx).scope(), Scope::Automations);
         assert_eq!(app.read(cx).automation_ui.selected, Some(fixture.automation));
         let (crumbs, current) = app.read(cx).navigation_path();
         assert_eq!(current, "Fuel price watch");
@@ -671,7 +671,7 @@ fn automation_list_origin(
     .unwrap();
     cx.update_window(handle, |_, w, cx| {
         app.update(cx, |a, cx| a.go_back(w, cx));
-        assert_eq!(app.read(cx).scope, Scope::Automations);
+        assert_eq!(app.read(cx).scope(), Scope::Automations);
         assert_eq!(app.read(cx).automation_ui.selected, None);
     })
     .unwrap();
@@ -701,11 +701,11 @@ fn automation_results_origin(
         focus_search_input(w, cx);
         assert!(app.read(cx).global_search_ui.open);
         assert_eq!(w.find("global-search-input").focused(), Some(true));
-        assert_eq!(app.read(cx).scope, Scope::AutomationRuns);
+        assert_eq!(app.read(cx).scope(), Scope::AutomationRuns);
         w.press("escape", cx);
         w.render_frame(cx);
         assert!(!app.read(cx).global_search_ui.open);
-        assert_eq!(app.read(cx).scope, Scope::AutomationRuns);
+        assert_eq!(app.read(cx).scope(), Scope::AutomationRuns);
         assert_eq!(w.focused(cx), opener);
         w.press("cmd-k", cx);
         w.render_frame(cx);
@@ -736,7 +736,7 @@ fn automation_results_origin(
     cx.update_window(handle, |_, w, cx| {
         w.render_frame(cx);
         assert!(!app.read(cx).global_search_ui.open);
-        assert_eq!(app.read(cx).scope, Scope::Automations);
+        assert_eq!(app.read(cx).scope(), Scope::Automations);
         assert_eq!(app.read(cx).automation_ui.selected, Some(fixture.automation));
     })
     .unwrap();
@@ -794,7 +794,7 @@ fn automation_modal_and_period(
         w.render_frame(cx);
         assert!(!app.read(cx).global_search_ui.open);
         assert!(!app.read(cx).automation_ui.settings_dialog);
-        assert_eq!(app.read(cx).scope, Scope::Automations);
+        assert_eq!(app.read(cx).scope(), Scope::Automations);
         assert_eq!(app.read(cx).automation_ui.selected, Some(fixture.automation));
         assert_eq!(app.read(cx).automation_ui.result_dialog, Some(fixture.period));
         let (crumbs, current) = app.read(cx).navigation_path();
@@ -809,7 +809,7 @@ fn automation_modal_and_period(
         w.press("escape", cx);
         w.render_frame(cx);
         assert_eq!(app.read(cx).automation_ui.result_dialog, None);
-        assert_eq!(app.read(cx).scope, Scope::Automations);
+        assert_eq!(app.read(cx).scope(), Scope::Automations);
         assert_eq!(app.read(cx).automation_ui.selected, Some(fixture.automation));
     })
     .unwrap();
@@ -835,11 +835,11 @@ fn settings_origin(
         w.render_frame(cx);
         focus_search_input(w, cx);
         assert!(app.read(cx).global_search_ui.open);
-        assert_eq!(app.read(cx).scope, Scope::Settings);
+        assert_eq!(app.read(cx).scope(), Scope::Settings);
         w.press("escape", cx);
         w.render_frame(cx);
         assert!(!app.read(cx).global_search_ui.open);
-        assert_eq!(app.read(cx).scope, Scope::Settings);
+        assert_eq!(app.read(cx).scope(), Scope::Settings);
         assert!(
             app.read(cx).settings_tab == crate::settings_views::SettingsTab::Models,
             "Settings origin must keep the selected tab"
@@ -1077,7 +1077,7 @@ fn clean_automation_form(
         assert!(!app.read(cx).global_search_ui.open);
         assert!(!app.read(cx).automation_ui.creating);
         assert_eq!(app.read(cx).automation_ui.selected, Some(fixture.automation));
-        assert_eq!(app.read(cx).scope, Scope::Automations);
+        assert_eq!(app.read(cx).scope(), Scope::Automations);
     })
     .unwrap();
     cx.update_window(handle, |_, w, _| w.remove_window()).unwrap();
@@ -1126,7 +1126,7 @@ fn empty_and_deleted_targets(
             .try_find(format!("global-search-result-research-{doomed}"))
             .is_some());
         app.update(cx, |a, _| {
-            a.store.tasks.retain(|task| task.id != doomed);
+            a.store.retain_tasks(|task| task.id != doomed);
         });
         w.press("enter", cx);
     })

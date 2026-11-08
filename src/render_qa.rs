@@ -10,7 +10,7 @@ pub fn run() {
     let store = Storage::new(path.into()).load().unwrap().unwrap();
     let start = Instant::now();
     for _ in 0..10 {
-        for task in &store.tasks {
+        for task in store.tasks() {
             std::hint::black_box(store.step_state(task.id));
         }
     }
@@ -30,7 +30,7 @@ pub fn run() {
             let app = cx.new(|cx| TaskApp::new_mock(w, cx));
             app.update(cx, |a, _| {
                 a.store = store.clone();
-                a.expanded_sidebar_projects = store.projects.iter().map(|p| p.id).collect();
+                a.expanded_sidebar_projects = store.projects().iter().map(|p| p.id).collect();
             });
             entity = Some(app.clone());
             cx.new(|cx| base::Root::new(app, w, cx))
@@ -39,10 +39,10 @@ pub fn run() {
     let app = entity.unwrap();
     let handle: AnyWindowHandle = window.into();
     let mut panels = vec![("All research", Scope::All), ("Recovery", Scope::Recovery)];
-    if let Some(project) = store.projects.last() {
+    if let Some(project) = store.projects().last() {
         panels.push(("Project", Scope::Project(project.id)));
     }
-    if let Some(topic) = store.topics.last() {
+    if let Some(topic) = store.topics().last() {
         panels.push(("Topic", Scope::Topic(topic.id)));
     }
     let result = store

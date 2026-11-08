@@ -481,6 +481,8 @@ impl TaskApp {
     pub(crate) fn footer_bar(&self, cx: &mut Context<Self>) -> AnyElement {
         let colors = palette(cx);
         row()
+            .w_full()
+            .min_w_0()
             .h(px(30.))
             .px_4()
             .bg(rgb(colors.side))
@@ -718,7 +720,7 @@ impl TaskApp {
             .child(section("Research", cx));
         let count = self
             .store
-            .tasks
+            .tasks()
             .iter()
             .filter(|t| {
                 !self.store.task_is_archived(t.id)
@@ -729,7 +731,7 @@ impl TaskApp {
         side = side.child(self.nav("all", "All research", Scope::All, count, cx));
         let cycles: std::collections::BTreeSet<_> = self
             .store
-            .tasks
+            .tasks()
             .iter()
             .filter(|t| !self.store.task_is_archived(t.id))
             .filter_map(|t| t.cycle.as_deref())
@@ -741,7 +743,7 @@ impl TaskApp {
             let scope = Scope::Cycle(name.to_string());
             let count = self
                 .store
-                .tasks
+                .tasks()
                 .iter()
                 .filter(|t| !self.store.task_is_archived(t.id) && t.cycle.as_deref() == Some(name))
                 .count();
@@ -783,7 +785,7 @@ impl TaskApp {
         for project in projects {
             let count = self
                 .store
-                .tasks
+                .tasks()
                 .iter()
                 .filter(|t| {
                     !self.store.task_is_archived(t.id)
@@ -869,7 +871,7 @@ impl TaskApp {
             if expanded {
                 let mut project_tasks: Vec<_> = self
                     .store
-                    .tasks
+                    .tasks()
                     .iter()
                     .filter(|t| t.project_id == pid && !self.store.task_is_archived(t.id))
                     .collect();
@@ -883,7 +885,7 @@ impl TaskApp {
                     .border_color(rgb(colors.line));
                 let mut groups: Vec<_> = self
                     .store
-                    .topics
+                    .topics()
                     .iter()
                     .filter(|t| t.project_id == pid && !t.archived && t.automation_id.is_none())
                     .map(|t| Some(t.id))
@@ -898,7 +900,7 @@ impl TaskApp {
                         .filter(|t| self.store.task_topic(t.id).map(|topic| topic.id) == topic_id)
                         .collect();
                     if let Some(topic) =
-                        topic_id.and_then(|id| self.store.topics.iter().find(|t| t.id == id))
+                        topic_id.and_then(|id| self.store.topics().iter().find(|t| t.id == id))
                     {
                         list = list.child(self.topic_sidebar_row(topic, cx));
                         if self.collapsed_sidebar_topics.contains(&topic.id) {
@@ -907,7 +909,7 @@ impl TaskApp {
                     }
                     if tasks.is_empty()
                         && topic_id.is_none()
-                        && self.store.topics.iter().all(|t| t.project_id != pid)
+                        && self.store.topics().iter().all(|t| t.project_id != pid)
                     {
                         list = list.child(div().px_2().py_2().child(label("No tasks yet", cx)));
                     }
@@ -1090,7 +1092,7 @@ impl TaskApp {
                     "Archive",
                     Scope::Archive,
                     self.store
-                        .tasks
+                        .tasks()
                         .iter()
                         .filter(|t| {
                             t.automation_id.is_none()
@@ -1101,7 +1103,7 @@ impl TaskApp {
                     cx,
                 ),
             );
-        let appearance = self.store.appearance;
+        let appearance = self.store.appearance();
         shell
             .when(cfg!(target_os = "macos"), |d| {
                 // Reserve space for the native traffic lights outside the scroll area.
@@ -1143,7 +1145,7 @@ impl TaskApp {
                         )
                         .h_8()
                         .on_click(cx.listener(|a, _, w, cx| {
-                            a.set_appearance(a.store.appearance.next(), w, cx);
+                            a.set_appearance(a.store.appearance().next(), w, cx);
                         })),
                     ),
             )
@@ -1286,7 +1288,7 @@ impl TaskApp {
     pub(crate) fn navigation_path(&self) -> (Vec<(String, String, CrumbTarget)>, String) {
         // The automation list is its own top-level section. It must not borrow
         // Research's "All research" crumb (and Back must not lead there).
-        if self.scope == Scope::Automations
+        if self.scope() == Scope::Automations
             && !self.automation_ui.creating
             && self.automation_ui.selected.is_none()
             && self.selected.is_none()
@@ -1296,7 +1298,7 @@ impl TaskApp {
         }
         // A new automation is created from the Automations list; it is not a
         // child of Research's All either.
-        if self.scope == Scope::Automations
+        if self.scope() == Scope::Automations
             && self.automation_ui.creating
             && self.automation_ui.editing.is_none()
         {
@@ -1311,7 +1313,7 @@ impl TaskApp {
         }
         // Editing an existing automation belongs to its detail page, not to the
         // Automations list. Back and the breadcrumb return to that page.
-        if self.scope == Scope::Automations
+        if self.scope() == Scope::Automations
             && self.automation_ui.creating
             && let Some(id) = self.automation_ui.editing
             && let Some(definition) = self.store.automation(id)
@@ -1334,7 +1336,7 @@ impl TaskApp {
         }
         // Automation results are a child of Automations, not of Research. A step
         // opened from a period keeps its own task path below.
-        if self.scope == Scope::AutomationRuns
+        if self.scope() == Scope::AutomationRuns
             && self.selected.is_none()
             && self.task_result_context.is_none()
         {
@@ -1349,7 +1351,7 @@ impl TaskApp {
         }
         // An automation detail sits under Automations, so the app-level Back
         // returns to the list instead of jumping straight to All.
-        if self.scope == Scope::Automations
+        if self.scope() == Scope::Automations
             && !self.automation_ui.creating
             && self.selected.is_none()
             && self.task_result_context.is_none()
@@ -1366,7 +1368,7 @@ impl TaskApp {
             );
         }
         let mut links = vec![];
-        let result = self.selected.is_none() && self.scope == Scope::Runs;
+        let result = self.selected.is_none() && self.scope() == Scope::Runs;
         let run = result
             .then(|| self.displayed_run_id())
             .flatten()
@@ -1377,7 +1379,7 @@ impl TaskApp {
             .or_else(|| run.map(|r| r.task_id))
             .and_then(|id| self.store.task(id));
         let mut current = self.title();
-        if (self.scope != Scope::All || task.is_some())
+        if (self.scope() != Scope::All || task.is_some())
             && !task.is_some_and(|task| task.automation_id.is_some())
         {
             links.push((
@@ -1418,7 +1420,7 @@ impl TaskApp {
                 }
                 return (links, self.task_location_label(task));
             }
-            if let Some(project) = self.store.projects.iter().find(|p| p.id == task.project_id) {
+            if let Some(project) = self.store.projects().iter().find(|p| p.id == task.project_id) {
                 links.push((
                     "location-project".into(),
                     project.name.clone(),
@@ -1465,7 +1467,7 @@ impl TaskApp {
             }
         } else if let Some(project) = run
             .and_then(|r| r.project_plan)
-            .and_then(|id| self.store.projects.iter().find(|p| p.id == id))
+            .and_then(|id| self.store.projects().iter().find(|p| p.id == id))
         {
             links.push((
                 "location-project".into(),
@@ -1473,13 +1475,13 @@ impl TaskApp {
                 CrumbTarget::View(Scope::Project(project.id)),
             ));
             current = "Project planning".into();
-        } else if let Scope::Topic(id) = self.scope {
+        } else if let Scope::Topic(id) = self.scope() {
             if let Some(project) = self
                 .store
-                .topics
+                .topics()
                 .iter()
                 .find(|t| t.id == id)
-                .and_then(|t| self.store.projects.iter().find(|p| p.id == t.project_id))
+                .and_then(|t| self.store.projects().iter().find(|p| p.id == t.project_id))
             {
                 links.push((
                     "location-project".into(),
@@ -1663,7 +1665,7 @@ impl TaskApp {
         }
     }
     fn toolbar(&self, cx: &mut Context<Self>) -> AnyElement {
-        let project = if let Scope::Project(id) = self.scope {
+        let project = if let Scope::Project(id) = self.scope() {
             Some(id)
         } else {
             None
@@ -1672,7 +1674,7 @@ impl TaskApp {
         let summary = if let Some(id) = project {
             let pending = self
                 .store
-                .tasks
+                .tasks()
                 .iter()
                 .filter(|t| {
                     t.project_id == id
@@ -1774,7 +1776,7 @@ impl TaskApp {
         if let Some(id) = self.selected {
             self.detail(id, cx)
         } else {
-            match self.scope {
+            match self.scope() {
                 Scope::Topic(id) => self.topic_view(id, cx),
                 Scope::Runs => self.runs(cx),
                 Scope::Recovery => self.recovery_view(cx),
@@ -1794,7 +1796,7 @@ impl TaskApp {
                 .px_6()
                 .pb_4()
                 .gap_3()
-                .when(self.scope == Scope::All, |d| {
+                .when(self.scope() == Scope::All, |d| {
                     d.child(self.all_status_control(cx))
                 })
                 .child(
@@ -1813,13 +1815,13 @@ impl TaskApp {
                         })),
                 ),
         );
-        if self.scope == Scope::Archive && self.layout == Layout::List {
+        if self.scope() == Scope::Archive && self.layout == Layout::List {
             main = main.child(self.topic_directory(None, cx));
         }
-        if let Scope::Project(id) = self.scope {
+        if let Scope::Project(id) = self.scope() {
             let pending = self
                 .store
-                .research_requests
+                .research_requests()
                 .iter()
                 .filter(|r| {
                     r.project_id == id
@@ -1864,7 +1866,7 @@ impl TaskApp {
                     .px_6()
                     .pb_4()
                     .gap_5()
-                    .when(self.scope != Scope::All, |d| {
+                    .when(self.scope() != Scope::All, |d| {
                         d.child(
                             Checkbox::new("show-done")
                                 .label("Show completed")
@@ -1901,7 +1903,7 @@ impl TaskApp {
                                 |this, _, w, cx| {
                                     this.search.update(cx, |s, cx| s.set_value("", w, cx));
                                     this.show_done = true;
-                                    if this.scope == Scope::All {
+                                    if this.scope() == Scope::All {
                                         this.all_status = AllStatus::All;
                                     }
                                     cx.notify();
@@ -1917,7 +1919,7 @@ impl TaskApp {
         let ordered = self.ordered_visible_tasks();
         let row_height = if self.compact { 32. } else { 38. };
         let mut rows = Vec::new();
-        let grouped = !matches!(self.scope, Scope::Project(_));
+        let grouped = !matches!(self.scope(), Scope::Project(_));
         let mut last_project = None;
         let mut last_topic = None;
         for task in ordered {
@@ -1945,7 +1947,7 @@ impl TaskApp {
             if grouped && last_project != Some(task.project_id) {
                 let name = self
                     .store
-                    .projects
+                    .projects()
                     .iter()
                     .find(|p| p.id == task.project_id)
                     .map(|p| p.name.clone())
@@ -1959,7 +1961,7 @@ impl TaskApp {
             }
             rows.push(CollectionRow::Task(Box::new(task)));
         }
-        let archive = self.scope == Scope::Archive;
+        let archive = self.scope() == Scope::Archive;
         main.child(
             div().id("collection-table-scroll").flex_1().min_h_0().min_w_0()
                 .overflow_x_scroll().restrict_scroll_to_axis()
@@ -2062,7 +2064,7 @@ impl TaskApp {
                 append_children(&tasks, t.id, &self.collapsed, &mut ordered);
             }
         }
-        if !matches!(self.scope, Scope::Project(_)) {
+        if !matches!(self.scope(), Scope::Project(_)) {
             ordered.sort_by_key(|t| crate::display_order::newest_id(t.project_id));
         }
         ordered
@@ -2073,13 +2075,13 @@ impl TaskApp {
         let archived = self.store.task_is_archived(id);
         let child_count = self
             .store
-            .tasks
+            .tasks()
             .iter()
             .filter(|c| c.parent_id == Some(id) && !c.archived)
             .count();
         let done = self
             .store
-            .tasks
+            .tasks()
             .iter()
             .filter(|c| {
                 c.parent_id == Some(id)
@@ -2258,7 +2260,7 @@ impl TaskApp {
     }
     pub(crate) fn board(&self, tasks: &[Task], cx: &mut Context<Self>) -> AnyElement {
         let colors = palette(cx);
-        let archive = self.scope == Scope::Archive;
+        let archive = self.scope() == Scope::Archive;
         col().flex_1().min_h_0()
             .when(!archive, |d| d.child(div().id("board-guidance").px_6().pb_2().child(label(
                 "Drop Todo tasks into Execution to submit. Waiting → Queued → Running; problems appear under Needs attention.", cx))))
@@ -2413,7 +2415,7 @@ impl TaskApp {
                                     .child(self.store.identifier(t)),
                             )
                             .when(
-                                !matches!(self.scope, Scope::Project(_) | Scope::Topic(_)),
+                                !matches!(self.scope(), Scope::Project(_) | Scope::Topic(_)),
                                 |d| {
                                     d.child(
                                         div()
@@ -2426,7 +2428,7 @@ impl TaskApp {
                                             .text_color(rgb(colors.text))
                                             .child(
                                                 self.store
-                                                    .projects
+                                                    .projects()
                                                     .iter()
                                                     .find(|p| p.id == t.project_id)
                                                     .map(|p| p.name.clone())
@@ -2455,7 +2457,7 @@ impl TaskApp {
             .child(label(status.reason.clone(), cx))
             .when_some(
                 self.store
-                    .research_requests
+                    .research_requests()
                     .iter()
                     .find(|r| r.goal_ids.contains(&id))
                     .and_then(|r| r.brief.as_ref()),
@@ -2886,7 +2888,7 @@ impl TaskApp {
         }
         let mut children: Vec<_> = self
             .store
-            .tasks
+            .tasks()
             .iter()
             .filter(|c| c.parent_id == Some(id) && !c.archived)
             .cloned()
@@ -3201,7 +3203,7 @@ impl TaskApp {
                                 }),
                             ))
                             .child({
-                                let related = self.store.tasks.iter().find_map(|task| {
+                                let related = self.store.tasks().iter().find_map(|task| {
                                     let name =
                                         format!("{} · {}", self.store.identifier(task), task.title);
                                     message.split_once(&name).map(|(before, after)| {
@@ -3247,7 +3249,7 @@ impl TaskApp {
         }
         let missing_folder = self
             .store
-            .projects
+            .projects()
             .iter()
             .find(|p| p.id == t.project_id)
             .is_none_or(|p| p.directory.is_empty());
@@ -3347,7 +3349,7 @@ impl TaskApp {
                 Property::Project,
                 "Topic project",
                 self.store
-                    .projects
+                    .projects()
                     .iter()
                     .find(|p| p.id == t.project_id)
                     .map(|p| p.name.clone())
@@ -3551,7 +3553,7 @@ impl TaskApp {
             if let Some(r) = &t.research {
                 properties = properties
                     .child(model_fields(
-                        &self.store.research_config.models[r.kind.index()],
+                        &self.store.research_config().models[r.kind.index()],
                     ))
                     .child(execution_field(
                         "Browser space",
@@ -3666,7 +3668,7 @@ impl TaskApp {
             Property::Cycle => {
                 let cycles: std::collections::BTreeSet<_> = self
                     .store
-                    .tasks
+                    .tasks()
                     .iter()
                     .filter_map(|t| t.cycle.clone())
                     .collect();
@@ -3740,13 +3742,15 @@ impl TaskApp {
                         self.store.task(id).is_some_and(|t| t.parent_id.is_none()),
                     )
                     .on_click(cx.listener(move |this, _, _, cx| {
-                        this.snapshot();
-                        let result = this.store.set_parent(id, None);
+                        this.apply_domain_command_undoable(
+                            crate::scoped_domain::DomainCommand::TaskParent { task: id, parent: None },
+                            "Parent updated",
+                            cx,
+                        );
                         this.property = None;
-                        this.finish(result, "Parent updated", cx);
                     })),
                 );
-                for task in self.store.tasks.iter().filter(|t| {
+                for task in self.store.tasks().iter().filter(|t| {
                     t.id != id
                         && !t.archived
                         && t.parent_id.is_none()
@@ -3766,10 +3770,15 @@ impl TaskApp {
                                 .is_some_and(|t| t.parent_id == Some(parent)),
                         )
                         .on_click(cx.listener(move |this, _, _, cx| {
-                            this.snapshot();
-                            let result = this.store.set_parent(id, Some(parent));
+                            this.apply_domain_command_undoable(
+                                crate::scoped_domain::DomainCommand::TaskParent {
+                                    task: id,
+                                    parent: Some(parent),
+                                },
+                                "Parent updated",
+                                cx,
+                            );
                             this.property = None;
-                            this.finish(result, "Parent updated", cx);
                         })),
                     );
                 }
@@ -3781,7 +3790,7 @@ impl TaskApp {
         let colors = palette(cx);
         let name = self
             .store
-            .projects
+            .projects()
             .iter()
             .find(|p| Some(p.id) == self.directory_project)
             .map(|p| p.name.clone())
@@ -4378,10 +4387,9 @@ impl Render for TaskApp {
                                                     cx.notify();
                                                     return;
                                                 }
-                                                this.snapshot();
                                                 let id = this
                                                     .store
-                                                    .projects
+                                                    .projects()
                                                     .iter()
                                                     .map(|p| p.id)
                                                     .max()
@@ -4391,17 +4399,19 @@ impl Render for TaskApp {
                                                     Ok(path) => path,
                                                     Err(error) => { this.error = error; cx.notify(); return; }
                                                 };
-                                                this.store.projects.push(Project {
-                                                    id,
-                                                    name: name.trim().into(),
-                                                    key: format!("P{id}"),
-                                                    directory,
-                                                    research_brief: String::new(),
-                                                    kind: crate::domain::ProjectKind::User,
-                                                });
-                                                this.new_project = None;
-                                                this.navigate(Scope::Project(id), w, cx);
-                                                this.confirm_save("Project created · add a topic or start a research request", cx);
+                                                let name = name.trim().to_string();
+                                                if let Some(outcome) = this.apply_domain_command_undoable(
+                                                    crate::scoped_domain::DomainCommand::ProjectCreate {
+                                                        name,
+                                                        directory,
+                                                    },
+                                                    "Project created · add a topic or start a research request",
+                                                    cx,
+                                                ) {
+                                                    let id = outcome.created_project.unwrap_or(id);
+                                                    this.new_project = None;
+                                                    this.navigate(Scope::Project(id), w, cx);
+                                                }
                                             })),
                                     ),
                             ),

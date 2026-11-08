@@ -27,10 +27,10 @@ pub fn run() {
             std::fs::create_dir_all(&directory).unwrap();
             let path = directory.join("workspace.json");
             let mut store = Store::empty();
-            store.projects[0].name = "Semiconductor industry research".into();
-            store.research_config.models =
+            store.project_at_mut(0).unwrap().name = "Semiconductor industry research".into();
+            store.research_config_mut().models =
                 ["qa/planner", "qa/collector", "qa/analyst", "qa/adviser"].map(String::from);
-            store.appearance = mode;
+            store.set_appearance(mode);
             Storage::new(path.clone()).save(&store).unwrap();
             let mut cx = HeadlessAppContext::with_platform(
                 platform::current_platform(true).text_system(),
@@ -129,7 +129,7 @@ pub fn run() {
             cx.update_window(handle, |_, w, cx| {
                 w.click("save-project-context", cx);
                 assert!(app.read(cx).planning_project.is_none());
-                assert!(app.read(cx).store.research_requests.iter().any(|request| request.input.contains("Global semiconductor market")));
+                assert!(app.read(cx).store.research_requests().iter().any(|request| request.input.contains("Global semiconductor market")));
                 // The overlay no longer changes the route; return to the project
                 // through its real sidebar row before reopening from its toolbar.
                 w.click("project-1", cx);
@@ -142,7 +142,7 @@ pub fn run() {
                 assert!(app.read(cx).planning_project.is_none());
                 w.click("plan-project", cx);
                 app.update(cx, |a, cx| {
-                    a.store.projects[0].directory = directory.to_string_lossy().into();
+                    a.store.project_at_mut(0).unwrap().directory = directory.to_string_lossy().into();
                     cx.notify();
                 });
                 w.render_frame(cx);
@@ -181,7 +181,7 @@ pub fn run() {
             cx.update_window(handle, |_, w, cx| w.render_frame(cx)).unwrap();
             screenshot(&mut cx, handle, &directory, "05-kanban.png");
             cx.update_window(handle, |_, w, cx| {
-                let topics: Vec<u64> = app.read(cx).store.topics.iter().map(|topic| topic.id).collect();
+                let topics: Vec<u64> = app.read(cx).store.topics().iter().map(|topic| topic.id).collect();
                 scroll_card_into_view(w, cx, &format!("approve-topic-{goal}"), &topics);
                 w.click(format!("approve-topic-{goal}"), cx);
                 assert_eq!(app.read(cx).store.task(goal).unwrap().stage, Stage::Planned);
@@ -263,14 +263,14 @@ pub fn run() {
             screenshot(&mut cx, handle, &directory, "13-task-list.png");
             cx.update_window(handle, |_, w, cx| {
                 app.update(cx, |a, cx| {
-                    let project = a.store.projects[0].clone();
-                    a.store.projects.extend((2..=9).map(|id| {
+                    let project = a.store.projects()[0].clone();
+                    for id in 2..=9 {
                         let mut extra = project.clone();
                         extra.id = id;
                         extra.name = format!("QA industry research {id}");
                         extra.key = format!("QA{id}");
-                        extra
-                    }));
+                        a.store.push_project(extra);
+                    }
                     cx.notify();
                 });
                 w.render_frame(cx);
@@ -281,27 +281,27 @@ pub fn run() {
                     "Theme action must stay fully above the footer and sidebar padding"
                 );
                 click_in(w, cx, "sidebar-scroll", "project-9");
-                assert_eq!(app.read(cx).scope, Scope::Project(9));
-                let next = if app.read(cx).store.appearance == Appearance::Light {
+                assert_eq!(app.read(cx).scope(), Scope::Project(9));
+                let next = if app.read(cx).store.appearance() == Appearance::Light {
                     2usize
                 } else {
                     1usize
                 };
                 w.click("toggle-appearance", cx);
-                if next == 1 && app.read(cx).store.appearance == Appearance::System {
+                if next == 1 && app.read(cx).store.appearance() == Appearance::System {
                     w.click("toggle-appearance", cx);
                 }
-                assert_eq!(app.read(cx).store.appearance, mode.toggled());
-                let next = if app.read(cx).store.appearance == Appearance::Light {
+                assert_eq!(app.read(cx).store.appearance(), mode.toggled());
+                let next = if app.read(cx).store.appearance() == Appearance::Light {
                     2usize
                 } else {
                     1usize
                 };
                 w.click("toggle-appearance", cx);
-                if next == 1 && app.read(cx).store.appearance == Appearance::System {
+                if next == 1 && app.read(cx).store.appearance() == Appearance::System {
                     w.click("toggle-appearance", cx);
                 }
-                assert_eq!(app.read(cx).store.appearance, mode);
+                assert_eq!(app.read(cx).store.appearance(), mode);
             })
             .unwrap();
             screenshot(&mut cx, handle, &directory, "14-sidebar-scroll.png");

@@ -26,12 +26,12 @@ pub fn run(live: bool) {
         .expect("Read saved configuration; open the app and complete setup first")
         .expect("No saved workspace; configure OpenCode and a model in the app first");
     let mut initial = Store::empty();
-    initial.opencode_path = saved.opencode_path;
-    initial.default_model = saved.default_model;
-    initial.research_config = saved.research_config;
-    initial.projects[0].name = "Live research acceptance".into();
-    initial.projects[0].directory = root.join("project").to_string_lossy().into();
-    std::fs::create_dir_all(&initial.projects[0].directory).unwrap();
+    initial.set_opencode_path(saved.opencode_path);
+    initial.set_default_model(saved.default_model);
+    initial.research_config = saved.research_config();
+    initial.project_at_mut(0).unwrap().name = "Live research acceptance".into();
+    initial.project_at_mut(0).unwrap().directory = root.join("project").to_string_lossy().into();
+    std::fs::create_dir_all(&initial.projects()[0].directory).unwrap();
     let path = root.join("workspace.sqlite3");
     Storage::new(path.clone()).save(&initial).unwrap();
 
@@ -69,7 +69,7 @@ pub fn run(live: bool) {
         let a = app.read(cx);
         let request = a
             .store
-            .research_requests
+            .research_requests()
             .first()
             .expect("Request was not retained");
         assert!(

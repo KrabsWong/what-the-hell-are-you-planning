@@ -546,7 +546,7 @@ impl SqliteV4 {
             .connection
             .transaction_with_behavior(rusqlite::TransactionBehavior::Immediate)
             .map_err(|error| format!("cannot begin seed transaction: {error}"))?;
-        for task in &store.tasks {
+        for task in store.tasks() {
             apply_change(
                 &transaction,
                 &EntityChange::Upsert(EntityPayload::Task(task.clone())),
@@ -554,7 +554,7 @@ impl SqliteV4 {
                 0,
             )?;
         }
-        for project in &store.projects {
+        for project in store.projects() {
             apply_change(
                 &transaction,
                 &EntityChange::Upsert(EntityPayload::Project(project.clone())),
@@ -562,7 +562,7 @@ impl SqliteV4 {
                 0,
             )?;
         }
-        for policy in &store.policies {
+        for policy in store.policies() {
             apply_change(
                 &transaction,
                 &EntityChange::Upsert(EntityPayload::Policy(policy.clone())),
@@ -622,26 +622,39 @@ impl SqliteV4 {
                 meta.insert(key, value);
             }
         }
-        store.next_id = parse_meta(&meta, "next_id")?;
-        store.opencode_path = parse_meta(&meta, "opencode_path")?;
-        store.default_model = parse_meta(&meta, "default_model")?;
-        store.model_profiles = parse_meta(&meta, "model_profiles")?;
-        store.active_model_profile = parse_meta(&meta, "active_model_profile")?;
-        store.max_concurrent_runs = parse_meta(&meta, "max_concurrent_runs")?;
-        store.max_concurrent_automations = parse_meta(&meta, "max_concurrent_automations")?;
-        store.research_config = parse_meta(&meta, "research_config")?;
-        store.appearance = parse_meta(&meta, "appearance")?;
-        store.last_active_project = parse_meta(&meta, "last_active_project")?;
-        store.automation_schema_version = parse_meta(&meta, "automation_schema_version")?;
-        store.report_publishing = parse_meta(&meta, "report_publishing")?;
-        store.publications = parse_meta(&meta, "publications")?;
-        store.topics = parse_meta(&meta, "topics")?;
-        store.research_requests = parse_meta(&meta, "research_requests")?;
+        store.set_next_id(parse_meta(&meta, "next_id")?);
+        // Databases created before reservation tracking have no run_id_floor
+        // key. Their reserved range starts at zero, which is the domain default.
+        store.set_run_id_floor(parse_meta_or(&meta, "run_id_floor", 0u64)?);
+        store.set_opencode_path(parse_meta::<String>(&meta, "opencode_path")?);
+        store.set_default_model(parse_meta::<String>(&meta, "default_model")?);
+        store.load_model_profiles(parse_meta(&meta, "model_profiles")?);
+        store.set_active_model_profile(parse_meta(&meta, "active_model_profile")?);
+        store.set_max_concurrent_runs(parse_meta(&meta, "max_concurrent_runs")?);
+        store.set_max_concurrent_automations(parse_meta(&meta, "max_concurrent_automations")?);
+        store.set_research_config(parse_meta(&meta, "research_config")?);
+        store.set_appearance(parse_meta(&meta, "appearance")?);
+        store.set_last_active_project(parse_meta(&meta, "last_active_project")?);
+        store.set_automation_schema_version(parse_meta(&meta, "automation_schema_version")?);
+        store.set_report_publishing(parse_meta(&meta, "report_publishing")?);
+        store.load_publications(parse_meta(&meta, "publications")?);
+        store.load_topics(parse_meta(&meta, "topics")?)?;
+        store.load_requests(parse_meta(&meta, "research_requests")?)?;
 
-        store.tasks = load_rows(&transaction, "tasks", &self.root, WorkTable::Tasks)?;
-        store.projects = load_rows(&transaction, "projects", &self.root, WorkTable::Projects)?;
+        store.load_tasks(load_rows(
+            &transaction,
+            "tasks",
+            &self.root,
+            WorkTable::Tasks,
+        )?)?;
+        store.load_projects(load_rows(
+            &transaction,
+            "projects",
+            &self.root,
+            WorkTable::Projects,
+        )?)?;
         let runs = load_runs(&transaction, &self.root)?;
-        store.policies = load_policies(&transaction)?;
+        store.load_policies(load_policies(&transaction)?)?;
         let automations = load_rows(
             &transaction,
             "automations",
@@ -649,9 +662,11 @@ impl SqliteV4 {
             WorkTable::Automations,
         )?;
         let occurrences = load_occurrences(&transaction)?;
-        let store = store
+        let mut store = store
             .with_loaded_tracked(runs, automations, occurrences)
             .map_err(|(_, error)| error)?;
+        // Loading is the durable baseline, never a pending change.
+        store.clear_all_tracking();
         transaction
             .commit()
             .map_err(|error| format!("cannot finish read transaction: {error}"))?;
@@ -941,6 +956,10 @@ fn upsert_payload(
     match payload {
         EntityPayload::Task(task) => upsert_task(transaction, task),
         EntityPayload::Project(project) => upsert_project(transaction, project, root),
+        EntityPayload::Topic(topic) => upsert_meta_entity(transaction, "topics", topic.id, topic),
+        EntityPayload::ResearchRequest(request) => {
+            upsert_meta_entity(transaction, "research_requests", request.id, request)
+        }
         EntityPayload::Policy(policy) => upsert_policy(transaction, policy),
         EntityPayload::Run(run) => upsert_run(transaction, run, root),
         EntityPayload::Automation(automation) => upsert_automation(transaction, automation, root),
@@ -1179,6 +1198,10 @@ fn delete_entity(
                 .execute("DELETE FROM projects WHERE id=?1", [sql_i64(*id, "project id")?])
                 .map_err(|error| error.to_string())?;
         }
+        EntityKey::Topic(id) => delete_meta_entity(transaction, "topics", *id)?,
+        EntityKey::ResearchRequest(id) => {
+            delete_meta_entity(transaction, "research_requests", *id)?
+        }
         EntityKey::Run(id) => {
             transaction
                 .execute("DELETE FROM run_bodies WHERE run_id=?1", [sql_i64(*id, "run id")?])
@@ -1218,6 +1241,70 @@ fn delete_entity(
     Ok(())
 }
 
+/// Topics and research requests live in one metadata JSON array today. An
+/// incremental change still updates exactly one element and preserves order.
+fn read_meta_collection(
+    transaction: &rusqlite::Transaction<'_>,
+    field: &str,
+) -> Result<Vec<Value>, String> {
+    let payload: Option<String> = transaction
+        .query_row("SELECT payload FROM meta WHERE key=?1", [field], |row| row.get(0))
+        .optional()
+        .map_err(|error| error.to_string())?;
+    match payload {
+        Some(payload) => serde_json::from_str(&payload)
+            .map_err(|error| format!("cannot read metadata collection {field}: {error}")),
+        None => Ok(Vec::new()),
+    }
+}
+
+fn write_meta_collection(
+    transaction: &rusqlite::Transaction<'_>,
+    field: &str,
+    values: &[Value],
+) -> Result<(), String> {
+    transaction
+        .execute(
+            "INSERT INTO meta(key,payload) VALUES(?1,?2) \
+             ON CONFLICT(key) DO UPDATE SET payload=excluded.payload",
+            params![field, Value::Array(values.to_vec()).to_string()],
+        )
+        .map_err(|error| format!("cannot write metadata collection {field}: {error}"))?;
+    Ok(())
+}
+
+fn upsert_meta_entity<T: serde::Serialize>(
+    transaction: &rusqlite::Transaction<'_>,
+    field: &str,
+    id: u64,
+    entity: &T,
+) -> Result<(), String> {
+    let mut values = read_meta_collection(transaction, field)?;
+    let value = serde_json::to_value(entity).map_err(|error| error.to_string())?;
+    let index = values
+        .iter()
+        .position(|candidate| candidate.get("id").and_then(Value::as_u64) == Some(id));
+    match index {
+        Some(index) => values[index] = value,
+        None => values.push(value),
+    }
+    write_meta_collection(transaction, field, &values)
+}
+
+fn delete_meta_entity(
+    transaction: &rusqlite::Transaction<'_>,
+    field: &str,
+    id: u64,
+) -> Result<(), String> {
+    let mut values = read_meta_collection(transaction, field)?;
+    let before = values.len();
+    values.retain(|candidate| candidate.get("id").and_then(Value::as_u64) != Some(id));
+    if values.len() != before {
+        write_meta_collection(transaction, field, &values)?;
+    }
+    Ok(())
+}
+
 fn apply_metadata(
     transaction: &rusqlite::Transaction<'_>,
     delta: &MetadataDelta,
@@ -1236,6 +1323,7 @@ fn apply_metadata(
 fn metadata_value(delta: &MetadataDelta) -> Result<Value, String> {
     match delta {
         MetadataDelta::NextId(value) => serde_json::to_value(value),
+        MetadataDelta::RunIdFloor(value) => serde_json::to_value(value),
         MetadataDelta::DefaultModel(value) => serde_json::to_value(value),
         MetadataDelta::OpenCodePath(value) => serde_json::to_value(value),
         MetadataDelta::Appearance(value) => serde_json::to_value(value),
@@ -1259,41 +1347,42 @@ fn seed_metadata(
     store: &Store,
 ) -> Result<(), String> {
     let values = [
-        ("next_id", serde_json::to_value(store.next_id)),
-        ("opencode_path", serde_json::to_value(&store.opencode_path)),
-        ("default_model", serde_json::to_value(&store.default_model)),
-        ("model_profiles", serde_json::to_value(&store.model_profiles)),
+        ("next_id", serde_json::to_value(&store.next_id())),
+        ("run_id_floor", serde_json::to_value(&store.run_id_floor())),
+        ("opencode_path", serde_json::to_value(&store.opencode_path())),
+        ("default_model", serde_json::to_value(&store.default_model())),
+        ("model_profiles", serde_json::to_value(&store.model_profiles())),
         (
             "active_model_profile",
-            serde_json::to_value(&store.active_model_profile),
+            serde_json::to_value(&store.active_model_profile()),
         ),
         (
             "max_concurrent_runs",
-            serde_json::to_value(store.max_concurrent_runs),
+            serde_json::to_value(store.max_concurrent_runs()),
         ),
         (
             "max_concurrent_automations",
-            serde_json::to_value(store.max_concurrent_automations),
+            serde_json::to_value(store.max_concurrent_automations()),
         ),
-        ("research_config", serde_json::to_value(&store.research_config)),
-        ("appearance", serde_json::to_value(store.appearance)),
+        ("research_config", serde_json::to_value(&store.research_config())),
+        ("appearance", serde_json::to_value(store.appearance())),
         (
             "last_active_project",
-            serde_json::to_value(store.last_active_project),
+            serde_json::to_value(store.last_active_project()),
         ),
         (
             "automation_schema_version",
-            serde_json::to_value(store.automation_schema_version),
+            serde_json::to_value(store.automation_schema_version()),
         ),
         (
             "report_publishing",
-            serde_json::to_value(&store.report_publishing),
+            serde_json::to_value(&store.report_publishing()),
         ),
-        ("publications", serde_json::to_value(&store.publications)),
-        ("topics", serde_json::to_value(&store.topics)),
+        ("publications", serde_json::to_value(&store.publications())),
+        ("topics", serde_json::to_value(&store.topics())),
         (
             "research_requests",
-            serde_json::to_value(&store.research_requests),
+            serde_json::to_value(&store.research_requests()),
         ),
     ];
     for (key, value) in values {
@@ -1318,6 +1407,20 @@ fn parse_meta<T: DeserializeOwned>(meta: &BTreeMap<String, Value>, key: &str) ->
         .get(key)
         .ok_or_else(|| format!("missing metadata field {key}"))?;
     serde_json::from_value(value.clone()).map_err(|error| format!("invalid metadata {key}: {error}"))
+}
+
+/// Older v4 databases predate a metadata field. A missing value uses the
+/// current domain default instead of rejecting the whole workspace.
+fn parse_meta_or<T: DeserializeOwned>(
+    meta: &BTreeMap<String, Value>,
+    key: &str,
+    default: T,
+) -> Result<T, String> {
+    match meta.get(key) {
+        Some(value) => serde_json::from_value(value.clone())
+            .map_err(|error| format!("invalid metadata {key}: {error}")),
+        None => Ok(default),
+    }
 }
 
 fn load_rows<T: DeserializeOwned>(
@@ -1692,13 +1795,13 @@ fn read_user_version(path: &Path) -> Result<i64, String> {
 
 fn validate_store(store: &Store) -> Result<(), String> {
     let mut ids = HashSet::new();
-    for task in &store.tasks {
+    for task in store.tasks() {
         if !ids.insert(("task", task.id)) {
             return Err(format!("duplicate task id {} before migration", task.id));
         }
     }
     let mut ids = HashSet::new();
-    for project in &store.projects {
+    for project in store.projects() {
         if !ids.insert(project.id) {
             return Err(format!("duplicate project id {} before migration", project.id));
         }
@@ -1922,9 +2025,9 @@ mod tests {
         let mut store = Store::mock();
         let project_directory = root.join("project");
         fs::create_dir_all(&project_directory).unwrap();
-        store.projects[0].directory = project_directory.to_string_lossy().into_owned();
-        store.default_model = "qa/model".into();
-        store.research_config.models = std::array::from_fn(|_| "qa/model".into());
+        store.project_at_mut(0).unwrap().directory = project_directory.to_string_lossy().into_owned();
+        store.set_default_model("qa/model".into());
+        store.research_config_mut().models = std::array::from_fn(|_| "qa/model".into());
         let schedule = Schedule {
             spec: ScheduleSpec::Interval { minutes: 10 },
             timezone: "UTC".into(),
@@ -2517,7 +2620,7 @@ mod tests {
             occurrence.final_run_id = None;
             store.push_occurrence(occurrence);
         }
-        store.next_id = store.next_id.max(start + count as u64);
+        store.set_next_id(store.next_id.max(start + count as u64));
     }
 
     #[test]
@@ -2915,7 +3018,7 @@ mod tests {
     fn relocation_codec_preserves_paths_and_stale_signatures() {
         let root = temp_root("relocate");
         let mut store = fixture_store(&root);
-        let project_directory = store.projects[0].directory.clone();
+        let project_directory = store.project_at_mut(0).unwrap().directory.clone();
         let automation = store.automations()[0].id;
         let signature = format!(
             "[1,\"name\",\"brief\",\"scope\",null,\"{}\",null,null]",
@@ -2937,7 +3040,7 @@ mod tests {
             .unwrap()
             .load_store()
             .unwrap();
-        assert!(Path::new(&relocated.projects[0].directory).starts_with(&moved));
+        assert!(Path::new(&relocated.project_at_mut(0).unwrap().directory).starts_with(&moved));
         let binding = relocated.automation(automation).unwrap().plan_binding.clone().unwrap();
         assert!(binding.input_signature.contains(moved.to_string_lossy().as_ref()));
         let stale = relocated
@@ -2994,7 +3097,7 @@ pub fn crash_child() {
             let mut store = Store::mock();
             let directory = root.join("project");
             std::fs::create_dir_all(&directory).unwrap();
-            store.projects[0].directory = directory.to_string_lossy().into_owned();
+            store.project_at_mut(0).unwrap().directory = directory.to_string_lossy().into_owned();
             crate::sqlite_storage::save(&path, &root, &store).unwrap_or_else(|error| fail(error));
         }
         "after-commit" => {
@@ -3044,9 +3147,9 @@ fn crash_fixture(root: &Path) -> Store {
     let mut store = Store::mock();
     let directory = root.join("project");
     std::fs::create_dir_all(&directory).unwrap();
-    store.projects[0].directory = directory.to_string_lossy().into_owned();
-    store.default_model = "qa/model".into();
-    store.research_config.models = std::array::from_fn(|_| "qa/model".into());
+    store.project_at_mut(0).unwrap().directory = directory.to_string_lossy().into_owned();
+    store.set_default_model("qa/model".into());
+    store.research_config_mut().models = std::array::from_fn(|_| "qa/model".into());
     let template = crate::automation_execution::build_quick_template(
         "Check one value.",
         "One answer.",

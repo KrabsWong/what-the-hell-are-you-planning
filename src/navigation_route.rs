@@ -1,19 +1,20 @@
-//! T12 S1: pure typed navigation core.
+//! T12 typed navigation authority.
 //!
-//! This module is deliberately free of `TaskApp`, `Window`, `FocusHandle`,
-//! `InputState`, `Storage` and runtime state. It owns route identity, the
-//! legal overlay stack, bounded return frames and owner validation. The app
-//! adapter will capture scroll/focus, bind editor payloads and call these
-//! mutators only from explicit user commands.
+//! S1 delivered this pure core. S2 stores `NavState` on `TaskApp` as the single
+//! page-family identity and derives the legacy `Scope` projection read-only.
+//! The module remains free of `TaskApp`, `Window`, `FocusHandle`, `InputState`,
+//! `Storage` and runtime state. It owns route identity, the legal overlay stack,
+//! bounded return frames and owner validation. The app adapter captures
+//! scroll/focus, binds editor payloads and calls these mutators only from
+//! explicit user commands.
 //!
 //! The type system removes mutually exclusive destinations. Referential
 //! validity (a task/automation/occurrence/run still exists) is validated
 //! atomically before any mutation, so a rejected command leaves the state
 //! byte-for-byte unchanged.
 
-// S1 is intentionally pure and not wired into `TaskApp` yet. Remove this
-// allowance in S2 when the adapter starts consuming the API.
-#![allow(dead_code)]
+// S2: `TaskApp` now stores this route as the single page-family authority;
+// `Scope` is derived read-only. Selection/overlay payloads migrate later.
 
 use std::collections::BTreeMap;
 
@@ -323,6 +324,62 @@ impl Route {
                 _ => None,
             },
             _ => None,
+        }
+    }
+
+    /// Build the typed route for one legacy page-family `Scope`. This is the
+    /// S2 migration seam: `Scope` remains the projection vocabulary for the
+    /// sidebar/collection code, but it is no longer stored.
+    ///
+    /// The route this returns may still be rejected by `NavState::new` when an
+    /// owner has disappeared (deleted project/topic); callers fall back to a
+    /// valid route rather than keeping a contradictory page.
+    pub(crate) fn for_scope(
+        scope: &Scope,
+        all_status: AllStatus,
+        layout: Layout,
+        results_filter: Option<AutomationId>,
+        history_limit: usize,
+    ) -> Route {
+        use ResearchScope::*;
+        match scope {
+            Scope::All => Self::research_list(All, all_status, layout),
+            Scope::Project(id) => Self::research_list(Project(*id), all_status, layout),
+            Scope::Topic(id) => Self::research_list(Topic(*id), all_status, layout),
+            Scope::Cycle(name) => Self::research_list(Cycle(name.clone()), all_status, layout),
+            Scope::Archive => Self::research_list(Archive, all_status, layout),
+            Scope::Runs => Self::research_result(ResultOwner::OrdinaryPage, None),
+            Scope::Recovery => Self::PausedProjects,
+            Scope::Research => Self::MarketResearch,
+            Scope::Automations => Self::AutomationList,
+            Scope::AutomationRuns => {
+                Self::automation_results(results_filter, history_limit.max(1))
+            }
+            Scope::Settings => Self::Settings(SettingsPage::new(SettingsSection::General)),
+        }
+    }
+
+    /// Read-only projection used by the still-migrating selection/overlay code.
+    /// The typed route is the authority; this never gets stored beside it.
+    pub(crate) fn legacy_scope(&self) -> Scope {
+        match self {
+            Self::ResearchList(page) => match page.scope() {
+                ResearchScope::All => Scope::All,
+                ResearchScope::Project(id) => Scope::Project(*id),
+                ResearchScope::Topic(id) => Scope::Topic(*id),
+                ResearchScope::Cycle(name) => Scope::Cycle(name.clone()),
+                ResearchScope::Archive => Scope::Archive,
+            },
+            // Task and result pages project to the closest legacy family until
+            // S3 moves the selection fields into the typed page.
+            Self::ResearchTask(_) | Self::ResearchResult(_) => Scope::Runs,
+            Self::PausedProjects => Scope::Recovery,
+            Self::MarketResearch => Scope::Research,
+            Self::Settings(_) => Scope::Settings,
+            Self::AutomationList
+            | Self::AutomationDetail(_)
+            | Self::AutomationEditor(_) => Scope::Automations,
+            Self::AutomationResults(_) => Scope::AutomationRuns,
         }
     }
 }
@@ -646,6 +703,19 @@ impl NavState {
 
     pub(crate) fn route(&self) -> &Route {
         &self.route
+    }
+
+    /// Replace the page identity without inventing a return frame. Used by S2
+    /// scope transitions and same-family page updates while selection/overlay
+    /// payloads are still owned by the legacy fields. Validation is atomic: a
+    /// missing owner or an overlay that no longer matches the new base leaves
+    /// the previous state unchanged.
+    pub(crate) fn replace_route(&mut self, store: &Store, route: Route) -> Result<(), NavReject> {
+        let mut candidate = self.clone();
+        candidate.route = route;
+        candidate.validate(store)?;
+        *self = candidate;
+        Ok(())
     }
     pub(crate) fn overlays(&self) -> &[Overlay] {
         &self.overlays
@@ -1147,10 +1217,10 @@ fn route_for_period(
 fn validate_route(route: &Route, store: &Store) -> Result<(), NavReject> {
     match route {
         Route::ResearchList(page) => match page.scope() {
-            ResearchScope::Project(id) if !store.projects.iter().any(|p| p.id == *id) => {
+            ResearchScope::Project(id) if !store.projects().iter().any(|p| p.id == *id) => {
                 Err(NavReject::missing("project", *id))
             }
-            ResearchScope::Topic(id) if !store.topics.iter().any(|t| t.id == *id) => {
+            ResearchScope::Topic(id) if !store.topics().iter().any(|t| t.id == *id) => {
                 Err(NavReject::missing("topic", *id))
             }
             _ => Ok(()),
@@ -1249,7 +1319,7 @@ fn validate_result_owner(owner: ResultOwner, store: &Store) -> Result<(), NavRej
         }
         ResultOwner::PlanningProgress { request } => {
             let value = store
-                .research_requests
+                .research_requests()
                 .iter()
                 .find(|value| value.id == request)
                 .ok_or_else(|| NavReject::missing("request", request))?;
@@ -1592,22 +1662,22 @@ fn validate_overlay_owners(overlays: &[Overlay], store: &Store) -> Result<(), Na
                 }
             }
             Overlay::ProjectRename { project } | Overlay::FolderDialog { project } => {
-                if !store.projects.iter().any(|value| value.id == *project) {
+                if !store.projects().iter().any(|value| value.id == *project) {
                     return Err(NavReject::missing("project", *project));
                 }
             }
             Overlay::TopicEditor { project, topic } => {
-                if !store.projects.iter().any(|value| value.id == *project) {
+                if !store.projects().iter().any(|value| value.id == *project) {
                     return Err(NavReject::missing("project", *project));
                 }
                 if let Some(topic) = topic
-                    && !store.topics.iter().any(|value| value.id == *topic)
+                    && !store.topics().iter().any(|value| value.id == *topic)
                 {
                     return Err(NavReject::missing("topic", *topic));
                 }
             }
             Overlay::TopicMove { topic } => {
-                if !store.topics.iter().any(|value| value.id == *topic) {
+                if !store.topics().iter().any(|value| value.id == *topic) {
                     return Err(NavReject::missing("topic", *topic));
                 }
             }
@@ -1644,12 +1714,12 @@ fn structural_parent(route: &Route, store: &Store) -> Option<Route> {
                 ))
             }
             ResearchScope::Topic(topic) => store
-                .topics
+                .topics()
                 .iter()
                 .find(|value| value.id == *topic)
                 .and_then(|value| {
                     store
-                        .projects
+                        .projects()
                         .iter()
                         .find(|project| project.id == value.project_id)
                 })
@@ -1682,7 +1752,7 @@ fn structural_parent(route: &Route, store: &Store) -> Option<Route> {
                     Layout::List,
                 ));
             }
-            if store.projects.iter().any(|project| project.id == task.project_id) {
+            if store.projects().iter().any(|project| project.id == task.project_id) {
                 return Some(Route::research_list(
                     ResearchScope::Project(task.project_id),
                     AllStatus::All,
@@ -1785,9 +1855,9 @@ mod tests {
 
     fn base_store() -> Store {
         let mut store = Store::empty();
-        store.projects[0].directory = std::env::temp_dir().to_string_lossy().into_owned();
-        store.default_model = "test/model".into();
-        store.research_config.models =
+        store.project_at_mut(0).unwrap().directory = std::env::temp_dir().to_string_lossy().into_owned();
+        store.set_default_model("test/model".into());
+        store.research_config_mut().models =
             ["test/plan", "test/collect", "test/analyze", "test/advise"].map(String::from);
         store.policies = Store::mock().policies;
         store
@@ -2912,5 +2982,70 @@ mod tests {
             )
             .unwrap();
         assert_eq!(state.data_scope(&store), DataScope::Project(2));
+    }
+
+    #[test]
+    fn scope_route_adapter_round_trips_the_page_family() {
+        for scope in [
+            Scope::All,
+            Scope::Project(1),
+            Scope::Archive,
+            Scope::Runs,
+            Scope::Recovery,
+            Scope::Research,
+            Scope::Automations,
+            Scope::AutomationRuns,
+            Scope::Settings,
+        ] {
+            let route = Route::for_scope(&scope, AllStatus::All, Layout::List, Some(3), 20);
+            assert_eq!(
+                route.legacy_scope(),
+                scope,
+                "S2 projection must preserve the page family"
+            );
+        }
+        let cycle = Scope::Cycle("Q4".into());
+        assert_eq!(
+            Route::for_scope(&cycle, AllStatus::Open, Layout::Board, None, 20).legacy_scope(),
+            cycle
+        );
+    }
+
+    #[test]
+    fn scope_route_adapter_uses_the_typed_result_page() {
+        assert_eq!(
+            Route::for_scope(&Scope::Runs, AllStatus::All, Layout::List, None, 20),
+            Route::research_result(ResultOwner::OrdinaryPage, None)
+        );
+        assert_eq!(
+            Route::for_scope(&Scope::AutomationRuns, AllStatus::All, Layout::List, Some(3), 0),
+            Route::automation_results(Some(3), 1),
+            "the results history bound is always positive"
+        );
+    }
+
+    #[test]
+    fn replace_route_is_atomic_for_a_missing_owner() {
+        let store = base_store();
+        let mut state = NavState::new(&store, list_route()).unwrap();
+        let before = state.clone();
+        assert!(state
+            .replace_route(
+                &store,
+                Route::research_list(ResearchScope::Project(999), AllStatus::All, Layout::List),
+            )
+            .is_err());
+        assert_eq!(state, before, "a rejected route leaves the whole state unchanged");
+
+        state
+            .replace_route(
+                &store,
+                Route::research_list(ResearchScope::Project(1), AllStatus::All, Layout::Board),
+            )
+            .unwrap();
+        assert_eq!(
+            state.route(),
+            &Route::research_list(ResearchScope::Project(1), AllStatus::All, Layout::Board)
+        );
     }
 }

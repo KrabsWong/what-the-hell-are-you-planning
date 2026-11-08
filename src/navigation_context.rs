@@ -329,11 +329,11 @@ impl OriginStack {
 }
 
 fn project_exists(store: &Store, id: u64) -> bool {
-    store.projects.iter().any(|project| project.id == id)
+    store.projects().iter().any(|project| project.id == id)
 }
 
 fn topic_exists(store: &Store, id: u64) -> bool {
-    store.topics.iter().any(|topic| topic.id == id)
+    store.topics().iter().any(|topic| topic.id == id)
 }
 
 fn research_all(notice: &str) -> BackResolution {
@@ -444,7 +444,7 @@ pub(crate) fn validate_origin(origin: Origin, store: &Store) -> BackResolution {
             };
             let topic = match topic {
                 Some(id)
-                    if !store.topics.iter().any(|value| {
+                    if !store.topics().iter().any(|value| {
                         value.id == id && project.is_none_or(|project| value.project_id == project)
                     }) =>
                 {
@@ -678,7 +678,7 @@ pub(crate) fn resolve_creation_destination(
             }
         }
         CreationIntent::TopicNewGoal { topic } => {
-            let Some(value) = store.topics.iter().find(|value| value.id == topic) else {
+            let Some(value) = store.topics().iter().find(|value| value.id == topic) else {
                 return Err(CreationDestinationError::TopicMissing(topic));
             };
             if !project_exists(store, value.project_id) {
@@ -690,7 +690,7 @@ pub(crate) fn resolve_creation_destination(
             })
         }
         CreationIntent::TopicReplan { topic } => {
-            let Some(value) = store.topics.iter().find(|value| value.id == topic) else {
+            let Some(value) = store.topics().iter().find(|value| value.id == topic) else {
                 return Err(CreationDestinationError::TopicMissing(topic));
             };
             if !project_exists(store, value.project_id) {
@@ -720,7 +720,7 @@ pub(crate) fn resolve_creation_destination(
                     return Err(CreationDestinationError::ProjectMissing(*project));
                 }
                 Scope::Topic(topic) => {
-                    let Some(value) = store.topics.iter().find(|value| value.id == *topic) else {
+                    let Some(value) = store.topics().iter().find(|value| value.id == *topic) else {
                         return Err(CreationDestinationError::TopicMissing(*topic));
                     };
                     if !project_exists(store, value.project_id) {
@@ -735,7 +735,7 @@ pub(crate) fn resolve_creation_destination(
                 _ => {}
             }
             if let Some(project) = store
-                .last_active_project
+                .last_active_project()
                 .filter(|project| project_exists(store, *project))
             {
                 return Ok(CreationMode::NewTopic { project });
@@ -779,9 +779,9 @@ mod tests {
 
     fn store() -> Store {
         let mut store = Store::empty();
-        store.projects[0].directory = std::env::temp_dir().to_string_lossy().into_owned();
-        store.default_model = "test/model".into();
-        store.research_config.models =
+        store.project_at_mut(0).unwrap().directory = std::env::temp_dir().to_string_lossy().into_owned();
+        store.set_default_model("test/model".into());
+        store.research_config_mut().models =
             ["test/plan", "test/collect", "test/analyze", "test/advise"].map(String::from);
         store
     }
@@ -1305,12 +1305,12 @@ mod tests {
     fn global_destination_uses_last_active_then_first_visible() {
         let mut store = store();
         add_project(&mut store, 2, "Second");
-        store.last_active_project = Some(2);
+        store.set_last_active_project(Some(2));
         let destination =
             resolve_creation_destination(&store, CreationIntent::Global, &Scope::All, None).unwrap();
         assert_eq!(destination, CreationMode::NewTopic { project: 2 });
 
-        store.last_active_project = Some(9_999);
+        store.set_last_active_project(Some(9_999));
         let destination =
             resolve_creation_destination(&store, CreationIntent::Global, &Scope::All, None).unwrap();
         assert_eq!(destination, CreationMode::NewTopic { project: 1 });

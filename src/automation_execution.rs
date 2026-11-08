@@ -249,7 +249,7 @@ impl Store {
         now: i64,
     ) -> Result<usize, String> {
         let request = self
-            .research_requests
+            .research_requests()
             .iter()
             .find(|request| request.id == request_id)
             .ok_or("The planning request no longer exists.")?;
@@ -351,7 +351,7 @@ impl Store {
         template: Option<AutomationTemplate>,
         now: i64,
     ) -> Result<u64, String> {
-        if !self.projects.iter().any(|p| p.id == project) {
+        if !self.projects().iter().any(|p| p.id == project) {
             return Err("Choose an existing project.".into());
         }
         let id = self.next_automation_id()?;
@@ -480,7 +480,7 @@ impl Store {
             return Err("Restore the archived automation before editing it.".into());
         }
         let mut staged = definition;
-        if !self.projects.iter().any(|candidate| candidate.id == project) {
+        if !self.projects().iter().any(|candidate| candidate.id == project) {
             return Err("Choose an existing project.".into());
         }
         let next_shape = shape.unwrap_or(staged.shape);
@@ -591,7 +591,7 @@ impl Store {
         if definition.status == DefinitionStatus::Archived {
             return Err("Restore the archived automation before enabling it.".into());
         }
-        if !self.projects.iter().any(|p| p.id == definition.project_id) {
+        if !self.projects().iter().any(|p| p.id == definition.project_id) {
             return Err("Choose an existing project.".into());
         }
         let approval = approval_for(self, &definition, now, materials)?;
@@ -653,7 +653,7 @@ impl Store {
         if !definition.approval_current() {
             return Err("Review and approve the current version before resuming.".into());
         }
-        if !self.projects.iter().any(|p| p.id == definition.project_id) {
+        if !self.projects().iter().any(|p| p.id == definition.project_id) {
             return Err("The automation's project is unavailable. Choose another project first.".into());
         }
         let first = definition.schedule.first_after(now)?;
@@ -806,7 +806,7 @@ impl Store {
             .task(goal)
             .filter(|task| task.research.as_ref().is_some_and(|r| r.kind == ResearchKind::Goal))
             .ok_or("Choose an active research goal.")?;
-        if self.tasks.iter().any(|task| {
+        if self.tasks().iter().any(|task| {
             task.research
                 .as_ref()
                 .is_some_and(|r| r.goal_id == goal && r.kind != ResearchKind::Goal)
@@ -860,7 +860,7 @@ impl Store {
         if definition.version != occurrence.definition_version {
             return Err("The automation changed before this occurrence was committed.".into());
         }
-        if !self.projects.iter().any(|p| p.id == definition.project_id) {
+        if !self.projects().iter().any(|p| p.id == definition.project_id) {
             return Err("The automation's project is not available.".into());
         }
         let template = definition
@@ -881,10 +881,7 @@ impl Store {
                 definition.project_id,
                 format!("{} · {}", definition.name, label),
             )?;
-            self.topics
-                .iter_mut()
-                .find(|candidate| candidate.id == topic)
-                .unwrap()
+            self.topic_mut(topic).unwrap()
                 .automation_id = Some(definition.id);
             Some(topic)
         };
@@ -997,8 +994,8 @@ impl Store {
             return Err("No runnable step remains for this occurrence.".into());
         };
         let mut snapshot = self.clone();
-        snapshot.research_config.models = occurrence.snapshot.models.clone();
-        snapshot.research_config.agents = occurrence.snapshot.agents.clone();
+        snapshot.research_config_mut().models = occurrence.snapshot.models.clone();
+        snapshot.research_config_mut().agents = occurrence.snapshot.agents.clone();
         // The occurrence snapshot may name an agent that is no longer the default;
         // keep the effective agent explicit so the run uses the approved route.
         for kind in ResearchKind::ALL {
@@ -1008,8 +1005,8 @@ impl Store {
                 .agents
                 .get(index)
                 .and_then(|value| value.clone())
-                .unwrap_or_else(|| snapshot.research_config.default_agent.clone());
-            snapshot.research_config.agents[index] = Some(agent);
+                .unwrap_or_else(|| snapshot.research_config().default_agent.clone());
+            snapshot.research_config_mut().agents[index] = Some(agent);
         }
         let mut run = crate::research::prepare_run(&snapshot, task)?;
         run.automation_occurrence_id = Some(occurrence.id);
@@ -1111,8 +1108,8 @@ mod tests {
 
     fn store() -> Store {
         let mut store = Store::empty();
-        store.projects[0].directory = std::env::temp_dir().to_string_lossy().into();
-        store.default_model = "test/model".into();
+        store.project_at_mut(0).unwrap().directory = std::env::temp_dir().to_string_lossy().into();
+        store.set_default_model("test/model".into());
         store
     }
     fn definition(store: &mut Store) -> u64 {
@@ -1254,7 +1251,7 @@ mod tests {
     #[test]
     fn expected_only_actions_fail_at_domain_save_revision_and_approval_atomically() {
         let mut store = store();
-        store.research_config.models =
+        store.research_config_mut().models =
             ["test/plan", "test/collect", "test/analyze", "test/advise"].map(String::from);
         let schedule = Schedule {
             spec: ScheduleSpec::Daily { hour: 8, minute: 30 },
@@ -1317,7 +1314,7 @@ mod tests {
     #[test]
     fn approval_resolves_models_and_invalidates_on_version_change() {
         let mut store = store();
-        store.research_config.models = ["test/plan", "test/collect", "test/analyze", "test/advise"]
+        store.research_config_mut().models = ["test/plan", "test/collect", "test/analyze", "test/advise"]
             .map(String::from);
         let id = definition(&mut store);
         let approval = store
@@ -1389,7 +1386,7 @@ mod tests {
     #[test]
     fn research_planning_request_creates_no_topic_and_no_goals() {
         let mut store = store();
-        store.research_config.models = ["test/plan", "test/collect", "test/analyze", "test/advise"]
+        store.research_config_mut().models = ["test/plan", "test/collect", "test/analyze", "test/advise"]
             .map(String::from);
         let id = store
             .create_automation_draft(
@@ -1454,7 +1451,7 @@ mod tests {
             .create_automation_request(id, 1, "Objective A", "Expected A")
             .unwrap();
         let first_signature = store.request_plan_signature(first).unwrap();
-        let first_revision = store.research_requests[0].revision;
+        let first_revision = store.request_at_mut(0).unwrap().revision;
         let second = store
             .create_automation_request(id, 1, "Objective B", "Expected B")
             .unwrap();
@@ -1552,7 +1549,7 @@ mod tests {
     #[test]
     fn expected_only_change_cannot_enable_until_a_matching_plan_is_reviewed() {
         let mut store = store();
-        store.research_config.models =
+        store.research_config_mut().models =
             ["test/plan", "test/collect", "test/analyze", "test/advise"].map(String::from);
         let id = store
             .create_automation_draft(
@@ -1827,7 +1824,7 @@ mod tests {
     #[test]
     fn multi_goal_period_runs_goals_in_order_without_replanning() {
         let mut store = store();
-        store.research_config.models = ["test/plan", "test/collect", "test/analyze", "test/advise"]
+        store.research_config_mut().models = ["test/plan", "test/collect", "test/analyze", "test/advise"]
             .map(String::from);
         let plan = r#"{"topic_name":"Supply chain","brief":{"objective":"Track supply","deliverable":"Sourced note","scope":"Latest quarter","assumptions":[],"facts_to_verify":[]},"goals":[{"title":"Foundry capacity","brief":"Track announced capacity","tasks":[{"title":"Collect","instructions":"Collect filings","kind":"collect","depends_on":[]},{"title":"Analyze","instructions":"Compare capacity","kind":"analyze","depends_on":[0]},{"title":"Report","instructions":"Write the note","kind":"advise","depends_on":[1]}]},{"title":"Equipment orders","brief":"Track equipment bookings","tasks":[{"title":"Collect","instructions":"Collect orders","kind":"collect","depends_on":[]},{"title":"Analyze","instructions":"Compare orders","kind":"analyze","depends_on":[0]},{"title":"Report","instructions":"Write the note","kind":"advise","depends_on":[1]}]}]}"#;
         let parsed = crate::request_planning::parse_request_plan(plan).unwrap();
@@ -1889,7 +1886,7 @@ mod tests {
         let mut store = store();
         // Only the report step is configured; a quick task must not demand
         // collection or analysis models it will never use.
-        store.research_config.models = ["test/plan".into(), String::new(), String::new(), "test/advise".into()];
+        store.research_config_mut().models = ["test/plan".into(), String::new(), String::new(), "test/advise".into()];
         let template = build_quick_template(
             "Check today's fuel price in Shenzhen",
             "Current price with source",
@@ -2041,7 +2038,7 @@ mod tests {
     #[test]
     fn occurrence_run_uses_snapshot_model_and_time_window() {
         let mut store = store();
-        store.research_config.models = ["test/plan", "test/collect", "test/analyze", "test/advise"]
+        store.research_config_mut().models = ["test/plan", "test/collect", "test/analyze", "test/advise"]
             .map(String::from);
         let id = definition(&mut store);
         store
@@ -2070,8 +2067,8 @@ mod tests {
         assert!(run.prompt.contains("Previous local day"));
         assert_eq!(run.research_kind, Some(ResearchKind::Collect));
         // The approved snapshot still wins after a global model and agent change.
-        store.default_model = "test/changed".into();
-        store.research_config.default_agent = "Codex".into();
+        store.set_default_model("test/changed".into());
+        store.research_config_mut().default_agent = "Codex".into();
         let run = store
             .prepare_occurrence_run(&occurrence, 1_700_000_060)
             .unwrap();
@@ -2159,7 +2156,7 @@ mod tests {
     #[test]
     fn two_periods_have_distinct_reference_windows_paths_and_sessions() {
         let mut store = store();
-        store.research_config.models = ["test/plan", "test/collect", "test/analyze", "test/advise"]
+        store.research_config_mut().models = ["test/plan", "test/collect", "test/analyze", "test/advise"]
             .map(String::from);
         let id = definition(&mut store);
         store
@@ -2245,7 +2242,7 @@ mod tests {
     #[test]
     fn automation_topics_are_excluded_from_normal_publication() {
         let mut store = store();
-        store.research_config.models = ["test/plan", "test/collect", "test/analyze", "test/advise"]
+        store.research_config_mut().models = ["test/plan", "test/collect", "test/analyze", "test/advise"]
             .map(String::from);
         let id = definition(&mut store);
         store
@@ -2274,8 +2271,8 @@ mod tests {
         // Automations reuse the research agent choice; there is no separate
         // automation-only agent profile.
         let mut store = store();
-        store.research_config.agents[1] = Some("Codex".into());
-        store.research_config.models[1] = "fixture-codex".into();
+        store.research_config_mut().agents[1] = Some("Codex".into());
+        store.research_config_mut().models[1] = "fixture-codex".into();
         let id = definition(&mut store);
         let approval = store
             .approve_and_enable(id, vec![], 1_700_000_000)
@@ -2287,7 +2284,7 @@ mod tests {
     #[test]
     fn renaming_alone_keeps_the_approved_version() {
         let mut store = store();
-        store.research_config.models = ["test/plan", "test/collect", "test/analyze", "test/advise"]
+        store.research_config_mut().models = ["test/plan", "test/collect", "test/analyze", "test/advise"]
             .map(String::from);
         let id = definition(&mut store);
         store
@@ -2309,7 +2306,7 @@ mod tests {
     #[test]
     fn verified_recovery_resumes_schedule_but_never_user_pause() {
         let mut store = store();
-        store.research_config.models = ["test/plan", "test/collect", "test/analyze", "test/advise"]
+        store.research_config_mut().models = ["test/plan", "test/collect", "test/analyze", "test/advise"]
             .map(String::from);
         let id = definition(&mut store);
         store

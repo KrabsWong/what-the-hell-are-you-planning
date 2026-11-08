@@ -786,7 +786,7 @@ fn occurrence_context(
         version,
         occurrence
             .research_topic_id
-            .and_then(|topic| store.topics.iter().find(|candidate| candidate.id == topic))
+            .and_then(|topic| store.topics().iter().find(|candidate| candidate.id == topic))
             .map(|topic| format!("Period topic: {} (under Automations)", topic.display_name()))
             .unwrap_or_else(|| "Stored directly under Automations (no topic).".into()),
     )
@@ -839,7 +839,7 @@ impl TaskApp {
         if self.store.automation(id).is_none() {
             return;
         }
-        self.scope = Scope::Automations;
+        self.install_route(crate::navigation_route::Route::automation_detail(id));
         self.selected = None;
         self.automation_ui.selected = Some(id);
         self.automation_ui.creating = false;
@@ -965,7 +965,7 @@ impl TaskApp {
     }
 
     pub fn start_automation_create(&mut self, window: &mut Window, cx: &mut Context<Self>) {
-        self.scope = Scope::Automations;
+        self.install_route(crate::navigation_route::Route::automation_editor(None));
         self.selected = None;
         self.automation_ui.selected = None;
         self.automation_ui.creating = true;
@@ -1050,6 +1050,7 @@ impl TaskApp {
         let Some(definition) = self.store.automation(id).cloned() else {
             return;
         };
+        self.install_route(crate::navigation_route::Route::automation_editor(Some(id)));
         self.automation_ui.selected = Some(id);
         self.automation_ui.creating = true;
         self.automation_ui.editing = Some(id);
@@ -1224,7 +1225,7 @@ impl TaskApp {
                             .and_then(|run| run.planning_owner.as_ref())
                             .and_then(|owner| {
                                 self.store
-                                    .research_requests
+                                    .research_requests()
                                     .iter()
                                     .find(|request| request.id == owner.request_id)
                             })
@@ -1331,7 +1332,7 @@ impl TaskApp {
         {
             if let Some(saved) = self
                 .store
-                .research_requests
+                .research_requests()
                 .iter_mut()
                 .find(|candidate| candidate.id == request)
             {
@@ -1371,7 +1372,7 @@ impl TaskApp {
                 .and_then(|run| run.planning_owner.as_ref())
                 .and_then(|owner| {
                     self.store
-                        .research_requests
+                        .research_requests()
                         .iter()
                         .find(|request| request.id == owner.request_id)
                         .map(|request| (request, owner))
@@ -2333,7 +2334,7 @@ impl TaskApp {
         let colors = palette(cx);
         let project = self
             .store
-            .projects
+            .projects()
             .iter()
             .find(|p| p.id == definition.project_id)
             .map(|p| p.name.clone())
@@ -2625,7 +2626,7 @@ impl TaskApp {
         let next = next_trigger_labels(definition, Self::automation_now());
         let mut attempts: Vec<(u32, u64, String)> = self
             .store
-            .research_requests
+            .research_requests()
             .iter()
             .filter(|request| request.automation_id == Some(id))
             .flat_map(|request| {
@@ -2756,7 +2757,7 @@ impl TaskApp {
                         approval.models[index],
                         approval.agents[index].clone().unwrap_or_else(|| self
                             .store
-                            .research_config
+                            .research_config()
                             .default_agent
                             .clone())
                     )

@@ -41,6 +41,8 @@ use std::collections::VecDeque;
 pub(crate) enum WorkTable {
     Tasks,
     Projects,
+    Topics,
+    ResearchRequests,
     Runs,
     Policies,
     Automations,
@@ -52,11 +54,20 @@ impl WorkTable {
         match self {
             Self::Tasks => "tasks",
             Self::Projects => "projects",
+            Self::Topics => "topics",
+            Self::ResearchRequests => "research_requests",
             Self::Runs => "runs",
             Self::Policies => "policies",
             Self::Automations => "automations",
             Self::Occurrences => "automation_occurrences",
         }
+    }
+
+    /// Topics and research requests are stored in the workspace metadata row as
+    /// JSON collections in the current schema. The incremental writer updates one
+    /// element per change even though the physical row holds the collection.
+    pub(crate) fn is_metadata_collection(self) -> bool {
+        matches!(self, Self::Topics | Self::ResearchRequests)
     }
 }
 
@@ -66,6 +77,8 @@ impl WorkTable {
 pub(crate) enum EntityKey {
     Task(u64),
     Project(u64),
+    Topic(u64),
+    ResearchRequest(u64),
     Run(u64),
     Policy(u8),
     Automation(u64),
@@ -81,6 +94,8 @@ impl EntityKey {
         match self {
             Self::Task(_) => WorkTable::Tasks,
             Self::Project(_) => WorkTable::Projects,
+            Self::Topic(_) => WorkTable::Topics,
+            Self::ResearchRequest(_) => WorkTable::ResearchRequests,
             Self::Run(_) => WorkTable::Runs,
             Self::Policy(_) => WorkTable::Policies,
             Self::Automation(_) => WorkTable::Automations,
@@ -95,6 +110,8 @@ impl EntityKey {
 pub(crate) enum EntityPayload {
     Task(Task),
     Project(Project),
+    Topic(Topic),
+    ResearchRequest(ResearchRequest),
     Run(AgentRun),
     Policy(StagePolicy),
     Automation(AutomationDefinition),
@@ -106,6 +123,8 @@ impl EntityPayload {
         match self {
             Self::Task(task) => EntityKey::Task(task.id),
             Self::Project(project) => EntityKey::Project(project.id),
+            Self::Topic(topic) => EntityKey::Topic(topic.id),
+            Self::ResearchRequest(request) => EntityKey::ResearchRequest(request.id),
             Self::Run(run) => EntityKey::Run(run.id),
             Self::Policy(policy) => EntityKey::policy(policy.stage),
             Self::Automation(definition) => EntityKey::Automation(definition.id),
@@ -123,6 +142,8 @@ impl EntityPayload {
         match self {
             Self::Task(task) => task_heap(task),
             Self::Project(project) => project_heap(project),
+            Self::Topic(topic) => topic_heap(topic),
+            Self::ResearchRequest(request) => request_heap(request),
             Self::Run(run) => run_heap(run),
             Self::Policy(policy) => policy_heap(policy),
             Self::Automation(definition) => automation_heap(definition),
@@ -180,6 +201,9 @@ impl EntityChange {
 #[derive(Clone, Debug, PartialEq, Serialize)]
 pub(crate) enum MetadataDelta {
     NextId(u64),
+    /// Next unreserved run id. Must survive seed/load and every incremental
+    /// write: resolution reserves ids asynchronously before a run exists.
+    RunIdFloor(u64),
     DefaultModel(String),
     OpenCodePath(String),
     Appearance(Appearance),
@@ -200,6 +224,7 @@ impl MetadataDelta {
     pub(crate) fn field(&self) -> &'static str {
         match self {
             Self::NextId(_) => "next_id",
+            Self::RunIdFloor(_) => "run_id_floor",
             Self::DefaultModel(_) => "default_model",
             Self::OpenCodePath(_) => "opencode_path",
             Self::Appearance(_) => "appearance",
@@ -1459,6 +1484,7 @@ fn publishing_config_heap(value: usize, config: &PublishingConfig) -> usize {
 fn metadata_heap(delta: &MetadataDelta) -> usize {
     match delta {
         MetadataDelta::NextId(_)
+        | MetadataDelta::RunIdFloor(_)
         | MetadataDelta::Appearance(_)
         | MetadataDelta::LastActiveProject(_)
         | MetadataDelta::AutomationSchemaVersion(_)
@@ -1796,9 +1822,9 @@ mod tests {
 
     fn atomic_automation_case() -> (u64, u64, AutomationDefinition, AutomationOccurrence) {
         let mut store = Store::empty();
-        store.projects[0].directory = "/tmp/t14-s1a".into();
-        store.default_model = "qa/automation".into();
-        store.research_config.models = std::array::from_fn(|_| "qa/automation".into());
+        store.project_at_mut(0).unwrap().directory = "/tmp/t14-s1a".into();
+        store.set_default_model("qa/automation".into());
+        store.research_config_mut().models = std::array::from_fn(|_| "qa/automation".into());
         let schedule = Schedule {
             spec: ScheduleSpec::Interval { minutes: 10 },
             timezone: "UTC".into(),

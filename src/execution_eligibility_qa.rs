@@ -165,10 +165,10 @@ fn ordinary_progress_matrix(root: &Path) {
             std::fs::create_dir_all(&directory).unwrap();
             let path = directory.join("workspace.sqlite3");
             let mut store = Store::empty();
-            store.appearance = mode;
-            store.default_model = "fixture/model".into();
-            store.projects[0].directory = directory.to_string_lossy().into();
-            store.research_config.models = ["fixture/plan", "fixture/collect", "fixture/analyze", "fixture/report"]
+            store.set_appearance(mode);
+            store.set_default_model("fixture/model".into());
+            store.project_at_mut(0).unwrap().directory = directory.to_string_lossy().into();
+            store.research_config_mut().models = ["fixture/plan", "fixture/collect", "fixture/analyze", "fixture/report"]
                 .map(String::from);
             let goal = store
                 .create_research_goal("Ordinary goal".into(), "Check ordinary progress.".into(), 1)
@@ -267,10 +267,10 @@ fn scroll_to(w: &mut Window, cx: &mut App, id: &str) {
 
 fn fixture(mode: Appearance, directory: &Path) -> (Store, u64, Vec<u64>, u64) {
     let mut store = Store::empty();
-    store.appearance = mode;
-    store.default_model = "fixture/model".into();
-    store.projects[0].directory = directory.to_string_lossy().into();
-    store.research_config.models = ["fixture/plan", "fixture/collect", "fixture/analyze", "fixture/report"]
+    store.set_appearance(mode);
+    store.set_default_model("fixture/model".into());
+    store.project_at_mut(0).unwrap().directory = directory.to_string_lossy().into();
+    store.research_config_mut().models = ["fixture/plan", "fixture/collect", "fixture/analyze", "fixture/report"]
         .map(String::from);
     let topic = store.create_topic(1, "Automation topic").unwrap();
     let goal = store

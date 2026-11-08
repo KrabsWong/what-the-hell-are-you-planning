@@ -388,7 +388,7 @@ pub(crate) fn preview_directory_change(
     project: u64,
     new_directory: &str,
 ) -> Result<DirectoryChangeImpact, String> {
-    let Some(current) = store.projects.iter().find(|p| p.id == project) else {
+    let Some(current) = store.projects().iter().find(|p| p.id == project) else {
         return Err("Project not found.".into());
     };
     if current.kind == ProjectKind::Automation {
@@ -420,7 +420,7 @@ pub(crate) fn preview_directory_change(
     let mut retained_matching_results = 0;
     let mut review_required = false;
     let goal_ids: Vec<u64> = store
-        .tasks
+        .tasks()
         .iter()
         .filter(|task| {
             task.project_id == project
@@ -674,7 +674,7 @@ fn impact(
     // whether the user sees it.
     let confirmation_required = review_required || !affected_input_steps.is_empty();
     let mut other_goals_affected = Vec::new();
-    for task in &after.tasks {
+    for task in after.tasks() {
         if task.id == goal || task.archived {
             continue;
         }
@@ -894,7 +894,7 @@ pub(crate) fn automation_owned_task(store: &Store, id: u64) -> bool {
 fn automation_owned(store: &Store, task: &Task) -> bool {
     task.automation_id.is_some()
         || store
-            .projects
+            .projects()
             .iter()
             .find(|project| project.id == task.project_id)
             .is_some_and(|project| project.kind == ProjectKind::Automation)
@@ -936,9 +936,9 @@ mod tests {
     /// Goal B (project 2) is a separate three-step goal with completed results.
     fn fixture() -> (Store, u64, Vec<u64>, u64, Vec<u64>) {
         let mut store = Store::mock();
-        store.projects[0].directory = "/tmp/t21-one".into();
-        store.projects[1].directory = "/tmp/t21-two".into();
-        store.research_config.models =
+        store.project_at_mut(0).unwrap().directory = "/tmp/t21-one".into();
+        store.project_at_mut(1).unwrap().directory = "/tmp/t21-two".into();
+        store.research_config_mut().models =
             ["test/plan", "test/search", "test/analysis", "test/brief"].map(String::from);
         let goal = store
             .create_research_goal("Goal A".into(), "Scope A".into(), 1)
@@ -1335,8 +1335,8 @@ mod tests {
     #[test]
     fn directory_preview_without_any_run_still_reports_changed_inputs_and_review() {
         let mut store = Store::mock();
-        store.projects[0].directory = "/tmp/t21-empty".into();
-        store.research_config.models =
+        store.project_at_mut(0).unwrap().directory = "/tmp/t21-empty".into();
+        store.research_config_mut().models =
             ["test/plan", "test/search", "test/analysis", "test/brief"].map(String::from);
         let goal = store
             .create_research_goal("Empty goal".into(), "No runs yet".into(), 1)
@@ -1414,8 +1414,8 @@ mod tests {
     #[test]
     fn input_edit_without_any_retained_result_still_requires_confirmation() {
         let mut store = Store::mock();
-        store.projects[0].directory = "/tmp/t21-empty-confirm".into();
-        store.research_config.models =
+        store.project_at_mut(0).unwrap().directory = "/tmp/t21-empty-confirm".into();
+        store.research_config_mut().models =
             ["test/plan", "test/search", "test/analysis", "test/brief"].map(String::from);
         let goal = store
             .create_research_goal("Never run".into(), "No results".into(), 1)

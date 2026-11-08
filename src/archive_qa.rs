@@ -31,8 +31,8 @@ pub fn run() {
 
 fn completed_goal(directory: &Path) -> (Store, u64, Vec<u64>) {
     let mut store = Store::empty();
-    store.projects[0].directory = directory.to_string_lossy().into();
-    store.default_model = "qa/archive".into();
+    store.project_at_mut(0).unwrap().directory = directory.to_string_lossy().into();
+    store.set_default_model("qa/archive".into());
     let topic = store.create_topic(1, "Archive QA topic").unwrap();
     let goal = store
         .create_research_goal_in_topic(
@@ -114,15 +114,15 @@ fn ordinary_status_check(directory: &Path, mode: Appearance, width: f32, height:
     let scenario = directory.join(format!("ordinary-status-{mode:?}-{width}"));
     std::fs::create_dir_all(&scenario).unwrap();
     let mut store = Store::empty();
-    store.projects[0].directory = scenario.to_string_lossy().into();
-    store.appearance = mode;
+    store.project_at_mut(0).unwrap().directory = scenario.to_string_lossy().into();
+    store.set_appearance(mode);
     let task = store
         .create_task("Ordinary status layout", 1, Stage::InProgress, None)
         .unwrap();
     let path = scenario.join("workspace.sqlite3");
     Storage::new(path.clone()).save(&store).unwrap();
     let (mut cx, handle, _app) = with_app(store, &path, width, height, |a, _, _| {
-        a.scope = Scope::Project(1);
+        a.set_scope_identity(Scope::Project(1));
         a.selected = Some(task);
     });
     cx.update_window(handle, |_, w, cx| {
@@ -138,7 +138,7 @@ fn list_and_board(directory: &Path, mode: Appearance, width: f32, height: f32) {
         let scenario = directory.join(format!("archive-{layout:?}"));
         std::fs::create_dir_all(&scenario).unwrap();
         let (mut store, goal, _) = completed_goal(&scenario);
-        store.appearance = mode;
+        store.set_appearance(mode);
         store.archive(goal).unwrap();
         let path = scenario.join("workspace.sqlite3");
         Storage::new(path.clone()).save(&store).unwrap();
@@ -147,7 +147,7 @@ fn list_and_board(directory: &Path, mode: Appearance, width: f32, height: f32) {
             Layout::Board => "board",
         });
         let (mut cx, handle, app) = with_app(store, &path, width, height, |a, _, _| {
-            a.scope = Scope::All;
+            a.set_scope_identity(Scope::All);
             a.layout = layout;
             a.show_done = false;
         });
@@ -168,7 +168,7 @@ fn list_and_board(directory: &Path, mode: Appearance, width: f32, height: f32) {
                 .unwrap_or_default();
             assert!(summary.starts_with("1 goals"), "{summary}");
             assert_eq!(app.read(cx).visible_tasks().len(), 1);
-            assert_eq!(app.read(cx).scope, Scope::Archive);
+            assert_eq!(app.read(cx).scope(), Scope::Archive);
             let status = if layout == Layout::List {
                 w.find(format!("task-status-{goal}"))
                     .label()
@@ -205,12 +205,12 @@ fn default_archive_visibility(directory: &Path, mode: Appearance, width: f32, he
     let scenario = directory.join("archive-default");
     std::fs::create_dir_all(&scenario).unwrap();
     let (mut store, goal, _) = completed_goal(&scenario);
-    store.appearance = mode;
+    store.set_appearance(mode);
     store.archive(goal).unwrap();
     let path = scenario.join("workspace.sqlite3");
     Storage::new(path.clone()).save(&store).unwrap();
     let (mut cx, handle, app) = with_app(store, &path, width, height, |a, _, _| {
-        a.scope = Scope::All;
+        a.set_scope_identity(Scope::All);
         a.layout = Layout::List;
         // Default application state: completed items are shown.
         a.show_done = true;
@@ -234,12 +234,12 @@ fn detail_and_restore(directory: &Path, mode: Appearance, width: f32, height: f3
     let scenario = directory.join(format!("archive-detail-{mode:?}-{width}"));
     std::fs::create_dir_all(&scenario).unwrap();
     let (mut store, goal, steps) = completed_goal(&scenario);
-    store.appearance = mode;
+    store.set_appearance(mode);
     store.archive(goal).unwrap();
     let path = scenario.join("workspace.sqlite3");
     Storage::new(path.clone()).save(&store).unwrap();
     let (mut cx, handle, app) = with_app(store, &path, width, height, |a, _, _| {
-        a.scope = Scope::Archive;
+        a.set_scope_identity(Scope::Archive);
         a.selected = Some(goal);
         a.layout = Layout::List;
     });
@@ -418,12 +418,12 @@ fn ancestor_archive_material_check(root: &Path) {
     let (mut store, goal, steps) = completed_goal(&scenario);
     let topic = store.task_topic(goal).unwrap().id;
     store.set_topic_archived(topic, true).unwrap();
-    store.appearance = Appearance::Light;
+    store.set_appearance(Appearance::Light);
     let path = scenario.join("workspace.sqlite3");
     Storage::new(path.clone()).save(&store).unwrap();
     let step = steps[0];
     let (mut cx, handle, app) = with_app(store, &path, 1000., 680., |a, _, _| {
-        a.scope = Scope::Archive;
+        a.set_scope_identity(Scope::Archive);
         a.selected = Some(step);
     });
     cx.update_window(handle, |_, w, cx| {
@@ -456,7 +456,7 @@ fn active_archive_confirmation(root: &Path) {
     let path = directory.join("active.sqlite3");
     Storage::new(path.clone()).save(&store).unwrap();
     let (mut cx, handle, app) = with_app(store, &path, 1000., 680., |a, _, _| {
-        a.scope = Scope::Archive;
+        a.set_scope_identity(Scope::Archive);
         a.selected = Some(goal);
     });
     // Headless platform prompts are queued but not rendered by `has_active_prompt`.
@@ -555,7 +555,7 @@ where
             view.update(cx, |a, cx| {
                 a.attach_storage(Storage::new(path.to_path_buf()), w, cx);
                 assert!(a.storage_error.is_empty(), "{}", a.storage_error);
-                let appearance = store.appearance;
+                let appearance = store.appearance();
                 a.store = store;
                 a.set_appearance(appearance, w, cx);
                 configure(a, w, cx);

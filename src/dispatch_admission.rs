@@ -951,8 +951,8 @@ fn extract_parts(prepared: &PreparedCommand) -> Result<AdmissionParts, String> {
         }
         None => None,
     };
-    let next_id = (prepared.staged.next_id != prepared.base.store().next_id)
-        .then_some(prepared.staged.next_id);
+    let next_id = (prepared.staged.next_id() != prepared.base.store().next_id())
+        .then_some(prepared.staged.next_id());
     Ok(AdmissionParts {
         operation_key: prepared.id.operation_key.clone(),
         run: staged_run,
@@ -1009,7 +1009,7 @@ pub(crate) fn apply_durable_parts(
         }
     }
     if let Some(next_id) = parts.next_id {
-        store.next_id = store.next_id.max(next_id);
+        store.set_next_id(store.next_id().max(next_id));
     }
     Ok(inserted)
 }
@@ -1074,9 +1074,9 @@ mod tests {
 
     fn prepared_dispatch_with_run(run_id: u64) -> (Store, PreparedCommand) {
         let mut store = Store::mock();
-        store.projects[0].directory = std::env::temp_dir().to_string_lossy().into_owned();
-        store.default_model = "fixture/model".into();
-        store.research_config.models = std::array::from_fn(|_| "fixture/model".to_string());
+        store.project_at_mut(0).unwrap().directory = std::env::temp_dir().to_string_lossy().into_owned();
+        store.set_default_model("fixture/model".into());
+        store.research_config_mut().models = std::array::from_fn(|_| "fixture/model".to_string());
         let goal = store
             .create_research_goal("Goal".into(), "Scope".into(), 1)
             .unwrap();
@@ -1538,7 +1538,7 @@ mod tests {
 
     fn adapter_prepared_for_test(root: &std::path::Path, id: u64) -> PreparedCommand {
         let (mut store, _) = prepared_dispatch();
-        store.projects[0].directory = root.to_string_lossy().into_owned();
+        store.project_at_mut(0).unwrap().directory = root.to_string_lossy().into_owned();
         let goal = store
             .create_research_goal("Second".into(), "Second".into(), 1)
             .unwrap();

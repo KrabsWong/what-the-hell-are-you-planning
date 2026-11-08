@@ -1,0 +1,6 @@
+{
+  "base": ".local/r55-owner-revised-snapshot",
+  "snapshot": ".local/r58-footer-snapshot",
+  "change": "Add w_full and min_w_0 to footer_bar rendered root only",
+  "views_sha256": "29e924210dbb20f7d62e3d39722538447bf0f05654f45cbf2b1db1e28abfbda6"
+}

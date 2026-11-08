@@ -34,14 +34,14 @@ pub fn header_layout() {
         .join(format!(".local/header-layout-qa/{}", std::process::id()));
     std::fs::create_dir_all(&root).unwrap();
     let mut store = Store::empty();
-    store.projects[0].name =
+    store.project_at_mut(0).unwrap().name =
         "Semiconductor industry research: cross-market long-term trends, supply bottlenecks and supply-chain opportunities".into();
-    store.projects[0].directory = root.to_string_lossy().into_owned();
-    store.default_model = "fixture/header".into();
-    store.opencode_path = "/bin/true".into();
-    store.research_config.default_agent = "OpenCode".into();
-    store.research_config.agents = std::array::from_fn(|_| Some("OpenCode".into()));
-    store.research_config.models = ["fixture/header"; 4].map(str::to_string);
+    store.project_at_mut(0).unwrap().directory = root.to_string_lossy().into_owned();
+    store.set_default_model("fixture/header".into());
+    store.set_opencode_path("/bin/true".into());
+    store.research_config_mut().default_agent = "OpenCode".into();
+    store.research_config_mut().agents = std::array::from_fn(|_| Some("OpenCode".into()));
+    store.research_config_mut().models = ["fixture/header"; 4].map(str::to_string);
     let topic = store
         .create_topic(
             1,
@@ -237,11 +237,11 @@ fn run_checks(layout_only: bool) {
             let cli = directory.join("fake-opencode");
             executable(&cli, CLI);
             let mut store = Store::empty();
-            store.appearance = mode;
-            store.projects[0].name = "Semiconductor industry research".into();
-            store.projects[0].directory = directory.to_string_lossy().into_owned();
-            store.default_model = "qa/isolated-model".into();
-            store.opencode_path = cli.to_string_lossy().into_owned();
+            store.set_appearance(mode);
+            store.project_at_mut(0).unwrap().name = "Semiconductor industry research".into();
+            store.project_at_mut(0).unwrap().directory = directory.to_string_lossy().into_owned();
+            store.set_default_model("qa/isolated-model".into());
+            store.set_opencode_path(cli.to_string_lossy().into_owned());
             let goal = store
                 .create_research_goal(
                     "AI compute chips and data-center semiconductor demand: demand structure, supply bottlenecks and value-chain changes over the next 12 months"
@@ -606,7 +606,7 @@ fn run_checks(layout_only: bool) {
                 let before = app.read(cx).store.clone();
                 w.click("research-task-result", cx);
                 assert_eq!(app.read(cx).selected_run, Some(report_id));
-                assert_eq!(app.read(cx).scope, Scope::Runs);
+                assert_eq!(app.read(cx).scope(), Scope::Runs);
                 assert!(w.find("research-result-scroll").visible());
                 assert_eq!(app.read(cx).store, before);
                 assert_eq!(app.read(cx).task_result_context, Some(goal));
@@ -618,7 +618,7 @@ fn run_checks(layout_only: bool) {
                     state.selected,
                     Some(goal),
                     "scope={:?} context={:?} tabs={:?}",
-                    state.scope,
+                    state.scope(),
                     state.task_result_context,
                     state.tabs
                 );
@@ -669,16 +669,16 @@ fn run_checks(layout_only: bool) {
                     a.open_task(steps[0], w, cx);
                 });
                 w.render_frame(cx);
-                assert_eq!(app.read(cx).scope, Scope::All);
+                assert_eq!(app.read(cx).scope(), Scope::All);
                 assert_eq!(app.read(cx).sidebar_scope(), Scope::Project(1));
                 assert!(app.read(cx).expanded_sidebar_projects.contains(&1));
                 assert!(w.try_find(format!("sidebar-task-{}", steps[0])).is_some());
-                let scope = app.read(cx).scope.clone();
+                let scope = app.read(cx).scope();
                 let selected = app.read(cx).selected;
                 click_in(w, cx, "sidebar-scroll", "expand-project-1");
                 assert!(w.try_find(format!("sidebar-task-{goal}")).is_none());
                 click_in(w, cx, "sidebar-scroll", "expand-project-1");
-                assert_eq!(app.read(cx).scope, scope);
+                assert_eq!(app.read(cx).scope(), scope);
                 assert_eq!(app.read(cx).selected, selected);
                 assert!(w.try_find(format!("sidebar-task-{goal}")).is_some());
             })
@@ -716,10 +716,10 @@ fn run_checks(layout_only: bool) {
                 );
                 assert_eq!(app.read(cx).selected, None);
                 assert_eq!(app.read(cx).task_result_context, Some(steps[0]));
-                assert_eq!(app.read(cx).scope, Scope::Runs);
+                assert_eq!(app.read(cx).scope(), Scope::Runs);
                 click_in(w, cx, "sidebar-scroll", "project-1");
                 assert_eq!(app.read(cx).selected, None);
-                assert_eq!(app.read(cx).scope, Scope::Project(1));
+                assert_eq!(app.read(cx).scope(), Scope::Project(1));
                 assert!(app.read(cx).expanded_sidebar_projects.contains(&1));
                 click_in(w, cx, "sidebar-scroll", "expand-project-1");
                 assert!(w.try_find(format!("sidebar-task-{goal}")).is_none());
@@ -815,7 +815,7 @@ fn run_checks(layout_only: bool) {
             cx.update_window(handle, |_, w, cx| {
                 let before = app.read(cx).store.clone();
                 w.click("research-settings-toggle", cx);
-                assert_eq!(app.read(cx).scope, Scope::Settings);
+                assert_eq!(app.read(cx).scope(), Scope::Settings);
                 assert!(w.try_find("research-settings-toggle").is_none());
                 assert!(
                     w.try_find("create-research").is_none(),
@@ -847,7 +847,7 @@ fn run_checks(layout_only: bool) {
                 w.click(format!("research-goal-{goal}"), cx);
                 assert_eq!(app.read(cx).selected, Some(goal));
                 w.click("project-1", cx);
-                assert_eq!(app.read(cx).scope, Scope::Project(1));
+                assert_eq!(app.read(cx).scope(), Scope::Project(1));
                 assert!(w.try_find("run-project-todo").is_some());
                 app.update(cx, |a, _| {
                     a.store.normalize_topics();
@@ -866,7 +866,7 @@ fn run_checks(layout_only: bool) {
             );
             cx.update_window(handle, |_, _, cx| {
                 app.update(cx, |a, cx| {
-                    a.store.research_config.ego_path = ego.to_string_lossy().into_owned();
+                    a.store.research_config_mut().ego_path = ego.to_string_lossy().into_owned();
                     // Explicit fixture reopen: mark the completed attempt as a
                     // failed prior attempt so the ordinary rerun is eligible
                     // without weakening the eligibility guard.
@@ -942,11 +942,11 @@ fn run_checks(layout_only: bool) {
             let (latest_id, other_run_id) = cx
                 .update_window(handle, |_, w, cx| {
                     let ids = app.update(cx, |a, cx| {
-                        let mut second = a.store.projects[0].clone();
+                        let mut second = a.store.projects()[0].clone();
                         second.id = 2;
                         second.name = "Memory industry research".into();
                         second.key = "MEM".into();
-                        a.store.projects.push(second);
+                        a.store.push_project(second);
                         let duplicate = a
                             .store
                             .create_research_goal(
@@ -1108,7 +1108,7 @@ fn run_checks(layout_only: bool) {
             screenshot(&mut cx, handle, &directory, "17-grouped-tasks.png");
             cx.update_window(handle, |_, w, cx| {
                 w.click("collection-project-2", cx);
-                assert_eq!(app.read(cx).scope, Scope::Project(2));
+                assert_eq!(app.read(cx).scope(), Scope::Project(2));
                 w.click("project-1", cx);
                 let title = w.find("collection-title").bounds();
                 let action = w.find("run-project-todo").bounds();
@@ -1205,14 +1205,14 @@ fn run_checks(layout_only: bool) {
             .unwrap();
             cx.run_until_parked();
             cx.update_window(handle, |_, w, cx| {
-                assert_eq!(app.read(cx).scope, Scope::Topic(1));
+                assert_eq!(app.read(cx).scope(), Scope::Topic(1));
                 w.render_frame(cx);
                 w.click("navigation-back", cx);
             })
             .unwrap();
             cx.run_until_parked();
             cx.update_window(handle, |_, _, cx| {
-                assert_eq!(app.read(cx).scope, Scope::Project(1));
+                assert_eq!(app.read(cx).scope(), Scope::Project(1));
                 assert!(app.read(cx).selected.is_none());
                 app.update(cx, |a, cx| a.view_task_result(steps[2], cx));
             })
@@ -1281,7 +1281,7 @@ fn run_checks(layout_only: bool) {
             screenshot(&mut cx, handle, &directory, "20-all-status.png");
             cx.update_window(handle, |_, w, cx| {
                 w.click("collection-project-1", cx);
-                assert_eq!(app.read(cx).scope, Scope::Project(1));
+                assert_eq!(app.read(cx).scope(), Scope::Project(1));
                 assert!(app.read(cx).query.is_empty());
                 assert!(w.find("navigation-back").visible());
                 w.click("board-view", cx);
@@ -1312,9 +1312,9 @@ fn run_checks(layout_only: bool) {
                 app.update(cx, |a, cx| a.open_task(goal, w, cx));
                 w.render_frame(cx);
                 w.click("navigation-back", cx);
-                assert_eq!(app.read(cx).scope, Scope::Topic(1));
+                assert_eq!(app.read(cx).scope(), Scope::Topic(1));
                 w.click("navigation-back", cx);
-                assert_eq!(app.read(cx).scope, Scope::Project(1));
+                assert_eq!(app.read(cx).scope(), Scope::Project(1));
                 assert!(app.read(cx).selected.is_none());
                 assert!(app.read(cx).layout == crate::app::Layout::Board);
             })
@@ -1322,7 +1322,7 @@ fn run_checks(layout_only: bool) {
             screenshot(&mut cx, handle, &directory, "21-project-return.png");
             cx.update_window(handle, |_, w, cx| {
                 w.click("navigation-back", cx);
-                assert_eq!(app.read(cx).scope, Scope::All);
+                assert_eq!(app.read(cx).scope(), Scope::All);
                 assert!(app.read(cx).query.is_empty());
                 assert!(w.try_find("navigation-back").is_none());
                 assert_eq!(
@@ -1399,7 +1399,7 @@ fn run_checks(layout_only: bool) {
 
             cx.update_window(handle, |_, w, cx| {
                 app.update(cx, |a, cx| {
-                    a.store.projects[0].name =
+                    a.store.project_at_mut(0).unwrap().name =
                         "Semiconductor industry research: cross-market long-term trends, supply bottlenecks and supply-chain opportunities".into();
                     cx.notify();
                 });
@@ -1495,24 +1495,24 @@ fn run_checks(layout_only: bool) {
                     a.store.push_run(run);
                     a.research_sequences.clear();
                     a.complete_research_run(run_id, cx);
-                    assert_eq!(a.scope, Scope::Settings, "Background planning must not change the user's page");
-                    let mut project = a.store.projects[0].clone();
+                    assert_eq!(a.scope(), Scope::Settings, "Background planning must not change the user's page");
+                    let mut project = a.store.projects()[0].clone();
                     project.id = 900; project.name = "Background project planning".into();
-                    a.store.projects.push(project);
+                    a.store.push_project(project);
                     let mut run = a.store.prepare_project_plan(900).unwrap();
                     run.status = "Succeeded".into();
                     run.output = r#"{"tasks":[{"title":"Local proposal","brief":"Only a navigation fixture."}]}"#.into();
                     a.store.push_run(run);
                     a.finalize_project_plan(a.store.runs().len()-1, Some(cx));
-                    assert_eq!(a.scope, Scope::Settings);
+                    assert_eq!(a.scope(), Scope::Settings);
                     a.navigate(Scope::All, w, cx);
                     let removed = a.store.create_task("Removed navigation target", 1, Stage::Backlog, None).unwrap();
                     a.open_task(removed, w, cx);
                     a.open_task(ordinary, w, cx);
-                    a.store.tasks.retain(|t| t.id != removed);
+                    a.store.retain_tasks(|t| t.id != removed);
                     a.go_back(w, cx);
                     assert_eq!(
-                        a.scope,
+                        a.scope(),
                         Scope::Topic(a.store.task_topic(ordinary).unwrap().id),
                         "Back falls back to the task's structural topic"
                     );
@@ -1560,12 +1560,12 @@ fn navigation_checks(
         w.click("navigation-back", cx);
         assert_eq!(app.read(cx).selected, Some(goal));
         w.click("navigation-back", cx);
-        assert_eq!(app.read(cx).scope, Scope::Topic(topic));
+        assert_eq!(app.read(cx).scope(), Scope::Topic(topic));
         w.click("navigation-back", cx);
-        assert_eq!(app.read(cx).scope, Scope::Project(project));
+        assert_eq!(app.read(cx).scope(), Scope::Project(project));
         assert!(app.read(cx).selected.is_none());
         w.press("cmd-[", cx);
-        assert_eq!(app.read(cx).scope, Scope::All);
+        assert_eq!(app.read(cx).scope(), Scope::All);
         assert!(w.try_find("navigation-back").is_none());
         // Opening a goal from an unrelated page must still return to its project.
         app.update(cx, |a, cx| {
@@ -1574,7 +1574,7 @@ fn navigation_checks(
         });
         w.render_frame(cx);
         w.click("navigation-back", cx);
-        assert_eq!(app.read(cx).scope, Scope::Topic(topic));
+        assert_eq!(app.read(cx).scope(), Scope::Topic(topic));
         app.update(cx, |a, cx| a.open_task(child, w, cx));
         w.render_frame(cx);
         assert!(w.try_find("location-parent").is_some());

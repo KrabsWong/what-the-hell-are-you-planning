@@ -27,9 +27,9 @@ struct Fixture {
 
 fn store(root: &Path) -> Store {
     let mut store = Store::empty();
-    store.projects[0].directory = root.to_string_lossy().into();
-    store.default_model = "fixture/navigation".into();
-    store.research_config.models =
+    store.project_at_mut(0).unwrap().directory = root.to_string_lossy().into();
+    store.set_default_model("fixture/navigation".into());
+    store.research_config_mut().models =
         ["fixture/plan", "fixture/collect", "fixture/analyze", "fixture/advise"].map(String::from);
     store
 }
@@ -93,7 +93,7 @@ fn add_extra_period(store: &mut Store, automation: u64, scheduled: i64) -> u64 {
 
 fn fixture(root: &Path) -> (Store, Fixture) {
     let mut store = store(root);
-    store.projects.push(crate::domain::Project {
+    store.push_project(crate::domain::Project {
         id: 2,
         name: "Second".into(),
         key: "P2".into(),
@@ -130,7 +130,7 @@ fn fixture(root: &Path) -> (Store, Fixture) {
             .unwrap();
     }
     let tasks = store
-        .tasks
+        .tasks()
         .iter()
         .filter(|task| task.parent_id.is_none() && task.id != goal)
         .map(|task| task.id)
@@ -417,7 +417,7 @@ pub fn run() {
         let row_id = app
             .read(cx)
             .store
-            .tasks
+            .tasks()
             .iter()
             .filter(|task| task.topic_id == Some(fixture.topic))
             .nth(4)
@@ -428,7 +428,7 @@ pub fn run() {
         assert_eq!(app.read(cx).selected, Some(row_id));
         w.click("navigation-back", cx);
         w.render_frame(cx);
-        assert_eq!(app.read(cx).scope, Scope::Topic(fixture.topic));
+        assert_eq!(app.read(cx).scope(), Scope::Topic(fixture.topic));
         assert!(app.read(cx).navigation.topic_scroll.offset().y < px(-10.));
     }).unwrap();
 
@@ -465,7 +465,7 @@ pub fn run() {
         assert!(app.read(cx).draft.is_none());
         w.click("navigation-back", cx);
         w.render_frame(cx);
-        assert_eq!(app.read(cx).scope, Scope::All);
+        assert_eq!(app.read(cx).scope(), Scope::All);
         // Save path on the same cleanly reopened task.
         let id = app.read(cx).visible_tasks()[0].id;
         w.click(format!("task-row-{id}"), cx);
@@ -545,7 +545,7 @@ pub fn run() {
         w.click("dirty-exit-discard", cx);
         w.render_frame(cx);
         assert!(!app.read(cx).automation_ui.creating);
-        assert_eq!(app.read(cx).scope, Scope::All);
+        assert_eq!(app.read(cx).scope(), Scope::All);
     }).unwrap();
 
     // 5. The planning composer is a modal surface: background mouse routes are
@@ -554,17 +554,10 @@ pub fn run() {
     cx.update_window(handle, |_, w, cx| {
         w.click("project-1", cx);
         w.render_frame(cx);
-        assert_eq!(app.read(cx).scope, Scope::Project(1));
-        eprintln!(
-            "NAVCTX footer bounds={:?} visible={} viewport={:?} planning={:?}",
-            w.find("footer-new-research").bounds(),
-            w.find("footer-new-research").visible(),
-            w.viewport_size(),
-            app.read(cx).planning_project
-        );
+        assert_eq!(app.read(cx).scope(), Scope::Project(1));
         w.click("footer-new-research", cx);
         w.render_frame(cx);
-        let before = app.read(cx).scope.clone();
+        let before = app.read(cx).scope().clone();
         assert!(w.try_find("planning-destination").is_some());
         app.update(cx, |a, cx| {
             a.retarget_planning_destination(2, w, cx);
@@ -574,7 +567,7 @@ pub fn run() {
         assert_eq!(app.read(cx).planning_destination.unwrap().project(), 2);
         w.click("project-plan-brief", cx);
         w.input("Dirty planning text", cx);
-        let location = app.read(cx).scope.clone();
+        let location = app.read(cx).scope().clone();
         for blocked in ["navigation-back", "all", "location-all", "open-tasks-menu"] {
             if w.try_find(blocked).is_none() {
                 continue;
@@ -598,7 +591,7 @@ pub fn run() {
                 "{blocked} behind the planning dialog must not dispatch a decision"
             );
             assert_eq!(
-                app.read(cx).scope,
+                app.read(cx).scope(),
                 location,
                 "{blocked} behind the planning dialog must not activate the page underneath"
             );
@@ -649,7 +642,7 @@ pub fn run() {
         assert!(w.try_find("dirty-exit-discard").is_some());
         w.click("dirty-exit-discard", cx);
         w.render_frame(cx);
-        assert_eq!(app.read(cx).scope, before);
+        assert_eq!(app.read(cx).scope(), before);
         assert!(app.read(cx).planning_destination.is_none());
         app.update(cx, |a, cx| {
             a.search.update(cx, |s, cx| s.set_value("", w, cx));
@@ -711,7 +704,7 @@ pub fn run() {
         w.render_frame(cx);
         w.click("navigation-back", cx);
         w.render_frame(cx);
-        assert_eq!(app.read(cx).scope, Scope::AutomationRuns);
+        assert_eq!(app.read(cx).scope(), Scope::AutomationRuns);
         assert_eq!(app.read(cx).automation_ui.result_dialog, Some(fixture.period));
         assert_eq!(
             app.read(cx).automation_ui.scroll.offset().y,
@@ -729,16 +722,16 @@ pub fn run() {
         w.render_frame(cx);
         w.click("project-plan-brief", cx);
         w.input("One saved request", cx);
-        let before = app.read(cx).store.research_requests.len();
+        let before = app.read(cx).store.research_requests().len();
         app.update(cx, |a, _| a.storage = None);
         w.click("save-project-context", cx);
         w.render_frame(cx);
-        assert_eq!(app.read(cx).store.research_requests.len(), before);
+        assert_eq!(app.read(cx).store.research_requests().len(), before);
         assert!(app.read(cx).planning_destination.is_some());
         app.update(cx, |a, _| a.storage = Some(Storage::new(path.clone())));
         w.click("save-project-context", cx);
         w.render_frame(cx);
-        assert_eq!(app.read(cx).store.research_requests.len(), before + 1);
+        assert_eq!(app.read(cx).store.research_requests().len(), before + 1);
     }).unwrap();
 
     // 8. Search from empty results returns to the same empty results page.
@@ -762,7 +755,7 @@ pub fn run() {
         w.render_frame(cx);
         w.click("navigation-back", cx);
         w.render_frame(cx);
-        assert_eq!(app.read(cx).scope, Scope::Runs);
+        assert_eq!(app.read(cx).scope(), Scope::Runs);
         assert!(app.read(cx).selected.is_none());
         assert!(app.read(cx).task_result_context.is_none());
     }).unwrap();
@@ -854,7 +847,7 @@ pub fn run() {
         w.click("draft-title", cx);
         w.input(" routed", cx);
         w.render_frame(cx);
-        let location = app.read(cx).scope.clone();
+        let location = app.read(cx).scope().clone();
         let selected = app.read(cx).selected;
         for blocked in ["navigation-back", "all", "open-tasks-menu"] {
             w.click(blocked, cx);
@@ -868,7 +861,7 @@ pub fn run() {
                 "{blocked} behind the editor must not dispatch a decision"
             );
             assert_eq!(
-                app.read(cx).scope,
+                app.read(cx).scope(),
                 location,
                 "{blocked} behind the editor must not activate the page underneath"
             );
@@ -1078,7 +1071,7 @@ fn size_theme_pass(
         w.render_frame(cx);
         w.click("navigation-back", cx);
         w.render_frame(cx);
-        assert_eq!(app.read(cx).scope, Scope::AutomationRuns);
+        assert_eq!(app.read(cx).scope(), Scope::AutomationRuns);
         assert_eq!(app.read(cx).automation_ui.result_dialog, Some(fixture.period));
     })
     .unwrap();
@@ -1087,16 +1080,9 @@ fn size_theme_pass(
     cx.update_window(handle, |_, w, cx| {
         w.click("close-automation-result", cx);
         w.render_frame(cx);
-        eprintln!(
-            "NAVCTX size footer bounds={:?} visible={} viewport={:?} scope={:?}",
-            w.find("footer-new-research").bounds(),
-            w.find("footer-new-research").visible(),
-            w.viewport_size(),
-            app.read(cx).scope
-        );
         w.click("footer-new-research", cx);
         w.render_frame(cx);
-        let before = app.read(cx).scope.clone();
+        let before = app.read(cx).scope().clone();
         let destination = w.find("planning-destination");
         assert!(destination.visible());
         assert!(destination.bounds().right() <= px(width));
@@ -1106,7 +1092,7 @@ fn size_theme_pass(
         assert_eq!(app.read(cx).planning_project, Some(2));
         w.click("planning-cancel", cx);
         w.render_frame(cx);
-        assert_eq!(app.read(cx).scope, before);
+        assert_eq!(app.read(cx).scope(), before);
         assert!(app.read(cx).planning_destination.is_none());
     })
     .unwrap();

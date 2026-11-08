@@ -1036,8 +1036,8 @@ mod tests {
 
     fn workspace() -> (Store, u64) {
         let mut store = Store::mock();
-        store.projects[0].directory = "/tmp".into();
-        store.research_config.models =
+        store.project_at_mut(0).unwrap().directory = "/tmp".into();
+        store.research_config_mut().models =
             ["test/plan", "test/collect", "test/analyze", "test/advise"].map(String::from);
         let goal = store
             .create_research_goal(

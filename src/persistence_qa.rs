@@ -151,10 +151,10 @@ fn inventory(root: &Path) -> Result<(), String> {
         "occurrences": store.all_occurrences().len(),
         "automations": store.automations().len(),
         "runs": store.runs().len(),
-        "tasks": store.tasks.len(),
-        "projects": store.projects.len(),
-        "topics": store.topics.len(),
-        "research_requests": store.research_requests.len(),
+        "tasks": store.tasks().len(),
+        "projects": store.projects().len(),
+        "topics": store.topics().len(),
+        "research_requests": store.research_requests().len(),
         "unread_occurrences": store.all_occurrences().iter().filter(|occurrence| occurrence.unread).count(),
         "runs_with_body": store.runs().iter().filter(|run| !run.output.trim().is_empty()).count(),
         "run_body_bytes": store.runs().iter().map(|run| run.output.len()).sum::<usize>(),
@@ -381,7 +381,7 @@ fn occ43200(root: &Path) -> Result<(), String> {
             "logical": {
                 "occurrences": store.all_occurrences().len(),
                 "runs": store.runs().len(),
-                "tasks": store.tasks.len(),
+                "tasks": store.tasks().len(),
                 "automations": store.automations().len(),
                 "unread": store.all_occurrences().iter().filter(|occurrence| occurrence.unread).count(),
                 "run_body_bytes": store.runs().iter().map(|run| run.output.len()).sum::<usize>(),
@@ -470,7 +470,7 @@ fn generated(root: &Path, label: &str, spec: FixtureSpec) -> Result<(), String> 
         .load()?
         .ok_or("generated fixture returned no store")?;
     metrics::record_external("load.wall", load_started.elapsed());
-    if loaded.tasks.len() != store.tasks.len()
+    if loaded.tasks().len() != store.tasks().len()
         || loaded.runs().len() != store.runs().len()
         || loaded.all_occurrences().len() != store.all_occurrences().len()
     {
@@ -532,7 +532,7 @@ fn generated(root: &Path, label: &str, spec: FixtureSpec) -> Result<(), String> 
             "logical": {
                 "occurrences": store.all_occurrences().len(),
                 "runs": store.runs().len(),
-                "tasks": store.tasks.len(),
+                "tasks": store.tasks().len(),
                 "automations": store.automations().len(),
                 "run_body_bytes": store.runs().iter().map(|run| run.output.len()).sum::<usize>(),
             },
@@ -552,9 +552,9 @@ fn generated(root: &Path, label: &str, spec: FixtureSpec) -> Result<(), String> 
 
 fn build_fixture(project: &Path, spec: FixtureSpec) -> Result<Store, String> {
     let mut store = Store::empty();
-    store.projects[0].name = "Persistence fixture".into();
-    store.projects[0].directory = project.to_string_lossy().into_owned();
-    store.default_model = "qa/automation".into();
+    store.project_at_mut(0).unwrap().name = "Persistence fixture".into();
+    store.project_at_mut(0).unwrap().directory = project.to_string_lossy().into_owned();
+    store.set_default_model("qa/automation".into());
 
     let objective = "Track one changed public value and cite its source.";
     let expected = "A short report with sources and evidence gaps.";
@@ -755,7 +755,7 @@ fn app_suite(
             let view = cx.new(|cx| TaskApp::new_mock(w, cx));
             view.update(cx, |a, cx| {
                 a.attach_storage(Storage::new(app_path.clone()), w, cx);
-                a.scope = Scope::AutomationRuns;
+                a.set_scope_identity(Scope::AutomationRuns);
                 a.automation_ui.selected = None;
                 a.automation_ui.result_filter = None;
                 a.automation_ui.history_limit = 20;
@@ -836,7 +836,7 @@ fn app_suite(
     if let Some(definition) = definition {
         cx.update_window(handle, |_, _, cx| {
             app.update(cx, |a, cx| {
-                a.scope = Scope::Automations;
+                a.set_scope_identity(Scope::Automations);
                 a.automation_ui.selected = Some(definition);
                 cx.notify();
             });

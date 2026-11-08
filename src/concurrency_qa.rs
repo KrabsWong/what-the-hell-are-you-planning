@@ -64,10 +64,10 @@ pub fn run() {
         "#!/bin/sh\nprintf '%s\\n' 'Local QA guide' '[ego-browser:skill] end of guide'\n",
     );
     let mut store = Store::empty();
-    store.projects[0].directory = root.to_string_lossy().into_owned();
-    store.opencode_path = cli.to_string_lossy().into_owned();
-    store.research_config.ego_path = ego.to_string_lossy().into_owned();
-    store.research_config.models = [
+    store.project_at_mut(0).unwrap().directory = root.to_string_lossy().into_owned();
+    store.set_opencode_path(cli.to_string_lossy().into_owned());
+    store.research_config_mut().ego_path = ego.to_string_lossy().into_owned();
+    store.research_config_mut().models = [
         "fixture/planner",
         "fixture/collector",
         "fixture/analyst",
@@ -342,11 +342,11 @@ print(json.dumps({'type':'text','part':{'text':json.dumps({'status':'complete','
         let ego = root.join("fake-ego");
         executable(&ego, "#!/bin/sh\nprintf '%s\\n' 'Local QA guide' '[ego-browser:skill] end of guide'\n");
         let mut store = Store::empty();
-        store.max_concurrent_runs = limit;
-        store.default_model = "fixture/model".into();
-        store.projects[0].directory = root.to_string_lossy().into_owned();
-        store.opencode_path = cli.to_string_lossy().into_owned();
-        store.research_config.ego_path = ego.to_string_lossy().into_owned();
+        store.set_max_concurrent_runs(limit);
+        store.set_default_model("fixture/model".into());
+        store.project_at_mut(0).unwrap().directory = root.to_string_lossy().into_owned();
+        store.set_opencode_path(cli.to_string_lossy().into_owned());
+        store.research_config_mut().ego_path = ego.to_string_lossy().into_owned();
         let topic = store.create_topic(1, "Limit fixture").unwrap();
         for i in 0..(2 * limit + 2) {
             let goal = store.create_research_goal_in_topic(format!("Goal {i}"), "Local fixture".into(), 1, Some(topic)).unwrap();
@@ -428,7 +428,7 @@ fn wait_limit(cx: &mut HeadlessAppContext, h: AnyWindowHandle, app: &Entity<Task
 }
 
 fn goal(store: &mut Store, title: &str) -> u64 {
-    let topic = store.topics.iter().find(|t| t.name == "Concurrent fixture topic").map(|t| t.id)
+    let topic = store.topics().iter().find(|t| t.name == "Concurrent fixture topic").map(|t| t.id)
         .unwrap_or_else(|| store.create_topic(1, "Concurrent fixture topic").unwrap());
     let id = store
         .create_research_goal_in_topic(title.into(), format!("Isolated concurrency QA. {title}"), 1, Some(topic))

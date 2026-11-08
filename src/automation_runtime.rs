@@ -181,7 +181,7 @@ impl Store {
 
     /// Blockers that must stop unattended dispatch rather than retrying forever.
     pub fn automation_blocker(&self, definition: &AutomationDefinition) -> Option<String> {
-        if !self.projects.iter().any(|p| p.id == definition.project_id) {
+        if !self.projects().iter().any(|p| p.id == definition.project_id) {
             return Some(
                 "The automation's project was removed or is unavailable. Choose another project."
                     .into(),
@@ -504,7 +504,7 @@ impl Store {
             return Some("Restore the archived automation before retrying this period.".into());
         }
         if !self
-            .projects
+            .projects()
             .iter()
             .any(|project| project.id == definition.project_id)
         {
@@ -861,7 +861,7 @@ impl FakeAutomationRunner {
         if self.outcomes.remove(&occurrence).is_none() && success {
             // Default: synthesize complete research results so the state machine advances.
             if let Some(goal) = store.occurrence(occurrence).and_then(|o| o.research_goal_id) {
-                for task in store.tasks.iter().filter(|t| t.research.as_ref().is_some_and(|r| r.goal_id == goal && r.kind != crate::research::ResearchKind::Goal)).map(|t| t.id).collect::<Vec<_>>() {
+                for task in store.tasks().iter().filter(|t| t.research.as_ref().is_some_and(|r| r.goal_id == goal && r.kind != crate::research::ResearchKind::Goal)).map(|t| t.id).collect::<Vec<_>>() {
                     if store.research_result(task).is_none() {
                         let mut run = store.prepare_run(task)?;
                         run.automation_occurrence_id = Some(occurrence);
@@ -909,8 +909,8 @@ mod tests {
     }
     fn store_with(automation: bool) -> (Store, u64) {
         let mut store = Store::empty();
-        store.projects[0].directory = std::env::temp_dir().to_string_lossy().into();
-        store.default_model = "test/model".into();
+        store.project_at_mut(0).unwrap().directory = std::env::temp_dir().to_string_lossy().into();
+        store.set_default_model("test/model".into());
         let id = 1;
         if automation {
             let template = build_template("Track yesterday's topic", "A note").unwrap();
@@ -1461,8 +1461,14 @@ mod tests {
         let goal = occurrence.research_goal_id.unwrap();
         store.occurrence_mut(occurrence.id).unwrap().mark_running(300).unwrap();
         // Mark every task done but provide no result: not success.
-        for task in store.tasks.iter_mut().filter(|t| t.research.as_ref().is_some_and(|r| r.goal_id == goal)) {
-            task.stage = Stage::Done;
+        let ids: Vec<u64> = store
+            .tasks()
+            .iter()
+            .filter(|t| t.research.as_ref().is_some_and(|r| r.goal_id == goal))
+            .map(|t| t.id)
+            .collect();
+        for id in ids {
+            store.task_mut(id).unwrap().stage = Stage::Done;
         }
         assert!(!store.complete_occurrence(occurrence.id, 1, 300).unwrap());
         // A validated final report is required.

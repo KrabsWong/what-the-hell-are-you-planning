@@ -144,7 +144,7 @@ impl TaskApp {
         if let Some(occurrence_id) = self.automation_ui.result_dialog
             && let Some(occurrence) = self.store.occurrence(occurrence_id)
         {
-            let under = if self.scope == Scope::AutomationRuns {
+            let under = if self.scope() == Scope::AutomationRuns {
                 PeriodUnder::Results {
                     filter: self.automation_ui.result_filter,
                     history_limit: self.automation_ui.history_limit,
@@ -191,11 +191,11 @@ impl TaskApp {
             };
         }
         if let Some(run) = self.selected_run
-            && self.scope == Scope::Runs
+            && self.scope() == Scope::Runs
         {
             return self.results_origin(Some(run));
         }
-        if self.scope == Scope::Automations
+        if self.scope() == Scope::Automations
             && self.automation_ui.settings_dialog
             && let Some(id) = self.automation_ui.selected
         {
@@ -207,7 +207,7 @@ impl TaskApp {
                 },
             };
         }
-        match &self.scope {
+        match &self.scope() {
             Scope::Topic(topic) => Origin::ResearchTopic {
                 topic: *topic,
                 layout: self.layout,
@@ -412,7 +412,7 @@ impl TaskApp {
                         self.selected = None;
                         self.task_result_context = Some(task);
                         self.selected_run = Some(run);
-                        self.scope = Scope::Runs;
+                        self.set_scope_identity(Scope::Runs);
                         self.show_run_result = true;
                         self.show_run_details = false;
                     }
@@ -701,7 +701,7 @@ impl TaskApp {
                 return Some(DraftSurface::Comment { task });
             }
         }
-        if self.scope == Scope::Research {
+        if self.scope() == Scope::Research {
             let title = self.research_title.read(cx).value().to_string();
             let brief = self.research_brief.read(cx).value().to_string();
             if !title.trim().is_empty() || !brief.trim().is_empty() {
@@ -1206,7 +1206,7 @@ impl TaskApp {
     }
 
     pub(crate) fn park_research_composer(&mut self, cx: &App) {
-        if self.scope != Scope::Research {
+        if self.scope() != Scope::Research {
             return;
         }
         let title = self.research_title.read(cx).value().to_string();

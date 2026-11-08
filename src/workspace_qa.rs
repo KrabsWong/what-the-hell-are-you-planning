@@ -88,8 +88,8 @@ fn reconnect_policy() {
     let automation_dir = workspace::automation_directory(&data).unwrap();
 
     let mut store = Store::empty();
-    store.projects[0].directory = user_dir.clone();
-    store.default_model = "qa/automation".into();
+    store.project_at_mut(0).unwrap().directory = user_dir.clone();
+    store.set_default_model("qa/automation".into());
     let automation_project = store.ensure_automation_project(automation_dir.clone()).unwrap();
     let schedule = Schedule {
         spec: ScheduleSpec::Interval { minutes: 10 },
@@ -194,7 +194,7 @@ fn reconnect_policy() {
     // Reconnection through the same root.
     assert_eq!(workspace::initialize(&root, None).unwrap(), data);
     let loaded = Storage::new(data.join("workspace.sqlite3")).load().unwrap().unwrap();
-    assert_eq!(loaded.projects[0].directory, user_dir);
+    assert_eq!(loaded.projects()[0].directory, user_dir);
     assert_eq!(loaded.automation_project().unwrap().directory, automation_dir);
     assert_eq!(loaded.automation_project().unwrap().kind, ProjectKind::Automation);
     assert_automations_survive(&loaded, report);
@@ -206,7 +206,7 @@ fn reconnect_policy() {
     let moved_user = relocated.join("projects/project-1");
     let moved_automation = relocated.join("automations");
     let loaded = Storage::new(relocated.join("workspace.sqlite3")).load().unwrap().unwrap();
-    assert_eq!(std::path::PathBuf::from(&loaded.projects[0].directory), moved_user);
+    assert_eq!(std::path::PathBuf::from(&loaded.projects()[0].directory), moved_user);
     assert_eq!(std::path::PathBuf::from(&loaded.automation_project().unwrap().directory), moved_automation);
     assert_eq!(std::fs::read_to_string(moved_user.join("goal.md")).unwrap(), "user data");
     assert_automations_survive(&loaded, report);
@@ -215,10 +215,10 @@ fn reconnect_policy() {
     let outside = base.join("outside");
     std::fs::create_dir_all(&outside).unwrap();
     let mut bad = loaded.clone();
-    bad.projects[0].directory = outside.to_string_lossy().into_owned();
+    bad.project_at_mut(0).unwrap().directory = outside.to_string_lossy().into_owned();
     Storage::new(relocated.join("workspace.sqlite3")).save(&bad).unwrap();
     let error = workspace::initialize(&moved, None).unwrap_err();
-    assert!(error.contains(&bad.projects[0].name) && error.contains("projects"), "{error}");
+    assert!(error.contains(&bad.projects()[0].name) && error.contains("projects"), "{error}");
 
     std::fs::remove_dir_all(&base).unwrap();
     println!("Workspace reconnect/relocation with real Quick and Research automations passed");
@@ -250,11 +250,11 @@ fn upgrade_retry_preserves_lock_ownership() {
     std::fs::create_dir_all(root.join("projects/project-1")).unwrap();
     let path = root.join("workspace.sqlite3");
     let mut original = Store::empty();
-    original.projects[0].directory = root.join("projects/project-1").to_string_lossy().into();
-    original.opencode_path = root.join("missing-opencode").to_string_lossy().into();
-    original.research_config.ego_path = root.join("missing-ego-browser").to_string_lossy().into();
-    assert!(!std::path::Path::new(&original.opencode_path).exists());
-    assert!(!std::path::Path::new(&original.research_config.ego_path).exists());
+    original.project_at_mut(0).unwrap().directory = root.join("projects/project-1").to_string_lossy().into();
+    original.set_opencode_path(root.join("missing-opencode").to_string_lossy().into());
+    original.research_config_mut().ego_path = root.join("missing-ego-browser").to_string_lossy().into();
+    assert!(!std::path::Path::new(&original.opencode_path()).exists());
+    assert!(!std::path::Path::new(&original.research_config().ego_path).exists());
     Storage::new(path.clone()).save(&original).unwrap();
     {
         let db = rusqlite::Connection::open(&path).unwrap();

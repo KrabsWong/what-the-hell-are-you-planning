@@ -758,8 +758,8 @@ mod tests {
 
     fn workspace() -> (Store, u64, Vec<u64>) {
         let mut store = Store::mock();
-        store.projects[0].directory = "/tmp".into();
-        store.research_config.models =
+        store.project_at_mut(0).unwrap().directory = "/tmp".into();
+        store.research_config_mut().models =
             ["test/plan", "test/search", "test/analysis", "test/brief"].map(String::from);
         let goal = store
             .create_research_goal("History".into(), "Scope".into(), 1)

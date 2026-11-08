@@ -89,7 +89,7 @@ fn wizard_actions_check(root: &Path) {
             let view = cx.new(|cx| TaskApp::new_mock(w, cx));
             view.update(cx, |a, cx| {
                 a.attach_storage(Storage::new(path.clone()), w, cx);
-                a.scope = Scope::Automations;
+                a.set_scope_identity(Scope::Automations);
                 assert!(a.storage_error.is_empty(), "{}", a.storage_error);
                 cx.notify();
             });
@@ -210,7 +210,7 @@ fn planning_chain(root: &Path) {
     std::fs::create_dir_all(directory.join("automations")).unwrap();
     let path = directory.join("workspace.sqlite3");
     let mut store = model_store(&directory);
-    store.research_config.models =
+    store.research_config_mut().models =
         ["fixture/plan", "fixture/collect", "fixture/analyze", "fixture/advise"].map(String::from);
     let automation_project = store
         .ensure_automation_project(directory.join("automations").to_string_lossy().into())
@@ -246,8 +246,8 @@ fn planning_chain(root: &Path) {
         .find(|candidate| candidate.id == request)
         .unwrap()
         .planning_run_id = Some(run_id);
-    let topics_before = store.topics.len();
-    let tasks_before = store.tasks.len();
+    let topics_before = store.topics().len();
+    let tasks_before = store.tasks().len();
     Storage::new(path.clone()).save(&store).unwrap();
 
     let mut cx = HeadlessAppContext::with_platform(
@@ -262,7 +262,7 @@ fn planning_chain(root: &Path) {
             let view = cx.new(|cx| TaskApp::new_mock(w, cx));
             view.update(cx, |a, cx| {
                 a.attach_storage(Storage::new(path.clone()), w, cx);
-                a.scope = Scope::Automations;
+                a.set_scope_identity(Scope::Automations);
                 a.automation_ui.selected = Some(id);
                 assert!(a.storage_error.is_empty(), "{}", a.storage_error);
                 a.complete_research_run(run_id, cx);
@@ -279,12 +279,12 @@ fn planning_chain(root: &Path) {
             definition.template.as_ref().map(|template| template.goals.len()),
             definition.name.clone(),
             definition.status,
-            a.store.topics.len(),
-            a.store.tasks.len(),
+            a.store.topics().len(),
+            a.store.tasks().len(),
             a.store
                 .automation(id)
                 .map(|definition| definition.project_id)
-                .and_then(|project| a.store.projects.iter().find(|p| p.id == project))
+                .and_then(|project| a.store.projects().iter().find(|p| p.id == project))
                 .map(|project| project.directory.clone())
                 .unwrap_or_default(),
         )
@@ -341,9 +341,9 @@ fn planning_chain(root: &Path) {
 
 fn model_store(directory: &Path) -> Store {
     let mut store = Store::empty();
-    store.projects[0].name = "Automation QA project".into();
-    store.projects[0].directory = directory.to_string_lossy().into();
-    store.default_model = "qa/automation".into();
+    store.project_at_mut(0).unwrap().name = "Automation QA project".into();
+    store.project_at_mut(0).unwrap().directory = directory.to_string_lossy().into();
+    store.set_default_model("qa/automation".into());
     store
 }
 
@@ -539,8 +539,8 @@ fn instruction_validation_check(root: &Path) {
     // Save a legacy-shaped draft with unsupported stored text, reopen it from
     // SQLite, and prove structural readability plus atomic enable rejection.
     let mut store = model_store(&directory);
-    store.opencode_path = cli.to_string_lossy().into();
-    store.research_config.models =
+    store.set_opencode_path(cli.to_string_lossy().into());
+    store.research_config_mut().models =
         ["fixture/plan", "fixture/collect", "fixture/analyze", "fixture/advise"].map(String::from);
     let template = crate::automation_execution::build_template(
         "Track public announcements",
@@ -611,7 +611,7 @@ fn expected_only_ui_check(directory: &Path, shape: AutomationShape) {
     let marker = directory.join("invoked.log");
     let path = directory.join("workspace.sqlite3");
     let mut store = model_store(directory);
-    store.opencode_path = cli.to_string_lossy().into();
+    store.set_opencode_path(cli.to_string_lossy().into());
     Storage::new(path.clone()).save(&store).unwrap();
     let mut cx = HeadlessAppContext::with_platform(
         platform::current_platform(true).text_system(),
@@ -625,7 +625,7 @@ fn expected_only_ui_check(directory: &Path, shape: AutomationShape) {
             let view = cx.new(|cx| TaskApp::new_mock(w, cx));
             view.update(cx, |a, cx| {
                 a.attach_storage(Storage::new(path.clone()), w, cx);
-                a.scope = Scope::Automations;
+                a.set_scope_identity(Scope::Automations);
                 assert!(a.storage_error.is_empty(), "{}", a.storage_error);
                 cx.notify();
             });
@@ -740,9 +740,9 @@ print(json.dumps({'type':'text','part':{'text':json.dumps({'status':'complete','
     let project = directory.join("project");
     std::fs::create_dir_all(&project).unwrap();
     let mut store = model_store(&project);
-    store.opencode_path = cli.to_string_lossy().into();
-    store.default_model = "fixture/automation".into();
-    store.research_config.models =
+    store.set_opencode_path(cli.to_string_lossy().into());
+    store.set_default_model("fixture/automation".into());
+    store.research_config_mut().models =
         ["fixture/plan", "fixture/collect", "fixture/analyze", "fixture/advise"].map(String::from);
     let id = draft(&mut store, "Execution chain");
     enable(&mut store, id);
@@ -769,7 +769,7 @@ print(json.dumps({'type':'text','part':{'text':json.dumps({'status':'complete','
             let view = cx.new(|cx| TaskApp::new_mock(w, cx));
             view.update(cx, |a, cx| {
                 a.attach_storage(Storage::new(path.clone()), w, cx);
-                a.scope = Scope::Automations;
+                a.set_scope_identity(Scope::Automations);
                 a.automation_ui.selected = Some(id);
                 assert!(a.storage_error.is_empty(), "{}", a.storage_error);
                 cx.notify();
@@ -985,9 +985,9 @@ print(json.dumps({'type':'text','part':{'text':json.dumps({'status':'complete','
         std::fs::set_permissions(&cli, std::fs::Permissions::from_mode(0o700)).unwrap();
     }
     let mut store = model_store(&project);
-    store.opencode_path = cli.to_string_lossy().into();
-    store.default_model = "fixture/automation".into();
-    store.research_config.models =
+    store.set_opencode_path(cli.to_string_lossy().into());
+    store.set_default_model("fixture/automation".into());
+    store.research_config_mut().models =
         ["fixture/plan", "fixture/collect", "fixture/analyze", "fixture/advise"].map(String::from);
     let id = draft(&mut store, "Recover automation");
     enable(&mut store, id);
@@ -1042,7 +1042,7 @@ print(json.dumps({'type':'text','part':{'text':json.dumps({'status':'complete','
             let view = cx.new(|cx| TaskApp::new_mock(w, cx));
             view.update(cx, |a, cx| {
                 a.attach_storage(Storage::new(path.clone()), w, cx);
-                a.scope = Scope::Automations;
+                a.set_scope_identity(Scope::Automations);
                 assert!(a.storage_error.is_empty(), "{}", a.storage_error);
                 cx.notify();
             });
@@ -1185,9 +1185,9 @@ print(json.dumps({'type':'text','part':{'text':json.dumps({'status':'complete','
         std::fs::set_permissions(&cli, std::fs::Permissions::from_mode(0o700)).unwrap();
     }
     let mut store = model_store(&project);
-    store.opencode_path = cli.to_string_lossy().into();
-    store.default_model = "fixture/automation".into();
-    store.research_config.models =
+    store.set_opencode_path(cli.to_string_lossy().into());
+    store.set_default_model("fixture/automation".into());
+    store.research_config_mut().models =
         ["fixture/plan", "fixture/collect", "fixture/analyze", "fixture/advise"].map(String::from);
     let id = draft(&mut store, "Paused recovery");
     enable(&mut store, id);
@@ -1240,7 +1240,7 @@ print(json.dumps({'type':'text','part':{'text':json.dumps({'status':'complete','
             let view = cx.new(|cx| TaskApp::new_mock(w, cx));
             view.update(cx, |a, cx| {
                 a.attach_storage(Storage::new(path.clone()), w, cx);
-                a.scope = Scope::Automations;
+                a.set_scope_identity(Scope::Automations);
                 assert!(a.storage_error.is_empty(), "{}", a.storage_error);
                 cx.notify();
             });
@@ -1303,9 +1303,9 @@ print(json.dumps({'type':'text','part':{'text':json.dumps({'status':'complete','
         std::fs::set_permissions(&cli, std::fs::Permissions::from_mode(0o700)).unwrap();
     }
     let mut store = model_store(&project);
-    store.opencode_path = cli.to_string_lossy().into();
-    store.default_model = "fixture/automation".into();
-    store.research_config.models =
+    store.set_opencode_path(cli.to_string_lossy().into());
+    store.set_default_model("fixture/automation".into());
+    store.research_config_mut().models =
         ["fixture/plan", "fixture/collect", "fixture/analyze", "fixture/advise"].map(String::from);
     let id = draft(&mut store, "Archived recovery");
     enable(&mut store, id);
@@ -1358,7 +1358,7 @@ print(json.dumps({'type':'text','part':{'text':json.dumps({'status':'complete','
             let view = cx.new(|cx| TaskApp::new_mock(w, cx));
             view.update(cx, |a, cx| {
                 a.attach_storage(Storage::new(path.clone()), w, cx);
-                a.scope = Scope::Automations;
+                a.set_scope_identity(Scope::Automations);
                 assert!(a.storage_error.is_empty(), "{}", a.storage_error);
                 cx.notify();
             });
@@ -1437,9 +1437,9 @@ print(json.dumps({'type':'text','part':{'text':json.dumps({'status':'complete','
         std::fs::set_permissions(&cli, std::fs::Permissions::from_mode(0o700)).unwrap();
     }
     let mut store = model_store(&project);
-    store.opencode_path = cli.to_string_lossy().into();
-    store.default_model = "fixture/automation".into();
-    store.research_config.models =
+    store.set_opencode_path(cli.to_string_lossy().into());
+    store.set_default_model("fixture/automation".into());
+    store.research_config_mut().models =
         ["fixture/plan", "fixture/collect", "fixture/analyze", "fixture/advise"].map(String::from);
     let id = draft(&mut store, "Regeneration recovery");
     enable(&mut store, id);
@@ -1548,7 +1548,7 @@ fn entry_route_check(root: &Path) {
     let directory = root.join("entry-route");
     std::fs::create_dir_all(&directory).unwrap();
     let mut store = model_store(&directory);
-    store.default_model = "qa/automation".into();
+    store.set_default_model("qa/automation".into());
     let id = draft(&mut store, "Entry route");
     enable(&mut store, id);
     let path = directory.join("workspace.sqlite3");
@@ -1631,7 +1631,7 @@ fn dispatch_ui_state(
     cx.update(|cx| {
         let a = app.read(cx);
         DispatchUiState {
-            scope: a.scope.clone(),
+            scope: a.scope(),
             layout: a.layout,
             selected: a.selected,
             selected_run: a.selected_run,
@@ -1673,9 +1673,9 @@ print(json.dumps({'type':'text','part':{'text':json.dumps({'status':'complete','
             std::fs::set_permissions(&cli, std::fs::Permissions::from_mode(0o700)).unwrap();
         }
         let mut store = model_store(&project);
-        store.opencode_path = cli.to_string_lossy().into();
-        store.default_model = "fixture/automation".into();
-        store.research_config.models =
+        store.set_opencode_path(cli.to_string_lossy().into());
+        store.set_default_model("fixture/automation".into());
+        store.research_config_mut().models =
             ["fixture/plan", "fixture/collect", "fixture/analyze", "fixture/advise"]
                 .map(String::from);
         let id = draft(&mut store, &format!("Dispatch boundary {surface}"));
@@ -1726,7 +1726,7 @@ print(json.dumps({'type':'text','part':{'text':json.dumps({'status':'complete','
                 let view = cx.new(|cx| TaskApp::new_mock(w, cx));
                 view.update(cx, |a, cx| {
                     a.attach_storage(Storage::new(path.clone()), w, cx);
-                    a.scope = Scope::Automations;
+                    a.set_scope_identity(Scope::Automations);
                     a.automation_ui.selected = Some(id);
                     assert!(a.storage_error.is_empty(), "{}", a.storage_error);
                     cx.notify();
@@ -1740,16 +1740,16 @@ print(json.dumps({'type':'text','part':{'text':json.dumps({'status':'complete','
         cx.update_window(handle, |_, w, cx| {
             app.update(cx, |a, cx| {
                 match surface {
-                    "settings" => a.scope = Scope::Settings,
+                    "settings" => a.set_scope_identity(Scope::Settings),
                     "report" => {
-                        a.scope = Scope::Runs;
+                        a.set_scope_identity(Scope::Runs);
                         a.selected = None;
                         a.selected_run = Some(report_run_id);
                         a.show_run_result = true;
                         a.show_run_details = false;
                     }
                     "dirty-form" => {
-                        a.scope = Scope::Automations;
+                        a.set_scope_identity(Scope::Automations);
                         a.selected = None;
                         a.automation_ui.selected = None;
                         a.automation_ui.creating = true;
@@ -1760,7 +1760,7 @@ print(json.dumps({'type':'text','part':{'text':json.dumps({'status':'complete','
                         });
                     }
                     "period-dialog" => {
-                        a.scope = Scope::Automations;
+                        a.set_scope_identity(Scope::Automations);
                         a.selected = None;
                         a.automation_ui.selected = Some(id);
                         a.automation_ui.result_dialog = Some(history.id);
@@ -1840,7 +1840,7 @@ print(json.dumps({'type':'text','part':{'text':json.dumps({'status':'complete','
         cx.update_window(handle, |_, w, cx| {
             app.update(cx, |a, cx| {
                 assert!(a.open_automation_progress_for_goal(goal.unwrap(), w, cx));
-                assert_eq!(a.scope, Scope::Automations);
+                assert_eq!(a.scope(), Scope::Automations);
                 assert_eq!(a.automation_ui.result_dialog, Some(occurrence));
             });
         })
@@ -1850,7 +1850,7 @@ print(json.dumps({'type':'text','part':{'text':json.dumps({'status':'complete','
             // Ordinary manual submission still reaches its progress surface.
             cx.update_window(handle, |_, _, cx| {
                 app.update(cx, |a, cx| {
-                    a.scope = Scope::Settings;
+                    a.set_scope_identity(Scope::Settings);
                     a.selected = None;
                     a.selected_run = None;
                     a.start_run(report_steps[1], cx);
@@ -1858,7 +1858,7 @@ print(json.dumps({'type':'text','part':{'text':json.dumps({'status':'complete','
             })
             .unwrap();
             let manual_run = read_state(&mut cx, &app, |a| {
-                assert_eq!(a.scope, Scope::Runs);
+                assert_eq!(a.scope(), Scope::Runs);
                 a.selected_run.expect("manual submission opens its run")
             });
             assert!(
@@ -1955,7 +1955,7 @@ fn retry_scope_check(root: &Path) {
             view.update(cx, |a, cx| {
                 a.attach_storage(Storage::new(path.clone()), w, cx);
                 a.automation_fake_mode = true;
-                a.scope = Scope::Automations;
+                a.set_scope_identity(Scope::Automations);
                 a.automation_ui.selected = Some(id);
                 a.automation_ui.result_dialog = Some(occurrence.id);
                 assert!(a.storage_error.is_empty(), "{}", a.storage_error);
@@ -1991,7 +1991,7 @@ fn retry_scope_check(root: &Path) {
         );
         w.click("resume-automation-steps", cx);
         w.render_frame(cx);
-        assert_eq!(app.read(cx).scope, Scope::Automations, "retry stays in its period");
+        assert_eq!(app.read(cx).scope(), Scope::Automations, "retry stays in its period");
         assert_eq!(
             app.read(cx).automation_ui.result_dialog,
             Some(occurrence.id)
@@ -2194,7 +2194,7 @@ fn activity_order_check(root: &Path) {
                 // enqueue active periods immediately.
                 a.automation_fake_mode = true;
                 a.attach_storage(Storage::new(path.clone()), w, cx);
-                a.scope = Scope::Automations;
+                a.set_scope_identity(Scope::Automations);
                 a.automation_ui.selected = None;
                 assert!(a.storage_error.is_empty(), "{}", a.storage_error);
                 assert!(a.error.is_empty(), "{}", a.error);
@@ -2255,7 +2255,7 @@ fn activity_order_check(root: &Path) {
     // Detail history and global results use the same order: retried old period first.
     cx.update_window(handle, |_, w, cx| {
         app.update(cx, |a, cx| {
-            a.scope = Scope::Automations;
+            a.set_scope_identity(Scope::Automations);
             a.automation_ui.selected = Some(id);
             a.automation_ui.result_filter = None;
             a.automation_ui.history_limit = 20;
@@ -2285,7 +2285,7 @@ fn activity_order_check(root: &Path) {
 
     cx.update_window(handle, |_, w, cx| {
         app.update(cx, |a, cx| {
-            a.scope = Scope::AutomationRuns;
+            a.set_scope_identity(Scope::AutomationRuns);
             a.automation_ui.selected = None;
             a.automation_ui.result_filter = None;
             cx.notify();
@@ -2340,9 +2340,9 @@ print(json.dumps({'type':'text','part':{'text':json.dumps({'status':'complete','
     let project = directory.join("project");
     std::fs::create_dir_all(&project).unwrap();
     let mut store = model_store(&project);
-    store.opencode_path = cli.to_string_lossy().into();
-    store.default_model = "fixture/ordinary".into();
-    store.research_config.models =
+    store.set_opencode_path(cli.to_string_lossy().into());
+    store.set_default_model("fixture/ordinary".into());
+    store.research_config_mut().models =
         ["fixture/plan", "fixture/collect", "fixture/analyze", "fixture/advise"]
             .map(String::from);
     let goal = store
@@ -2390,7 +2390,7 @@ print(json.dumps({'type':'text','part':{'text':json.dumps({'status':'complete','
             let view = cx.new(|cx| TaskApp::new_mock(w, cx));
             view.update(cx, |a, cx| {
                 a.attach_storage(Storage::new(path.clone()), w, cx);
-                a.scope = Scope::Automations;
+                a.set_scope_identity(Scope::Automations);
                 a.automation_ui.creating = true;
                 a.automation_ui.step = 2;
                 a.automation_ui.objective.update(cx, |state, cx| {
@@ -2490,7 +2490,7 @@ print(json.dumps({'type':'text','part':{'text':json.dumps({'status':'complete','
     })
     .unwrap();
     let retry_id = read_state(&mut cx, &app, |a| {
-        assert_eq!(a.scope, Scope::Automations);
+        assert_eq!(a.scope(), Scope::Automations);
         assert_eq!(a.selected_run, Some(failed_id));
         a.queued_runs
             .iter()
@@ -2529,11 +2529,11 @@ fn completion_boundary_check(root: &Path) {
             let directory = root.join(format!("completion-{kind}-{route}"));
             std::fs::create_dir_all(&directory).unwrap();
             let mut store = model_store(&directory);
-            store.default_model = "fixture/plan".into();
-            store.research_config.models =
+            store.set_default_model("fixture/plan".into());
+            store.research_config_mut().models =
                 ["fixture/plan", "fixture/collect", "fixture/analyze", "fixture/advise"]
                     .map(String::from);
-            store.projects[0].research_brief =
+            store.project_at_mut(0).unwrap().research_brief =
                 "Cover the global market and the next twelve months.".into();
             let target = if kind == "goal-plan" {
                 let goal = store
@@ -2575,7 +2575,7 @@ fn completion_boundary_check(root: &Path) {
                         a.selected_run = None;
                         a.layout = Layout::List;
                         if route == "progress" {
-                            a.scope = Scope::Runs;
+                            a.set_scope_identity(Scope::Runs);
                             a.selected_run = Some(run_id);
                             a.show_run_result = true;
                             a.show_run_details = false;
@@ -2583,7 +2583,7 @@ fn completion_boundary_check(root: &Path) {
                             a.detail_scroll.set_offset(point(px(0.), px(-110.)));
                             a.result_scroll.set_offset(point(px(0.), px(-130.)));
                         } else {
-                            a.scope = Scope::Settings;
+                            a.set_scope_identity(Scope::Settings);
                             a.selected = if kind == "goal-plan" { Some(target) } else { None };
                             a.show_run_result = false;
                             a.show_run_details = true;
@@ -2627,7 +2627,7 @@ fn completion_boundary_check(root: &Path) {
                     a.store.research_children(target).len()
                 } else {
                     a.store
-                        .tasks
+                        .tasks()
                         .iter()
                         .filter(|task| task.project_id == 1 && task.parent_id.is_none())
                         .count()
@@ -2643,7 +2643,7 @@ fn completion_boundary_check(root: &Path) {
                         assert_eq!(a.selected, Some(target));
                     } else {
                         a.open_collection_project(1, w, cx);
-                        assert_eq!(a.scope, Scope::Project(1));
+                        assert_eq!(a.scope(), Scope::Project(1));
                     }
                 });
             })
@@ -2676,9 +2676,9 @@ print(json.dumps({'type':'text','part':{'text':json.dumps({'status':'complete','
         std::fs::set_permissions(&cli, std::fs::Permissions::from_mode(0o700)).unwrap();
     }
     let mut store = model_store(&project);
-    store.opencode_path = cli.to_string_lossy().into();
-    store.default_model = "fixture/automation".into();
-    store.research_config.models =
+    store.set_opencode_path(cli.to_string_lossy().into());
+    store.set_default_model("fixture/automation".into());
+    store.research_config_mut().models =
         ["fixture/plan", "fixture/collect", "fixture/analyze", "fixture/advise"].map(String::from);
     let schedule = crate::automation_schedule::Schedule {
         spec: crate::automation_schedule::ScheduleSpec::Interval { minutes: 60 },
@@ -2746,7 +2746,7 @@ print(json.dumps({'type':'text','part':{'text':json.dumps({'status':'complete','
         })
         .unwrap();
     assert_eq!(
-        read_state(&mut cx, &app, |a| a.scope.clone()),
+        read_state(&mut cx, &app, |a| a.scope()),
         Scope::All,
         "background period dispatch must not replace the visible page"
     );
@@ -2880,12 +2880,12 @@ print(json.dumps({'type':'text','part':{'text':json.dumps({'status':'complete','
     let project = directory.join("project");
     std::fs::create_dir_all(&project).unwrap();
     let mut store = model_store(&project);
-    store.opencode_path = cli.to_string_lossy().into();
-    store.default_model = "fixture/automation".into();
-    store.research_config.models =
+    store.set_opencode_path(cli.to_string_lossy().into());
+    store.set_default_model("fixture/automation".into());
+    store.research_config_mut().models =
         ["fixture/plan", "fixture/collect", "fixture/analyze", "fixture/advise"].map(String::from);
-    store.max_concurrent_runs = 1;
-    store.max_concurrent_automations = 1;
+    store.set_max_concurrent_runs(1);
+    store.set_max_concurrent_automations(1);
     let topic = store.create_topic(1, "Pool research").unwrap();
     pool_research_goal(&mut store, topic, "Research A");
     pool_research_goal(&mut store, topic, "Research B");
@@ -3091,7 +3091,7 @@ fn undo_protection_check(root: &Path) {
             let view = cx.new(|cx| TaskApp::new_mock(w, cx));
             view.update(cx, |a, cx| {
                 a.attach_storage(Storage::new(path.clone()), w, cx);
-                a.scope = Scope::Automations;
+                a.set_scope_identity(Scope::Automations);
                 assert!(a.storage_error.is_empty(), "{}", a.storage_error);
                 cx.notify();
             });
@@ -3102,14 +3102,19 @@ fn undo_protection_check(root: &Path) {
     let app = app.unwrap();
     let handle: AnyWindowHandle = window.into();
 
-    // Ordinary edit -> pause. The pause is durable, so Undo must be invalidated
-    // with an explanation instead of restoring the pre-pause schedule.
+    // Automation mutations never create Undo entries. An unrelated scoped edit
+    // stays undoable and cannot roll back schedule state.
     cx.update_window(handle, |_, w, cx| {
-        app.update(cx, |a, _cx| {
-            a.snapshot();
-            a.store.task_mut(task).unwrap().title = "Ordinary edit one".into();
-            a.persist_if_changed(true);
-            assert_eq!(a.undo.len(), 1, "an ordinary edit is undoable");
+        app.update(cx, |a, cx| {
+            assert!(a.apply_domain_change(
+                move |store| {
+                    store.task_mut(task).unwrap().title = "Ordinary edit one".into();
+                    Ok(())
+                },
+                "Task renamed",
+                cx,
+            ));
+            assert_eq!(a.undo.len(), 1, "a scoped edit is undoable");
         });
         app.update(cx, |a, cx| a.pause_automation_ui(paused, cx));
         w.render_frame(cx);
@@ -3122,11 +3127,11 @@ fn undo_protection_check(root: &Path) {
             a.store.automation(paused).unwrap().status,
         )
     });
-    assert_eq!(undo_len, 0, "pause invalidates the whole-store snapshot");
-    assert!(
-        reason.as_deref().is_some_and(|reason| reason.contains("Automation changes cannot be undone safely")),
-        "disabled Undo must explain why"
+    assert_eq!(
+        undo_len, 1,
+        "pause records no undo entry and keeps the scoped edit"
     );
+    assert!(reason.is_none());
     assert_eq!(status, DefinitionStatus::Paused);
     cx.update_window(handle, |_, w, cx| {
         app.update(cx, |a, cx| a.undo_change(w, cx));
@@ -3138,17 +3143,22 @@ fn undo_protection_check(root: &Path) {
             a.store.automation(paused).unwrap().status,
         )
     });
-    assert_eq!(title, "Ordinary edit one", "Undo cannot roll back the ordinary edit through automation state");
+    assert_eq!(title, "Ordinary task", "the scoped edit was undone");
     assert_eq!(status, DefinitionStatus::Paused);
 
-    // Safe ordinary edit after the automation mutation remains undoable and
-    // does not disturb the paused definition.
+    // A scoped edit after the automation mutation still works and does not
+    // disturb the paused definition.
     cx.update_window(handle, |_, w, cx| {
         app.update(cx, |a, cx| {
-            a.snapshot();
-            assert!(a.undo_invalidation.is_none(), "a fresh snapshot clears the reason");
-            a.store.task_mut(task).unwrap().title = "Ordinary edit two".into();
-            a.persist_if_changed(true);
+            assert!(a.apply_domain_change(
+                move |store| {
+                    store.task_mut(task).unwrap().title = "Ordinary edit two".into();
+                    Ok(())
+                },
+                "Task renamed",
+                cx,
+            ));
+            assert!(a.undo_invalidation.is_none(), "no legacy barrier remains");
             a.undo_change(w, cx);
         });
     })
@@ -3160,49 +3170,24 @@ fn undo_protection_check(root: &Path) {
             a.undo.len(),
         )
     });
-    assert_eq!(title, "Ordinary edit one");
+    assert_eq!(title, "Ordinary task");
     assert_eq!(status, DefinitionStatus::Paused);
     assert_eq!(undo_len, 0);
 
-    // Direct Undo before persistence: resume the schedule without saving, then
-    // invoke Undo. The snapshot differs in automation state, so it must be
-    // rejected whole rather than partially merged.
-    cx.update_window(handle, |_, w, cx| {
-        app.update(cx, |a, cx| {
-            a.snapshot();
-            a.store.task_mut(task).unwrap().title = "Ordinary edit three".into();
-            a.store
-                .resume_schedule(paused, TaskApp::automation_now())
-                .unwrap();
-            assert_eq!(
-                a.store.automation(paused).unwrap().status,
-                DefinitionStatus::Enabled
-            );
-            a.undo_change(w, cx);
-        });
-    })
-    .unwrap();
-    let (title, status, undo_len, reason) = read_state(&mut cx, &app, |a| {
-        (
-            a.store.task(task).unwrap().title.clone(),
-            a.store.automation(paused).unwrap().status,
-            a.undo.len(),
-            a.undo_invalidation.clone(),
-        )
-    });
-    assert_eq!(title, "Ordinary edit three", "unsafe snapshot was not applied");
-    assert_eq!(status, DefinitionStatus::Enabled, "unsaved resume survives");
-    assert_eq!(undo_len, 0);
-    assert!(reason.is_some());
-
-    // Scheduled cursor + occurrence change while no run is active. Undo must
-    // not delete the occurrence or restore the old cursor.
+    // Scheduled cursor + occurrence change while no run is active. The tick
+    // creates no Undo entry; undoing the scoped edit leaves it intact.
     let now = TaskApp::automation_now();
     let occurrence_id = cx
         .update_window(handle, |_, _, cx| {
-            app.update(cx, |a, _cx| {
-                a.snapshot();
-                a.store.task_mut(task).unwrap().title = "Ordinary edit four".into();
+            app.update(cx, |a, cx| {
+                assert!(a.apply_domain_change(
+                    move |store| {
+                        store.task_mut(task).unwrap().title = "Ordinary edit four".into();
+                        Ok(())
+                    },
+                    "Task renamed",
+                    cx,
+                ));
                 {
                     let mut definition = a.store.automation_mut(paused).unwrap();
                     definition.anchor = Some(now - 600);
@@ -3214,8 +3199,8 @@ fn undo_protection_check(root: &Path) {
                 let occurrence = commit.queued.first().copied().or_else(|| commit.skipped.first().copied());
                 assert!(occurrence.is_some(), "the tick creates or skips an occurrence");
                 a.persist_if_changed(true);
-                assert_eq!(a.undo.len(), 0, "cursor and occurrence changes invalidate Undo");
-                assert!(a.undo_invalidation.is_some());
+                assert_eq!(a.undo.len(), 1, "the tick records no undo entry");
+                assert!(a.undo_invalidation.is_none());
                 occurrence.unwrap()
             })
         })
@@ -3242,8 +3227,9 @@ fn undo_protection_check(root: &Path) {
         app.update(cx, |a, cx| a.undo_change(w, cx));
     })
     .unwrap();
-    let (occurrences, cursor) = read_state(&mut cx, &app, |a| {
+    let (title, occurrences, cursor) = read_state(&mut cx, &app, |a| {
         (
+            a.store.task(task).unwrap().title.clone(),
             a.store
                 .all_occurrences()
                 .iter()
@@ -3252,15 +3238,22 @@ fn undo_protection_check(root: &Path) {
             a.store.automation(paused).unwrap().cursor,
         )
     });
+    assert_eq!(title, "Ordinary task");
     assert_eq!(occurrences, 1, "Undo cannot delete the new occurrence");
     assert!(cursor.is_some_and(|cursor| cursor > now), "Undo cannot restore the old cursor");
 
-    // Ordinary edit -> save a new Quick draft -> Undo must not delete it.
+    // A scoped edit followed by saving a new Quick draft: Undo restores only
+    // the edit and cannot delete the draft.
     cx.update_window(handle, |_, w, cx| {
         app.update(cx, |a, cx| {
-            a.snapshot();
-            a.store.task_mut(task).unwrap().title = "Ordinary edit five".into();
-            a.persist_if_changed(true);
+            assert!(a.apply_domain_change(
+                move |store| {
+                    store.task_mut(task).unwrap().title = "Ordinary edit five".into();
+                    Ok(())
+                },
+                "Task renamed",
+                cx,
+            ));
             a.start_automation_create(w, cx);
             a.automation_ui.objective.update(cx, |state, cx| {
                 state.set_value("Check fuel prices every day and cite a source.", w, cx);
@@ -3278,20 +3271,33 @@ fn undo_protection_check(root: &Path) {
         )
     });
     assert_eq!(automations, 3, "the Quick draft was saved");
-    assert_eq!(undo_len, 0);
-    assert!(reason.is_some());
+    assert_eq!(undo_len, 1, "saving a draft records no undo entry");
+    assert!(reason.is_none());
     cx.update_window(handle, |_, w, cx| {
         app.update(cx, |a, cx| a.undo_change(w, cx));
     })
     .unwrap();
-    assert_eq!(read_state(&mut cx, &app, |a| a.store.automations().len()), 3);
+    let (automations, title) = read_state(&mut cx, &app, |a| {
+        (
+            a.store.automations().len(),
+            a.store.task(task).unwrap().title.clone(),
+        )
+    });
+    assert_eq!(automations, 3, "Undo cannot delete the saved draft");
+    assert_eq!(title, "Ordinary task");
 
-    // Ordinary edit -> enable a draft -> Undo must not disable it again.
+    // A scoped edit followed by enabling a draft: Undo restores only the edit
+    // and cannot disable the automation again.
     cx.update_window(handle, |_, w, cx| {
         app.update(cx, |a, cx| {
-            a.snapshot();
-            a.store.task_mut(task).unwrap().title = "Ordinary edit six".into();
-            a.persist_if_changed(true);
+            assert!(a.apply_domain_change(
+                move |store| {
+                    store.task_mut(task).unwrap().title = "Ordinary edit six".into();
+                    Ok(())
+                },
+                "Task renamed",
+                cx,
+            ));
             a.edit_automation(draft_id, w, cx);
             a.enable_automation(cx);
         });
@@ -3310,7 +3316,7 @@ fn undo_protection_check(root: &Path) {
     assert_eq!(status, DefinitionStatus::Enabled);
     assert!(approval);
     assert!(cursor.is_some());
-    assert_eq!(undo_len, 0);
+    assert_eq!(undo_len, 1, "enabling records no undo entry");
     cx.update_window(handle, |_, w, cx| {
         app.update(cx, |a, cx| a.undo_change(w, cx));
     })
@@ -3322,7 +3328,7 @@ fn undo_protection_check(root: &Path) {
     );
     assert_eq!(
         read_state(&mut cx, &app, |a| a.store.task(task).unwrap().title.clone()),
-        "Ordinary edit six"
+        "Ordinary task"
     );
     cx.update_window(handle, |_, w, _| w.remove_window()).unwrap();
     println!("undo protection passed");
@@ -3347,7 +3353,7 @@ fn draft_defaults_check(root: &Path) {
             let view = cx.new(|cx| TaskApp::new_mock(w, cx));
             view.update(cx, |a, cx| {
                 a.attach_storage(Storage::new(path.clone()), w, cx);
-                a.scope = Scope::Automations;
+                a.set_scope_identity(Scope::Automations);
                 assert!(a.storage_error.is_empty(), "{}", a.storage_error);
                 cx.notify();
             });
@@ -3506,7 +3512,7 @@ fn shape_switch_check(root: &Path) {
             let view = cx.new(|cx| TaskApp::new_mock(w, cx));
             view.update(cx, |a, cx| {
                 a.attach_storage(Storage::new(path.clone()), w, cx);
-                a.scope = Scope::Automations;
+                a.set_scope_identity(Scope::Automations);
                 a.edit_automation(id, w, cx);
                 assert!(a.storage_error.is_empty(), "{}", a.storage_error);
                 cx.notify();
@@ -3572,7 +3578,7 @@ fn planning_revision_completion_check(root: &Path) {
     std::fs::create_dir_all(directory.join("automations")).unwrap();
     let path = directory.join("workspace.sqlite3");
     let mut store = model_store(&directory);
-    store.research_config.models =
+    store.research_config_mut().models =
         ["fixture/plan", "fixture/collect", "fixture/analyze", "fixture/advise"].map(String::from);
     let automation_project = store
         .ensure_automation_project(directory.join("automations").to_string_lossy().into())
@@ -3607,7 +3613,7 @@ fn planning_revision_completion_check(root: &Path) {
     second.output = plan.into();
     let second_id = second.id;
     store.push_run(second);
-    store.research_requests[0].planning_run_id = Some(second_id);
+    store.request_at_mut(0).unwrap().planning_run_id = Some(second_id);
     Storage::new(path.clone()).save(&store).unwrap();
 
     let mut cx = HeadlessAppContext::with_platform(
@@ -3622,7 +3628,7 @@ fn planning_revision_completion_check(root: &Path) {
             let view = cx.new(|cx| TaskApp::new_mock(w, cx));
             view.update(cx, |a, cx| {
                 a.attach_storage(Storage::new(path.clone()), w, cx);
-                a.scope = Scope::Automations;
+                a.set_scope_identity(Scope::Automations);
                 a.automation_ui.selected = Some(id);
                 a.edit_automation(id, w, cx);
                 a.automation_ui.planning_automation = Some(id);
@@ -3687,7 +3693,7 @@ fn planning_revision_completion_check(root: &Path) {
                 a.automation_ui.planning_automation = Some(id);
                 a.automation_ui.planning_run = Some(run_id);
                 a.complete_research_run(run_id, cx);
-                (request, a.store.research_requests.iter().find(|value| value.id == request).unwrap().revision)
+                (request, a.store.research_requests().iter().find(|value| value.id == request).unwrap().revision)
             })
         })
         .unwrap();
@@ -3772,9 +3778,9 @@ print(json.dumps({'type':'text','part':{'text':json.dumps(plan)}}), flush=True)
     }
     let path = directory.join("workspace.sqlite3");
     let mut store = model_store(&directory);
-    store.opencode_path = cli.to_string_lossy().into();
-    store.default_model = "fixture/plan".into();
-    store.research_config.models =
+    store.set_opencode_path(cli.to_string_lossy().into());
+    store.set_default_model("fixture/plan".into());
+    store.research_config_mut().models =
         ["fixture/plan", "fixture/collect", "fixture/analyze", "fixture/advise"].map(String::from);
     Storage::new(path.clone()).save(&store).unwrap();
 
@@ -3790,7 +3796,7 @@ print(json.dumps({'type':'text','part':{'text':json.dumps(plan)}}), flush=True)
             let view = cx.new(|cx| TaskApp::new_mock(w, cx));
             view.update(cx, |a, cx| {
                 a.attach_storage(Storage::new(path.clone()), w, cx);
-                a.scope = Scope::Automations;
+                a.set_scope_identity(Scope::Automations);
                 assert!(a.storage_error.is_empty(), "{}", a.storage_error);
                 cx.notify();
             });
@@ -4094,7 +4100,7 @@ print(json.dumps({'type':'text','part':{'text':json.dumps(plan)}}), flush=True)
             let view = cx.new(|cx| TaskApp::new_mock(w, cx));
             view.update(cx, |a, cx| {
                 a.attach_storage(Storage::new(restart_path.clone()), w, cx);
-                a.scope = Scope::Automations;
+                a.set_scope_identity(Scope::Automations);
                 a.automation_ui.selected = Some(automation);
                 a.automation_ui.creating = false;
                 assert!(a.storage_error.is_empty(), "{}", a.storage_error);
@@ -4306,7 +4312,7 @@ print(json.dumps({'type':'text','part':{'text':json.dumps(plan)}}), flush=True)
             let view = cx.new(|cx| TaskApp::new_mock(w, cx));
             view.update(cx, |a, cx| {
                 a.attach_storage(Storage::new(narrow_path.clone()), w, cx);
-                a.scope = Scope::Automations;
+                a.set_scope_identity(Scope::Automations);
                 a.automation_ui.selected = Some(automation);
                 a.automation_ui.creating = false;
                 assert!(a.storage_error.is_empty(), "{}", a.storage_error);
@@ -4373,7 +4379,7 @@ fn late_planning_completion_check(root: &Path) {
     std::fs::create_dir_all(directory.join("automations")).unwrap();
     let path = directory.join("workspace.sqlite3");
     let mut store = model_store(&directory);
-    store.research_config.models =
+    store.research_config_mut().models =
         ["fixture/plan", "fixture/collect", "fixture/analyze", "fixture/advise"].map(String::from);
     let automation_project = store
         .ensure_automation_project(directory.join("automations").to_string_lossy().into())
@@ -4423,7 +4429,7 @@ fn late_planning_completion_check(root: &Path) {
             let view = cx.new(|cx| TaskApp::new_mock(w, cx));
             view.update(cx, |a, cx| {
                 a.attach_storage(Storage::new(path.clone()), w, cx);
-                a.scope = Scope::Automations;
+                a.set_scope_identity(Scope::Automations);
                 a.automation_ui.selected = Some(id);
                 a.edit_automation(id, w, cx);
                 assert!(a.storage_error.is_empty(), "{}", a.storage_error);
@@ -4472,7 +4478,7 @@ fn late_planning_completion_check(root: &Path) {
                     .find(|candidate| candidate.id == run_id)
                     .map(|run| run.status.clone()),
                 a.store
-                    .research_requests
+                    .research_requests()
                     .iter()
                     .find(|candidate| candidate.id == request)
                     .and_then(|request| request.planning_run_id),
@@ -4604,7 +4610,7 @@ fn ui_interaction(root: &Path) -> PathBuf {
                 assert!(a.storage_error.is_empty(), "{}", a.storage_error);
                 a.available_models = vec!["qa/automation".into()];
                 a.automation_fake_mode = true;
-                a.scope = Scope::Automations;
+                a.set_scope_identity(Scope::Automations);
                 a.automation_ui.selected = None;
                 a.automation_ui.creating = false;
                 cx.notify();
@@ -4887,7 +4893,7 @@ fn ui_interaction(root: &Path) -> PathBuf {
     // Automation-owned steps are archived with their automation, never on their own.
     let step = read_state(&mut cx, &app, |a| {
         a.store
-            .tasks
+            .tasks()
             .iter()
             .find(|t| t.automation_id == Some(id))
             .map(|t| t.id)
@@ -5056,7 +5062,7 @@ fn ui_interaction(root: &Path) -> PathBuf {
     })
     .unwrap();
     assert_eq!(
-        read_state(&mut cx, &app, |a| a.scope.clone()),
+        read_state(&mut cx, &app, |a| a.scope()),
         Scope::Automations
     );
     assert!(!read_state(&mut cx, &app, |a| a.automation_ui.creating));
@@ -5094,7 +5100,7 @@ fn ui_interaction(root: &Path) -> PathBuf {
     cx.update_window(handle, |_, w, cx| {
         app.update(cx, |a, cx| {
             a.task_result_context = Some(automation_task);
-            a.scope = Scope::Runs;
+            a.set_scope_identity(Scope::Runs);
             a.selected_run = Some(automation_run);
             a.show_run_details = false;
             a.show_run_result = false;
@@ -5119,7 +5125,7 @@ fn ui_interaction(root: &Path) -> PathBuf {
     })
     .unwrap();
     assert_eq!(
-        read_state(&mut cx, &app, |a| a.scope.clone()),
+        read_state(&mut cx, &app, |a| a.scope()),
         Scope::AutomationRuns
     );
     assert_eq!(read_state(&mut cx, &app, |a| a.title()), "Automation results");
@@ -5291,7 +5297,7 @@ fn ui_interaction(root: &Path) -> PathBuf {
         "Back from a step returns to its period result"
     );
     assert_eq!(
-        read_state(&mut cx, &app, |a| a.scope.clone()),
+        read_state(&mut cx, &app, |a| a.scope()),
         Scope::AutomationRuns,
         "a period opened from Automation results must return to that results page"
     );
@@ -5312,7 +5318,7 @@ fn ui_interaction(root: &Path) -> PathBuf {
         );
         w.click("close-automation-result", cx);
         w.render_frame(cx);
-        assert_eq!(app.read(cx).scope, Scope::AutomationRuns);
+        assert_eq!(app.read(cx).scope(), Scope::AutomationRuns);
         assert_eq!(app.read(cx).automation_ui.result_filter, Some(id));
         assert!(
             w.try_find(format!("open-occurrence-{latest}")).is_some(),
@@ -5365,11 +5371,11 @@ fn ui_interaction(root: &Path) -> PathBuf {
         w.render_frame(cx);
         w.click("navigation-back", cx);
         w.render_frame(cx);
-        assert_eq!(app.read(cx).scope, Scope::Automations);
+        assert_eq!(app.read(cx).scope(), Scope::Automations);
         assert_eq!(app.read(cx).automation_ui.result_dialog, Some(latest));
         w.click("close-automation-result", cx);
         w.render_frame(cx);
-        assert_eq!(app.read(cx).scope, Scope::Automations);
+        assert_eq!(app.read(cx).scope(), Scope::Automations);
     })
     .unwrap();
     cx.update_window(handle, |_, w, cx| {
@@ -5420,7 +5426,7 @@ fn ui_interaction(root: &Path) -> PathBuf {
     })
     .unwrap();
     assert_eq!(
-        read_state(&mut cx, &app, |a| a.scope.clone()),
+        read_state(&mut cx, &app, |a| a.scope()),
         Scope::Automations
     );
 
@@ -5489,7 +5495,7 @@ fn ui_interaction(root: &Path) -> PathBuf {
         OccurrenceStatus::Cancelled
     );
     assert_eq!(
-        read_state(&mut cx, &app, |a| a.scope.clone()),
+        read_state(&mut cx, &app, |a| a.scope()),
         Scope::AutomationRuns,
         "cancelling from the period dialog keeps the user on Automation results"
     );
@@ -5540,7 +5546,7 @@ fn render_matrix(root: &Path, source: &Path) {
             std::fs::create_dir_all(&directory).unwrap();
             let path = directory.join("workspace.sqlite3");
             let mut store = base.clone();
-            store.appearance = mode;
+            store.set_appearance(mode);
             Storage::new(path.clone()).save(&store).unwrap();
             let mut cx = HeadlessAppContext::with_platform(
                 platform::current_platform(true).text_system(),
@@ -5555,7 +5561,7 @@ fn render_matrix(root: &Path, source: &Path) {
                     view.update(cx, |a, cx| {
                         a.attach_storage(Storage::new(path.clone()), w, cx);
                         a.automation_fake_mode = true;
-                        a.scope = Scope::Automations;
+                        a.set_scope_identity(Scope::Automations);
                         a.automation_ui.selected = None;
                         cx.notify();
                     });
@@ -5777,7 +5783,7 @@ pub fn performance_fixture() {
             let view = cx.new(|cx| TaskApp::new_mock(w, cx));
             view.update(cx, |a, cx| {
                 a.attach_storage(Storage::new(path.clone()), w, cx);
-                a.scope = crate::app::Scope::Automations;
+                a.set_scope_identity(crate::app::Scope::Automations);
                 a.automation_ui.selected = None;
                 a.automation_fake_mode = true;
                 cx.notify();

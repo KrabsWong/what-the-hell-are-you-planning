@@ -203,7 +203,7 @@ impl Store {
     }
     pub(crate) fn paused_project_goals(&self) -> Vec<(u64, Vec<u64>)> {
         let mut projects: BTreeMap<u64, Vec<u64>> = BTreeMap::new();
-        for task in &self.tasks {
+        for task in self.tasks() {
             if self.task_is_archived(task.id)
                 || task.automation_id.is_some()
                 || task.stage.is_closed()
@@ -216,7 +216,7 @@ impl Store {
                 continue;
             }
             let interrupted = self
-                .tasks
+                .tasks()
                 .iter()
                 .filter(|t| t.research.as_ref().is_some_and(|r| r.goal_id == task.id))
                 .any(|t| {
@@ -533,7 +533,7 @@ impl TaskApp {
             && self.store.goal_execution_approved(goal)
             && !self.store.goal_tasks_complete(goal)
             && !self.goal_busy(goal)
-            && !self.store.tasks.iter().any(|t| {
+            && !self.store.tasks().iter().any(|t| {
                 t.research.as_ref().is_some_and(|r| r.goal_id == goal)
                     && self.recovery_blocks_task(t.id)
             })
@@ -629,7 +629,7 @@ impl TaskApp {
         for (project, goals) in projects {
             let name = self
                 .store
-                .projects
+                .projects()
                 .iter()
                 .find(|p| p.id == project)
                 .map(|p| p.name.clone())
@@ -669,7 +669,7 @@ impl TaskApp {
             }
             for (topic_id, goals) in topics {
                 let title = topic_id
-                    .and_then(|id| self.store.topics.iter().find(|t| t.id == id))
+                    .and_then(|id| self.store.topics().iter().find(|t| t.id == id))
                     .map(|t| t.display_name())
                     .unwrap_or_else(|| "Topic unavailable".into());
                 view = view.child(
@@ -851,8 +851,8 @@ mod tests {
     #[test]
     fn codex_recovery_uses_attempt_lease_even_before_session_event() {
         let mut store = Store::empty();
-        store.projects[0].directory = std::env::temp_dir().to_string_lossy().into_owned();
-        store.default_model = "test/model".into();
+        store.project_at_mut(0).unwrap().directory = std::env::temp_dir().to_string_lossy().into_owned();
+        store.set_default_model("test/model".into());
         let goal = store.create_research_goal("Recovery".into(), "Scope".into(), 1).unwrap();
         let mut run = store.prepare_run(goal).unwrap();
         run.agent = "Codex".into();

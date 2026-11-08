@@ -320,8 +320,8 @@ mod tests {
     use super::*;
     fn fixture() -> (Store, u64, Vec<u64>, TodoBatch) {
         let mut s = Store::empty();
-        s.default_model = "fixture/model".into();
-        s.projects[0].directory = std::env::temp_dir().to_string_lossy().into();
+        s.set_default_model("fixture/model".into());
+        s.project_at_mut(0).unwrap().directory = std::env::temp_dir().to_string_lossy().into();
         let topic = s.create_topic(1, "Topic").unwrap();
         let goal = s
             .create_research_goal_in_topic("Goal".into(), "Scope".into(), 1, Some(topic))

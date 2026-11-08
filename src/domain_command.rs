@@ -1381,7 +1381,7 @@ fn apply_dispatch_request_plan(
 ) -> Result<CommandOutcome, CommandError> {
     validate_dispatch_lifecycle(&run)?;
     let request = staged
-        .research_requests
+        .research_requests()
         .iter()
         .find(|request| request.id == request_id)
         .ok_or_else(|| CommandError::Rejected("The planning request is no longer available.".into()))?;
@@ -1399,7 +1399,7 @@ fn apply_dispatch_request_plan(
         ));
     }
     if !staged
-        .projects
+        .projects()
         .iter()
         .any(|project| project.id == request.project_id && !project.directory.is_empty())
     {
@@ -1440,7 +1440,7 @@ fn apply_dispatch_request_plan(
     let run_id = run.id;
     staged.push_run(run);
     if let Some(request) = staged
-        .research_requests
+        .research_requests()
         .iter_mut()
         .find(|request| request.id == request_id)
     {
@@ -1701,9 +1701,9 @@ pub(crate) fn assert_ordinary_edit_preserved(
     if before.automations() != after.automations()
         || before.all_occurrences() != after.all_occurrences()
         || before.runs() != after.runs()
-        || before.research_requests != after.research_requests
-        || before.publications != after.publications
-        || before.report_publishing != after.report_publishing
+        || before.research_requests() != after.research_requests()
+        || before.publications() != after.publications()
+        || before.report_publishing() != after.report_publishing()
         || automation_projects(before) != automation_projects(after)
         || automation_tasks(before) != automation_tasks(after)
         || automation_topics(before) != automation_topics(after)
@@ -1712,7 +1712,7 @@ pub(crate) fn assert_ordinary_edit_preserved(
             "This edit would change protected automation, run, approval or history state.".into(),
         ));
     }
-    if after.next_id < before.next_id {
+    if after.next_id() < before.next_id() {
         return Err(CommandError::Conflict(
             "An ordinary edit may not decrease the workspace identifier sequence.".into(),
         ));
@@ -1722,7 +1722,7 @@ pub(crate) fn assert_ordinary_edit_preserved(
 
 fn automation_projects(store: &Store) -> Vec<&crate::domain::Project> {
     store
-        .projects
+        .projects()
         .iter()
         .filter(|project| project.kind == crate::domain::ProjectKind::Automation)
         .collect()
@@ -1730,7 +1730,7 @@ fn automation_projects(store: &Store) -> Vec<&crate::domain::Project> {
 
 fn automation_tasks(store: &Store) -> Vec<&Task> {
     store
-        .tasks
+        .tasks()
         .iter()
         .filter(|task| task.automation_id.is_some())
         .collect()
@@ -1738,7 +1738,7 @@ fn automation_tasks(store: &Store) -> Vec<&Task> {
 
 fn automation_topics(store: &Store) -> Vec<&crate::domain::Topic> {
     store
-        .topics
+        .topics()
         .iter()
         .filter(|topic| topic.automation_id.is_some())
         .collect()
@@ -1951,9 +1951,9 @@ mod tests {
 
     fn fixture_store() -> Store {
         let mut store = Store::empty();
-        store.default_model = "test/model".into();
-        store.projects[0].directory = std::env::temp_dir().to_string_lossy().into_owned();
-        store.research_config.models = [
+        store.set_default_model("test/model".into());
+        store.project_at_mut(0).unwrap().directory = std::env::temp_dir().to_string_lossy().into_owned();
+        store.research_config_mut().models = [
             "test/model".into(),
             "test/model".into(),
             "test/model".into(),

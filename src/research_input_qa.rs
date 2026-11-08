@@ -38,8 +38,8 @@ pub fn run() {
 
 fn workspace(directory: &Path) -> (Store, u64, Vec<u64>) {
     let mut store = Store::empty();
-    store.projects[0].directory = directory.to_string_lossy().into();
-    store.research_config.models =
+    store.project_at_mut(0).unwrap().directory = directory.to_string_lossy().into();
+    store.research_config_mut().models =
         ["test/plan", "test/search", "test/analysis", "test/brief"].map(String::from);
     let goal = store
         .create_research_goal(
@@ -128,11 +128,11 @@ fn impact_dialog(root: &Path, mode: Appearance, width: f32, height: f32) {
     let directory = root.join(format!("impact-{mode:?}-{width}"));
     std::fs::create_dir_all(&directory).unwrap();
     let (mut store, goal, steps) = workspace(&directory);
-    store.appearance = mode;
+    store.set_appearance(mode);
     let path = directory.join("workspace.sqlite3");
     Storage::new(path.clone()).save(&store).unwrap();
     let (mut cx, handle, app) = with_app(store, &path, width, height, |app, w, cx| {
-        app.scope = Scope::All;
+        app.set_scope_identity(Scope::All);
         app.open_task(steps[0], w, cx);
         app.begin_draft(steps[0], w, cx);
         let title = app.draft.as_ref().unwrap().title.clone();
@@ -195,7 +195,7 @@ fn impact_dialog(root: &Path, mode: Appearance, width: f32, height: f32) {
             Some(steps[0]),
             "confirmed save stays on the edited step"
         );
-        assert_eq!(app.read(cx).scope, Scope::All);
+        assert_eq!(app.read(cx).scope(), Scope::All);
         assert!(app.read(cx).draft.is_none());
     })
     .unwrap();
@@ -215,7 +215,7 @@ fn history_dialog(root: &Path, mode: Appearance, width: f32, height: f32) {
     let directory = root.join(format!("history-{mode:?}-{width}"));
     std::fs::create_dir_all(&directory).unwrap();
     let (mut store, goal, steps) = invalidated(&directory);
-    store.appearance = mode;
+    store.set_appearance(mode);
     let sibling_run = store
         .runs()
         .iter()
@@ -231,7 +231,7 @@ fn history_dialog(root: &Path, mode: Appearance, width: f32, height: f32) {
     let path = directory.join("workspace.sqlite3");
     Storage::new(path.clone()).save(&store).unwrap();
     let (mut cx, handle, app) = with_app(store, &path, width, height, |app, w, cx| {
-        app.scope = Scope::All;
+        app.set_scope_identity(Scope::All);
         app.open_task(goal, w, cx);
         cx.notify();
     });
@@ -314,12 +314,12 @@ fn archived_history_dialog(root: &Path) {
     let directory = root.join("history-archived-Light-1440");
     std::fs::create_dir_all(&directory).unwrap();
     let (mut store, goal, steps) = workspace(&directory);
-    store.appearance = Appearance::Light;
+    store.set_appearance(Appearance::Light);
     store.archive(goal).unwrap();
     let path = directory.join("workspace.sqlite3");
     Storage::new(path.clone()).save(&store).unwrap();
     let (mut cx, handle, app) = with_app(store, &path, 1440., 920., |app, w, cx| {
-        app.scope = Scope::All;
+        app.set_scope_identity(Scope::All);
         app.open_task(goal, w, cx);
         cx.notify();
     });
@@ -381,7 +381,7 @@ fn archived_changed_history_dialog(root: &Path) {
     let directory = root.join("history-archived-changed-Light-1440");
     std::fs::create_dir_all(&directory).unwrap();
     let (mut store, goal, steps) = workspace(&directory);
-    store.appearance = Appearance::Light;
+    store.set_appearance(Appearance::Light);
     let changed_run = store
         .runs()
         .iter()
@@ -394,7 +394,7 @@ fn archived_changed_history_dialog(root: &Path) {
     let path = directory.join("workspace.sqlite3");
     Storage::new(path.clone()).save(&store).unwrap();
     let (mut cx, handle, app) = with_app(store, &path, 1440., 920., |app, w, cx| {
-        app.scope = Scope::All;
+        app.set_scope_identity(Scope::All);
         app.open_task(goal, w, cx);
         cx.notify();
     });
@@ -455,8 +455,8 @@ fn long_report() -> String {
 
 fn long_workspace(directory: &Path) -> (Store, u64, Vec<u64>) {
     let mut store = Store::empty();
-    store.projects[0].directory = directory.to_string_lossy().into();
-    store.research_config.models =
+    store.project_at_mut(0).unwrap().directory = directory.to_string_lossy().into();
+    store.research_config_mut().models =
         ["test/plan", "test/search", "test/analysis", "test/brief"].map(String::from);
     let goal = store
         .create_research_goal(
@@ -518,13 +518,13 @@ fn long_history_dialog(root: &Path, mode: Appearance, width: f32, height: f32) {
     let directory = root.join(format!("long-history-{mode:?}-{width}"));
     std::fs::create_dir_all(&directory).unwrap();
     let (mut store, goal, steps) = long_workspace(&directory);
-    store.appearance = mode;
+    store.set_appearance(mode);
     let path = directory.join("workspace.sqlite3");
     Storage::new(path.clone()).save(&store).unwrap();
     let older_a = 20_000u64;
     let older_b = 20_001u64;
     let (mut cx, handle, app) = with_app(store, &path, width, height, |app, w, cx| {
-        app.scope = Scope::All;
+        app.set_scope_identity(Scope::All);
         app.open_task(goal, w, cx);
         cx.notify();
     });
@@ -735,11 +735,11 @@ fn keyboard_dialogs(root: &Path) {
     let directory = root.join("keyboard-dialogs");
     std::fs::create_dir_all(&directory).unwrap();
     let (mut store, goal, steps) = workspace(&directory);
-    store.appearance = Appearance::Light;
+    store.set_appearance(Appearance::Light);
     let path = directory.join("workspace.sqlite3");
     Storage::new(path.clone()).save(&store).unwrap();
     let (mut cx, handle, app) = with_app(store, &path, 1000., 680., |app, w, cx| {
-        app.scope = Scope::All;
+        app.set_scope_identity(Scope::All);
         app.open_task(steps[0], w, cx);
         app.begin_draft(steps[0], w, cx);
         let title = app.draft.as_ref().unwrap().title.clone();
@@ -859,12 +859,12 @@ fn failed_durable_save_keeps_pending_and_draft(root: &Path) {
     let directory = root.join("save-failure");
     std::fs::create_dir_all(&directory).unwrap();
     let (mut store, _, steps) = workspace(&directory);
-    store.appearance = Appearance::Light;
+    store.set_appearance(Appearance::Light);
     let path = directory.join("workspace.sqlite3");
     Storage::new(path.clone()).save(&store).unwrap();
     let (mut cx, handle, app) = with_app(store, &path, 1000., 680., |app, w, cx| {
         app.storage = None;
-        app.scope = Scope::All;
+        app.set_scope_identity(Scope::All);
         app.open_task(steps[0], w, cx);
         app.begin_draft(steps[0], w, cx);
         let title = app.draft.as_ref().unwrap().title.clone();
@@ -950,7 +950,7 @@ where
             view.update(cx, |app, cx| {
                 app.attach_storage(Storage::new(path.to_path_buf()), w, cx);
                 assert!(app.storage_error.is_empty(), "{}", app.storage_error);
-                let appearance = store.appearance;
+                let appearance = store.appearance();
                 app.store = store;
                 app.set_appearance(appearance, w, cx);
                 configure(app, w, cx);

@@ -1,0 +1,6 @@
+{
+  "base": ".local/r58-footer-snapshot",
+  "snapshot": ".local/r58-footer-verified-snapshot",
+  "change": "Replace disabled-flag inference with a real scoped settings command and clickable Undo plus restored value assertion",
+  "qa_sha256": "56c39103c8eaa23d1ebb7a7c3d19aabbb134daf0006b4e1386f4564be36aada3"
+}

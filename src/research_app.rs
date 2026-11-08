@@ -25,13 +25,13 @@ impl TaskApp {
     pub fn model_field_agent(&self, input: &Entity<component::input::InputState>) -> &str {
         self.research_models.iter().position(|field| field == input)
             .map(|i| self.store.research_agent(ResearchKind::ALL[i]))
-            .unwrap_or(&self.store.research_config.default_agent)
+            .unwrap_or(&self.store.research_config().default_agent)
     }
 
     pub fn refresh_model_placeholders(&self, w: &mut Window, cx: &mut Context<Self>) {
         self.global_model.update(cx, |s, cx| s.set_placeholder("Choose a model", w, cx));
         for i in 0..4 {
-            let placeholder = if self.store.research_agent(ResearchKind::ALL[i]) == self.store.research_config.default_agent {
+            let placeholder = if self.store.research_agent(ResearchKind::ALL[i]) == self.store.research_config().default_agent {
                 "Global default"
             } else { "Choose a model" };
             self.research_models[i].update(cx, |s, cx| s.set_placeholder(placeholder, w, cx));
@@ -40,51 +40,52 @@ impl TaskApp {
 
     pub fn set_model_agent(&mut self, stage: Option<usize>, agent: &str, w: &mut Window, cx: &mut Context<Self>) {
         let current = stage.map(|i| self.store.research_agent(ResearchKind::ALL[i]))
-            .unwrap_or(&self.store.research_config.default_agent);
+            .unwrap_or(&self.store.research_config().default_agent);
         if current == agent { return; }
-        self.snapshot();
+        let agent = agent.to_owned();
+        if self
+            .apply_domain_command_undoable(
+                crate::scoped_domain::DomainCommand::ModelAgent { stage, agent },
+                "Model settings saved",
+                cx,
+            )
+            .is_none()
+        {
+            return;
+        }
         match stage {
-            Some(i) => {
-                self.store.research_config.agents[i] = Some(agent.to_owned());
-                self.store.research_config.models[i].clear();
-                self.research_models[i].update(cx, |s, cx| s.set_value("", w, cx));
-            }
-            None => {
-                // Preserve existing model overrides on their original agent.
-                for i in 0..4 {
-                    if !self.store.research_config.models[i].is_empty() && self.store.research_config.agents[i].is_none() {
-                        self.store.research_config.agents[i] = Some(self.store.research_config.default_agent.clone());
-                    }
-                }
-                self.store.research_config.default_agent = agent.to_owned();
-                self.store.default_model.clear();
-                self.global_model.update(cx, |s, cx| s.set_value("", w, cx));
-            }
+            Some(i) => self.research_models[i].update(cx, |s, cx| s.set_value("", w, cx)),
+            None => self.global_model.update(cx, |s, cx| s.set_value("", w, cx)),
         }
         self.research_model_picker = None;
         self.refresh_model_placeholders(w, cx);
-        self.persist_if_changed(true);
         cx.notify();
     }
 
     pub fn use_global_for_stage(&mut self, i: usize, w: &mut Window, cx: &mut Context<Self>) {
-        self.snapshot();
-        self.store.research_config.agents[i] = None;
-        self.store.research_config.models[i].clear();
+        if self
+            .apply_domain_command_undoable(
+                crate::scoped_domain::DomainCommand::UseGlobalForStage { stage: i },
+                "Model settings saved",
+                cx,
+            )
+            .is_none()
+        {
+            return;
+        }
         self.research_models[i].update(cx, |s, cx| s.set_value("", w, cx));
         self.research_model_picker = None;
         self.refresh_model_placeholders(w, cx);
-        self.persist_if_changed(true);
         cx.notify();
     }
 
     pub fn refresh_research_inputs(&mut self, w: &mut Window, cx: &mut Context<Self>) {
         self.refresh_model_placeholders(w, cx);
         for i in 0..4 {
-            let value = self.store.research_config.models[i].clone();
+            let value = self.store.research_config().models[i].clone();
             self.research_models[i].update(cx, |s, cx| s.set_value(value, w, cx));
         }
-        let path = self.store.research_config.ego_path.clone();
+        let path = self.store.research_config().ego_path.clone();
         self.ego_input.update(cx, |s, cx| s.set_value(path, w, cx));
     }
     pub fn finish_model_search(&mut self, input: &Entity<component::input::InputState>, w: &mut Window, cx: &mut Context<Self>) {
@@ -100,21 +101,22 @@ impl TaskApp {
     pub fn finish_model_edit(&mut self, input: &Entity<component::input::InputState>, accept: bool, w: &mut Window, cx: &mut Context<Self>) {
         let stage = self.research_models.iter().position(|field| field == input);
         let saved = match stage {
-            Some(i) => &self.store.research_config.models[i],
-            None => &self.store.default_model,
+            Some(i) => self.store.research_config().models[i].clone(),
+            None => self.store.default_model().clone(),
         };
         let draft = input.read(cx).value();
         let value = draft.trim();
-        if accept && value != saved && ((if self.model_field_agent(input) == "Codex" { crate::codex::valid_model(value) } else { crate::opencode::valid_model(value) }) || (stage.is_some() && value.is_empty())) {
-            self.snapshot();
-            match stage {
-                Some(i) => self.store.research_config.models[i] = value.to_owned(),
-                None => self.store.default_model = value.to_owned(),
-            }
-            self.persist_if_changed(true);
-        } else if draft.as_str() != saved {
-            let previous = saved.clone();
-            input.update(cx, |field, cx| field.set_value(previous, w, cx));
+        if accept && value != saved.as_str() && ((if self.model_field_agent(input) == "Codex" { crate::codex::valid_model(value) } else { crate::opencode::valid_model(value) }) || (stage.is_some() && value.is_empty())) {
+            self.apply_domain_command_undoable(
+                crate::scoped_domain::DomainCommand::ModelValue {
+                    stage,
+                    value: value.to_owned(),
+                },
+                "Model settings saved",
+                cx,
+            );
+        } else if draft.as_str() != saved.as_str() {
+            input.update(cx, |field, cx| field.set_value(saved, w, cx));
         }
         if self.research_model_picker == Some(input.entity_id()) {
             self.research_model_picker = None;
@@ -128,7 +130,7 @@ impl TaskApp {
         let path = self.ego_input.read(cx).value().trim().to_string();
         let directory = self
             .store
-            .projects
+            .projects()
             .iter()
             .find(|p| p.id == self.research_project)
             .map(|p| PathBuf::from(&p.directory))
@@ -474,7 +476,7 @@ impl TaskApp {
                         .agents
                         .get(index)
                         .and_then(|agent| agent.clone())
-                        .unwrap_or_else(|| self.store.research_config.default_agent.clone());
+                        .unwrap_or_else(|| self.store.research_config().default_agent.clone());
                     run.prompt = crate::automation_execution::with_time_context(run.prompt, occurrence);
                     run.logs.push(format!(
                         "[automation] Report regeneration for occurrence {} keeps its approved snapshot and time window",
@@ -523,7 +525,7 @@ impl TaskApp {
             let r = task.research.as_ref().unwrap();
             let goal = self.store.task(r.goal_id).ok_or("Goal not found.")?;
             run.prompt.push_str(&ego::instructions(
-                &self.store.research_config.ego_path,
+                &self.store.research_config().ego_path,
                 &self.store.research_space(id).unwrap_or_else(|| r.space_name.clone()),
                 &goal.title,
             )?);
@@ -833,7 +835,7 @@ impl TaskApp {
                 .insert(task, crate::navigation_context::RecentSurface::Result);
         }
         self.selected = None;
-        self.scope = Scope::Runs;
+        self.set_scope_identity(Scope::Runs);
         self.reveal_selected_run();
         cx.notify();
     }

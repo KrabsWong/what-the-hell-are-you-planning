@@ -187,7 +187,7 @@ pub(crate) fn search(
 
     let mut scored = Vec::new();
     if domain.matches(SearchTargetKind::Research) {
-        for task in &store.tasks {
+        for task in store.tasks() {
             if task.automation_id.is_some()
                 || store.task_is_archived(task.id)
                 || task_belongs_to_automation_project(store, task)
@@ -243,7 +243,7 @@ pub(crate) fn search(
 
 fn research_candidate(store: &Store, task: &Task) -> Candidate {
     let project = store
-        .projects
+        .projects()
         .iter()
         .find(|project| project.id == task.project_id)
         .map(|project| project.name.clone())
@@ -354,7 +354,7 @@ fn period_candidate(
 
 fn task_belongs_to_automation_project(store: &Store, task: &Task) -> bool {
     store
-        .projects
+        .projects()
         .iter()
         .find(|project| project.id == task.project_id)
         .is_some_and(|project| project.kind == crate::domain::ProjectKind::Automation)
@@ -492,10 +492,10 @@ mod tests {
 
     fn fixture() -> (Store, u64, u64, u64, u64) {
         let mut store = Store::empty();
-        store.projects[0].name = "Semiconductor desk".into();
-        store.projects[0].directory = std::env::temp_dir().to_string_lossy().into();
-        store.default_model = "qa/model".into();
-        store.research_config.models =
+        store.project_at_mut(0).unwrap().name = "Semiconductor desk".into();
+        store.project_at_mut(0).unwrap().directory = std::env::temp_dir().to_string_lossy().into();
+        store.set_default_model("qa/model".into());
+        store.research_config_mut().models =
             ["qa/plan", "qa/collect", "qa/analyze", "qa/advise"].map(String::from);
         let goal = store
             .create_research_goal("Semiconductor supply outlook".into(), "Compare supply".into(), 1)
@@ -561,7 +561,7 @@ mod tests {
     #[test]
     fn title_prefix_outranks_metadata_only_matches() {
         let mut store = Store::empty();
-        store.projects[0].name = "Desk".into();
+        store.project_at_mut(0).unwrap().name = "Desk".into();
         let exact = store
             .create_task("Fuel price report", 1, Stage::Planned, None)
             .unwrap();
@@ -584,7 +584,7 @@ mod tests {
     #[test]
     fn report_bodies_and_logs_are_not_search_sources() {
         let (mut store, _goal, _automation, _period, _owned) = fixture();
-        let mut run = store.prepare_run(store.tasks[0].id).unwrap();
+        let mut run = store.prepare_run(store.task_at_mut(0).unwrap().id).unwrap();
         run.output = "topsecretreportbody".into();
         run.logs = vec!["topsecretlogline".into()];
         store.push_run(run);

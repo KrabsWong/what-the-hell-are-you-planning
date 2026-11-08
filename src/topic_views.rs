@@ -33,7 +33,7 @@ pub(crate) struct TopicMoveDialog {
 impl TaskApp {
     pub(crate) fn request_topic_move(&mut self, topic: u64, w: &mut Window, cx: &mut Context<Self>) {
         self.remember_dialog_opener(w, cx);
-        let Some(current) = self.store.topics.iter().find(|t| t.id == topic) else { return; };
+        let Some(current) = self.store.topics().iter().find(|t| t.id == topic) else { return; };
         let choices: Vec<_> = self.store.visible_projects().filter(|p| p.id != current.project_id)
             .map(|p| ProjectChoice { id: p.id, title: format!("{} · {} (#{})", p.name, p.key, p.id).into() }).collect();
         let has_destinations = !choices.is_empty();
@@ -52,11 +52,14 @@ impl TaskApp {
         // The modal also renders live blockers; repeat validation at the mutation boundary.
         let blockers = self.store.topic_move_blockers(topic, self.todo_batch.as_ref());
         if !blockers.is_empty() { cx.notify(); return; }
-        let mut staged = self.store.clone();
-        let result = staged.move_topic_project(topic, project);
-        if result.is_ok() {
-            self.snapshot();
-            self.store = staged;
+        let saved = self
+            .apply_domain_command_undoable(
+                crate::scoped_domain::DomainCommand::TopicMove { topic, project },
+                "Entire topic moved",
+                cx,
+            )
+            .is_some();
+        if saved {
             if self.research_topic == Some(topic) { self.research_project = project; }
             if self.planning_topic == Some(topic) {
                 self.planning_project = Some(project);
@@ -68,20 +71,19 @@ impl TaskApp {
             self.topic_move = None;
             w.focus(&self.focus, cx);
         }
-        self.finish(result, "Entire topic moved", cx);
     }
 
     pub(crate) fn topic_move_view(&self, cx: &mut Context<Self>) -> AnyElement {
         let dialog = self.topic_move.as_ref().unwrap();
         let colors = palette(cx);
-        let topic = self.store.topics.iter().find(|t| t.id == dialog.topic);
+        let topic = self.store.topics().iter().find(|t| t.id == dialog.topic);
         let name = topic.map(|t| t.display_name()).unwrap_or_default();
-        let source = topic.and_then(|t| self.store.projects.iter().find(|p| p.id == t.project_id)).map(|p| p.name.clone()).unwrap_or_default();
-        let count = self.store.tasks.iter().filter(|t| t.automation_id.is_none() && self.store.task_topic(t.id).is_some_and(|t| t.id == dialog.topic)).count();
+        let source = topic.and_then(|t| self.store.projects().iter().find(|p| p.id == t.project_id)).map(|p| p.name.clone()).unwrap_or_default();
+        let count = self.store.tasks().iter().filter(|t| t.automation_id.is_none() && self.store.task_topic(t.id).is_some_and(|t| t.id == dialog.topic)).count();
         let blockers = self.store.topic_move_blockers(dialog.topic, self.todo_batch.as_ref());
         let blocked = !blockers.is_empty();
         let selected = dialog.projects.read(cx).selected_value().copied();
-        let destination = selected.and_then(|id| self.store.projects.iter().find(|p| p.id == id));
+        let destination = selected.and_then(|id| self.store.projects().iter().find(|p| p.id == id));
         let mut body = col().id("topic-move-body").min_h_0().max_h(px(360.)).overflow_y_scroll().gap_3()
             .child(label(format!("{name} · From {source} · {count} tasks"), cx));
         if blocked {
@@ -133,7 +135,7 @@ impl TaskApp {
         cx: &mut Context<Self>,
     ) {
         let name = id
-            .and_then(|id| self.store.topics.iter().find(|t| t.id == id))
+            .and_then(|id| self.store.topics().iter().find(|t| t.id == id))
             .map(|t| t.name.clone())
             .unwrap_or_default();
         self.clear_navigation_overlays();
@@ -153,20 +155,27 @@ impl TaskApp {
             return;
         };
         let (project, id, name) = (*project, *id, input.read(cx).value().to_string());
-        self.snapshot();
-        let result = match id {
-            Some(id) => self.store.rename_topic(id, name).map(|_| id),
-            None => self.store.create_topic(project, name),
+        let outcome = match id {
+            Some(topic) => self.apply_domain_command_undoable(
+                crate::scoped_domain::DomainCommand::TopicRename { topic, name },
+                "Topic saved",
+                cx,
+            ),
+            None => self.apply_domain_command_undoable(
+                crate::scoped_domain::DomainCommand::TopicCreate { project, name },
+                "Topic saved",
+                cx,
+            ),
         };
-        match result {
-            Ok(id) => {
+        if let Some(outcome) = outcome {
+            let saved_id = id.or(outcome.created_topic);
+            if let Some(id) = saved_id {
                 self.navigate(Scope::Topic(id), w, cx);
-                if !self.expanded_sidebar_projects.contains(&project) {
-                    self.expanded_sidebar_projects.push(project);
-                }
-                self.finish(Ok(()), "Topic saved", cx);
             }
-            Err(error) => self.finish(Err(error), "", cx),
+            if !self.expanded_sidebar_projects.contains(&project) {
+                self.expanded_sidebar_projects.push(project);
+            }
+            self.topic_editor = None;
         }
     }
 
@@ -204,7 +213,7 @@ impl TaskApp {
                 None
             });
         let title = selected
-            .and_then(|id| self.store.topics.iter().find(|t| t.id == id))
+            .and_then(|id| self.store.topics().iter().find(|t| t.id == id))
             .map(|t| {
                 format!(
                     "{}{}",
@@ -219,7 +228,7 @@ impl TaskApp {
             });
         let topics: Vec<_> = self
             .store
-            .topics
+            .topics()
             .iter()
             .filter(|t| t.project_id == project && !t.archived && t.automation_id.is_none())
             .map(|t| (Some(t.id), t.display_name()))
@@ -253,15 +262,11 @@ impl TaskApp {
                 menu = menu.item(PopupMenuItem::new(name).on_click(move |_, _, cx| {
                     let _ = entity.update(cx, |a, cx| {
                         if let Some(goal) = goal {
-                            a.snapshot();
-                            let result = if a.store.task(goal).is_some_and(|t| t.research.is_some())
-                            {
-                                a.store.set_goal_topic(goal, id)
-                            } else {
-                                id.ok_or("Choose a topic.".to_string())
-                                    .and_then(|id| a.store.set_root_topic(goal, id))
-                            };
-                            a.finish(result, "Topic updated", cx);
+                            a.apply_domain_command_undoable(
+                                crate::scoped_domain::DomainCommand::GoalTopic { goal, topic: id },
+                                "Topic updated",
+                                cx,
+                            );
                         } else {
                             a.research_topic = id;
                             cx.notify();
@@ -280,11 +285,11 @@ impl TaskApp {
                 .on_click(cx.listener(move |a, _, w, cx| a.open_topic_replan(topic, w, cx)))
                 .into_any_element();
         }
-        let requests: Vec<_> = self.store.research_requests.iter()
+        let requests: Vec<_> = self.store.research_requests().iter()
             .filter(|r| r.topic_id == Some(topic) && self.store.can_regenerate_request_plan(r.id))
             .map(|r| (r.id, r.input.clone())).collect();
         if requests.is_empty() { return div().into_any_element(); }
-        let active = self.store.research_requests.iter().filter(|r| r.topic_id == Some(topic))
+        let active = self.store.research_requests().iter().filter(|r| r.topic_id == Some(topic))
             .any(|r| r.planning_run_id.is_some_and(|id| self.store.runs().iter()
                 .any(|run| run.id == id && matches!(run.status.as_str(), "Queued" | "Running" | "Cancelling"))));
         let action = button("regenerate-topic-plan", "Regenerate").disabled(active)
@@ -308,7 +313,7 @@ impl TaskApp {
 
     pub(crate) fn topic_sidebar_row(&self, topic: &Topic, cx: &mut Context<Self>) -> AnyElement {
         let id = topic.id;
-        let active = self.scope == Scope::Topic(id)
+        let active = self.scope() == Scope::Topic(id)
             || self
                 .selected
                 .or(self.task_result_context)
@@ -365,7 +370,7 @@ impl TaskApp {
     pub(crate) fn topic_directory(&self, project: Option<u64>, cx: &mut Context<Self>) -> AnyElement {
         let topics: Vec<_> = self
             .store
-            .topics
+            .topics()
             .iter()
             .filter(|t| project.is_none_or(|id| t.project_id == id)
                 && t.archived == project.is_none())
@@ -394,7 +399,7 @@ impl TaskApp {
                 .children(topics.into_iter().map(|t| {
                     let id = t.id;
                     let title = t.display_name();
-                    let count = self.store.tasks.iter()
+                    let count = self.store.tasks().iter()
                         .filter(|task| task.parent_id.is_none()
                             && self.store.task_topic(task.id).is_some_and(|topic| topic.id == id))
                         .count();
@@ -421,14 +426,14 @@ impl TaskApp {
     }
 
     pub(crate) fn topic_view(&self, id: u64, cx: &mut Context<Self>) -> AnyElement {
-        let Some(topic) = self.store.topics.iter().find(|t| t.id == id) else {
+        let Some(topic) = self.store.topics().iter().find(|t| t.id == id) else {
             return div().child(selectable("Topic not found")).into_any_element();
         };
         let project = topic.project_id;
         let archived = topic.archived;
         let goals: Vec<_> = self
             .store
-            .tasks
+            .tasks()
             .iter()
             .filter(|t| t.topic_id == Some(id) && (archived || !self.store.task_is_archived(t.id)))
             .collect();
@@ -571,7 +576,14 @@ impl TaskApp {
                         .item(PopupMenuItem::new(if archived { "Restore topic" } else { "Archive topic" }).on_click(move |_, w, cx| {
                             let _ = archive.update(cx, |a, cx| {
                                 if archived {
-                                    a.snapshot(); let result = a.store.set_topic_archived(id, false); a.finish(result, "Topic restored", cx);
+                                    a.apply_domain_command_undoable(
+                                        crate::scoped_domain::DomainCommand::TopicArchive {
+                                            topic: id,
+                                            archived: false,
+                                        },
+                                        "Topic restored",
+                                        cx,
+                                    );
                                 } else {
                                     a.request_archive(crate::archive_app::ArchiveTarget::Topic(id), w, cx);
                                 }
@@ -582,10 +594,10 @@ impl TaskApp {
                 .child(self.layout_switch(cx))
                 .child(div().flex_1().min_w_0().child(label(format!("{} research goal{}{}", goals.len(), if goals.len() == 1 { "" } else { "s" }, if archived { " · Archived topic. Existing goals and results remain available." } else { " · Open a goal to explore its steps and materials." }), cx))))
             .when_some(topic.replanned_from, |d, source| d.child(row().px_6().pb_2()
-                .child(link_button("replan-source", self.store.topics.iter().find(|t| t.id == source)
+                .child(link_button("replan-source", self.store.topics().iter().find(|t| t.id == source)
                     .map(|t| format!("From {} · Open original topic", t.display_name()))
                     .unwrap_or_else(|| "Original topic unavailable".into()))
-                    .disabled(!self.store.topics.iter().any(|t| t.id == source))
+                    .disabled(!self.store.topics().iter().any(|t| t.id == source))
                     .on_click(cx.listener(move |a, _, w, cx| a.navigate(Scope::Topic(source), w, cx))))))
             .child(self.topic_publication_panel(id, cx))
             .when_some(self.store.topic_planning_status(id), |d, status| d.child(

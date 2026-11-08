@@ -705,8 +705,8 @@ mod tests {
 
     fn fixture() -> (Store, u64, Vec<u64>) {
         let mut store = Store::empty();
-        store.default_model = "fixture/model".into();
-        store.projects[0].directory = std::env::temp_dir().to_string_lossy().into();
+        store.set_default_model("fixture/model".into());
+        store.project_at_mut(0).unwrap().directory = std::env::temp_dir().to_string_lossy().into();
         let topic = store.create_topic(1, "Automation topic").unwrap();
         let goal = store
             .create_research_goal_in_topic(

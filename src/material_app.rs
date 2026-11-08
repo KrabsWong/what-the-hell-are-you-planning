@@ -435,7 +435,7 @@ impl TaskApp {
         }
         self.adopt_saved_store(staged);
         self.undo_invalidation = None;
-        crate::appearance::apply(self.store.appearance, None, cx);
+        crate::appearance::apply(self.store.appearance(), None, cx);
         self.toast = "Last change undone".into();
         self.error.clear();
         if !effect.cleanup.is_empty() {

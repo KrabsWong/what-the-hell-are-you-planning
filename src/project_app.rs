@@ -7,7 +7,7 @@ use gpui_kit::*;
 
 impl TaskApp {
     pub fn open_project_plan(&mut self, project: u64, w: &mut Window, cx: &mut Context<Self>) {
-        if !self.store.projects.iter().any(|p| p.id == project) {
+        if !self.store.projects().iter().any(|p| p.id == project) {
             self.error = "That project is no longer available. Choose another destination.".into();
             cx.notify();
             return;
@@ -117,7 +117,7 @@ impl TaskApp {
         match crate::navigation_context::resolve_creation_destination(
             &self.store,
             CreationIntent::TopicNewGoal { topic },
-            &self.scope,
+            &self.scope(),
             None,
         ) {
             Ok(mode) => self.begin_planning(mode, w, cx),
@@ -134,13 +134,13 @@ impl TaskApp {
             cx.notify();
             return;
         }
-        let Some(source) = self.store.topics.iter().find(|t| t.id == topic) else { return; };
+        let Some(source) = self.store.topics().iter().find(|t| t.id == topic) else { return; };
         let _ = source;
         let input = self.store.topic_replan_input(topic);
         match crate::navigation_context::resolve_creation_destination(
             &self.store,
             CreationIntent::TopicReplan { topic },
-            &self.scope,
+            &self.scope(),
             None,
         ) {
             Ok(mode) => {
@@ -161,7 +161,7 @@ impl TaskApp {
         match crate::navigation_context::resolve_creation_destination(
             &self.store,
             CreationIntent::Global,
-            &self.scope,
+            &self.scope(),
             context_task,
         ) {
             Ok(mode) => self.begin_planning(mode, w, cx),
@@ -218,7 +218,6 @@ impl TaskApp {
             return false;
         }
         self.adopt_saved_store(staged);
-        self.undo.clear_legacy();
         if !self.expanded_sidebar_projects.contains(&project) {
             self.expanded_sidebar_projects.push(project);
         }
@@ -279,7 +278,7 @@ impl TaskApp {
         }
         let Some(project_id) = self
             .store
-            .research_requests
+            .research_requests()
             .iter()
             .find(|r| r.id == id)
             .map(|r| r.project_id)
@@ -288,14 +287,14 @@ impl TaskApp {
         };
         if self
             .store
-            .projects
+            .projects()
             .iter()
             .find(|p| p.id == project_id)
             .is_some_and(|p| p.directory.is_empty())
         {
             match self.managed_project_directory(project_id) {
                 Ok(path) => {
-                    if let Some(p) = self.store.projects.iter_mut().find(|p| p.id == project_id) {
+                    if let Some(p) = self.store.project_mut(project_id) {
                         p.directory = path;
                     }
                 }
@@ -411,8 +410,7 @@ impl TaskApp {
         };
         match result {
             Ok(ids) => {
-                // A plan is a durable external result, not part of an older UI undo snapshot.
-                self.undo.clear_legacy();
+                // A plan is a durable external result, not part of a UI undo entry.
                 if let Some(automation) = planned_automation {
                     if let Some(cx) = cx {
                         self.automation_plan_ready(automation, run.id, cx);

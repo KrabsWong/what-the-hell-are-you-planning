@@ -348,11 +348,11 @@ pub fn parse_plan(text: &str) -> Result<Plan, String> {
                     continue;
                 }
                 seen.push(dep);
-                if plan.tasks[dep].kind == required {
+                if plan.task_at_mut(dep).unwrap().kind == required {
                     found = true;
                     break;
                 }
-                pending.extend(&plan.tasks[dep].depends_on);
+                pending.extend(&plan.task_at_mut(dep).unwrap().depends_on);
             }
             if !found {
                 return Err(format!(
@@ -393,7 +393,7 @@ impl Store {
     pub fn goal_plan_signature(&self, id: u64) -> Option<String> {
         let goal = self.task(id)?;
         if goal.research.as_ref()?.kind != ResearchKind::Goal { return None; }
-        let mut tasks: Vec<_> = self.tasks.iter().filter(|t| t.id != id && self.owning_research_goal(t.id) == Some(id)).collect();
+        let mut tasks: Vec<_> = self.tasks().iter().filter(|t| t.id != id && self.owning_research_goal(t.id) == Some(id)).collect();
         tasks.sort_by_key(|t| t.id);
         let content: Vec<_> = tasks.iter().map(|t| serde_json::json!([t.id, t.title, t.description, t.comments, crate::attachments::signature_payload(&t.attachments), t.parent_id, t.archived, t.research.as_ref().map(|r| (r.kind, &r.depends_on))])).collect();
         serde_json::to_string(&(&goal.title, &goal.description, &goal.comments, crate::attachments::legacy_signature_payload(&goal.attachments), goal.project_id, content)).ok()
@@ -405,7 +405,7 @@ impl Store {
         !research.requires_approval || goal.approved_plan.as_ref().is_some_and(|approved| Some(approved) == self.goal_plan_signature(id).as_ref())
     }
     pub fn reconcile_goal_approvals(&mut self) {
-        let changed: Vec<_> = self.tasks.iter().filter(|t| t.research.as_ref().is_some_and(|r| r.kind == ResearchKind::Goal && r.requires_approval) && !t.archived && !matches!(t.stage, Stage::Backlog | Stage::Cancelled) && t.approved_plan != self.goal_plan_signature(t.id)).map(|t| t.id).collect();
+        let changed: Vec<_> = self.tasks().iter().filter(|t| t.research.as_ref().is_some_and(|r| r.kind == ResearchKind::Goal && r.requires_approval) && !t.archived && !matches!(t.stage, Stage::Backlog | Stage::Cancelled) && t.approved_plan != self.goal_plan_signature(t.id)).map(|t| t.id).collect();
         for id in changed {
             let task = self.task_mut(id).unwrap();
             task.approved_plan = None;
@@ -513,7 +513,7 @@ impl Store {
         {
             return Err("Choose an active research goal.".into());
         }
-        if self.tasks.iter().any(|t| {
+        if self.tasks().iter().any(|t| {
             t.research
                 .as_ref()
                 .is_some_and(|r| r.goal_id == goal_id && r.kind != ResearchKind::Goal)
@@ -677,7 +677,7 @@ impl Store {
             dependencies.push(r.id);
         }
         let directory = &self
-            .projects
+            .projects()
             .iter()
             .find(|p| p.id == task.project_id)?
             .directory;
@@ -706,14 +706,14 @@ impl Store {
                 .is_some_and(|approved| Some(approved) == self.goal_plan_signature(id).as_ref())
     }
     pub fn has_research_plan(&self, goal: u64) -> bool {
-        self.tasks.iter().any(|t| {
+        self.tasks().iter().any(|t| {
             t.research
                 .as_ref()
                 .is_some_and(|r| r.goal_id == goal && r.kind != ResearchKind::Goal)
         })
     }
     pub fn research_children(&self, goal: u64) -> Vec<u64> {
-        self.tasks
+        self.tasks()
             .iter()
             .filter(|t| {
                 !t.archived
@@ -883,7 +883,7 @@ pub fn prepare_run(store: &Store, id: u64) -> Result<AgentRun, String> {
         ));
     }
     let project = store
-        .projects
+        .projects()
         .iter()
         .find(|p| p.id == task.project_id)
         .ok_or("Project not found.")?;
@@ -966,7 +966,7 @@ pub fn prepare_run(store: &Store, id: u64) -> Result<AgentRun, String> {
         project_plan: None,
         id: std::cmp::max(
             store.runs().iter().map(|r| r.id).max().unwrap_or(0) + 1,
-            store.run_id_floor,
+            store.run_id_floor(),
         ),
         task_id: id,
         task_title: task.title.clone(),
@@ -997,8 +997,8 @@ mod tests {
     const PLAN: &str = r#"{"tasks":[{"title":"收集公告","instructions":"原始来源","kind":"collect","depends_on":[]},{"title":"分析","instructions":"核对来源","kind":"analyze","depends_on":[0]},{"title":"投资简报","instructions":"条件建议","kind":"advise","depends_on":[1]}]}"#;
     fn workspace() -> (Store, u64) {
         let mut s = Store::mock();
-        s.projects[0].directory = "/tmp".into();
-        s.research_config.models =
+        s.project_at_mut(0).unwrap().directory = "/tmp".into();
+        s.research_config_mut().models =
             ["test/plan", "test/search", "test/analysis", "test/brief"].map(String::from);
         let id = s
             .create_research_goal("新闻研究".into(), "科技股，最近三天".into(), 1)
@@ -1135,7 +1135,7 @@ mod tests {
             "了解城市公共交通的发展趋势",
         ] {
             let (mut store, goal) = workspace();
-            store.tasks.iter_mut().find(|t| t.id == goal).unwrap().description = scope.into();
+            store.task_mut(goal).unwrap().description = scope.into();
             let planning = store.prepare_run(goal).unwrap();
             assert!(planning.prompt.contains(RESEARCH_TYPE_GUIDANCE));
             assert!(planning.prompt.contains(RESEARCH_PLAN_GUIDANCE));
@@ -1304,8 +1304,8 @@ mod tests {
     fn mixed_agents_preserve_evidence_and_snapshot_selected_route() {
         let (mut store, goal) = workspace();
         let ids = store.apply_research_plan(goal, PLAN).unwrap();
-        store.research_config.agents[ResearchKind::Analyze.index()] = Some("Codex".into());
-        store.research_config.models[ResearchKind::Analyze.index()] = "fixture-codex".into();
+        store.research_config_mut().agents[ResearchKind::Analyze.index()] = Some("Codex".into());
+        store.research_config_mut().models[ResearchKind::Analyze.index()] = "fixture-codex".into();
         let mut collection = store.prepare_run(ids[0]).unwrap();
         assert_eq!(collection.agent, "OpenCode");
         collection.status = "Succeeded".into();
@@ -1319,23 +1319,23 @@ mod tests {
         assert!(analysis.prompt.contains("codex mcp list"));
         assert!(!analysis.prompt.contains("opencode mcp list"));
         store.push_run(analysis.clone());
-        store.research_config.models[2] = "another-model".into();
+        store.research_config_mut().models[2] = "another-model".into();
         assert_eq!(store.runs().last().unwrap().model, analysis.model);
     }
 
     #[test]
     fn all_research_roles_inherit_global_model_and_keep_completed_results() {
         let (mut store, goal) = workspace();
-        store.research_config.models = Default::default();
+        store.research_config_mut().models = Default::default();
         for invalid in ["", "invalid"] {
-            store.default_model = invalid.into();
+            store.set_default_model(invalid.into());
             assert!(store.prepare_run(goal).is_err());
         }
-        store.default_model = "test/global".into();
+        store.set_default_model("test/global".into());
         let goal_run = store.prepare_run(goal).unwrap();
         assert_eq!(goal_run.model, "test/global");
         let ids = store.apply_research_plan(goal, PLAN).unwrap();
-        store.research_config.models[ResearchKind::Analyze.index()] =
+        store.research_config_mut().models[ResearchKind::Analyze.index()] =
             "test/analysis-override".into();
         for (id, expected) in
             ids.iter()
@@ -1348,7 +1348,7 @@ mod tests {
             store.push_run(run);
         }
         let previous_runs = store.runs().to_vec();
-        store.default_model = "test/next-global".into();
+        store.set_default_model("test/next-global".into());
         assert_eq!(store.prepare_run(ids[0]).unwrap().model, "test/next-global");
         for id in ids {
             assert!(store.research_result(id).is_some());
@@ -1399,9 +1399,9 @@ mod tests {
         let mut planning = s.prepare_request_plan(request).unwrap();
         planning.status = "Succeeded".into();
         let planning_id = planning.id;
-        s.research_requests.iter_mut().find(|r| r.id == request).unwrap().planning_run_id = Some(planning_id);
+        s.request_mut(request).unwrap().planning_run_id = Some(planning_id);
         s.push_run(planning);
-        s.research_requests.iter_mut().find(|r| r.id == request).unwrap().goal_ids = vec![goal, sibling];
+        s.request_mut(request).unwrap().goal_ids = vec![goal, sibling];
         let unrelated = s.create_research_goal("Unrelated".into(), "Stay here".into(), 1).unwrap();
         let unrelated_before = s.task(unrelated).unwrap().clone();
         let old_runs = s.runs().to_vec();
@@ -1443,7 +1443,7 @@ mod tests {
         s.clear_runs();
         let other = s.create_research_goal("Other topic".into(), "Other scope".into(), 1).unwrap();
         let request = s.create_research_request(1, Some(topic), "Shared request").unwrap();
-        s.research_requests.iter_mut().find(|r| r.id == request).unwrap().goal_ids = vec![goal, other];
+        s.request_mut(request).unwrap().goal_ids = vec![goal, other];
         let before = s.clone();
         assert!(s.move_topic_project(topic, 2).is_err());
         assert_eq!(s, before);
@@ -1953,8 +1953,8 @@ mod tests {
             .unwrap()
             .join(".local/research-live-tests");
         std::fs::create_dir_all(&directory).unwrap();
-        store.projects[0].directory = directory.to_string_lossy().into();
-        store.research_config.models[0] = "deepseek/deepseek-flash".into();
+        store.project_at_mut(0).unwrap().directory = directory.to_string_lossy().into();
+        store.research_config_mut().models[0] = "deepseek/deepseek-flash".into();
         let run = store.prepare_run(goal).unwrap();
         let active = crate::opencode::start(crate::opencode::Request { agent: None, browser_executable: None,
             session_id: None,

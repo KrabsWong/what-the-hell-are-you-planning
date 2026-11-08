@@ -63,7 +63,7 @@ pub fn validated_history_result<'a>(store: &'a Store, task: u64) -> Option<&'a A
 
 pub fn goal_history(store: &Store, goal: u64) -> ArchivedGoalHistory {
     let steps: Vec<&crate::domain::Task> = store
-        .tasks
+        .tasks()
         .iter()
         .filter(|task| research_child(task, goal).is_some())
         .collect();
@@ -213,7 +213,7 @@ pub fn result_target(store: &Store, id: u64, is_goal: bool) -> Option<u64> {
         return retained_result(store, id).map(|_| id);
     }
     let steps: Vec<&crate::domain::Task> = store
-        .tasks
+        .tasks()
         .iter()
         .filter(|task| research_child(task, id).is_some())
         .collect();
@@ -245,8 +245,8 @@ mod tests {
 
     fn completed_goal() -> (Store, u64, Vec<u64>) {
         let mut store = Store::empty();
-        store.projects[0].directory = "/tmp".into();
-        store.default_model = "test/model".into();
+        store.project_at_mut(0).unwrap().directory = "/tmp".into();
+        store.set_default_model("test/model".into());
         let goal = store
             .create_research_goal("Archived goal".into(), "Scope".into(), 1)
             .unwrap();
@@ -448,8 +448,8 @@ mod tests {
     #[test]
     fn historical_validation_reuses_shared_dependencies() {
         let mut store = Store::empty();
-        store.projects[0].directory = "/tmp".into();
-        store.default_model = "test/model".into();
+        store.project_at_mut(0).unwrap().directory = "/tmp".into();
+        store.set_default_model("test/model".into());
         let goal = store
             .create_research_goal("Shared dependencies".into(), "Scope".into(), 1)
             .unwrap();

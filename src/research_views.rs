@@ -23,7 +23,7 @@ impl TaskApp {
         let mut goals = col().gap_1();
         for task in self
             .store
-            .tasks
+            .tasks()
             .iter()
             .filter(|t| {
                 !self.store.task_is_archived(t.id)
@@ -139,8 +139,8 @@ impl TaskApp {
     }
     fn model_agent_picker(&self, stage: Option<usize>, cx: &mut Context<Self>) -> AnyElement {
         let agent = stage.map(|i| self.store.research_agent(ResearchKind::ALL[i]))
-            .unwrap_or(&self.store.research_config.default_agent);
-        let inherited = stage.is_some_and(|i| self.store.research_config.agents[i].is_none());
+            .unwrap_or(&self.store.research_config().default_agent);
+        let inherited = stage.is_some_and(|i| self.store.research_config().agents[i].is_none());
         let title = agent.to_owned();
         let entity = cx.entity().downgrade();
         button(format!("model-agent-{}", stage.map(|i| i.to_string()).unwrap_or("global".into())), title)
@@ -238,13 +238,19 @@ impl TaskApp {
                 .child(row().justify_between()
                     .child(div().font_weight(FontWeight::SEMIBOLD).child(selectable("Research stage models")))
                     .child(button("global-model-all-stages", "Use global for all stages")
-                        .disabled(self.research_models.iter().all(|m| m.read(cx).value().is_empty()) && self.store.research_config.agents.iter().all(Option::is_none))
+                        .disabled(self.research_models.iter().all(|m| m.read(cx).value().is_empty()) && self.store.research_config().agents.iter().all(Option::is_none))
                         .on_click(cx.listener(|this, _, w, cx| {
-                            this.snapshot();
-                            this.store.research_config.models = Default::default();
-                            this.store.research_config.agents = Default::default();
+                            if this
+                                .apply_domain_command_undoable(
+                                    crate::scoped_domain::DomainCommand::ModelsToGlobal,
+                                    "All stages now use the global model",
+                                    cx,
+                                )
+                                .is_none()
+                            {
+                                return;
+                            }
                             this.refresh_model_placeholders(w, cx);
-                            this.persist_if_changed(true);
                             for input in &this.research_models { input.update(cx, |s, cx| s.set_value("", w, cx)); }
                             this.research_model_picker = None;
                             cx.notify();
@@ -258,9 +264,9 @@ impl TaskApp {
                 .child(div().text_sm().font_weight(FontWeight::MEDIUM).child(selectable(kind.label())))
                 .child(row().child(self.model_agent_picker(Some(i), cx)).child(field)
                     .child(button(format!("research-use-global-{i}"), "Use global")
-                        .disabled(value.is_empty() && self.store.research_config.agents[i].is_none())
+                        .disabled(value.is_empty() && self.store.research_config().agents[i].is_none())
                         .on_click(cx.listener(move |this, _, w, cx| this.use_global_for_stage(i, w, cx)))))
-                .when(value.is_empty() && self.store.research_agent(kind) != self.store.research_config.default_agent, |d| {
+                .when(value.is_empty() && self.store.research_agent(kind) != self.store.research_config().default_agent, |d| {
                     d.child(label("Choose a model for this agent before running this stage.", cx))
                 }));
         }

@@ -13,7 +13,7 @@ use gpui_kit::{
 impl TaskApp {
     pub(crate) fn open_project_rename(&mut self, project: u64, w: &mut Window, cx: &mut Context<Self>) {
         self.remember_dialog_opener(w, cx);
-        let Some(name) = self.store.projects.iter().find(|p| p.id == project).map(|p| p.name.clone()) else { return; };
+        let Some(name) = self.store.projects().iter().find(|p| p.id == project).map(|p| p.name.clone()) else { return; };
         self.clear_navigation_overlays();
         let input = cx.new(|cx| InputState::new(w, cx).placeholder("Project name").default_value(name));
         cx.subscribe(&input, |a, _, event: &InputEvent, cx| {
@@ -29,14 +29,17 @@ impl TaskApp {
     pub(crate) fn save_project_name(&mut self, w: &mut Window, cx: &mut Context<Self>) {
         let Some((project, input)) = &self.project_rename else { return; };
         let (project, name) = (*project, input.read(cx).value().to_string());
-        let mut staged = self.store.clone();
-        let result = staged.rename_project(project, &name);
-        if result.is_ok() {
-            if staged != self.store { self.snapshot(); self.store = staged; }
+        let saved = self
+            .apply_domain_command_undoable(
+                crate::scoped_domain::DomainCommand::ProjectRename { project, name },
+                "Project renamed",
+                cx,
+            )
+            .is_some();
+        if saved {
             self.project_rename = None;
             w.focus(&self.focus, cx);
         }
-        self.finish(result, "Project renamed", cx);
     }
 
     pub(crate) fn project_rename_view(&self, cx: &mut Context<Self>) -> AnyElement {
@@ -112,7 +115,7 @@ impl TaskApp {
         };
         let project = self
             .store
-            .projects
+            .projects()
             .iter()
             .find(|p| p.id == mode.project());
         let project_name = project
@@ -123,13 +126,13 @@ impl TaskApp {
                 format!("{project_name} · a new topic will be created from this request")
             }
             crate::navigation_context::CreationMode::ExistingTopic { topic, .. } => {
-                let topic = self.store.topics.iter().find(|t| t.id == topic);
+                let topic = self.store.topics().iter().find(|t| t.id == topic);
                 topic
                     .map(|t| format!("{project_name} / {}", t.display_name()))
                     .unwrap_or_else(|| format!("{project_name} · the selected topic is unavailable"))
             }
             crate::navigation_context::CreationMode::Replan { source_topic, .. } => {
-                let source = self.store.topics.iter().find(|t| t.id == source_topic);
+                let source = self.store.topics().iter().find(|t| t.id == source_topic);
                 source
                     .map(|t| format!("{project_name} / {} · creates a separate replanned topic", t.display_name()))
                     .unwrap_or_else(|| format!("{project_name} · the source topic is unavailable"))

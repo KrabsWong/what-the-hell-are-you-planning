@@ -131,8 +131,8 @@ pub fn run() {
             view.update(cx, |a, cx| {
                 a.attach_storage(Storage::new(root.join("workspace.json")), w, cx);
                 assert!(a.storage_error.is_empty(), "{}", a.storage_error);
-                a.store.projects[0].directory = root.to_string_lossy().into_owned();
-                a.store.opencode_path = cli.to_string_lossy().into_owned();
+                a.store.project_at_mut(0).unwrap().directory = root.to_string_lossy().into_owned();
+                a.store.set_opencode_path(cli.to_string_lossy().into_owned());
                 a.executable_input.update(cx, |input, cx| {
                     input.set_value(cli.to_string_lossy().into_owned(), w, cx);
                 });
@@ -142,7 +142,7 @@ pub fn run() {
                 // removed sidebar route.
                 a.store
                     .create_research_request(
-                        a.store.projects[0].id,
+                        a.store.projects()[0].id,
                         None,
                         "Saved request for the research composer",
                     )
@@ -156,7 +156,7 @@ pub fn run() {
         .unwrap();
     let app = app.unwrap();
     let handle = window.into();
-    let composer_project = cx.update(|cx| app.read(cx).store.projects[0].id);
+    let composer_project = cx.update(|cx| app.read(cx).store.projects()[0].id);
 
     cx.update_window(handle, |_, w, cx| {
         w.render_frame(cx);
@@ -176,7 +176,7 @@ pub fn run() {
     }).unwrap();
     cx.update_window(handle, |_, w, cx| {
         assert_eq!(
-            app.read(cx).store.research_config.models,
+            app.read(cx).store.research_config().models,
             MODELS.map(String::from)
         );
         click_in(w, cx, "model-settings-scroll", "check-ego");
@@ -214,7 +214,7 @@ pub fn run() {
             click_in(w, cx, "research-scroll", "create-research");
             app.read(cx)
                 .store
-                .research_requests
+                .research_requests()
                 .last()
                 .expect("submitted research request")
                 .id
@@ -224,7 +224,7 @@ pub fn run() {
         &mut cx,
         handle,
         &app,
-        |a| a.store.research_requests.iter().any(|request| request.id == request_id && request.goal_ids.len() == 1),
+        |a| a.store.research_requests().iter().any(|request| request.id == request_id && request.goal_ids.len() == 1),
         "request plan goal",
     );
     let goal = cx
@@ -232,7 +232,7 @@ pub fn run() {
             let id = app
                 .read(cx)
                 .store
-                .research_requests
+                .research_requests()
                 .iter()
                 .find(|request| request.id == request_id)
                 .expect("request")
@@ -705,7 +705,7 @@ pub fn run() {
                 for id in &children {
                     assert!(a.store.research_result(*id).is_some());
                 }
-                for task in &a.store.tasks {
+                for task in a.store.tasks() {
                     for material in &task.attachments {
                         assert!(attachments::resolve(&root, material).unwrap().is_file());
                     }
@@ -757,10 +757,10 @@ pub fn handoff_progress() {
         let view = cx.new(|cx| TaskApp::new_mock(w, cx));
         view.update(cx, |a, cx| {
             a.attach_storage(Storage::new(root.join("workspace.json")), w, cx);
-            a.store.projects[0].directory = root.to_string_lossy().into_owned();
-            a.store.opencode_path = cli.to_string_lossy().into_owned();
-            a.store.research_config.ego_path = ego.to_string_lossy().into_owned();
-            a.store.research_config.models = MODELS.map(String::from);
+            a.store.project_at_mut(0).unwrap().directory = root.to_string_lossy().into_owned();
+            a.store.set_opencode_path(cli.to_string_lossy().into_owned());
+            a.store.research_config_mut().ego_path = ego.to_string_lossy().into_owned();
+            a.store.research_config_mut().models = MODELS.map(String::from);
         });
         app = Some(view.clone());
         cx.new(|cx| base::Root::new(view, w, cx))
@@ -886,7 +886,7 @@ fn wait_until(
         if !reported_pending_state && started.elapsed() >= Duration::from_secs(2) {
             cx.update_window(handle, |_, _, cx| {
                 let state = app.read(cx);
-                let materials: Vec<_> = state.store.tasks.iter()
+                let materials: Vec<_> = state.store.tasks().iter()
                     .filter(|task| !task.attachments.is_empty())
                     .map(|task| (task.id, task.attachments.len()))
                     .collect();
@@ -965,8 +965,8 @@ pub fn attachments_only() {
         let view = cx.new(|cx| TaskApp::new_mock(w, cx));
         view.update(cx, |a, cx| {
             a.attach_storage(Storage::new(root.join("workspace.json")), w, cx);
-            a.store.projects[0].directory = root.to_string_lossy().into_owned();
-            a.store.research_config.models = MODELS.map(String::from);
+            a.store.project_at_mut(0).unwrap().directory = root.to_string_lossy().into_owned();
+            a.store.research_config_mut().models = MODELS.map(String::from);
             goal = a.store.apply_project_plan(1, r#"{"tasks":[{"title":"Attachment QA","brief":"Read supplied materials"}]}"#).unwrap()[0];
             a.store.set_stage(goal, crate::domain::Stage::Planned).unwrap();
             a.open_task(goal, w, cx);

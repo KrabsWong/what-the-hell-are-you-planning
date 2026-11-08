@@ -354,9 +354,9 @@ impl TaskApp {
                         .child(button("startup-recheck", "Check again").disabled(self.workspace_required || self.startup.pending.is_some()).on_click(cx.listener(|this,_,_,cx| this.check_startup(cx))))
                         .child(button("startup-continue", "Continue").primary().disabled(!self.startup_ready(cx)).on_click(cx.listener(|this,_,_,cx| {
                             if !this.startup_ready(cx) { return; }
-                            this.store.opencode_path = this.executable_input.read(cx).value().trim().into();
-                            this.store.research_config.codex_path = this.codex_executable_input.read(cx).value().trim().into();
-                            this.store.research_config.ego_path = this.startup.paths[2].clone();
+                            this.store.set_opencode_path(this.executable_input.read(cx).value().trim().into());
+                            this.store.research_config_mut().codex_path = this.codex_executable_input.read(cx).value().trim().into();
+                            this.store.research_config_mut().ego_path = this.startup.paths[2].clone();
                             this.persist_if_changed(true);
                             if this.storage.is_some() && this.storage_error.is_empty() {
                                 this.startup.required = false;

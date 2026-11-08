@@ -16,17 +16,17 @@ pub fn default_concurrent_automations() -> usize { DEFAULT_CONCURRENT_AUTOMATION
 
 impl Store {
     pub fn concurrency_limit(&self) -> usize {
-        self.max_concurrent_runs.clamp(1, MAX_CONCURRENT_RUNS)
+        self.max_concurrent_runs().clamp(1, MAX_CONCURRENT_RUNS)
     }
     /// Running automation periods are limited independently from research tasks.
     pub fn automation_concurrency_limit(&self) -> usize {
-        self.max_concurrent_automations.clamp(1, MAX_CONCURRENT_RUNS)
+        self.max_concurrent_automations().clamp(1, MAX_CONCURRENT_RUNS)
     }
 
     /// New one-sentence plans isolate each step; legacy goals retain their shared workspace.
     pub fn uses_step_workspace(&self, task_id: u64) -> bool {
         self.task(task_id).and_then(|t| t.research.as_ref()).is_some_and(|r| {
-            r.kind != ResearchKind::Goal && self.research_requests.iter().any(|request| request.goal_ids.contains(&r.goal_id))
+            r.kind != ResearchKind::Goal && self.research_requests().iter().any(|request| request.goal_ids.contains(&r.goal_id))
         })
     }
 
@@ -38,7 +38,7 @@ impl Store {
     pub fn previous_execution_directory(&self, task_id: u64) -> Result<PathBuf, String> {
         let task = self.task(task_id).ok_or("Task not found.")?;
         let project = self
-            .projects
+            .projects()
             .iter()
             .find(|p| p.id == task.project_id)
             .ok_or("Project not found.")?;
@@ -88,7 +88,7 @@ impl Store {
 
     pub fn execution_directory(&self, task_id: u64) -> Result<PathBuf, String> {
         let task = self.task(task_id).ok_or("Task not found.")?;
-        let project = self.projects.iter().find(|p| p.id == task.project_id).ok_or("Project not found.")?;
+        let project = self.projects().iter().find(|p| p.id == task.project_id).ok_or("Project not found.")?;
         if project.directory.is_empty() { return Err("Set this project's working folder before running.".into()); }
         Ok(match &task.research {
             Some(research) => {
@@ -209,8 +209,8 @@ mod tests {
         assert_eq!(store.concurrency_limit(), 3);
         assert_eq!(store.automation_concurrency_limit(), 2);
         for (configured, effective) in [(0, 1), (1, 1), (5, 5), (10, 10), (11, 10)] {
-            store.max_concurrent_runs = configured;
-            store.max_concurrent_automations = configured;
+            store.set_max_concurrent_runs(configured);
+            store.set_max_concurrent_automations(configured);
             let restored: Store = serde_json::from_str(&serde_json::to_string(&store).unwrap()).unwrap();
             assert_eq!(restored.concurrency_limit(), effective);
             assert_eq!(restored.automation_concurrency_limit(), effective);
@@ -219,9 +219,9 @@ mod tests {
 
     fn setup() -> (Store, u64, u64) {
         let mut store = Store::empty();
-        store.projects[0].directory = std::env::temp_dir().to_string_lossy().into_owned();
-        store.default_model = "fixture/model".into();
-        let project = store.projects[0].id;
+        store.project_at_mut(0).unwrap().directory = std::env::temp_dir().to_string_lossy().into_owned();
+        store.set_default_model("fixture/model".into());
+        let project = store.project_at_mut(0).unwrap().id;
         let a = store
             .create_research_goal("A".into(), "Scope A".into(), project)
             .unwrap();
@@ -244,7 +244,7 @@ mod tests {
         let (mut store, goal, _) = setup();
         let steps = store.apply_research_plan(goal, r#"{"tasks":[{"title":"Official","instructions":"Find filings","kind":"collect","depends_on":[]},{"title":"Market","instructions":"Find market evidence","kind":"collect","depends_on":[]},{"title":"Analyze","instructions":"Compare","kind":"analyze","depends_on":[0,1]},{"title":"Report","instructions":"Conclude","kind":"advise","depends_on":[2]}]}"#).unwrap();
         let request_id = store.create_research_request(1, None, "Analyze earnings").unwrap();
-        store.research_requests.iter_mut().find(|r| r.id == request_id).unwrap().goal_ids.push(goal);
+        store.request_mut(request_id).unwrap().goal_ids.push(goal);
         let first = request(&store, steps[0]);
         let second = request(&store, steps[1]);
         assert_ne!(first.directory, second.directory);
@@ -264,7 +264,7 @@ mod tests {
     fn legacy_migration_waits_for_source_then_allows_independent_goals() {
         let (mut store, a, b) = setup();
         let mut legacy = request(&store, a);
-        legacy.directory = store.projects[0].directory.clone();
+        legacy.directory = store.project_at_mut(0).unwrap().directory.clone();
         legacy.research_kind = Some(ResearchKind::Collect);
         legacy.status = "Interrupted".into();
         legacy.session_id = Some("existing-session".into());
@@ -314,7 +314,7 @@ mod tests {
         assert!(!store.run_conflicts(&first, &second));
         assert!(store.run_conflicts(&first, &first));
         let mut legacy = first.clone();
-        legacy.directory = store.projects[0].directory.clone();
+        legacy.directory = store.project_at_mut(0).unwrap().directory.clone();
         legacy.status = "Succeeded".into();
         legacy.research_kind = Some(ResearchKind::Collect);
         store.push_run(legacy.clone());
@@ -331,7 +331,7 @@ mod tests {
         planning.status = "Succeeded".into();
         store.push_run(planning.clone());
         let steps = store.apply_research_plan(goal, r#"{"tasks":[{"title":"Collect","instructions":"Find sources","kind":"collect","depends_on":[]},{"title":"Analyze","instructions":"Analyze","kind":"analyze","depends_on":[0]},{"title":"Report","instructions":"Report","kind":"advise","depends_on":[1]}]}"#).unwrap();
-        let isolated = PathBuf::from(&store.projects[0].directory)
+        let isolated = PathBuf::from(&store.project_at_mut(0).unwrap().directory)
             .join(".research")
             .join(format!("goal-{goal}"));
         assert_eq!(store.execution_directory(steps[0]).unwrap(), isolated);

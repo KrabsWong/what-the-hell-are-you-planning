@@ -36,43 +36,11 @@ impl ArchiveTarget {
 }
 impl TaskApp {
     pub(crate) fn restore_archived(&mut self, id: u64, cx: &mut Context<Self>) {
-        self.snapshot();
-        let mut message = "Nothing to restore";
-        let mut result = Ok(());
-        let mut visited = std::collections::HashSet::new();
-        loop {
-            let Some(owner) = crate::archive_presentation::restore_owner(&self.store, id) else {
-                break;
-            };
-            let key = match owner {
-                crate::archive_presentation::ArchivedOwner::Topic(topic) => format!("topic:{topic}"),
-                crate::archive_presentation::ArchivedOwner::Task(task) => format!("task:{task}"),
-            };
-            if !visited.insert(key) {
-                result = Err("Archive ownership could not be resolved without a cycle. No further changes were made.".into());
-                break;
-            }
-            let next = match owner {
-                crate::archive_presentation::ArchivedOwner::Topic(topic) => {
-                    message = "Topic restored · retained results are available again";
-                    self.store.set_topic_archived(topic, false)
-                }
-                crate::archive_presentation::ArchivedOwner::Task(task) => {
-                    message = "Restored · retained results are available again";
-                    self.store.restore(task)
-                }
-            };
-            if let Err(error) = next {
-                result = Err(error);
-                break;
-            }
-        }
-        let still_archived = self.store.task_is_archived(id);
-        if result.is_ok() && still_archived {
-            result = Err("Some archived ownership remains unresolved. Review the goal and its topic before retrying.".into());
-            message = "Restore incomplete";
-        }
-        self.finish(result, message, cx);
+        self.apply_domain_command_undoable(
+            crate::scoped_domain::DomainCommand::RestoreArchived { task: id },
+            "Restored · retained results are available again",
+            cx,
+        );
     }
     pub(crate) fn request_archive(&mut self, target: ArchiveTarget, w: &mut Window, cx: &mut Context<Self>) {
         // Automation periods and their steps are owned by the automation, not by
@@ -91,7 +59,7 @@ impl TaskApp {
         }
         if w.has_active_prompt() { return; }
         let name = match target {
-            ArchiveTarget::Topic(id) => self.store.topics.iter().find(|t| t.id == id).map(|t| t.display_name()),
+            ArchiveTarget::Topic(id) => self.store.topics().iter().find(|t| t.id == id).map(|t| t.display_name()),
             ArchiveTarget::Task(id) => self.store.task(id).map(|t| t.title.clone()),
         }.unwrap_or_default();
         let answer = w.prompt(PromptLevel::Warning, "Stop related work and archive?",
@@ -106,12 +74,26 @@ impl TaskApp {
     pub(crate) fn confirm_archive(&mut self, target: ArchiveTarget, cx: &mut Context<Self>) {
         // Re-evaluate after confirmation: execution may have advanced while the dialog was open.
         let runs = target.runs(&self.store);
-        self.snapshot();
-        let result = match target {
-            ArchiveTarget::Topic(id) => self.store.set_topic_archived(id, true),
-            ArchiveTarget::Task(id) => self.store.archive(id),
+        let message = "Archived · related work stopped or stopping; results retained";
+        let command = match target {
+            ArchiveTarget::Topic(topic) => crate::scoped_domain::DomainCommand::TopicArchive {
+                topic,
+                archived: true,
+            },
+            ArchiveTarget::Task(task) => crate::scoped_domain::DomainCommand::TaskArchive {
+                task,
+                archived: true,
+            },
         };
-        if let Err(error) = result { self.error = error; cx.notify(); return; }
+        let outcome = if runs.is_empty() {
+            self.apply_domain_command_undoable(command, message, cx)
+        } else {
+            // Stopping work cannot be reversed safely, so no inverse is stored.
+            self.apply_domain_command_non_undoable(command, message, cx)
+        };
+        if outcome.is_none() {
+            return;
+        }
         self.research_sequences.retain(|g| !target.contains(&self.store, *g));
         if let Some(batch) = &mut self.todo_batch {
             batch.items.retain(|g| !target.contains(&self.store, *g));
@@ -136,9 +118,12 @@ impl TaskApp {
             if run.status == "Cancelled" { run.ended_at = Some(opencode::timestamp()); }
             run.logs.push("[archive] Stop requested; queued and subsequent work disabled.".into());
         }
-        self.finish(Ok(()), "Archived · related work stopped or stopping; results retained", cx);
+        // Persist the stop intents together with the durable archive decision.
+        if let Err(error) = self.save_current_store_durably() {
+            self.storage_error = error;
+        }
         if remote.is_empty() { return; }
-        let executable = std::path::PathBuf::from(&self.store.opencode_path);
+        let executable = std::path::PathBuf::from(&self.store.opencode_path());
         let work = cx.background_executor().spawn(async move {
             remote.into_iter().map(|run| {
                 let result = if run.agent == "Codex" {

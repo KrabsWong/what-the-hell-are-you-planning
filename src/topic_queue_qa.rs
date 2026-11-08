@@ -18,7 +18,7 @@ fn goal(store: &mut Store, topic: u64, title: &str) -> u64 {
         .create_research_request(1, Some(topic), title)
         .unwrap();
     store
-        .research_requests
+        .research_requests()
         .iter_mut()
         .find(|r| r.id == request)
         .unwrap()
@@ -47,10 +47,10 @@ print(json.dumps({'type':'text','part':{'text':json.dumps({'status':'complete','
     .unwrap();
     std::fs::set_permissions(&ego, std::fs::Permissions::from_mode(0o700)).unwrap();
     let mut store = Store::empty();
-    store.projects[0].directory = root.to_string_lossy().into();
-    store.opencode_path = cli.to_string_lossy().into();
-    store.research_config.ego_path = ego.to_string_lossy().into();
-    store.default_model = "fixture/model".into();
+    store.project_at_mut(0).unwrap().directory = root.to_string_lossy().into();
+    store.set_opencode_path(cli.to_string_lossy().into());
+    store.research_config_mut().ego_path = ego.to_string_lossy().into();
+    store.set_default_model("fixture/model".into());
     let a = store.create_topic(1, "A").unwrap();
     let b = store.create_topic(1, "B").unwrap();
     let c = store.create_topic(1, "C").unwrap();
@@ -81,7 +81,7 @@ print(json.dumps({'type':'text','part':{'text':json.dumps({'status':'complete','
     let handle: AnyWindowHandle = window.into();
     cx.update_window(handle, |_, _, cx| {
         app.update(cx, |state, cx| {
-            state.store.research_config.models[2] = "invalid-model".into();
+            state.store.research_config_mut().models[2] = "invalid-model".into();
             state.start_goal_batch(a1, cx);
             state.poll_runtime(cx);
             assert_eq!(state.active_runs.len(), 3);
@@ -125,7 +125,7 @@ print(json.dumps({'type':'text','part':{'text':json.dumps({'status':'complete','
                         assert!(state.todo_batch.as_ref().unwrap().failed_items.is_empty());
                         assert!(state.task_start_feedback.as_ref().is_some_and(|(_, error)| error.contains("model")));
                         assert!(state.store.task(a1).unwrap().activity.iter().any(|event| event.contains("queue paused")));
-                        state.store.research_config.models[2].clear();
+                        state.store.research_config().models[2].clear();
                         state.resume_todo_batch(cx);
                     }
                     assert!(state.active_runs.len() <= 3);

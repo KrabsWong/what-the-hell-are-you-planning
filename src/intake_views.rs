@@ -13,13 +13,13 @@ impl TaskApp {
         group: &str,
         cx: &mut Context<Self>,
     ) -> Vec<AnyElement> {
-        if matches!(self.scope, Scope::Topic(_)) {
+        if matches!(self.scope(), Scope::Topic(_)) {
             return cards.iter().map(|t| self.goal_card(t, cx)).collect();
         }
         let mut result = Vec::new();
         let mut topics: Vec<_> = self
             .store
-            .topics
+            .topics()
             .iter()
             .filter(|topic| topic.automation_id.is_none())
             .collect();
@@ -79,13 +79,13 @@ impl TaskApp {
         let mut list = col().gap_3();
         for request in self
             .store
-            .research_requests
+            .research_requests()
             .iter()
             .rev()
             .filter(|r| project.is_none_or(|id| r.project_id == id)
                 && r.automation_id.is_none()
                 && !self.store.request_is_archived(r)
-                && match self.scope { Scope::Topic(id) => r.topic_id == Some(id) && (r.goal_ids.is_empty() || self.store.can_regenerate_request_plan(r.id)), _ => true })
+                && match self.scope() { Scope::Topic(id) => r.topic_id == Some(id) && (r.goal_ids.is_empty() || self.store.can_regenerate_request_plan(r.id)), _ => true })
         {
             let id = request.id;
             let project = request.project_id;
@@ -172,7 +172,7 @@ impl TaskApp {
     pub(crate) fn request_brief_view(&self, goal: u64, cx: &mut Context<Self>) -> AnyElement {
         let Some(request) = self
             .store
-            .research_requests
+            .research_requests()
             .iter()
             .find(|r| r.goal_ids.contains(&goal))
         else {

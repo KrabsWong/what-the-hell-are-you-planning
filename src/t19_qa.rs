@@ -28,8 +28,8 @@ pub fn run() {
 
 fn fixture(directory: &Path) -> Store {
     let mut store = Store::mock();
-    store.projects[0].directory = directory.to_string_lossy().into();
-    store.projects[1].directory = directory.to_string_lossy().into();
+    store.project_at_mut(0).unwrap().directory = directory.to_string_lossy().into();
+    store.project_at_mut(1).unwrap().directory = directory.to_string_lossy().into();
     store
 }
 
@@ -64,16 +64,16 @@ fn visual_surface(root: &Path, mode: Appearance, width: f32, height: f32, surfac
     let directory = root.join(format!("{surface}-{mode:?}-{width}"));
     std::fs::create_dir_all(&directory).unwrap();
     let mut store = fixture(&directory);
-    store.appearance = mode;
+    store.set_appearance(mode);
     if surface == "project-rename" {
-        store.projects[0].name =
+        store.project_at_mut(0).unwrap().name =
             "A deliberately long English and 中文 project name used to verify readable disclosure"
                 .into();
     }
     let path = directory.join("workspace.sqlite3");
     Storage::new(path.clone()).save(&store).unwrap();
     let (mut cx, handle, app) = with_app(store, &path, width, height, |app, w, cx| {
-        app.scope = Scope::All;
+        app.set_scope_identity(Scope::All);
         match surface {
             "project-rename" => app.open_project_rename(1, w, cx),
             "topic-move" => app.request_topic_move(1, w, cx),
@@ -133,11 +133,11 @@ fn visual_search(root: &Path, mode: Appearance, width: f32, height: f32) {
     let directory = root.join(format!("search-{mode:?}-{width}"));
     std::fs::create_dir_all(&directory).unwrap();
     let mut store = fixture(&directory);
-    store.appearance = mode;
+    store.set_appearance(mode);
     let path = directory.join("workspace.sqlite3");
     Storage::new(path.clone()).save(&store).unwrap();
     let (mut cx, handle, app) = with_app(store, &path, width, height, |app, w, cx| {
-        app.scope = Scope::All;
+        app.set_scope_identity(Scope::All);
         app.focus_search(w, cx);
         cx.notify();
     });
@@ -181,11 +181,11 @@ fn visual_dirty_exit(root: &Path, mode: Appearance, width: f32, height: f32) {
     let directory = root.join(format!("dirty-{mode:?}-{width}"));
     std::fs::create_dir_all(&directory).unwrap();
     let mut store = fixture(&directory);
-    store.appearance = mode;
+    store.set_appearance(mode);
     let path = directory.join("workspace.sqlite3");
     Storage::new(path.clone()).save(&store).unwrap();
     let (mut cx, handle, app) = with_app(store, &path, width, height, |app, w, cx| {
-        app.scope = Scope::All;
+        app.set_scope_identity(Scope::All);
         app.open_task(1, w, cx);
         app.begin_draft(1, w, cx);
         let title = app.draft.as_ref().unwrap().title.clone();
@@ -209,11 +209,11 @@ fn visual_automation_settings(root: &Path, mode: Appearance, width: f32, height:
     let directory = root.join(format!("automation-settings-{mode:?}-{width}"));
     std::fs::create_dir_all(&directory).unwrap();
     let mut store = fixture(&directory);
-    store.appearance = mode;
+    store.set_appearance(mode);
     let path = directory.join("workspace.sqlite3");
     Storage::new(path.clone()).save(&store).unwrap();
     let (mut cx, handle, app) = with_app(store, &path, width, height, |app, w, cx| {
-        app.scope = Scope::Automations;
+        app.set_scope_identity(Scope::Automations);
         app.start_automation_create(w, cx);
         app.automation_ui.objective.update(cx, |state, cx| {
             state.set_value("Visual automation settings keyboard check", w, cx)
@@ -248,9 +248,9 @@ fn now_seconds() -> i64 {
 
 fn automation_result_fixture(directory: &Path) -> (Store, u64, u64) {
     let mut store = Store::empty();
-    store.projects[0].name = "T19 automation".into();
-    store.projects[0].directory = directory.to_string_lossy().into();
-    store.default_model = "qa/automation".into();
+    store.project_at_mut(0).unwrap().name = "T19 automation".into();
+    store.project_at_mut(0).unwrap().directory = directory.to_string_lossy().into();
+    store.set_default_model("qa/automation".into());
     let template = crate::automation_execution::build_template(
         "Track a public signal and cite the source.",
         "A short sourced report.",
@@ -336,11 +336,11 @@ fn visual_automation_result(root: &Path, mode: Appearance, width: f32, height: f
     let directory = root.join(format!("automation-result-{mode:?}-{width}"));
     std::fs::create_dir_all(&directory).unwrap();
     let (mut store, automation, occurrence) = automation_result_fixture(&directory);
-    store.appearance = mode;
+    store.set_appearance(mode);
     let path = directory.join("workspace.sqlite3");
     Storage::new(path.clone()).save(&store).unwrap();
     let (mut cx, handle, app) = with_app(store, &path, width, height, |app, w, cx| {
-        app.scope = Scope::Automations;
+        app.set_scope_identity(Scope::Automations);
         app.open_automation(automation, w, cx);
         app.open_occurrence_result(occurrence, w, cx);
         cx.notify();
@@ -370,7 +370,7 @@ fn automation_result_keyboard(root: &Path) {
     let path = directory.join("workspace.sqlite3");
     Storage::new(path.clone()).save(&store).unwrap();
     let (mut cx, handle, app) = with_app(store, &path, 1000., 680., |app, w, cx| {
-        app.scope = Scope::Automations;
+        app.set_scope_identity(Scope::Automations);
         app.open_automation(automation, w, cx);
         cx.notify();
     });
@@ -378,7 +378,7 @@ fn automation_result_keyboard(root: &Path) {
         let (opener, background) = cx
             .update_window(handle, |_, w, cx| {
                 w.render_frame(cx);
-                let background = (app.read(cx).scope.clone(), app.read(cx).selected);
+                let background = (app.read(cx).scope(), app.read(cx).selected);
                 w.click(format!("open-occurrence-{occurrence}"), cx);
                 let opener = app
                     .read(cx)
@@ -438,7 +438,7 @@ fn automation_result_keyboard(root: &Path) {
                 "{activation}: opener not restored"
             );
             assert_eq!(
-                (app.read(cx).scope.clone(), app.read(cx).selected),
+                (app.read(cx).scope(), app.read(cx).selected),
                 background,
                 "{activation}: background changed"
             );
@@ -453,13 +453,13 @@ fn visual_settings(root: &Path, mode: Appearance, width: f32, height: f32) {
     let directory = root.join(format!("settings-{mode:?}-{width}"));
     std::fs::create_dir_all(&directory).unwrap();
     let mut store = fixture(&directory);
-    store.appearance = mode;
-    store.report_publishing.repository = "owner/visual-repo".into();
-    store.report_publishing.branch = "main".into();
+    store.set_appearance(mode);
+    store.report_publishing_mut().repository = "owner/visual-repo".into();
+    store.report_publishing_mut().branch = "main".into();
     let path = directory.join("workspace.sqlite3");
     Storage::new(path.clone()).save(&store).unwrap();
     let (mut cx, handle, app) = with_app(store, &path, width, height, |app, w, cx| {
-        app.scope = Scope::Settings;
+        app.set_scope_identity(Scope::Settings);
         app.settings_tab = crate::settings_views::SettingsTab::Models;
         app.available_models = vec!["local/plan-model".into(), "local/collect-model".into()];
         app.ego_status = "Runtime ready".into();
@@ -526,7 +526,7 @@ fn settings_retained_invalidation(root: &Path) {
     let path = directory.join("workspace.sqlite3");
     Storage::new(path.clone()).save(&store).unwrap();
     let (mut cx, handle, app) = with_app(store, &path, 1440., 920., |app, w, cx| {
-        app.scope = Scope::Settings;
+        app.set_scope_identity(Scope::Settings);
         app.settings_tab = crate::settings_views::SettingsTab::Models;
         cx.notify();
         let _ = w;
@@ -538,7 +538,7 @@ fn settings_retained_invalidation(root: &Path) {
         // Theme change reaches the retained page and selects the matching control.
         app.update(cx, |app, cx| app.set_appearance(Appearance::Dark, w, cx));
         w.render_frame(cx);
-        assert_eq!(app.read(cx).store.appearance, Appearance::Dark);
+        assert_eq!(app.read(cx).store.appearance(), Appearance::Dark);
         w.within("settings-tabs").click(0usize, cx);
         w.render_frame(cx);
         assert!(
@@ -556,7 +556,7 @@ fn settings_retained_invalidation(root: &Path) {
         });
         w.render_frame(cx);
         assert_eq!(
-            app.read(cx).store.active_model_profile.as_deref(),
+            app.read(cx).store.active_model_profile().as_deref(),
             Some("T19 Profile")
         );
         let picker = w
@@ -643,8 +643,8 @@ fn settings_retained_invalidation(root: &Path) {
         // Publishing tab synchronizes its nested inputs from the store on a
         // real tab activation, and its controls stay live in the retained page.
         app.update(cx, |app, cx| {
-            app.store.report_publishing.repository = "owner/t19-repo".into();
-            app.store.report_publishing.branch = "t19-branch".into();
+            app.store.report_publishing_mut().repository = "owner/t19-repo".into();
+            app.store.report_publishing_mut().branch = "t19-branch".into();
             cx.notify();
         });
         w.within("settings-tabs").click(2usize, cx);
@@ -712,7 +712,7 @@ fn footer_retention_invalidation(root: &Path) {
     let path = directory.join("workspace.sqlite3");
     Storage::new(path.clone()).save(&store).unwrap();
     let (mut cx, handle, app) = with_app(store, &path, 1440., 920., |app, w, cx| {
-        app.scope = Scope::All;
+        app.set_scope_identity(Scope::All);
         cx.notify();
         let _ = w;
     });
@@ -770,7 +770,11 @@ fn footer_retention_invalidation(root: &Path) {
 
         // A real parent notification invalidates the footer state.
         app.update(cx, |app, cx| {
-            app.snapshot();
+            app.apply_domain_change(
+                |store| store.create_topic(1, "Footer cache check").map(|_| ()),
+                "Topic created",
+                cx,
+            );
             cx.notify();
         });
         w.render_frame(cx);
@@ -827,7 +831,7 @@ fn settings_scroll_probe(root: &Path) {
     let path = directory.join("workspace.sqlite3");
     Storage::new(path.clone()).save(&store).unwrap();
     let (mut cx, handle, app) = with_app(store, &path, 1440., 920., |app, w, cx| {
-        app.scope = Scope::Settings;
+        app.set_scope_identity(Scope::Settings);
         app.settings_tab = crate::settings_views::SettingsTab::Models;
         cx.notify();
         let _ = w;
@@ -912,7 +916,7 @@ fn keyboard_surface(
     let path = directory.join("workspace.sqlite3");
     Storage::new(path.clone()).save(&store).unwrap();
     let (mut cx, handle, app) = with_app(store, &path, 1000., 680., |app, w, cx| {
-        app.scope = Scope::All;
+        app.set_scope_identity(Scope::All);
         app.selected = Some(1);
         cx.notify();
     });
@@ -923,7 +927,7 @@ fn keyboard_surface(
         w.click("project-1", cx);
         w.render_frame(cx);
         opener = w.focused(cx);
-        background = (app.read(cx).scope.clone(), app.read(cx).selected);
+        background = (app.read(cx).scope(), app.read(cx).selected);
         assert!(opener.is_some(), "{surface}: real opener focus required");
         app.update(cx, |app, cx| open(app, w, cx));
         w.render_frame(cx);
@@ -1045,7 +1049,7 @@ fn keyboard_surface(
             "{surface}: opener not restored after Cancel"
         );
         assert_eq!(
-            (app.read(cx).scope.clone(), app.read(cx).selected),
+            (app.read(cx).scope(), app.read(cx).selected),
             background.clone(),
             "{surface}: background moved after Cancel"
         );
@@ -1072,7 +1076,7 @@ fn keyboard_surface(
             "{surface}: opener not restored after Escape"
         );
         assert_eq!(
-            (app.read(cx).scope.clone(), app.read(cx).selected),
+            (app.read(cx).scope(), app.read(cx).selected),
             background.clone(),
             "{surface}: background moved after Escape"
         );
@@ -1089,7 +1093,7 @@ fn global_search_keyboard(root: &Path) {
     let path = directory.join("workspace.sqlite3");
     Storage::new(path.clone()).save(&store).unwrap();
     let (mut cx, handle, app) = with_app(store, &path, 1000., 680., |app, w, cx| {
-        app.scope = Scope::All;
+        app.set_scope_identity(Scope::All);
         cx.notify();
     });
     let mut opener: Option<FocusHandle> = None;
@@ -1138,7 +1142,7 @@ fn global_search_keyboard(root: &Path) {
         w.render_frame(cx);
         assert!(!app.read(cx).global_search_ui.open);
         assert_eq!(w.focused(cx), opener, "search opener restored");
-        assert_eq!(app.read(cx).scope, Scope::All);
+        assert_eq!(app.read(cx).scope(), Scope::All);
     })
     .unwrap();
     cx.update_window(handle, |_, w, _| w.remove_window())
@@ -1160,7 +1164,7 @@ fn task_form_dirty_keyboard(root: &Path) {
     let path = directory.join("workspace.sqlite3");
     Storage::new(path.clone()).save(&store).unwrap();
     let (mut cx, handle, app) = with_app(store, &path, 1000., 680., |app, w, cx| {
-        app.scope = Scope::All;
+        app.set_scope_identity(Scope::All);
         app.open_task(1, w, cx);
         app.begin_draft(1, w, cx);
         let title = app.draft.as_ref().unwrap().title.clone();
@@ -1261,7 +1265,7 @@ where
             view.update(cx, |app, cx| {
                 app.attach_storage(Storage::new(path.to_path_buf()), w, cx);
                 assert!(app.storage_error.is_empty(), "{}", app.storage_error);
-                let appearance = store.appearance;
+                let appearance = store.appearance();
                 app.store = store;
                 app.set_appearance(appearance, w, cx);
                 configure(app, w, cx);

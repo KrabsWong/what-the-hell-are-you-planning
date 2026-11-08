@@ -142,7 +142,7 @@ impl crate::domain::Store {
     pub(crate) fn detail_task_neighbors(&self, id: u64) -> (u64, u64) {
         let Some(current) = self.task(id) else { return (id, id); };
         let archived = self.task_is_archived(id);
-        let mut tasks: Vec<_> = self.tasks.iter().filter(|task|
+        let mut tasks: Vec<_> = self.tasks().iter().filter(|task|
             task.project_id == current.project_id && self.task_is_archived(task.id) == archived).collect();
         tasks.sort_by(|a, b| crate::display_order::tree_siblings_in_display_order(a, b));
         let mut roots: Vec<_> = tasks.iter().copied().filter(|task|
@@ -558,9 +558,9 @@ mod tests {
 
     fn automation_store() -> Store {
         let mut store = Store::empty();
-        store.projects[0].directory = std::env::temp_dir().to_string_lossy().into_owned();
-        store.default_model = "test/model".into();
-        store.research_config.models = ["test/plan", "test/collect", "test/analyze", "test/advise"]
+        store.project_at_mut(0).unwrap().directory = std::env::temp_dir().to_string_lossy().into_owned();
+        store.set_default_model("test/model".into());
+        store.research_config_mut().models = ["test/plan", "test/collect", "test/analyze", "test/advise"]
             .map(String::from);
         store
     }
@@ -636,8 +636,8 @@ mod tests {
     #[test]
     fn sidebar_requires_completion_and_a_successful_latest_result() {
         let mut store = Store::empty();
-        store.projects[0].directory = std::env::temp_dir().to_string_lossy().into_owned();
-        store.default_model = "test/model".into();
+        store.project_at_mut(0).unwrap().directory = std::env::temp_dir().to_string_lossy().into_owned();
+        store.set_default_model("test/model".into());
         let id = store.create_task("Task", 1, Stage::Planned, None).unwrap();
         store.policies = Store::mock().policies;
         store.simulate_run(id).unwrap();

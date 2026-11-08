@@ -40,9 +40,9 @@ fn base_store(directory: &Path) -> Store {
     let mut store = Store::empty();
     let project_directory = directory.join("workspace/projects/project-1");
     std::fs::create_dir_all(&project_directory).unwrap();
-    store.projects[0].directory = project_directory.to_string_lossy().into_owned();
-    store.default_model = "qa/model".into();
-    store.research_config.models = [
+    store.project_at_mut(0).unwrap().directory = project_directory.to_string_lossy().into_owned();
+    store.set_default_model("qa/model".into());
+    store.research_config_mut().models = [
         "qa/model".into(),
         "qa/model".into(),
         "qa/model".into(),
@@ -82,7 +82,7 @@ fn regeneration_fixture(
         (store, None)
     };
     let advise = store
-        .tasks
+        .tasks()
         .iter()
         .find(|task| {
             task.research
@@ -106,7 +106,7 @@ fn regeneration_fixture(
     }
     // Create genuine completed prerequisite runs in phase/dependency order.
     let mut prerequisites: Vec<u64> = store
-        .tasks
+        .tasks()
         .iter()
         .filter(|task| {
             task.research.as_ref().is_some_and(|research| {
@@ -172,9 +172,9 @@ fn automation_store(directory: &Path) -> (Store, u64) {
     let mut store = Store::empty();
     let project_directory = directory.join("workspace/projects/project-1");
     std::fs::create_dir_all(&project_directory).unwrap();
-    store.projects[0].directory = project_directory.to_string_lossy().into_owned();
-    store.default_model = "qa/automation".into();
-    store.research_config.models = [
+    store.project_at_mut(0).unwrap().directory = project_directory.to_string_lossy().into_owned();
+    store.set_default_model("qa/automation".into());
+    store.research_config_mut().models = [
         "qa/automation".into(),
         "qa/automation".into(),
         "qa/automation".into(),
@@ -209,7 +209,7 @@ fn stop_store(directory: &Path) -> Store {
     let mut store = Store::mock();
     let project_directory = directory.join("workspace/projects/project-1");
     std::fs::create_dir_all(&project_directory).unwrap();
-    store.projects[0].directory = project_directory.to_string_lossy().into_owned();
+    store.project_at_mut(0).unwrap().directory = project_directory.to_string_lossy().into_owned();
     let run_id = 1;
     store.push_run(AgentRun {
         automation_occurrence_id: Some(10),
@@ -376,7 +376,7 @@ fn app_for(
             view.update(cx, |a, cx| {
                 a.workspace_root = Some(workspace_root.to_path_buf());
                 a.attach_storage(Storage::new(path.to_path_buf()), w, cx);
-                a.scope = Scope::Automations;
+                a.set_scope_identity(Scope::Automations);
                 a.automation_fake_mode = true;
                 cx.notify();
             });
@@ -1178,7 +1178,7 @@ fn typed_intent_checks(root: &Path) {
             a.retry_pending_saves(cx);
             (
                 a.store
-                    .research_requests
+                    .research_requests()
                     .iter()
                     .find(|value| value.id == request)
                     .and_then(|value| value.planning_run_id),
@@ -1205,7 +1205,7 @@ fn typed_intent_checks(root: &Path) {
             let prepared = a.prepare_run_dispatch(run, vec![], cx).unwrap();
             if let Some(value) = a
                 .store
-                .research_requests
+                .research_requests()
                 .iter_mut()
                 .find(|value| value.id == request)
             {
@@ -1524,10 +1524,14 @@ fn automation_command_invalidates_undo_check(root: &Path) {
     let (mut cx, handle, app) = app_for(&path, &directory);
     cx.update_window(handle, |_, w, cx| w.render_frame(cx))
         .unwrap();
-    let (undo_len, reason) = cx.update(|cx| {
+    let (undo_len, reason, status) = cx.update(|cx| {
         app.update(cx, |a, cx| {
-            a.snapshot();
-            assert_eq!(a.undo.len(), 1);
+            assert!(a.apply_domain_change(
+                |store| store.create_topic(1, "Undo guard").map(|_| ()),
+                "Topic created",
+                cx,
+            ));
+            assert_eq!(a.undo.len(), 1, "ordinary scoped edit is undoable");
             a.store.push_automation(crate::automation::AutomationDefinition {
                 id: 99,
                 version: 1,
@@ -1557,11 +1561,19 @@ fn automation_command_invalidates_undo_check(root: &Path) {
                 now: now(),
             };
             a.execute_command(command, cx).unwrap();
-            (a.undo.len(), a.undo_invalidation.clone())
+            (
+                a.undo.len(),
+                a.undo_invalidation.clone(),
+                a.store.automation(99).unwrap().status,
+            )
         })
     });
-    assert_eq!(undo_len, 0, "durable automation command must invalidate Undo");
-    assert!(reason.is_some());
+    assert_eq!(
+        undo_len, 1,
+        "a durable automation command records no undo entry and keeps scoped edits"
+    );
+    assert!(reason.is_none());
+    assert_eq!(status, crate::automation::DefinitionStatus::Paused);
 }
 
 fn screenshot(cx: &mut HeadlessAppContext, handle: AnyWindowHandle, directory: &Path, name: &str) {

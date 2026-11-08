@@ -40,12 +40,12 @@ struct WorkspaceFile {
 }
 
 fn normalize_automation_schema(store: &mut Store) -> Result<(), String> {
-    if store.automation_schema_version == 0 {
-        store.automation_schema_version = crate::automation::AUTOMATION_SCHEMA_VERSION;
-    } else if store.automation_schema_version > crate::automation::AUTOMATION_SCHEMA_VERSION {
+    if store.automation_schema_version() == 0 {
+        store.set_automation_schema_version(crate::automation::AUTOMATION_SCHEMA_VERSION);
+    } else if store.automation_schema_version() > crate::automation::AUTOMATION_SCHEMA_VERSION {
         return Err(format!(
             "Unsupported automation schema version {} (expected {}). The workspace was left unchanged.",
-            store.automation_schema_version,
+            store.automation_schema_version(),
             crate::automation::AUTOMATION_SCHEMA_VERSION
         ));
     }
@@ -197,21 +197,24 @@ impl Storage {
         let mut file: WorkspaceFile = serde_json::from_value(value).map_err(|error| {
             format!("Invalid workspace data in {}: {error}", self.path.display())
         })?;
-        if file.version < 4 && file.workspace.default_model.is_empty() {
-            let common = &file.workspace.research_config.models[0];
+        if file.version < 4 && file.workspace.default_model().is_empty() {
+            let common = &file.workspace.research_config().models[0];
             if crate::opencode::valid_model(common)
                 && file
                     .workspace
-                    .research_config
+                    .research_config()
                     .models
                     .iter()
                     .all(|m| m == common)
             {
                 let common = common.clone();
-                file.workspace.default_model = common.clone();
-                file.workspace.research_config.models = Default::default();
-                for policy in &mut file.workspace.policies {
-                    if policy.agent == "OpenCode" && policy.model == common {
+                file.workspace.set_default_model(common.clone());
+                file.workspace.research_config_mut().models = Default::default();
+                for stage in crate::domain::Stage::ALL {
+                    if let Some(policy) = file.workspace.policy_mut(stage)
+                        && policy.agent == "OpenCode"
+                        && policy.model == common
+                    {
                         policy.model.clear();
                     }
                 }
@@ -339,7 +342,7 @@ impl Storage {
                 ));
             }
         }
-        if workspace.tasks.iter().any(|task| {
+        if workspace.tasks().iter().any(|task| {
             !ids.contains(&task.id)
                 && (task.parent_id.is_some_and(|parent| ids.contains(&parent))
                     || task.research.as_ref().is_some_and(|research| {
@@ -372,16 +375,17 @@ impl Storage {
             .and_then(|_| file.sync_all())
             .map_err(|e| format!("Cannot save backup: {e}"))?;
         let mut cleaned = workspace.clone();
-        cleaned.tasks.retain(|task| !ids.contains(&task.id));
-        cleaned.projects.retain(|project| {
-            !seed.projects.contains(project)
+        cleaned.retain_tasks(|task| !ids.contains(&task.id));
+        let seed_projects = seed.projects().to_vec();
+        cleaned.retain_projects(|project| {
+            !seed_projects.contains(project)
                 || cleaned
-                    .tasks
+                    .tasks()
                     .iter()
                     .any(|task| task.project_id == project.id)
         });
-        if cleaned.projects.is_empty() {
-            cleaned.projects = Store::empty().projects;
+        if cleaned.projects().is_empty() {
+            cleaned.replace_projects(Store::empty().projects().to_vec());
         }
         // Keep next_id monotonic and preserve configured policies, real runs and settings.
         self.save(&cleaned)?;
@@ -526,7 +530,7 @@ mod tests {
         let directory = TestDirectory::new();
         let storage = directory.storage();
         let mut workspace = Store::mock();
-        workspace.default_model = "test/global".into();
+        workspace.set_default_model("test/global".into());
         workspace.task_mut(1).unwrap().title = "持久化任务".into();
         let policy = workspace
             .policies
@@ -569,22 +573,22 @@ mod tests {
         let storage = directory.storage();
         let mut old = Store::mock();
         let common = "tencent-token-plan/deepseek/deepseek-flash";
-        old.research_config.models = std::array::from_fn(|_| common.into());
+        old.research_config_mut().models = std::array::from_fn(|_| common.into());
         old.policies[0].agent = "OpenCode".into();
         old.policies[0].model = common.into();
         old.policies[1].agent = "OpenCode".into();
         old.policies[1].model = "test/intentional-override".into();
         old.policies[2].agent = "Manual".into();
         old.policies[2].model = common.into();
-        old.projects[0].directory = "/tmp".into();
+        old.project_at_mut(0).unwrap().directory = "/tmp".into();
         old.set_stage(1, old.policies[0].stage).unwrap();
         old.simulate_run(1).unwrap();
         write_legacy_workspace(&storage, &old, 3);
         let before_bytes = fs::read(storage.path()).unwrap();
         let restored = storage.load().unwrap().unwrap();
         let mut expected = old.clone();
-        expected.default_model = common.into();
-        expected.research_config.models = Default::default();
+        expected.set_default_model(common.into());
+        expected.research_config_mut().models = Default::default();
         expected.policies[0].model.clear();
         assert_eq!(restored, expected);
         assert!(restored.prepare_run(1).is_err());
@@ -610,12 +614,12 @@ mod tests {
             [""; 4],
         ] {
             let mut old = Store::mock();
-            old.research_config.models = models.map(String::from);
+            old.research_config_mut().models = models.map(String::from);
             write_legacy_workspace(&storage, &old, 3);
             assert_eq!(storage.load().unwrap(), Some(old));
         }
         let mut current = Store::mock();
-        current.research_config.models = std::array::from_fn(|_| "test/explicit".into());
+        current.research_config_mut().models = std::array::from_fn(|_| "test/explicit".into());
         storage.save(&current).unwrap();
         assert_eq!(storage.load().unwrap(), Some(current));
     }
@@ -657,7 +661,7 @@ mod tests {
         assert_eq!(fs::read(backup).unwrap(), original_bytes);
         assert_eq!(store.tasks, vec![real_task]);
         assert_eq!(store.projects.len(), 1);
-        assert_eq!(store.projects[0].id, 3);
+        assert_eq!(store.project_at_mut(0).unwrap().id, 3);
         assert_eq!(store.next_id, next_id);
         assert_eq!(store.policies[0].model, "user/configured-model");
         // Loading upgrades approval metadata, while cleanup itself preserves the real task exactly.

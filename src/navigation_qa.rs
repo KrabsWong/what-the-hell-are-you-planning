@@ -33,9 +33,9 @@ struct Fixture {
 
 fn store() -> Store {
     let mut store = Store::empty();
-    store.projects[0].directory = std::env::temp_dir().to_string_lossy().into_owned();
-    store.default_model = "fixture/navigation".into();
-    store.research_config.models =
+    store.project_at_mut(0).unwrap().directory = std::env::temp_dir().to_string_lossy().into_owned();
+    store.set_default_model("fixture/navigation".into());
+    store.research_config_mut().models =
         ["fixture/plan", "fixture/collect", "fixture/analyze", "fixture/advise"]
             .map(String::from);
     store
@@ -279,7 +279,7 @@ fn exercise(
         w.click("navigation-back", cx);
         let (scope, automation, dialog) = {
             let a = app.read(cx);
-            (a.scope.clone(), a.automation_ui.selected, a.automation_ui.result_dialog)
+            (a.scope(), a.automation_ui.selected, a.automation_ui.result_dialog)
         };
         assert_eq!(scope, Scope::Automations, "{theme}: Back opens the owning automation");
         assert_eq!(automation, Some(fixture.first_automation));
@@ -307,7 +307,7 @@ fn exercise(
             Some(last),
             "{theme}: report navigation stays inside the period"
         );
-        assert_eq!(app.read(cx).scope, Scope::Runs);
+        assert_eq!(app.read(cx).scope(), Scope::Runs);
 
         // Recently opened entries name the automation and period.
         let labels: Vec<String> = {

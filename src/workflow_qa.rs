@@ -32,10 +32,10 @@ print(json.dumps({'type': 'text', 'part': {'text': text}}), flush=True)
 "#).unwrap();
     std::fs::set_permissions(&cli, std::fs::Permissions::from_mode(0o755)).unwrap();
     let mut store = Store::empty();
-    store.default_model = "fixture/model".into();
-    store.opencode_path = cli.to_string_lossy().into();
-    store.research_config.ego_path = cli.to_string_lossy().into();
-    store.projects[0].directory = root.to_string_lossy().into();
+    store.set_default_model("fixture/model".into());
+    store.set_opencode_path(cli.to_string_lossy().into());
+    store.research_config_mut().ego_path = cli.to_string_lossy().into();
+    store.project_at_mut(0).unwrap().directory = root.to_string_lossy().into();
     let id = store
         .create_task("Drag to submit · isolated task", 1, Stage::Backlog, None)
         .unwrap();
@@ -199,9 +199,12 @@ pub fn display_order() {
     let b = store.create_task_in_topic("New topic old task", 1, Stage::Planned, None, Some(new)).unwrap();
     let c = store.create_task_in_topic("New topic latest task", 1, Stage::Planned, None, Some(new)).unwrap();
     let d = store.create_task_in_topic("Old topic latest task", 1, Stage::Planned, None, Some(old)).unwrap();
-    for task in &mut store.tasks { task.created_at = "2026-11-01 10:00:00 +08:00".into(); }
+    let task_ids: Vec<u64> = store.tasks().iter().map(|task| task.id).collect();
+    for id in task_ids {
+        store.task_mut(id).unwrap().created_at = "2026-11-01 10:00:00 +08:00".into();
+    }
     store.task_mut(a).unwrap().priority = crate::domain::Priority::Urgent;
-    store.tasks.swap(0, 2); // Rendering must not depend on serialization order.
+    store.swap_tasks(0, 2); // Rendering must not depend on serialization order.
     let expected = [c, b, d, a];
     let mut cx = HeadlessAppContext::with_platform(platform::current_platform(true).text_system(),
         Arc::new(crate::ui_assets::AppAssets), platform::current_headless_renderer);
@@ -247,7 +250,7 @@ pub fn display_order() {
             let goal = a.store.create_research_goal("Workflow order".into(), "Scope".into(), 1).unwrap();
             let steps = a.store.apply_research_plan(goal, r#"{"tasks":[{"title":"Evidence","instructions":"Collect","kind":"collect","depends_on":[]},{"title":"Analysis","instructions":"Analyze","kind":"analyze","depends_on":[0]},{"title":"Report","instructions":"Report","kind":"advise","depends_on":[1]}]}"#).unwrap();
             for (i, id) in steps.iter().enumerate() { a.store.task_mut(*id).unwrap().created_at = format!("2026-11-0{}T10:00:00Z", i + 1); }
-            a.store.tasks.reverse();
+            a.store.tasks().reverse();
             a.collapsed_sidebar_goals.retain(|id| *id != goal);
             a.open_task(goal, w, cx);
             a.goal_steps_tab = Some(goal);
@@ -272,8 +275,8 @@ pub fn display_order() {
 /// Repeatable horizontal-scroll workload with validated research results, no real agents.
 pub fn scroll_benchmark() {
     let mut store = Store::empty();
-    store.projects[0].directory = std::env::temp_dir().to_string_lossy().into();
-    store.default_model = "fixture/model".into();
+    store.project_at_mut(0).unwrap().directory = std::env::temp_dir().to_string_lossy().into();
+    store.set_default_model("fixture/model".into());
     for n in 0..24 {
         let goal = store.create_research_goal(format!("Scroll benchmark {n}"), "Research scope".into(), 1).unwrap();
         let steps = store.apply_research_plan(goal, r#"{"tasks":[{"title":"Evidence","instructions":"Collect","kind":"collect","depends_on":[]},{"title":"Analysis","instructions":"Analyze","kind":"analyze","depends_on":[0]},{"title":"Report","instructions":"Report","kind":"advise","depends_on":[1]}]}"#).unwrap();
@@ -288,7 +291,7 @@ pub fn scroll_benchmark() {
     }
     let mut cx = HeadlessAppContext::with_platform(platform::current_platform(true).text_system(), Arc::new(crate::ui_assets::AppAssets), platform::current_headless_renderer);
     cx.update(init);
-    let benchmark_goal = store.tasks.first().unwrap().id;
+    let benchmark_goal = store.tasks().first().unwrap().id;
     let mut view = None;
     let window = cx.open_window(size(px(1000.), px(720.)), |w, cx| {
         let app = cx.new(|cx| TaskApp::new_mock(w, cx));

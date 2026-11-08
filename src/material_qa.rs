@@ -35,7 +35,7 @@ pub fn run() {
             app.update(cx, |a, cx| {
                 assert!(a.storage_error.is_empty(), "{}", a.storage_error);
                 if a.store
-                    .tasks
+                    .tasks()
                     .iter()
                     .any(|t| t.id == 1 && t.title == "Polish task details and navigation")
                 {
@@ -50,7 +50,7 @@ pub fn run() {
                 }
                 let goal = a
                     .store
-                    .tasks
+                    .tasks()
                     .iter()
                     .find(|t| {
                         t.title == "2026 年剩余时间：存储行业走势与投资机会"
@@ -75,9 +75,9 @@ pub fn run() {
                 let collection_run = a.store.research_result(collect).unwrap().id;
                 a.research_project = a.store.task(goal).unwrap().project_id;
                 a.connection_project = a.research_project;
-                a.store.appearance = Appearance::Light;
-                crate::appearance::apply(a.store.appearance, Some(w), cx);
-                a.scope = Scope::Research;
+                a.store.set_appearance(Appearance::Light);
+                crate::appearance::apply(a.store.appearance(), Some(w), cx);
+                a.set_scope_identity(Scope::Research);
                 a.persist_if_changed(true);
                 (goal, analysis, advice, collection_run)
             })
@@ -171,12 +171,12 @@ pub fn run() {
                     result.attachments.len()
                 );
             }
-            a.scope = Scope::Runs;
+            a.set_scope_identity(Scope::Runs);
             a.selected = None;
             a.selected_run = Some(a.store.research_result(advice).unwrap().id);
             a.show_run_result = true;
-            a.store.appearance = Appearance::Light;
-            crate::appearance::apply(a.store.appearance, Some(w), cx);
+            a.store.set_appearance(Appearance::Light);
+            crate::appearance::apply(a.store.appearance(), Some(w), cx);
             a.persist_if_changed(true);
             cx.notify();
         })
@@ -188,16 +188,16 @@ pub fn run() {
         .save(root.join("materials-result-light.png"))
         .unwrap();
     cx.update_window(handle, |_, w, cx| {
-        let next = if app.read(cx).store.appearance == Appearance::Light {
+        let next = if app.read(cx).store.appearance() == Appearance::Light {
             2usize
         } else {
             1usize
         };
         w.click("toggle-appearance", cx);
-        if next == 1 && app.read(cx).store.appearance == Appearance::System {
+        if next == 1 && app.read(cx).store.appearance() == Appearance::System {
             w.click("toggle-appearance", cx);
         }
-        assert_eq!(app.read(cx).store.appearance, Appearance::Dark);
+        assert_eq!(app.read(cx).store.appearance(), Appearance::Dark);
     })
     .unwrap();
     render(&mut cx, handle);
@@ -206,13 +206,13 @@ pub fn run() {
         .save(root.join("materials-result-dark.png"))
         .unwrap();
     cx.update_window(handle, |_, w, cx| {
-        let next = if app.read(cx).store.appearance == Appearance::Light {
+        let next = if app.read(cx).store.appearance() == Appearance::Light {
             2usize
         } else {
             1usize
         };
         w.click("toggle-appearance", cx);
-        if next == 1 && app.read(cx).store.appearance == Appearance::System {
+        if next == 1 && app.read(cx).store.appearance() == Appearance::System {
             w.click("toggle-appearance", cx);
         }
     })
@@ -333,12 +333,12 @@ print(json.dumps({'type': 'text', 'part': {'text': json.dumps(result)}}))
     );
     let storage = Storage::new(root.join("workspace.json"));
     let mut empty = Store::empty();
-    empty.projects[0].id = 3;
-    empty.projects[0].name = "Workspace QA".into();
-    empty.projects[0].directory = project.to_string_lossy().into_owned();
-    empty.opencode_path = cli.to_string_lossy().into_owned();
-    empty.default_model = "fixture/research".into();
-    empty.research_config.ego_path = ego.to_string_lossy().into_owned();
+    empty.project_at_mut(0).unwrap().id = 3;
+    empty.project_at_mut(0).unwrap().name = "Workspace QA".into();
+    empty.project_at_mut(0).unwrap().directory = project.to_string_lossy().into_owned();
+    empty.set_opencode_path(cli.to_string_lossy().into_owned());
+    empty.set_default_model("fixture/research".into());
+    empty.research_config_mut().ego_path = ego.to_string_lossy().into_owned();
     storage.save(&empty).unwrap();
     for (width, height) in [(1440., 920.), (1000., 680.)] {
         let mut cx = HeadlessAppContext::with_platform(
@@ -362,7 +362,7 @@ print(json.dumps({'type': 'text', 'part': {'text': json.dumps(result)}}))
         let handle = window.into();
         cx.update_window(handle, |_, _, cx| {
             assert!(app.read(cx).storage_error.is_empty());
-            assert_eq!(app.read(cx).store.appearance, Appearance::Light);
+            assert_eq!(app.read(cx).store.appearance(), Appearance::Light);
         })
         .unwrap();
         render(&mut cx, handle);
@@ -372,7 +372,7 @@ print(json.dumps({'type': 'text', 'part': {'text': json.dumps(result)}}))
             .unwrap();
         if width == 1440. {
             cx.update_window(handle, |_, w, cx| {
-                assert!(app.read(cx).store.tasks.is_empty());
+                assert!(app.read(cx).store.tasks().is_empty());
                 assert!(app.read(cx).store.runs().is_empty());
                 w.click("new-task", cx);
                 w.render_frame(cx);
@@ -389,7 +389,7 @@ print(json.dumps({'type': 'text', 'part': {'text': json.dumps(result)}}))
                         w.render_frame(cx);
                         app.read(cx)
                             .store
-                            .research_requests
+                            .research_requests()
                             .iter()
                             .any(|request| request.goal_ids.len() == 1)
                     })
@@ -408,7 +408,7 @@ print(json.dumps({'type': 'text', 'part': {'text': json.dumps(result)}}))
                 assert!(a.error.is_empty(), "{}", a.error);
                 let goal = a
                     .store
-                    .tasks
+                    .tasks()
                     .iter()
                     .find(|task| task.project_id == 3 && task.parent_id.is_none())
                     .expect("intake must create one root goal");
@@ -427,16 +427,16 @@ print(json.dumps({'type': 'text', 'part': {'text': json.dumps(result)}}))
             .save(root.join(format!("research-light-{width}.png")))
             .unwrap();
         cx.update_window(handle, |_, w, cx| {
-            let next = if app.read(cx).store.appearance == Appearance::Light {
+            let next = if app.read(cx).store.appearance() == Appearance::Light {
                 2usize
             } else {
                 1usize
             };
             w.click("toggle-appearance", cx);
-            if next == 1 && app.read(cx).store.appearance == Appearance::System {
+            if next == 1 && app.read(cx).store.appearance() == Appearance::System {
                 w.click("toggle-appearance", cx);
             }
-            assert_eq!(app.read(cx).store.appearance, Appearance::Dark);
+            assert_eq!(app.read(cx).store.appearance(), Appearance::Dark);
         })
         .unwrap();
         render(&mut cx, handle);
@@ -453,16 +453,16 @@ print(json.dumps({'type': 'text', 'part': {'text': json.dumps(result)}}))
                     .load()
                     .unwrap()
                     .unwrap()
-                    .appearance,
+                    .appearance(),
                 Appearance::Dark
             );
-            let next = if app.read(cx).store.appearance == Appearance::Light {
+            let next = if app.read(cx).store.appearance() == Appearance::Light {
                 2usize
             } else {
                 1usize
             };
             w.click("toggle-appearance", cx);
-            if next == 1 && app.read(cx).store.appearance == Appearance::System {
+            if next == 1 && app.read(cx).store.appearance() == Appearance::System {
                 w.click("toggle-appearance", cx);
             }
         })

@@ -90,9 +90,9 @@ fn expected_render(store: &Store, occurrence: &AutomationOccurrence) -> Expected
 
 fn workspace(directory: &Path) -> Store {
     let mut store = Store::mock();
-    store.projects[0].directory = directory.to_string_lossy().into();
-    store.default_model = "qa/result-presentation".into();
-    store.research_config.models =
+    store.project_at_mut(0).unwrap().directory = directory.to_string_lossy().into();
+    store.set_default_model("qa/result-presentation".into());
+    store.research_config_mut().models =
         ["qa/plan", "qa/collect", "qa/analyze", "qa/advise"].map(String::from);
     store
 }
@@ -951,7 +951,7 @@ fn render_matrix(root: &Path) {
                 (AutomationState::ResearchMultiGoalStale, "research-multigoal-stale"),
             ] {
                 let (mut store, occurrence_id) = automation_fixture(&directory, state);
-                store.appearance = mode;
+                store.set_appearance(mode);
                 let occurrence = store.occurrence(occurrence_id).unwrap();
                 let expected = expected_render(&store, occurrence);
                 let path = directory.join(format!("{name}.sqlite3"));
@@ -991,7 +991,7 @@ fn render_matrix(root: &Path) {
                 (OrdinaryState::Regenerating, "ordinary-regenerating"),
             ] {
                 let (mut store, task, run) = ordinary_fixture(&directory, state);
-                store.appearance = mode;
+                store.set_appearance(mode);
                 let path = directory.join(format!("{name}.sqlite3"));
                 Storage::new(path.clone()).save(&store).unwrap();
                 screenshot_ordinary(
@@ -1031,7 +1031,7 @@ where
             view.update(cx, |a, cx| {
                 a.attach_storage(Storage::new(path.to_path_buf()), w, cx);
                 assert!(a.storage_error.is_empty(), "{}", a.storage_error);
-                let appearance = store.appearance;
+                let appearance = store.appearance();
                 a.store = store;
                 a.set_appearance(appearance, w, cx);
                 configure(a, w, cx);
@@ -1056,7 +1056,7 @@ fn screenshot_automation(
     expected: ExpectedRender,
 ) {
     let (mut cx, handle) = with_app(store, path, width, height, |a, _, _| {
-        a.scope = Scope::AutomationRuns;
+        a.set_scope_identity(Scope::AutomationRuns);
         a.automation_ui.selected = Some(99);
         a.automation_ui.result_dialog = Some(occurrence);
     });
@@ -1110,7 +1110,7 @@ fn screenshot_ordinary(
     height: f32,
 ) {
     let (mut cx, handle) = with_app(store, path, width, height, |a, _, _| {
-        a.scope = Scope::Runs;
+        a.set_scope_identity(Scope::Runs);
         a.task_result_context = Some(task);
         a.selected_run = Some(run);
         a.show_run_details = false;
@@ -1141,13 +1141,13 @@ fn copy_result_check(root: &Path) {
     let directory = root.join("copy-result");
     std::fs::create_dir_all(&directory).unwrap();
     let (mut store, task, run) = ordinary_fixture(&directory, OrdinaryState::Partial);
-    store.appearance = Appearance::Light;
+    store.set_appearance(Appearance::Light);
     let expected = present_run(&store, store.runs().iter().find(|value| value.id == run).unwrap())
         .reader_text();
     let path = directory.join("copy.sqlite3");
     Storage::new(path.clone()).save(&store).unwrap();
     let (mut cx, handle) = with_app(store, &path, 1000., 680., |a, _, _| {
-        a.scope = Scope::Runs;
+        a.set_scope_identity(Scope::Runs);
         a.task_result_context = Some(task);
         a.selected_run = Some(run);
         a.show_run_details = false;

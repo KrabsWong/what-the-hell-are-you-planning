@@ -349,7 +349,7 @@ impl Store {
         }
         // Invalidating a prerequisite is not a status-edit operation.
         if target != Stage::Done
-            && self.tasks.iter().any(|t| {
+            && self.tasks().iter().any(|t| {
                 t.research
                     .as_ref()
                     .is_some_and(|r| r.depends_on.contains(&id))
@@ -372,8 +372,8 @@ mod tests {
     use crate::{app::AllStatus, batch::BatchState};
     fn fixture() -> (Store, u64, Vec<u64>, TodoBatch) {
         let mut store = Store::empty();
-        store.default_model = "fixture/model".into();
-        store.projects[0].directory = std::env::temp_dir().to_string_lossy().into();
+        store.set_default_model("fixture/model".into());
+        store.project_at_mut(0).unwrap().directory = std::env::temp_dir().to_string_lossy().into();
         let goal = store
             .create_research_goal("Goal".into(), "Scope".into(), 1)
             .unwrap();

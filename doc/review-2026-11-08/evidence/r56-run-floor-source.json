@@ -1,0 +1,7 @@
+{
+  "base_manifest": "r55-owner-revised-snapshot.json",
+  "diagnostic_source_copy": "/Users/fuxingxing/workspaces/what-the-hell-are-you-planning/.local/r56-run-floor-snapshot",
+  "test_overlay": ".local/opencode-dispatch/r56-run-floor-regression.rs",
+  "sqlite_v4_sha256": "d0472d04766bf9d40993f435b501c191b4047d7682417d6124ac4da434591a58",
+  "note": "Diagnostic test overlay compiled temporarily at the prior snapshot path; original r55 source will be restored after this test process completes. No live worktree implementation changed."
+}

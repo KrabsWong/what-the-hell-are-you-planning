@@ -357,7 +357,7 @@ impl TaskApp {
                 .agents
                 .get(index)
                 .and_then(|agent| agent.clone())
-                .unwrap_or_else(|| self.store.research_config.default_agent.clone());
+                .unwrap_or_else(|| self.store.research_config().default_agent.clone());
             run.prompt =
                 crate::automation_execution::with_time_context(run.prompt, occurrence);
             run.logs.push(format!(
@@ -502,7 +502,6 @@ impl TaskApp {
                         let _ = inserted;
                         self.dispatch_awaiting = Some(durable.id.clone());
                         self.dispatch_admission_error = None;
-                        self.undo.clear_legacy();
                         self.error.clear();
                     }
                     // Persist the launch claim before any spawn. The claim is the
@@ -837,10 +836,11 @@ impl TaskApp {
             return;
         }
         if let Some(new_id) = replacement {
-            self.store.run_id_floor = self
-                .store
-                .run_id_floor
-                .max(new_id.saturating_add(1));
+            self.store.set_run_id_floor(
+                self.store
+                    .run_id_floor()
+                    .max(new_id.saturating_add(1)),
+            );
         }
         if let Some(mut run) = self.store.run_mut(run_id) {
             if run.status != "Blocked" {

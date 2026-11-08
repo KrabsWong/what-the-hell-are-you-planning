@@ -358,7 +358,7 @@ fn fixture(mode: Appearance) -> (Store, (u64, u64, u64)) {
     let (mut store, automation, template, schedule) = base(mode, AUTOMATION, now());
     let draft = store
         .create_automation_draft(
-            store.projects[0].id,
+            store.projects()[0].id,
             AutomationShape::Research,
             "Draft packaging and supplier watch".into(),
             LONG_EN.into(),
@@ -403,15 +403,15 @@ fn base(
     now: i64,
 ) -> (Store, u64, AutomationTemplate, crate::automation_schedule::Schedule) {
     let mut store = Store::mock();
-    store.appearance = mode;
-    store.projects[0].name =
+    store.set_appearance(mode);
+    store.project_at_mut(0).unwrap().name =
         "Semiconductor supply, pricing and packaging research programme".into();
-    store.projects[1].name = "跨区域供应链与公开信息追踪".into();
+    store.project_at_mut(1).unwrap().name = "跨区域供应链与公开信息追踪".into();
     store.task_mut(1).unwrap().title = LONG_EN.into();
     store.task_mut(2).unwrap().title = LONG_CJK.into();
     store.task_mut(5).unwrap().title = LONG_CJK.into();
-    store.default_model = "qa/default".into();
-    store.research_config.models =
+    store.set_default_model("qa/default".into());
+    store.research_config_mut().models =
         ["qa/planner", "qa/collector", "qa/analyst", "qa/adviser"].map(String::from);
     let template = AutomationTemplate::single_goal(
         AutomationGoal {
@@ -446,7 +446,7 @@ fn base(
     };
     let id = store
         .create_automation_draft(
-            store.projects[0].id,
+            store.projects()[0].id,
             AutomationShape::Research,
             name.into(),
             LONG_EN.into(),

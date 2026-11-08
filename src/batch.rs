@@ -61,7 +61,7 @@ impl TodoBatch {
 
 impl Store {
     pub fn todo_batch_items(&self, project: u64) -> Vec<u64> {
-        self.tasks.iter().filter(|task| {
+        self.tasks().iter().filter(|task| {
             task.project_id == project && !self.task_is_archived(task.id)
                 && task.automation_id.is_none()
                 && task.research.as_ref().is_some_and(|r| r.kind == ResearchKind::Goal)
@@ -143,9 +143,9 @@ mod tests {
     const PLAN: &str = r#"{"tasks":[{"title":"Collect","instructions":"Find sources","kind":"collect","depends_on":[]},{"title":"Analyze","instructions":"Analyze evidence","kind":"analyze","depends_on":[0]},{"title":"Report","instructions":"Write report","kind":"advise","depends_on":[1]}]}"#;
     fn setup() -> (Store, u64, u64) {
         let mut store = Store::empty();
-        let project = store.projects[0].id;
-        store.projects[0].directory = "/tmp".into();
-        store.default_model = "fixture/model".into();
+        let project = store.project_at_mut(0).unwrap().id;
+        store.project_at_mut(0).unwrap().directory = "/tmp".into();
+        store.set_default_model("fixture/model".into());
         let goal = store
             .create_research_goal("Goal".into(), "Research scope".into(), project)
             .unwrap();

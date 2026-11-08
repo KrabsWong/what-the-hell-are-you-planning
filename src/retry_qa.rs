@@ -23,9 +23,9 @@ print(json.dumps({"type":"text","part":{"text":json.dumps(result)}}))
 "#).unwrap();
     std::fs::set_permissions(&cli, std::fs::Permissions::from_mode(0o700)).unwrap();
     let mut store = Store::empty();
-    store.projects[0].directory = root.to_string_lossy().into();
-    store.opencode_path = cli.to_string_lossy().into();
-    store.default_model = "fixture/model".into();
+    store.project_at_mut(0).unwrap().directory = root.to_string_lossy().into();
+    store.set_opencode_path(cli.to_string_lossy().into());
+    store.set_default_model("fixture/model".into());
     let goal = store.create_research_goal("Retry acceptance".into(), "Verify the saved report".into(), 1).unwrap();
     let steps = store.apply_research_plan(goal, r#"{"tasks":[{"title":"Collect","instructions":"Gather evidence","kind":"collect","depends_on":[]},{"title":"Analyze","instructions":"Verify evidence","kind":"analyze","depends_on":[0]},{"title":"Report","instructions":"Write report","kind":"advise","depends_on":[1]}]}"#).unwrap();
     for &step in &steps[..2] {

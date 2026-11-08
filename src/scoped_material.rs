@@ -787,7 +787,7 @@ fn referenced(store: &Store, relative_path: &str, extra_references: &[String]) -
     if extra_references.iter().any(|path| path == relative_path) {
         return true;
     }
-    store.tasks.iter().any(|task| {
+    store.tasks().iter().any(|task| {
         task.attachments
             .iter()
             .any(|attachment| attachment.relative_path == relative_path)
@@ -830,7 +830,7 @@ mod tests {
     fn fixture() -> (Store, std::path::PathBuf, u64, Attachment, ImportedCopy) {
         let directory = temp_dir();
         let mut store = Store::empty();
-        store.projects[0].directory = directory.to_string_lossy().into_owned();
+        store.project_at_mut(0).unwrap().directory = directory.to_string_lossy().into_owned();
         let task = store
             .create_task("Material task", 1, Stage::Planned, None)
             .unwrap();
@@ -910,7 +910,7 @@ mod tests {
     fn add_inverse_restores_goal_approval_and_stage_for_research_material() {
         let directory = temp_dir();
         let mut store = Store::empty();
-        store.projects[0].directory = directory.to_string_lossy().into_owned();
+        store.project_at_mut(0).unwrap().directory = directory.to_string_lossy().into_owned();
         let goal = store
             .create_research_goal("Material goal".into(), "Brief".into(), 1)
             .unwrap();

@@ -28,24 +28,17 @@ impl SettingsTab {
 }
 
 impl TaskApp {
-    fn confirm_profile_save(&mut self, message: &str, cx: &mut Context<Self>) {
-        self.confirm_save(message, cx);
-        if matches!(self.save_feedback, Some(Ok(_))) {
-            self.save_feedback = None;
-        }
-    }
-
     pub fn model_profiles_panel(&self, cx: &mut Context<Self>) -> Div {
         let active = self
             .store
-            .active_model_profile
+            .active_model_profile()
             .as_ref()
-            .and_then(|name| self.store.model_profiles.iter().find(|p| &p.name == name));
+            .and_then(|name| self.store.model_profiles().iter().find(|p| &p.name == name));
         let changed = active.is_some_and(|p| self.store.model_profile_changed(p));
-        let selected = self.store.active_model_profile.clone();
+        let selected = self.store.active_model_profile().clone();
         let names: Vec<_> = self
             .store
-            .model_profiles
+            .model_profiles()
             .iter()
             .map(|p| p.name.clone())
             .collect();
@@ -67,13 +60,24 @@ impl TaskApp {
                         .checked(selected.as_ref() == Some(&name))
                         .on_click(move |_, w, cx| {
                             let _ = entity.update(cx, |this, cx| {
-                                this.snapshot();
-                                this.store.apply_model_profile(&name);
+                                let name = name.clone();
+                                if this
+                                    .apply_domain_command_undoable(
+                                        crate::scoped_domain::DomainCommand::ApplyModelProfile {
+                                            name,
+                                        },
+                                        "Model profile applied",
+                                        cx,
+                                    )
+                                    .is_none()
+                                {
+                                    return;
+                                }
                                 this.creating_model_profile = false;
                                 this.research_model_picker = None;
                                 this.refresh_global_model_input(w, cx);
                                 this.refresh_research_inputs(w, cx);
-                                this.confirm_profile_save("Model profile applied", cx);
+                                this.save_feedback = None;
                             });
                         }),
                 );
@@ -98,12 +102,23 @@ impl TaskApp {
                         .disabled(!changed)
                         .on_click(move |_, w, cx| {
                             let _ = restore_entity.update(cx, |this, cx| {
-                                this.snapshot();
-                                this.store.apply_model_profile(&restore_name);
+                                let name = restore_name.clone();
+                                if this
+                                    .apply_domain_command_undoable(
+                                        crate::scoped_domain::DomainCommand::ApplyModelProfile {
+                                            name,
+                                        },
+                                        "Saved profile settings restored",
+                                        cx,
+                                    )
+                                    .is_none()
+                                {
+                                    return;
+                                }
                                 this.research_model_picker = None;
                                 this.refresh_global_model_input(w, cx);
                                 this.refresh_research_inputs(w, cx);
-                                this.confirm_profile_save("Saved profile settings restored", cx);
+                                this.save_feedback = None;
                             });
                         }),
                 )
@@ -111,12 +126,17 @@ impl TaskApp {
                 .item(
                     PopupMenuItem::new("Delete current profile").on_click(move |_, _, cx| {
                         let _ = delete_entity.update(cx, |this, cx| {
-                            this.snapshot();
-                            this.store.delete_model_profile(&name);
-                            this.confirm_profile_save(
-                                "Profile deleted · current settings kept · Undo to restore",
-                                cx,
-                            );
+                            let name = name.clone();
+                            let saved = this
+                                .apply_domain_command_undoable(
+                                    crate::scoped_domain::DomainCommand::DeleteModelProfile { name },
+                                    "Profile deleted · current settings kept · Undo to restore",
+                                    cx,
+                                )
+                                .is_some();
+                            if saved {
+                                this.save_feedback = None;
+                            }
                         });
                     }),
                 )
@@ -160,12 +180,21 @@ impl TaskApp {
                                     "No changes to save"
                                 })
                                 .on_click(cx.listener(move |this, _, _, cx| {
-                                    let Some(name) = &active_name else {
+                                    let Some(name) = active_name.clone() else {
                                         return;
                                     };
-                                    this.snapshot();
-                                    this.store.update_model_profile(name);
-                                    this.confirm_profile_save("Model profile updated", cx);
+                                    let saved = this
+                                        .apply_domain_command_undoable(
+                                            crate::scoped_domain::DomainCommand::UpdateModelProfile {
+                                                name,
+                                            },
+                                            "Model profile updated",
+                                            cx,
+                                        )
+                                        .is_some();
+                                    if saved {
+                                        this.save_feedback = None;
+                                    }
                                 })),
                         ),
                 );
@@ -193,12 +222,20 @@ impl TaskApp {
                                         this.show_save_error(error, cx);
                                         return;
                                     }
-                                    this.snapshot();
-                                    this.store
-                                        .create_model_profile(&name)
-                                        .expect("validated profile name");
+                                    if this
+                                        .apply_domain_command_undoable(
+                                            crate::scoped_domain::DomainCommand::CreateModelProfile {
+                                                name,
+                                            },
+                                            "Model profile saved",
+                                            cx,
+                                        )
+                                        .is_none()
+                                    {
+                                        return;
+                                    }
                                     this.creating_model_profile = false;
-                                    this.confirm_profile_save("Model profile saved", cx);
+                                    this.save_feedback = None;
                                 }),
                             ))
                             .child(quiet_button("model-profile-cancel", "Cancel").on_click(
@@ -215,7 +252,7 @@ impl TaskApp {
 
     pub fn set_execution_concurrency(&mut self, limit: usize, cx: &mut Context<Self>) {
         let limit = limit.clamp(1, crate::scheduler::MAX_CONCURRENT_RUNS);
-        if self.store.max_concurrent_runs == limit {
+        if self.store.max_concurrent_runs() == limit {
             return;
         }
         self.apply_scoped_settings(
@@ -227,7 +264,7 @@ impl TaskApp {
 
     pub fn set_automation_concurrency(&mut self, limit: usize, cx: &mut Context<Self>) {
         let limit = limit.clamp(1, crate::scheduler::MAX_CONCURRENT_RUNS);
-        if self.store.max_concurrent_automations == limit {
+        if self.store.max_concurrent_automations() == limit {
             return;
         }
         self.apply_scoped_settings(
@@ -244,7 +281,7 @@ impl TaskApp {
     }
 
     pub fn refresh_global_model_input(&mut self, w: &mut Window, cx: &mut Context<Self>) {
-        let model = self.store.default_model.clone();
+        let model = self.store.default_model().clone();
         self.global_model
             .update(cx, |s, cx| s.set_value(model, w, cx));
     }
@@ -369,10 +406,10 @@ impl TaskApp {
                         select_button(
                             id,
                             name,
-                            self.store.appearance == mode,
+                            self.store.appearance() == mode,
                             cx,
                         )
-                        .when(self.store.appearance == mode, |b| b.icon(assets::IconName::Check))
+                        .when(self.store.appearance() == mode, |b| b.icon(assets::IconName::Check))
                         .on_click(cx.listener(move |a, _, w, cx| a.set_appearance(mode, w, cx)))
                     }),
                 ),

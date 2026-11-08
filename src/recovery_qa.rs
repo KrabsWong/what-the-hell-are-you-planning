@@ -48,17 +48,17 @@ print(json.dumps({'type':'text','part':{'text':json.dumps(result)}}),flush=True)
         "#!/bin/sh\nprintf '%s\n' 'QA browser guide' '[ego-browser:skill] end of guide'\n",
     );
     let mut store = Store::empty();
-    store.opencode_path = cli.to_string_lossy().into_owned();
-    store.default_model = "fixture/model".into();
-    store.research_config.ego_path = ego.to_string_lossy().into_owned();
+    store.set_opencode_path(cli.to_string_lossy().into_owned());
+    store.set_default_model("fixture/model".into());
+    store.research_config_mut().ego_path = ego.to_string_lossy().into_owned();
     for id in 1..=2 {
         let dir = root.join(format!("project-{id}"));
         std::fs::create_dir_all(&dir).unwrap();
         if id == 1 {
-            store.projects[0].directory = dir.to_string_lossy().into_owned();
-            store.projects[0].name = "财报研究 · 恢复验收".into();
+            store.project_at_mut(0).unwrap().directory = dir.to_string_lossy().into_owned();
+            store.project_at_mut(0).unwrap().name = "财报研究 · 恢复验收".into();
         } else {
-            store.projects.push(Project {
+            store.push_project(Project {
                 id,
                 name: "行业研究 · 恢复验收".into(),
                 key: "OTHER".into(),
@@ -253,11 +253,11 @@ print(json.dumps({'type':'text','part':{'text':json.dumps(result)}}),flush=True)
         let runs_before_navigation = app.read(cx).store.runs().len();
         let topic = app.read(cx).store.task_topic(goals[0].0).unwrap().id;
         w.click(("recovery-project", 1u64), cx);
-        assert_eq!(app.read(cx).scope, Scope::Project(1));
+        assert_eq!(app.read(cx).scope(), Scope::Project(1));
         app.update(cx, |a, cx| a.navigate(Scope::Recovery, w, cx));
         w.render_frame(cx);
         w.click(format!("recovery-topic-{topic}"), cx);
-        assert_eq!(app.read(cx).scope, Scope::Topic(topic));
+        assert_eq!(app.read(cx).scope(), Scope::Topic(topic));
         app.update(cx, |a, cx| a.navigate(Scope::Recovery, w, cx));
         w.render_frame(cx);
         w.click(("recovery-goal", goals[0].0), cx);
@@ -492,7 +492,7 @@ print(json.dumps({'type':'text','part':{'text':json.dumps(result)}}),flush=True)
     cx.update_window(handle, |_, w, cx| {
         w.click(("recovery-request", planning_run), cx);
         assert_eq!(app.read(cx).selected_run, Some(planning_run));
-        assert_eq!(app.read(cx).scope, Scope::Runs);
+        assert_eq!(app.read(cx).scope(), Scope::Runs);
     })
     .unwrap();
     cx.update_window(handle, |_, w, cx| {
@@ -605,8 +605,8 @@ pub fn scroll() {
     std::fs::create_dir_all(&output).unwrap();
     for (width, height) in [(1000., 680.), (1440., 920.)] {
         let mut store = Store::empty();
-        store.default_model = "fixture/model".into();
-        store.projects[0].directory = "/unused-scroll-fixture".into();
+        store.set_default_model("fixture/model".into());
+        store.project_at_mut(0).unwrap().directory = "/unused-scroll-fixture".into();
         let mut last_step = 0;
         for index in 0..12 {
             let goal = store.create_research_goal(format!("Research goal {index}"), "Research".into(), 1).unwrap();
@@ -623,7 +623,7 @@ pub fn scroll() {
         let mut app = None;
         let window = cx.open_window(size(px(width), px(height)), |w, cx| {
             let view = cx.new(|cx| TaskApp::new_mock(w, cx));
-            view.update(cx, |a, _| { a.store = store; a.scope = Scope::Recovery; });
+            view.update(cx, |a, _| { a.store = store; a.set_scope_identity(Scope::Recovery); });
             app = Some(view.clone());
             cx.new(|cx| base::Root::new(view, w, cx))
         }).unwrap();

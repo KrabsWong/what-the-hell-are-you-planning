@@ -1537,8 +1537,8 @@ mod tests {
 
     fn store_with_goal() -> (Store, u64, Vec<u64>) {
         let mut store = Store::empty();
-        store.projects[0].directory = std::env::temp_dir().to_string_lossy().into_owned();
-        store.research_config.models = [
+        store.project_at_mut(0).unwrap().directory = std::env::temp_dir().to_string_lossy().into_owned();
+        store.research_config_mut().models = [
             "test/model".into(),
             "test/model".into(),
             "test/model".into(),
@@ -2456,7 +2456,7 @@ mod tests {
         let input = input_for(&store, goal);
         assert_eq!(input.project, Some(store.task(goal).unwrap().project_id));
         assert_eq!(
-            store.projects[0].kind,
+            store.project_at_mut(0).unwrap().kind,
             ProjectKind::User,
             "fixture uses a user project"
         );

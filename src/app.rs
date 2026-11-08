@@ -86,16 +86,15 @@ pub(crate) struct PendingDispatch {
     pub files: Vec<PathBuf>,
 }
 
-/// One chronological Undo entry. Legacy whole-store snapshots and scoped typed
-/// task-edit inverses share one stack so the latest user change is always the
-/// next entry. A scoped entry never consumes a legacy snapshot.
+/// One chronological Undo entry. Every entry is a typed scoped inverse; there
+/// is no whole-Store snapshot path and no parallel legacy mirror.
 #[derive(Clone, Debug, PartialEq)]
 pub(crate) enum UndoRecord {
-    Legacy(Store),
     TaskEdit(crate::scoped_edit::TaskEditUndo),
     Comment(crate::scoped_edit::CommentEditUndo),
     Material(crate::scoped_material::MaterialUndo),
     Settings(crate::scoped_settings::SettingsUndo),
+    Domain(crate::scoped_domain::DomainUndo),
 }
 
 fn undo_entry_references_reserved(entry: &UndoRecord, reserved: &[String]) -> bool {
@@ -104,14 +103,10 @@ fn undo_entry_references_reserved(entry: &UndoRecord, reserved: &[String]) -> bo
     }
     let references = match entry {
         UndoRecord::Material(undo) => undo.reference_paths(),
-        UndoRecord::Legacy(store) => store
-            .tasks
-            .iter()
-            .flat_map(|task| task.attachments.iter())
-            .chain(store.runs().iter().flat_map(|run| run.attachments.iter()))
-            .map(|attachment| attachment.relative_path.clone())
-            .collect(),
-        UndoRecord::TaskEdit(_) | UndoRecord::Comment(_) | UndoRecord::Settings(_) => Vec::new(),
+        UndoRecord::TaskEdit(_)
+        | UndoRecord::Comment(_)
+        | UndoRecord::Settings(_)
+        | UndoRecord::Domain(_) => Vec::new(),
     };
     references.iter().any(|path| reserved.contains(path))
 }
@@ -129,8 +124,8 @@ impl UndoStack {
         }
     }
 
-    pub(crate) fn push_legacy(&mut self, store: Store) {
-        self.push(UndoRecord::Legacy(store));
+    pub(crate) fn push_domain(&mut self, undo: crate::scoped_domain::DomainUndo) {
+        self.push(UndoRecord::Domain(undo));
     }
 
     pub(crate) fn push_task_edit(&mut self, undo: crate::scoped_edit::TaskEditUndo) {
@@ -157,21 +152,6 @@ impl UndoStack {
         self.entries.last()
     }
 
-    /// Remove only legacy whole-store snapshots. Scoped task-edit inverses keep
-    /// their own field/approval/runtime guards and remain valid across unrelated
-    /// runtime work.
-    pub(crate) fn clear_legacy(&mut self) -> usize {
-        let before = self.entries.len();
-        self.entries.retain(|entry| match entry {
-            UndoRecord::Legacy(_) => false,
-            UndoRecord::TaskEdit(_)
-            | UndoRecord::Comment(_)
-            | UndoRecord::Material(_)
-            | UndoRecord::Settings(_) => true,
-        });
-        before - self.entries.len()
-    }
-
     pub(crate) fn len(&self) -> usize {
         self.entries.len()
     }
@@ -195,11 +175,6 @@ impl UndoStack {
             .collect()
     }
 
-    pub(crate) fn drop_last_legacy_if_equal(&mut self, store: &Store) {
-        if matches!(self.entries.last(), Some(UndoRecord::Legacy(previous)) if previous == store) {
-            self.entries.pop();
-        }
-    }
 }
 
 /// Automation ownership is a closed graph: definitions, occurrences, the
@@ -210,35 +185,35 @@ impl UndoStack {
 fn automation_state_differs(a: &Store, b: &Store) -> bool {
     a.automations() != b.automations()
         || a.all_occurrences() != b.all_occurrences()
-        || a.projects
+        || a.projects()
             .iter()
             .filter(|project| project.kind == ProjectKind::Automation)
             .collect::<Vec<_>>()
-            != b.projects
+            != b.projects()
                 .iter()
                 .filter(|project| project.kind == ProjectKind::Automation)
                 .collect::<Vec<_>>()
-        || a.tasks
+        || a.tasks()
             .iter()
             .filter(|task| task.automation_id.is_some())
             .collect::<Vec<_>>()
-            != b.tasks
+            != b.tasks()
                 .iter()
                 .filter(|task| task.automation_id.is_some())
                 .collect::<Vec<_>>()
-        || a.topics
+        || a.topics()
             .iter()
             .filter(|topic| topic.automation_id.is_some())
             .collect::<Vec<_>>()
-            != b.topics
+            != b.topics()
                 .iter()
                 .filter(|topic| topic.automation_id.is_some())
                 .collect::<Vec<_>>()
-        || a.research_requests
+        || a.research_requests()
             .iter()
             .filter(|request| request.automation_id.is_some())
             .collect::<Vec<_>>()
-            != b.research_requests
+            != b.research_requests()
                 .iter()
                 .filter(|request| request.automation_id.is_some())
                 .collect::<Vec<_>>()
@@ -306,7 +281,9 @@ pub struct Draft {
 }
 pub struct TaskApp {
     pub store: Store,
-    pub scope: Scope,
+    /// T12 S2: typed route identity. `scope()` is a read-only projection; no
+    /// writable `scope` field exists on the app.
+    nav: crate::navigation_route::NavState,
     pub layout: Layout,
     pub all_status: AllStatus,
     pub sidebar_scroll: ScrollHandle,
@@ -648,6 +625,7 @@ impl TaskApp {
     fn with_store(store: Store, window: &mut Window, cx: &mut Context<Self>) -> Self {
         #[cfg(feature = "qa")]
         crate::brand::start_render_probe_logging();
+        let nav = Self::initial_nav(&store);
         let search = cx.new(|cx| InputState::new(window, cx).placeholder("Filter this list…"));
         let sub = cx.subscribe(&search, |this, state, event, cx| {
             if matches!(event, InputEvent::Change) {
@@ -692,7 +670,7 @@ impl TaskApp {
         let release = cx.on_release(|this, _| this.shutdown());
         let global_model = cx.new(|cx| {
             InputState::new(window, cx)
-                .default_value(store.default_model.clone())
+                .default_value(store.default_model().clone())
                 .placeholder("provider/model")
         });
         let research_models: [_; 4] = std::array::from_fn(|_| {
@@ -700,8 +678,8 @@ impl TaskApp {
         });
         let automation_ui = crate::automation_views::AutomationUi::new(window, cx);
         let system_appearance = cx.observe_window_appearance(window, |this, w, cx| {
-            if this.store.appearance == crate::appearance::Appearance::System {
-                crate::appearance::apply(this.store.appearance, Some(w), cx);
+            if this.store.appearance() == crate::appearance::Appearance::System {
+                crate::appearance::apply(this.store.appearance(), Some(w), cx);
                 cx.notify();
             }
         });
@@ -742,7 +720,7 @@ impl TaskApp {
                 cx.subscribe_in(input, window, move |this, input, event, w, cx| {
                     match event {
                         InputEvent::Focus
-                            if this.scope == Scope::Settings
+                            if this.scope() == Scope::Settings
                                 && this.settings_tab
                                     == crate::settings_views::SettingsTab::Models =>
                         {
@@ -761,13 +739,13 @@ impl TaskApp {
         });
         subscriptions.push(cx.subscribe(&ego_input, |this, input, event, cx| {
             if matches!(event, InputEvent::Change)
-                && this.scope == Scope::Settings
+                && this.scope() == Scope::Settings
                 && this.settings_tab == crate::settings_views::SettingsTab::Models
                 && !this.startup.required
             {
                 let value = input.read(cx).value();
-                if value.trim() != this.store.research_config.ego_path {
-                    this.store.research_config.ego_path = value.trim().to_owned();
+                if value.trim() != this.store.research_config().ego_path {
+                    this.store.research_config_mut().ego_path = value.trim().to_owned();
                     this.ego_status = "Runtime not checked".into();
                     cx.notify();
                 }
@@ -824,7 +802,7 @@ impl TaskApp {
             follow_logs: true,
             pumping: false,
             store,
-            scope: Scope::Project(1),
+            nav,
             layout: Layout::List,
             all_status: AllStatus::All,
             sidebar_scroll: ScrollHandle::new(),
@@ -995,24 +973,96 @@ impl TaskApp {
         true
     }
 
-    pub fn snapshot(&mut self) {
-        self.undo.push_legacy(self.store.clone());
+    /// QA-only compatibility helper for older test closures. Production code
+    /// uses the typed `DomainCommand` write-set path above; this clone-based
+    /// path exists only while QA suites migrate.
+    #[cfg(feature = "qa")]
+    pub(crate) fn apply_domain_change(
+        &mut self,
+        change: impl FnOnce(&mut Store) -> Result<(), String>,
+        message: &str,
+        cx: &mut Context<Self>,
+    ) -> bool {
+        let before = self.store.clone();
+        if let Err(error) = change(&mut self.store) {
+            self.show_save_error(error, cx);
+            return false;
+        }
+        let undo = crate::scoped_domain::capture_undo(&before, &self.store);
+        if let Err(error) = self.save_current_store_durably() {
+            self.store = before;
+            self.storage_error = error.clone();
+            self.show_save_error(error, cx);
+            return false;
+        }
         self.undo_invalidation = None;
+        if let Some(undo) = undo {
+            self.undo.push_domain(undo);
+        }
+        self.toast = message.into();
+        self.error.clear();
+        cx.notify();
+        true
     }
 
-    /// Automation definitions, occurrences, approvals and cursors are durable
-    /// domain state that the whole-store undo snapshot cannot restore safely.
-    /// This is the single invalidation point used by every automation mutation;
-    /// ordinary edits made after it still create a fresh, safe undo entry.
-    pub(crate) fn invalidate_undo_for_automation(&mut self) {
-        let removed = self.undo.clear_legacy();
-        if removed == 0 {
-            return;
+    /// Execute a bounded domain command against the live store. The command
+    /// records only its own write set; there is no whole-Store staging clone.
+    /// A failed durable save rolls the command back through that same write set.
+    pub(crate) fn apply_domain_command(
+        &mut self,
+        command: crate::scoped_domain::DomainCommand,
+        message: &str,
+        undoable: bool,
+        cx: &mut Context<Self>,
+    ) -> Option<crate::scoped_domain::DomainOutcome> {
+        let outcome = match command.execute(&mut self.store) {
+            Ok(outcome) => outcome,
+            Err(error) => {
+                self.show_save_error(error, cx);
+                return None;
+            }
+        };
+        if let Err(error) = self.save_current_store_durably() {
+            let _ = crate::scoped_domain::apply_undo(&mut self.store, &outcome.undo);
+            self.storage_error = error.clone();
+            self.show_save_error(error, cx);
+            return None;
         }
-        self.undo_invalidation = Some(
-            "Automation changes cannot be undone safely. Legacy whole-workspace undo entries were removed; scoped task edits remain available."
-                .into(),
-        );
+        self.undo_invalidation = None;
+        if undoable {
+            self.undo.push_domain(outcome.undo.clone());
+        }
+        self.toast = message.into();
+        self.error.clear();
+        cx.notify();
+        Some(outcome)
+    }
+
+    pub(crate) fn apply_domain_command_undoable(
+        &mut self,
+        command: crate::scoped_domain::DomainCommand,
+        message: &str,
+        cx: &mut Context<Self>,
+    ) -> Option<crate::scoped_domain::DomainOutcome> {
+        self.apply_domain_command(command, message, true, cx)
+    }
+
+    /// Persist a domain mutation that is explicitly non-undoable, such as
+    /// archiving a target whose related work had to be stopped.
+    pub(crate) fn apply_domain_command_non_undoable(
+        &mut self,
+        command: crate::scoped_domain::DomainCommand,
+        message: &str,
+        cx: &mut Context<Self>,
+    ) -> Option<crate::scoped_domain::DomainOutcome> {
+        self.apply_domain_command(command, message, false, cx)
+    }
+
+    /// Automation definitions, occurrences, approvals and cursors are never
+    /// recorded as Undo entries, so there is no whole-store snapshot to
+    /// invalidate. The guard remains as the single lifecycle call point.
+    pub(crate) fn invalidate_undo_for_automation(&mut self) {
+        self.undo_invalidation = None;
     }
 
     /// True when the durable automation portion of the workspace differs from
@@ -1042,7 +1092,6 @@ impl TaskApp {
         }
     }
     pub fn finish(&mut self, result: Result<(), String>, message: &str, cx: &mut Context<Self>) {
-        self.undo.drop_last_legacy_if_equal(&self.store);
         match result {
             Ok(()) => {
                 self.toast = message.into();
@@ -1054,6 +1103,60 @@ impl TaskApp {
         }
         cx.notify();
     }
+    /// Read-only page-family projection. The typed `nav` route is the single
+    /// stored authority; sidebar/collection code keeps consuming `Scope` until
+    /// the remaining page-state families move in S5.
+    pub fn scope(&self) -> Scope {
+        self.nav.route().legacy_scope()
+    }
+
+    fn initial_nav(store: &Store) -> crate::navigation_route::NavState {
+        use crate::navigation_route::{NavState, Route};
+        let preferred = Route::for_scope(
+            &Scope::Project(1),
+            AllStatus::All,
+            Layout::List,
+            None,
+            20,
+        );
+        NavState::new(store, preferred).unwrap_or_else(|_| {
+            let fallback =
+                Route::for_scope(&Scope::All, AllStatus::All, Layout::List, None, 20);
+            NavState::new(store, fallback).expect("All research is always a valid route")
+        })
+    }
+
+    fn route_for_scope(&self, scope: &Scope) -> crate::navigation_route::Route {
+        crate::navigation_route::Route::for_scope(
+            scope,
+            self.all_status,
+            self.layout,
+            self.automation_ui.result_filter,
+            self.automation_ui.history_limit,
+        )
+    }
+
+    /// Apply a route derived from the current page preferences. A route whose
+    /// owner disappeared is skipped; if the current overlay stack cannot sit on
+    /// the new base, the controller starts a clean page (the structural
+    /// navigation callers already clear overlays).
+    pub(crate) fn install_route(&mut self, route: crate::navigation_route::Route) {
+        use crate::navigation_route::NavState;
+        if self.nav.replace_route(&self.store, route.clone()).is_err()
+            && let Ok(nav) = NavState::new(&self.store, route)
+        {
+            self.nav = nav;
+        }
+    }
+
+    /// Set only the page-family identity. Production transitions that also
+    /// change selection/overlays continue to use `navigate`; this helper exists
+    /// for the remaining narrow writers and QA fixture entry points.
+    pub(crate) fn set_scope_identity(&mut self, scope: Scope) {
+        let route = self.route_for_scope(&scope);
+        self.install_route(route);
+    }
+
     pub fn navigate(&mut self, scope: Scope, window: &mut Window, cx: &mut Context<Self>) {
         self.park_current_comment(cx);
         self.park_research_composer(cx);
@@ -1082,7 +1185,7 @@ impl TaskApp {
             Scope::Project(id) => Some(*id),
             Scope::Topic(id) => self
                 .store
-                .topics
+                .topics()
                 .iter()
                 .find(|t| t.id == *id)
                 .map(|t| t.project_id),
@@ -1096,7 +1199,8 @@ impl TaskApp {
             self.automation_ui.creating = false;
             self.automation_ui.feedback = None;
         }
-        self.scope = scope;
+        let route = self.route_for_scope(&scope);
+        self.install_route(route);
         self.selected = None;
         self.editing = false;
         self.draft = None;
@@ -1104,10 +1208,10 @@ impl TaskApp {
         self.error.clear();
         self.query.clear();
         self.search.update(cx, |s, cx| s.set_value("", window, cx));
-        if matches!(self.scope, Scope::Topic(_)) {
+        if matches!(scope, Scope::Topic(_)) {
             window.focus(&self.focus, cx);
         }
-        if self.scope == Scope::Research {
+        if self.scope() == Scope::Research {
             self.restore_research_composer(window, cx);
         }
         cx.notify();
@@ -1121,15 +1225,16 @@ impl TaskApp {
         self.request_scope(Scope::Project(project), w, cx);
     }
     pub(crate) fn sidebar_scope(&self) -> Scope {
-        self.selected
-            .or(self.task_result_context)
+        self.nav
+            .task()
+            .or(self.selected.or(self.task_result_context))
             .and_then(|id| self.store.task(id))
             .map(|task| Scope::Project(task.project_id))
-            .unwrap_or_else(|| self.scope.clone())
+            .unwrap_or_else(|| self.scope())
     }
     pub(crate) fn remember_active_project(&mut self, project: u64) {
-        if self.store.projects.iter().any(|p| p.id == project) {
-            self.store.last_active_project = Some(project);
+        if self.store.projects().iter().any(|p| p.id == project) {
+            self.store.set_last_active_project(Some(project));
         }
     }
     pub(crate) fn remember_dialog_opener(&mut self, window: &Window, cx: &App) {
@@ -1150,12 +1255,12 @@ impl TaskApp {
     pub(crate) fn restore_sidebar(&mut self) {
         self.expanded_sidebar_projects = self
             .store
-            .last_active_project
-            .filter(|id| self.store.projects.iter().any(|p| p.id == *id))
+            .last_active_project()
+            .filter(|id| self.store.projects().iter().any(|p| p.id == *id))
             .into_iter()
             .collect();
-        self.collapsed_sidebar_topics = self.store.topics.iter().map(|t| t.id).collect();
-        self.collapsed_sidebar_goals = self.store.tasks.iter().map(|t| t.id).collect();
+        self.collapsed_sidebar_topics = self.store.topics().iter().map(|t| t.id).collect();
+        self.collapsed_sidebar_goals = self.store.tasks().iter().map(|t| t.id).collect();
     }
     pub(crate) fn reveal_task_project(&mut self, id: u64) {
         if let Some(task) = self.store.task(id) {
@@ -1214,21 +1319,21 @@ impl TaskApp {
         cx.notify();
     }
     pub fn title(&self) -> String {
-        self.scope_title(&self.scope)
+        self.scope_title(&self.scope())
     }
     pub(crate) fn scope_title(&self, scope: &Scope) -> String {
         match scope {
             Scope::All => "All research".into(),
             Scope::Project(id) => self
                 .store
-                .projects
+                .projects()
                 .iter()
                 .find(|p| p.id == *id)
                 .map(|p| p.name.clone())
                 .unwrap_or_default(),
             Scope::Topic(id) => self
                 .store
-                .topics
+                .topics()
                 .iter()
                 .find(|t| t.id == *id)
                 .map(|t| t.display_name())
@@ -1248,32 +1353,32 @@ impl TaskApp {
         if t.automation_id.is_some() {
             return false;
         }
-        if self.store.task_is_archived(t.id) != (self.scope == Scope::Archive) {
+        if self.store.task_is_archived(t.id) != (self.scope() == Scope::Archive) {
             return false;
         }
-        match &self.scope {
+        match self.scope() {
             Scope::All => self
                 .all_status
                 .matches(&self.store.task_status(t.id, self.todo_batch.as_ref())),
-            Scope::Project(id) => t.project_id == *id,
+            Scope::Project(id) => t.project_id == id,
             Scope::Topic(id) => self
                 .store
                 .task_topic(t.id)
-                .is_some_and(|topic| topic.id == *id),
-            Scope::Cycle(c) => t.cycle.as_ref() == Some(c),
+                .is_some_and(|topic| topic.id == id),
+            Scope::Cycle(c) => t.cycle.as_ref() == Some(&c),
             _ => true,
         }
     }
     pub fn visible_tasks(&self) -> Vec<Task> {
         let mut list: Vec<_> = self
             .store
-            .tasks
+            .tasks()
             .iter()
             .filter(|t| {
                 t.parent_id.is_none()
                     && self.matches_scope(t)
                     && self.store.matches_query(t, &self.query)
-                    && (matches!(self.scope, Scope::All | Scope::Archive)
+                    && (matches!(self.scope(), Scope::All | Scope::Archive)
                         || self.show_done
                         || !self
                             .store
@@ -1297,15 +1402,14 @@ impl TaskApp {
         }
         if stage == Stage::InProgress {
             // Submit through the existing scheduler; never manufacture Running.
-            let scope = self.scope.clone();
+            let scope = self.scope();
             let selected = self.selected;
             self.start_goal_batch(id, cx);
-            self.scope = scope;
+            self.set_scope_identity(scope);
             self.selected = selected;
             if self.error.is_empty()
                 && self.store.task_status(id, self.todo_batch.as_ref()).phase == Stage::InProgress
             {
-                self.undo.clear_legacy();
                 self.toast = format!(
                     "Submitted · {}",
                     self.store.task_status(id, self.todo_batch.as_ref()).label()
@@ -1405,15 +1509,10 @@ impl TaskApp {
         }
         let references = match entry {
             UndoRecord::Material(undo) => undo.reference_paths(),
-            UndoRecord::Settings(_) => Vec::new(),
-            UndoRecord::Legacy(store) => store
-                .tasks
-                .iter()
-                .flat_map(|task| task.attachments.iter())
-                .chain(store.runs().iter().flat_map(|run| run.attachments.iter()))
-                .map(|attachment| attachment.relative_path.clone())
-                .collect(),
-            UndoRecord::TaskEdit(_) | UndoRecord::Comment(_) => Vec::new(),
+            UndoRecord::Settings(_)
+            | UndoRecord::TaskEdit(_)
+            | UndoRecord::Comment(_)
+            | UndoRecord::Domain(_) => Vec::new(),
         };
         references
             .iter()
@@ -1438,7 +1537,7 @@ impl TaskApp {
             return Some("Material cleanup is still in progress. Try again shortly.".into());
         }
         match self.undo.peek() {
-            Some(UndoRecord::Legacy(_)) if global_blocked => {
+            Some(UndoRecord::Domain(_)) if global_blocked => {
                 Some("Stop or finish submitted work before undoing changes.".into())
             }
             Some(UndoRecord::TaskEdit(undo)) => self.scoped_undo_busy_reason_for_task(undo.id()),
@@ -1471,7 +1570,7 @@ impl TaskApp {
         }
         match self.undo.peek() {
             None => return,
-            Some(UndoRecord::Legacy(_)) if global_blocked => {
+            Some(UndoRecord::Domain(_)) if global_blocked => {
                 self.error = "Stop or finish submitted work before undoing changes.".into();
                 cx.notify();
                 return;
@@ -1497,7 +1596,7 @@ impl TaskApp {
                     return;
                 }
             }
-            Some(UndoRecord::Settings(_)) | Some(UndoRecord::Legacy(_)) => {}
+            Some(UndoRecord::Settings(_)) | Some(UndoRecord::Domain(_)) => {}
         }
         let Some(entry) = self.undo.pop() else {
             return;
@@ -1525,7 +1624,7 @@ impl TaskApp {
                 self.pending_comment_edit = None;
                 self.research_save_impact = None;
                 self.undo_invalidation = None;
-                crate::appearance::apply(self.store.appearance, Some(window), cx);
+                crate::appearance::apply(self.store.appearance(), Some(window), cx);
                 self.tabs.retain(|id| self.store.task(*id).is_some());
                 if self
                     .selected
@@ -1564,7 +1663,7 @@ impl TaskApp {
                 self.pending_comment_edit = None;
                 self.research_save_impact = None;
                 self.undo_invalidation = None;
-                crate::appearance::apply(self.store.appearance, Some(window), cx);
+                crate::appearance::apply(self.store.appearance(), Some(window), cx);
                 self.refresh_research_inputs(window, cx);
                 self.refresh_global_model_input(window, cx);
                 self.toast = "Last change undone".into();
@@ -1592,7 +1691,7 @@ impl TaskApp {
                 }
                 self.adopt_saved_store(staged);
                 self.undo_invalidation = None;
-                crate::appearance::apply(self.store.appearance, None, cx);
+                crate::appearance::apply(self.store.appearance(), None, cx);
                 self.toast = "Last change undone".into();
                 self.error.clear();
                 cx.notify();
@@ -1613,36 +1712,25 @@ impl TaskApp {
                     };
                 }
             }
-            UndoRecord::Legacy(mut store) => {
-                // A snapshot that predates an automation mutation would roll back
-                // schedules, approvals, dedupe keys or the generated owner graph.
-                // Reject it whole; never partially merge it with current state.
-                if automation_state_differs(&store, &self.store) {
-                    self.undo.clear_legacy();
-                    self.undo_invalidation = Some(
-                        "Automation changes cannot be undone safely. Legacy whole-workspace undo entries were removed; scoped task edits remain available."
-                            .into(),
-                    );
-                    self.error =
-                        "Automation changes cannot be undone safely. This change was not applied."
-                            .into();
+            UndoRecord::Domain(undo) => {
+                let mut staged = self.store.clone();
+                if let Err(error) = crate::scoped_domain::apply_undo(&mut staged, &undo) {
+                    self.undo.push_domain(undo);
+                    self.error = match error {
+                        crate::scoped_edit::ScopedEditError::Rejected(message)
+                        | crate::scoped_edit::ScopedEditError::Conflict(message) => message,
+                    };
                     cx.notify();
                     return;
                 }
-                store.last_active_project = self.store.last_active_project;
-                // Keep the current run history without a clean-reset escape: clearing
-                // and re-pushing records exact tombstones/upserts through the guards.
-                let runs = self.store.runs().to_vec();
-                store.clear_runs();
-                for run in runs {
-                    store.push_run(run);
+                if let Err(error) = self.save_staged_store(&staged) {
+                    self.undo.push_domain(undo);
+                    self.storage_error = error.clone();
+                    self.show_save_error(error, cx);
+                    return;
                 }
-                store.publications = self.store.publications.clone();
-                store.report_publishing = self.store.report_publishing.clone();
-                store.next_id = store.next_id.max(self.store.next_id);
-                self.store = store;
+                self.adopt_saved_store(staged);
                 self.undo_invalidation = None;
-                crate::appearance::apply(self.store.appearance, Some(window), cx);
                 self.tabs.retain(|id| self.store.task(*id).is_some());
                 if self
                     .selected
@@ -1650,15 +1738,15 @@ impl TaskApp {
                 {
                     self.selected = None;
                 }
-                if let Scope::Project(id) = self.scope
-                    && !self.store.projects.iter().any(|p| p.id == id)
+                if let Scope::Project(id) = self.scope()
+                    && !self.store.projects().iter().any(|p| p.id == id)
                 {
-                    self.scope = Scope::All;
+                    self.set_scope_identity(Scope::All);
                 }
-                if let Scope::Topic(id) = self.scope {
-                    if !self.store.topics.iter().any(|t| t.id == id) {
-                        self.scope = Scope::All;
-                    }
+                if let Scope::Topic(id) = self.scope()
+                    && !self.store.topics().iter().any(|t| t.id == id)
+                {
+                    self.set_scope_identity(Scope::All);
                 }
                 self.draft = None;
                 self.editing = false;
@@ -1713,15 +1801,15 @@ impl TaskApp {
                     .unwrap_or(0);
                 self.connection_project = project;
                 self.research_project = project;
-                self.scope = Scope::All;
-                crate::appearance::apply(self.store.appearance, Some(window), cx);
-                if self.store.opencode_path.is_empty() {
-                    self.store.opencode_path = opencode::detect_executable();
+                self.set_scope_identity(Scope::All);
+                crate::appearance::apply(self.store.appearance(), Some(window), cx);
+                if self.store.opencode_path().is_empty() {
+                    self.store.set_opencode_path(opencode::detect_executable());
                 }
-                let path = self.store.opencode_path.clone();
+                let path = self.store.opencode_path().clone();
                 self.executable_input
                     .update(cx, |s, cx| s.set_value(path, window, cx));
-                let codex_path = self.store.research_config.codex_path.clone();
+                let codex_path = self.store.research_config().codex_path.clone();
                 self.codex_executable_input
                     .update(cx, |s, cx| s.set_value(codex_path, window, cx));
                 self.refresh_research_inputs(window, cx);
@@ -1912,7 +2000,7 @@ impl TaskApp {
         })
     }
     pub fn goal_busy(&self, goal: u64) -> bool {
-        self.store.tasks.iter().any(|t| {
+        self.store.tasks().iter().any(|t| {
             t.research.as_ref().is_some_and(|r| r.goal_id == goal) && self.task_running(t.id)
         })
     }
@@ -1931,7 +2019,7 @@ impl TaskApp {
         self.error.clear();
         let path = self
             .store
-            .projects
+            .projects()
             .iter()
             .find(|p| p.id == project)
             .map(|p| p.directory.clone())
@@ -1955,18 +2043,25 @@ impl TaskApp {
             self.show_save_error(&error, cx);
             return;
         }
-        self.snapshot();
-        if let Some(project) = self
-            .store
-            .projects
-            .iter_mut()
-            .find(|p| Some(p.id) == self.directory_project)
+        let Some(target) = self.directory_project else {
+            self.show_save_error("Choose a project first.", cx);
+            return;
+        };
+        let directory = path.to_string_lossy().into_owned();
+        if self
+            .apply_domain_command_undoable(
+                crate::scoped_domain::DomainCommand::ProjectDirectory {
+                    project: target,
+                    directory,
+                },
+                "Project folder saved to local workspace",
+                cx,
+            )
+            .is_some()
         {
-            project.directory = path.to_string_lossy().into_owned();
+            self.directory_project = None;
+            self.error.clear();
         }
-        self.directory_project = None;
-        self.error.clear();
-        self.confirm_save("Project folder saved to local workspace", cx);
     }
     pub fn discovering_codex_models(&self) -> bool {
         self.codex_discovery.is_some()
@@ -1975,7 +2070,7 @@ impl TaskApp {
         if self.codex_discovery.is_some() {
             return;
         }
-        let executable = PathBuf::from(&self.store.research_config.codex_path);
+        let executable = PathBuf::from(&self.store.research_config().codex_path);
         let (tx, rx) = mpsc::channel();
         self.codex_discovery = Some(rx);
         self.codex_status = "Checking Codex…".into();
@@ -2004,10 +2099,10 @@ impl TaskApp {
             cx.notify();
             return;
         }
-        self.store.opencode_path = executable.to_string_lossy().into_owned();
+        self.store.set_opencode_path(executable.to_string_lossy().into_owned());
         let directory = self
             .store
-            .projects
+            .projects()
             .iter()
             .find(|p| p.id == self.connection_project)
             .map(|p| PathBuf::from(&p.directory))
@@ -2110,10 +2205,10 @@ impl TaskApp {
         self.show_run_result = true;
         self.show_run_details = false;
         if dispatch.automation_owned {
-            self.scope = Scope::AutomationRuns;
+            self.set_scope_identity(Scope::AutomationRuns);
             self.selected_run = None;
         } else {
-            self.scope = Scope::Runs;
+            self.set_scope_identity(Scope::Runs);
             self.selected_run = Some(dispatch.run_id);
             self.reveal_selected_run();
         }
@@ -2363,7 +2458,6 @@ impl TaskApp {
                 if let Some(entry) = self.queued_runs.iter_mut().find(|(id, _)| *id == run_id) {
                     entry.1 = prepared.files;
                 }
-                self.undo.clear_legacy();
                 self.error.clear();
                 self.toast = if automation_owned {
                     "Automation period queued · waiting for an automation slot".into()
@@ -2757,7 +2851,7 @@ impl TaskApp {
                         .store
                         .owning_research_goal(run.task_id)
                         .is_some_and(|goal| self.store.research_browser_handed_off(goal)))
-                .then(|| PathBuf::from(&self.store.research_config.ego_path)),
+                .then(|| PathBuf::from(&self.store.research_config().ego_path)),
                 files,
                 session_id: run.session_id.clone(),
                 executable: PathBuf::from(self.store.agent_path(&run.agent)),
@@ -3086,7 +3180,7 @@ pub fn valid_date(s: &str) -> bool {
 mod tests {
     use super::valid_date;
     #[test]
-    fn clear_legacy_preserves_task_comment_and_material_entries_in_order() {
+    fn scoped_undo_preserves_task_comment_material_and_domain_entries_in_order() {
         let directory = std::env::temp_dir().join(format!(
             "t13-undo-mixed-{}-{}",
             std::process::id(),
@@ -3098,7 +3192,7 @@ mod tests {
         let _ = std::fs::remove_dir_all(&directory);
         std::fs::create_dir_all(&directory).unwrap();
         let mut store = crate::domain::Store::empty();
-        store.projects[0].directory = directory.to_string_lossy().into_owned();
+        store.project_at_mut(0).unwrap().directory = directory.to_string_lossy().into_owned();
         let task = store
             .create_task("Mixed task", 1, crate::domain::Stage::Planned, None)
             .unwrap();
@@ -3140,18 +3234,28 @@ mod tests {
             crate::scoped_material::apply_material_add(&mut store, &directory, &material_plan)
                 .unwrap();
 
+        let domain_before = store.clone();
+        let topic = store
+            .create_topic(1, "Scoped context")
+            .expect("topic fixture");
+        let domain = crate::scoped_domain::capture(&domain_before, &store).unwrap();
+
         let mut stack = super::UndoStack::default();
-        stack.push_legacy(store.clone());
         stack.push_task_edit(task_edit.undo);
         stack.push_comment(comment.undo);
         stack.push_material(crate::scoped_material::MaterialUndo::Add(material.undo));
+        stack.push_domain(domain.clone());
         assert!(super::undo_entry_references_reserved(
-            stack.peek().unwrap(),
+            stack
+                .entries
+                .iter()
+                .find(|entry| matches!(entry, super::UndoRecord::Material(_)))
+                .unwrap(),
             &[attachment.relative_path.clone()],
         ));
         assert_eq!(stack.len(), 4);
-        assert_eq!(stack.clear_legacy(), 1);
-        assert_eq!(stack.len(), 3);
+        assert!(matches!(stack.peek(), Some(super::UndoRecord::Domain(_))));
+        assert!(matches!(stack.pop(), Some(super::UndoRecord::Domain(_))));
         assert!(matches!(stack.peek(), Some(super::UndoRecord::Material(_))));
         assert!(
             stack
@@ -3164,6 +3268,10 @@ mod tests {
         assert!(matches!(stack.pop(), Some(super::UndoRecord::TaskEdit(_))));
         assert!(stack.pop().is_none());
         assert!(stack.is_empty());
+        // The captured domain change removes only the topic the fixture created.
+        let mut restored = store;
+        crate::scoped_domain::apply_undo(&mut restored, &domain).unwrap();
+        assert!(!restored.topics.iter().any(|candidate| candidate.id == topic));
         let _ = std::fs::remove_dir_all(directory);
     }
 

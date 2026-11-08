@@ -322,8 +322,8 @@ mod tests {
 
     fn completed_goal() -> (Store, u64, Vec<u64>) {
         let mut store = Store::empty();
-        store.projects[0].directory = "/tmp".into();
-        store.default_model = "test/model".into();
+        store.project_at_mut(0).unwrap().directory = "/tmp".into();
+        store.set_default_model("test/model".into());
         let goal = store
             .create_research_goal("完整研究/中文".into(), "Scope".into(), 1)
             .unwrap();

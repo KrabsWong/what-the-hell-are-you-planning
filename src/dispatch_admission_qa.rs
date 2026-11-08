@@ -46,9 +46,9 @@ pub fn run() {
 
 fn fixture(root: &Path) -> (Store, u64) {
     let mut store = Store::empty();
-    store.projects[0].directory = root.to_string_lossy().into_owned();
-    store.default_model = "fixture/model".into();
-    store.research_config.models = std::array::from_fn(|_| "fixture/model".to_string());
+    store.project_at_mut(0).unwrap().directory = root.to_string_lossy().into_owned();
+    store.set_default_model("fixture/model".into());
+    store.research_config_mut().models = std::array::from_fn(|_| "fixture/model".to_string());
     let goal = store
         .create_research_goal("Dispatch goal".into(), "Scope".into(), 1)
         .unwrap();

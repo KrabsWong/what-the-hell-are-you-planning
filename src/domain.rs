@@ -279,8 +279,8 @@ pub struct AgentRun {
     pub input_signature: String,
 }
 #[path = "domain_tracked.rs"]
-pub(crate) mod tracked;
-pub(crate) use tracked::{TrackedMut, TrackedVec};
+pub mod tracked;
+pub use tracked::{TrackedList, TrackedMut, TrackedScalar, TrackedScalarMut, TrackedVec};
 
 fn automation_tracked() -> TrackedVec<crate::automation::AutomationDefinition> {
     tracked::automation_new()
@@ -292,6 +292,95 @@ fn occurrence_tracked() -> TrackedVec<crate::automation::AutomationOccurrence> {
 
 fn run_tracked() -> TrackedVec<AgentRun> {
     tracked::run_new()
+}
+
+fn task_tracked() -> TrackedVec<Task> {
+    tracked::task_new()
+}
+
+fn project_tracked() -> TrackedVec<Project> {
+    tracked::project_new()
+}
+
+fn topic_tracked() -> TrackedVec<Topic> {
+    tracked::topic_new()
+}
+
+fn request_tracked() -> TrackedVec<crate::request_planning::ResearchRequest> {
+    tracked::request_new()
+}
+
+fn policy_tracked() -> TrackedVec<StagePolicy> {
+    tracked::policy_new()
+}
+
+fn publication_tracked() -> TrackedList<crate::report_publish::Publication> {
+    TrackedList::new()
+}
+
+fn model_profile_tracked() -> TrackedList<crate::model_profiles::ModelProfile> {
+    TrackedList::new()
+}
+
+fn default_automation_schema_version() -> TrackedScalar<u32> {
+    TrackedScalar::new(crate::automation::AUTOMATION_SCHEMA_VERSION)
+}
+
+fn default_concurrent_runs() -> TrackedScalar<usize> {
+    TrackedScalar::new(crate::scheduler::default_concurrent_runs())
+}
+
+fn default_concurrent_automations() -> TrackedScalar<usize> {
+    TrackedScalar::new(crate::scheduler::default_concurrent_automations())
+}
+
+fn deserialize_tasks<'de, D: serde::Deserializer<'de>>(
+    deserializer: D,
+) -> Result<TrackedVec<Task>, D::Error> {
+    let items = Vec::<Task>::deserialize(deserializer)?;
+    tracked::task_from(items).map_err(serde::de::Error::custom)
+}
+
+fn deserialize_projects<'de, D: serde::Deserializer<'de>>(
+    deserializer: D,
+) -> Result<TrackedVec<Project>, D::Error> {
+    let items = Vec::<Project>::deserialize(deserializer)?;
+    tracked::project_from(items).map_err(serde::de::Error::custom)
+}
+
+fn deserialize_topics<'de, D: serde::Deserializer<'de>>(
+    deserializer: D,
+) -> Result<TrackedVec<Topic>, D::Error> {
+    let items = Vec::<Topic>::deserialize(deserializer)?;
+    tracked::topic_from(items).map_err(serde::de::Error::custom)
+}
+
+fn deserialize_requests<'de, D: serde::Deserializer<'de>>(
+    deserializer: D,
+) -> Result<TrackedVec<crate::request_planning::ResearchRequest>, D::Error> {
+    let items = Vec::<crate::request_planning::ResearchRequest>::deserialize(deserializer)?;
+    tracked::request_from(items).map_err(serde::de::Error::custom)
+}
+
+fn deserialize_policies<'de, D: serde::Deserializer<'de>>(
+    deserializer: D,
+) -> Result<TrackedVec<StagePolicy>, D::Error> {
+    let items = Vec::<StagePolicy>::deserialize(deserializer)?;
+    tracked::policy_from(items).map_err(serde::de::Error::custom)
+}
+
+fn deserialize_publications<'de, D: serde::Deserializer<'de>>(
+    deserializer: D,
+) -> Result<TrackedList<crate::report_publish::Publication>, D::Error> {
+    let items = Vec::<crate::report_publish::Publication>::deserialize(deserializer)?;
+    Ok(TrackedList::from_vec(items))
+}
+
+fn deserialize_model_profiles<'de, D: serde::Deserializer<'de>>(
+    deserializer: D,
+) -> Result<TrackedList<crate::model_profiles::ModelProfile>, D::Error> {
+    let items = Vec::<crate::model_profiles::ModelProfile>::deserialize(deserializer)?;
+    Ok(TrackedList::from_vec(items))
 }
 
 fn deserialize_automations<'de, D: serde::Deserializer<'de>>(
@@ -317,52 +406,118 @@ fn deserialize_runs<'de, D: serde::Deserializer<'de>>(
 
 #[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
 pub struct Store {
-    #[serde(default)]
-    pub automation_schema_version: u32,
+    #[serde(default = "default_automation_schema_version")]
+    automation_schema_version: TrackedScalar<u32>,
     #[serde(default = "automation_tracked", deserialize_with = "deserialize_automations")]
     automations: TrackedVec<crate::automation::AutomationDefinition>,
     #[serde(default = "occurrence_tracked", deserialize_with = "deserialize_occurrences")]
     automation_occurrences: TrackedVec<crate::automation::AutomationOccurrence>,
     #[serde(default)]
-    pub report_publishing: crate::report_publish::PublishingConfig,
-    #[serde(default)]
-    pub publications: Vec<crate::report_publish::Publication>,
-    pub tasks: Vec<Task>,
-    pub projects: Vec<Project>,
-    #[serde(default)]
-    pub topics: Vec<Topic>,
-    #[serde(default)]
-    pub research_requests: Vec<crate::request_planning::ResearchRequest>,
-    pub policies: Vec<StagePolicy>,
+    report_publishing: TrackedScalar<crate::report_publish::PublishingConfig>,
+    #[serde(default = "publication_tracked", deserialize_with = "deserialize_publications")]
+    publications: TrackedList<crate::report_publish::Publication>,
+    #[serde(default = "task_tracked", deserialize_with = "deserialize_tasks")]
+    tasks: TrackedVec<Task>,
+    #[serde(default = "project_tracked", deserialize_with = "deserialize_projects")]
+    projects: TrackedVec<Project>,
+    #[serde(default = "topic_tracked", deserialize_with = "deserialize_topics")]
+    topics: TrackedVec<Topic>,
+    #[serde(default = "request_tracked", deserialize_with = "deserialize_requests")]
+    research_requests: TrackedVec<crate::request_planning::ResearchRequest>,
+    #[serde(default = "policy_tracked", deserialize_with = "deserialize_policies")]
+    policies: TrackedVec<StagePolicy>,
     #[serde(default = "run_tracked", deserialize_with = "deserialize_runs")]
     runs: TrackedVec<AgentRun>,
-    pub next_id: u64,
+    next_id: TrackedScalar<u64>,
     /// Next unreserved run id. Resolution may reserve an id asynchronously.
     #[serde(default)]
-    pub run_id_floor: u64,
+    run_id_floor: TrackedScalar<u64>,
     #[serde(default)]
-    pub opencode_path: String,
+    opencode_path: TrackedScalar<String>,
     #[serde(default)]
-    pub default_model: String,
+    default_model: TrackedScalar<String>,
+    #[serde(default = "model_profile_tracked", deserialize_with = "deserialize_model_profiles")]
+    model_profiles: TrackedList<crate::model_profiles::ModelProfile>,
     #[serde(default)]
-    pub model_profiles: Vec<crate::model_profiles::ModelProfile>,
-    #[serde(default)]
-    pub active_model_profile: Option<String>,
-    #[serde(default = "crate::scheduler::default_concurrent_runs")]
-    pub max_concurrent_runs: usize,
+    active_model_profile: TrackedScalar<Option<String>>,
+    #[serde(default = "default_concurrent_runs")]
+    max_concurrent_runs: TrackedScalar<usize>,
     /// Independent pool for running automation periods. Research tasks never
     /// consume these slots and automation periods never consume research slots.
-    #[serde(default = "crate::scheduler::default_concurrent_automations")]
-    pub max_concurrent_automations: usize,
+    #[serde(default = "default_concurrent_automations")]
+    max_concurrent_automations: TrackedScalar<usize>,
     #[serde(default)]
-    pub research_config: crate::research::ResearchConfig,
+    research_config: TrackedScalar<crate::research::ResearchConfig>,
     #[serde(default)]
-    pub appearance: crate::appearance::Appearance,
+    appearance: TrackedScalar<crate::appearance::Appearance>,
     #[serde(default)]
-    pub last_active_project: Option<u64>,
+    last_active_project: TrackedScalar<Option<u64>>,
 }
 
+pub use crate::request_planning::ResearchRequest;
+
 impl Store {
+    // ---- Read-only access. Persistent fields are private: mutations must go
+    // through the tracked methods below or a typed setter. Clean hydration is
+    // restricted to `load_*`, serde and the explicit empty constructor.
+    pub fn tasks(&self) -> &[Task] {
+        &self.tasks
+    }
+    pub fn projects(&self) -> &[Project] {
+        &self.projects
+    }
+    pub fn topics(&self) -> &[Topic] {
+        &self.topics
+    }
+    pub fn research_requests(&self) -> &[crate::request_planning::ResearchRequest] {
+        &self.research_requests
+    }
+    pub fn policies(&self) -> &[StagePolicy] {
+        &self.policies
+    }
+    pub fn publications(&self) -> &[crate::report_publish::Publication] {
+        &self.publications
+    }
+    pub fn model_profiles(&self) -> &[crate::model_profiles::ModelProfile] {
+        &self.model_profiles
+    }
+    pub fn next_id(&self) -> u64 {
+        *self.next_id.get()
+    }
+    pub fn run_id_floor(&self) -> u64 {
+        *self.run_id_floor.get()
+    }
+    pub fn opencode_path(&self) -> &String {
+        self.opencode_path.get()
+    }
+    pub fn default_model(&self) -> &String {
+        self.default_model.get()
+    }
+    pub fn active_model_profile(&self) -> &Option<String> {
+        self.active_model_profile.get()
+    }
+    pub fn max_concurrent_runs(&self) -> usize {
+        *self.max_concurrent_runs.get()
+    }
+    pub fn max_concurrent_automations(&self) -> usize {
+        *self.max_concurrent_automations.get()
+    }
+    pub fn research_config(&self) -> &crate::research::ResearchConfig {
+        self.research_config.get()
+    }
+    pub fn appearance(&self) -> crate::appearance::Appearance {
+        *self.appearance.get()
+    }
+    pub fn last_active_project(&self) -> Option<u64> {
+        *self.last_active_project.get()
+    }
+    pub fn automation_schema_version(&self) -> u32 {
+        *self.automation_schema_version.get()
+    }
+    pub fn report_publishing(&self) -> &crate::report_publish::PublishingConfig {
+        self.report_publishing.get()
+    }
+
     /// Every human-facing project picker and navigation list uses this view.
     pub fn visible_projects(&self) -> impl Iterator<Item = &Project> {
         self.projects
@@ -388,7 +543,7 @@ impl Store {
             .unwrap_or(0)
             .checked_add(1)
             .ok_or("No project identifiers remain.")?;
-        self.projects.push(Project {
+        self.push_project(Project {
             id,
             name: "Automations".into(),
             key: format!("AUTO{id}"),
@@ -407,19 +562,19 @@ impl Store {
         }
     }
     pub fn research_model(&self, kind: crate::research::ResearchKind) -> &str {
-        let model = &self.research_config.models[kind.index()];
-        if model.is_empty() && self.research_agent(kind) != self.research_config.default_agent {
+        let model = &self.research_config_mut().models[kind.index()];
+        if model.is_empty() && self.research_agent(kind) != self.research_config_mut().default_agent {
             ""
         } else {
             self.effective_model(model)
         }
     }
     pub fn research_agent(&self, kind: crate::research::ResearchKind) -> &str {
-        self.research_config.agents[kind.index()].as_deref()
-            .unwrap_or(&self.research_config.default_agent)
+        self.research_config_mut().agents[kind.index()].as_deref()
+            .unwrap_or(&self.research_config_mut().default_agent)
     }
     pub fn agent_path(&self, agent: &str) -> &str {
-        if agent == "Codex" { &self.research_config.codex_path } else { &self.opencode_path }
+        if agent == "Codex" { &self.research_config_mut().codex_path } else { &self.opencode_path }
     }
     pub fn valid_research_model(&self, kind: crate::research::ResearchKind) -> bool {
         match self.research_agent(kind) {
@@ -430,37 +585,44 @@ impl Store {
     }
     /// A new workspace contains configuration, never demonstration tasks or runs.
     pub fn empty() -> Self {
-        Self {
-            automation_schema_version: crate::automation::AUTOMATION_SCHEMA_VERSION,
+        let mut store = Self {
+            automation_schema_version: TrackedScalar::new(
+                crate::automation::AUTOMATION_SCHEMA_VERSION,
+            ),
             automations: automation_tracked(),
             automation_occurrences: occurrence_tracked(),
-            report_publishing: Default::default(),
-            publications: vec![],
-            tasks: vec![],
-            projects: vec![Project {
-                id: 1,
-                name: "Workspace".into(),
-                key: "TASK".into(),
-                directory: String::new(),
-                research_brief: String::new(),
-                kind: ProjectKind::User,
-            }],
-            topics: vec![],
-            research_requests: vec![],
-            policies: vec![],
+            report_publishing: TrackedScalar::new(Default::default()),
+            publications: publication_tracked(),
+            tasks: task_tracked(),
+            projects: project_tracked(),
+            topics: topic_tracked(),
+            research_requests: request_tracked(),
+            policies: policy_tracked(),
             runs: run_tracked(),
-            next_id: 1,
-            run_id_floor: 0,
-            opencode_path: String::new(),
-            default_model: String::new(),
-            model_profiles: vec![],
-            active_model_profile: None,
-            max_concurrent_runs: crate::scheduler::DEFAULT_CONCURRENT_RUNS,
-            max_concurrent_automations: crate::scheduler::DEFAULT_CONCURRENT_AUTOMATIONS,
-            research_config: Default::default(),
-            appearance: Default::default(),
-            last_active_project: None,
-        }
+            next_id: TrackedScalar::new(1),
+            run_id_floor: TrackedScalar::new(0),
+            opencode_path: TrackedScalar::new(String::new()),
+            default_model: TrackedScalar::new(String::new()),
+            model_profiles: model_profile_tracked(),
+            active_model_profile: TrackedScalar::new(None),
+            max_concurrent_runs: TrackedScalar::new(crate::scheduler::DEFAULT_CONCURRENT_RUNS),
+            max_concurrent_automations: TrackedScalar::new(
+                crate::scheduler::DEFAULT_CONCURRENT_AUTOMATIONS,
+            ),
+            research_config: TrackedScalar::new(Default::default()),
+            appearance: TrackedScalar::new(Default::default()),
+            last_active_project: TrackedScalar::new(None),
+        };
+        store.projects.push_tracked(Project {
+            id: 1,
+            name: "Workspace".into(),
+            key: "TASK".into(),
+            directory: String::new(),
+            research_brief: String::new(),
+            kind: ProjectKind::User,
+        });
+        store.projects.clear_dirty();
+        store
     }
     /// Older workspaces acquire a topic without rewriting research content or results.
     pub fn normalize_topics(&mut self) {
@@ -482,7 +644,7 @@ impl Store {
             }
         }
         // Remove only unreferenced legacy placeholders. Never drop a populated topic.
-        self.topics.retain(|topic| {
+        self.topics.retain_tracked(|topic| {
             !matches!(topic.name.as_str(), "待归类" | "未归类")
                 || self.tasks.iter().any(|t| t.topic_id == Some(topic.id))
                 || self.research_requests.iter().any(|r| r.topic_id == Some(topic.id))
@@ -524,8 +686,14 @@ impl Store {
                 self.task_mut(id).unwrap().approved_plan = None;
             }
         }
-        for task in &mut self.tasks {
-            if task.approved_plan.as_deref() == Some(LEGACY_APPROVAL_MARKER) {
+        let legacy_tasks: Vec<u64> = self
+            .tasks
+            .iter()
+            .filter(|task| task.approved_plan.as_deref() == Some(LEGACY_APPROVAL_MARKER))
+            .map(|task| task.id)
+            .collect();
+        for id in legacy_tasks {
+            if let Some(mut task) = self.task_mut(id) {
                 task.approved_plan = None;
             }
         }
@@ -539,7 +707,7 @@ impl Store {
             return Err("Choose an existing project.".into());
         }
         let id = self.topics.iter().map(|t| t.id).max().unwrap_or(0) + 1;
-        self.topics.push(Topic {
+        self.push_topic(Topic {
             replanned_from: None,
             automation_id: None,
             id,
@@ -554,20 +722,12 @@ impl Store {
         if name.is_empty() {
             return Err("Enter a topic name.".into());
         }
-        let topic = self
-            .topics
-            .iter_mut()
-            .find(|t| t.id == id)
-            .ok_or("Topic not found.")?;
+        let mut topic = self.topic_mut(id).ok_or("Topic not found.")?;
         topic.name = name;
         Ok(())
     }
     pub fn set_topic_archived(&mut self, id: u64, archived: bool) -> Result<(), String> {
-        let topic = self
-            .topics
-            .iter_mut()
-            .find(|t| t.id == id)
-            .ok_or("Topic not found.")?;
+        let mut topic = self.topic_mut(id).ok_or("Topic not found.")?;
         topic.archived = archived;
         Ok(())
     }
@@ -739,7 +899,146 @@ impl Store {
         self.tasks.iter().find(|t| t.id == id)
     }
     pub fn task_mut(&mut self, id: u64) -> Option<&mut Task> {
-        self.tasks.iter_mut().find(|t| t.id == id)
+        self.tasks
+            .tracked_mut(crate::persistence_journal::EntityKey::Task(id))
+    }
+    pub fn task_at_mut(&mut self, index: usize) -> Option<&mut Task> {
+        let id = self.tasks.get(index)?.id;
+        self.task_mut(id)
+    }
+    pub fn project_at_mut(&mut self, index: usize) -> Option<&mut Project> {
+        let id = self.projects.get(index)?.id;
+        self.project_mut(id)
+    }
+    pub fn topic_at_mut(&mut self, index: usize) -> Option<&mut Topic> {
+        let id = self.topics.get(index)?.id;
+        self.topic_mut(id)
+    }
+    pub fn request_at_mut(
+        &mut self,
+        index: usize,
+    ) -> Option<&mut crate::request_planning::ResearchRequest> {
+        let id = self.research_requests.get(index)?.id;
+        self.request_mut(id)
+    }
+    pub fn retain_tasks(&mut self, keep: impl FnMut(&Task) -> bool) {
+        self.tasks.retain_tracked(keep);
+    }
+    pub fn swap_tasks(&mut self, first: usize, second: usize) -> bool {
+        self.tasks.swap_tracked(first, second)
+    }
+    pub fn push_task(&mut self, task: Task) {
+        self.tasks.push_tracked(task);
+    }
+    pub fn remove_task(&mut self, id: u64) -> Option<Task> {
+        self.tasks
+            .remove_tracked(crate::persistence_journal::EntityKey::Task(id))
+    }
+    pub fn replace_tasks(&mut self, tasks: Vec<Task>) {
+        self.tasks.replace_tracked(tasks);
+    }
+    pub fn load_tasks(&mut self, tasks: Vec<Task>) -> Result<(), String> {
+        self.tasks = tracked::task_from(tasks)?;
+        Ok(())
+    }
+
+    pub fn project(&self, id: u64) -> Option<&Project> {
+        self.projects.iter().find(|project| project.id == id)
+    }
+    pub fn project_mut(&mut self, id: u64) -> Option<&mut Project> {
+        self.projects
+            .tracked_mut(crate::persistence_journal::EntityKey::Project(id))
+    }
+    pub fn push_project(&mut self, project: Project) {
+        self.projects.push_tracked(project);
+    }
+    pub fn remove_project(&mut self, id: u64) -> Option<Project> {
+        self.projects
+            .remove_tracked(crate::persistence_journal::EntityKey::Project(id))
+    }
+    pub fn retain_projects(&mut self, keep: impl FnMut(&Project) -> bool) {
+        self.projects.retain_tracked(keep);
+    }
+    pub fn replace_projects(&mut self, projects: Vec<Project>) {
+        self.projects.replace_tracked(projects);
+    }
+    pub fn load_projects(&mut self, projects: Vec<Project>) -> Result<(), String> {
+        self.projects = tracked::project_from(projects)?;
+        Ok(())
+    }
+
+    pub fn topic(&self, id: u64) -> Option<&Topic> {
+        self.topics.iter().find(|topic| topic.id == id)
+    }
+    pub fn topic_mut(&mut self, id: u64) -> Option<&mut Topic> {
+        self.topics
+            .tracked_mut(crate::persistence_journal::EntityKey::Topic(id))
+    }
+    pub fn push_topic(&mut self, topic: Topic) {
+        self.topics.push_tracked(topic);
+    }
+    pub fn remove_topic(&mut self, id: u64) -> Option<Topic> {
+        self.topics
+            .remove_tracked(crate::persistence_journal::EntityKey::Topic(id))
+    }
+    pub fn retain_topics(&mut self, keep: impl FnMut(&Topic) -> bool) {
+        self.topics.retain_tracked(keep);
+    }
+    pub fn replace_topics(&mut self, topics: Vec<Topic>) {
+        self.topics.replace_tracked(topics);
+    }
+    pub fn load_topics(&mut self, topics: Vec<Topic>) -> Result<(), String> {
+        self.topics = tracked::topic_from(topics)?;
+        Ok(())
+    }
+
+    pub fn request_mut(
+        &mut self,
+        id: u64,
+    ) -> Option<&mut crate::request_planning::ResearchRequest> {
+        self.research_requests
+            .tracked_mut(crate::persistence_journal::EntityKey::ResearchRequest(id))
+    }
+    pub fn push_request(&mut self, request: crate::request_planning::ResearchRequest) {
+        self.research_requests.push_tracked(request);
+    }
+    pub fn remove_request(&mut self, id: u64) -> Option<crate::request_planning::ResearchRequest> {
+        self.research_requests
+            .remove_tracked(crate::persistence_journal::EntityKey::ResearchRequest(id))
+    }
+    pub fn retain_requests(
+        &mut self,
+        keep: impl FnMut(&crate::request_planning::ResearchRequest) -> bool,
+    ) {
+        self.research_requests.retain_tracked(keep);
+    }
+    pub fn replace_requests(&mut self, requests: Vec<crate::request_planning::ResearchRequest>) {
+        self.research_requests.replace_tracked(requests);
+    }
+    pub fn load_requests(
+        &mut self,
+        requests: Vec<crate::request_planning::ResearchRequest>,
+    ) -> Result<(), String> {
+        self.research_requests = tracked::request_from(requests)?;
+        Ok(())
+    }
+
+    pub fn policy_mut(&mut self, stage: Stage) -> Option<&mut StagePolicy> {
+        self.policies
+            .tracked_mut(crate::persistence_journal::EntityKey::policy(stage))
+    }
+    pub fn push_policy(&mut self, policy: StagePolicy) {
+        self.policies.push_tracked(policy);
+    }
+    pub fn retain_policies(&mut self, keep: impl FnMut(&StagePolicy) -> bool) {
+        self.policies.retain_tracked(keep);
+    }
+    pub fn replace_policies(&mut self, policies: Vec<StagePolicy>) {
+        self.policies.replace_tracked(policies);
+    }
+    pub fn load_policies(&mut self, policies: Vec<StagePolicy>) -> Result<(), String> {
+        self.policies = tracked::policy_from(policies)?;
+        Ok(())
     }
 
     pub fn occurrence(&self, id: u64) -> Option<&crate::automation::AutomationOccurrence> {
@@ -751,7 +1050,7 @@ impl Store {
     pub fn automation_mut(
         &mut self,
         id: u64,
-    ) -> Option<TrackedMut<'_, crate::automation::AutomationDefinition>> {
+    ) -> Option<&mut crate::automation::AutomationDefinition> {
         self.automations
             .tracked_mut(crate::persistence_journal::EntityKey::Automation(id))
     }
@@ -759,7 +1058,7 @@ impl Store {
     pub fn occurrence_mut(
         &mut self,
         id: u64,
-    ) -> Option<TrackedMut<'_, crate::automation::AutomationOccurrence>> {
+    ) -> Option<&mut crate::automation::AutomationOccurrence> {
         self.automation_occurrences
             .tracked_mut(crate::persistence_journal::EntityKey::Occurrence(id))
     }
@@ -780,7 +1079,7 @@ impl Store {
         self.automation_occurrences.pop_tracked()
     }
 
-    pub fn run_at_mut(&mut self, index: usize) -> Option<TrackedMut<'_, AgentRun>> {
+    pub fn run_at_mut(&mut self, index: usize) -> Option<&mut AgentRun> {
         let id = self.runs.get(index)?.id;
         self.runs.tracked_mut(crate::persistence_journal::EntityKey::Run(id))
     }
@@ -788,7 +1087,7 @@ impl Store {
     pub fn automation_at_mut(
         &mut self,
         index: usize,
-    ) -> Option<TrackedMut<'_, crate::automation::AutomationDefinition>> {
+    ) -> Option<&mut crate::automation::AutomationDefinition> {
         let id = self.automations.get(index)?.id;
         self.automations
             .tracked_mut(crate::persistence_journal::EntityKey::Automation(id))
@@ -797,7 +1096,7 @@ impl Store {
     pub fn occurrence_at_mut(
         &mut self,
         index: usize,
-    ) -> Option<TrackedMut<'_, crate::automation::AutomationOccurrence>> {
+    ) -> Option<&mut crate::automation::AutomationOccurrence> {
         let id = self.automation_occurrences.get(index)?.id;
         self.automation_occurrences
             .tracked_mut(crate::persistence_journal::EntityKey::Occurrence(id))
@@ -821,26 +1120,26 @@ impl Store {
         self.runs.pop_tracked()
     }
 
-    pub fn last_run_mut(&mut self) -> Option<TrackedMut<'_, AgentRun>> {
+    pub fn last_run_mut(&mut self) -> Option<&mut AgentRun> {
         let index = self.runs.len().checked_sub(1)?;
         self.run_at_mut(index)
     }
 
     pub fn last_occurrence_mut(
         &mut self,
-    ) -> Option<TrackedMut<'_, crate::automation::AutomationOccurrence>> {
+    ) -> Option<&mut crate::automation::AutomationOccurrence> {
         let index = self.automation_occurrences.len().checked_sub(1)?;
         self.occurrence_at_mut(index)
     }
 
     pub fn last_automation_mut(
         &mut self,
-    ) -> Option<TrackedMut<'_, crate::automation::AutomationDefinition>> {
+    ) -> Option<&mut crate::automation::AutomationDefinition> {
         let index = self.automations.len().checked_sub(1)?;
         self.automation_at_mut(index)
     }
 
-    pub fn run_mut(&mut self, id: u64) -> Option<TrackedMut<'_, AgentRun>> {
+    pub fn run_mut(&mut self, id: u64) -> Option<&mut AgentRun> {
         self.runs
             .tracked_mut(crate::persistence_journal::EntityKey::Run(id))
     }
@@ -849,8 +1148,8 @@ impl Store {
     /// persisted with the workspace so a concurrent create/run cannot reuse it.
     pub fn allocate_run_id(&mut self) -> Option<u64> {
         let max = self.runs.iter().map(|run| run.id).max().unwrap_or(0);
-        let next = max.checked_add(1)?.max(self.run_id_floor);
-        self.run_id_floor = next.checked_add(1)?;
+        let next = max.checked_add(1)?.max(*self.run_id_floor.get());
+        self.set_run_id_floor(next.checked_add(1)?);
         Some(next)
     }
 
@@ -894,7 +1193,17 @@ impl Store {
     }
 
     pub fn has_tracked_changes(&self) -> bool {
-        self.automations.is_dirty() || self.automation_occurrences.is_dirty() || self.runs.is_dirty()
+        self.automations.is_dirty()
+            || self.automation_occurrences.is_dirty()
+            || self.runs.is_dirty()
+            || self.tasks.is_dirty()
+            || self.projects.is_dirty()
+            || self.topics.is_dirty()
+            || self.research_requests.is_dirty()
+            || self.policies.is_dirty()
+            || self.publications.is_dirty()
+            || self.model_profiles.is_dirty()
+            || self.has_metadata_changes()
     }
 
     /// Read-only per-collection snapshot for diagnostics and tests. It never
@@ -910,20 +1219,265 @@ impl Store {
         ]
     }
 
-    /// Exact dirty payloads/tombstones for the tracked automation graph. Only
-    /// dirty entities are cloned. Draining is atomic across the three
-    /// collections; an error leaves every pending change untouched.
+    /// Every pending entity change, in stable collection order. Building this
+    /// never clears intent and never clones a whole collection.
+    pub(crate) fn pending_entity_changes(
+        &self,
+    ) -> Result<Vec<crate::persistence_journal::EntityChange>, String> {
+        let mut changes = Vec::new();
+        changes.extend(self.tasks.pending_changes()?);
+        changes.extend(self.projects.pending_changes()?);
+        changes.extend(self.topics.pending_changes()?);
+        changes.extend(self.research_requests.pending_changes()?);
+        changes.extend(self.policies.pending_changes()?);
+        changes.extend(self.runs.pending_changes()?);
+        changes.extend(self.automations.pending_changes()?);
+        changes.extend(self.automation_occurrences.pending_changes()?);
+        Ok(changes)
+    }
+
+    /// Exact dirty payloads/tombstones for every tracked entity collection.
+    /// Draining is atomic: an error in any collection leaves every pending
+    /// change untouched.
     pub fn drain_tracked_changes(
         &mut self,
     ) -> Result<Vec<crate::persistence_journal::EntityChange>, String> {
-        let mut changes = Vec::new();
-        changes.extend(self.automations.pending_changes()?);
-        changes.extend(self.automation_occurrences.pending_changes()?);
-        changes.extend(self.runs.pending_changes()?);
+        let changes = self.pending_entity_changes()?;
+        self.tasks.clear_dirty();
+        self.projects.clear_dirty();
+        self.topics.clear_dirty();
+        self.research_requests.clear_dirty();
+        self.policies.clear_dirty();
+        self.runs.clear_dirty();
         self.automations.clear_dirty();
         self.automation_occurrences.clear_dirty();
-        self.runs.clear_dirty();
         Ok(changes)
+    }
+
+    /// Pending typed metadata deltas for every tracked scalar/config field.
+    /// The caller stages them in the same ordered group as entity changes.
+    pub(crate) fn pending_metadata_deltas(&self) -> Vec<crate::persistence_journal::MetadataDelta> {
+        use crate::persistence_journal::MetadataDelta;
+        let mut deltas = Vec::new();
+        if self.next_id.is_dirty() {
+            deltas.push(MetadataDelta::NextId(*self.next_id.get()));
+        }
+        if self.run_id_floor.is_dirty() {
+            deltas.push(MetadataDelta::RunIdFloor(*self.run_id_floor.get()));
+        }
+        if self.default_model.is_dirty() {
+            deltas.push(MetadataDelta::DefaultModel(self.default_model.get().clone()));
+        }
+        if self.opencode_path.is_dirty() {
+            deltas.push(MetadataDelta::OpenCodePath(self.opencode_path.get().clone()));
+        }
+        if self.appearance.is_dirty() {
+            deltas.push(MetadataDelta::Appearance(*self.appearance.get()));
+        }
+        if self.last_active_project.is_dirty() {
+            deltas.push(MetadataDelta::LastActiveProject(*self.last_active_project.get()));
+        }
+        if self.automation_schema_version.is_dirty() {
+            deltas.push(MetadataDelta::AutomationSchemaVersion(
+                *self.automation_schema_version.get(),
+            ));
+        }
+        if self.max_concurrent_runs.is_dirty() {
+            deltas.push(MetadataDelta::MaxConcurrentRuns(*self.max_concurrent_runs.get()));
+        }
+        if self.max_concurrent_automations.is_dirty() {
+            deltas.push(MetadataDelta::MaxConcurrentAutomations(
+                *self.max_concurrent_automations.get(),
+            ));
+        }
+        if self.research_config.is_dirty() {
+            deltas.push(MetadataDelta::ResearchConfig(self.research_config.get().clone()));
+        }
+        if self.model_profiles.is_dirty() {
+            deltas.push(MetadataDelta::ModelProfiles(self.model_profiles.to_vec()));
+        }
+        if self.active_model_profile.is_dirty() {
+            deltas.push(MetadataDelta::ActiveModelProfile(
+                self.active_model_profile.get().clone(),
+            ));
+        }
+        if self.publications.is_dirty() {
+            deltas.push(MetadataDelta::Publications(self.publications.to_vec()));
+        }
+        if self.report_publishing.is_dirty() {
+            deltas.push(MetadataDelta::PublishingConfig(
+                self.report_publishing.get().clone(),
+            ));
+        }
+        deltas
+    }
+
+    pub(crate) fn drain_metadata_deltas(
+        &mut self,
+    ) -> Vec<crate::persistence_journal::MetadataDelta> {
+        let deltas = self.pending_metadata_deltas();
+        self.clear_metadata_dirty();
+        deltas
+    }
+
+    pub(crate) fn has_metadata_changes(&self) -> bool {
+        self.next_id.is_dirty()
+            || self.run_id_floor.is_dirty()
+            || self.default_model.is_dirty()
+            || self.opencode_path.is_dirty()
+            || self.appearance.is_dirty()
+            || self.last_active_project.is_dirty()
+            || self.automation_schema_version.is_dirty()
+            || self.max_concurrent_runs.is_dirty()
+            || self.max_concurrent_automations.is_dirty()
+            || self.research_config.is_dirty()
+            || self.model_profiles.is_dirty()
+            || self.active_model_profile.is_dirty()
+            || self.publications.is_dirty()
+            || self.report_publishing.is_dirty()
+    }
+
+    pub(crate) fn clear_metadata_dirty(&mut self) {
+        self.next_id.clear_dirty();
+        self.run_id_floor.clear_dirty();
+        self.default_model.clear_dirty();
+        self.opencode_path.clear_dirty();
+        self.appearance.clear_dirty();
+        self.last_active_project.clear_dirty();
+        self.automation_schema_version.clear_dirty();
+        self.max_concurrent_runs.clear_dirty();
+        self.max_concurrent_automations.clear_dirty();
+        self.research_config.clear_dirty();
+        self.model_profiles.clear_dirty();
+        self.active_model_profile.clear_dirty();
+        self.publications.clear_dirty();
+        self.report_publishing.clear_dirty();
+    }
+
+    /// Acknowledged durable write: every pending entity and metadata change is
+    /// now part of the durable baseline.
+    pub fn clear_all_tracking(&mut self) {
+        self.tasks.clear_dirty();
+        self.projects.clear_dirty();
+        self.topics.clear_dirty();
+        self.research_requests.clear_dirty();
+        self.policies.clear_dirty();
+        self.runs.clear_dirty();
+        self.automations.clear_dirty();
+        self.automation_occurrences.clear_dirty();
+        self.clear_metadata_dirty();
+    }
+
+    // ---- Typed scalar setters. These are the only production write paths. ----
+
+    pub fn set_automation_schema_version(&mut self, value: u32) {
+        self.automation_schema_version.set(value);
+    }
+    pub fn set_next_id(&mut self, value: u64) {
+        self.next_id.set(value);
+    }
+    pub fn set_run_id_floor(&mut self, value: u64) {
+        self.run_id_floor.set(value);
+    }
+    pub fn set_opencode_path(&mut self, value: impl Into<String>) {
+        self.opencode_path.set(value.into());
+    }
+    pub fn set_default_model(&mut self, value: impl Into<String>) {
+        self.default_model.set(value.into());
+    }
+    pub fn set_active_model_profile(&mut self, value: Option<String>) {
+        self.active_model_profile.set(value);
+    }
+    pub fn set_max_concurrent_runs(&mut self, value: usize) {
+        self.max_concurrent_runs.set(value);
+    }
+    pub fn set_max_concurrent_automations(&mut self, value: usize) {
+        self.max_concurrent_automations.set(value);
+    }
+    pub fn set_research_config(&mut self, value: crate::research::ResearchConfig) {
+        self.research_config.set(value);
+    }
+    pub fn set_appearance(&mut self, value: crate::appearance::Appearance) {
+        self.appearance.set(value);
+    }
+    pub fn set_last_active_project(&mut self, value: Option<u64>) {
+        self.last_active_project.set(value);
+    }
+    pub fn set_report_publishing(&mut self, value: crate::report_publish::PublishingConfig) {
+        self.report_publishing.set(value);
+    }
+
+    pub fn research_config_mut(&mut self) -> &mut crate::research::ResearchConfig {
+        &mut self.research_config
+    }
+    pub fn appearance_mut(&mut self) -> &mut crate::appearance::Appearance {
+        &mut self.appearance
+    }
+    pub fn report_publishing_mut(
+        &mut self,
+    ) -> &mut crate::report_publish::PublishingConfig {
+        &mut self.report_publishing
+    }
+
+    pub fn push_publication(&mut self, publication: crate::report_publish::Publication) {
+        self.publications.push_tracked(publication);
+    }
+    pub fn publication_mut(
+        &mut self,
+        id: &str,
+    ) -> Option<&mut crate::report_publish::Publication> {
+        let index = self
+            .publications
+            .iter()
+            .position(|publication| publication.id == id)?;
+        self.publications.index_mut(index)
+    }
+    pub fn retain_publications(
+        &mut self,
+        keep: impl FnMut(&crate::report_publish::Publication) -> bool,
+    ) {
+        self.publications.retain_tracked(keep);
+    }
+    pub fn replace_publications(
+        &mut self,
+        publications: Vec<crate::report_publish::Publication>,
+    ) {
+        self.publications.replace_tracked(publications);
+    }
+    pub fn load_publications(
+        &mut self,
+        publications: Vec<crate::report_publish::Publication>,
+    ) {
+        self.publications.load(publications);
+    }
+
+    pub fn push_model_profile(&mut self, profile: crate::model_profiles::ModelProfile) {
+        self.model_profiles.push_tracked(profile);
+    }
+    pub fn model_profile_mut(
+        &mut self,
+        name: &str,
+    ) -> Option<&mut crate::model_profiles::ModelProfile> {
+        let index = self
+            .model_profiles
+            .iter()
+            .position(|profile| profile.name == name)?;
+        self.model_profiles.index_mut(index)
+    }
+    pub fn retain_model_profiles(
+        &mut self,
+        keep: impl FnMut(&crate::model_profiles::ModelProfile) -> bool,
+    ) {
+        self.model_profiles.retain_tracked(keep);
+    }
+    pub fn replace_model_profiles(
+        &mut self,
+        profiles: Vec<crate::model_profiles::ModelProfile>,
+    ) {
+        self.model_profiles.replace_tracked(profiles);
+    }
+    pub fn load_model_profiles(&mut self, profiles: Vec<crate::model_profiles::ModelProfile>) {
+        self.model_profiles.load(profiles);
     }
 
     pub fn automations(&self) -> &[crate::automation::AutomationDefinition] {
@@ -1074,9 +1628,9 @@ impl Store {
         parent_id: Option<u64>,
         topic_id: Option<u64>,
     ) -> u64 {
-        let id = self.next_id;
-        self.next_id += 1;
-        self.tasks.push(Task {
+        let id = *self.next_id.get();
+        self.set_next_id(id.saturating_add(1));
+        self.push_task(Task {
             id,
             created_at: crate::opencode::timestamp(),
             automation_id: None,
@@ -1117,7 +1671,7 @@ impl Store {
             };
             (signature.as_ref().ok() == Some(&r.input_signature)).then_some((r.id, request))
         }).collect();
-        self.projects.iter_mut().find(|p| p.id == project).unwrap().name = name.into();
+        self.project_mut(project).unwrap().name = name.into();
         for (run, request) in valid {
             let signature = match request {
                 Some(id) => self.request_plan_signature(id),
@@ -1193,8 +1747,9 @@ impl Store {
         let approved: Vec<_> = ids.iter().copied().filter(|id| self.goal_execution_approved(*id)).collect();
         let mut valid: Vec<_> = ids.iter().filter_map(|id| self.research_result(*id).map(|r| (*id, r.id))).collect();
         let mut staged = self.clone();
-        staged.topics.iter_mut().find(|t| t.id == topic).unwrap().project_id = project;
-        for task in staged.tasks.iter_mut().filter(|t| ids.contains(&t.id)) {
+        staged.topic_mut(topic).unwrap().project_id = project;
+        for id in ids.iter().copied() {
+            let mut task = staged.task_mut(id).unwrap();
             task.project_id = project;
             task.activity.push(activity_event("Topic moved to another project"));
         }
@@ -1202,7 +1757,8 @@ impl Store {
             let signature = staged.goal_plan_signature(goal);
             staged.task_mut(goal).unwrap().approved_plan = signature;
         }
-        for request in staged.research_requests.iter_mut().filter(|r| requests.contains(&r.id)) {
+        for id in requests.iter().copied() {
+            let mut request = staged.request_mut(id).unwrap();
             request.project_id = project;
             request.topic_id = Some(topic);
         }
@@ -1269,7 +1825,8 @@ impl Store {
             cursor += 1;
         }
         let topic = self.create_topic(project, self.task(id).unwrap().title.clone())?;
-        for task in self.tasks.iter_mut().filter(|t| ids.contains(&t.id)) {
+        for task_id in ids.iter().copied() {
+            let mut task = self.task_mut(task_id).unwrap();
             task.project_id = project;
             task.topic_id = if task.id == id { Some(topic) } else { None };
             if task.id == id {
@@ -1603,18 +2160,18 @@ mod tests {
         assert_eq!(legacy.default_agent, "OpenCode");
         assert!(legacy.agents.iter().all(Option::is_none));
         let mut store = Store::empty();
-        store.default_model = "test/global".into();
+        store.set_default_model("test/global".into());
         store.research_config = legacy;
         assert_eq!(store.research_agent(ResearchKind::Goal), "OpenCode");
-        store.research_config.agents[2] = Some("Codex".into());
+        store.research_config_mut().agents[2] = Some("Codex".into());
         assert_eq!(store.research_model(ResearchKind::Analyze), "");
         assert!(!store.valid_research_model(ResearchKind::Analyze));
-        store.research_config.models[2] = "fixture-codex".into();
+        store.research_config_mut().models[2] = "fixture-codex".into();
         assert!(store.valid_research_model(ResearchKind::Analyze));
         let reopened: Store = serde_json::from_slice(&serde_json::to_vec(&store).unwrap()).unwrap();
         assert_eq!(reopened, store);
-        store.research_config.agents[2] = None;
-        store.research_config.models[2].clear();
+        store.research_config_mut().agents[2] = None;
+        store.research_config_mut().models[2].clear();
         assert_eq!(store.research_model(ResearchKind::Analyze), "test/global");
     }
 
@@ -1622,7 +2179,7 @@ mod tests {
     fn progress_count_tracks_tasks_instead_of_attempts() {
         let mut store = Store::mock();
         store.clear_runs();
-        store.projects[0].directory = "/tmp/test-project".into();
+        store.project_at_mut(0).unwrap().directory = "/tmp/test-project".into();
         for policy in &mut store.policies {
             policy.agent = "OpenCode".into();
             policy.model = "test/model".into();
@@ -1726,8 +2283,8 @@ mod tests {
         for id in [populated, requested, named_empty] {
             assert!(store.topics.iter().any(|t| t.id == id));
         }
-        assert_eq!(store.tasks[0].title, tasks[0].title);
-        assert_eq!(store.tasks[0].topic_id, tasks[0].topic_id);
+        assert_eq!(store.task_at_mut(0).unwrap().title, tasks[0].title);
+        assert_eq!(store.task_at_mut(0).unwrap().topic_id, tasks[0].topic_id);
         let normalized = store.clone();
         store.normalize_topics();
         assert_eq!(store, normalized);
@@ -1736,7 +2293,7 @@ mod tests {
     #[test]
     fn topic_membership_is_required_and_inherited_by_research_steps() {
         let mut store = Store::empty();
-        let project = store.projects[0].id;
+        let project = store.project_at_mut(0).unwrap().id;
         let topic = store.create_topic(project, "  NVIDIA  ").unwrap();
         let goal = store
             .create_research_goal("Earnings".into(), "Review earnings".into(), project)
@@ -1770,7 +2327,7 @@ mod tests {
     #[test]
     fn ordinary_descendants_inherit_topic_and_parent_cycles_terminate() {
         let mut store = Store::empty();
-        let project = store.projects[0].id;
+        let project = store.project_at_mut(0).unwrap().id;
         let topic = store.create_topic(project, "NVIDIA").unwrap();
         let goal = store
             .create_research_goal("Earnings".into(), "Review earnings".into(), project)
@@ -1797,7 +2354,7 @@ mod tests {
     #[test]
     fn topic_archive_preserves_work_and_allows_restore() {
         let mut store = Store::empty();
-        let project = store.projects[0].id;
+        let project = store.project_at_mut(0).unwrap().id;
         let topic = store.create_topic(project, "NVIDIA").unwrap();
         let goal = store
             .create_research_goal("Earnings".into(), "Review earnings".into(), project)
@@ -1821,8 +2378,8 @@ mod tests {
     #[test]
     fn topic_membership_cannot_cross_projects_and_moves_to_named_destination_topic() {
         let mut store = Store::empty();
-        let project = store.projects[0].id;
-        let mut other = store.projects[0].clone();
+        let project = store.project_at_mut(0).unwrap().id;
+        let mut other = store.project_at_mut(0).unwrap().clone();
         other.id = project + 1;
         store.projects.push(other);
         let topic = store.create_topic(project, "NVIDIA").unwrap();
@@ -1844,7 +2401,7 @@ mod tests {
     #[test]
     fn legacy_workspaces_load_without_topics_and_membership_roundtrips() {
         let mut store = Store::empty();
-        let project = store.projects[0].id;
+        let project = store.project_at_mut(0).unwrap().id;
         let goal = store
             .create_research_goal("Earnings".into(), "Review earnings".into(), project)
             .unwrap();
@@ -1955,8 +2512,8 @@ mod tests {
     fn research_step_identifiers_include_goal_and_keep_previous_alias() {
         use crate::research::{ResearchKind, ResearchTask};
         let mut store = Store::empty();
-        let project = store.projects[0].id;
-        let key = store.projects[0].key.clone();
+        let project = store.project_at_mut(0).unwrap().id;
+        let key = store.project_at_mut(0).unwrap().key.clone();
         let goal = store
             .create_task("Goal", project, Stage::Planned, None)
             .unwrap();
@@ -1980,8 +2537,8 @@ mod tests {
     fn research_identifiers_distinguish_types_and_keep_legacy_search() {
         use crate::research::{ResearchKind, ResearchTask};
         let mut store = Store::empty();
-        let project = store.projects[0].id;
-        let key = store.projects[0].key.clone();
+        let project = store.project_at_mut(0).unwrap().id;
+        let key = store.project_at_mut(0).unwrap().key.clone();
         let id = store
             .create_task("Example", project, Stage::Backlog, None)
             .unwrap();
@@ -2017,7 +2574,7 @@ mod tests {
     fn creation_time_is_persisted_and_legacy_tasks_stay_unknown() {
         let mut store = Store::empty();
         let id = store
-            .create_task("New task", store.projects[0].id, Stage::Planned, None)
+            .create_task("New task", store.project_at_mut(0).unwrap().id, Stage::Planned, None)
             .unwrap();
         let task = store.task(id).unwrap();
         assert!(
@@ -2037,8 +2594,8 @@ mod tests {
         assert!(store.runs.is_empty());
         assert!(store.default_model.is_empty());
         assert_eq!(store.next_id, 1);
-        assert_eq!(store.projects[0].name, "Workspace");
-        assert!(store.projects[0].directory.is_empty());
+        assert_eq!(store.project_at_mut(0).unwrap().name, "Workspace");
+        assert!(store.project_at_mut(0).unwrap().directory.is_empty());
         assert!(store.policies.is_empty());
         assert_eq!(store.appearance, crate::appearance::Appearance::Light);
     }
@@ -2135,7 +2692,7 @@ mod tests {
     #[test]
     fn changing_stage_records_one_event_and_never_launches_agent() {
         let mut store = Store::mock();
-        store.policies.iter_mut().for_each(|p| p.auto_start = true);
+        for stage in Stage::ALL { if let Some(policy) = store.policy_mut(stage) { policy.auto_start = true; } }
         let before = store.task(5).unwrap().activity.len();
         store.set_stage(5, Stage::InProgress).unwrap();
         store.set_stage(5, Stage::InProgress).unwrap();

@@ -52,8 +52,8 @@ pub fn run() {
 
 fn workspace(directory: &Path) -> (Store, u64, Vec<u64>) {
     let mut store = Store::empty();
-    store.projects[0].directory = directory.to_string_lossy().into();
-    store.research_config.models =
+    store.project_at_mut(0).unwrap().directory = directory.to_string_lossy().into();
+    store.research_config_mut().models =
         ["test/plan", "test/search", "test/analysis", "test/brief"].map(String::from);
     let goal = store
         .create_research_goal(
@@ -112,7 +112,7 @@ where
                 assert!(app.storage_error.is_empty(), "{}", app.storage_error);
                 app.store = store;
                 app.set_appearance(Appearance::Light, w, cx);
-                app.scope = Scope::All;
+                app.set_scope_identity(Scope::All);
                 configure(app, w, cx);
                 cx.notify();
             });
@@ -319,7 +319,7 @@ fn dirty_save_waits_for_confirmation(root: &Path) {
     let path = directory.join("workspace.sqlite3");
     Storage::new(path.clone()).save(&store).unwrap();
     let (mut cx, handle, app) = with_app(store, &path, |app, w, cx| {
-        app.scope = Scope::All;
+        app.set_scope_identity(Scope::All);
         begin_editor(app, goal, w, cx);
         set_title(app, "Dirty exit title", w, cx);
     });
@@ -1944,7 +1944,7 @@ fn automation_barrier_keeps_scoped_undo(root: &Path) {
     cx.update_window(handle, |_, w, cx| {
         app.update(cx, |app, cx| {
             app.invalidate_undo_for_automation();
-            assert_eq!(app.undo.len(), 1, "scoped entry survives legacy barrier");
+            assert_eq!(app.undo.len(), 1, "scoped entry is unaffected by automation");
             app.undo_change(w, cx);
         });
         let app = app.read(cx);
@@ -1962,8 +1962,14 @@ fn mixed_legacy_scoped_order(root: &Path) {
     let path = directory.join("workspace.sqlite3");
     Storage::new(path.clone()).save(&store).unwrap();
     let (mut cx, handle, app) = with_app(store, &path, |app, w, cx| {
-        app.snapshot();
-        app.store.task_mut(goal).unwrap().labels = vec!["Legacy change".into()];
+        assert!(app.apply_domain_change(
+            |store| {
+                store.task_mut(goal).unwrap().labels = vec!["Legacy change".into()];
+                Ok(())
+            },
+            "Labels updated",
+            cx,
+        ));
         begin_editor(app, goal, w, cx);
         set_title(app, "Scoped change", w, cx);
     });

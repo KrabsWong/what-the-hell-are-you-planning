@@ -125,7 +125,7 @@ fn run_projects(store: &Store) -> Vec<RunProject<'_>> {
     }
     groups.sort_by_key(|group| {
         store
-            .projects
+            .projects()
             .iter()
             .position(|p| Some(p.id) == group.id)
             .unwrap_or(usize::MAX)
@@ -134,7 +134,7 @@ fn run_projects(store: &Store) -> Vec<RunProject<'_>> {
         group.topics.sort_by_key(|topic| {
             topic
                 .id
-                .and_then(|id| store.tasks.iter().position(|t| t.id == id))
+                .and_then(|id| store.tasks().iter().position(|t| t.id == id))
                 .unwrap_or(usize::MAX)
         });
     }
@@ -221,7 +221,7 @@ impl TaskApp {
         if let (Some(project), Some(topic)) = (project, topic) {
             let name = project
                 .id
-                .and_then(|id| self.store.projects.iter().find(|p| p.id == id))
+                .and_then(|id| self.store.projects().iter().find(|p| p.id == id))
                 .map(|p| p.name.clone())
                 .unwrap_or_else(|| "Unlinked history".into());
             let topic_task = topic.id.and_then(|id| self.store.task(id));
@@ -237,7 +237,7 @@ impl TaskApp {
                 .iter()
                 .map(|p| {
                     let name =
-                        p.id.and_then(|id| self.store.projects.iter().find(|p| p.id == id))
+                        p.id.and_then(|id| self.store.projects().iter().find(|p| p.id == id))
                             .map(|p| p.name.clone())
                             .unwrap_or_else(|| "Unlinked history".into());
                     let run = p
@@ -381,7 +381,7 @@ impl TaskApp {
             }
             latest.sort_by_key(|r| {
                 self.store
-                    .tasks
+                    .tasks()
                     .iter()
                     .position(|t| t.id == r.task_id)
                     .unwrap_or(usize::MAX)

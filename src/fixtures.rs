@@ -225,31 +225,21 @@ impl Store {
             }.into(),
             auto_start: false,
         }).collect();
-        let mut store = Self {
-            automation_schema_version: crate::automation::AUTOMATION_SCHEMA_VERSION,
-            automations: super::tracked::automation_new(),
-            automation_occurrences: super::tracked::occurrence_new(),
-            tasks,
-            projects,
-            topics: vec![],
-            research_requests: vec![],
-            policies,
-            runs: super::tracked::run_new(),
-            next_id: 23,
-            run_id_floor: 0,
-            opencode_path: String::new(),
-            default_model: String::new(),
-            model_profiles: vec![],
-            active_model_profile: None,
-            report_publishing: Default::default(),
-            publications: vec![],
-            max_concurrent_runs: crate::scheduler::DEFAULT_CONCURRENT_RUNS,
-            max_concurrent_automations: crate::scheduler::DEFAULT_CONCURRENT_AUTOMATIONS,
-            research_config: Default::default(),
-            appearance: crate::appearance::Appearance::Dark,
-            last_active_project: None,
-        };
+        let mut store = Self::empty();
+        store
+            .load_tasks(tasks)
+            .expect("fixture tasks have unique identities");
+        store
+            .load_projects(projects)
+            .expect("fixture projects have unique identities");
+        store
+            .load_policies(policies)
+            .expect("fixture policies have unique identities");
+        store.set_next_id(23);
+        store.set_appearance(crate::appearance::Appearance::Dark);
+        store.clear_all_tracking();
         store.normalize_topics();
+        store.clear_all_tracking();
         store
     }
     #[cfg(test)]

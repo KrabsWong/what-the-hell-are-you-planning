@@ -15,7 +15,7 @@ pub(crate) struct DirtySet {
     violation: Option<String>,
 }
 
-pub(crate) struct TrackedVec<T> {
+pub struct TrackedVec<T> {
     items: Vec<T>,
     dirty: DirtySet,
     identity: fn(&T) -> EntityKey,
@@ -61,14 +61,14 @@ impl<T> TrackedVec<T> {
         &self.items
     }
 
-    pub(crate) fn tracked_mut(&mut self, key: EntityKey) -> Option<TrackedMut<'_, T>> {
+    /// Expose one item for mutation. Access itself records the upsert, so a
+    /// later early return cannot hide a write; identity changes remain a sticky
+    /// violation checked by the next `pending_changes`.
+    pub(crate) fn tracked_mut(&mut self, key: EntityKey) -> Option<&mut T> {
         let index = self.items.iter().position(|item| (self.identity)(item) == key)?;
-        Some(TrackedMut {
-            value: &mut self.items[index],
-            key,
-            dirty: &mut self.dirty,
-            identity: self.identity,
-        })
+        self.dirty.upserts.insert(key);
+        self.dirty.deletes.remove(&key);
+        Some(&mut self.items[index])
     }
 
     pub(crate) fn push_tracked(&mut self, item: T) {
@@ -174,6 +174,48 @@ impl<T> TrackedVec<T> {
             self.dirty.deletes.insert(key);
         }
         self.items.clear();
+    }
+
+    /// Explicit whole-collection setter. This is not dirty detection: the
+    /// caller states the complete new contents. Removed identities become
+    /// tombstones and every retained item is an upsert. Duplicate identities
+    /// are rejected without mutating the live collection.
+    pub(crate) fn replace_tracked(&mut self, items: Vec<T>) {
+        let mut seen = BTreeSet::new();
+        for item in &items {
+            if !seen.insert((self.identity)(item)) {
+                self.dirty.violation = Some(format!(
+                    "replacement contains duplicate tracked identity {:?}",
+                    (self.identity)(item)
+                ));
+                return;
+            }
+        }
+        for item in &self.items {
+            let key = (self.identity)(item);
+            if !seen.contains(&key) {
+                self.dirty.upserts.remove(&key);
+                self.dirty.deletes.insert(key);
+            }
+        }
+        for key in &seen {
+            self.dirty.deletes.remove(key);
+            self.dirty.upserts.insert(*key);
+        }
+        self.items = items;
+    }
+
+    /// Explicit positional reorder. Persisted order is positional, so every
+    /// retained entity is re-upserted at its new position.
+    pub(crate) fn swap_tracked(&mut self, first: usize, second: usize) -> bool {
+        if first >= self.items.len() || second >= self.items.len() || first == second {
+            return false;
+        }
+        self.items.swap(first, second);
+        for item in &self.items {
+            self.dirty.upserts.insert((self.identity)(item));
+        }
+        true
     }
 
     pub(crate) fn is_pristine(&self) -> bool {
@@ -293,7 +335,337 @@ impl<T: serde::Serialize> serde::Serialize for TrackedVec<T> {
     }
 }
 
-pub(crate) struct TrackedMut<'a, T> {
+/// One tracked scalar/config value. The value is readable through `Deref`,
+/// but direct assignment is impossible: only `Store` setters and
+/// `TrackedScalarMut` (an explicit mutate guard) can change it. Deserialization
+/// and clean load start pristine.
+pub struct TrackedScalar<T> {
+    value: T,
+    dirty: bool,
+}
+
+impl<T> TrackedScalar<T> {
+    pub(in crate::domain) fn new(value: T) -> Self {
+        Self {
+            value,
+            dirty: false,
+        }
+    }
+
+    /// Clean load: adopt a persisted value without claiming a change.
+    pub(crate) fn load(&mut self, value: T) {
+        self.value = value;
+        self.dirty = false;
+    }
+
+    pub(crate) fn get(&self) -> &T {
+        &self.value
+    }
+
+    pub(in crate::domain) fn set(&mut self, value: T)
+    where
+        T: PartialEq,
+    {
+        if self.value != value {
+            self.value = value;
+            self.dirty = true;
+        }
+    }
+
+    pub(in crate::domain) fn mutate(&mut self, apply: impl FnOnce(&mut T))
+    where
+        T: Clone + PartialEq,
+    {
+        let before = self.value.clone();
+        apply(&mut self.value);
+        if self.value != before {
+            self.dirty = true;
+        }
+    }
+
+    pub(crate) fn is_dirty(&self) -> bool {
+        self.dirty
+    }
+
+    pub(in crate::domain) fn clear_dirty(&mut self) {
+        self.dirty = false;
+    }
+
+    pub(crate) fn tracked_mut(&mut self) -> TrackedScalarMut<'_, T> {
+        TrackedScalarMut { scalar: self }
+    }
+}
+
+pub struct TrackedScalarMut<'a, T> {
+    scalar: &'a mut TrackedScalar<T>,
+}
+
+impl<T> Deref for TrackedScalarMut<'_, T> {
+    type Target = T;
+    fn deref(&self) -> &Self::Target {
+        &self.scalar.value
+    }
+}
+
+impl<T> DerefMut for TrackedScalarMut<'_, T> {
+    fn deref_mut(&mut self) -> &mut Self::Target {
+        &mut self.scalar.value
+    }
+}
+
+impl<T> Drop for TrackedScalarMut<'_, T> {
+    fn drop(&mut self) {
+        self.scalar.dirty = true;
+    }
+}
+
+impl<T> Deref for TrackedScalar<T> {
+    type Target = T;
+    fn deref(&self) -> &Self::Target {
+        &self.value
+    }
+}
+
+impl<T> DerefMut for TrackedScalar<T> {
+    fn deref_mut(&mut self) -> &mut Self::Target {
+        // Nested-config mutation is a tracked write. Whole-value assignment
+        // still cannot target `TrackedScalar<T>` directly.
+        self.dirty = true;
+        &mut self.value
+    }
+}
+
+impl<T> AsRef<T> for TrackedScalar<T> {
+    fn as_ref(&self) -> &T {
+        &self.value
+    }
+}
+
+impl<T> std::borrow::Borrow<T> for TrackedScalar<T> {
+    fn borrow(&self) -> &T {
+        &self.value
+    }
+}
+
+impl<T: Copy> Copy for TrackedScalar<T> {}
+
+impl<T: Clone> Clone for TrackedScalar<T> {
+    fn clone(&self) -> Self {
+        // Clones preserve pending intent exactly like tracked collections.
+        Self {
+            value: self.value.clone(),
+            dirty: self.dirty,
+        }
+    }
+}
+
+impl<T: Default> Default for TrackedScalar<T> {
+    fn default() -> Self {
+        Self::new(T::default())
+    }
+}
+
+impl<T: PartialEq> PartialEq for TrackedScalar<T> {
+    fn eq(&self, other: &Self) -> bool {
+        self.value == other.value
+    }
+}
+
+impl<T: PartialEq> PartialEq<T> for TrackedScalar<T> {
+    fn eq(&self, other: &T) -> bool {
+        &self.value == other
+    }
+}
+
+impl<T: PartialOrd> PartialOrd<T> for TrackedScalar<T> {
+    fn partial_cmp(&self, other: &T) -> Option<std::cmp::Ordering> {
+        self.value.partial_cmp(other)
+    }
+}
+
+impl<T: PartialOrd> PartialOrd for TrackedScalar<T> {
+    fn partial_cmp(&self, other: &Self) -> Option<std::cmp::Ordering> {
+        self.value.partial_cmp(&other.value)
+    }
+}
+
+impl<T: std::fmt::Display> std::fmt::Display for TrackedScalar<T> {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        self.value.fmt(f)
+    }
+}
+
+impl<T: std::fmt::Debug> std::fmt::Debug for TrackedScalar<T> {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        f.debug_struct("TrackedScalar")
+            .field("value", &self.value)
+            .field("dirty", &self.dirty)
+            .finish()
+    }
+}
+
+impl<T: serde::Serialize> serde::Serialize for TrackedScalar<T> {
+    fn serialize<S: serde::Serializer>(&self, serializer: S) -> Result<S::Ok, S::Error> {
+        self.value.serialize(serializer)
+    }
+}
+
+impl<'de, T: serde::Deserialize<'de>> serde::Deserialize<'de> for TrackedScalar<T> {
+    fn deserialize<D: serde::Deserializer<'de>>(deserializer: D) -> Result<Self, D::Error> {
+        Ok(Self::new(T::deserialize(deserializer)?))
+    }
+}
+
+/// A metadata-persisted collection (publications, model profiles). These are
+/// stored as one JSON array, so an edit marks the whole collection for a single
+/// typed `MetadataDelta`; membership itself is never discovered by comparison.
+pub struct TrackedList<T> {
+    items: Vec<T>,
+    dirty: bool,
+}
+
+impl<T> TrackedList<T> {
+    pub(in crate::domain) fn new() -> Self {
+        Self {
+            items: Vec::new(),
+            dirty: false,
+        }
+    }
+
+    pub(in crate::domain) fn from_vec(items: Vec<T>) -> Self {
+        Self {
+            items,
+            dirty: false,
+        }
+    }
+
+    pub(crate) fn as_slice(&self) -> &[T] {
+        &self.items
+    }
+
+    pub(crate) fn index_mut(&mut self, index: usize) -> Option<&mut T> {
+        self.dirty = true;
+        self.items.get_mut(index)
+    }
+
+    pub(crate) fn push_tracked(&mut self, item: T) {
+        self.items.push(item);
+        self.dirty = true;
+    }
+
+    pub(crate) fn remove_tracked(&mut self, index: usize) -> Option<T> {
+        let item = self.items.remove(index);
+        self.dirty = true;
+        Some(item)
+    }
+
+    pub(crate) fn retain_tracked(&mut self, mut keep: impl FnMut(&T) -> bool) {
+        let before = self.items.len();
+        self.items.retain(|item| keep(item));
+        if self.items.len() != before {
+            self.dirty = true;
+        }
+    }
+
+    pub(crate) fn replace_tracked(&mut self, items: Vec<T>) {
+        self.items = items;
+        self.dirty = true;
+    }
+
+    pub(crate) fn load(&mut self, items: Vec<T>) {
+        self.items = items;
+        self.dirty = false;
+    }
+
+    pub(crate) fn is_dirty(&self) -> bool {
+        self.dirty
+    }
+
+    pub(crate) fn clear_dirty(&mut self) {
+        self.dirty = false;
+    }
+}
+
+pub struct TrackedListMut<'a, T> {
+    item: &'a mut T,
+}
+
+impl<T> Deref for TrackedListMut<'_, T> {
+    type Target = T;
+    fn deref(&self) -> &Self::Target {
+        self.item
+    }
+}
+
+impl<T> DerefMut for TrackedListMut<'_, T> {
+    fn deref_mut(&mut self) -> &mut Self::Target {
+        self.item
+    }
+}
+
+impl<T> Deref for TrackedList<T> {
+    type Target = [T];
+    fn deref(&self) -> &Self::Target {
+        &self.items
+    }
+}
+
+impl<T> DerefMut for TrackedList<T> {
+    fn deref_mut(&mut self) -> &mut Self::Target {
+        self.dirty = true;
+        &mut self.items
+    }
+}
+
+impl<T, I> Index<I> for TrackedList<T>
+where
+    I: std::slice::SliceIndex<[T]>,
+{
+    type Output = I::Output;
+    fn index(&self, index: I) -> &Self::Output {
+        &self.items[index]
+    }
+}
+
+impl<'a, T> IntoIterator for &'a TrackedList<T> {
+    type Item = &'a T;
+    type IntoIter = std::slice::Iter<'a, T>;
+    fn into_iter(self) -> Self::IntoIter {
+        self.items.iter()
+    }
+}
+
+impl<T: Clone> Clone for TrackedList<T> {
+    fn clone(&self) -> Self {
+        Self {
+            items: self.items.clone(),
+            dirty: self.dirty,
+        }
+    }
+}
+
+impl<T: PartialEq> PartialEq for TrackedList<T> {
+    fn eq(&self, other: &Self) -> bool {
+        self.items == other.items
+    }
+}
+
+impl<T: std::fmt::Debug> std::fmt::Debug for TrackedList<T> {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        f.debug_struct("TrackedList")
+            .field("items", &self.items)
+            .field("dirty", &self.dirty)
+            .finish()
+    }
+}
+
+impl<T: serde::Serialize> serde::Serialize for TrackedList<T> {
+    fn serialize<S: serde::Serializer>(&self, serializer: S) -> Result<S::Ok, S::Error> {
+        serializer.collect_seq(&self.items)
+    }
+}
+
+pub struct TrackedMut<'a, T> {
     value: &'a mut T,
     key: EntityKey,
     dirty: &'a mut DirtySet,
@@ -325,6 +697,91 @@ impl<T> Drop for TrackedMut<'_, T> {
         self.dirty.upserts.insert(self.key);
         self.dirty.deletes.remove(&self.key);
     }
+}
+
+pub(crate) fn task_new() -> TrackedVec<crate::domain::Task> {
+    TrackedVec::new(
+        |task| EntityKey::Task(task.id),
+        |task| EntityPayload::Task(task.clone()),
+    )
+}
+
+pub(crate) fn project_new() -> TrackedVec<crate::domain::Project> {
+    TrackedVec::new(
+        |project| EntityKey::Project(project.id),
+        |project| EntityPayload::Project(project.clone()),
+    )
+}
+
+pub(crate) fn topic_new() -> TrackedVec<crate::domain::Topic> {
+    TrackedVec::new(
+        |topic| EntityKey::Topic(topic.id),
+        |topic| EntityPayload::Topic(topic.clone()),
+    )
+}
+
+pub(crate) fn request_new() -> TrackedVec<crate::request_planning::ResearchRequest> {
+    TrackedVec::new(
+        |request| EntityKey::ResearchRequest(request.id),
+        |request| EntityPayload::ResearchRequest(request.clone()),
+    )
+}
+
+pub(crate) fn policy_new() -> TrackedVec<crate::domain::StagePolicy> {
+    TrackedVec::new(
+        |policy| EntityKey::policy(policy.stage),
+        |policy| EntityPayload::Policy(policy.clone()),
+    )
+}
+
+pub(crate) fn task_from(
+    items: Vec<crate::domain::Task>,
+) -> Result<TrackedVec<crate::domain::Task>, String> {
+    TrackedVec::from_vec(
+        items,
+        |task| EntityKey::Task(task.id),
+        |task| EntityPayload::Task(task.clone()),
+    )
+}
+
+pub(crate) fn project_from(
+    items: Vec<crate::domain::Project>,
+) -> Result<TrackedVec<crate::domain::Project>, String> {
+    TrackedVec::from_vec(
+        items,
+        |project| EntityKey::Project(project.id),
+        |project| EntityPayload::Project(project.clone()),
+    )
+}
+
+pub(crate) fn topic_from(
+    items: Vec<crate::domain::Topic>,
+) -> Result<TrackedVec<crate::domain::Topic>, String> {
+    TrackedVec::from_vec(
+        items,
+        |topic| EntityKey::Topic(topic.id),
+        |topic| EntityPayload::Topic(topic.clone()),
+    )
+}
+
+pub(crate) fn request_from(
+    items: Vec<crate::request_planning::ResearchRequest>,
+) -> Result<TrackedVec<crate::request_planning::ResearchRequest>, String> {
+    TrackedVec::from_vec(
+        items,
+        |request| EntityKey::ResearchRequest(request.id),
+        |request| EntityPayload::ResearchRequest(request.clone()),
+    )
+}
+
+pub(crate) fn policy_from(
+    items: Vec<crate::domain::StagePolicy>,
+) -> Result<TrackedVec<crate::domain::StagePolicy>, String> {
+    TrackedVec::from_vec(
+        items,
+        |policy| EntityKey::policy(policy.stage),
+        |policy| EntityPayload::Policy(policy.clone()),
+    )
 }
 
 pub(crate) fn automation_new() -> TrackedVec<crate::automation::AutomationDefinition> {

@@ -354,11 +354,11 @@ mod tests {
         let root = temp();
         let path = root.join("workspace.sqlite3");
         let mut original = Store::mock();
-        original.default_model = "test/model".into();
-        original.projects[0].directory = root.join("projects/project-1").to_string_lossy().into();
+        original.set_default_model("test/model".into());
+        original.project_at_mut(0).unwrap().directory = root.join("projects/project-1").to_string_lossy().into();
         original.set_stage(1, Stage::InProgress).unwrap();
         original.simulate_run(1).unwrap();
-        let directory = original.projects[0].directory.clone();
+        let directory = original.project_at_mut(0).unwrap().directory.clone();
         {
             let mut run = original.last_run_mut().unwrap();
             run.directory = directory;
@@ -374,7 +374,7 @@ mod tests {
         assert_eq!(load(&path, &root).unwrap(), Some(original.clone()));
         assert_eq!(std::fs::read(&path).unwrap(), bytes);
         let mut invalid = original.clone();
-        invalid.projects[0].directory = root.join("bad\\name").to_string_lossy().into();
+        invalid.project_at_mut(0).unwrap().directory = root.join("bad\\name").to_string_lossy().into();
         assert!(save(&path, &root, &invalid).is_err());
         assert_eq!(std::fs::read(&path).unwrap(), bytes);
         // A failed upgrade rolls back both data and schema version.
@@ -390,8 +390,8 @@ mod tests {
         std::fs::rename(&root, &moved).unwrap();
         let restored = Storage::new(moved.join("workspace.sqlite3")).load().unwrap().unwrap();
         let mut expected = original;
-        expected.projects[0].directory = moved.join("projects/project-1").to_string_lossy().into();
-        let expected_directory = expected.projects[0].directory.clone();
+        expected.project_at_mut(0).unwrap().directory = moved.join("projects/project-1").to_string_lossy().into();
+        let expected_directory = expected.project_at_mut(0).unwrap().directory.clone();
         expected.last_run_mut().unwrap().directory = expected_directory;
         expected.last_run_mut().unwrap().workspace_source = Some(moved.to_string_lossy().into());
         assert_eq!(restored, expected);
@@ -403,9 +403,9 @@ mod tests {
         let root = temp();
         let path = root.join("workspace.sqlite3");
         let mut store = Store::mock();
-        store.default_model = "test/model".into();
-        store.projects[0].directory = root.join("projects/project-1").to_string_lossy().into();
-        std::fs::create_dir_all(&store.projects[0].directory).unwrap();
+        store.set_default_model("test/model".into());
+        store.project_at_mut(0).unwrap().directory = root.join("projects/project-1").to_string_lossy().into();
+        std::fs::create_dir_all(&store.project_at_mut(0).unwrap().directory).unwrap();
         std::fs::create_dir_all(root.join("automations")).unwrap();
         let automation_project = store
             .ensure_automation_project(root.join("automations").to_string_lossy().into())
@@ -443,8 +443,8 @@ mod tests {
         run.output = plan.into();
         let run_id = run.id;
         store.push_run(run);
-        store.research_requests[0].planning_run_id = Some(run_id);
-        let revision = store.research_requests[0].revision;
+        store.request_at_mut(0).unwrap().planning_run_id = Some(run_id);
+        let revision = store.request_at_mut(0).unwrap().revision;
         store
             .apply_automation_template(
                 id,
@@ -484,7 +484,7 @@ mod tests {
             .directory
             .clone();
         assert!(binding.input_signature.contains(&expected_directory));
-        assert_eq!(restored.projects[0].directory, moved.join("projects/project-1").to_string_lossy().to_string());
+        assert_eq!(restored.project_at_mut(0).unwrap().directory, moved.join("projects/project-1").to_string_lossy().to_string());
         assert!(restored.plan_binding_problem(definition).is_none());
         assert!(restored.planning_attempt_is_current(run_id));
         let stale = restored.runs().iter().find(|run| run.id == run_id + 1).unwrap();
@@ -498,9 +498,9 @@ mod tests {
         let root = temp();
         let path = root.join("workspace.sqlite3");
         let mut store = Store::mock();
-        store.default_model = "test/model".into();
-        store.projects[0].directory = root.join("projects/project-1").to_string_lossy().into();
-        std::fs::create_dir_all(&store.projects[0].directory).unwrap();
+        store.set_default_model("test/model".into());
+        store.project_at_mut(0).unwrap().directory = root.join("projects/project-1").to_string_lossy().into();
+        std::fs::create_dir_all(&store.project_at_mut(0).unwrap().directory).unwrap();
         let id = store
             .create_automation_draft(
                 1,
@@ -530,7 +530,7 @@ mod tests {
         unmatched.prompt.clear();
         store.push_run(owned);
         store.push_run(unmatched);
-        store.research_requests[0].planning_run_id = Some(owned_id);
+        store.request_at_mut(0).unwrap().planning_run_id = Some(owned_id);
         save(&path, &root, &store).unwrap();
         let db = Connection::open(&path).unwrap();
         db.execute(
@@ -550,8 +550,8 @@ mod tests {
         .unwrap();
         drop(db);
         let restored = Storage::new(path.clone()).load().unwrap().unwrap();
-        assert_eq!(restored.research_requests[0].expected_result, None);
-        assert_eq!(restored.research_requests[0].revision, 1);
+        assert_eq!(restored.request_at_mut(0).unwrap().expected_result, None);
+        assert_eq!(restored.request_at_mut(0).unwrap().revision, 1);
         assert_eq!(
             restored.runs().iter().find(|run| run.id == owned_id).unwrap().planning_owner.as_ref().unwrap().request_id,
             request
@@ -562,7 +562,7 @@ mod tests {
     fn legacy_fixture(root: &Path) -> (Storage, Store) {
         let storage = Storage::new(root.join("workspace.sqlite3"));
         let mut store = Store::empty();
-        store.projects[0].directory = root.join("projects/project-1").to_string_lossy().into();
+        store.project_at_mut(0).unwrap().directory = root.join("projects/project-1").to_string_lossy().into();
         save(storage.path(), Path::new("/old-storage-format"), &store).unwrap();
         Connection::open(storage.path()).unwrap().pragma_update(None, "user_version", 1).unwrap();
         (storage, store)

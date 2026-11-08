@@ -67,8 +67,8 @@ mod tests {
 
     fn failed_task() -> (Store, u64) {
         let mut store = Store::empty();
-        store.projects[0].directory = std::env::temp_dir().to_string_lossy().into_owned();
-        store.default_model = "test/model".into();
+        store.project_at_mut(0).unwrap().directory = std::env::temp_dir().to_string_lossy().into_owned();
+        store.set_default_model("test/model".into());
         let goal = store.create_research_goal("Goal".into(), "Scope".into(), 1).unwrap();
         store.push_run(store.prepare_run(goal).unwrap());
         let id = {
@@ -154,8 +154,8 @@ mod tests {
     #[test]
     fn changed_research_inputs_prevent_retry() {
         let mut store = Store::empty();
-        store.projects[0].directory = "/tmp".into();
-        store.default_model = "fixture/model".into();
+        store.project_at_mut(0).unwrap().directory = "/tmp".into();
+        store.set_default_model("fixture/model".into());
         let goal = store
             .create_research_goal("Market research".into(), "Scope".into(), 1)
             .unwrap();

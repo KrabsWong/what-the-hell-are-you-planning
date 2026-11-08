@@ -55,9 +55,9 @@ pub fn run() {
     );
     let path = root.join("workspace.json");
     let mut initial = Store::empty();
-    initial.projects[0].name = "半导体行业研究 · 批量验收".into();
-    initial.projects[0].directory = root.to_string_lossy().into_owned();
-    initial.projects.push(Project {
+    initial.project_at_mut(0).unwrap().name = "半导体行业研究 · 批量验收".into();
+    initial.project_at_mut(0).unwrap().directory = root.to_string_lossy().into_owned();
+    initial.push_project(Project {
         id: 2,
         name: "Other project".into(),
         key: "OTHER".into(),
@@ -65,16 +65,16 @@ pub fn run() {
         research_brief: String::new(),
         kind: crate::domain::ProjectKind::User,
     });
-    initial.default_model = "fixture/default".into();
-    initial.research_config.models = [
+    initial.set_default_model("fixture/default".into());
+    initial.research_config_mut().models = [
         "fixture/planner",
         "fixture/collector",
         "fixture/analyst",
         "fixture/adviser",
     ]
     .map(String::from);
-    initial.research_config.ego_path = ego.to_string_lossy().into_owned();
-    initial.opencode_path = cli.to_string_lossy().into_owned();
+    initial.research_config_mut().ego_path = ego.to_string_lossy().into_owned();
+    initial.set_opencode_path(cli.to_string_lossy().into_owned());
     let first = goal(&mut initial, "Existing planned research", 1);
     let steps = initial.apply_research_plan(first, PLAN).unwrap();
     let mut prior = initial.prepare_run(steps[0]).unwrap();
@@ -368,7 +368,7 @@ pub fn run() {
     idle(&mut cx, handle, &app);
     cx.update_window(handle, |_, _, cx| {
         let a = app.read(cx);
-        assert_eq!(a.scope, Scope::Project(1));
+        assert_eq!(a.scope(), Scope::Project(1));
         assert_eq!(a.selected, None);
         assert_eq!(a.store.research_children(paused_plan).len(), 3);
         assert!(matches!(
@@ -594,7 +594,7 @@ fn render_variants(root: &Path, store: &Store, first: u64, second: u64) {
             let dir = root.join(format!("{mode:?}-{width}"));
             std::fs::create_dir_all(&dir).unwrap();
             let mut saved = store.clone();
-            saved.appearance = mode;
+            saved.set_appearance(mode);
             let path = dir.join("workspace.json");
             Storage::new(path.clone()).save(&saved).unwrap();
             let mut cx = context();

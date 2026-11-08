@@ -12,3 +12,10 @@
 *.sqlite3-wal
 *.sqlite3-shm
 *.log
+
+# Local-only visual acceptance screenshots
+/doc/review-*/evidence/*.png
+/doc/review-*/evidence/*.jpg
+/doc/review-*/evidence/*.jpeg
+/doc/review-*/evidence/*.webp
+/doc/review-*/evidence/*.gif

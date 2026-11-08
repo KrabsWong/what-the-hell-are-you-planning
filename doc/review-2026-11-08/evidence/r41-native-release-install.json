@@ -1,0 +1,7 @@
+{
+  "bundle": "/Users/fuxingxing/workspaces/what-the-hell-are-you-planning/.local/native-review/Planning Native Review.app",
+  "source_sha256": "c684b245dda84a65838d864cd229b49c81b94a2af0a5bc7e4db1c9e669545ccf",
+  "installed_signed_sha256": "19ba50a90508dff4237e7703e71e1b12852a43f38bb161513e53973860b33382",
+  "bootstrap": "\"/Users/fuxingxing/workspaces/what-the-hell-are-you-planning/.local/native-review/T24-relocated-data\"",
+  "codesign_verified": true
+}

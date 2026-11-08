@@ -1,0 +1,13 @@
+Changed source files in isolated harness: ['workspace.rs', 'main.rs']
+ZIP integrity: {
+  "bad_member": null,
+  "members": [
+    "analysis/",
+    "analysis/analysis_3_P2-G1-A3_Analyze_the_evidence.md",
+    "evidence/",
+    "evidence/evidence_2_P2-G1-E2_Collect_public_evidence.md",
+    "README.md",
+    "report/",
+    "report/report_4_P2-G1-R4_Write_the_final_report.md"
+  ]
+}

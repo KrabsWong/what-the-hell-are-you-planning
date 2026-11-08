@@ -1,0 +1,1208 @@
+//! Focused offline acceptance for typed result presentation. No model or browser runs.
+use crate::{
+    app::{Scope, TaskApp},
+    appearance::Appearance,
+    automation::{
+        AutomationApproval, AutomationDefinition, AutomationOccurrence,
+        AutomationOccurrenceSnapshot, AutomationPolicy, AutomationShape, AutomationTemplate,
+        DefinitionStatus, OccurrenceStatus, TimeWindow, TriggerSource,
+    },
+    automation_schedule::{Schedule, ScheduleSpec},
+    domain::{Stage, Store},
+    persistence::Storage,
+    research::{self, ResearchKind, ResearchTask, Source},
+    result_presentation::{present_occurrence, present_run, EvidenceQuality, ResultKind},
+};
+use gpui_kit::{test::TestWindowExt, *};
+use std::{
+    path::Path,
+    sync::Arc,
+    time::Duration,
+};
+
+const PLAN: &str = r#"{"tasks":[{"title":"Collect evidence","instructions":"Collect","kind":"collect","depends_on":[]},{"title":"Analyze findings","instructions":"Analyze","kind":"analyze","depends_on":[0]},{"title":"Write report","instructions":"Report","kind":"advise","depends_on":[1]}]}"#;
+
+#[derive(Clone, Copy, Debug)]
+enum AutomationState {
+    QuickComplete,
+    QuickPartial,
+    QuickRunning,
+    QuickFailed,
+    QuickCancelled,
+    QuickStale,
+    QuickRegenerating,
+    ResearchComplete,
+    ResearchPartial,
+    ResearchRunning,
+    ResearchFailed,
+    ResearchCancelled,
+    ResearchRegenerating,
+    ResearchStale,
+    ResearchMultiGoalStale,
+}
+
+#[derive(Clone, Copy, Debug)]
+enum OrdinaryState {
+    Complete,
+    Partial,
+    Running,
+    Stale,
+    Failed,
+    Cancelled,
+    Regenerating,
+}
+
+pub fn run() {
+    let root = std::env::current_dir()
+        .unwrap()
+        .join(format!(".local/result-presentation-qa/{}", std::process::id()));
+    let _ = std::fs::remove_dir_all(&root);
+    std::fs::create_dir_all(&root).unwrap();
+    pure_checks();
+    render_matrix(&root);
+    copy_result_check(&root);
+    export_parity_check(&root).unwrap();
+    println!("Result presentation QA passed · {}", root.display());
+}
+
+#[derive(Clone, Debug)]
+struct ExpectedRender {
+    state: String,
+    report_runs: Vec<u64>,
+    no_final: bool,
+    progress: bool,
+}
+
+fn expected_render(store: &Store, occurrence: &AutomationOccurrence) -> ExpectedRender {
+    let presentation = present_occurrence(store, occurrence);
+    ExpectedRender {
+        state: presentation.state_label(),
+        report_runs: presentation
+            .reports
+            .iter()
+            .filter(|report| report.presentation.has_reader_body())
+            .filter_map(|report| report.presentation.run_id)
+            .collect(),
+        no_final: !presentation.has_final_report,
+        progress: !presentation.progress.is_empty(),
+    }
+}
+
+fn workspace(directory: &Path) -> Store {
+    let mut store = Store::mock();
+    store.projects[0].directory = directory.to_string_lossy().into();
+    store.default_model = "qa/result-presentation".into();
+    store.research_config.models =
+        ["qa/plan", "qa/collect", "qa/analyze", "qa/advise"].map(String::from);
+    store
+}
+
+fn add_run(
+    store: &mut Store,
+    task: u64,
+    occurrence: Option<u64>,
+    status: &str,
+    output: &str,
+) -> u64 {
+    let mut run = store.prepare_run(task).unwrap();
+    run.automation_occurrence_id = occurrence;
+    run.status = status.into();
+    run.output = output.into();
+    run.sources = vec![Source {
+        title: "Isolated QA source".into(),
+        url: "https://example.com/result-presentation".into(),
+        published_at: "2026-11-08 QA".into(),
+    }];
+    run.ended_at = Some(crate::opencode::timestamp());
+    run.exit_code = Some(0);
+    let id = run.id;
+    store.push_run(run);
+    id
+}
+
+fn add_definition(store: &mut Store, id: u64, shape: AutomationShape, version: u32) {
+    let schedule = Schedule {
+        spec: ScheduleSpec::Interval { minutes: 10 },
+        timezone: "UTC".into(),
+    };
+    let template = AutomationTemplate {
+        goals: vec![],
+        window_rule: Default::default(),
+    };
+    let approval = AutomationApproval {
+        version,
+        approved_at: 0,
+        template_signature: template.signature(),
+        schedule_signature: schedule.signature(),
+        plan_request_id: None,
+        plan_revision: None,
+        models: Default::default(),
+        agents: [None, None, None, None],
+        materials: vec![],
+    };
+    store.push_automation(AutomationDefinition {
+        id,
+        version,
+        project_id: 1,
+        shape,
+        name: "Result presentation QA".into(),
+        objective: "Exercise result quality states.".into(),
+        expected_result: "A readable report or an explicit no-report state.".into(),
+        schedule,
+        status: DefinitionStatus::Enabled,
+        template: Some(template),
+        plan_binding: None,
+        approval: Some(approval),
+        policy: AutomationPolicy::default(),
+        cursor: None,
+        anchor: None,
+        consecutive_failures: 0,
+        attention_reason: None,
+        created_at: 0,
+        updated_at: 0,
+    });
+}
+
+fn occurrence(
+    id: u64,
+    goals: Vec<u64>,
+    shape: AutomationShape,
+    status: OccurrenceStatus,
+    final_run_id: Option<u64>,
+    definition_version: u32,
+) -> AutomationOccurrence {
+    AutomationOccurrence {
+        id,
+        automation_id: 99,
+        definition_version,
+        source: TriggerSource::Manual,
+        trigger_key: format!("manual:{id}"),
+        scheduled_for: None,
+        requested_at: Some(100),
+        actual_started_at: Some(101),
+        timezone: "UTC".into(),
+        reference_time: 100,
+        data_window: TimeWindow::unresolved("QA fixture"),
+        snapshot: AutomationOccurrenceSnapshot {
+            objective: "Exercise result presentation.".into(),
+            expected_result: "A readable report or an explicit no-report state.".into(),
+            shape: Some(shape),
+            template: AutomationTemplate {
+                goals: vec![],
+                window_rule: Default::default(),
+            },
+            models: Default::default(),
+            agents: Default::default(),
+            materials: vec![],
+            policy: AutomationPolicy::default(),
+            approval_version: 1,
+            approval_signature: "qa".into(),
+        },
+        status,
+        reason: None,
+        research_goal_id: goals.first().copied(),
+        research_goal_ids: goals,
+        research_topic_id: None,
+        run_ids: vec![],
+        final_run_id,
+        unread: true,
+        skipped_count: 0,
+        skipped_from: None,
+        skipped_to: None,
+        created_at: 99,
+        deadline_at: None,
+        retry_requested_at: None,
+    }
+}
+
+fn quick_goal(store: &mut Store, occurrence_id: u64, status: &str, output: &str) -> (u64, u64, u64) {
+    let goal = store
+        .create_research_goal(
+            "Quick result QA".into(),
+            "A single direct answer step.".into(),
+            1,
+        )
+        .unwrap();
+    let task = store
+        .create_task("Answer the recurring question", 1, Stage::Planned, Some(goal))
+        .unwrap();
+    let task_ref = store.task_mut(task).unwrap();
+    task_ref.description = "Give the smallest complete answer.".into();
+    task_ref.research = Some(ResearchTask {
+        requires_approval: false,
+        kind: ResearchKind::Advise,
+        goal_id: goal,
+        depends_on: vec![],
+        space_name: "qa".into(),
+    });
+    let run = add_run(store, task, Some(occurrence_id), status, output);
+    if status == "Succeeded" {
+        store.set_stage(task, Stage::Done).unwrap();
+    }
+    (goal, task, run)
+}
+
+fn research_goal(store: &mut Store, _occurrence_id: u64) -> (u64, Vec<u64>) {
+    let goal = store
+        .create_research_goal(
+            "Research result QA".into(),
+            "Three ordered steps used to exercise result states.".into(),
+            1,
+        )
+        .unwrap();
+    let steps = store.apply_research_plan(goal, PLAN).unwrap();
+    (goal, steps)
+}
+
+fn automation_fixture(directory: &Path, state: AutomationState) -> (Store, u64) {
+    let mut store = workspace(directory);
+    let shape = match state {
+        AutomationState::QuickComplete
+        | AutomationState::QuickPartial
+        | AutomationState::QuickRunning
+        | AutomationState::QuickFailed
+        | AutomationState::QuickCancelled
+        | AutomationState::QuickStale
+        | AutomationState::QuickRegenerating => AutomationShape::Quick,
+        _ => AutomationShape::Research,
+    };
+    let version = if matches!(
+        state,
+        AutomationState::ResearchRegenerating | AutomationState::QuickRegenerating
+    ) {
+        2
+    } else {
+        1
+    };
+    add_definition(&mut store, 99, shape, version);
+
+    match state {
+        AutomationState::QuickComplete => {
+            let (goal, _task, run) = quick_goal(&mut store, 31, "Succeeded", "Quick complete answer");
+            store.push_occurrence(occurrence(
+                31,
+                vec![goal],
+                shape,
+                OccurrenceStatus::Succeeded,
+                Some(run),
+                1,
+            ));
+            (store, 31)
+        }
+        AutomationState::QuickPartial => {
+            let (goal, _task, run) = quick_goal(
+                &mut store,
+                32,
+                "Succeeded",
+                &format!("{}\n\nQuick partial answer", research::EVIDENCE_GAP_NOTE),
+            );
+            store.push_occurrence(occurrence(
+                32,
+                vec![goal],
+                shape,
+                OccurrenceStatus::Succeeded,
+                Some(run),
+                1,
+            ));
+            (store, 32)
+        }
+        AutomationState::QuickRunning => {
+            let (goal, _task, run) = quick_goal(
+                &mut store,
+                33,
+                "Running",
+                "Checking the current value before answering",
+            );
+            store.push_occurrence(occurrence(
+                33,
+                vec![goal],
+                shape,
+                OccurrenceStatus::Running,
+                None,
+                1,
+            ));
+            let _ = run;
+            (store, 33)
+        }
+        AutomationState::QuickFailed => {
+            let (goal, _task, run) = quick_goal(
+                &mut store,
+                40,
+                "Failed",
+                r#"{"status":"complete","report":"unvalidated quick"#,
+            );
+            store.push_occurrence(occurrence(
+                40,
+                vec![goal],
+                shape,
+                OccurrenceStatus::Failed,
+                None,
+                1,
+            ));
+            let _ = run;
+            (store, 40)
+        }
+        AutomationState::QuickCancelled => {
+            let (goal, _task, run) = quick_goal(
+                &mut store,
+                41,
+                "Cancelled",
+                &format!("{}\n\nCancelled quick answer", research::EVIDENCE_GAP_NOTE),
+            );
+            store.push_occurrence(occurrence(
+                41,
+                vec![goal],
+                shape,
+                OccurrenceStatus::Cancelled,
+                None,
+                1,
+            ));
+            let _ = run;
+            (store, 41)
+        }
+        AutomationState::QuickStale => {
+            let (goal, task, run) = quick_goal(&mut store, 42, "Succeeded", "Quick old answer");
+            store
+                .task_mut(task)
+                .unwrap()
+                .description
+                .push_str(" changed after completion");
+            store.push_occurrence(occurrence(
+                42,
+                vec![goal],
+                shape,
+                OccurrenceStatus::Succeeded,
+                Some(run),
+                1,
+            ));
+            (store, 42)
+        }
+        AutomationState::QuickRegenerating => {
+            let (goal, task, run) = quick_goal(
+                &mut store,
+                43,
+                "Succeeded",
+                &format!("{}\n\nQuick previous answer", research::EVIDENCE_GAP_NOTE),
+            );
+            let mut regenerating = store
+                .runs()
+                .iter()
+                .find(|value| value.id == run)
+                .unwrap()
+                .clone();
+            regenerating.id = store.runs().iter().map(|value| value.id).max().unwrap_or(0) + 1;
+            regenerating.status = "Running".into();
+            regenerating.output = "Regenerating the quick answer".into();
+            regenerating.session_id = Some("ses_qa_quick_regeneration".into());
+            store.push_run(regenerating);
+            let _ = task;
+            store.push_occurrence(occurrence(
+                43,
+                vec![goal],
+                shape,
+                OccurrenceStatus::Succeeded,
+                Some(run),
+                1,
+            ));
+            (store, 43)
+        }
+        AutomationState::ResearchComplete => {
+            let (goal, steps) = research_goal(&mut store, 34);
+            add_run(&mut store, steps[0], Some(34), "Succeeded", "First goal evidence");
+            add_run(&mut store, steps[1], Some(34), "Succeeded", "First goal analysis");
+            let report = add_run(&mut store, steps[2], Some(34), "Succeeded", "First goal final report");
+            for task in &steps {
+                store.set_stage(*task, Stage::Done).unwrap();
+            }
+            let second_goal = store
+                .create_research_goal(
+                    "Second complete goal".into(),
+                    "A second required final report.".into(),
+                    1,
+                )
+                .unwrap();
+            let second_steps = store.apply_research_plan(second_goal, PLAN).unwrap();
+            add_run(&mut store, second_steps[0], Some(34), "Succeeded", "Second goal evidence");
+            add_run(&mut store, second_steps[1], Some(34), "Succeeded", "Second goal analysis");
+            add_run(&mut store, second_steps[2], Some(34), "Succeeded", "Second goal final report");
+            for task in &second_steps {
+                store.set_stage(*task, Stage::Done).unwrap();
+            }
+            store.push_occurrence(occurrence(
+                34,
+                vec![goal, second_goal],
+                shape,
+                OccurrenceStatus::Succeeded,
+                Some(report),
+                1,
+            ));
+            (store, 34)
+        }
+        AutomationState::ResearchPartial => {
+            let (goal, steps) = research_goal(&mut store, 35);
+            add_run(&mut store, steps[0], Some(35), "Succeeded", "First goal evidence");
+            add_run(&mut store, steps[1], Some(35), "Succeeded", "First goal analysis");
+            let report = add_run(
+                &mut store,
+                steps[2],
+                Some(35),
+                "Succeeded",
+                &format!("{}\n\nFirst goal partial final report", research::EVIDENCE_GAP_NOTE),
+            );
+            for task in &steps {
+                store.set_stage(*task, Stage::Done).unwrap();
+            }
+            let second_goal = store
+                .create_research_goal(
+                    "Second goal without final report".into(),
+                    "One completed evidence step but no final report.".into(),
+                    1,
+                )
+                .unwrap();
+            let second_steps = store.apply_research_plan(second_goal, PLAN).unwrap();
+            add_run(
+                &mut store,
+                second_steps[0],
+                Some(35),
+                "Succeeded",
+                "Second goal completed evidence",
+            );
+            store.set_stage(second_steps[0], Stage::Done).unwrap();
+            store.push_occurrence(occurrence(
+                35,
+                vec![goal, second_goal],
+                shape,
+                OccurrenceStatus::Succeeded,
+                Some(report),
+                1,
+            ));
+            (store, 35)
+        }
+        AutomationState::ResearchRunning => {
+            let (goal, steps) = research_goal(&mut store, 36);
+            add_run(&mut store, steps[0], Some(36), "Succeeded", "First goal evidence");
+            add_run(&mut store, steps[1], Some(36), "Succeeded", "First goal analysis");
+            add_run(&mut store, steps[2], Some(36), "Succeeded", "First goal final report");
+            for task in &steps {
+                store.set_stage(*task, Stage::Done).unwrap();
+            }
+            let second_goal = store
+                .create_research_goal(
+                    "Second running goal".into(),
+                    "A second goal is still analyzing.".into(),
+                    1,
+                )
+                .unwrap();
+            let second_steps = store.apply_research_plan(second_goal, PLAN).unwrap();
+            add_run(&mut store, second_steps[0], Some(36), "Succeeded", "Second goal evidence");
+            add_run(
+                &mut store,
+                second_steps[1],
+                Some(36),
+                "Running",
+                "Second goal analysis is running",
+            );
+            store.push_occurrence(occurrence(
+                36,
+                vec![goal, second_goal],
+                shape,
+                OccurrenceStatus::Running,
+                None,
+                1,
+            ));
+            (store, 36)
+        }
+        AutomationState::ResearchFailed => {
+            let (goal, steps) = research_goal(&mut store, 37);
+            add_run(&mut store, steps[0], Some(37), "Succeeded", "First goal evidence");
+            add_run(&mut store, steps[1], Some(37), "Succeeded", "First goal analysis");
+            add_run(&mut store, steps[2], Some(37), "Succeeded", "First goal retained final report");
+            for task in &steps {
+                store.set_stage(*task, Stage::Done).unwrap();
+            }
+            let second_goal = store
+                .create_research_goal(
+                    "Second failed goal".into(),
+                    "A second goal failed during analysis.".into(),
+                    1,
+                )
+                .unwrap();
+            let second_steps = store.apply_research_plan(second_goal, PLAN).unwrap();
+            add_run(&mut store, second_steps[0], Some(37), "Succeeded", "Second goal evidence remains");
+            add_run(&mut store, second_steps[1], Some(37), "Failed", "Second goal analysis failed");
+            store.push_occurrence(occurrence(
+                37,
+                vec![goal, second_goal],
+                shape,
+                OccurrenceStatus::Failed,
+                None,
+                1,
+            ));
+            (store, 37)
+        }
+        AutomationState::ResearchCancelled => {
+            let (goal, steps) = research_goal(&mut store, 38);
+            add_run(&mut store, steps[0], Some(38), "Succeeded", "First goal evidence");
+            add_run(&mut store, steps[1], Some(38), "Succeeded", "First goal analysis");
+            add_run(&mut store, steps[2], Some(38), "Succeeded", "First goal retained final report");
+            for task in &steps {
+                store.set_stage(*task, Stage::Done).unwrap();
+            }
+            let second_goal = store
+                .create_research_goal(
+                    "Second cancelled goal".into(),
+                    "A second goal was stopped during analysis.".into(),
+                    1,
+                )
+                .unwrap();
+            let second_steps = store.apply_research_plan(second_goal, PLAN).unwrap();
+            add_run(&mut store, second_steps[0], Some(38), "Succeeded", "Second goal evidence remains");
+            add_run(&mut store, second_steps[1], Some(38), "Cancelled", "Stopped during second goal analysis");
+            store.push_occurrence(occurrence(
+                38,
+                vec![goal, second_goal],
+                shape,
+                OccurrenceStatus::Cancelled,
+                None,
+                1,
+            ));
+            (store, 38)
+        }
+        AutomationState::ResearchStale => {
+            let (goal, steps) = research_goal(&mut store, 45);
+            add_run(&mut store, steps[0], Some(45), "Succeeded", "Stale goal evidence");
+            add_run(&mut store, steps[1], Some(45), "Succeeded", "Stale goal analysis");
+            let report = add_run(
+                &mut store,
+                steps[2],
+                Some(45),
+                "Succeeded",
+                "Stale goal previous report",
+            );
+            for task in &steps {
+                store.set_stage(*task, Stage::Done).unwrap();
+            }
+            store
+                .task_mut(steps[2])
+                .unwrap()
+                .description
+                .push_str(" changed after completion");
+            store.push_occurrence(occurrence(
+                45,
+                vec![goal],
+                shape,
+                OccurrenceStatus::Succeeded,
+                Some(report),
+                1,
+            ));
+            (store, 45)
+        }
+        AutomationState::ResearchMultiGoalStale => {
+            let (first_goal, first_steps) = research_goal(&mut store, 46);
+            add_run(&mut store, first_steps[0], Some(46), "Succeeded", "Stale first evidence");
+            add_run(&mut store, first_steps[1], Some(46), "Succeeded", "Stale first analysis");
+            let stale_report = add_run(
+                &mut store,
+                first_steps[2],
+                Some(46),
+                "Succeeded",
+                "Stale first goal report",
+            );
+            for task in &first_steps {
+                store.set_stage(*task, Stage::Done).unwrap();
+            }
+            store
+                .task_mut(first_steps[2])
+                .unwrap()
+                .description
+                .push_str(" changed after completion");
+
+            let second_goal = store
+                .create_research_goal(
+                    "Current second goal".into(),
+                    "A current final report remains inspectable beside stale history.".into(),
+                    1,
+                )
+                .unwrap();
+            let second_steps = store.apply_research_plan(second_goal, PLAN).unwrap();
+            add_run(&mut store, second_steps[0], Some(46), "Succeeded", "Second goal evidence");
+            add_run(&mut store, second_steps[1], Some(46), "Succeeded", "Second goal analysis");
+            add_run(
+                &mut store,
+                second_steps[2],
+                Some(46),
+                "Succeeded",
+                "Current second goal report",
+            );
+
+            store.push_occurrence(occurrence(
+                46,
+                vec![first_goal, second_goal],
+                shape,
+                OccurrenceStatus::Succeeded,
+                Some(stale_report),
+                1,
+            ));
+            (store, 46)
+        }
+        AutomationState::ResearchRegenerating => {
+            let (goal, steps) = research_goal(&mut store, 39);
+            add_run(&mut store, steps[0], Some(39), "Succeeded", "First goal evidence");
+            add_run(&mut store, steps[1], Some(39), "Succeeded", "First goal analysis");
+            let report = add_run(
+                &mut store,
+                steps[2],
+                Some(39),
+                "Succeeded",
+                &format!("{}\n\nPrevious partial first goal report", research::EVIDENCE_GAP_NOTE),
+            );
+            for task in &steps {
+                store.set_stage(*task, Stage::Done).unwrap();
+            }
+            let mut regenerating = store
+                .runs()
+                .iter()
+                .find(|run| run.id == report)
+                .unwrap()
+                .clone();
+            regenerating.id = store.runs().iter().map(|run| run.id).max().unwrap_or(0) + 1;
+            regenerating.status = "Running".into();
+            regenerating.output = "Regenerating the first goal report from existing evidence".into();
+            regenerating.session_id = Some("ses_qa_regeneration".into());
+            store.push_run(regenerating);
+
+            let second_goal = store
+                .create_research_goal(
+                    "Second complete goal during regeneration".into(),
+                    "A second goal remains complete while the first is regenerated.".into(),
+                    1,
+                )
+                .unwrap();
+            let second_steps = store.apply_research_plan(second_goal, PLAN).unwrap();
+            add_run(&mut store, second_steps[0], Some(39), "Succeeded", "Second goal evidence");
+            add_run(&mut store, second_steps[1], Some(39), "Succeeded", "Second goal analysis");
+            add_run(&mut store, second_steps[2], Some(39), "Succeeded", "Second goal complete report");
+            for task in &second_steps {
+                store.set_stage(*task, Stage::Done).unwrap();
+            }
+            // Definition is v2 while the occurrence keeps its frozen v1 snapshot.
+            store.push_occurrence(occurrence(
+                39,
+                vec![goal, second_goal],
+                shape,
+                OccurrenceStatus::Succeeded,
+                Some(report),
+                1,
+            ));
+            (store, 39)
+        }
+    }
+}
+
+fn ordinary_fixture(directory: &Path, state: OrdinaryState) -> (Store, u64, u64) {
+    let mut store = workspace(directory);
+    let goal = store
+        .create_research_goal(
+            "Ordinary research result QA".into(),
+            "Three steps used to exercise ordinary result presentation.".into(),
+            1,
+        )
+        .unwrap();
+    let steps = store.apply_research_plan(goal, PLAN).unwrap();
+    add_run(&mut store, steps[0], None, "Succeeded", "Collected evidence body");
+    add_run(&mut store, steps[1], None, "Succeeded", "Analyzed findings body");
+    let report_status = match state {
+        OrdinaryState::Running => "Running",
+        OrdinaryState::Failed => "Failed",
+        OrdinaryState::Cancelled => "Cancelled",
+        _ => "Succeeded",
+    };
+    let output = match state {
+        OrdinaryState::Partial => {
+            format!("{}\n\nOrdinary partial report body", research::EVIDENCE_GAP_NOTE)
+        }
+        OrdinaryState::Running => "Writing the report from collected evidence".into(),
+        OrdinaryState::Failed => {
+            r#"{"status":"complete","report":"unvalidated raw envelope"#.into()
+        }
+        OrdinaryState::Cancelled => {
+            r#"{"status":"partial","report":"cancelled raw envelope"#.into()
+        }
+        _ => "Ordinary complete report body".into(),
+    };
+    let report = add_run(&mut store, steps[2], None, report_status, &output);
+    if matches!(
+        state,
+        OrdinaryState::Complete
+            | OrdinaryState::Partial
+            | OrdinaryState::Stale
+            | OrdinaryState::Regenerating
+    ) {
+        for task in &steps {
+            store.set_stage(*task, Stage::Done).unwrap();
+        }
+    }
+    if matches!(state, OrdinaryState::Regenerating) {
+        let mut active = store
+            .runs()
+            .iter()
+            .find(|run| run.id == report)
+            .unwrap()
+            .clone();
+        active.id = store.runs().iter().map(|run| run.id).max().unwrap_or(0) + 1;
+        active.status = "Running".into();
+        active.output = "Regenerating the ordinary report".into();
+        active.session_id = Some("ses_qa_ordinary_regeneration".into());
+        store.push_run(active);
+    }
+    if matches!(state, OrdinaryState::Stale) {
+        store
+            .task_mut(steps[2])
+            .unwrap()
+            .description
+            .push_str(" changed after completion");
+    }
+    (store, steps[2], report)
+}
+
+fn pure_checks() {
+    let directory = std::env::temp_dir().join(format!(
+        "result-presentation-pure-{}",
+        std::process::id()
+    ));
+    std::fs::create_dir_all(&directory).unwrap();
+
+    for state in [
+        AutomationState::QuickComplete,
+        AutomationState::QuickPartial,
+        AutomationState::QuickRunning,
+        AutomationState::QuickFailed,
+        AutomationState::QuickCancelled,
+        AutomationState::QuickStale,
+        AutomationState::QuickRegenerating,
+        AutomationState::ResearchComplete,
+        AutomationState::ResearchPartial,
+        AutomationState::ResearchRunning,
+        AutomationState::ResearchFailed,
+        AutomationState::ResearchCancelled,
+        AutomationState::ResearchRegenerating,
+        AutomationState::ResearchStale,
+        AutomationState::ResearchMultiGoalStale,
+    ] {
+        let (store, occurrence_id) = automation_fixture(&directory, state);
+        let occurrence = store.occurrence(occurrence_id).unwrap();
+        let presentation = present_occurrence(&store, occurrence);
+        match state {
+            AutomationState::QuickComplete | AutomationState::ResearchComplete => {
+                assert_eq!(presentation.kind, ResultKind::FinalReport);
+                assert_eq!(presentation.quality, EvidenceQuality::Complete);
+                assert!(presentation.has_final_report);
+                assert!(presentation.notice.is_none());
+            }
+            AutomationState::QuickPartial => {
+                assert_eq!(presentation.kind, ResultKind::FinalReport);
+                assert_eq!(presentation.quality, EvidenceQuality::Partial);
+                assert!(presentation.has_final_report);
+                assert!(presentation.notice.is_some());
+                assert!(!presentation.reader_markdown.contains(research::EVIDENCE_GAP_NOTE));
+            }
+            AutomationState::ResearchPartial => {
+                assert_eq!(presentation.kind, ResultKind::PartialPeriod);
+                assert!(!presentation.has_final_report);
+                assert_eq!(presentation.quality, EvidenceQuality::Incomplete);
+                assert!(presentation.reports.iter().any(|report| {
+                    report.presentation.quality == EvidenceQuality::Partial
+                        && report.presentation.notice.is_some()
+                }));
+                assert!(presentation.reports.iter().any(|report| {
+                    report.presentation.reader_markdown == "Second goal completed evidence"
+                }));
+            }
+            AutomationState::QuickRunning => {
+                assert_eq!(presentation.kind, ResultKind::LiveProgress);
+                assert!(!presentation.has_final_report);
+                assert!(presentation.reader_markdown.is_empty());
+            }
+            AutomationState::ResearchRunning => {
+                assert_eq!(presentation.kind, ResultKind::PartialPeriod);
+                assert!(!presentation.has_final_report);
+                assert!(!presentation.progress.is_empty());
+                assert!(presentation.reports.iter().any(|report| {
+                    report.presentation.reader_markdown == "First goal final report"
+                }));
+            }
+            AutomationState::QuickFailed | AutomationState::QuickCancelled => {
+                assert!(!presentation.has_final_report);
+                assert_ne!(presentation.kind, ResultKind::FinalReport);
+                assert!(presentation.reader_text().is_empty());
+            }
+            AutomationState::QuickStale => {
+                assert!(!presentation.has_final_report);
+                assert_eq!(presentation.quality, EvidenceQuality::UnverifiedLegacy);
+                assert!(presentation.freshness.stale_input);
+            }
+            AutomationState::ResearchStale => {
+                assert!(!presentation.has_final_report);
+                assert_eq!(presentation.quality, EvidenceQuality::UnverifiedLegacy);
+                assert!(presentation.freshness.stale_input);
+                assert!(!presentation.freshness.previous_version);
+                assert!(presentation
+                    .reports
+                    .iter()
+                    .any(|report| report.presentation.reader_markdown == "Stale goal previous report"));
+                assert!(!presentation.reader_text().contains("{\"status\""));
+            }
+            AutomationState::ResearchMultiGoalStale => {
+                assert_eq!(presentation.kind, ResultKind::PartialPeriod);
+                assert!(!presentation.has_final_report);
+                assert!(presentation.freshness.stale_input);
+                assert!(presentation.reports.iter().any(|report| {
+                    report.presentation.reader_markdown == "Stale first goal report"
+                }));
+                assert!(presentation.reports.iter().any(|report| {
+                    report.presentation.has_final_report
+                        && report.presentation.reader_markdown == "Current second goal report"
+                }));
+            }
+            AutomationState::QuickRegenerating | AutomationState::ResearchRegenerating => {
+                assert_eq!(presentation.quality, EvidenceQuality::Partial);
+                assert!(presentation.has_final_report);
+                assert!(presentation.freshness.previous_version);
+                assert!(presentation.freshness.regenerating);
+                assert!(presentation.notice.is_some());
+            }
+            AutomationState::ResearchFailed | AutomationState::ResearchCancelled => {
+                assert!(!presentation.has_final_report);
+                assert_ne!(presentation.kind, ResultKind::FinalReport);
+                assert!(presentation.reports.iter().any(|report| {
+                    report.presentation.reader_markdown.contains("evidence")
+                        || report.presentation.reader_markdown.contains("Evidence")
+                }));
+            }
+        }
+    }
+
+    for state in [
+        OrdinaryState::Complete,
+        OrdinaryState::Partial,
+        OrdinaryState::Running,
+        OrdinaryState::Stale,
+        OrdinaryState::Failed,
+        OrdinaryState::Cancelled,
+        OrdinaryState::Regenerating,
+    ] {
+        let (store, _task, run_id) = ordinary_fixture(&directory, state);
+        let run = store.runs().iter().find(|run| run.id == run_id).unwrap();
+        let presentation = present_run(&store, run);
+        match state {
+            OrdinaryState::Complete => {
+                assert_eq!(presentation.kind, ResultKind::FinalReport);
+                assert_eq!(presentation.quality, EvidenceQuality::Complete);
+                assert!(presentation.has_final_report);
+            }
+            OrdinaryState::Partial => {
+                assert_eq!(presentation.quality, EvidenceQuality::Partial);
+                assert!(presentation.notice.is_some());
+                assert!(presentation.reader_text().contains("Evidence gaps:"));
+            }
+            OrdinaryState::Running => {
+                assert_eq!(presentation.kind, ResultKind::LiveProgress);
+                assert!(presentation.reader_markdown.is_empty());
+            }
+            OrdinaryState::Stale => {
+                assert!(presentation.freshness.stale_input);
+                assert!(!presentation.has_final_report);
+                assert!(!presentation.reader_markdown.is_empty());
+            }
+            OrdinaryState::Failed | OrdinaryState::Cancelled => {
+                assert_eq!(presentation.quality, EvidenceQuality::NotValidated);
+                assert!(presentation.reader_markdown.is_empty());
+                assert!(!presentation.reader_text().contains("raw envelope"));
+            }
+            OrdinaryState::Regenerating => {
+                assert!(presentation.freshness.regenerating);
+                assert!(presentation.has_final_report);
+            }
+        }
+    }
+    let _ = std::fs::remove_dir_all(&directory);
+}
+
+fn render_matrix(root: &Path) {
+    for (width, height) in [(1440., 920.), (1000., 680.)] {
+        for mode in [Appearance::Light, Appearance::Dark] {
+            let directory = root.join(format!("{mode:?}-{width}"));
+            std::fs::create_dir_all(&directory).unwrap();
+            for (state, name) in [
+                (AutomationState::QuickComplete, "quick-complete"),
+                (AutomationState::QuickPartial, "quick-partial"),
+                (AutomationState::QuickRunning, "quick-running"),
+                (AutomationState::QuickFailed, "quick-failed"),
+                (AutomationState::QuickCancelled, "quick-cancelled"),
+                (AutomationState::QuickStale, "quick-stale"),
+                (AutomationState::QuickRegenerating, "quick-regenerating"),
+                (AutomationState::ResearchComplete, "research-complete"),
+                (AutomationState::ResearchPartial, "research-partial"),
+                (AutomationState::ResearchRunning, "research-running"),
+                (AutomationState::ResearchFailed, "research-failed"),
+                (AutomationState::ResearchCancelled, "research-cancelled"),
+                (AutomationState::ResearchRegenerating, "research-regenerating"),
+                (AutomationState::ResearchStale, "research-stale"),
+                (AutomationState::ResearchMultiGoalStale, "research-multigoal-stale"),
+            ] {
+                let (mut store, occurrence_id) = automation_fixture(&directory, state);
+                store.appearance = mode;
+                let occurrence = store.occurrence(occurrence_id).unwrap();
+                let expected = expected_render(&store, occurrence);
+                let path = directory.join(format!("{name}.sqlite3"));
+                Storage::new(path.clone()).save(&store).unwrap();
+                screenshot_automation(
+                    store,
+                    &path,
+                    occurrence_id,
+                    &directory,
+                    &format!("{name}.png"),
+                    width,
+                    height,
+                    match state {
+                        AutomationState::QuickRegenerating | AutomationState::ResearchRegenerating => {
+                            &[(-420., "body")][..]
+                        }
+                        AutomationState::ResearchComplete
+                        | AutomationState::ResearchRunning
+                        | AutomationState::ResearchFailed
+                        | AutomationState::ResearchCancelled
+                        | AutomationState::ResearchPartial => &[(-350., "second-goal")][..],
+                        AutomationState::ResearchMultiGoalStale => {
+                            &[(-420., "reports"), (-1200., "current")][..]
+                        }
+                        _ => &[][..],
+                    },
+                    expected,
+                );
+            }
+            for (state, name) in [
+                (OrdinaryState::Complete, "ordinary-complete"),
+                (OrdinaryState::Partial, "ordinary-partial"),
+                (OrdinaryState::Running, "ordinary-running"),
+                (OrdinaryState::Stale, "ordinary-stale"),
+                (OrdinaryState::Failed, "ordinary-failed"),
+                (OrdinaryState::Cancelled, "ordinary-cancelled"),
+                (OrdinaryState::Regenerating, "ordinary-regenerating"),
+            ] {
+                let (mut store, task, run) = ordinary_fixture(&directory, state);
+                store.appearance = mode;
+                let path = directory.join(format!("{name}.sqlite3"));
+                Storage::new(path.clone()).save(&store).unwrap();
+                screenshot_ordinary(
+                    store,
+                    &path,
+                    task,
+                    run,
+                    &directory,
+                    &format!("{name}.png"),
+                    width,
+                    height,
+                );
+            }
+        }
+    }
+}
+
+fn with_app<F>(
+    store: Store,
+    path: &Path,
+    width: f32,
+    height: f32,
+    configure: F,
+) -> (HeadlessAppContext, AnyWindowHandle)
+where
+    F: FnOnce(&mut TaskApp, &mut Window, &mut Context<TaskApp>),
+{
+    let mut cx = HeadlessAppContext::with_platform(
+        platform::current_platform(true).text_system(),
+        Arc::new(crate::ui_assets::AppAssets),
+        platform::current_headless_renderer,
+    );
+    cx.update(init);
+    let handle = cx
+        .open_window(size(px(width), px(height)), |w, cx| {
+            let view = cx.new(|cx| TaskApp::new_mock(w, cx));
+            view.update(cx, |a, cx| {
+                a.attach_storage(Storage::new(path.to_path_buf()), w, cx);
+                assert!(a.storage_error.is_empty(), "{}", a.storage_error);
+                let appearance = store.appearance;
+                a.store = store;
+                a.set_appearance(appearance, w, cx);
+                configure(a, w, cx);
+                cx.notify();
+            });
+            cx.new(|cx| base::Root::new(view, w, cx))
+        })
+        .unwrap()
+        .into();
+    (cx, handle)
+}
+
+fn screenshot_automation(
+    store: Store,
+    path: &Path,
+    occurrence: u64,
+    directory: &Path,
+    name: &str,
+    width: f32,
+    height: f32,
+    scrolls: &[(f32, &str)],
+    expected: ExpectedRender,
+) {
+    let (mut cx, handle) = with_app(store, path, width, height, |a, _, _| {
+        a.scope = Scope::AutomationRuns;
+        a.automation_ui.selected = Some(99);
+        a.automation_ui.result_dialog = Some(occurrence);
+    });
+    screenshot(&mut cx, handle, directory, name);
+    cx.update_window(handle, |_, w, _| {
+        let state = w
+            .find("automation-result-state")
+            .label()
+            .map(str::to_string)
+            .unwrap_or_default();
+        assert_eq!(state, expected.state);
+        for run in &expected.report_runs {
+            w.find(format!("automation-report-body-{occurrence}-{run}"));
+        }
+        if expected.no_final {
+            w.find("automation-no-final-notice");
+            assert!(!state.starts_with("Final report"), "{state}");
+        }
+        if expected.progress {
+            w.find("automation-live-progress");
+        }
+        if name.contains("stale") {
+            assert!(state.contains("Stale input"), "{state}");
+            assert!(!state.contains("Original approved version"), "{state}");
+        }
+    })
+    .unwrap();
+    for (delta, suffix) in scrolls {
+        cx.update_window(handle, |_, w, cx| {
+            w.render_frame(cx);
+            w.scroll(
+                "automation-result-body",
+                ScrollDelta::Pixels(point(px(0.), px(*delta))),
+                cx,
+            );
+        })
+        .unwrap();
+        let body_name = name.replace(".png", &format!("-{suffix}.png"));
+        screenshot(&mut cx, handle, directory, &body_name);
+    }
+}
+
+fn screenshot_ordinary(
+    store: Store,
+    path: &Path,
+    task: u64,
+    run: u64,
+    directory: &Path,
+    name: &str,
+    width: f32,
+    height: f32,
+) {
+    let (mut cx, handle) = with_app(store, path, width, height, |a, _, _| {
+        a.scope = Scope::Runs;
+        a.task_result_context = Some(task);
+        a.selected_run = Some(run);
+        a.show_run_details = false;
+        a.show_run_result = true;
+    });
+    screenshot(&mut cx, handle, directory, name);
+}
+
+fn screenshot(
+    cx: &mut HeadlessAppContext,
+    handle: AnyWindowHandle,
+    directory: &Path,
+    name: &str,
+) {
+    for _ in 0..4 {
+        cx.run_until_parked();
+        cx.update_window(handle, |_, w, cx| w.render_frame(cx))
+            .unwrap();
+        std::thread::sleep(Duration::from_millis(20));
+    }
+    cx.capture_screenshot(handle)
+        .unwrap()
+        .save(directory.join(name))
+        .unwrap();
+}
+
+fn copy_result_check(root: &Path) {
+    let directory = root.join("copy-result");
+    std::fs::create_dir_all(&directory).unwrap();
+    let (mut store, task, run) = ordinary_fixture(&directory, OrdinaryState::Partial);
+    store.appearance = Appearance::Light;
+    let expected = present_run(&store, store.runs().iter().find(|value| value.id == run).unwrap())
+        .reader_text();
+    let path = directory.join("copy.sqlite3");
+    Storage::new(path.clone()).save(&store).unwrap();
+    let (mut cx, handle) = with_app(store, &path, 1000., 680., |a, _, _| {
+        a.scope = Scope::Runs;
+        a.task_result_context = Some(task);
+        a.selected_run = Some(run);
+        a.show_run_details = false;
+        a.show_run_result = true;
+    });
+    let previous = cx.update(|cx| cx.read_from_clipboard());
+    cx.update_window(handle, |_, w, cx| {
+        w.render_frame(cx);
+        w.click("run-actions-menu", cx);
+        w.render_frame(cx);
+        w.click(3usize, cx);
+    })
+    .unwrap();
+    cx.run_until_parked();
+    let copied = cx
+        .update(|cx| cx.read_from_clipboard())
+        .and_then(|item| item.text())
+        .map(|text| text.to_string())
+        .unwrap_or_default();
+    cx.update(|cx| {
+        cx.write_to_clipboard(previous.unwrap_or_else(|| ClipboardItem::new_string(String::new())))
+    });
+    assert_eq!(copied, expected);
+    assert!(copied.contains("Ordinary partial report body"));
+    assert!(copied.contains("Evidence gaps:"));
+    assert!(!copied.contains(research::EVIDENCE_GAP_NOTE));
+    println!("Copy result matches reader body and notice");
+}
+
+fn export_parity_check(root: &Path) -> Result<(), String> {
+    let directory = root.join("export-parity");
+    std::fs::create_dir_all(&directory).unwrap();
+    let (store, task, run) = ordinary_fixture(&directory, OrdinaryState::Partial);
+    let expected = present_run(&store, store.runs().iter().find(|value| value.id == run).unwrap())
+        .reader_text();
+    let goal = store
+        .task(task)
+        .and_then(|task| task.parent_id)
+        .ok_or("The export fixture lost its goal.")?;
+    let export = store.research_export(goal)?;
+    let (_, bytes) = export
+        .files
+        .iter()
+        .find(|(name, _)| name.starts_with("report/"))
+        .ok_or("The export fixture lost its report file.")?;
+    let markdown = String::from_utf8(bytes.clone()).map_err(|error| error.to_string())?;
+    if !markdown.starts_with(&expected) {
+        return Err("Exported report does not start with the shared reader body and notice.".into());
+    }
+    if markdown.matches(research::EVIDENCE_GAP_NOTICE).count() != 1 {
+        return Err("Exported report duplicated the evidence notice.".into());
+    }
+    if markdown.contains(research::EVIDENCE_GAP_NOTE) {
+        return Err("Exported report leaked the internal evidence marker.".into());
+    }
+    println!("Export report matches reader body and notice");
+    Ok(())
+}

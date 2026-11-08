@@ -1,0 +1,9 @@
+{
+  "command": "PATH=/opt/homebrew/opt/node@24/bin:$PATH cargo test --features qa --quiet",
+  "exit_code": 0,
+  "unit_passed": 635,
+  "unit_ignored": 2,
+  "dispatch_crash_passed": 6,
+  "persistence_crash_passed": 3,
+  "release_acceptance": false
+}

@@ -1,0 +1,6 @@
+
+thread 'main' (7958400) panicked at src/simplify_qa.rs:202:17:
+assertion `left == right` failed
+  left: 79.5px
+ right: 81.5px
+note: run with `RUST_BACKTRACE=1` environment variable to display a backtrace

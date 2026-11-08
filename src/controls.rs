@@ -1,8 +1,9 @@
 //! Shared action affordances. Keep geometry here and state colors in appearance.rs.
+use crate::appearance::palette;
 use gpui_kit::{
     component::{
         Selectable,
-        button::{Button, ButtonVariants},
+        button::{Button, ButtonCustomVariant, ButtonVariants},
     },
     prelude::FluentBuilder,
     *,
@@ -15,8 +16,16 @@ pub fn button(id: impl Into<ElementId>, text: impl Into<SharedString>) -> Button
         .px_3()
         .rounded(px(6.))
 }
-/// Auxiliary actions stay visible without competing with the page's main action.
+/// Shared neutral secondary action. The surface and full border stay visible at
+/// rest so an action is recognizable without hovering (DESIGN: Secondary).
 pub fn quiet_button(id: impl Into<ElementId>, text: impl Into<SharedString>) -> Button {
+    button(id, text)
+}
+/// Documented compound exception: rows, tree items, segmented tabs and menu
+/// entries already own their surface, so a second border would read as a nested
+/// control. Use this only for those compound targets, never for standalone
+/// actions such as Cancel, Close, Open or Settings.
+pub fn row_button(id: impl Into<ElementId>, text: impl Into<SharedString>) -> Button {
     button(id, text).ghost()
 }
 pub fn tool_icon(
@@ -26,7 +35,6 @@ pub fn tool_icon(
 ) -> Button {
     let name = name.into();
     Button::new(id)
-        .ghost()
         .h(px(32.))
         .rounded(px(6.))
         .icon(icon)
@@ -43,16 +51,31 @@ pub fn technical_details_button(id: impl Into<ElementId>) -> Button {
 pub fn primary_button(id: impl Into<ElementId>, text: impl Into<SharedString>) -> Button {
     button(id, text).primary().font_weight(FontWeight::MEDIUM)
 }
+/// Destructive secondary action: red outline and tint keep stopping a run or
+/// removing work distinct from ordinary Close/Cancel (DESIGN: Danger).
+pub fn danger_button(id: impl Into<ElementId>, text: impl Into<SharedString>) -> Button {
+    button(id, text).outline().danger()
+}
 pub fn link_button(id: impl Into<ElementId>, text: impl Into<SharedString>) -> Button {
     button(id, text).link().px_0().self_start().max_w_full()
 }
+/// Selection control, not an advancing action: the selected state uses the
+/// accent surface/text on a bordered control so it cannot be mistaken for the
+/// one primary action in the group (DESIGN: Selection).
 pub fn select_button(
     id: impl Into<ElementId>,
     text: impl Into<SharedString>,
     selected: bool,
+    cx: &App,
 ) -> Button {
+    let colors = palette(cx);
+    let selected_style = ButtonCustomVariant::new(cx)
+        .color(rgb(colors.accent).into())
+        .foreground(rgb(colors.accent).into())
+        .hover(rgb(colors.accent_surface).into())
+        .active(rgb(colors.accent_surface).into());
     button(id, text)
-        .when(selected, |b| b.primary())
+        .when(selected, |b| b.outline().custom(selected_style))
         .selected(selected)
         .toggled(selected)
 }
@@ -130,24 +153,39 @@ pub fn single_line_text(id: impl Into<ElementId>, title: impl Into<String>) -> S
         )
 }
 
-/// Long menu labels use measured glyph truncation, including mixed CJK text.
+/// Long menu labels wrap, including mixed CJK text.
+/// The tooltip keeps the complete value predictable for unusually long names.
 pub fn task_menu_item(title: String) -> gpui_kit::component::menu::PopupMenuItem {
+    labeled_menu_item("menu-task-title", title)
+}
+
+/// A menu row with a stable id, wrapped long labels and the complete value in
+/// its tooltip. Menu rows are a documented compound exception: no extra border
+/// inside the popup.
+pub fn labeled_menu_item(
+    id: impl Into<ElementId>,
+    title: String,
+) -> gpui_kit::component::menu::PopupMenuItem {
+    let id = id.into();
     gpui_kit::component::menu::PopupMenuItem::element(move |w, _| {
-        let mut hint = String::new();
-        for (i, c) in title.chars().enumerate() {
-            if i > 0 && i % 36 == 0 {
-                hint.push('\n');
-            }
-            hint.push(c);
-        }
-        quiet_button("menu-task-title", "")
-            .w((w.viewport_size().width - px(100.)).min(px(380.)))
-            .h_5()
+        row_button(id.clone(), "")
+            .w((w.viewport_size().width - px(100.)).min(px(440.)))
+            .h_auto()
+            .min_h(px(20.))
             .p_0()
             .min_w_0()
-            .tooltip(hint)
+            .tooltip(title.clone())
             .accessibility_label(title.clone())
-            .child(single_line_text("menu-task-label", title.clone()))
+            // Long English/CJK labels wrap instead of disappearing at a fixed
+            // one-line width; the tooltip remains for unusually long values.
+            .child(
+                div()
+                    .w_full()
+                    .min_w_0()
+                    .whitespace_normal()
+                    .line_height(relative(1.35))
+                    .child(title.clone()),
+            )
     })
 }
 
@@ -159,7 +197,7 @@ pub fn property_choice(
     selected: bool,
 ) -> Button {
     let text = text.into();
-    quiet_button(id, "")
+    row_button(id, "")
         .w_full()
         .accessibility_label(text.clone())
         .child(

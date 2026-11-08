@@ -1,0 +1,199 @@
+{
+  "binary": "/Users/fuxingxing/workspaces/what-the-hell-are-you-planning/.local/opencode-dispatch/root-s3c-r12/planning-qa",
+  "sha256": "aa7348d0d8f697d4491b3154890a6a468125d3b65570274137aa96dae120f084",
+  "purpose": "Independent diagnostic baseline sweep; performance gates deferred to controlled final run",
+  "results": [
+    {
+      "entry": "--qa-board-topics",
+      "exit": 0,
+      "seconds": 0.87,
+      "log": "/Users/fuxingxing/workspaces/what-the-hell-are-you-planning/.local/opencode-dispatch/root-r12-baseline-gate/qa-board-topics.log"
+    },
+    {
+      "entry": "--qa-display-order",
+      "exit": 0,
+      "seconds": 0.19,
+      "log": "/Users/fuxingxing/workspaces/what-the-hell-are-you-planning/.local/opencode-dispatch/root-r12-baseline-gate/qa-display-order.log"
+    },
+    {
+      "entry": "--qa-board-scroll",
+      "exit": 0,
+      "seconds": 1.56,
+      "log": "/Users/fuxingxing/workspaces/what-the-hell-are-you-planning/.local/opencode-dispatch/root-r12-baseline-gate/qa-board-scroll.log"
+    },
+    {
+      "entry": "--qa-workflow",
+      "exit": 0,
+      "seconds": 2.24,
+      "log": "/Users/fuxingxing/workspaces/what-the-hell-are-you-planning/.local/opencode-dispatch/root-r12-baseline-gate/qa-workflow.log"
+    },
+    {
+      "entry": "--qa-rich-markdown",
+      "exit": 0,
+      "seconds": 6.67,
+      "log": "/Users/fuxingxing/workspaces/what-the-hell-are-you-planning/.local/opencode-dispatch/root-r12-baseline-gate/qa-rich-markdown.log"
+    },
+    {
+      "entry": "--qa-brand",
+      "exit": 0,
+      "seconds": 0.08,
+      "log": "/Users/fuxingxing/workspaces/what-the-hell-are-you-planning/.local/opencode-dispatch/root-r12-baseline-gate/qa-brand.log"
+    },
+    {
+      "entry": "--qa-attachments",
+      "exit": 0,
+      "seconds": 1.87,
+      "log": "/Users/fuxingxing/workspaces/what-the-hell-are-you-planning/.local/opencode-dispatch/root-r12-baseline-gate/qa-attachments.log"
+    },
+    {
+      "entry": "--qa-topic-queue",
+      "exit": 0,
+      "seconds": 6.15,
+      "log": "/Users/fuxingxing/workspaces/what-the-hell-are-you-planning/.local/opencode-dispatch/root-r12-baseline-gate/qa-topic-queue.log"
+    },
+    {
+      "entry": "--qa-retries",
+      "exit": 0,
+      "seconds": 0.61,
+      "log": "/Users/fuxingxing/workspaces/what-the-hell-are-you-planning/.local/opencode-dispatch/root-r12-baseline-gate/qa-retries.log"
+    },
+    {
+      "entry": "--qa-render-perf",
+      "state": "deferred-controlled-performance"
+    },
+    {
+      "entry": "--qa-result-layout",
+      "exit": 0,
+      "seconds": 5.06,
+      "log": "/Users/fuxingxing/workspaces/what-the-hell-are-you-planning/.local/opencode-dispatch/root-r12-baseline-gate/qa-result-layout.log"
+    },
+    {
+      "entry": "--qa-recovery-scroll",
+      "exit": 0,
+      "seconds": 0.52,
+      "log": "/Users/fuxingxing/workspaces/what-the-hell-are-you-planning/.local/opencode-dispatch/root-r12-baseline-gate/qa-recovery-scroll.log"
+    },
+    {
+      "entry": "--qa-recovery",
+      "exit": 0,
+      "seconds": 3.65,
+      "log": "/Users/fuxingxing/workspaces/what-the-hell-are-you-planning/.local/opencode-dispatch/root-r12-baseline-gate/qa-recovery.log"
+    },
+    {
+      "entry": "--qa-intake",
+      "exit": 0,
+      "seconds": 8.84,
+      "log": "/Users/fuxingxing/workspaces/what-the-hell-are-you-planning/.local/opencode-dispatch/root-r12-baseline-gate/qa-intake.log"
+    },
+    {
+      "entry": "--qa-sidebar",
+      "exit": 0,
+      "seconds": 1.15,
+      "log": "/Users/fuxingxing/workspaces/what-the-hell-are-you-planning/.local/opencode-dispatch/root-r12-baseline-gate/qa-sidebar.log"
+    },
+    {
+      "entry": "--qa-topic-migration",
+      "exit": 0,
+      "seconds": 1.37,
+      "log": "/Users/fuxingxing/workspaces/what-the-hell-are-you-planning/.local/opencode-dispatch/root-r12-baseline-gate/qa-topic-migration.log"
+    },
+    {
+      "entry": "--qa-topic-actions",
+      "exit": 101,
+      "seconds": 0.21,
+      "log": "/Users/fuxingxing/workspaces/what-the-hell-are-you-planning/.local/opencode-dispatch/root-r12-baseline-gate/qa-topic-actions.log"
+    },
+    {
+      "entry": "--qa-topics",
+      "exit": 101,
+      "seconds": 1.5,
+      "log": "/Users/fuxingxing/workspaces/what-the-hell-are-you-planning/.local/opencode-dispatch/root-r12-baseline-gate/qa-topics.log"
+    },
+    {
+      "entry": "--qa-calendar",
+      "exit": 0,
+      "seconds": 0.46,
+      "log": "/Users/fuxingxing/workspaces/what-the-hell-are-you-planning/.local/opencode-dispatch/root-r12-baseline-gate/qa-calendar.log"
+    },
+    {
+      "entry": "--qa-onboarding",
+      "exit": 0,
+      "seconds": 0.71,
+      "log": "/Users/fuxingxing/workspaces/what-the-hell-are-you-planning/.local/opencode-dispatch/root-r12-baseline-gate/qa-onboarding.log"
+    },
+    {
+      "entry": "--qa-concurrency",
+      "exit": 0,
+      "seconds": 18.39,
+      "log": "/Users/fuxingxing/workspaces/what-the-hell-are-you-planning/.local/opencode-dispatch/root-r12-baseline-gate/qa-concurrency.log"
+    },
+    {
+      "entry": "--qa-simplify",
+      "exit": 101,
+      "seconds": 2.53,
+      "log": "/Users/fuxingxing/workspaces/what-the-hell-are-you-planning/.local/opencode-dispatch/root-r12-baseline-gate/qa-simplify.log"
+    },
+    {
+      "entry": "--qa-automation",
+      "state": "separate-run"
+    },
+    {
+      "entry": "--qa-automation-perf",
+      "state": "deferred-controlled-performance"
+    },
+    {
+      "entry": "--qa-batch",
+      "exit": 101,
+      "seconds": 8.06,
+      "log": "/Users/fuxingxing/workspaces/what-the-hell-are-you-planning/.local/opencode-dispatch/root-r12-baseline-gate/qa-batch.log"
+    },
+    {
+      "entry": "--qa-publishing",
+      "exit": 0,
+      "seconds": 3.54,
+      "log": "/Users/fuxingxing/workspaces/what-the-hell-are-you-planning/.local/opencode-dispatch/root-r12-baseline-gate/qa-publishing.log"
+    },
+    {
+      "entry": "--qa-settings",
+      "exit": 0,
+      "seconds": 14.11,
+      "log": "/Users/fuxingxing/workspaces/what-the-hell-are-you-planning/.local/opencode-dispatch/root-r12-baseline-gate/qa-settings.log"
+    },
+    {
+      "entry": "--qa-affordance",
+      "exit": 0,
+      "seconds": 17.91,
+      "log": "/Users/fuxingxing/workspaces/what-the-hell-are-you-planning/.local/opencode-dispatch/root-r12-baseline-gate/qa-affordance.log"
+    },
+    {
+      "entry": "--qa-projects",
+      "exit": 0,
+      "seconds": 8.77,
+      "log": "/Users/fuxingxing/workspaces/what-the-hell-are-you-planning/.local/opencode-dispatch/root-r12-baseline-gate/qa-projects.log"
+    },
+    {
+      "entry": "--qa-workspace",
+      "exit": 0,
+      "seconds": 8.37,
+      "log": "/Users/fuxingxing/workspaces/what-the-hell-are-you-planning/.local/opencode-dispatch/root-r12-baseline-gate/qa-workspace.log"
+    },
+    {
+      "entry": "--qa-handoff-progress",
+      "exit": 0,
+      "seconds": 3.6,
+      "log": "/Users/fuxingxing/workspaces/what-the-hell-are-you-planning/.local/opencode-dispatch/root-r12-baseline-gate/qa-handoff-progress.log"
+    },
+    {
+      "entry": "--qa-research",
+      "exit": 101,
+      "seconds": 4.46,
+      "log": "/Users/fuxingxing/workspaces/what-the-hell-are-you-planning/.local/opencode-dispatch/root-r12-baseline-gate/qa-research.log"
+    },
+    {
+      "entry": "--qa",
+      "exit": 0,
+      "seconds": 8.7,
+      "log": "/Users/fuxingxing/workspaces/what-the-hell-are-you-planning/.local/opencode-dispatch/root-r12-baseline-gate/qa.log"
+    }
+  ]
+}

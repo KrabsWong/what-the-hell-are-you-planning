@@ -1,0 +1,350 @@
+{
+  "binary_sha256": "4320474b36cef78555482b70fee6add358ccd0b9a8080f5d60457f00cd5d9098",
+  "source_sha256": {
+    "src/affordance_qa.rs": "2dffe88eb0636127e62e66f92b1c361be2667de9f7c168874d87bee0c5b5e2fe",
+    "src/app.rs": "e0b1a0a6c1b9102ce358ff75e5a376e85f7a94d6445c4d7b72e8c0a2b9d70d83",
+    "src/appearance.rs": "2494bb0c4cd0d164cac44ed9d9ccf7fa4a5d7fdecf6889715fec106eea067a77",
+    "src/archive_app.rs": "5af509a0ad3d534ecd40a94c84c2708d17517a3c7b5d616a80fe66979c96cbb3",
+    "src/attachments.rs": "6470a738992caeafaaf14f50fa627ce107d82faf9615fd807a84d12661c39d81",
+    "src/automation.rs": "20b3d2f735879c257f0156a7323ae79c111d48eb7fe2b96a3974ff63226924af",
+    "src/automation_activity.rs": "b56fcf0bfe20ba118225ef17c8da3ba7e7127db4d88ef737998e79a5c850fe4b",
+    "src/automation_execution.rs": "8a35d995a39f8eb2e2c766ac992246e70aeb225412ad1ac4fb745a3b0d0512ad",
+    "src/automation_policy.rs": "5306854f7330c6f1e65510d493a02744c72a8af76c97cfe30336aab0ec5905af",
+    "src/automation_qa.rs": "47bed662c64cc29e88df52beae0c45436c81430b871c27f544543ede6d67788c",
+    "src/automation_runtime.rs": "44460ac9647b585cfd0c96e81d7ee3646ec5294b81607484fe27fcc0cd5868e4",
+    "src/automation_schedule.rs": "86a78b01f802b898979823d427bae140ece0a6a395e935b6f5c46e56dbab5d9d",
+    "src/automation_views.rs": "5453842e45d0e9d8184f6ba6da074cf1df1e2e7223ee6341ab4c80aaf154c229",
+    "src/batch.rs": "1d800e9dfe8d412a68c537389d766a68fecfb7f2136a98fcfb42e9d9fac40f3c",
+    "src/batch_app.rs": "9dd9f73d46cd6b2e1f52424e09f62c77eb49b8eb1daf02f270bbab09c6676756",
+    "src/batch_qa.rs": "200bc1f6c898819ce391b085fb4a8695cd8585cfbb64ce682359da9c6b0a4d15",
+    "src/brand.rs": "da0944622a24993144edf87b4ba923fd7493167f00ec179cb7be55018d2ea265",
+    "src/codex.rs": "e8138cc4b086d907c12fc58731a1fe83425e14ffad6f4459ad865a70ad979296",
+    "src/concurrency_qa.rs": "c833eefeda492fd8f171835e5b0fa6773eef1ebcad523a6f095a6e0999a037c1",
+    "src/controls.rs": "eedfb51240b1e13476ddeb321b590a1fa7cd12d60d89e333820e6508b870f9f8",
+    "src/display_order.rs": "0c2cbf658d3e878ef14cbfc79a54dca924a4c624a473dde730e04f7dd87c5e98",
+    "src/domain.rs": "7b53c8e4846d1458ae18a4abef79b3d83482e7d4d32cbf5f30051e9f16d2be3d",
+    "src/ego.rs": "6a1197160395a3d6f4162ed4ec46a43ab70e50f0bd8700cfa42c84617566c8f0",
+    "src/ego_mcp.rs": "4deb390aa1f3d5c5bcdcc0148136d86226e9eb383f1998e8c725b8da178e4c9f",
+    "src/execution_eligibility.rs": "ea413d11edecdb45d9a98e7343165e1fc5d3776bafa18dc97c0926e02004ff1d",
+    "src/execution_eligibility_qa.rs": "44639d51c1106f810096986ede5f1209893a7f964093e8ed4390f222c3ce0c6e",
+    "src/execution_status.rs": "5dd3b76fb266d519f978dd5eeda0557634138c18a5dbfbdec0c2e31e126e73c7",
+    "src/fixtures.rs": "7f42af90fd4b5411a99336a407f9a2ab18ac16d6edf1a2fc0751c42a5540f852",
+    "src/goal_steps.rs": "6ef4eb32a202b0512343840acccd3c83948a4838bed13a69caf7518001d17841",
+    "src/intake_qa.rs": "33ebb900b1060f4097e8eaf9a5e0d681f0c7ef45a49b6ddf72f83a118d8ced95",
+    "src/intake_views.rs": "8889337bed5d9ba5c25f83d8c1c0891b81df9f5fde878495c52cff73e4265620",
+    "src/main.rs": "ed9511147e10277e02f66054aa67f15ff5d3a67e4eec88aeea8afde76c545042",
+    "src/material_qa.rs": "d492e66b4e61b09b6b1e526e6bf95e64e35c9753b577f21d5130d1f4f6e7a30a",
+    "src/model_profiles.rs": "084d22d04f91207c7379c28053aa92eb44e36ea0064f8e8e5f2d666f648a254d",
+    "src/navigation.rs": "98c7b2d9ad8ffff9fc34b08ed97229888125afd8d2b23a410e0647eb2f846363",
+    "src/navigation_qa.rs": "e85ec29b252999236999efd15454a2f16c60579ca7fa40fb7494acb57e5689bd",
+    "src/opencode.rs": "f14f1f9a95b981682d2f7750bf2d679ea3326b002cf86b22927744dc672adc17",
+    "src/persistence.rs": "aa45c097dbbdd481f2d3d84abcf4d469e0fe37d25f1ee1f8d2e8cb045519700c",
+    "src/project_app.rs": "88241c4ee50f197a6bae2d955f21cd73d970f115829188eb54ae00d5feb5d420",
+    "src/project_planning.rs": "438c13e00e72bc9d7d5bcc6bcca6fc1b3cc031ca6b15fab3c01aef747b765d2e",
+    "src/project_qa.rs": "051ddf63fe84a46338f66c73145580d864ea460c9ad72d9e13b8a9dc67403ef9",
+    "src/project_views.rs": "a16a50cc3a4c77b2b4e2aa20cf8e0d36a7b19c91d5524ea4fcfd4376ea9446cf",
+    "src/publishing_qa.rs": "c505d06482146f2285c12684885ba310f4310986ff5b990c0efc7f12a7acf87e",
+    "src/qa.rs": "a9576543693241aee981e9ddef4d336f4df11ebe54b3c5b13b555f4574f07fe5",
+    "src/recovery.rs": "a2cf08f87ccadd67ae70113f370f4530af9c2ae793f0377b07b1190acf9cd453",
+    "src/recovery_qa.rs": "1dc2b44a2058176fb81449d88d513757b2f7fe0c511bf5f90cef500bd34b5e9b",
+    "src/render_qa.rs": "d95b37b6dc32c2841c6312834a5a484a3310b7c7cb90aa25a50b4abae7a4f401",
+    "src/report_git.rs": "dbc8804ef197adfd7e1cc40dd56980aa03da88ab091b10926a4316c5e38d1d31",
+    "src/report_html.rs": "0dc9d0e3c1980fed5a13537e7577d2ef204214e777df64a79d3f417fbd37847c",
+    "src/report_publish.rs": "5c990d5ebf073752cd04890f2069ad4c805e4d00d31a2188072f0102f2780583",
+    "src/request_planning.rs": "c965d371101b7dd08633a6692b55d3b77ffa75d294f71a8dc58aae548df20498",
+    "src/research.rs": "05d68ae409234f96930c34f075955e2b88caac81a056f9a5f37d78b275835649",
+    "src/research_app.rs": "d8f9561439f1aca7035f2d1853f8e28a26372ac08e50118b3be24d7d0d6bb629",
+    "src/research_export.rs": "38a076837770c0522145a69bdc02cece30b101562e64f3f862fae0eff2ccfbc3",
+    "src/research_qa.rs": "daed6149dc3d3dee0a9a34533dfbe4455943d06507aa6b23158852f153125300",
+    "src/research_views.rs": "4f587550b55be28cfad0c7e5688ad6fc35f39953a0b4de1f9f5874493acacefb",
+    "src/result_presentation.rs": "6263982d65b635e5086c4db47492124d3246cd34fe3e9e6dab654de7c2f682a0",
+    "src/result_presentation_qa.rs": "82f436774903f9f8ecb0ce009b5217b66a1d765531df2ec76293e2c811f6e642",
+    "src/retries.rs": "6297c8ff13c628b8ecb87afbde289f87f8be1a660336c4d2c7a33749fdaef4d4",
+    "src/retry_qa.rs": "1c25f7880b18ad209ca35d56b5c382fc86ad32b8ed64602cddd94e471a543076",
+    "src/rich_markdown.rs": "01f10de8895b9e8d40805fd0b2cbef9d605bb4fdb3c5c2c1303d63ace5dc460c",
+    "src/run_errors.rs": "bc84acba9d30775ed1c0b99b385ad82c32cbcc682edcb7ade7317cfe1084e874",
+    "src/run_views.rs": "d91b6726b1d048d08cc0e4510d0c4039b02da984ee09823bd1297b5ca8f4fe1d",
+    "src/scheduler.rs": "c496db10f18b6dccd767af4051500018a57bf6fb6d15aa31373919c183319a59",
+    "src/settings_qa.rs": "8da48234bbb74793a712d06e7e5a86dcc4ef2137bf709882210b498d6128edaf",
+    "src/settings_views.rs": "0a832db6e622012a2ac5f73c39807e7d76881d711186dff15267a89975d652ab",
+    "src/simplify_qa.rs": "c480852423440d800bc62cbe69651d2f7a644305e5b72022761d617ed7a63822",
+    "src/sqlite_storage.rs": "7ed294ee38f55886e85c00a46cec38b7fc3aca4f4c3f47917a7117f82aca86a4",
+    "src/startup.rs": "bddbf6dfe261880c567e50d98360a93bab6a8bd3774dcb222f5124828cf10e14",
+    "src/topic_qa.rs": "ce71e63497c672b44ae231922de6600cbab0dd2e6cf317e4eebc01fffb4da2f2",
+    "src/topic_queue_qa.rs": "9d0bedcb408f1b14332908a42c588996e282a56b0274f45e94ef7afe7e3ee222",
+    "src/topic_views.rs": "8de6dd1fbebc5b93b7b888fbe98bf657e1c25fd6e7e8e11e44364c741aa7e9cd",
+    "src/ui_assets.rs": "bdf2802c17cf0ac3585678ee55a5250aec9321f4e9b98cf28f4b632e21cfd354",
+    "src/views.rs": "48d7e5eda32ee7853ab5f6c1acb1042566dc80382d649d48f22d8addda3cfe27",
+    "src/workflow.rs": "b51ddb43bd734f6732a44311aa753b9859469f557e6ed60a6fff7e045708415a",
+    "src/workflow_qa.rs": "7ed320a1a70ce86d9efff73e9df52980540daf78fdd7aa379fe9a50fcce7aa21",
+    "src/workflow_views.rs": "6dd60213f7c868c7c4ef2bd7221a2317c6bf1f89c67cc4fb04ca1c0eda0dd07d",
+    "src/workspace.rs": "e649d2d1dba10673b7c582be5663d201745d2ecea7b30c9511899679984de05a",
+    "src/workspace_qa.rs": "acec0bd065a8a3452b8e506bd4e09a5c3ac134200ffd25c2879365560df9bd49"
+  },
+  "results": [
+    {
+      "entry": "--qa-board-topics",
+      "status": "passed",
+      "exit_code": 0,
+      "elapsed_seconds": 1.96,
+      "log": "qa-board-topics.log",
+      "alias_note": ""
+    },
+    {
+      "entry": "--qa-display-order",
+      "status": "passed",
+      "exit_code": 0,
+      "elapsed_seconds": 0.2,
+      "log": "qa-display-order.log",
+      "alias_note": ""
+    },
+    {
+      "entry": "--qa-board-scroll",
+      "status": "passed",
+      "exit_code": 0,
+      "elapsed_seconds": 1.4,
+      "log": "qa-board-scroll.log",
+      "alias_note": ""
+    },
+    {
+      "entry": "--qa-workflow",
+      "status": "passed",
+      "exit_code": 0,
+      "elapsed_seconds": 2.3,
+      "log": "qa-workflow.log",
+      "alias_note": ""
+    },
+    {
+      "entry": "--qa-rich-markdown",
+      "status": "passed",
+      "exit_code": 0,
+      "elapsed_seconds": 7.51,
+      "log": "qa-rich-markdown.log",
+      "alias_note": ""
+    },
+    {
+      "entry": "--qa-brand",
+      "status": "passed",
+      "exit_code": 0,
+      "elapsed_seconds": 0.33,
+      "log": "qa-brand.log",
+      "alias_note": ""
+    },
+    {
+      "entry": "--qa-attachments",
+      "status": "failed",
+      "exit_code": 101,
+      "elapsed_seconds": 1.54,
+      "log": "qa-attachments.log",
+      "alias_note": ""
+    },
+    {
+      "entry": "--qa-topic-queue",
+      "status": "passed",
+      "exit_code": 0,
+      "elapsed_seconds": 6.4,
+      "log": "qa-topic-queue.log",
+      "alias_note": ""
+    },
+    {
+      "entry": "--qa-retries",
+      "status": "passed",
+      "exit_code": 0,
+      "elapsed_seconds": 0.96,
+      "log": "qa-retries.log",
+      "alias_note": ""
+    },
+    {
+      "entry": "--qa-render-perf",
+      "status": "passed",
+      "exit_code": 0,
+      "elapsed_seconds": 0.44,
+      "log": "qa-render-perf.log",
+      "alias_note": ""
+    },
+    {
+      "entry": "--qa-result-layout",
+      "status": "passed",
+      "exit_code": 0,
+      "elapsed_seconds": 5.4,
+      "log": "qa-result-layout.log",
+      "alias_note": ""
+    },
+    {
+      "entry": "--qa-recovery-scroll",
+      "status": "passed",
+      "exit_code": 0,
+      "elapsed_seconds": 0.55,
+      "log": "qa-recovery-scroll.log",
+      "alias_note": ""
+    },
+    {
+      "entry": "--qa-recovery",
+      "status": "passed",
+      "exit_code": 0,
+      "elapsed_seconds": 3.7,
+      "log": "qa-recovery.log",
+      "alias_note": ""
+    },
+    {
+      "entry": "--qa-intake",
+      "status": "passed",
+      "exit_code": 0,
+      "elapsed_seconds": 8.99,
+      "log": "qa-intake.log",
+      "alias_note": "Alias of intake acceptance"
+    },
+    {
+      "entry": "--qa-sidebar",
+      "status": "passed",
+      "exit_code": 0,
+      "elapsed_seconds": 1.1,
+      "log": "qa-sidebar.log",
+      "alias_note": ""
+    },
+    {
+      "entry": "--qa-topic-migration",
+      "status": "passed",
+      "exit_code": 0,
+      "elapsed_seconds": 1.38,
+      "log": "qa-topic-migration.log",
+      "alias_note": ""
+    },
+    {
+      "entry": "--qa-topic-actions",
+      "status": "passed",
+      "exit_code": 0,
+      "elapsed_seconds": 0.63,
+      "log": "qa-topic-actions.log",
+      "alias_note": ""
+    },
+    {
+      "entry": "--qa-topics",
+      "status": "passed",
+      "exit_code": 0,
+      "elapsed_seconds": 1.74,
+      "log": "qa-topics.log",
+      "alias_note": ""
+    },
+    {
+      "entry": "--qa-calendar",
+      "status": "passed",
+      "exit_code": 0,
+      "elapsed_seconds": 0.45,
+      "log": "qa-calendar.log",
+      "alias_note": ""
+    },
+    {
+      "entry": "--qa-onboarding",
+      "status": "failed",
+      "exit_code": 101,
+      "elapsed_seconds": 0.73,
+      "log": "qa-onboarding.log",
+      "alias_note": ""
+    },
+    {
+      "entry": "--qa-concurrency",
+      "status": "passed",
+      "exit_code": 0,
+      "elapsed_seconds": 17.39,
+      "log": "qa-concurrency.log",
+      "alias_note": ""
+    },
+    {
+      "entry": "--qa-simplify",
+      "status": "passed",
+      "exit_code": 0,
+      "elapsed_seconds": 48.96,
+      "log": "qa-simplify.log",
+      "alias_note": ""
+    },
+    {
+      "entry": "--qa-automation",
+      "status": "failed",
+      "exit_code": 101,
+      "elapsed_seconds": 38.36,
+      "log": "qa-automation.log",
+      "alias_note": ""
+    },
+    {
+      "entry": "--qa-automation-perf",
+      "status": "passed",
+      "exit_code": 0,
+      "elapsed_seconds": 14.17,
+      "log": "qa-automation-perf.log",
+      "alias_note": ""
+    },
+    {
+      "entry": "--qa-batch",
+      "status": "failed",
+      "exit_code": 101,
+      "elapsed_seconds": 9.08,
+      "log": "qa-batch.log",
+      "alias_note": ""
+    },
+    {
+      "entry": "--qa-publishing",
+      "status": "passed",
+      "exit_code": 0,
+      "elapsed_seconds": 3.44,
+      "log": "qa-publishing.log",
+      "alias_note": ""
+    },
+    {
+      "entry": "--qa-settings",
+      "status": "passed",
+      "exit_code": 0,
+      "elapsed_seconds": 13.48,
+      "log": "qa-settings.log",
+      "alias_note": ""
+    },
+    {
+      "entry": "--qa-affordance",
+      "status": "passed",
+      "exit_code": 0,
+      "elapsed_seconds": 20.09,
+      "log": "qa-affordance.log",
+      "alias_note": ""
+    },
+    {
+      "entry": "--qa-projects",
+      "status": "passed",
+      "exit_code": 0,
+      "elapsed_seconds": 8.86,
+      "log": "qa-projects.log",
+      "alias_note": "Alias of intake acceptance"
+    },
+    {
+      "entry": "--qa-workspace",
+      "status": "passed",
+      "exit_code": 0,
+      "elapsed_seconds": 8.51,
+      "log": "qa-workspace.log",
+      "alias_note": ""
+    },
+    {
+      "entry": "--qa-handoff-progress",
+      "status": "passed",
+      "exit_code": 0,
+      "elapsed_seconds": 4.09,
+      "log": "qa-handoff-progress.log",
+      "alias_note": ""
+    },
+    {
+      "entry": "--qa-research",
+      "status": "passed",
+      "exit_code": 0,
+      "elapsed_seconds": 9.77,
+      "log": "qa-research.log",
+      "alias_note": ""
+    },
+    {
+      "entry": "--qa",
+      "status": "passed",
+      "exit_code": 0,
+      "elapsed_seconds": 8.83,
+      "log": "qa.log",
+      "alias_note": "Alias of intake acceptance"
+    }
+  ]
+}

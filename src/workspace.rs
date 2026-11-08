@@ -1,5 +1,5 @@
 //! The only bootstrap setting outside the user-selected workspace is its location.
-use crate::{domain::Store, persistence::Storage};
+use crate::{domain::{Project, ProjectKind, Store}, persistence::Storage};
 use std::{fs, path::{Path, PathBuf}};
 
 fn config_path() -> Result<PathBuf, String> {
@@ -51,20 +51,82 @@ pub fn check_directory(root: &Path, directory: &Path) -> Result<(), String> {
     Ok(())
 }
 
-pub fn project_directory(root: &Path, id: u64) -> Result<String, String> {
-    let path = root.join("projects").join(format!("project-{id}"));
-    check_directory(root, &path)?;
+/// The single subfolder that may contain a project of this kind, relative to the
+/// workspace data directory. Ordinary projects get per-id folders under
+/// `projects/`; the one generated automation container lives under `automations/`.
+fn kind_root_name(kind: ProjectKind) -> &'static str {
+    match kind {
+        ProjectKind::User => "projects",
+        ProjectKind::Automation => "automations",
+    }
+}
+
+/// Absolute folder that owns every project of `kind`.
+pub fn allowed_root(workspace: &Path, kind: ProjectKind) -> PathBuf {
+    workspace.join(kind_root_name(kind))
+}
+
+fn kind_relative_path(kind: ProjectKind, id: u64) -> PathBuf {
+    match kind {
+        ProjectKind::User => Path::new(kind_root_name(kind)).join(format!("project-{id}")),
+        ProjectKind::Automation => PathBuf::from(kind_root_name(kind)),
+    }
+}
+
+/// Absolute folder used for one project of `kind`. The automation container is
+/// shared, so its id is ignored.
+pub fn project_path(workspace: &Path, kind: ProjectKind, id: u64) -> PathBuf {
+    workspace.join(kind_relative_path(kind, id))
+}
+
+fn create_project_directory(workspace: &Path, kind: ProjectKind, id: u64) -> Result<String, String> {
+    let path = project_path(workspace, kind, id);
+    check_directory(workspace, &path)?;
     fs::create_dir_all(&path).map_err(|e| e.to_string())?;
     Ok(path.to_string_lossy().into_owned())
+}
+
+pub fn project_directory(root: &Path, id: u64) -> Result<String, String> {
+    create_project_directory(root, ProjectKind::User, id)
 }
 
 /// Automation output lives in its own generated project folder so manual projects
 /// and automation results never share a directory tree.
 pub fn automation_directory(root: &Path) -> Result<String, String> {
-    let path = root.join("automations");
-    check_directory(root, &path)?;
-    fs::create_dir_all(&path).map_err(|e| e.to_string())?;
-    Ok(path.to_string_lossy().into_owned())
+    create_project_directory(root, ProjectKind::Automation, 0)
+}
+
+/// Validate one loaded project against the folder its kind allows. The whole
+/// workspace is checked first, so symlink escapes and parent traversal fail
+/// before the kind-specific root is considered; the error names the project and
+/// the required root for genuinely invalid data.
+pub fn check_project_directory(workspace: &Path, project: &Project) -> Result<(), String> {
+    let required = allowed_root(workspace, project.kind);
+    let directory = Path::new(&project.directory);
+    let invalid = || {
+        format!(
+            "Project \"{}\" (id {}) must be inside {}.",
+            project.name,
+            project.id,
+            required.display()
+        )
+    };
+    check_directory(workspace, directory).map_err(|_| invalid())?;
+    check_directory(&required, directory).map_err(|_| invalid())?;
+    Ok(())
+}
+
+/// A runtime directory is valid when it lives under any project-kind root.
+pub fn check_project_roots(workspace: &Path, directory: &Path) -> Result<(), String> {
+    // Whole-workspace containment first: a kind root that is itself a symlink to
+    // an external folder must not make that folder's children look valid.
+    check_directory(workspace, directory)?;
+    for kind in [ProjectKind::User, ProjectKind::Automation] {
+        if check_directory(&allowed_root(workspace, kind), directory).is_ok() {
+            return Ok(());
+        }
+    }
+    check_directory(&allowed_root(workspace, ProjectKind::User), directory)
 }
 
 /// Import a closed legacy workspace without changing its original files. Installation is atomic.
@@ -77,7 +139,7 @@ pub fn initialize(root: &Path, legacy: Option<&Path>) -> Result<PathBuf, String>
         let _lock = storage.acquire_lock()?;
         let store = storage.load()?.ok_or("The selected folder contains an incomplete workspace.")?;
         for project in &store.projects {
-            check_directory(&destination.join("projects"), Path::new(&project.directory))?;
+            check_project_directory(&destination, project)?;
             if !Path::new(&project.directory).is_dir() { return Err(format!("Project folder is missing: {}", project.name)); }
         }
         return Ok(destination);
@@ -98,7 +160,7 @@ pub fn initialize(root: &Path, legacy: Option<&Path>) -> Result<PathBuf, String>
             store = storage.load()?.unwrap_or_else(Store::empty);
             #[cfg(unix)] {
                 let mut seen = std::collections::HashSet::new();
-                for run in &store.runs {
+                for run in store.runs() {
                     if seen.insert((run.directory.clone(), run.session_id.clone())) {
                         session_locks.push(crate::opencode::lock_session(&crate::opencode::Request { agent: None, browser_executable: None,
                             directory: PathBuf::from(&run.directory), session_id: run.session_id.clone(),
@@ -112,7 +174,7 @@ pub fn initialize(root: &Path, legacy: Option<&Path>) -> Result<PathBuf, String>
             mappings.push((source.to_string_lossy().into_owned(), destination.to_string_lossy().into_owned()));
         }
         for project in &mut store.projects {
-            let relative = PathBuf::from("projects").join(format!("project-{}", project.id));
+            let relative = kind_relative_path(project.kind, project.id);
             let target = staging.join(&relative);
             if !project.directory.is_empty() {
                 let source = PathBuf::from(&project.directory).canonicalize().map_err(|e| format!("Cannot read project {}: {e}", project.name))?;
@@ -262,7 +324,7 @@ mod tests {
             run.id = index as u64 + 1;
             run.input_signature = signature.to_string();
             if index == 2 { run.project_plan = None; run.research_kind = Some(crate::research::ResearchKind::Analyze); }
-            store.runs.push(run);
+            store.push_run(run);
         }
         let marker = project.join(".research/goal-1/.workspace-migrated");
         fs::create_dir_all(marker.parent().unwrap()).unwrap();
@@ -275,9 +337,9 @@ mod tests {
         for (index, signature) in signatures.into_iter().enumerate() {
             let mut expected = signature;
             expected[[3, 5, 2][index]] = serde_json::Value::String(restored.projects[0].directory.clone());
-            assert_eq!(restored.runs[index].input_signature, expected.to_string());
-            assert_eq!(restored.runs[index].prompt, template.prompt);
-            assert_eq!(restored.runs[index].output, template.output);
+            assert_eq!(restored.runs()[index].input_signature, expected.to_string());
+            assert_eq!(restored.runs()[index].prompt, template.prompt);
+            assert_eq!(restored.runs()[index].output, template.output);
         }
         assert_eq!(fs::read(storage.path()).unwrap(), original);
         assert_eq!(fs::read_to_string(marker).unwrap(), project.to_string_lossy());
@@ -297,5 +359,240 @@ mod tests {
         std::os::unix::fs::symlink(&outside, root.join("linked")).unwrap();
         assert!(check_directory(&root, &root.join("linked/new-goal")).is_err());
         fs::remove_dir_all(root).unwrap(); fs::remove_dir_all(outside).unwrap();
+    }
+
+    fn project(id: u64, name: &str, directory: impl Into<String>, kind: ProjectKind) -> Project {
+        Project {
+            id,
+            name: name.into(),
+            key: format!("P{id}"),
+            directory: directory.into(),
+            research_brief: String::new(),
+            kind,
+        }
+    }
+
+    /// Explicit reconnection of a workspace holding an ordinary project plus the
+    /// generated automation container must accept both kind-specific roots.
+    #[test]
+    fn mixed_reconnect_accepts_ordinary_and_automation_projects() {
+        let root = temp("mixed-reconnect");
+        let data = initialize(&root, None).unwrap();
+        let user_dir = project_directory(&data, 1).unwrap();
+        fs::write(Path::new(&user_dir).join("goal.md"), "user data").unwrap();
+        let automation_dir = automation_directory(&data).unwrap();
+        fs::write(Path::new(&automation_dir).join("quick.md"), "automation data").unwrap();
+        let mut store = Store::empty();
+        store.projects[0].directory = user_dir.clone();
+        let automation_project = store.ensure_automation_project(automation_dir.clone()).unwrap();
+        let schedule = crate::automation_schedule::Schedule {
+            spec: crate::automation_schedule::ScheduleSpec::Interval { minutes: 10 },
+            timezone: "Asia/Shanghai".into(),
+        };
+        store
+            .create_automation_draft(
+                automation_project,
+                crate::automation::AutomationShape::Quick,
+                "Quick index check".into(),
+                "Check the closing index level.".into(),
+                "One number with its as-of time and 2-5 sources.".into(),
+                schedule.clone(),
+                Default::default(),
+                Some(crate::automation_execution::build_quick_template(
+                    "Check the closing index level.",
+                    "One number with its as-of time and 2-5 sources.",
+                ).unwrap()),
+                1_700_000_000,
+            )
+            .unwrap();
+        store
+            .create_automation_draft(
+                automation_project,
+                crate::automation::AutomationShape::Research,
+                "Research supply chain".into(),
+                "Track supply-chain changes.".into(),
+                "A short sourced report.".into(),
+                schedule,
+                Default::default(),
+                Some(crate::automation_execution::build_template(
+                    "Track supply-chain changes.",
+                    "A short sourced report.",
+                ).unwrap()),
+                1_700_000_000,
+            )
+            .unwrap();
+        Storage::new(data.join("workspace.sqlite3")).save(&store).unwrap();
+
+        // Set workspace again after the bootstrap location was removed.
+        assert_eq!(initialize(&root, None).unwrap(), data);
+        let loaded = Storage::new(data.join("workspace.sqlite3")).load().unwrap().unwrap();
+        assert_eq!(loaded.projects[0].directory, user_dir);
+        assert_eq!(loaded.automation_project().unwrap().directory, automation_dir);
+        assert_eq!(loaded.automations().len(), 2);
+        assert!(loaded.automations().iter().any(|automation| automation.shape == crate::automation::AutomationShape::Quick && automation.name == "Quick index check"));
+        assert!(loaded.automations().iter().any(|automation| automation.shape == crate::automation::AutomationShape::Research && automation.name == "Research supply chain"));
+        assert_eq!(fs::read_to_string(Path::new(&user_dir).join("goal.md")).unwrap(), "user data");
+        assert_eq!(fs::read_to_string(Path::new(&automation_dir).join("quick.md")).unwrap(), "automation data");
+        fs::remove_dir_all(root).unwrap();
+    }
+
+    /// An ordinary-only workspace still reconnects without the automation root.
+    #[test]
+    fn ordinary_only_reconnect_still_passes() {
+        let root = temp("ordinary-reconnect");
+        let data = initialize(&root, None).unwrap();
+        let user_dir = project_directory(&data, 1).unwrap();
+        fs::write(Path::new(&user_dir).join("goal.md"), "user data").unwrap();
+        let mut store = Store::empty();
+        store.projects[0].directory = user_dir.clone();
+        Storage::new(data.join("workspace.sqlite3")).save(&store).unwrap();
+
+        assert_eq!(initialize(&root, None).unwrap(), data);
+        let loaded = Storage::new(data.join("workspace.sqlite3")).load().unwrap().unwrap();
+        assert!(loaded.automation_project().is_none());
+        assert_eq!(loaded.projects[0].directory, user_dir);
+        fs::remove_dir_all(root).unwrap();
+    }
+
+    /// Moving the entire portable workspace keeps both kinds reconnectable because
+    /// stored paths are relative to the workspace root.
+    #[test]
+    fn relocated_workspace_reconnects_with_automations() {
+        let root = temp("relocate-source").canonicalize().unwrap();
+        let moved = root.with_extension("moved");
+        let data = initialize(&root, None).unwrap();
+        let user_dir = project_directory(&data, 1).unwrap();
+        fs::write(Path::new(&user_dir).join("goal.md"), "user data").unwrap();
+        let automation_dir = automation_directory(&data).unwrap();
+        fs::write(Path::new(&automation_dir).join("quick.md"), "automation data").unwrap();
+        let mut store = Store::empty();
+        store.projects[0].directory = user_dir;
+        store.ensure_automation_project(automation_dir).unwrap();
+        Storage::new(data.join("workspace.sqlite3")).save(&store).unwrap();
+
+        fs::rename(&root, &moved).unwrap();
+        let moved = moved.canonicalize().unwrap();
+        let reopened = initialize(&moved, None).unwrap();
+        assert_eq!(reopened, moved.join("workspace"));
+        let loaded = Storage::new(reopened.join("workspace.sqlite3")).load().unwrap().unwrap();
+        let moved_user = moved.join("workspace/projects/project-1");
+        let moved_automation = moved.join("workspace/automations");
+        assert_eq!(PathBuf::from(&loaded.projects[0].directory), moved_user);
+        assert_eq!(PathBuf::from(&loaded.automation_project().unwrap().directory), moved_automation);
+        assert_eq!(fs::read_to_string(moved_user.join("goal.md")).unwrap(), "user data");
+        assert_eq!(fs::read_to_string(moved_automation.join("quick.md")).unwrap(), "automation data");
+        fs::remove_dir_all(moved).unwrap();
+    }
+
+    /// Genuinely invalid data names the project and required root, and the policy
+    /// rejects parent traversal, wrong-kind roots and symlink escapes.
+    #[test]
+    fn directory_policy_rejects_external_traversal_wrong_kind_and_symlinks() {
+        let root = temp("policy-reject").canonicalize().unwrap();
+        let data = initialize(&root, None).unwrap();
+        let user_dir = project_directory(&data, 1).unwrap();
+        let automation_dir = automation_directory(&data).unwrap();
+        let outside = temp("policy-outside").canonicalize().unwrap();
+
+        let external = project(7, "External", outside.to_string_lossy(), ProjectKind::User);
+        let error = check_project_directory(&data, &external).unwrap_err();
+        assert!(error.contains("External"), "{error}");
+        assert!(error.contains("projects"), "{error}");
+
+        // Parent traversal that leaves the workspace.
+        let traversal = project(8, "Traversal", data.join("projects/../escape").to_string_lossy(), ProjectKind::User);
+        assert!(check_project_directory(&data, &traversal).is_err());
+
+        // Wrong kind: an ordinary project may not live in the automation root.
+        let wrong = project(9, "Wrong kind", automation_dir.clone(), ProjectKind::User);
+        assert!(check_project_directory(&data, &wrong).is_err());
+
+        // An automation project is confined to the automation root.
+        let escaping = project(10, "Escaping automation", user_dir.clone(), ProjectKind::Automation);
+        assert!(check_project_directory(&data, &escaping).is_err());
+
+        #[cfg(unix)]
+        {
+            let link = data.join("projects/project-escape");
+            std::os::unix::fs::symlink(&outside, &link).unwrap();
+            let linked = project(11, "Symlink escape", link.to_string_lossy(), ProjectKind::User);
+            assert!(check_project_directory(&data, &linked).is_err());
+        }
+
+        assert!(check_project_directory(&data, &project(1, "User", user_dir, ProjectKind::User)).is_ok());
+        assert!(check_project_directory(&data, &project(2, "Automation", automation_dir, ProjectKind::Automation)).is_ok());
+
+        fs::remove_dir_all(root).unwrap();
+        fs::remove_dir_all(outside).unwrap();
+    }
+
+    /// A kind root that is a symlink to an external folder must not validate that
+    /// folder's children as workspace runtime directories, even when the
+    /// descendant does not exist locally.
+    #[cfg(unix)]
+    #[test]
+    fn runtime_directory_rejects_symlinked_kind_roots() {
+        for kind in [ProjectKind::User, ProjectKind::Automation] {
+            let workspace = temp("root-symlink-workspace");
+            let outside = temp("root-symlink-outside").canonicalize().unwrap();
+            let kind_root = allowed_root(&workspace, kind);
+            std::os::unix::fs::symlink(&outside, &kind_root).unwrap();
+            let existing = outside.join("goal");
+            fs::create_dir_all(&existing).unwrap();
+
+            assert!(check_project_roots(&workspace, &existing).is_err());
+            assert!(check_project_roots(&workspace, &kind_root).is_err());
+            assert!(check_project_roots(&workspace, &kind_root.join("missing-goal")).is_err());
+
+            fs::remove_dir_all(workspace).unwrap();
+            fs::remove_dir_all(outside).unwrap();
+        }
+    }
+
+    /// Valid runtime folders under either real kind root still pass.
+    #[test]
+    fn runtime_directory_accepts_valid_kind_roots() {
+        let root = temp("runtime-valid");
+        let data = initialize(&root, None).unwrap();
+        let user_dir = project_directory(&data, 1).unwrap();
+        let automation_dir = automation_directory(&data).unwrap();
+        assert!(check_project_roots(&data, Path::new(&user_dir)).is_ok());
+        assert!(check_project_roots(&data, &Path::new(&user_dir).join("goal")).is_ok());
+        assert!(check_project_roots(&data, Path::new(&automation_dir)).is_ok());
+        assert!(check_project_roots(&data, &Path::new(&automation_dir).join("period-1")).is_ok());
+        assert!(check_project_roots(&data, &data.join("outside")).is_err());
+        fs::remove_dir_all(root).unwrap();
+    }
+
+    /// Legacy import relocates each project by kind and leaves the source untouched.
+    #[test]
+    fn migration_places_ordinary_and_automation_projects_by_kind() {
+        let root = temp("migration-mixed");
+        let old = temp("migration-old");
+        let user_source = temp("migration-user");
+        let automation_source = temp("migration-automation");
+        fs::write(user_source.join("goal.md"), "user report").unwrap();
+        fs::write(automation_source.join("quick.md"), "automation report").unwrap();
+        let mut store = Store::empty();
+        store.projects[0].directory = user_source.to_string_lossy().into_owned();
+        store.ensure_automation_project(automation_source.to_string_lossy().into_owned()).unwrap();
+        let legacy_storage = Storage::new(old.join("workspace.sqlite3"));
+        legacy_storage.save(&store).unwrap();
+        let original = fs::read(legacy_storage.path()).unwrap();
+
+        let data = initialize(&root, Some(&old)).unwrap();
+        let migrated = Storage::new(data.join("workspace.sqlite3")).load().unwrap().unwrap();
+        assert_eq!(PathBuf::from(&migrated.projects[0].directory), data.join("projects/project-1"));
+        let automation = migrated.automation_project().unwrap();
+        assert_eq!(PathBuf::from(&automation.directory), data.join("automations"));
+        assert_eq!(fs::read_to_string(Path::new(&migrated.projects[0].directory).join("goal.md")).unwrap(), "user report");
+        assert_eq!(fs::read_to_string(Path::new(&automation.directory).join("quick.md")).unwrap(), "automation report");
+        // The original legacy workspace and its project folders are untouched.
+        assert_eq!(fs::read(legacy_storage.path()).unwrap(), original);
+        assert_eq!(fs::read_to_string(user_source.join("goal.md")).unwrap(), "user report");
+        assert_eq!(fs::read_to_string(automation_source.join("quick.md")).unwrap(), "automation report");
+        // The migrated workspace is reconnectable.
+        assert_eq!(initialize(&root, None).unwrap(), data);
+        for p in [root, old, user_source, automation_source] { fs::remove_dir_all(p).unwrap(); }
     }
 }

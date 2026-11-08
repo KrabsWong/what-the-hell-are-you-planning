@@ -1,0 +1,162 @@
+{
+  "main_samples": 6548,
+  "main_statistical_weight_ms": 6548.0,
+  "inclusive_groups_ms": {
+    "store_equality": 116.0,
+    "layout": 1971.0,
+    "flexbox": 917.0,
+    "paint": 2987.0,
+    "settings": 468.0,
+    "memmove": 737.0,
+    "sidebar": 570.0,
+    "logo": 44.0
+  },
+  "top_self_ms": [
+    [
+      "_platform_memmove",
+      737.0
+    ],
+    [
+      "_xzm_xzone_malloc_tiny",
+      299.0
+    ],
+    [
+      "_RNvMs_NtCs102Aak0gGwN_4gpui11bounds_treeINtB4_10BoundsTreeNtNtB6_8geometry12ScaledPixelsE6insertB6_",
+      274.0
+    ],
+    [
+      "_RINvNtNtCsh9WDnuMkoHa_5taffy7compute7flexbox22compute_flexbox_layoutINtNtNtB6_4tree10taffy_tree9TaffyViewNtNtCs102Aak0gGwN_4gpui5taffy11NodeContextNCNvMB1H_NtB1H_17TaffyLayoutEngine14compute_layouts_0EEB1J_",
+      219.0
+    ],
+    [
+      "<deduplicated_symbol>",
+      187.0
+    ],
+    [
+      "_xzm_free_main",
+      144.0
+    ],
+    [
+      "_platform_memcmp",
+      130.0
+    ],
+    [
+      "mach_msg2_trap",
+      123.0
+    ],
+    [
+      "_RINvNtNtCsh9WDnuMkoHa_5taffy7compute5block13compute_innerINtNtNtB6_4tree10taffy_tree9TaffyViewNtNtCs102Aak0gGwN_4gpui5taffy11NodeContextNCNvMB1w_NtB1w_17TaffyLayoutEngine14compute_layouts_0EEB1y_",
+      96.0
+    ],
+    [
+      "_RINvMs6_NtCsjPjDV110NBJ_9hashbrown3rawINtB6_8RawTableTTNtNtCs102Aak0gGwN_4gpui7element15GlobalElementIdNtNtCs9nEiEE0E2Vj_4core3any6TypeIdENtNtBV_6window15ElementStateBoxEE12remove_entryNCINvNtB8_3map14equivalent_keyBQ_BQ_B2c_E0EBV_",
+      87.0
+    ],
+    [
+      "__kdebug_trace64",
+      86.0
+    ],
+    [
+      "_RNvXs0_NtNtNtCs9nEiEE0E2Vj_4core4iter8adapters3mapINtB5_3MapINtNtB7_6filter6FilterIBX_IBN_INtNtB7_9enumerate9EnumerateNtNtNtCsh9WDnuMkoHa_5taffy4tree10taffy_tree18TaffyTreeChildIterENCINvNtNtB1Y_7compute7flexbox29generate_anonymous_flex_itemsINtB1U_9TaffyViewNtNtCs102Aak0gGwN_4gpui5taffy11NodeContextNCNvMB4b_NtB4b_17TaffyLayoutEngine14compute_layouts_0EE0ENCB2W_s_0ENCB2W_s0_0ENCB2W_s1_0ENtNtNtB9_6traits8iterator8Iterator4nextB4d_",
+      78.0
+    ],
+    [
+      "objc_msgSend",
+      73.0
+    ],
+    [
+      "_RNvXsT_NtCs102Aak0gGwN_4gpui5styleNtB5_5StyleNtCs7qVazo4uvIt_10refineable10Refineable6refine",
+      72.0
+    ],
+    [
+      "_RINvXst_Csl8xjBHPfDtk_8smallvecINtB6_8SmallVecAij6_EINtNtNtNtCs9nEiEE0E2Vj_4core4iter6traits7collect6ExtendiE6extendINtNtNtBV_8adapters6cloned6ClonedINtNtNtBX_5slice4iter4IteriEEECs102Aak0gGwN_4gpui",
+      66.0
+    ]
+  ],
+  "top_inclusive_ms": [
+    [
+      "_RNvXs_NtCs9Y0ZysNn2AY_10gpui_macos8platformNtB4_11MacPlatformNtNtCs102Aak0gGwN_4gpui8platform8Platform3run",
+      6545.0
+    ],
+    [
+      "-[NSApplication(NSEventRouting) _nextEventMatchingEventMask:untilDate:inMode:dequeue:]",
+      6545.0
+    ],
+    [
+      "-[NSApplication run]",
+      6545.0
+    ],
+    [
+      "_DPSNextEvent",
+      6545.0
+    ],
+    [
+      "main",
+      6545.0
+    ],
+    [
+      "_RNvCs38KDFhnnSAw_22planning_native_review4main",
+      6545.0
+    ],
+    [
+      "_DPSBlockUntilNextEventMatchingListInMode",
+      6545.0
+    ],
+    [
+      "ReceiveNextEventCommon",
+      6545.0
+    ],
+    [
+      "_RINvMs2_NtCs102Aak0gGwN_4gpui3appNtB6_11Application3runNCNvCs38KDFhnnSAw_22planning_native_review4mainsO_0EBV_",
+      6545.0
+    ],
+    [
+      "_RINvNtNtCs1coMeGJvsuS_3std3sys9backtrace28___rust_begin_short_backtraceFEuuECs38KDFhnnSAw_22planning_native_review",
+      6545.0
+    ],
+    [
+      "_RNCINvNtCs1coMeGJvsuS_3std2rt10lang_startuE0Cs38KDFhnnSAw_22planning_native_review",
+      6545.0
+    ],
+    [
+      "_BlockUntilNextEventMatchingListInMode",
+      6545.0
+    ],
+    [
+      "_RNvNtCs1coMeGJvsuS_3std2rt19lang_start_internal",
+      6545.0
+    ],
+    [
+      "-[NSApplication(NSEventRouting) nextEventMatchingMask:untilDate:inMode:dequeue:]",
+      6545.0
+    ],
+    [
+      "start",
+      6545.0
+    ],
+    [
+      "RunCurrentEventLoopInMode",
+      6537.0
+    ],
+    [
+      "_CFRunLoopRunSpecificWithOptions",
+      6509.0
+    ],
+    [
+      "__CFRunLoopRun",
+      6460.0
+    ],
+    [
+      "__CFRUNLOOP_IS_SERVICING_THE_MAIN_DISPATCH_QUEUE__",
+      6034.0
+    ],
+    [
+      "_dispatch_main_queue_callback_4CF",
+      6034.0
+    ]
+  ],
+  "limitations": [
+    "Sampling weights are statistical CPU estimates, not frame duration.",
+    "Inclusive groups overlap and must not be summed."
+  ]
+}

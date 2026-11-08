@@ -365,7 +365,7 @@ pub fn run() {
                 w.render_frame(cx);
                 assert_eq!(w.find("global-model-all-stages").disabled(), Some(true));
                 assert_eq!(store.tasks, initial.tasks);
-                assert_eq!(store.runs, initial.runs, "Saving never starts a run");
+                assert_eq!(store.runs(), initial.runs(), "Saving never starts a run");
                 app.update(cx, |a, cx| a.open_project_plan(1, w, cx));
                 w.render_frame(cx);
                 assert_ne!(w.find("generate-project-plan").disabled(), Some(true));

@@ -29,39 +29,60 @@ fn read_connection(tx: &Connection, root: &Path) -> Result<Option<Store>, Box<dy
     if !(1..=SCHEMA_VERSION).contains(&version) {
         return Err(format!("Unsupported SQLite workspace version: {version}").into());
     }
-    let metadata: Option<String> = tx
-        .query_row("SELECT payload FROM workspace WHERE id=1", [], |r| r.get(0))
-        .optional()?;
-    let Some(metadata) = metadata else {
-        return Err("SQLite workspace metadata is missing".into());
+    let mut value: Value = {
+        let _span = crate::persistence_metrics::Span::start("read.metadata");
+        let metadata: Option<String> = tx
+            .query_row("SELECT payload FROM workspace WHERE id=1", [], |r| r.get(0))
+            .optional()?;
+        let Some(metadata) = metadata else {
+            return Err("SQLite workspace metadata is missing".into());
+        };
+        serde_json::from_str(&metadata)?
     };
-    let mut value: Value = serde_json::from_str(&metadata)?;
-    for table in TABLES {
-        let exists: bool = tx.query_row(
-            "SELECT EXISTS(SELECT 1 FROM sqlite_master WHERE type='table' AND name=?1)",
-            [table],
-            |r| r.get(0),
-        )?;
-        let mut items = Vec::new();
-        if exists {
-            let mut statement =
-                tx.prepare(&format!("SELECT payload FROM {table} ORDER BY position"))?;
-            let rows = statement.query_map([], |r| r.get::<_, String>(0))?;
-            for row in rows {
-                items.push(serde_json::from_str::<Value>(&row?)?);
+    {
+        let _span = crate::persistence_metrics::Span::start("read.tables");
+        for table in TABLES {
+            let exists: bool = tx.query_row(
+                "SELECT EXISTS(SELECT 1 FROM sqlite_master WHERE type='table' AND name=?1)",
+                [table],
+                |r| r.get(0),
+            )?;
+            let mut items = Vec::new();
+            if exists {
+                let mut statement =
+                    tx.prepare(&format!("SELECT payload FROM {table} ORDER BY position"))?;
+                let rows = statement.query_map([], |r| r.get::<_, String>(0))?;
+                for row in rows {
+                    items.push(serde_json::from_str::<Value>(&row?)?);
+                }
             }
+            value[table] = Value::Array(items);
         }
-        value[table] = Value::Array(items);
     }
-    if version >= 2 { transform_paths(&mut value, root, false)?; }
+    if version >= 2 {
+        let _span = crate::persistence_metrics::Span::start("read.paths");
+        transform_paths(&mut value, root, false)?;
+    }
+    let _span = crate::persistence_metrics::Span::start("read.deserialize");
     Ok(Some(serde_json::from_value(value)?))
 }
 
 pub fn save(path: &Path, root: &Path, store: &Store) -> Result<(), String> {
+    let _span = crate::persistence_metrics::Span::start("sqlite.save.total");
     // Validate requested changes before a one-time upgrade changes the old file.
-    let mut value = serde_json::to_value(store).map_err(|e| e.to_string())?;
-    transform_paths(&mut value, root, true)?;
-    upgrade_paths(path, root, |_| {})?;
+    let mut value = {
+        let _span = crate::persistence_metrics::Span::start("sqlite.serialize");
+        serde_json::to_value(store).map_err(|e| e.to_string())?
+    };
+    {
+        let _span = crate::persistence_metrics::Span::start("sqlite.path_transform");
+        transform_paths(&mut value, root, true)?;
+    }
+    {
+        let _span = crate::persistence_metrics::Span::start("sqlite.upgrade_check");
+        upgrade_paths(path, root, |_| {})?;
+    }
+    let _span = crate::persistence_metrics::Span::start("sqlite.write");
     write(path, root, store, Some(value), &mut |_| {})
         .map_err(|e| format!("Cannot save SQLite workspace {}: {e}", path.display()))
 }
@@ -75,76 +96,94 @@ fn write(
 ) -> Result<(), Box<dyn std::error::Error>> {
     // `save` already validated and path-encoded the snapshot; do not serialize the
     // entire store twice (material on large histories).
-    let mut metadata = match prepared {
-        Some(value) => value,
-        None => {
-            let mut value = serde_json::to_value(store)?;
-            transform_paths(&mut value, root, true)?;
-            value
+    let mut metadata = {
+        let _span = crate::persistence_metrics::Span::start("write.metadata_extract");
+        match prepared {
+            Some(value) => value,
+            None => {
+                let mut value = serde_json::to_value(store)?;
+                transform_paths(&mut value, root, true)?;
+                value
+            }
         }
     };
     // Private permissions from creation, including before SQLite opens the file.
-    let mut options = std::fs::OpenOptions::new();
-    options.write(true).create(true).truncate(false);
-    #[cfg(unix)]
-    {
-        use std::os::unix::fs::OpenOptionsExt;
-        options.mode(0o600);
-    }
-    drop(options.open(path)?);
-    let mut db = Connection::open(path)?;
-    db.busy_timeout(std::time::Duration::from_secs(5))?;
-    db.pragma_update(None, "journal_mode", "DELETE")?;
-    db.pragma_update(None, "synchronous", "FULL")?;
-    let version: i64 = db.pragma_query_value(None, "user_version", |r| r.get(0))?;
-    if !(0..=SCHEMA_VERSION).contains(&version) {
-        return Err(format!("Unsupported SQLite workspace version: {version}").into());
-    }
-    let tx = db.transaction()?;
-    tx.execute_batch("CREATE TABLE IF NOT EXISTS workspace (id INTEGER PRIMARY KEY CHECK(id=1), payload TEXT NOT NULL);")?;
-    for table in TABLES {
-        tx.execute_batch(&format!("CREATE TABLE IF NOT EXISTS {table} (position INTEGER PRIMARY KEY, payload TEXT NOT NULL); DELETE FROM {table};"))?;
-        let items = metadata.as_object_mut().unwrap().remove(table).unwrap();
-        let items = items.as_array().unwrap();
-        // Chunked multi-row inserts keep large histories from paying one SQLite
-        // execution per row while preserving stable blueprint positions.
-        const CHUNK: usize = 128;
-        if items.is_empty() {
-            continue;
+    let (mut db, version) = {
+        let _span = crate::persistence_metrics::Span::start("write.open");
+        let mut options = std::fs::OpenOptions::new();
+        options.write(true).create(true).truncate(false);
+        #[cfg(unix)]
+        {
+            use std::os::unix::fs::OpenOptionsExt;
+            options.mode(0o600);
         }
-        for (chunk_index, chunk) in items.chunks(CHUNK).enumerate() {
-            let base = chunk_index * CHUNK;
-            let sql = format!(
-                "INSERT INTO {table}(position,payload) VALUES {}",
-                (0..chunk.len())
-                    .map(|index| format!("(?{},?{})", index * 2 + 1, index * 2 + 2))
-                    .collect::<Vec<_>>()
-                    .join(",")
-            );
-            let mut values: Vec<Box<dyn rusqlite::ToSql>> = Vec::with_capacity(chunk.len() * 2);
-            for (offset, item) in chunk.iter().enumerate() {
-                values.push(Box::new((base + offset) as i64));
-                values.push(Box::new(serde_json::to_string(item)?));
+        drop(options.open(path)?);
+        let mut db = Connection::open(path)?;
+        db.busy_timeout(std::time::Duration::from_secs(5))?;
+        db.pragma_update(None, "journal_mode", "DELETE")?;
+        db.pragma_update(None, "synchronous", "FULL")?;
+        let version: i64 = db.pragma_query_value(None, "user_version", |r| r.get(0))?;
+        if !(0..=SCHEMA_VERSION).contains(&version) {
+            return Err(format!("Unsupported SQLite workspace version: {version}").into());
+        }
+        (db, version)
+    };
+    let tx = {
+        let _span = crate::persistence_metrics::Span::start("write.tables");
+        let tx = db.transaction()?;
+        tx.execute_batch("CREATE TABLE IF NOT EXISTS workspace (id INTEGER PRIMARY KEY CHECK(id=1), payload TEXT NOT NULL);")?;
+        for table in TABLES {
+            tx.execute_batch(&format!("CREATE TABLE IF NOT EXISTS {table} (position INTEGER PRIMARY KEY, payload TEXT NOT NULL); DELETE FROM {table};"))?;
+            let items = metadata.as_object_mut().unwrap().remove(table).unwrap();
+            let items = items.as_array().unwrap();
+            // Chunked multi-row inserts keep large histories from paying one SQLite
+            // execution per row while preserving stable blueprint positions.
+            const CHUNK: usize = 128;
+            if items.is_empty() {
+                continue;
             }
-            tx.execute(
-                &sql,
-                rusqlite::params_from_iter(values.iter().map(|value| value.as_ref())),
-            )?;
+            for (chunk_index, chunk) in items.chunks(CHUNK).enumerate() {
+                let base = chunk_index * CHUNK;
+                let sql = format!(
+                    "INSERT INTO {table}(position,payload) VALUES {}",
+                    (0..chunk.len())
+                        .map(|index| format!("(?{},?{})", index * 2 + 1, index * 2 + 2))
+                        .collect::<Vec<_>>()
+                        .join(",")
+                );
+                let mut values: Vec<Box<dyn rusqlite::ToSql>> = Vec::with_capacity(chunk.len() * 2);
+                for (offset, item) in chunk.iter().enumerate() {
+                    values.push(Box::new((base + offset) as i64));
+                    values.push(Box::new(serde_json::to_string(item)?));
+                }
+                tx.execute(
+                    &sql,
+                    rusqlite::params_from_iter(values.iter().map(|value| value.as_ref())),
+                )?;
+            }
         }
+        tx
+    };
+    {
+        let _span = crate::persistence_metrics::Span::start("write.metadata");
+        tx.execute(
+            "INSERT OR REPLACE INTO workspace(id,payload) VALUES(1,?1)",
+            [serde_json::to_string(&metadata)?],
+        )?;
+        tx.pragma_update(None, "user_version", SCHEMA_VERSION)?;
     }
-    tx.execute(
-        "INSERT OR REPLACE INTO workspace(id,payload) VALUES(1,?1)",
-        [serde_json::to_string(&metadata)?],
-    )?;
-    tx.pragma_update(None, "user_version", SCHEMA_VERSION)?;
     if version < SCHEMA_VERSION {
+        let _span = crate::persistence_metrics::Span::start("write.verify");
         progress("Verifying upgraded data…");
         if read_connection(&tx, root)?.as_ref() != Some(store) {
             return Err("Path upgrade changed workspace data; the transaction was rolled back".into());
         }
         check_integrity(&tx)?;
     }
-    tx.commit()?;
+    {
+        let _span = crate::persistence_metrics::Span::start("write.commit");
+        tx.commit()?;
+    }
     Ok(())
 }
 
@@ -204,7 +243,7 @@ fn upgrade(path: &Path, root: &Path, progress: &mut impl FnMut(&'static str)) ->
 
 /// Only operational paths are rewritten. Free text and historical evidence are immutable.
 /// Runtime stores remain absolute so execution, recovery and signature comparisons share a root.
-fn transform_paths(value: &mut Value, root: &Path, encode: bool) -> Result<(), String> {
+pub(crate) fn transform_paths(value: &mut Value, root: &Path, encode: bool) -> Result<(), String> {
     if !root.is_absolute() { return Err("Workspace storage root must be absolute".into()); }
     fn path(value: &mut Value, root: &Path, encode: bool) -> Result<(), String> {
         let Some(text) = value.as_str() else { return Err("Invalid workspace path".into()); };
@@ -242,7 +281,11 @@ fn transform_paths(value: &mut Value, root: &Path, encode: bool) -> Result<(), S
             let original_signature = run.get("input_signature").and_then(Value::as_str).unwrap_or_default().to_string();
             if let Ok(mut signature) = serde_json::from_str::<Value>(&original_signature) {
                 let index = if run.get("project_plan").is_some_and(|v| !v.is_null()) {
-                    match signature.as_array().map(Vec::len) { Some(7) => Some(5), Some(5) => Some(3), _ => None }
+                    match signature.as_array().map(Vec::len) {
+                        Some(8) | Some(7) => Some(5),
+                        Some(5) => Some(3),
+                        _ => None,
+                    }
                 } else if run.get("research_kind").is_some_and(|v| !v.is_null()) && signature.as_array().is_some_and(|v| v.len() == 5) {
                     Some(2)
                 } else { None };
@@ -250,6 +293,24 @@ fn transform_paths(value: &mut Value, root: &Path, encode: bool) -> Result<(), S
                     let before = signature[index].clone();
                     path(&mut signature[index], root, encode)?;
                     if signature[index] != before { run["input_signature"] = Value::String(replace_signature_path(&original_signature, index, &signature[index])?); }
+                }
+            }
+        }
+    }
+    if let Some(automations) = value.get_mut("automations").and_then(Value::as_array_mut) {
+        for automation in automations {
+            let Some(binding) = automation.get_mut("plan_binding") else { continue; };
+            let Some(signature) = binding.get("input_signature").and_then(Value::as_str).map(str::to_string) else { continue; };
+            let Ok(mut parsed) = serde_json::from_str::<Value>(&signature) else { continue; };
+            let index = match parsed.as_array().map(Vec::len) {
+                Some(8) | Some(7) => Some(5),
+                _ => None,
+            };
+            if let Some(index) = index {
+                let before = parsed[index].clone();
+                path(&mut parsed[index], root, encode)?;
+                if parsed[index] != before {
+                    binding["input_signature"] = Value::String(replace_signature_path(&signature, index, &parsed[index])?);
                 }
             }
         }
@@ -297,11 +358,14 @@ mod tests {
         original.projects[0].directory = root.join("projects/project-1").to_string_lossy().into();
         original.set_stage(1, Stage::InProgress).unwrap();
         original.simulate_run(1).unwrap();
-        let run = original.runs.last_mut().unwrap();
-        run.directory = original.projects[0].directory.clone();
-        run.workspace_source = Some(root.to_string_lossy().into());
-        run.prompt = format!("Historical path: {}", run.directory);
-        run.output = run.prompt.clone();
+        let directory = original.projects[0].directory.clone();
+        {
+            let mut run = original.last_run_mut().unwrap();
+            run.directory = directory;
+            run.workspace_source = Some(root.to_string_lossy().into());
+            run.prompt = format!("Historical path: {}", run.directory);
+            run.output = run.prompt.clone();
+        }
         // Reproduce the old v1 format, with absolute paths and no rewrite on reading.
         save(&path, Path::new("/unrelated-legacy-root"), &original).unwrap();
         let db = Connection::open(&path).unwrap();
@@ -327,10 +391,172 @@ mod tests {
         let restored = Storage::new(moved.join("workspace.sqlite3")).load().unwrap().unwrap();
         let mut expected = original;
         expected.projects[0].directory = moved.join("projects/project-1").to_string_lossy().into();
-        expected.runs.last_mut().unwrap().directory = expected.projects[0].directory.clone();
-        expected.runs.last_mut().unwrap().workspace_source = Some(moved.to_string_lossy().into());
+        let expected_directory = expected.projects[0].directory.clone();
+        expected.last_run_mut().unwrap().directory = expected_directory;
+        expected.last_run_mut().unwrap().workspace_source = Some(moved.to_string_lossy().into());
         assert_eq!(restored, expected);
         std::fs::remove_dir_all(moved).unwrap();
+    }
+
+    #[test]
+    fn planning_ownership_and_binding_signatures_survive_relocation() {
+        let root = temp();
+        let path = root.join("workspace.sqlite3");
+        let mut store = Store::mock();
+        store.default_model = "test/model".into();
+        store.projects[0].directory = root.join("projects/project-1").to_string_lossy().into();
+        std::fs::create_dir_all(&store.projects[0].directory).unwrap();
+        std::fs::create_dir_all(root.join("automations")).unwrap();
+        let automation_project = store
+            .ensure_automation_project(root.join("automations").to_string_lossy().into())
+            .unwrap();
+        let id = store
+            .create_automation_draft(
+                automation_project,
+                crate::automation::AutomationShape::Research,
+                "Relocation".into(),
+                "Objective A".into(),
+                "Expected A".into(),
+                crate::automation_schedule::Schedule {
+                    spec: crate::automation_schedule::ScheduleSpec::Daily { hour: 9, minute: 0 },
+                    timezone: "UTC".into(),
+                },
+                crate::automation::AutomationPolicy::default(),
+                None,
+                1_000,
+            )
+            .unwrap();
+        let request = store
+            .create_automation_request(
+                id,
+                automation_project,
+                "Objective A",
+                "Expected A",
+            )
+            .unwrap();
+        let mut run = store.prepare_request_plan(request).unwrap();
+        let signature = store.request_plan_signature(request).unwrap();
+        assert_eq!(run.input_signature, signature);
+        assert_eq!(signature.as_bytes().iter().filter(|byte| **byte == b',').count(), 7);
+        let plan = r#"{"topic_name":"Plan","brief":{"objective":"Objective A","deliverable":"Expected A","scope":"Scope","assumptions":[],"facts_to_verify":[]},"goals":[{"title":"Goal","brief":"Brief","tasks":[{"title":"Collect","instructions":"Collect","kind":"collect","depends_on":[]},{"title":"Analyze","instructions":"Analyze","kind":"analyze","depends_on":[0]},{"title":"Report","instructions":"Report","kind":"advise","depends_on":[1]}]}]}"#;
+        run.status = "Succeeded".into();
+        run.output = plan.into();
+        let run_id = run.id;
+        store.push_run(run);
+        store.research_requests[0].planning_run_id = Some(run_id);
+        let revision = store.research_requests[0].revision;
+        store
+            .apply_automation_template(
+                id,
+                request,
+                revision,
+                &signature,
+                plan,
+                2_000,
+            )
+            .unwrap();
+        let mut stale = store.runs()[0].clone();
+        stale.id = run_id + 1;
+        stale.planning_owner = None;
+        stale.prompt.clear();
+        stale.input_signature = "[\"stale-before-move\"]".into();
+        store.push_run(stale);
+        save(&path, &root, &store).unwrap();
+        let moved = root.with_extension("relocated");
+        std::fs::rename(&root, &moved).unwrap();
+        let restored = Storage::new(moved.join("workspace.sqlite3"))
+            .load()
+            .unwrap()
+            .unwrap();
+        let definition = restored.automation(id).unwrap();
+        let binding = definition.plan_binding.as_ref().unwrap();
+        assert_eq!(binding.project_id, automation_project);
+        assert_eq!(
+            binding.input_signature,
+            restored.request_plan_signature(request).unwrap()
+        );
+        assert_eq!(restored.runs()[0].input_signature, binding.input_signature);
+        let expected_directory = restored
+            .projects
+            .iter()
+            .find(|project| project.id == automation_project)
+            .unwrap()
+            .directory
+            .clone();
+        assert!(binding.input_signature.contains(&expected_directory));
+        assert_eq!(restored.projects[0].directory, moved.join("projects/project-1").to_string_lossy().to_string());
+        assert!(restored.plan_binding_problem(definition).is_none());
+        assert!(restored.planning_attempt_is_current(run_id));
+        let stale = restored.runs().iter().find(|run| run.id == run_id + 1).unwrap();
+        assert_eq!(stale.input_signature, "[\"stale-before-move\"]");
+        assert!(stale.planning_owner.is_none(), "a stale signature stays unassigned");
+        std::fs::remove_dir_all(moved).unwrap();
+    }
+
+    #[test]
+    fn legacy_planning_ownership_is_rebuilt_on_reopen_without_an_unmatched_panic() {
+        let root = temp();
+        let path = root.join("workspace.sqlite3");
+        let mut store = Store::mock();
+        store.default_model = "test/model".into();
+        store.projects[0].directory = root.join("projects/project-1").to_string_lossy().into();
+        std::fs::create_dir_all(&store.projects[0].directory).unwrap();
+        let id = store
+            .create_automation_draft(
+                1,
+                crate::automation::AutomationShape::Research,
+                "Legacy".into(),
+                "Objective A".into(),
+                "Expected A".into(),
+                crate::automation_schedule::Schedule {
+                    spec: crate::automation_schedule::ScheduleSpec::Daily { hour: 9, minute: 0 },
+                    timezone: "UTC".into(),
+                },
+                crate::automation::AutomationPolicy::default(),
+                None,
+                1_000,
+            )
+            .unwrap();
+        let request = store
+            .create_automation_request(id, 1, "Objective A", "Expected A")
+            .unwrap();
+        let mut owned = store.prepare_request_plan(request).unwrap();
+        owned.status = "Succeeded".into();
+        let owned_id = owned.id;
+        let mut unmatched = owned.clone();
+        unmatched.id = owned_id + 1;
+        unmatched.planning_owner = None;
+        unmatched.input_signature = "[\"unmatched\"]".into();
+        unmatched.prompt.clear();
+        store.push_run(owned);
+        store.push_run(unmatched);
+        store.research_requests[0].planning_run_id = Some(owned_id);
+        save(&path, &root, &store).unwrap();
+        let db = Connection::open(&path).unwrap();
+        db.execute(
+            "UPDATE runs SET payload=json_remove(payload,'$.planning_owner')",
+            [],
+        )
+        .unwrap();
+        db.execute(
+            "UPDATE automations SET payload=json_remove(payload,'$.plan_binding')",
+            [],
+        )
+        .unwrap();
+        db.execute(
+            "UPDATE workspace SET payload=json_remove(payload,'$.research_requests[0].expected_result','$.research_requests[0].revision')",
+            [],
+        )
+        .unwrap();
+        drop(db);
+        let restored = Storage::new(path.clone()).load().unwrap().unwrap();
+        assert_eq!(restored.research_requests[0].expected_result, None);
+        assert_eq!(restored.research_requests[0].revision, 1);
+        assert_eq!(
+            restored.runs().iter().find(|run| run.id == owned_id).unwrap().planning_owner.as_ref().unwrap().request_id,
+            request
+        );
+        assert!(restored.runs().iter().find(|run| run.id == owned_id + 1).unwrap().planning_owner.is_none());
     }
 
     fn legacy_fixture(root: &Path) -> (Storage, Store) {
@@ -424,8 +650,8 @@ mod tests {
         assert_eq!(load(storage.path(), &root).unwrap(), Some(original.clone()));
         assert_ne!(std::fs::read(storage.path()).unwrap(), legacy_bytes);
         let migrated = load(storage.path(), &root).unwrap().unwrap();
-        assert!(migrated.automations.is_empty());
-        assert!(migrated.automation_occurrences.is_empty());
+        assert!(migrated.automations().is_empty());
+        assert!(migrated.all_occurrences().is_empty());
         // New automation entities round-trip through the new tables.
         let mut changed = migrated;
         let id = changed
@@ -555,7 +781,7 @@ mod tests {
         for task in &relocated.tasks {
             for attachment in &task.attachments { crate::attachments::resolve(&copy, attachment).unwrap(); }
         }
-        for run in &relocated.runs {
+        for run in relocated.runs() {
             for attachment in &run.attachments { crate::attachments::resolve(&copy, attachment).unwrap(); }
         }
         // Compare the entire store after resolving it back against the original root.
@@ -572,6 +798,6 @@ mod tests {
                 }
             }
         }
-        println!("Snapshot verified: {} projects, {} tasks, {} runs; full roundtrip, result validity, approvals, attachments, relative paths, integrity_check", original.projects.len(), original.tasks.len(), original.runs.len());
+        println!("Snapshot verified: {} projects, {} tasks, {} runs; full roundtrip, result validity, approvals, attachments, relative paths, integrity_check", original.projects.len(), original.tasks.len(), original.runs().len());
     }
 }

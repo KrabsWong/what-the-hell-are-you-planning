@@ -47,7 +47,7 @@ impl TaskApp {
                     .border_1()
                     .border_color(rgb(colors.line))
                     .bg(rgb(colors.panel))
-                    .child(quiet_button(format!("board-topic-{}-{id}", group), "")
+                    .child(row_button(format!("board-topic-{}-{id}", group), "")
                         .w_full().min_w_0().px_1()
                         .tooltip(topic.display_name())
                         .accessibility_label(topic.display_name())
@@ -91,7 +91,7 @@ impl TaskApp {
             let project = request.project_id;
             let run = request
                 .planning_run_id
-                .and_then(|id| self.store.runs.iter().find(|r| r.id == id));
+                .and_then(|id| self.store.runs().iter().find(|r| r.id == id));
             let active = run
                 .is_some_and(|r| matches!(r.status.as_str(), "Queued" | "Running" | "Cancelling"));
             let planned = !request.goal_ids.is_empty();
@@ -183,13 +183,13 @@ impl TaskApp {
         };
         let colors = palette(cx);
         let request_id = request.id;
-        let regenerating = request.planning_run_id.is_some_and(|id| self.store.runs.iter()
+        let regenerating = request.planning_run_id.is_some_and(|id| self.store.runs().iter()
             .any(|r| r.id == id && matches!(r.status.as_str(), "Queued" | "Running" | "Cancelling")));
         let expanded = self.expanded_request_brief == Some(goal);
         col()
             .gap_2()
             .child(
-                quiet_button("request-brief-toggle", "Original request & planning brief")
+                select_button("request-brief-toggle", "Original request & planning brief", expanded, cx)
                     .self_start()
                     .icon(if expanded {
                         assets::IconName::ChevronDown

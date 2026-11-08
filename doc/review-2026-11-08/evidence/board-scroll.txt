@@ -1,0 +1,1 @@
+Board scroll workload: 24 goals / 72 completed steps; median 42.07 ms, p95 44.10 ms per scroll+render

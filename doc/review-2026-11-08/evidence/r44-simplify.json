@@ -1,0 +1,7 @@
+{
+  "binary": ".local/opencode-dispatch/root-r44/planning-qa",
+  "sha256": "58e474f379bb5bd7e23631f54857143ae3b4e1fe02ddff3a3efc2a347d1c1759",
+  "guard_exit": 2,
+  "exit_code": 101,
+  "elapsed_seconds": 12.145299911499023
+}

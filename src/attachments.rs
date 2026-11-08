@@ -1,5 +1,6 @@
 //! Immutable local copies of task materials. Removing a task reference keeps the copy for undo.
 use serde::{Deserialize, Serialize};
+use sha2::{Digest, Sha256};
 use std::{
     fs::{self, File, OpenOptions},
     io::{Read, Write},
@@ -17,6 +18,49 @@ pub struct Attachment {
     pub relative_path: String,
     pub media_type: String,
     pub size: u64,
+    /// Content identity captured at import time. Empty on legacy records; those
+    /// are verified through the bounded background verifier before destructive use.
+    #[serde(default, skip_serializing_if = "String::is_empty")]
+    pub content_sha256: String,
+}
+
+/// Borrowed legacy field order used where signatures serialized `Attachment`
+/// directly. The four-field order must stay byte-compatible with persisted
+/// approvals created before `content_sha256` existed.
+#[derive(Serialize)]
+pub struct LegacyAttachment<'a> {
+    pub name: &'a str,
+    pub relative_path: &'a str,
+    pub media_type: &'a str,
+    pub size: u64,
+}
+
+pub fn legacy_signature_payload(attachments: &[Attachment]) -> Vec<LegacyAttachment<'_>> {
+    attachments
+        .iter()
+        .map(|attachment| LegacyAttachment {
+            name: &attachment.name,
+            relative_path: &attachment.relative_path,
+            media_type: &attachment.media_type,
+            size: attachment.size,
+        })
+        .collect()
+}
+
+/// Stable signature payload for nested JSON arrays. `content_sha256` is a
+/// verification cache and must never participate in signatures or approvals.
+pub fn signature_payload(attachments: &[Attachment]) -> Vec<serde_json::Value> {
+    attachments
+        .iter()
+        .map(|attachment| {
+            serde_json::json!({
+                "name": attachment.name,
+                "relative_path": attachment.relative_path,
+                "media_type": attachment.media_type,
+                "size": attachment.size,
+            })
+        })
+        .collect()
 }
 
 pub fn import_file(data_dir: &Path, source: &Path) -> Result<Attachment, String> {
@@ -133,6 +177,7 @@ pub fn import_bytes(data_dir: &Path, name: &str, bytes: &[u8]) -> Result<Attachm
         relative_path: format!("attachments/{filename}"),
         media_type: media_type.into(),
         size: bytes.len() as u64,
+        content_sha256: format!("{:x}", Sha256::digest(&bytes)),
     })
 }
 

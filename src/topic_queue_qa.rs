@@ -105,8 +105,15 @@ print(json.dumps({'type':'text','part':{'text':json.dumps({'status':'complete','
             .update_window(handle, |_, _, cx| {
                 app.update(cx, |state, cx| {
                     // Keep the production 30-second policy; advance its clock only in this fixture.
-                    for run in &mut state.store.runs {
-                        if run.status == "Queued" && run.auto_retry_attempt > 0 {
+                    let ids: Vec<u64> = state
+                        .store
+                        .runs()
+                        .iter()
+                        .filter(|run| run.status == "Queued" && run.auto_retry_attempt > 0)
+                        .map(|run| run.id)
+                        .collect();
+                    for id in ids {
+                        if let Some(mut run) = state.store.run_mut(id) {
                             run.retry_not_before = Some(0);
                         }
                     }
@@ -114,7 +121,7 @@ print(json.dumps({'type':'text','part':{'text':json.dumps({'status':'complete','
                     if matches!(state.todo_batch.as_ref().unwrap().state, BatchState::Paused(_)) {
                         assert!(!admission_pause_seen);
                         admission_pause_seen = true;
-                        assert!(state.store.runs.iter().all(|r| ![b1, c1].contains(&state.store.owning_research_goal(r.task_id).unwrap())));
+                        assert!(state.store.runs().iter().all(|r| ![b1, c1].contains(&state.store.owning_research_goal(r.task_id).unwrap())));
                         assert!(state.todo_batch.as_ref().unwrap().failed_items.is_empty());
                         assert!(state.task_start_feedback.as_ref().is_some_and(|(_, error)| error.contains("model")));
                         assert!(state.store.task(a1).unwrap().activity.iter().any(|event| event.contains("queue paused")));
@@ -126,7 +133,7 @@ print(json.dumps({'type':'text','part':{'text':json.dumps({'status':'complete','
                         .active_runs
                         .iter()
                         .map(|active| {
-                            let run = state.store.runs.iter().find(|r| r.id == active.id).unwrap();
+                            let run = state.store.runs().iter().find(|r| r.id == active.id).unwrap();
                             state.store.execution_topic(run.task_id)
                         })
                         .collect::<Vec<_>>();
@@ -136,7 +143,7 @@ print(json.dumps({'type':'text','part':{'text':json.dumps({'status':'complete','
                     );
                     if state
                         .store
-                        .runs
+                        .runs()
                         .iter()
                         .any(|r| state.store.owning_research_goal(r.task_id) == Some(b1))
                     {
@@ -147,7 +154,7 @@ print(json.dumps({'type':'text','part':{'text':json.dumps({'status':'complete','
                     }
                     if state
                         .store
-                        .runs
+                        .runs()
                         .iter()
                         .any(|r| state.store.owning_research_goal(r.task_id) == Some(c1))
                     {
@@ -180,7 +187,7 @@ print(json.dumps({'type':'text','part':{'text':json.dumps({'status':'complete','
                 assert_eq!(
                     state
                         .store
-                        .runs
+                        .runs()
                         .iter()
                         .filter(|r| r.task_id == step)
                         .count(),
@@ -200,7 +207,7 @@ print(json.dumps({'type':'text','part':{'text':json.dumps({'status':'complete','
             assert!(
                 !state
                     .store
-                    .runs
+                    .runs()
                     .iter()
                     .any(|r| state.store.owning_research_goal(r.task_id) == Some(d1))
             );

@@ -1,0 +1,26 @@
+{
+  "binary": "/Users/fuxingxing/workspaces/what-the-hell-are-you-planning/.local/native-review/release-target/release/planning-native-review",
+  "sha256": "c684b245dda84a65838d864cd229b49c81b94a2af0a5bc7e4db1c9e669545ccf",
+  "checks": [
+    {
+      "argument": "--qa-navigation-context",
+      "exit_code": 2,
+      "stderr": "Unsupported QA argument --qa-navigation-context. Build with --features qa and use a supported QA command. No workspace was opened."
+    },
+    {
+      "argument": "--qa-unknown-regression",
+      "exit_code": 2,
+      "stderr": "Unsupported QA argument --qa-unknown-regression. Build with --features qa and use a supported QA command. No workspace was opened."
+    },
+    {
+      "argument": "--projects-live",
+      "exit_code": 2,
+      "stderr": "Unsupported QA argument --projects-live. Build with --features qa and use a supported QA command. No workspace was opened."
+    },
+    {
+      "argument": "--research-live",
+      "exit_code": 2,
+      "stderr": "Unsupported QA argument --research-live. Build with --features qa and use a supported QA command. No workspace was opened."
+    }
+  ]
+}

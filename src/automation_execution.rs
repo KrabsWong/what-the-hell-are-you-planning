@@ -112,7 +112,7 @@ pub fn build_template(objective: &str, expected: &str) -> Result<AutomationTempl
     Ok(template)
 }
 
-/// A quick task is a single instruction plus a single read-only answer step. It
+/// A quick task is a single instruction plus a single answer step. It
 /// needs no planning, no goal tree and no separate report pass.
 pub fn build_quick_template(objective: &str, expected: &str) -> Result<AutomationTemplate, String> {
     let (objective, expected) = validated_instruction(objective, expected)?;
@@ -177,51 +177,8 @@ fn validated_instruction<'a>(
 ) -> Result<(&'a str, &'a str), String> {
     let objective = objective.trim();
     let expected = expected.trim();
-    if objective.is_empty() || objective.len() > 12_000 {
-        return Err("Describe what the automation should do in 1–12,000 bytes.".into());
-    }
-    if expected.is_empty() || expected.len() > 12_000 {
-        return Err("Describe the expected result in 1–12,000 bytes.".into());
-    }
-    if let Some(reason) = unsupported_reason(objective) {
-        return Err(reason);
-    }
+    crate::automation_policy::validate_automation_fields(objective, expected, true)?;
     Ok((objective, expected))
-}
-
-/// Actions the first version cannot perform unattended must fail at creation,
-/// not silently become broader permissions.
-pub fn unsupported_reason(text: &str) -> Option<String> {
-    let lower = text.to_lowercase();
-    const BLOCKED: &[(&str, &str)] = &[
-        ("send email", "sending email"),
-        ("发送邮件", "sending email"),
-        ("发邮件", "sending email"),
-        ("send message", "sending messages"),
-        ("发送消息", "sending messages"),
-        ("place order", "placing orders"),
-        ("automatic trading", "automated trading"),
-        ("自动交易", "automated trading"),
-        ("下单", "placing orders"),
-        ("自动买入", "automated trading"),
-        ("自动卖出", "automated trading"),
-        ("git push", "pushing to Git"),
-        ("push to github", "pushing to Git"),
-        ("自动发布", "publishing externally"),
-        ("publish report to", "publishing externally"),
-        ("删除文件", "deleting files"),
-        ("rm -rf", "shell deletion"),
-        ("run script", "running arbitrary scripts"),
-        ("执行脚本", "running arbitrary scripts"),
-    ];
-    BLOCKED
-        .iter()
-        .find(|(needle, _)| lower.contains(needle))
-        .map(|(_, action)| {
-            format!(
-                "This task asks for {action}, which the first automation version cannot perform. Remove that action and keep the task to information collection, analysis and a local report."
-            )
-        })
 }
 
 pub fn approval_for(
@@ -236,6 +193,10 @@ pub fn approval_for(
         .as_ref()
         .ok_or("Generate or edit the recurring plan before enabling.")?;
     template.validate(definition.shape)?;
+    if let Some(problem) = store.plan_binding_problem(definition) {
+        return Err(problem);
+    }
+    let binding = definition.plan_binding.as_ref();
     let mut models = std::array::from_fn(|_| String::new());
     let mut agents: [Option<String>; 4] = Default::default();
     let required = template.kinds();
@@ -266,6 +227,8 @@ pub fn approval_for(
         approved_at: now,
         template_signature: template.signature(),
         schedule_signature: definition.schedule.signature(),
+        plan_request_id: binding.map(|binding| binding.request_id),
+        plan_revision: binding.map(|binding| binding.revision),
         models,
         agents,
         materials,
@@ -279,11 +242,46 @@ impl Store {
     pub fn apply_automation_template(
         &mut self,
         automation: u64,
+        request_id: u64,
+        revision: u32,
+        input_signature: &str,
         text: &str,
         now: i64,
     ) -> Result<usize, String> {
+        let request = self
+            .research_requests
+            .iter()
+            .find(|request| request.id == request_id)
+            .ok_or("The planning request no longer exists.")?;
+        if request.automation_id != Some(automation) {
+            return Err("The plan was generated for a different automation.".into());
+        }
+        if self
+            .automation(automation)
+            .is_none_or(|definition| definition.project_id != request.project_id)
+        {
+            return Err("The plan's project no longer matches this automation.".into());
+        }
+        if request.revision != revision {
+            return Err("The plan revision is no longer current.".into());
+        }
+        if self
+            .latest_planning_request(automation)
+            .is_none_or(|latest| latest.id != request_id)
+        {
+            return Err("A newer planning revision exists. Review that plan instead.".into());
+        }
+        if self.request_plan_signature(request_id)? != input_signature {
+            return Err("The planning inputs changed after this plan was generated.".into());
+        }
         let plan = crate::request_planning::parse_request_plan(text)?;
         let template = template_from_plan(&plan)?;
+        let binding = crate::automation::AutomationPlanBinding {
+            request_id,
+            revision,
+            project_id: request.project_id,
+            input_signature: input_signature.into(),
+        };
         let version = {
             let definition = self
                 .automation(automation)
@@ -300,6 +298,7 @@ impl Store {
             // The planner names the research subject; a quick task never reaches here.
             staged.name = plan.topic_name.chars().take(160).collect();
             staged.template = Some(template);
+            staged.plan_binding = Some(binding);
             staged.approval = None;
             staged.status = DefinitionStatus::Draft;
             staged.cursor = None;
@@ -312,14 +311,17 @@ impl Store {
             version
         };
         if version > 1 {
-            for occurrence in self
-                .automation_occurrences
-                .iter_mut()
+            let ids: Vec<u64> = self
+                .all_occurrences()
+                .iter()
                 .filter(|occurrence| {
                     occurrence.automation_id == automation
                         && occurrence.status == crate::automation::OccurrenceStatus::Queued
                 })
-            {
+                .map(|occurrence| occurrence.id)
+                .collect();
+            for id in ids {
+                let Some(mut occurrence) = self.occurrence_mut(id) else { continue };
                 let _ = occurrence.transition(
                     crate::automation::OccurrenceStatus::Skipped,
                     Some(crate::automation::OccurrenceReason::new(
@@ -364,6 +366,7 @@ impl Store {
             schedule,
             status: DefinitionStatus::Draft,
             template,
+            plan_binding: None,
             approval: None,
             policy,
             cursor: None,
@@ -374,7 +377,7 @@ impl Store {
             updated_at: now,
         };
         definition.validate_draft()?;
-        self.automations.push(definition);
+        self.push_automation(definition);
         Ok(id)
     }
 
@@ -389,7 +392,7 @@ impl Store {
         let definition = self.automation(automation).ok_or("Automation not found.")?;
         let before = now - i64::from(definition.policy.log_retention_days) * 86_400;
         let occurrence_ids: Vec<u64> = self
-            .automation_occurrences
+            .all_occurrences()
             .iter()
             .filter(|o| o.automation_id == automation && o.created_at < before && o.status.is_terminal())
             .map(|o| o.id)
@@ -399,9 +402,14 @@ impl Store {
         let mut cleared = 0;
         for occurrence in &occurrence_ids {
             let mut touched = false;
-            for run in self.runs.iter_mut().filter(|r| {
-                r.automation_occurrence_id == Some(*occurrence)
-            }) {
+            let run_ids: Vec<u64> = self
+                .runs()
+                .iter()
+                .filter(|run| run.automation_occurrence_id == Some(*occurrence))
+                .map(|run| run.id)
+                .collect();
+            for run_id in run_ids {
+                let Some(mut run) = self.run_mut(run_id) else { continue };
                 if !run.logs.is_empty() {
                     bytes += run.logs.iter().map(String::len).sum::<usize>();
                     if apply {
@@ -434,6 +442,36 @@ impl Store {
         template: Option<AutomationTemplate>,
         now: i64,
     ) -> Result<(), String> {
+        self.revise_automation_with_shape(
+            id,
+            project,
+            name,
+            objective,
+            expected_result,
+            schedule,
+            policy,
+            template,
+            now,
+            None,
+        )
+    }
+
+    /// Revise a definition, optionally changing its shape when the user
+    /// explicitly switches automation type. Validation uses the new shape so a
+    /// Quick draft is never checked against the old Research plan rules.
+    pub fn revise_automation_with_shape(
+        &mut self,
+        id: u64,
+        project: u64,
+        name: String,
+        objective: String,
+        expected_result: String,
+        schedule: Schedule,
+        policy: crate::automation::AutomationPolicy,
+        template: Option<AutomationTemplate>,
+        now: i64,
+        shape: Option<AutomationShape>,
+    ) -> Result<(), String> {
         let definition = self
             .automation(id)
             .ok_or("Automation not found.")?
@@ -445,6 +483,18 @@ impl Store {
         if !self.projects.iter().any(|candidate| candidate.id == project) {
             return Err("Choose an existing project.".into());
         }
+        let next_shape = shape.unwrap_or(staged.shape);
+        // A binding stays valid only when the actual planning inputs and the
+        // reviewed template are unchanged. Schedule/policy/name edits keep it.
+        let keep_binding = staged.plan_binding.is_some()
+            && staged.project_id == project
+            && staged.shape == next_shape
+            && staged.objective.trim() == objective.trim()
+            && staged.expected_result.trim() == expected_result.trim()
+            && staged.template == template;
+        if let Some(shape) = shape {
+            staged.shape = shape;
+        }
         staged.project_id = project;
         staged.name = name.trim().into();
         staged.objective = objective.trim().into();
@@ -452,6 +502,11 @@ impl Store {
         staged.schedule = schedule;
         staged.policy = policy;
         staged.template = template;
+        staged.plan_binding = if keep_binding {
+            staged.plan_binding.take()
+        } else {
+            None
+        };
         staged.version = staged
             .version
             .checked_add(1)
@@ -465,14 +520,17 @@ impl Store {
         staged.validate_draft()?;
         *self.automation_mut(id).unwrap() = staged;
         // Every unstarted occurrence belongs to the old approved version.
-        for occurrence in self
-            .automation_occurrences
-            .iter_mut()
+        let ids: Vec<u64> = self
+            .all_occurrences()
+            .iter()
             .filter(|o| {
                 o.automation_id == id
                     && o.status == crate::automation::OccurrenceStatus::Queued
             })
-        {
+            .map(|o| o.id)
+            .collect();
+        for occurrence_id in ids {
+            let Some(mut occurrence) = self.occurrence_mut(occurrence_id) else { continue };
             let _ = occurrence.transition(
                 crate::automation::OccurrenceStatus::Skipped,
                 Some(crate::automation::OccurrenceReason::new(
@@ -505,7 +563,7 @@ impl Store {
         {
             return false;
         }
-        self.resume_automation(id, now).is_ok()
+        self.resume_schedule(id, now).is_ok()
     }
 
     /// A display-name change does not alter the approved plan, models, materials or schedule.
@@ -514,7 +572,7 @@ impl Store {
         if name.is_empty() || name.chars().count() > 160 {
             return Err("Automation name must be 1–160 characters.".into());
         }
-        let definition = self.automation_mut(id).ok_or("Automation not found.")?;
+        let mut definition = self.automation_mut(id).ok_or("Automation not found.")?;
         definition.name = name.into();
         definition.updated_at = now;
         Ok(())
@@ -538,7 +596,7 @@ impl Store {
         }
         let approval = approval_for(self, &definition, now, materials)?;
         let first = definition.schedule.first_after(now)?;
-        let definition = self.automation_mut(id).unwrap();
+        let mut definition = self.automation_mut(id).unwrap();
         definition.approval = Some(approval.clone());
         definition.status = DefinitionStatus::Enabled;
         definition.anchor = Some(now);
@@ -557,14 +615,17 @@ impl Store {
         ) {
             return Err("Only an enabled automation can be paused.".into());
         }
-        for occurrence in self
-            .automation_occurrences
-            .iter_mut()
+        let ids: Vec<u64> = self
+            .all_occurrences()
+            .iter()
             .filter(|o| {
                 o.automation_id == id
                     && o.status == crate::automation::OccurrenceStatus::Queued
             })
-        {
+            .map(|o| o.id)
+            .collect();
+        for occurrence_id in ids {
+            let Some(mut occurrence) = self.occurrence_mut(occurrence_id) else { continue };
             let _ = occurrence.transition(
                 crate::automation::OccurrenceStatus::Skipped,
                 Some(crate::automation::OccurrenceReason::new(
@@ -573,7 +634,7 @@ impl Store {
                 )),
             );
         }
-        let definition = self.automation_mut(id).unwrap();
+        let mut definition = self.automation_mut(id).unwrap();
         definition.status = DefinitionStatus::Paused;
         definition.cursor = None;
         definition.updated_at = now;
@@ -581,7 +642,7 @@ impl Store {
     }
 
     /// Resuming re-anchors intervals and never backfills time spent paused.
-    pub fn resume_automation(&mut self, id: u64, now: i64) -> Result<(), String> {
+    pub fn resume_schedule(&mut self, id: u64, now: i64) -> Result<(), String> {
         let definition = self.automation(id).ok_or("Automation not found.")?;
         if !matches!(
             definition.status,
@@ -596,7 +657,7 @@ impl Store {
             return Err("The automation's project is unavailable. Choose another project first.".into());
         }
         let first = definition.schedule.first_after(now)?;
-        let definition = self.automation_mut(id).unwrap();
+        let mut definition = self.automation_mut(id).unwrap();
         definition.status = DefinitionStatus::Enabled;
         definition.anchor = Some(now);
         definition.cursor = Some(first);
@@ -614,14 +675,17 @@ impl Store {
         if definition.status == DefinitionStatus::Archived {
             return Ok(());
         }
-        for occurrence in self
-            .automation_occurrences
-            .iter_mut()
+        let ids: Vec<u64> = self
+            .all_occurrences()
+            .iter()
             .filter(|o| {
                 o.automation_id == id
                     && o.status == crate::automation::OccurrenceStatus::Queued
             })
-        {
+            .map(|o| o.id)
+            .collect();
+        for occurrence_id in ids {
+            let Some(mut occurrence) = self.occurrence_mut(occurrence_id) else { continue };
             let _ = occurrence.transition(
                 crate::automation::OccurrenceStatus::Skipped,
                 Some(crate::automation::OccurrenceReason::new(
@@ -630,7 +694,7 @@ impl Store {
                 )),
             );
         }
-        let definition = self.automation_mut(id).unwrap();
+        let mut definition = self.automation_mut(id).unwrap();
         definition.status = DefinitionStatus::Archived;
         definition.cursor = None;
         definition.updated_at = now;
@@ -641,7 +705,7 @@ impl Store {
     pub fn copy_automation(&mut self, id: u64, now: i64) -> Result<u64, String> {
         let source = self.automation(id).ok_or("Automation not found.")?.clone();
         let id = self.next_automation_id()?;
-        self.automations.push(AutomationDefinition {
+        self.push_automation(AutomationDefinition {
             id,
             version: 1,
             project_id: source.project_id,
@@ -652,6 +716,7 @@ impl Store {
             schedule: source.schedule,
             status: DefinitionStatus::Draft,
             template: source.template,
+            plan_binding: None,
             approval: None,
             policy: source.policy,
             cursor: None,
@@ -665,7 +730,7 @@ impl Store {
     }
 
     pub fn mark_automation_attention(&mut self, id: u64, reason: impl Into<String>) {
-        if let Some(definition) = self.automation_mut(id) {
+        if let Some(mut definition) = self.automation_mut(id) {
             definition.status = DefinitionStatus::NeedsAttention;
             definition.attention_reason = Some(reason.into());
             definition.cursor = None;
@@ -673,7 +738,7 @@ impl Store {
     }
 
     pub fn note_automation_success(&mut self, id: u64) {
-        if let Some(definition) = self.automation_mut(id) {
+        if let Some(mut definition) = self.automation_mut(id) {
             definition.consecutive_failures = 0;
         }
     }
@@ -681,7 +746,7 @@ impl Store {
     /// Record a final failure and pause the schedule at the configured threshold.
     /// Skipped and cancelled occurrences are not failures.
     pub fn note_automation_failure(&mut self, id: u64, now: i64) -> Option<String> {
-        let definition = self.automation_mut(id)?;
+        let mut definition = self.automation_mut(id)?;
         definition.consecutive_failures = definition.consecutive_failures.saturating_add(1);
         definition.updated_at = now;
         (definition.consecutive_failures >= definition.policy.max_consecutive_failures).then(|| {
@@ -899,41 +964,8 @@ impl Store {
         occurrence.research_goal_id = goals.first().copied();
         occurrence.research_goal_ids = goals;
         occurrence.research_topic_id = topic;
-        self.automation_occurrences.push(occurrence.clone());
+        self.push_occurrence(occurrence.clone());
         Ok(occurrence)
-    }
-
-    /// A period runs in phase order — every collection step, then analysis, then
-    /// the final report — even when the reviewed dependency graph would let a
-    /// later phase start first. Concurrency is one step at a time, so this only
-    /// makes the sequence explicit and keeps evidence ahead of interpretation.
-    fn phase_ordered_ready_step(&self, goal: u64, ready: &[u64]) -> Option<u64> {
-        let children = self.research_children(goal);
-        for phase in [
-            ResearchKind::Collect,
-            ResearchKind::Analyze,
-            ResearchKind::Advise,
-        ] {
-            let unfinished = children.iter().any(|id| {
-                self.task(*id).is_some_and(|task| {
-                    task.stage != Stage::Cancelled
-                        && self.research_result(*id).is_none()
-                        && task
-                            .research
-                            .as_ref()
-                            .is_some_and(|research| research.kind == phase)
-                })
-            });
-            if !unfinished {
-                continue;
-            }
-            return ready.iter().copied().find(|id| {
-                self.task(*id)
-                    .and_then(|task| task.research.as_ref())
-                    .is_some_and(|research| research.kind == phase)
-            });
-        }
-        ready.first().copied()
     }
 
     /// Select the next runnable step and prepare a run with the snapshot's models,
@@ -957,34 +989,11 @@ impl Store {
         {
             return Err("The occurrence's execution time limit has been reached.".into());
         }
-        let goals: Vec<u64> = if occurrence.research_goal_ids.is_empty() {
-            occurrence.research_goal_id.into_iter().collect()
-        } else {
-            occurrence.research_goal_ids.clone()
-        };
-        if goals.is_empty() {
-            return Err("The occurrence has no research goal.".into());
-        }
-        // Goals run in their approved order; a later goal starts only after every
-        // earlier goal has completed, which is how the reviewed plan was approved.
-        let mut selected = None;
-        for goal in goals {
-            match self.ready_research_tasks(goal) {
-                Ok(ready) => {
-                    if let Some(task) = self.phase_ordered_ready_step(goal, &ready) {
-                        selected = Some(task);
-                        break;
-                    }
-                    if !self.goal_tasks_complete(goal) {
-                        return Err(
-                            "The next goal of this period is not runnable yet.".into()
-                        );
-                    }
-                }
-                Err(error) => return Err(error),
-            }
-        }
-        let Some(task) = selected else {
+        // Goals run in approved order and each goal keeps collection → analysis →
+        // report phase order. The shared eligibility result is also used by every
+        // status surface, so a queued period can prepare its next run without
+        // turning the displayed "Queued for automation slot" into a deadlock.
+        let Some(task) = self.next_occurrence_step(occurrence)? else {
             return Err("No runnable step remains for this occurrence.".into());
         };
         let mut snapshot = self.clone();
@@ -1113,7 +1122,7 @@ mod tests {
             timezone: "Asia/Shanghai".into(),
         };
         let id = store.next_automation_id().unwrap();
-        store.automations.push(AutomationDefinition {
+        store.push_automation(AutomationDefinition {
             id,
             version: 1,
             project_id: 1,
@@ -1124,6 +1133,7 @@ mod tests {
             schedule,
             status: DefinitionStatus::Draft,
             template: Some(template),
+            plan_binding: None,
             approval: None,
             policy: AutomationPolicy::default(),
             cursor: None,
@@ -1153,6 +1163,7 @@ mod tests {
             snapshot: AutomationOccurrenceSnapshot {
                 objective: definition.objective.clone(),
                 expected_result: definition.expected_result.clone(),
+                shape: Some(definition.shape),
                 template: definition.template.clone().unwrap(),
                 models: std::array::from_fn(|_| "test/model".to_string()),
                 agents: Default::default(),
@@ -1174,6 +1185,7 @@ mod tests {
             skipped_to: None,
             created_at: scheduled,
             deadline_at: None,
+            retry_requested_at: None,
         }
     }
 
@@ -1193,9 +1205,113 @@ mod tests {
             .flat_map(|goal| &goal.steps)
             .any(|step| step.kind == ResearchKind::Advise));
         for text in ["send email to the team", "自动交易 BTC", "git push"] {
-            assert!(unsupported_reason(text).is_some(), "{text}");
+            assert!(crate::automation_policy::rejection(text).is_some(), "{text}");
             assert!(build_template(text, "Result").is_err());
         }
+    }
+
+    #[test]
+    fn quick_and_legacy_templates_reject_expected_only_actions() {
+        for build in [build_quick_template, build_template] {
+            let error = build("Check public prices", "Send email the answer")
+                .expect_err("expected-only action must be rejected");
+            assert!(error.starts_with("Expected result:"), "{error}");
+            assert!(error.contains("input validation"), "{error}");
+        }
+        assert!(build_quick_template(
+            "Check public prices",
+            "Current price with source; do not send email"
+        )
+        .is_ok());
+    }
+
+    #[test]
+    fn generated_plan_actions_are_checked_in_titles_and_instructions() {
+        let instruction_action = r#"{"topic_name":"Publishing industry","brief":{"objective":"Track publishing","deliverable":"Note","scope":"Latest","assumptions":[],"facts_to_verify":[]},"goals":[{"title":"Publishing industry and order backlog","brief":"Track public announcements","tasks":[{"title":"Collect public sources","instructions":"Send email the finished summary","kind":"collect","depends_on":[]},{"title":"Analyze","instructions":"Compare the collected evidence","kind":"analyze","depends_on":[0]},{"title":"Report","instructions":"Write the local report","kind":"advise","depends_on":[1]}]}]}"#;
+        let plan = crate::request_planning::parse_request_plan(instruction_action).unwrap();
+        let error = template_from_plan(&plan).expect_err("positive plan instruction");
+        assert!(error.starts_with("Step \"Collect public sources\""), "{error}");
+
+        let title_action = instruction_action
+            .replace("Send email the finished summary", "Collect public sources")
+            .replace(
+                "\"title\":\"Collect public sources\"",
+                "\"title\":\"Publish the report\"",
+            );
+        let plan = crate::request_planning::parse_request_plan(&title_action).unwrap();
+        let error = template_from_plan(&plan).expect_err("positive plan title");
+        assert!(error.starts_with("Step title \"Publish the report\""), "{error}");
+
+        let negated = instruction_action
+            .replace(
+                "Send email the finished summary",
+                "Do not send email; collect public sources and record gaps",
+            );
+        let plan = crate::request_planning::parse_request_plan(&negated).unwrap();
+        template_from_plan(&plan).expect("negated restriction is not a request");
+    }
+
+    #[test]
+    fn expected_only_actions_fail_at_domain_save_revision_and_approval_atomically() {
+        let mut store = store();
+        store.research_config.models =
+            ["test/plan", "test/collect", "test/analyze", "test/advise"].map(String::from);
+        let schedule = Schedule {
+            spec: ScheduleSpec::Daily { hour: 8, minute: 30 },
+            timezone: "Asia/Shanghai".into(),
+        };
+
+        // Creation fails before anything enters the store.
+        let error = store
+            .create_automation_draft(
+                1,
+                AutomationShape::Quick,
+                "Quick check".into(),
+                "Check public prices".into(),
+                "Send email the answer".into(),
+                schedule.clone(),
+                AutomationPolicy::default(),
+                None,
+                1_000,
+            )
+            .expect_err("quick expected-only action");
+        assert!(error.starts_with("Expected result:"), "{error}");
+        assert!(store.automations().is_empty());
+
+        // Revision fails without changing the definition, version or approval.
+        let id = definition(&mut store);
+        let before = store.automation(id).unwrap().clone();
+        let error = store
+            .revise_automation(
+                id,
+                1,
+                before.name.clone(),
+                before.objective.clone(),
+                "Send email the answer".into(),
+                before.schedule.clone(),
+                before.policy.clone(),
+                before.template.clone(),
+                2_000,
+            )
+            .expect_err("revision expected-only action");
+        assert!(error.starts_with("Expected result:"), "{error}");
+        assert_eq!(store.automation(id).unwrap(), &before);
+
+        // A legacy stored draft stays readable but cannot be enabled.
+        {
+            let mut stored = store.automation_mut(id).unwrap();
+            stored.expected_result = "Send email the answer".into();
+            stored.approval = None;
+            stored.status = DefinitionStatus::Draft;
+        }
+        let before = store.automation(id).unwrap().clone();
+        let runs_before = store.runs().len();
+        let error = store
+            .approve_and_enable(id, vec![], 3_000)
+            .expect_err("legacy expected-only action");
+        assert!(error.starts_with("Expected result:"), "{error}");
+        assert_eq!(store.automation(id).unwrap(), &before);
+        assert_eq!(store.runs().len(), runs_before, "rejection must not dispatch");
     }
 
     #[test]
@@ -1294,7 +1410,7 @@ mod tests {
         let topics_before = store.topics.len();
         let tasks_before = store.tasks.len();
         let request = store
-            .create_automation_request(id, 1, "Track semiconductor capacity")
+            .create_automation_request(id, 1, "Track semiconductor capacity", "A cited note")
             .unwrap();
         assert_eq!(store.topics.len(), topics_before, "planning must not create a topic");
         assert_eq!(store.tasks.len(), tasks_before, "planning must not create goals");
@@ -1309,9 +1425,242 @@ mod tests {
         // The same automation reuses one saved request instead of planning twice.
         assert_eq!(
             store
-                .create_automation_request(id, 1, "Track semiconductor capacity")
+                .create_automation_request(id, 1, "Track semiconductor capacity", "A cited note")
                 .unwrap(),
             request
+        );
+    }
+
+    #[test]
+    fn apply_rejects_an_older_request_revision_after_a_newer_one_exists() {
+        let mut store = store();
+        let id = store
+            .create_automation_draft(
+                1,
+                AutomationShape::Research,
+                "Pending".into(),
+                "Objective A".into(),
+                "Expected A".into(),
+                Schedule {
+                    spec: ScheduleSpec::Daily { hour: 8, minute: 30 },
+                    timezone: "UTC".into(),
+                },
+                AutomationPolicy::default(),
+                None,
+                1_000,
+            )
+            .unwrap();
+        let first = store
+            .create_automation_request(id, 1, "Objective A", "Expected A")
+            .unwrap();
+        let first_signature = store.request_plan_signature(first).unwrap();
+        let first_revision = store.research_requests[0].revision;
+        let second = store
+            .create_automation_request(id, 1, "Objective B", "Expected B")
+            .unwrap();
+        assert_ne!(first, second);
+        let error = store
+            .apply_automation_template(
+                id,
+                first,
+                first_revision,
+                &first_signature,
+                r#"{"topic_name":"Plan","brief":{"objective":"A","deliverable":"A","scope":"A","assumptions":[],"facts_to_verify":[]},"goals":[{"title":"Goal","brief":"Brief","tasks":[{"title":"Collect","instructions":"Collect","kind":"collect","depends_on":[]},{"title":"Analyze","instructions":"Analyze","kind":"analyze","depends_on":[0]},{"title":"Report","instructions":"Report","kind":"advise","depends_on":[1]}]}]}"#,
+                2_000,
+            )
+            .unwrap_err();
+        assert!(error.contains("newer planning revision"), "{error}");
+        assert!(store.automation(id).unwrap().template.is_none());
+    }
+
+    #[test]
+    fn schedule_only_revision_keeps_binding_but_changed_text_clears_it() {
+        let mut store = store();
+        let id = store
+            .create_automation_draft(
+                1,
+                AutomationShape::Research,
+                "Pending".into(),
+                "Objective A".into(),
+                "Expected A".into(),
+                Schedule {
+                    spec: ScheduleSpec::Daily { hour: 8, minute: 30 },
+                    timezone: "UTC".into(),
+                },
+                AutomationPolicy::default(),
+                None,
+                1_000,
+            )
+            .unwrap();
+        let request = store
+            .create_automation_request(id, 1, "Objective A", "Expected A")
+            .unwrap();
+        let plan = r#"{"topic_name":"Plan","brief":{"objective":"A","deliverable":"A","scope":"A","assumptions":[],"facts_to_verify":[]},"goals":[{"title":"Goal","brief":"Brief","tasks":[{"title":"Collect","instructions":"Collect","kind":"collect","depends_on":[]},{"title":"Analyze","instructions":"Analyze","kind":"analyze","depends_on":[0]},{"title":"Report","instructions":"Report","kind":"advise","depends_on":[1]}]}]}"#;
+        let signature = store.request_plan_signature(request).unwrap();
+        store
+            .apply_automation_template(id, request, 1, &signature, plan, 2_000)
+            .unwrap();
+        let template = store.automation(id).unwrap().template.clone();
+        let schedule = Schedule {
+            spec: ScheduleSpec::Weekly {
+                days: vec![2],
+                hour: 11,
+                minute: 15,
+            },
+            timezone: "UTC".into(),
+        };
+        store
+            .revise_automation_with_shape(
+                id,
+                1,
+                "Plan".into(),
+                "Objective A".into(),
+                "Expected A".into(),
+                schedule,
+                AutomationPolicy::default(),
+                template.clone(),
+                3_000,
+                Some(AutomationShape::Research),
+            )
+            .unwrap();
+        assert!(store.automation(id).unwrap().plan_binding.is_some());
+        assert!(store
+            .plan_binding_problem(store.automation(id).unwrap())
+            .is_none());
+        let schedule_before_text = store.automation(id).unwrap().schedule.clone();
+        store
+            .revise_automation_with_shape(
+                id,
+                1,
+                "Plan".into(),
+                "Objective B".into(),
+                "Expected A".into(),
+                schedule_before_text,
+                AutomationPolicy::default(),
+                template,
+                4_000,
+                Some(AutomationShape::Research),
+            )
+            .unwrap();
+        assert!(store.automation(id).unwrap().plan_binding.is_none());
+        assert!(store
+            .plan_binding_problem(store.automation(id).unwrap())
+            .is_some());
+        assert!(approval_for(&store, store.automation(id).unwrap(), 5_000, vec![]).is_err());
+    }
+
+    #[test]
+    fn expected_only_change_cannot_enable_until_a_matching_plan_is_reviewed() {
+        let mut store = store();
+        store.research_config.models =
+            ["test/plan", "test/collect", "test/analyze", "test/advise"].map(String::from);
+        let id = store
+            .create_automation_draft(
+                1,
+                AutomationShape::Research,
+                "Expected contract".into(),
+                "Objective A".into(),
+                "Expected A".into(),
+                Schedule {
+                    spec: ScheduleSpec::Daily { hour: 8, minute: 30 },
+                    timezone: "UTC".into(),
+                },
+                AutomationPolicy::default(),
+                None,
+                1_000,
+            )
+            .unwrap();
+        let plan_a = r#"{"topic_name":"Plan A","brief":{"objective":"Objective A","deliverable":"Expected A","scope":"Scope","assumptions":[],"facts_to_verify":[]},"goals":[{"title":"Goal A","brief":"Brief","tasks":[{"title":"Collect","instructions":"Collect","kind":"collect","depends_on":[]},{"title":"Analyze","instructions":"Analyze","kind":"analyze","depends_on":[0]},{"title":"Report","instructions":"Report","kind":"advise","depends_on":[1]}]}]}"#;
+        let request_a = store
+            .create_automation_request(id, 1, "Objective A", "Expected A")
+            .unwrap();
+        let signature_a = store.request_plan_signature(request_a).unwrap();
+        store
+            .apply_automation_template(id, request_a, 1, &signature_a, plan_a, 2_000)
+            .unwrap();
+        store.approve_and_enable(id, vec![], 3_000).unwrap();
+        let period_a = store
+            .request_manual_occurrence(id, "expected-only-a", 4_000)
+            .unwrap();
+        assert_eq!(period_a.snapshot.objective, "Objective A");
+        assert_eq!(period_a.snapshot.expected_result, "Expected A");
+
+        // Capture a new immutable revision for Expected B, then save the edited
+        // definition without reviewing a plan for that revision.
+        let request_b = store
+            .create_automation_request(id, 1, "Objective A", "Expected B")
+            .unwrap();
+        assert_ne!(request_b, request_a);
+        let template_a = store.automation(id).unwrap().template.clone();
+        let schedule_a = store.automation(id).unwrap().schedule.clone();
+        store
+            .revise_automation_with_shape(
+                id,
+                1,
+                "Expected contract".into(),
+                "Objective A".into(),
+                "Expected B".into(),
+                schedule_a,
+                AutomationPolicy::default(),
+                template_a,
+                5_000,
+                Some(AutomationShape::Research),
+            )
+            .unwrap();
+        assert!(store.automation(id).unwrap().plan_binding.is_none());
+
+        let before_failure = store.automation(id).unwrap().clone();
+        let occurrences_before = store.all_occurrences().to_vec();
+        let error = store
+            .approve_and_enable(id, vec![], 6_000)
+            .expect_err("Expected B without a reviewed plan must not enable");
+        assert!(error.contains("reviewed plan") || error.contains("Replan"), "{error}");
+        assert_eq!(store.automation(id).unwrap(), &before_failure);
+        assert_eq!(store.all_occurrences(), occurrences_before);
+        assert_eq!(store.automation(id).unwrap().approval, None);
+        assert_eq!(store.automation(id).unwrap().status, DefinitionStatus::Draft);
+        assert_eq!(store.automation(id).unwrap().cursor, None);
+        assert_eq!(
+            store.research_requests.iter().find(|request| request.id == request_a).unwrap().expected_result.as_deref(),
+            Some("Expected A")
+        );
+        assert_eq!(
+            store.occurrence(period_a.id).unwrap().snapshot.expected_result,
+            "Expected A"
+        );
+
+        // A matching reviewed Expected B plan is required and then enables normally.
+        let plan_b = r#"{"topic_name":"Plan B","brief":{"objective":"Objective A","deliverable":"Expected B","scope":"Scope","assumptions":[],"facts_to_verify":[]},"goals":[{"title":"Goal B","brief":"Brief","tasks":[{"title":"Collect","instructions":"Collect","kind":"collect","depends_on":[]},{"title":"Analyze","instructions":"Analyze","kind":"analyze","depends_on":[0]},{"title":"Report","instructions":"Report","kind":"advise","depends_on":[1]}]}]}"#;
+        let signature_b = store.request_plan_signature(request_b).unwrap();
+        let revision_b = store
+            .research_requests
+            .iter()
+            .find(|request| request.id == request_b)
+            .unwrap()
+            .revision;
+        store
+            .apply_automation_template(id, request_b, revision_b, &signature_b, plan_b, 7_000)
+            .unwrap();
+        store.approve_and_enable(id, vec![], 8_000).unwrap();
+        let enabled = store.automation(id).unwrap();
+        assert_eq!(enabled.status, DefinitionStatus::Enabled);
+        assert_eq!(
+            enabled.plan_binding.as_ref().map(|binding| binding.request_id),
+            Some(request_b)
+        );
+        assert_eq!(
+            enabled.approval.as_ref().and_then(|approval| approval.plan_request_id),
+            Some(request_b)
+        );
+        assert_eq!(
+            store.research_requests.iter().find(|request| request.id == request_a).unwrap().expected_result.as_deref(),
+            Some("Expected A"),
+            "the prior revision keeps its original expected result"
+        );
+        assert_eq!(
+            store.occurrence(period_a.id).unwrap().snapshot.expected_result,
+            "Expected A",
+            "the previously saved period keeps its frozen snapshot"
         );
     }
 
@@ -1365,7 +1714,7 @@ mod tests {
         run.automation_occurrence_id = Some(occurrence.id);
         run.status = "Succeeded".into();
         run.output = "Collected evidence".into();
-        store.runs.push(run);
+        store.push_run(run);
         store.set_stage(collect, Stage::Done).unwrap();
         let second = store.prepare_occurrence_run(&occurrence, 2_061).unwrap();
         assert_eq!(second.task_id, analyze);
@@ -1374,7 +1723,7 @@ mod tests {
         run.automation_occurrence_id = Some(occurrence.id);
         run.status = "Succeeded".into();
         run.output = "Analyzed evidence".into();
-        store.runs.push(run);
+        store.push_run(run);
         store.set_stage(analyze, Stage::Done).unwrap();
         let third = store.prepare_occurrence_run(&occurrence, 2_062).unwrap();
         assert_eq!(third.task_id, advise);
@@ -1406,7 +1755,7 @@ mod tests {
         let analyze = step(ResearchKind::Analyze);
         let mut run = store.prepare_occurrence_run(&occurrence, 2_060).unwrap();
         run.status = "Failed".into();
-        store.runs.push(run);
+        store.push_run(run);
         assert_eq!(store.step_state(collect), crate::goal_steps::StepState::Blocked);
         assert_eq!(
             store.step_state(analyze),
@@ -1459,7 +1808,7 @@ mod tests {
         run.automation_occurrence_id = Some(occurrence.id);
         run.status = "Succeeded".into();
         run.output = "One".into();
-        store.runs.push(run);
+        store.push_run(run);
         store.set_stage(collect_one, Stage::Done).unwrap();
         // The second collection is still pending, so analysis waits even though
         // its own dependencies are satisfied.
@@ -1469,7 +1818,7 @@ mod tests {
         run.automation_occurrence_id = Some(occurrence.id);
         run.status = "Succeeded".into();
         run.output = "Two".into();
-        store.runs.push(run);
+        store.push_run(run);
         store.set_stage(collect_two, Stage::Done).unwrap();
         let third = store.prepare_occurrence_run(&occurrence, 2_062).unwrap();
         assert_eq!(third.task_id, analyze);
@@ -1519,7 +1868,7 @@ mod tests {
             run.automation_occurrence_id = Some(occurrence.id);
             run.status = "Succeeded".into();
             run.output = "Goal one report".into();
-            store.runs.push(run);
+            store.push_run(run);
             store.set_stage(task, Stage::Done).unwrap();
         }
         store.sync_goal_progress(first);
@@ -1530,7 +1879,7 @@ mod tests {
         assert_eq!(store.owning_research_goal(run.task_id), Some(second));
         assert_eq!(run.research_kind, Some(ResearchKind::Collect));
         assert!(store
-            .runs
+            .runs()
             .iter()
             .all(|candidate| candidate.research_kind != Some(ResearchKind::Goal) || candidate.task_id != 0));
     }
@@ -1647,8 +1996,18 @@ mod tests {
                 1_000,
             )
             .unwrap();
+        let request = store
+            .create_automation_request(id, 1, "Track the topic", "A cited note")
+            .unwrap();
+        let revision = store.research_requests.iter().find(|r| r.id == request).unwrap().revision;
+        let signature = store.request_plan_signature(request).unwrap();
         let plan = r#"{"topic_name":"Semiconductor supply","brief":{"objective":"Track supply","deliverable":"Sourced note","scope":"Latest quarter","assumptions":[],"facts_to_verify":[]},"goals":[{"title":"Foundry capacity","brief":"Track announced capacity","tasks":[{"title":"Collect","instructions":"Collect filings","kind":"collect","depends_on":[]},{"title":"Analyze","instructions":"Compare capacity","kind":"analyze","depends_on":[0]},{"title":"Report","instructions":"Write the note","kind":"advise","depends_on":[1]}]},{"title":"Equipment orders","brief":"Track equipment bookings","tasks":[{"title":"Collect","instructions":"Collect orders","kind":"collect","depends_on":[]},{"title":"Analyze","instructions":"Compare orders","kind":"analyze","depends_on":[0]},{"title":"Report","instructions":"Write the note","kind":"advise","depends_on":[1]}]}]}"#;
-        assert_eq!(store.apply_automation_template(id, plan, 2_000).unwrap(), 2);
+        assert_eq!(
+            store
+                .apply_automation_template(id, request, revision, &signature, plan, 2_000)
+                .unwrap(),
+            2
+        );
         let frozen = store.automation(id).unwrap();
         assert_eq!(frozen.version, 1);
         assert_eq!(frozen.name, "Semiconductor supply");
@@ -1668,7 +2027,12 @@ mod tests {
         assert_eq!(occurrence.research_goal_ids.len(), 2);
         assert!(occurrence.research_topic_id.is_some());
         // A replan is a new version and must be reviewed again.
-        assert_eq!(store.apply_automation_template(id, plan, 3_000).unwrap(), 2);
+        assert_eq!(
+            store
+                .apply_automation_template(id, request, revision, &signature, plan, 3_000)
+                .unwrap(),
+            2
+        );
         let revised = store.automation(id).unwrap();
         assert_eq!(revised.version, 2);
         assert!(!revised.approval_current());
@@ -1854,7 +2218,7 @@ mod tests {
         // A retry of the first period keeps the same reference time and goal.
         let mut failed = first_run.clone();
         failed.status = "Failed".into();
-        store.runs.push(failed.clone());
+        store.push_run(failed.clone());
         let retry = store.prepare_auto_retry(failed.id, first_time + 120).unwrap();
         assert_eq!(retry.automation_occurrence_id, Some(first.id));
         assert!(retry.prompt.contains("Reference time:"));

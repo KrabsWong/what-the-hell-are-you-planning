@@ -149,7 +149,7 @@ fn fingerprint(config: &PublishingConfig, title: &str, markdown: &str) -> String
 /// publication owns it; earlier builds also created one record per content
 /// version, so older duplicates are treated as history rather than as new
 /// canonical URLs.
-fn current_publication_index(publications: &[Publication], topic: u64) -> Option<usize> {
+pub(crate) fn current_publication_index(publications: &[Publication], topic: u64) -> Option<usize> {
     let mut first = None;
     for (index, publication) in publications.iter().enumerate() {
         if publication.topic != topic { continue; }
@@ -348,7 +348,7 @@ impl TaskApp {
             .child(label("Target branch", cx)).child(Input::new(&self.publishing_inputs[1]).id("publishing-branch"))
             .child(label("Public site URL", cx)).child(Input::new(&self.publishing_inputs[2]).id("publishing-url"))
             .child(button("save-publishing", "Save publishing settings").disabled(self.publishing_job.is_some()).on_click(cx.listener(|a, _, _, cx| a.save_publishing_settings(cx))))
-            .child(select_button("automatic-publishing", "Publish completed Topics automatically", self.store.report_publishing.automatic)
+            .child(select_button("automatic-publishing", "Publish completed Topics automatically", self.store.report_publishing.automatic, cx)
                 .when(self.store.report_publishing.automatic, |b| b.icon(assets::IconName::Check))
                 .disabled(self.publishing_job.is_some())
                 .on_click(cx.listener(|a, _, _, cx| {
@@ -569,7 +569,7 @@ mod tests {
             let mut run = store.prepare_run(*id).unwrap();
             run.status = "Succeeded".into();
             run.output = if *id == ids[2] { "Public final report" } else { "PRIVATE_WORKING_NOTES" }.into();
-            store.runs.push(run);
+            store.push_run(run);
             store.task_mut(*id).unwrap().stage = Stage::Done;
         }
         store.sync_goal_progress(goal);

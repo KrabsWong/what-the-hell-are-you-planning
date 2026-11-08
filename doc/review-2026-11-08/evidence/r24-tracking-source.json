@@ -1,0 +1,6 @@
+{
+  "source": "src/domain_tracked.rs",
+  "sha256": "7e2acea0176846dfa7a3c98227699c51344b373b8cb3f3032f8283b014db36cf",
+  "scope": "Immutable actual container with minimal entity stubs; excludes Store/app integration.",
+  "harness_transform": "Module documentation and embedded app-specific test module excluded; production container implementation unchanged. Root tests use minimal entity stubs."
+}

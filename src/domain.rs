@@ -211,11 +211,24 @@ pub struct StagePolicy {
     pub prompt: String,
     pub auto_start: bool,
 }
+/// Immutable owner of a planning attempt. The request revision is fixed when the
+/// run is prepared; a request's latest `planning_run_id` is only a display cache.
+#[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
+pub struct PlanningOwner {
+    pub request_id: u64,
+    pub revision: u32,
+    #[serde(default)]
+    pub automation_id: Option<u64>,
+}
+
 #[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
 pub struct AgentRun {
     /// Automation occurrence that owns this run, when it is not a normal research run.
     #[serde(default)]
     pub automation_occurrence_id: Option<u64>,
+    /// Immutable request/revision owner for planning attempts.
+    #[serde(default)]
+    pub planning_owner: Option<PlanningOwner>,
     /// Independent deadline for a post-period report regeneration attempt.
     #[serde(default)]
     pub deadline_at: Option<i64>,
@@ -265,14 +278,51 @@ pub struct AgentRun {
     #[serde(default)]
     pub input_signature: String,
 }
+#[path = "domain_tracked.rs"]
+pub(crate) mod tracked;
+pub(crate) use tracked::{TrackedMut, TrackedVec};
+
+fn automation_tracked() -> TrackedVec<crate::automation::AutomationDefinition> {
+    tracked::automation_new()
+}
+
+fn occurrence_tracked() -> TrackedVec<crate::automation::AutomationOccurrence> {
+    tracked::occurrence_new()
+}
+
+fn run_tracked() -> TrackedVec<AgentRun> {
+    tracked::run_new()
+}
+
+fn deserialize_automations<'de, D: serde::Deserializer<'de>>(
+    deserializer: D,
+) -> Result<TrackedVec<crate::automation::AutomationDefinition>, D::Error> {
+    let items = Vec::<crate::automation::AutomationDefinition>::deserialize(deserializer)?;
+    tracked::automation_from(items).map_err(serde::de::Error::custom)
+}
+
+fn deserialize_occurrences<'de, D: serde::Deserializer<'de>>(
+    deserializer: D,
+) -> Result<TrackedVec<crate::automation::AutomationOccurrence>, D::Error> {
+    let items = Vec::<crate::automation::AutomationOccurrence>::deserialize(deserializer)?;
+    tracked::occurrence_from(items).map_err(serde::de::Error::custom)
+}
+
+fn deserialize_runs<'de, D: serde::Deserializer<'de>>(
+    deserializer: D,
+) -> Result<TrackedVec<AgentRun>, D::Error> {
+    let items = Vec::<AgentRun>::deserialize(deserializer)?;
+    tracked::run_from(items).map_err(serde::de::Error::custom)
+}
+
 #[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
 pub struct Store {
     #[serde(default)]
     pub automation_schema_version: u32,
-    #[serde(default)]
-    pub automations: Vec<crate::automation::AutomationDefinition>,
-    #[serde(default)]
-    pub automation_occurrences: Vec<crate::automation::AutomationOccurrence>,
+    #[serde(default = "automation_tracked", deserialize_with = "deserialize_automations")]
+    automations: TrackedVec<crate::automation::AutomationDefinition>,
+    #[serde(default = "occurrence_tracked", deserialize_with = "deserialize_occurrences")]
+    automation_occurrences: TrackedVec<crate::automation::AutomationOccurrence>,
     #[serde(default)]
     pub report_publishing: crate::report_publish::PublishingConfig,
     #[serde(default)]
@@ -284,8 +334,12 @@ pub struct Store {
     #[serde(default)]
     pub research_requests: Vec<crate::request_planning::ResearchRequest>,
     pub policies: Vec<StagePolicy>,
-    pub runs: Vec<AgentRun>,
+    #[serde(default = "run_tracked", deserialize_with = "deserialize_runs")]
+    runs: TrackedVec<AgentRun>,
     pub next_id: u64,
+    /// Next unreserved run id. Resolution may reserve an id asynchronously.
+    #[serde(default)]
+    pub run_id_floor: u64,
     #[serde(default)]
     pub opencode_path: String,
     #[serde(default)]
@@ -378,8 +432,8 @@ impl Store {
     pub fn empty() -> Self {
         Self {
             automation_schema_version: crate::automation::AUTOMATION_SCHEMA_VERSION,
-            automations: vec![],
-            automation_occurrences: vec![],
+            automations: automation_tracked(),
+            automation_occurrences: occurrence_tracked(),
             report_publishing: Default::default(),
             publications: vec![],
             tasks: vec![],
@@ -394,8 +448,9 @@ impl Store {
             topics: vec![],
             research_requests: vec![],
             policies: vec![],
-            runs: vec![],
+            runs: run_tracked(),
             next_id: 1,
+            run_id_floor: 0,
             opencode_path: String::new(),
             default_model: String::new(),
             model_profiles: vec![],
@@ -620,13 +675,52 @@ impl Store {
             self.task_is_archived(run.task_id)
         }
     }
+    /// One ownership predicate for every result-selection surface. Automation
+    /// planning attempts belong to their automation; ambiguous legacy attempts
+    /// never become ordinary Research results by accident.
+    pub fn run_is_automation_owned(&self, run: &AgentRun) -> bool {
+        if run.automation_occurrence_id.is_some() {
+            return true;
+        }
+        if run
+            .planning_owner
+            .as_ref()
+            .is_some_and(|owner| owner.automation_id.is_some())
+        {
+            return true;
+        }
+        if self
+            .request_for_run(run.id)
+            .is_some_and(|request| request.automation_id.is_some())
+        {
+            return true;
+        }
+        if run.project_plan.is_some_and(|id| {
+            self.projects
+                .iter()
+                .find(|project| project.id == id)
+                .is_some_and(|project| project.kind == ProjectKind::Automation)
+        }) {
+            return true;
+        }
+        run.project_plan.is_none()
+            && self
+                .task(run.task_id)
+                .is_some_and(|task| task.automation_id.is_some())
+    }
+    pub fn run_is_ordinary_result(&self, run: &AgentRun) -> bool {
+        !self.run_is_automation_owned(run) && !self.run_is_archived(run)
+    }
+    pub fn latest_ordinary_result_run(&self) -> Option<&AgentRun> {
+        self.runs.iter().rev().find(|run| self.run_is_ordinary_result(run))
+    }
     /// Count tasks, not attempts: current work and saved completed results.
     pub fn progress_result_task_count(&self) -> usize {
         let mut latest = std::collections::HashSet::new();
         let mut included = std::collections::HashSet::new();
         for run in self.runs.iter().rev().filter(|run| {
             run.project_plan.is_none()
-                && run.automation_occurrence_id.is_none()
+                && !self.run_is_automation_owned(run)
                 && run.research_kind != Some(crate::research::ResearchKind::Goal)
                 && self.task(run.task_id).is_some()
                 && !self.run_is_archived(run)
@@ -647,6 +741,236 @@ impl Store {
     pub fn task_mut(&mut self, id: u64) -> Option<&mut Task> {
         self.tasks.iter_mut().find(|t| t.id == id)
     }
+
+    pub fn occurrence(&self, id: u64) -> Option<&crate::automation::AutomationOccurrence> {
+        self.automation_occurrences
+            .iter()
+            .find(|occurrence| occurrence.id == id)
+    }
+
+    pub fn automation_mut(
+        &mut self,
+        id: u64,
+    ) -> Option<TrackedMut<'_, crate::automation::AutomationDefinition>> {
+        self.automations
+            .tracked_mut(crate::persistence_journal::EntityKey::Automation(id))
+    }
+
+    pub fn occurrence_mut(
+        &mut self,
+        id: u64,
+    ) -> Option<TrackedMut<'_, crate::automation::AutomationOccurrence>> {
+        self.automation_occurrences
+            .tracked_mut(crate::persistence_journal::EntityKey::Occurrence(id))
+    }
+
+    pub fn push_automation(&mut self, definition: crate::automation::AutomationDefinition) {
+        self.automations.push_tracked(definition);
+    }
+
+    pub fn push_occurrence(&mut self, occurrence: crate::automation::AutomationOccurrence) {
+        self.automation_occurrences.push_tracked(occurrence);
+    }
+
+    pub fn pop_automation(&mut self) -> Option<crate::automation::AutomationDefinition> {
+        self.automations.pop_tracked()
+    }
+
+    pub fn pop_occurrence(&mut self) -> Option<crate::automation::AutomationOccurrence> {
+        self.automation_occurrences.pop_tracked()
+    }
+
+    pub fn run_at_mut(&mut self, index: usize) -> Option<TrackedMut<'_, AgentRun>> {
+        let id = self.runs.get(index)?.id;
+        self.runs.tracked_mut(crate::persistence_journal::EntityKey::Run(id))
+    }
+
+    pub fn automation_at_mut(
+        &mut self,
+        index: usize,
+    ) -> Option<TrackedMut<'_, crate::automation::AutomationDefinition>> {
+        let id = self.automations.get(index)?.id;
+        self.automations
+            .tracked_mut(crate::persistence_journal::EntityKey::Automation(id))
+    }
+
+    pub fn occurrence_at_mut(
+        &mut self,
+        index: usize,
+    ) -> Option<TrackedMut<'_, crate::automation::AutomationOccurrence>> {
+        let id = self.automation_occurrences.get(index)?.id;
+        self.automation_occurrences
+            .tracked_mut(crate::persistence_journal::EntityKey::Occurrence(id))
+    }
+
+    pub fn extend_runs(&mut self, runs: impl IntoIterator<Item = AgentRun>) {
+        for run in runs {
+            self.push_run(run);
+        }
+    }
+
+    pub fn insert_run(&mut self, index: usize, run: AgentRun) {
+        self.runs.insert_tracked(index, run);
+    }
+
+    pub fn push_run(&mut self, run: AgentRun) {
+        self.runs.push_tracked(run);
+    }
+
+    pub fn pop_run(&mut self) -> Option<AgentRun> {
+        self.runs.pop_tracked()
+    }
+
+    pub fn last_run_mut(&mut self) -> Option<TrackedMut<'_, AgentRun>> {
+        let index = self.runs.len().checked_sub(1)?;
+        self.run_at_mut(index)
+    }
+
+    pub fn last_occurrence_mut(
+        &mut self,
+    ) -> Option<TrackedMut<'_, crate::automation::AutomationOccurrence>> {
+        let index = self.automation_occurrences.len().checked_sub(1)?;
+        self.occurrence_at_mut(index)
+    }
+
+    pub fn last_automation_mut(
+        &mut self,
+    ) -> Option<TrackedMut<'_, crate::automation::AutomationDefinition>> {
+        let index = self.automations.len().checked_sub(1)?;
+        self.automation_at_mut(index)
+    }
+
+    pub fn run_mut(&mut self, id: u64) -> Option<TrackedMut<'_, AgentRun>> {
+        self.runs
+            .tracked_mut(crate::persistence_journal::EntityKey::Run(id))
+    }
+
+    /// Reserve one run id for an asynchronous admission. The reservation is
+    /// persisted with the workspace so a concurrent create/run cannot reuse it.
+    pub fn allocate_run_id(&mut self) -> Option<u64> {
+        let max = self.runs.iter().map(|run| run.id).max().unwrap_or(0);
+        let next = max.checked_add(1)?.max(self.run_id_floor);
+        self.run_id_floor = next.checked_add(1)?;
+        Some(next)
+    }
+
+    pub fn remove_automation(&mut self, id: u64) -> Option<crate::automation::AutomationDefinition> {
+        self.automations
+            .remove_tracked(crate::persistence_journal::EntityKey::Automation(id))
+    }
+
+    pub fn remove_occurrence(&mut self, id: u64) -> Option<crate::automation::AutomationOccurrence> {
+        self.automation_occurrences
+            .remove_tracked(crate::persistence_journal::EntityKey::Occurrence(id))
+    }
+
+    pub fn remove_run(&mut self, id: u64) -> Option<AgentRun> {
+        self.runs
+            .remove_tracked(crate::persistence_journal::EntityKey::Run(id))
+    }
+
+    pub fn retain_automations(&mut self, keep: impl FnMut(&crate::automation::AutomationDefinition) -> bool) {
+        self.automations.retain_tracked(keep);
+    }
+
+    pub fn retain_occurrences(&mut self, keep: impl FnMut(&crate::automation::AutomationOccurrence) -> bool) {
+        self.automation_occurrences.retain_tracked(keep);
+    }
+
+    pub fn retain_runs(&mut self, keep: impl FnMut(&AgentRun) -> bool) {
+        self.runs.retain_tracked(keep);
+    }
+
+    pub fn clear_automations(&mut self) {
+        self.automations.clear_tracked();
+    }
+
+    pub fn clear_occurrences(&mut self) {
+        self.automation_occurrences.clear_tracked();
+    }
+
+    pub fn clear_runs(&mut self) {
+        self.runs.clear_tracked();
+    }
+
+    pub fn has_tracked_changes(&self) -> bool {
+        self.automations.is_dirty() || self.automation_occurrences.is_dirty() || self.runs.is_dirty()
+    }
+
+    /// Read-only per-collection snapshot for diagnostics and tests. It never
+    /// clears pending intent, so a failed later collection cannot hide or drop
+    /// earlier payloads.
+    pub(crate) fn pending_tracked_snapshot(
+        &self,
+    ) -> [Result<Vec<crate::persistence_journal::EntityChange>, String>; 3] {
+        [
+            self.automations.pending_changes(),
+            self.automation_occurrences.pending_changes(),
+            self.runs.pending_changes(),
+        ]
+    }
+
+    /// Exact dirty payloads/tombstones for the tracked automation graph. Only
+    /// dirty entities are cloned. Draining is atomic across the three
+    /// collections; an error leaves every pending change untouched.
+    pub fn drain_tracked_changes(
+        &mut self,
+    ) -> Result<Vec<crate::persistence_journal::EntityChange>, String> {
+        let mut changes = Vec::new();
+        changes.extend(self.automations.pending_changes()?);
+        changes.extend(self.automation_occurrences.pending_changes()?);
+        changes.extend(self.runs.pending_changes()?);
+        self.automations.clear_dirty();
+        self.automation_occurrences.clear_dirty();
+        self.runs.clear_dirty();
+        Ok(changes)
+    }
+
+    pub fn automations(&self) -> &[crate::automation::AutomationDefinition] {
+        self.automations.as_slice()
+    }
+
+    pub fn all_occurrences(&self) -> &[crate::automation::AutomationOccurrence] {
+        self.automation_occurrences.as_slice()
+    }
+
+    pub fn runs(&self) -> &[AgentRun] {
+        self.runs.as_slice()
+    }
+
+    /// Finish loading a fresh store. Only a pristine builder is accepted, so a
+    /// populated or dirty live store cannot silently reset tracked state. The
+    /// store is returned with the error so the caller keeps ownership.
+    pub(crate) fn with_loaded_tracked(
+        mut self,
+        runs: Vec<AgentRun>,
+        automations: Vec<crate::automation::AutomationDefinition>,
+        occurrences: Vec<crate::automation::AutomationOccurrence>,
+    ) -> Result<Self, (Self, String)> {
+        if !self.runs.is_pristine()
+            || !self.automations.is_pristine()
+            || !self.automation_occurrences.is_pristine()
+        {
+            return Err((
+                self,
+                "clean load requires a fresh empty store with no tracked changes".into(),
+            ));
+        }
+        self.runs = match tracked::run_from(runs) {
+            Ok(value) => value,
+            Err(error) => return Err((self, error)),
+        };
+        self.automations = match tracked::automation_from(automations) {
+            Ok(value) => value,
+            Err(error) => return Err((self, error)),
+        };
+        self.automation_occurrences = match tracked::occurrence_from(occurrences) {
+            Ok(value) => value,
+            Err(error) => return Err((self, error)),
+        };
+        Ok(self)
+    }
+
     pub fn identifier(&self, task: &Task) -> String {
         let kind = task
             .research
@@ -799,7 +1123,7 @@ impl Store {
                 Some(id) => self.request_plan_signature(id),
                 None => self.project_plan_signature(project),
             }.expect("Renaming a project cannot invalidate its destination");
-            self.runs.iter_mut().find(|r| r.id == run).unwrap().input_signature = signature;
+            self.run_mut(run).unwrap().input_signature = signature;
         }
         Ok(())
     }
@@ -882,19 +1206,30 @@ impl Store {
             request.project_id = project;
             request.topic_id = Some(topic);
         }
-        for run in staged.runs.iter_mut().filter(|r| planning_runs.contains(&r.id)) {
-            run.project_plan = Some(project);
+        let planning_ids: Vec<u64> = staged
+            .runs
+            .iter()
+            .filter(|run| planning_runs.contains(&run.id))
+            .map(|run| run.id)
+            .collect();
+        for run_id in planning_ids {
+            if let Some(mut run) = staged.run_mut(run_id) {
+                run.project_plan = Some(project);
+            }
         }
         // Refresh only results that were reusable before the move, in dependency order.
         // Historical directories, sessions, reports and attachment paths remain intact.
         while !valid.is_empty() {
             let before = valid.len();
-            valid.retain(|(task, run)| {
-                if let Some(signature) = staged.research_signature(*task) {
-                    staged.runs.iter_mut().find(|r| r.id == *run).unwrap().input_signature = signature;
-                    false
-                } else { true }
-            });
+            let mut kept = Vec::new();
+            for (task, run) in valid.drain(..) {
+                if let Some(signature) = staged.research_signature(task) {
+                    staged.run_mut(run).unwrap().input_signature = signature;
+                } else {
+                    kept.push((task, run));
+                }
+            }
+            valid = kept;
             if valid.len() == before { return Err("Could not preserve research dependencies during migration.".into()); }
         }
         *self = staged;
@@ -944,19 +1279,22 @@ impl Store {
         }
         Ok(())
     }
-    pub fn set_stage(&mut self, id: u64, stage: Stage) -> Result<(), String> {
+    /// Side-effect-free lifecycle validation shared by `set_stage` and scoped
+    /// command preflight. It never mutates the task and never writes approval.
+    pub(crate) fn validate_stage_transition(&self, id: u64, stage: Stage) -> Result<(), String> {
+        let task = self.task(id).ok_or("Task not found.")?;
         if stage == Stage::Done
-            && self.task(id).is_some_and(|t| {
-                t.research.as_ref().is_some_and(|r| {
-                    r.kind == crate::research::ResearchKind::Goal && r.requires_approval
-                })
+            && task.research.as_ref().is_some_and(|research| {
+                research.kind == crate::research::ResearchKind::Goal
+                    && research.requires_approval
             })
         {
             let children = self.research_children(id);
             if children.is_empty()
                 || self.validate_goal_dependencies(id).is_err()
                 || children.iter().any(|child| {
-                    self.task(*child).is_none_or(|t| t.stage != Stage::Done)
+                    self.task(*child)
+                        .is_none_or(|task| task.stage != Stage::Done)
                         || self.research_result(*child).is_none()
                 })
             {
@@ -966,18 +1304,13 @@ impl Store {
                 );
             }
         }
-        let approval = if stage == Stage::Planned
-            && self.task(id).is_some_and(|t| {
-                t.research
-                    .as_ref()
-                    .is_some_and(|r| r.kind == crate::research::ResearchKind::Goal)
-            }) {
+        if stage == Stage::Planned
+            && task.research.as_ref().is_some_and(|research| {
+                research.kind == crate::research::ResearchKind::Goal
+            })
+        {
             self.validate_goal_dependencies(id)?;
-            self.goal_plan_signature(id)
-        } else {
-            None
-        };
-        let task = self.task_mut(id).ok_or("Task not found.")?;
+        }
         if task.archived {
             return Err("Restore the archived task before changing its stage.".into());
         }
@@ -987,6 +1320,21 @@ impl Store {
         {
             return Err("Approve this research topic by moving it to Todo first.".into());
         }
+        Ok(())
+    }
+    pub fn set_stage(&mut self, id: u64, stage: Stage) -> Result<(), String> {
+        self.validate_stage_transition(id, stage)?;
+        let approval = if stage == Stage::Planned
+            && self.task(id).is_some_and(|t| {
+                t.research
+                    .as_ref()
+                    .is_some_and(|r| r.kind == crate::research::ResearchKind::Goal)
+            }) {
+            self.goal_plan_signature(id)
+        } else {
+            None
+        };
+        let task = self.task_mut(id).ok_or("Task not found.")?;
         if approval.is_some() {
             task.approved_plan = approval;
         }
@@ -1069,6 +1417,14 @@ impl Store {
         }
         Ok(())
     }
+    pub fn restore(&mut self, id: u64) -> Result<(), String> {
+        let task = self.task_mut(id).ok_or("Task not found.")?;
+        if task.archived {
+            task.archived = false;
+            task.activity.push(activity_event("Task restored"));
+        }
+        Ok(())
+    }
     pub fn prepare_run(&self, id: u64) -> Result<AgentRun, String> {
         if self.research_pending_approval(id) {
             return Err(
@@ -1101,15 +1457,25 @@ impl Store {
     }
     pub fn recover_interrupted_runs(&mut self) {
         let mut interrupted = vec![];
-        for (i, run) in self.runs.iter_mut().enumerate() {
-            if run.id == 0 {
-                run.id = (i + 1) as u64;
+        let count = self.runs.len();
+        for i in 0..count {
+            let current_id = self.runs[i].id;
+            if current_id == 0 {
+                let repaired = (i + 1) as u64;
+                self.runs.reassign_identity(
+                    i,
+                    crate::persistence_journal::EntityKey::Run(repaired),
+                    |run| run.id = repaired,
+                );
             }
+            let status = self.runs[i].status.clone();
             if matches!(
-                run.status.as_str(),
+                status.as_str(),
                 "Queued" | "Running" | "Cancelling" | "Recovering"
             ) {
-                interrupted.push(run.id);
+                let run_id = self.runs[i].id;
+                interrupted.push(run_id);
+                let mut run = self.run_mut(run_id).unwrap();
                 run.status = "Interrupted".into();
                 run.ended_at = Some(crate::opencode::timestamp());
                 run.logs.push("[interrupted] The application stopped before this run finished. Inspect the working folder before retrying.".into());
@@ -1255,7 +1621,7 @@ mod tests {
     #[test]
     fn progress_count_tracks_tasks_instead_of_attempts() {
         let mut store = Store::mock();
-        store.runs.clear();
+        store.clear_runs();
         store.projects[0].directory = "/tmp/test-project".into();
         for policy in &mut store.policies {
             policy.agent = "OpenCode".into();
@@ -1263,37 +1629,50 @@ mod tests {
         }
         store.set_stage(1, Stage::InProgress).unwrap();
         store.simulate_run(1).unwrap();
-        let template = store.runs.pop().unwrap();
+        let template = store.pop_run().unwrap();
+        let mut next_run_id = 1_000;
         for index in 0..8 {
             let id = store.create_task(&format!("Step {index}"), 1, Stage::InProgress, None).unwrap();
             let mut run = template.clone();
+            run.id = next_run_id;
+            next_run_id += 1;
             run.task_id = id;
             run.status = "Failed".into();
-            store.runs.push(run.clone());
+            store.push_run(run.clone());
+            run.id = next_run_id;
+            next_run_id += 1;
             run.status = if index == 7 { "Running" } else { "Succeeded" }.into();
             if index != 7 { run.output = "Saved result".into(); }
-            store.runs.push(run);
+            store.push_run(run);
         }
         assert_eq!(store.runs.len(), 16);
         assert_eq!(store.progress_result_task_count(), 8);
         let mut planning = template.clone();
+        planning.id = next_run_id;
+        next_run_id += 1;
         planning.research_kind = Some(crate::research::ResearchKind::Goal);
-        store.runs.push(planning);
+        store.push_run(planning);
         let mut planning = template.clone();
+        planning.id = next_run_id;
+        next_run_id += 1;
         planning.project_plan = Some(1);
-        store.runs.push(planning);
+        store.push_run(planning);
         assert_eq!(store.progress_result_task_count(), 8);
 
         // Retrying a task with a saved result must not count it twice.
         let mut retry = store.runs[1].clone();
+        retry.id = next_run_id;
+        next_run_id += 1;
         retry.status = "Running".into();
         retry.output.clear();
-        store.runs.push(retry);
+        store.push_run(retry);
         assert_eq!(store.progress_result_task_count(), 8);
         // A later failure supersedes an old running record, but keeps saved results.
         let mut failed = store.runs[15].clone();
+        failed.id = next_run_id;
+        next_run_id += 1;
         failed.status = "Failed".into();
-        store.runs.push(failed);
+        store.push_run(failed);
         assert_eq!(store.progress_result_task_count(), 7);
         let id = store.runs[1].task_id;
         store.task_mut(id).unwrap().archived = true;
@@ -1301,12 +1680,14 @@ mod tests {
 
         for status in ["Failed", "Blocked", "Interrupted", "Cancelled", "Succeeded"] {
             let mut run = template.clone();
+            run.id = next_run_id;
+            next_run_id += 1;
             run.status = status.into();
-            store.runs.push(run);
+            store.push_run(run);
             assert_eq!(store.progress_result_task_count(), 6);
         }
         for status in ["Queued", "Running", "Recovering", "Cancelling"] {
-            store.runs.last_mut().unwrap().status = status.into();
+            store.last_run_mut().unwrap().status = status.into();
             assert_eq!(store.progress_result_task_count(), 7);
         }
     }
@@ -1672,8 +2053,8 @@ mod tests {
         store.simulate_run(1).unwrap();
         let id = store.runs[0].id;
         let original = store.task(1).unwrap().stage;
-        store.runs[0].research_kind = Some(crate::research::ResearchKind::Collect);
-        store.runs[0].status = "Running".into();
+        store.run_at_mut(0).unwrap().research_kind = Some(crate::research::ResearchKind::Collect);
+        store.run_at_mut(0).unwrap().status = "Running".into();
         store.mark_research_running(id);
         assert_eq!(store.task(1).unwrap().stage, Stage::InProgress);
         store.recover_interrupted_runs();
@@ -1691,7 +2072,7 @@ mod tests {
     fn restart_marks_unfinished_runs_interrupted_without_restarting_them() {
         let mut store = Store::mock();
         store.simulate_run(1).unwrap();
-        store.runs[0].status = "Running".into();
+        store.run_at_mut(0).unwrap().status = "Running".into();
         store.recover_interrupted_runs();
         assert_eq!(store.runs[0].status, "Interrupted");
         assert!(store.runs[0].ended_at.is_some());
@@ -1829,6 +2210,38 @@ mod tests {
         let restored: Store = serde_json::from_str(&json).unwrap();
         assert_eq!(store, restored);
         assert_eq!(restored.next_id, 23);
+    }
+
+    #[test]
+    fn clean_load_requires_a_fresh_store() {
+        // A populated store is rejected even after its dirty markers were drained.
+        let mut populated = Store::mock();
+        populated.simulate_run(1).unwrap();
+        populated.drain_tracked_changes().unwrap();
+        let (populated, error) = populated
+            .with_loaded_tracked(Vec::new(), Vec::new(), Vec::new())
+            .expect_err("populated stores must not be reset as a load");
+        assert!(error.contains("fresh empty store"), "{error}");
+        assert_eq!(populated.runs().len(), 1, "rejected load preserves ownership");
+
+        // Tombstones left by clearing are still tracked intent and must block a load.
+        let mut cleared = Store::mock();
+        cleared.simulate_run(1).unwrap();
+        cleared.drain_tracked_changes().unwrap();
+        cleared.clear_runs();
+        assert!(
+            cleared
+                .with_loaded_tracked(Vec::new(), Vec::new(), Vec::new())
+                .is_err(),
+            "cleared-but-dirty stores must not be reset as a load"
+        );
+
+        // A truly fresh builder loads cleanly with no pending tracked changes.
+        let loaded = Store::empty()
+            .with_loaded_tracked(Vec::new(), Vec::new(), Vec::new())
+            .expect("fresh store loads");
+        assert!(!loaded.has_tracked_changes());
+        assert!(loaded.runs().is_empty());
     }
 }
 

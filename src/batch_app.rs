@@ -148,7 +148,7 @@ impl TaskApp {
                     .keys()
                     .copied()
                     .filter(|id| {
-                        self.store.runs.iter().any(|r| {
+                        self.store.runs().iter().any(|r| {
                             r.id == *id
                                 && !matches!(r.status.as_str(), "Queued" | "Running" | "Cancelling")
                         })
@@ -160,7 +160,7 @@ impl TaskApp {
         for id in completed {
             invalidated |= self
                 .store
-                .runs
+                .runs()
                 .iter()
                 .find(|r| r.id == id)
                 .is_some_and(|r| {
@@ -238,11 +238,11 @@ impl TaskApp {
                     // Multiple workers can finish in one poll. Their terminal events
                     // must all be finalized before a new attempt is admitted.
                     if self.task_running(id) || batch.failed_tasks.contains(&id)
-                        || batch.run_ids.keys().any(|run_id| self.store.runs.iter().any(|run| run.id == *run_id && run.task_id == id))
+                        || batch.run_ids.keys().any(|run_id| self.store.runs().iter().any(|run| run.id == *run_id && run.task_id == id))
                     { continue; }
-                    let before = self.store.runs.len();
-                    self.start_run(id, cx);
-                    let submitted = self.store.runs.get(before).map(|r| (r.id, r.status.clone()));
+                    let before = self.store.runs().len();
+                    self.start_run_background(id, cx);
+                    let submitted = self.store.runs().get(before).map(|r| (r.id, r.status.clone()));
                     let batch = self.todo_batch.as_mut().unwrap();
                     if let Some((run_id, _)) = submitted.filter(|(_, status)| matches!(status.as_str(), "Queued" | "Running")) {
                         batch.run_ids.insert(run_id, item);
@@ -308,7 +308,7 @@ impl TaskApp {
             self.advance_todo_batch(cx);
             return false;
         };
-        let run = self.store.runs.iter().find(|r| r.id == run_id).unwrap();
+        let run = self.store.runs().iter().find(|r| r.id == run_id).unwrap();
         let successful = run.status == "Succeeded"
             && self.storage_error.is_empty()
             && (run.research_kind == Some(ResearchKind::Goal)
@@ -336,7 +336,7 @@ impl TaskApp {
             .todo_batch
             .as_ref()
             .is_some_and(|b| b.state != BatchState::Finished);
-        primary_button("run-project-todo", format!("{} ({count})", if busy { "Add to queue" } else { "Run / resume" }))
+        button("run-project-todo", format!("{} ({count})", if busy { "Add to queue" } else { "Run / resume" }))
             .icon(assets::IconName::Play)
             .disabled(count == 0 || !self.storage_error.is_empty())
             .tooltip(format!("Queue approved goals. Topics run in order, with up to {} concurrent steps within the current topic.", self.store.concurrency_limit()))
@@ -393,7 +393,7 @@ impl TaskApp {
                     "Dismiss completed batch",
                 )
             } else {
-                quiet_button("clear-todo-batch", "Stop all").text_color(rgb(colors.danger))
+                danger_button("clear-todo-batch", "Stop all")
             }
             .on_click(cx.listener(|this, _, _, cx| this.cancel_todo_batch(cx))),
         );

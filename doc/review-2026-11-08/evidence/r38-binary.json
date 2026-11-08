@@ -1,0 +1,7 @@
+{
+  "sha256": "956bfe6c825b34bb78e4a734367ea2403332fdfcc6807ca9137850305d1e832c",
+  "origin": ".local/t10-target/debug/what-the-hell-are-you-planning",
+  "unknown_flag_exit": 2,
+  "stderr": "Unsupported QA argument --qa-unknown-regression. Build with --features qa and use a supported QA command. No workspace was opened.",
+  "qa_symbols": "navigation_context_qa::run / HeadlessAppContext observed via nm before copy"
+}

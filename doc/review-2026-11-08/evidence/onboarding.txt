@@ -1,0 +1,2 @@
+Workspace upgrade failure/retry, dependency gating and lock transfer passed
+Workspace onboarding screenshots: /Users/fuxingxing/workspaces/what-the-hell-are-you-planning/.local/workspace-onboarding-qa

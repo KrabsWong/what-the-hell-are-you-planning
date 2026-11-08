@@ -47,9 +47,15 @@ pub struct TaskStatus {
     pub execution: ExecutionStatus,
     pub group: Option<ExecutionGroup>,
     pub reason: String,
+    /// Exact barrier/pool phrase for automation surfaces. `None` keeps the
+    /// ordinary phase/execution label.
+    pub display_label: Option<String>,
 }
 impl TaskStatus {
     pub fn label(&self) -> String {
+        if let Some(label) = &self.display_label {
+            return label.clone();
+        }
         let phase = phase_label(self.phase);
         if self.execution.label() == self.phase.label() || self.execution == ExecutionStatus::Done {
             phase.into()
@@ -62,11 +68,29 @@ impl TaskStatus {
 impl Store {
     pub fn task_status(&self, id: u64, batch: Option<&TodoBatch>) -> TaskStatus {
         use ExecutionStatus::*;
+        if let Some(archived) = crate::archive_presentation::presentation(self, id) {
+            return TaskStatus {
+                phase: archived.phase,
+                execution: if archived.complete { Done } else { Stage(archived.phase) },
+                group: None,
+                reason: archived.reason,
+                display_label: Some(archived.label),
+            };
+        }
         let mut execution = self.execution_status(id, batch);
         let task = self.task(id);
         let goal = self.owning_research_goal(id).unwrap_or(id);
-        let submitted = batch.is_some_and(|b| b.contains_pending(goal))
-            || self.runs.iter().any(|r| {
+        let eligibility = task
+            .filter(|task| {
+                task.research
+                    .as_ref()
+                    .is_some_and(|research| research.kind != ResearchKind::Goal)
+            })
+            .map(|_| self.execution_eligibility(id))
+            .filter(|eligibility| eligibility.owner.is_automation());
+        let automation_step = eligibility.is_some();
+        let ordinary_submitted = batch.is_some_and(|b| b.contains_pending(goal))
+            || self.runs().iter().any(|r| {
                 r.project_plan.is_none()
                     && (r.task_id == id
                         || (goal == id && self.owning_research_goal(r.task_id) == Some(id)))
@@ -75,12 +99,20 @@ impl Store {
                         "Queued" | "Running" | "Cancelling" | "Recovering"
                     )
             });
+        // An automation period owns its own submitted/wait state. A paused
+        // definition does not pause an active period, and an empty ordinary
+        // batch must not turn a between-step automation state into Paused.
+        let submitted = eligibility
+            .as_ref()
+            .map(|value| value.period_is_active())
+            .unwrap_or(ordinary_submitted);
         if task.is_some_and(|t| t.stage == crate::domain::Stage::Cancelled)
             && !matches!(execution, Running | Queued | Retrying)
         {
             execution = Stage(crate::domain::Stage::Cancelled);
         }
-        let stopped = !submitted
+        let stopped = !automation_step
+            && !submitted
             && task.is_some_and(|t| t.stage == crate::domain::Stage::InProgress)
             && matches!(execution, Ready | Waiting | Stage(crate::domain::Stage::InProgress));
         if stopped {
@@ -92,7 +124,7 @@ impl Store {
             {
                 crate::domain::Stage::Cancelled
             }
-            Running | Queued | Retrying | Paused => crate::domain::Stage::InProgress,
+            Running | Queued | Retrying | Paused | Stopping => crate::domain::Stage::InProgress,
             Blocked if task.is_some_and(|t| t.stage != crate::domain::Stage::Cancelled) => {
                 crate::domain::Stage::InProgress
             }
@@ -116,7 +148,12 @@ impl Store {
             Running => ExecutionGroup::Running,
             _ => ExecutionGroup::Attention,
         });
-        let mut reason = if stopped {
+        let display_label = eligibility
+            .as_ref()
+            .and_then(|value| value.label_override());
+        let mut reason = if let Some(eligibility) = &eligibility {
+            eligibility.reason(self, id)
+        } else if stopped {
             "Execution is not queued. Submit again to continue; completed results are kept."
                 .into()
         } else if execution == Waiting {
@@ -152,7 +189,7 @@ impl Store {
                 }
             )
         } else if execution == Retrying {
-            let retry = self.runs.iter().rev().find(|r| {
+            let retry = self.runs().iter().rev().find(|r| {
                 r.status == "Queued"
                     && r.auto_retry_attempt > 0
                     && (r.task_id == id
@@ -205,6 +242,7 @@ impl Store {
             execution,
             group,
             reason,
+            display_label,
         }
     }
 
@@ -226,7 +264,7 @@ impl Store {
         let status = self.task_status(id, batch);
         let goal = self.owning_research_goal(id).unwrap_or(id);
         let busy = batch.is_some_and(|b| b.contains_pending(goal))
-            || self.runs.iter().any(|r| {
+            || self.runs().iter().any(|r| {
                 r.project_plan.is_none()
                     && (r.task_id == id || self.owning_research_goal(r.task_id) == Some(id))
                     && matches!(
@@ -258,6 +296,14 @@ impl Store {
             self.validate_goal_dependencies(id)?;
             return Ok(());
         }
+        // A manually created non-research child task has no execution path, so
+        // it cannot reach Review through a run. Let the user record its
+        // completion directly at any parent depth. Research steps and research
+        // goals never take this path because the checks above reject them.
+        let manual_child_completion = target == Stage::Done
+            && status.phase == Stage::Planned
+            && task.parent_id.is_some()
+            && task.research.is_none();
         let allowed = matches!(
             (status.phase, target),
             (Stage::Backlog, Stage::Planned)
@@ -265,8 +311,9 @@ impl Store {
                 | (Stage::InProgress, Stage::Review)
                 | (Stage::Review, Stage::Done)
                 | (Stage::Cancelled, Stage::Planned)
-        ) || (target == Stage::Cancelled
-            && !matches!(status.phase, Stage::Done | Stage::Cancelled));
+        ) || manual_child_completion
+            || (target == Stage::Cancelled
+                && !matches!(status.phase, Stage::Done | Stage::Cancelled));
         if !allowed {
             return Err(format!(
                 "Cannot move {} → {}. Follow the workflow order; running work cannot move back to Todo.",
@@ -289,7 +336,7 @@ impl Store {
         if target == Stage::Review
             && task.research.is_none()
             && self
-                .runs
+                .runs()
                 .iter()
                 .rev()
                 .find(|r| r.task_id == id && r.project_plan.is_none())
@@ -307,7 +354,7 @@ impl Store {
                     .as_ref()
                     .is_some_and(|r| r.depends_on.contains(&id))
                     && (t.stage == Stage::Done
-                        || self.runs.iter().any(|r| {
+                        || self.runs().iter().any(|r| {
                             r.task_id == t.id
                                 && matches!(r.status.as_str(), "Queued" | "Running" | "Recovering")
                         }))
@@ -361,14 +408,14 @@ mod tests {
         assert!(AllStatus::Stage(Stage::InProgress).matches(&waiting));
         assert!(AllStatus::Execution(ExecutionGroup::Waiting).matches(&waiting));
         assert!(!AllStatus::Stage(Stage::Planned).matches(&waiting));
-        assert!(store.runs.is_empty());
+        assert!(store.runs().is_empty());
     }
     #[test]
     fn aggregate_running_wins_over_waiting_and_pause_and_retry_have_separate_groups() {
         let (mut store, goal, ids, mut batch) = fixture();
         let mut run = store.prepare_run(ids[0]).unwrap();
         run.status = "Running".into();
-        store.runs.push(run);
+        store.push_run(run);
         batch.state = BatchState::Paused("Paused".into());
         let state = store.task_status(goal, Some(&batch));
         assert_eq!(state.group, Some(ExecutionGroup::Running));
@@ -378,13 +425,13 @@ mod tests {
             Some(ExecutionGroup::Attention)
         );
         batch.state = BatchState::Running;
-        store.runs[0].status = "Queued".into();
-        store.runs[0].auto_retry_attempt = 1;
+        store.run_at_mut(0).unwrap().status = "Queued".into();
+        store.run_at_mut(0).unwrap().auto_retry_attempt = 1;
         assert_eq!(
             store.task_status(goal, Some(&batch)).group,
             Some(ExecutionGroup::Queued)
         );
-        store.runs[0].status = "Failed".into();
+        store.run_at_mut(0).unwrap().status = "Failed".into();
         assert_eq!(
             store.task_status(goal, Some(&batch)).group,
             Some(ExecutionGroup::Attention)
@@ -447,7 +494,7 @@ mod tests {
         );
         let mut run = store.prepare_run(ids[0]).unwrap();
         run.status = "Running".into();
-        store.runs.push(run);
+        store.push_run(run);
         assert!(
             store
                 .validate_manual_transition(goal, Stage::Cancelled, None)
@@ -460,6 +507,53 @@ mod tests {
         );
     }
     #[test]
+    fn ordinary_child_tasks_are_manually_completable_without_weakening_research_rules() {
+        let (mut store, goal, ids, _) = fixture();
+        let child = store
+            .create_task("Manual child", 1, Stage::Planned, Some(goal))
+            .unwrap();
+        assert!(store.task(child).unwrap().research.is_none());
+        assert!(
+            store
+                .validate_manual_transition(child, Stage::Done, None)
+                .is_ok()
+        );
+        store.set_stage(child, Stage::Done).unwrap();
+        assert_eq!(store.task(child).unwrap().stage, Stage::Done);
+
+        // The exception is limited to non-research children. Root tasks,
+        // research goals and research steps still follow the normal matrix.
+        let root = store
+            .create_task("Root task", 1, Stage::Planned, None)
+            .unwrap();
+        assert!(
+            store
+                .validate_manual_transition(root, Stage::Done, None)
+                .is_err()
+        );
+        // The manual exception deliberately applies to any non-research child,
+        // including a child of an ordinary parent task.
+        let nested = store
+            .create_task("Nested manual child", 1, Stage::Planned, Some(root))
+            .unwrap();
+        assert!(
+            store
+                .validate_manual_transition(nested, Stage::Done, None)
+                .is_ok()
+        );
+        assert!(
+            store
+                .validate_manual_transition(ids[0], Stage::Done, None)
+                .is_err()
+        );
+        assert!(
+            store
+                .validate_manual_transition(goal, Stage::Done, None)
+                .is_err()
+        );
+    }
+
+    #[test]
     fn ordinary_success_enters_review_and_internal_recovery_remains_possible() {
         let (mut store, _, _, _) = fixture();
         let id = store
@@ -467,7 +561,7 @@ mod tests {
             .unwrap();
         store.policies = Store::mock().policies;
         store.simulate_run(id).unwrap();
-        store.runs.last_mut().unwrap().status = "Succeeded".into();
+        store.last_run_mut().unwrap().status = "Succeeded".into();
         assert_eq!(store.task_status(id, None).phase, Stage::Review);
         assert!(
             store

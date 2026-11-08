@@ -1,0 +1,66 @@
+{
+  "started_wall_epoch": 1794161006.0259461,
+  "pid": 51116,
+  "build": "frozen optimized release baseline",
+  "theme": "light",
+  "logical_window": [
+    1440,
+    920
+  ],
+  "background_processes_before": [
+    "51116 /Users/fuxingxing/workspaces/what-the-hell-are-you-planning/.local/native-review/Planning Native Review.app/Contents/MacOS/planning-native-review"
+  ],
+  "events": [
+    {
+      "direction": "down",
+      "pages": 2,
+      "start_epoch_ms": 1794161014694,
+      "end_epoch_ms": 1794161015440
+    },
+    {
+      "direction": "up",
+      "pages": 2,
+      "start_epoch_ms": 1794161015440,
+      "end_epoch_ms": 1794161015559
+    },
+    {
+      "direction": "down",
+      "pages": 1,
+      "start_epoch_ms": 1794161015559,
+      "end_epoch_ms": 1794161015668
+    },
+    {
+      "direction": "up",
+      "pages": 1,
+      "start_epoch_ms": 1794161015668,
+      "end_epoch_ms": 1794161015781
+    },
+    {
+      "direction": "down",
+      "pages": 2,
+      "start_epoch_ms": 1794161015781,
+      "end_epoch_ms": 1794161015893
+    },
+    {
+      "direction": "up",
+      "pages": 2,
+      "start_epoch_ms": 1794161015893,
+      "end_epoch_ms": 1794161016018
+    },
+    {
+      "direction": "down",
+      "pages": 2,
+      "start_epoch_ms": 1794161021220,
+      "end_epoch_ms": 1794161021357
+    },
+    {
+      "direction": "up",
+      "pages": 2,
+      "start_epoch_ms": 1794161028693,
+      "end_epoch_ms": 1794161028783
+    }
+  ],
+  "after_epoch": 1794161048.671967,
+  "after_build_processes": [],
+  "native_observation": "Screenshot confirmed lower browser-runtime section after down gesture, then Global default at top after final up gesture. Initial six gestures were rapid; last pair separately observed."
+}

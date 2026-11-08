@@ -1,0 +1,36 @@
+{
+  "sha256": "f284d4486779cb8929172b97fe8c9c4502c9ffeb1966cbfed5784911bc0a1e1d",
+  "guard_exit": 2,
+  "results": [
+    {
+      "flag": "simplify",
+      "exit": 0,
+      "elapsed_seconds": 56.006586416000005
+    },
+    {
+      "flag": "topics",
+      "exit": 0,
+      "elapsed_seconds": 2.0079445410000005
+    },
+    {
+      "flag": "topic-actions",
+      "exit": 0,
+      "elapsed_seconds": 0.763709249999998
+    },
+    {
+      "flag": "navigation-context",
+      "exit": 0,
+      "elapsed_seconds": 18.853826958
+    },
+    {
+      "flag": "automation",
+      "exit": 0,
+      "elapsed_seconds": 43.964088000000004
+    },
+    {
+      "flag": "global-search",
+      "exit": 0,
+      "elapsed_seconds": 28.219647500000008
+    }
+  ]
+}

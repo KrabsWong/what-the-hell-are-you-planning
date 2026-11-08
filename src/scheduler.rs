@@ -49,7 +49,7 @@ impl Store {
             return Ok(PathBuf::from(&project.directory));
         };
         if self.uses_step_workspace(task_id) {
-            if let Some(run) = self.runs.iter().rev().find(|r| r.task_id == task_id && r.project_plan.is_none() && r.status != "Simulated" && !r.directory.is_empty()) {
+            if let Some(run) = self.runs().iter().rev().find(|r| r.task_id == task_id && r.project_plan.is_none() && r.status != "Simulated" && !r.directory.is_empty()) {
                 return Ok(PathBuf::from(run.workspace_source.as_ref().unwrap_or(&run.directory)));
             }
             return self.execution_directory(task_id);
@@ -66,13 +66,13 @@ impl Store {
         // Evidence/analysis outputs own the goal's directory. A successful planner
         // returns JSON only, so its old project-root directory need not lock new steps.
         let previous = self
-            .runs
+            .runs()
             .iter()
             .rev()
             .filter(same_goal)
             .find(|r| r.research_kind != Some(ResearchKind::Goal))
             .or_else(|| {
-                self.runs
+                self.runs()
                     .iter()
                     .rev()
                     .filter(same_goal)
@@ -102,7 +102,7 @@ impl Store {
     pub fn workspace_source(&self, task_id: u64) -> Result<Option<String>, String> {
         let target = self.execution_directory(task_id)?;
         // A queued/failed migration still owns its original source, even after restart.
-        if let Some(run) = self.runs.iter().rev().find(|r| r.task_id == task_id && r.project_plan.is_none()) {
+        if let Some(run) = self.runs().iter().rev().find(|r| r.task_id == task_id && r.project_plan.is_none()) {
             if let Some(source) = &run.workspace_source { return Ok(Some(source.clone())); }
         }
         let previous = self.previous_execution_directory(task_id)?;
@@ -113,7 +113,7 @@ impl Store {
     /// Only the latest attempt may resume: never reach past a completed or stale attempt.
     pub fn resume_candidate(&self, request: &AgentRun) -> Option<&AgentRun> {
         let previous = self
-            .runs
+            .runs()
             .iter()
             .rev()
             .find(|run| run.status != "Simulated" && same_task(run, request))?;
@@ -254,7 +254,7 @@ mod tests {
         let mut failed = first.clone();
         failed.status = "Failed".into();
         failed.session_id = Some("isolated-retry".into());
-        store.runs.push(failed);
+        store.push_run(failed);
         assert_eq!(store.previous_execution_directory(steps[0]).unwrap(), PathBuf::from(&first.directory));
         assert_eq!(store.resume_candidate(&first).unwrap().session_id.as_deref(), Some("isolated-retry"));
         assert!(!store.run_conflicts(&first, &second));
@@ -268,7 +268,7 @@ mod tests {
         legacy.research_kind = Some(ResearchKind::Collect);
         legacy.status = "Interrupted".into();
         legacy.session_id = Some("existing-session".into());
-        store.runs.push(legacy.clone());
+        store.push_run(legacy.clone());
         let mut next = legacy.clone();
         next.directory = store.execution_directory(a).unwrap().to_string_lossy().into_owned();
         next.workspace_source = store.workspace_source(a).unwrap();
@@ -280,7 +280,7 @@ mod tests {
         assert!(!store.run_conflicts(&next, &independent));
         // Pending migration remains discoverable after persistence/restart.
         next.workspace_source = Some(legacy.directory.clone());
-        store.runs.push(next);
+        store.push_run(next);
         let restored: Store = serde_json::from_str(&serde_json::to_string(&store).unwrap()).unwrap();
         assert_eq!(restored.workspace_source(a).unwrap(), Some(legacy.directory));
     }
@@ -317,7 +317,7 @@ mod tests {
         legacy.directory = store.projects[0].directory.clone();
         legacy.status = "Succeeded".into();
         legacy.research_kind = Some(ResearchKind::Collect);
-        store.runs.push(legacy.clone());
+        store.push_run(legacy.clone());
         assert_eq!(
             store.previous_execution_directory(a).unwrap(),
             PathBuf::from(&legacy.directory)
@@ -329,14 +329,14 @@ mod tests {
         let (mut store, goal, _) = setup();
         let mut planning = store.prepare_run(goal).unwrap();
         planning.status = "Succeeded".into();
-        store.runs.push(planning.clone());
+        store.push_run(planning.clone());
         let steps = store.apply_research_plan(goal, r#"{"tasks":[{"title":"Collect","instructions":"Find sources","kind":"collect","depends_on":[]},{"title":"Analyze","instructions":"Analyze","kind":"analyze","depends_on":[0]},{"title":"Report","instructions":"Report","kind":"advise","depends_on":[1]}]}"#).unwrap();
         let isolated = PathBuf::from(&store.projects[0].directory)
             .join(".research")
             .join(format!("goal-{goal}"));
         assert_eq!(store.execution_directory(steps[0]).unwrap(), isolated);
         // The planner itself retains its directory for a failed-plan resume.
-        store.runs[0].status = "Interrupted".into();
+        store.run_at_mut(0).unwrap().status = "Interrupted".into();
         assert_eq!(
             store.previous_execution_directory(goal).unwrap(),
             PathBuf::from(&planning.directory)
@@ -345,10 +345,10 @@ mod tests {
             store.previous_execution_directory(steps[0]).unwrap(),
             PathBuf::from(&planning.directory)
         );
-        store.runs[0].status = "Succeeded".into();
+        store.run_at_mut(0).unwrap().status = "Succeeded".into();
         let mut evidence = store.prepare_run(steps[0]).unwrap();
         evidence.directory = isolated.to_string_lossy().into_owned();
-        store.runs.push(evidence);
+        store.push_run(evidence);
         assert_eq!(store.execution_directory(steps[1]).unwrap(), isolated);
     }
 
@@ -359,13 +359,13 @@ mod tests {
         let mut previous = next.clone();
         previous.status = "Interrupted".into();
         previous.session_id = Some("ses_existing".into());
-        store.runs.push(previous.clone());
+        store.push_run(previous.clone());
         assert_eq!(
             store.resume_candidate(&next).unwrap().session_id.as_deref(),
             Some("ses_existing")
         );
         for status in ["Failed", "Cancelled", "Blocked"] {
-            store.runs.last_mut().unwrap().status = status.into();
+            store.last_run_mut().unwrap().status = status.into();
             assert!(store.resume_candidate(&next).is_some());
         }
         let mut changed = next.clone();
@@ -382,7 +382,8 @@ mod tests {
         assert!(store.resume_candidate(&changed).is_none());
         for status in ["Succeeded", "Stale", "Running", "Cancelling"] {
             previous.status = status.into();
-            store.runs.push(previous.clone());
+            previous.id += 1;
+            store.push_run(previous.clone());
             assert!(store.resume_candidate(&next).is_none());
         }
     }

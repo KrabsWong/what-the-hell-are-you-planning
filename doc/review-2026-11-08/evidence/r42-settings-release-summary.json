@@ -1,0 +1,412 @@
+{
+  "trace": ".local/native-review/r42-settings-release-light.trace",
+  "record_exit": 0,
+  "duration_seconds": 30.803676,
+  "build": "frozen r35 optimized release plus CLI guard",
+  "display_hz": 120,
+  "gesture_windows_plus_one_second": [
+    [
+      5.831000089645386,
+      7.577000141143799
+    ],
+    [
+      6.577000141143799,
+      7.696000099182129
+    ],
+    [
+      6.696000099182129,
+      7.805000066757202
+    ],
+    [
+      6.805000066757202,
+      7.917999982833862
+    ],
+    [
+      6.917999982833862,
+      8.02999997138977
+    ],
+    [
+      7.0299999713897705,
+      8.15499997138977
+    ],
+    [
+      12.35700011253357,
+      13.49400019645691
+    ],
+    [
+      19.830000162124634,
+      20.920000076293945
+    ]
+  ],
+  "limitations": [
+    "Single Settings surface, light 1440x920 only; no concurrent app save/run or large-history workload.",
+    "Hitch durations are Instruments hitch intervals, not full frame render duration or FPS.",
+    "Gesture wall-clock intervals plus one second are approximate correlation windows, not signposted input events.",
+    "Other normal desktop services remained active; no Cargo/rustc was observed immediately before/after recording.",
+    "Frozen baseline does not include current implementation work."
+  ],
+  "hitches": {
+    "rows": 86,
+    "app_count": 86,
+    "median_ms": 8.333333,
+    "p95_ms": 16.6665,
+    "max_ms": 16.666875,
+    "within_gesture_windows": 24,
+    "events": [
+      {
+        "start_seconds": 0.388679291,
+        "hitch_ms": 8.33325
+      },
+      {
+        "start_seconds": 0.913679125,
+        "hitch_ms": 8.333208
+      },
+      {
+        "start_seconds": 0.930345666,
+        "hitch_ms": 16.666875
+      },
+      {
+        "start_seconds": 1.980345291,
+        "hitch_ms": 8.333333
+      },
+      {
+        "start_seconds": 2.380345208,
+        "hitch_ms": 16.666666
+      },
+      {
+        "start_seconds": 2.580345125,
+        "hitch_ms": 16.666666
+      },
+      {
+        "start_seconds": 2.972011625,
+        "hitch_ms": 8.333333
+      },
+      {
+        "start_seconds": 3.113678166,
+        "hitch_ms": 8.333333
+      },
+      {
+        "start_seconds": 3.1470115,
+        "hitch_ms": 8.333333
+      },
+      {
+        "start_seconds": 3.413678083,
+        "hitch_ms": 8.333333
+      },
+      {
+        "start_seconds": 4.33867775,
+        "hitch_ms": 8.333333
+      },
+      {
+        "start_seconds": 4.51367775,
+        "hitch_ms": 8.333333
+      },
+      {
+        "start_seconds": 4.530344375,
+        "hitch_ms": 8.333333
+      },
+      {
+        "start_seconds": 4.547011,
+        "hitch_ms": 8.333333
+      },
+      {
+        "start_seconds": 4.563677708,
+        "hitch_ms": 8.333333
+      },
+      {
+        "start_seconds": 5.438677416,
+        "hitch_ms": 8.333333
+      },
+      {
+        "start_seconds": 5.613677208,
+        "hitch_ms": 8.333333
+      },
+      {
+        "start_seconds": 5.855343916,
+        "hitch_ms": 8.333375
+      },
+      {
+        "start_seconds": 5.922010583,
+        "hitch_ms": 8.333375
+      },
+      {
+        "start_seconds": 5.938677291,
+        "hitch_ms": 8.333291
+      },
+      {
+        "start_seconds": 6.013677125,
+        "hitch_ms": 8.333458
+      },
+      {
+        "start_seconds": 7.213676791,
+        "hitch_ms": 8.333208
+      },
+      {
+        "start_seconds": 7.422009916,
+        "hitch_ms": 8.333458
+      },
+      {
+        "start_seconds": 7.988676416,
+        "hitch_ms": 8.333333
+      },
+      {
+        "start_seconds": 8.005343041,
+        "hitch_ms": 8.333333
+      },
+      {
+        "start_seconds": 8.022009708,
+        "hitch_ms": 8.333333
+      },
+      {
+        "start_seconds": 8.038676458,
+        "hitch_ms": 8.333333
+      },
+      {
+        "start_seconds": 8.055343166,
+        "hitch_ms": 8.333333
+      },
+      {
+        "start_seconds": 8.072009791,
+        "hitch_ms": 8.333333
+      },
+      {
+        "start_seconds": 8.480343041,
+        "hitch_ms": 8.333333
+      },
+      {
+        "start_seconds": 8.497009583,
+        "hitch_ms": 8.333333
+      },
+      {
+        "start_seconds": 8.797009541,
+        "hitch_ms": 8.333333
+      },
+      {
+        "start_seconds": 8.938676166,
+        "hitch_ms": 8.333333
+      },
+      {
+        "start_seconds": 9.022009416,
+        "hitch_ms": 8.333458
+      },
+      {
+        "start_seconds": 10.913675416,
+        "hitch_ms": 8.333875
+      },
+      {
+        "start_seconds": 10.930342625,
+        "hitch_ms": 16.666125
+      },
+      {
+        "start_seconds": 11.36367525,
+        "hitch_ms": 8.333333
+      },
+      {
+        "start_seconds": 12.988674833,
+        "hitch_ms": 8.33325
+      },
+      {
+        "start_seconds": 13.005341416,
+        "hitch_ms": 8.333458
+      },
+      {
+        "start_seconds": 13.022008208,
+        "hitch_ms": 8.333333
+      },
+      {
+        "start_seconds": 13.863674458,
+        "hitch_ms": 8.333333
+      },
+      {
+        "start_seconds": 15.922007291,
+        "hitch_ms": 16.666666
+      },
+      {
+        "start_seconds": 17.005340291,
+        "hitch_ms": 8.333333
+      },
+      {
+        "start_seconds": 17.038673666,
+        "hitch_ms": 8.333333
+      },
+      {
+        "start_seconds": 17.547006833,
+        "hitch_ms": 8.33325
+      },
+      {
+        "start_seconds": 18.280339958,
+        "hitch_ms": 8.333333
+      },
+      {
+        "start_seconds": 18.888673083,
+        "hitch_ms": 8.333333
+      },
+      {
+        "start_seconds": 19.413672833,
+        "hitch_ms": 8.333333
+      },
+      {
+        "start_seconds": 19.780339416,
+        "hitch_ms": 8.333333
+      },
+      {
+        "start_seconds": 19.955339375,
+        "hitch_ms": 8.333333
+      },
+      {
+        "start_seconds": 19.988672791,
+        "hitch_ms": 8.333333
+      },
+      {
+        "start_seconds": 20.0053395,
+        "hitch_ms": 8.333333
+      },
+      {
+        "start_seconds": 20.022006125,
+        "hitch_ms": 8.333333
+      },
+      {
+        "start_seconds": 20.038672791,
+        "hitch_ms": 8.333333
+      },
+      {
+        "start_seconds": 20.163672666,
+        "hitch_ms": 8.333333
+      },
+      {
+        "start_seconds": 20.322006041,
+        "hitch_ms": 8.333333
+      },
+      {
+        "start_seconds": 20.8136725,
+        "hitch_ms": 8.333333
+      },
+      {
+        "start_seconds": 20.913672541,
+        "hitch_ms": 8.333375
+      },
+      {
+        "start_seconds": 20.93033925,
+        "hitch_ms": 16.6665
+      },
+      {
+        "start_seconds": 21.280339041,
+        "hitch_ms": 8.333333
+      },
+      {
+        "start_seconds": 21.313672375,
+        "hitch_ms": 8.333416
+      },
+      {
+        "start_seconds": 21.372005666,
+        "hitch_ms": 8.333333
+      },
+      {
+        "start_seconds": 21.488672375,
+        "hitch_ms": 8.333208
+      },
+      {
+        "start_seconds": 22.213672083,
+        "hitch_ms": 8.333333
+      },
+      {
+        "start_seconds": 22.338672208,
+        "hitch_ms": 8.333333
+      },
+      {
+        "start_seconds": 22.480338791,
+        "hitch_ms": 8.333333
+      },
+      {
+        "start_seconds": 24.530338375,
+        "hitch_ms": 8.333333
+      },
+      {
+        "start_seconds": 24.597004958,
+        "hitch_ms": 8.33325
+      },
+      {
+        "start_seconds": 24.672004916,
+        "hitch_ms": 8.333333
+      },
+      {
+        "start_seconds": 24.688671583,
+        "hitch_ms": 8.333375
+      },
+      {
+        "start_seconds": 24.780338208,
+        "hitch_ms": 8.333333
+      },
+      {
+        "start_seconds": 25.230338083,
+        "hitch_ms": 8.333375
+      },
+      {
+        "start_seconds": 25.247004791,
+        "hitch_ms": 8.333291
+      },
+      {
+        "start_seconds": 25.263671416,
+        "hitch_ms": 8.333208
+      },
+      {
+        "start_seconds": 25.913671333,
+        "hitch_ms": 8.333291
+      },
+      {
+        "start_seconds": 25.930337958,
+        "hitch_ms": 16.666625
+      },
+      {
+        "start_seconds": 26.08867125,
+        "hitch_ms": 8.333333
+      },
+      {
+        "start_seconds": 28.1303375,
+        "hitch_ms": 8.333333
+      },
+      {
+        "start_seconds": 28.180337416,
+        "hitch_ms": 8.333333
+      },
+      {
+        "start_seconds": 29.5136705,
+        "hitch_ms": 8.333333
+      },
+      {
+        "start_seconds": 29.89700375,
+        "hitch_ms": 8.333333
+      },
+      {
+        "start_seconds": 30.372003458,
+        "hitch_ms": 8.333333
+      },
+      {
+        "start_seconds": 30.422003583,
+        "hitch_ms": 8.333333
+      },
+      {
+        "start_seconds": 30.513670166,
+        "hitch_ms": 8.333416
+      },
+      {
+        "start_seconds": 30.5720035,
+        "hitch_ms": 8.333333
+      },
+      {
+        "start_seconds": 30.722003375,
+        "hitch_ms": 8.3335
+      }
+    ]
+  },
+  "displayed-surfaces-interval": {
+    "rows": 3612
+  },
+  "device-display-info": {
+    "rows": 1
+  },
+  "potential-hangs": {
+    "rows": 0
+  },
+  "accepted": false
+}

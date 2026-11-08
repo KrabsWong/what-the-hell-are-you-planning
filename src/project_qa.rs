@@ -98,7 +98,7 @@ pub fn run(live: bool) {
             }
         }
         assert!(
-            a.store.runs.iter().all(|r| r.project_plan.is_some()),
+            a.store.runs().iter().all(|r| r.project_plan.is_some()),
             "Planning must not execute research"
         );
         request.goal_ids.clone()
@@ -107,7 +107,7 @@ pub fn run(live: bool) {
     let goal = goals[0];
     cx.update_window(handle, |_, _, cx| {
         app.update(cx, |a, cx| {
-            let runs = a.store.runs.len();
+            let runs = a.store.runs().len();
             a.change_stage(goal, Stage::Planned, cx);
             assert!(
                 a.store.goal_execution_approved(goal),
@@ -115,7 +115,7 @@ pub fn run(live: bool) {
                 a.error
             );
             assert_eq!(
-                a.store.runs.len(),
+                a.store.runs().len(),
                 runs,
                 "Approval must not launch research"
             );
@@ -135,7 +135,7 @@ pub fn run(live: bool) {
         );
         assert!(
             a.store
-                .runs
+                .runs()
                 .iter()
                 .filter(|r| r.project_plan.is_none())
                 .all(|r| a.store.owning_research_goal(r.task_id) == Some(goal)),

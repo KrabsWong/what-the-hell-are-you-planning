@@ -46,7 +46,7 @@ pub fn run() {
         panels.push(("Topic", Scope::Topic(topic.id)));
     }
     let result = store
-        .runs
+        .runs()
         .iter()
         .rev()
         .find(|r| r.project_plan.is_none() && r.status == "Succeeded" && !r.output.is_empty());

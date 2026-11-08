@@ -1,3 +1,4 @@
+#![recursion_limit = "256"]
 mod startup;
 #[cfg(feature = "qa")]
 mod render_qa;
@@ -5,10 +6,16 @@ mod render_qa;
 mod affordance_qa;
 mod app;
 mod automation;
+mod automation_activity;
 mod automation_execution;
+mod automation_planning_state;
+mod automation_policy;
 mod automation_runtime;
 mod automation_schedule;
 mod automation_views;
+mod archive_presentation;
+#[cfg(feature = "qa")]
+mod archive_qa;
 mod archive_app;
 mod appearance;
 mod attachments;
@@ -17,15 +24,39 @@ mod batch_app;
 #[cfg(feature = "qa")]
 mod automation_qa;
 #[cfg(feature = "qa")]
+mod command_qa;
+#[cfg(feature = "qa")]
+mod task_edit_qa;
+#[cfg(feature = "qa")]
 mod batch_qa;
 #[cfg(feature = "qa")]
 mod concurrency_qa;
+#[cfg(feature = "qa")]
+mod execution_eligibility_qa;
 mod controls;
 mod domain;
+mod dispatch_admission;
+mod dispatch_intent;
+#[cfg(feature = "qa")]
+mod dispatch_admission_qa;
+mod domain_command;
+mod scoped_edit;
+mod task_edit_app;
+mod material_app;
+mod scoped_material;
+mod scoped_settings;
+mod material_verify;
+mod command_app;
+mod draft_exit;
 mod display_order;
+mod stop_intent;
 mod ego;
 mod ego_mcp;
 mod execution_status;
+mod execution_eligibility;
+mod global_search;
+#[cfg(feature = "qa")]
+mod global_search_qa;
 mod goal_steps;
 #[cfg(feature = "qa")]
 mod intake_qa;
@@ -33,9 +64,21 @@ mod intake_views;
 #[cfg(feature = "qa")]
 mod material_qa;
 mod navigation;
+mod navigation_context;
+mod navigation_context_app;
+mod navigation_route;
+#[cfg(feature = "qa")]
+mod navigation_context_qa;
+#[cfg(feature = "qa")]
+mod navigation_qa;
 mod opencode;
 mod codex;
 mod persistence;
+mod persistence_journal;
+mod persistence_metrics;
+mod persistence_worker;
+#[cfg(feature = "qa")]
+mod persistence_qa;
 mod project_app;
 mod project_planning;
 #[cfg(feature = "qa")]
@@ -48,8 +91,16 @@ mod recovery;
 mod recovery_qa;
 mod request_planning;
 mod research;
+mod result_presentation;
 mod research_app;
 mod research_export;
+mod research_input;
+mod research_input_app;
+mod research_input_views;
+#[cfg(feature = "qa")]
+mod research_input_qa;
+#[cfg(feature = "qa")]
+mod t19_qa;
 mod report_html;
 mod report_git;
 mod report_publish;
@@ -58,6 +109,8 @@ mod publishing_qa;
 #[cfg(feature = "qa")]
 mod research_qa;
 mod research_views;
+#[cfg(feature = "qa")]
+mod result_presentation_qa;
 mod rich_markdown;
 mod run_views;
 mod run_errors;
@@ -69,11 +122,15 @@ mod retry_qa;
 mod topic_queue_qa;
 #[cfg(feature = "qa")]
 mod settings_qa;
+mod settings_content;
 mod settings_views;
 mod model_profiles;
 #[cfg(feature = "qa")]
 mod simplify_qa;
+#[cfg(feature = "qa")]
+mod t11_qa;
 mod sqlite_storage;
+mod sqlite_v4;
 #[cfg(feature = "qa")]
 mod topic_qa;
 mod topic_views;
@@ -125,6 +182,21 @@ fn main() {
         return;
     }
     #[cfg(feature = "qa")]
+    if std::env::args().any(|arg| arg == "--qa-result-presentation") {
+        result_presentation_qa::run();
+        return;
+    }
+    #[cfg(feature = "qa")]
+    if std::env::args().any(|arg| arg == "--qa-research-inputs") {
+        research_input_qa::run();
+        return;
+    }
+    #[cfg(feature = "qa")]
+    if std::env::args().any(|arg| arg == "--qa-keyboard-visual") {
+        t19_qa::run();
+        return;
+    }
+    #[cfg(feature = "qa")]
     if std::env::args().any(|arg| arg == "--qa-recovery-scroll") { recovery_qa::scroll(); return; }
     #[cfg(feature = "qa")]
     if std::env::args().any(|arg| arg == "--qa-recovery") {
@@ -134,6 +206,11 @@ fn main() {
     #[cfg(feature = "qa")]
     if std::env::args().any(|arg| arg == "--qa-intake") {
         intake_qa::run();
+        return;
+    }
+    #[cfg(feature = "qa")]
+    if std::env::args().any(|arg| arg == "--qa-navigation-context") {
+        navigation_context_qa::run();
         return;
     }
     #[cfg(feature = "qa")]
@@ -166,8 +243,28 @@ fn main() {
         return;
     }
     #[cfg(feature = "qa")]
+    if std::env::args().any(|arg| arg == "--qa-archived-research") {
+        archive_qa::run();
+        return;
+    }
+    #[cfg(feature = "qa")]
+    if std::env::args().any(|arg| arg == "--qa-dispatch-admission") {
+        dispatch_admission_qa::run();
+        return;
+    }
+    #[cfg(feature = "qa")]
+    if std::env::args().any(|arg| arg == "--qa-dispatch-crash") {
+        dispatch_admission_qa::crash_child();
+        return;
+    }
+    #[cfg(feature = "qa")]
     if std::env::args().any(|arg| arg == "--qa-concurrency") {
         concurrency_qa::run();
+        return;
+    }
+    #[cfg(feature = "qa")]
+    if std::env::args().any(|arg| arg == "--qa-execution-eligibility") {
+        execution_eligibility_qa::run();
         return;
     }
     #[cfg(feature = "qa")]
@@ -176,13 +273,43 @@ fn main() {
         return;
     }
     #[cfg(feature = "qa")]
+    if std::env::args().any(|arg| arg == "--qa-header-layout") {
+        simplify_qa::header_layout();
+        return;
+    }
+    #[cfg(feature = "qa")]
     if std::env::args().any(|arg| arg == "--qa-automation") {
         automation_qa::run();
         return;
     }
     #[cfg(feature = "qa")]
+    if std::env::args().any(|arg| arg == "--qa-command") {
+        command_qa::run();
+        return;
+    }
+    #[cfg(feature = "qa")]
+    if std::env::args().any(|arg| arg == "--qa-task-edit") {
+        task_edit_qa::run();
+        return;
+    }
+    #[cfg(feature = "qa")]
+    if std::env::args().any(|arg| arg == "--qa-planning") {
+        automation_qa::run_planning();
+        return;
+    }
+    #[cfg(feature = "qa")]
     if std::env::args().any(|arg| arg == "--qa-automation-perf") {
         automation_qa::performance_fixture();
+        return;
+    }
+    #[cfg(feature = "qa")]
+    if std::env::args().any(|arg| arg == "--qa-v4-crash") {
+        sqlite_v4::crash_child();
+        return;
+    }
+    #[cfg(feature = "qa")]
+    if let Some(mode) = persistence_qa::requested_mode() {
+        persistence_qa::run(&mode);
         return;
     }
     #[cfg(feature = "qa")]
@@ -198,8 +325,18 @@ fn main() {
         return;
     }
     #[cfg(feature = "qa")]
+    if std::env::args().any(|arg| arg == "--qa-global-search") {
+        global_search_qa::run();
+        return;
+    }
+    #[cfg(feature = "qa")]
     if std::env::args().any(|arg| arg == "--qa-affordance") {
         affordance_qa::run();
+        return;
+    }
+    #[cfg(feature = "qa")]
+    if std::env::args().any(|arg| arg == "--qa-t11") {
+        t11_qa::run();
         return;
     }
     #[cfg(feature = "qa")]
@@ -236,6 +373,14 @@ fn main() {
     if std::env::args().any(|arg| arg == "--qa") {
         qa::run();
         return;
+    }
+    // A missing QA feature or misspelled QA flag must never open a real workspace.
+    if let Some(argument) = std::env::args().skip(1).find(|argument| {
+        argument == "--qa" || argument.starts_with("--qa-")
+            || matches!(argument.as_str(), "--projects-live" | "--research-live")
+    }) {
+        eprintln!("Unsupported QA argument {argument}. Build with --features qa and use a supported QA command. No workspace was opened.");
+        std::process::exit(2);
     }
     application().with_assets(ui_assets::AppAssets).run(|cx| {
         init(cx);

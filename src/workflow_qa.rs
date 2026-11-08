@@ -64,7 +64,7 @@ print(json.dumps({'type': 'text', 'part': {'text': text}}), flush=True)
     let app = entity.unwrap();
     cx.update_window(handle, |_, _, cx| {
         app.update(cx, |a, cx| a.start_run(id, cx));
-        assert!(app.read(cx).store.runs.is_empty(), "Legacy tasks cannot start new runs");
+        assert!(app.read(cx).store.runs().is_empty(), "Legacy tasks cannot start new runs");
     }).unwrap();
     // A single goal drop must execute the complete dependency chain in order.
     let (chain, steps) = app.update(&mut cx, |a, _| {
@@ -80,7 +80,7 @@ print(json.dumps({'type': 'text', 'part': {'text': text}}), flush=True)
             a.store.task_status(steps[1], a.todo_batch.as_ref()).group,
             Some(ExecutionGroup::Waiting)
         );
-        assert!(!a.store.runs.iter().any(|r| r.task_id == steps[1]));
+        assert!(!a.store.runs().iter().any(|r| r.task_id == steps[1]));
     })
     .unwrap();
     let deadline = Instant::now() + Duration::from_secs(15);
@@ -107,7 +107,7 @@ print(json.dumps({'type': 'text', 'part': {'text': text}}), flush=True)
         let a = app.read(cx);
         let runs: Vec<_> = a
             .store
-            .runs
+            .runs()
             .iter()
             .filter(|r| steps.contains(&r.task_id))
             .collect();
@@ -126,7 +126,7 @@ print(json.dumps({'type': 'text', 'part': {'text': text}}), flush=True)
         a.todo_batch = Some(TodoBatch { project_id: 1, items: vec![goal], completed: 0, runs_completed: 0,
             state: BatchState::Paused("QA paused queue".into()), run_ids: Default::default(), done_items: vec![], failed_items: vec![], failed_tasks: vec![] });
         a.store.set_stage(goal, Stage::InProgress).unwrap();
-        let mut run = a.store.prepare_run(ids[0]).unwrap(); run.status = "Running".into(); a.store.runs.push(run);
+        let mut run = a.store.prepare_run(ids[0]).unwrap(); run.status = "Running".into(); a.store.push_run(run);
         a.expanded_sidebar_projects.push(1);
         cx.notify(); goal
     });
@@ -239,7 +239,7 @@ pub fn display_order() {
         for pair in expected.windows(2) {
             assert!(w.find(format!("card-{}", pair[0])).bounds().top() < w.find(format!("card-{}", pair[1])).bounds().top());
         }
-        assert!(app.read(cx).store.runs.is_empty());
+        assert!(app.read(cx).store.runs().is_empty());
         assert!(app.read(cx).todo_batch.is_none());
     }).unwrap();
     cx.update_window(handle, |_, w, cx| {
@@ -263,7 +263,7 @@ pub fn display_order() {
         assert_eq!(app.read(cx).store.detail_task_neighbors(goal).1, steps[0]);
         assert_eq!(app.read(cx).store.detail_task_neighbors(steps[0]).1, steps[1]);
         assert_eq!(app.read(cx).store.detail_task_neighbors(steps[1]).1, steps[2]);
-        assert!(app.read(cx).store.runs.is_empty());
+        assert!(app.read(cx).store.runs().is_empty());
     }).unwrap();
     println!("Newest-first sidebar, List, Board and execution-group positions verified.");
     cx.update(|cx| cx.quit());
@@ -281,7 +281,7 @@ pub fn scroll_benchmark() {
             let mut run = store.prepare_run(id).unwrap();
             run.status = "Succeeded".into();
             run.output = "Completed benchmark result".into();
-            store.runs.push(run);
+            store.push_run(run);
             store.task_mut(id).unwrap().stage = Stage::Done;
         }
         store.sync_goal_progress(goal);

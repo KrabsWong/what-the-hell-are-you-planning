@@ -1,0 +1,7 @@
+{
+  "unsigned_sha256": "12bae84368c2f5ba54d81a684250f8c925ed4f5ea15e499b258c4bb72082eef1",
+  "signed_sha256": "8066b0997ef87bbbc09fe40398ae34d3e88b9297d015ab4b825994d6030dec70",
+  "snapshot": ".local/native-review/probe-source-r44",
+  "output": ".local/native-review/r44-native-render-probe.tsv",
+  "guard_exit": 2
+}

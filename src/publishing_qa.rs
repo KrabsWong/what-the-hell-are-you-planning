@@ -24,11 +24,11 @@ pub fn run() {
             let mut initial = Store::empty();
             initial.appearance = appearance;
             initial.projects[0].directory = directory.to_string_lossy().into();
-            let topic = initial.create_topic(1, "黄金研究与投资观察").unwrap();
+            let topic = initial.create_topic(1, "Gold research and investment observations").unwrap();
             let goal = initial
                 .create_research_goal_in_topic(
-                    "研究黄金趋势".into(),
-                    "尚未完成的隔离验收研究".into(),
+                    "Research gold trends".into(),
+                    "Incomplete isolated acceptance research".into(),
                     1,
                     Some(topic),
                 )
@@ -156,7 +156,7 @@ pub fn run() {
                     ] {
                         a.store.publications.push(Publication {
                             id: id.into(), topic, fingerprint: id.into(), config: a.store.report_publishing.clone(),
-                            title: "黄金研究与投资观察".into(), markdown: "Fixture report".into(),
+                            title: "Gold research and investment observations".into(), markdown: "Fixture report".into(),
                             status: status.into(), commit: None, message: message.into(),
                         });
                     }
@@ -170,6 +170,16 @@ pub fn run() {
                 for id in ["00000000000000000000000000000001", "00000000000000000000000000000002", "00000000000000000000000000000003"] {
                     assert!(w.try_find(format!("retry-report-{id}")).is_none(), "Rows must not duplicate the header action");
                 }
+                // The product keeps one permanent publication per topic. The
+                // extra records above exist only to exercise legacy history
+                // rows; the header action and later publishing flow use the
+                // current record, so isolate that record before changing state.
+                let current_id = "00000000000000000000000000000003";
+                app.update(cx, |a, cx| {
+                    a.store.publications.retain(|p| p.topic != topic || p.id == current_id);
+                    cx.notify();
+                });
+                w.render_frame(cx);
                 for (status, commit, expected_label) in [
                     ("Online", None, "View report"),
                     ("Pushed · awaiting deployment", Some("fixture-commit-sha"), "Check status"),
@@ -177,7 +187,13 @@ pub fn run() {
                     ("Failed", None, "Retry publishing"),
                 ] {
                     app.update(cx, |a, cx| {
-                        let latest = a.store.publications.last_mut().unwrap();
+                        let index = crate::report_publish::current_publication_index(
+                            &a.store.publications,
+                            topic,
+                        )
+                        .expect("current publication");
+                        let latest = &mut a.store.publications[index];
+                        assert_eq!(latest.id, current_id, "The header must read the publication under test");
                         latest.status = status.into();
                         latest.commit = commit.map(str::to_string);
                         cx.notify();

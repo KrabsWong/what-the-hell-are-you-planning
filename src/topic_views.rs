@@ -32,6 +32,7 @@ pub(crate) struct TopicMoveDialog {
 
 impl TaskApp {
     pub(crate) fn request_topic_move(&mut self, topic: u64, w: &mut Window, cx: &mut Context<Self>) {
+        self.remember_dialog_opener(w, cx);
         let Some(current) = self.store.topics.iter().find(|t| t.id == topic) else { return; };
         let choices: Vec<_> = self.store.visible_projects().filter(|p| p.id != current.project_id)
             .map(|p| ProjectChoice { id: p.id, title: format!("{} · {} (#{})", p.name, p.key, p.id).into() }).collect();
@@ -57,7 +58,12 @@ impl TaskApp {
             self.snapshot();
             self.store = staged;
             if self.research_topic == Some(topic) { self.research_project = project; }
-            if self.planning_topic == Some(topic) { self.planning_project = Some(project); }
+            if self.planning_topic == Some(topic) {
+                self.planning_project = Some(project);
+                self.planning_destination = Some(
+                    crate::navigation_context::CreationMode::ExistingTopic { project, topic },
+                );
+            }
             if !self.expanded_sidebar_projects.contains(&project) { self.expanded_sidebar_projects.push(project); }
             self.topic_move = None;
             w.focus(&self.focus, cx);
@@ -111,7 +117,7 @@ impl TaskApp {
                 .child(body)
                 .child(row().justify_end()
                     .child(button("cancel-topic-move", if blocked { "Close" } else { "Cancel" }).on_click(cx.listener(|a, _, w, cx| {
-                        a.topic_move = None; a.error.clear(); w.focus(&a.focus, cx); cx.notify();
+                        a.topic_move = None; a.error.clear(); a.restore_dialog_opener(w, cx); cx.notify();
                     })))
                     .when(!blocked, |d| d.child(primary_button("confirm-topic-move", "Move topic")
                         .disabled(destination.is_none())
@@ -131,6 +137,7 @@ impl TaskApp {
             .map(|t| t.name.clone())
             .unwrap_or_default();
         self.clear_navigation_overlays();
+        self.remember_dialog_opener(w, cx);
         let input = cx.new(|cx| {
             InputState::new(w, cx)
                 .placeholder("Topic name")
@@ -177,7 +184,7 @@ impl TaskApp {
                     cx,
                 )))
                 .child(row().justify_end()
-                    .child(button("cancel-topic", "Cancel").on_click(cx.listener(|a, _, w, cx| { a.topic_editor = None; a.error.clear(); w.focus(&a.focus, cx); cx.notify(); })))
+                    .child(button("cancel-topic", "Cancel").on_click(cx.listener(|a, _, w, cx| { a.topic_editor = None; a.error.clear(); a.restore_dialog_opener(w, cx); cx.notify(); })))
                     .child(primary_button("save-topic", "Save topic").on_click(cx.listener(|a, _, w, cx| a.save_topic(w, cx))))))
             .focus_trap("topic-focus", &self.modal_focus).into_any_element()
     }
@@ -278,7 +285,7 @@ impl TaskApp {
             .map(|r| (r.id, r.input.clone())).collect();
         if requests.is_empty() { return div().into_any_element(); }
         let active = self.store.research_requests.iter().filter(|r| r.topic_id == Some(topic))
-            .any(|r| r.planning_run_id.is_some_and(|id| self.store.runs.iter()
+            .any(|r| r.planning_run_id.is_some_and(|id| self.store.runs().iter()
                 .any(|run| run.id == id && matches!(run.status.as_str(), "Queued" | "Running" | "Cancelling"))));
         let action = button("regenerate-topic-plan", "Regenerate").disabled(active)
             .tooltip("Generate a replacement for an unapproved plan. Previous goals are archived only after the replacement is valid.");
@@ -314,7 +321,7 @@ impl TaskApp {
             .rounded_md()
             .hover(|d| d.bg(rgb(palette(cx).hover)))
             .child(
-                quiet_button(format!("topic-{id}"), "")
+                row_button(format!("topic-{id}"), "")
                     .custom(sidebar_variant(active, cx))
                     .when(active, |b| b.font_weight(FontWeight::SEMIBOLD))
                     .flex_1()
@@ -428,22 +435,33 @@ impl TaskApp {
         let mut list = col().gap_1();
         for goal in &goals {
             let goal_id = goal.id;
+            let archived_goal = self.store.task_is_archived(goal_id);
             let children = self.store.research_children(goal_id);
-            let complete = children
-                .iter()
-                .filter(|id| self.store.research_result(**id).is_some())
-                .count();
-            let report = children
-                .iter()
-                .rev()
-                .find(|id| {
-                    self.store
-                        .task(**id)
-                        .and_then(|t| t.research.as_ref())
-                        .is_some_and(|r| r.kind == crate::research::ResearchKind::Advise)
-                        && self.store.research_result(**id).is_some()
-                })
-                .copied();
+            let history = archived_goal.then(|| crate::archive_presentation::goal_history(&self.store, goal_id));
+            let complete = history
+                .as_ref()
+                .map(|history| history.completed_steps)
+                .unwrap_or_else(|| {
+                    children
+                        .iter()
+                        .filter(|id| self.store.research_result(**id).is_some())
+                        .count()
+                });
+            let report = if archived_goal {
+                crate::archive_presentation::result_target(&self.store, goal_id, true)
+            } else {
+                children
+                    .iter()
+                    .rev()
+                    .find(|id| {
+                        self.store
+                            .task(**id)
+                            .and_then(|t| t.research.as_ref())
+                            .is_some_and(|r| r.kind == crate::research::ResearchKind::Advise)
+                            && self.store.research_result(**id).is_some()
+                    })
+                    .copied()
+            };
             let title = format!("{} · {}", self.store.identifier(goal), goal.title);
             let hint = title
                 .chars()
@@ -457,14 +475,16 @@ impl TaskApp {
                     .min_w_0()
                     .gap_1()
                     .child(
-                        quiet_button(format!("topic-goal-{goal_id}"), "")
+                        row_button(format!("topic-goal-{goal_id}"), "")
                             .flex_1()
                             .min_w_0()
                             .h_8()
                             .px_2()
                             .tooltip(hint)
                             .accessibility_label(title.clone())
-                            .on_click(cx.listener(move |a, _, w, cx| a.open_sidebar_task(goal_id, w, cx)))
+                            .on_click(cx.listener(move |a, _, w, cx| {
+                                a.request_task_result_first(goal_id, w, cx)
+                            }))
                             .child(
                                 row()
                                     .w_full()
@@ -480,7 +500,7 @@ impl TaskApp {
                                         format!("topic-goal-title-{goal_id}"),
                                         title,
                                     ))
-                                    .when(goal.archived, |d| d.child(label("Archived", cx)))
+                                    .when(archived_goal, |d| d.child(label("Archived", cx)))
                                     .child(div().flex_shrink_0().child(label(
                                         if children.is_empty() {
                                             "Not planned".into()
@@ -499,13 +519,17 @@ impl TaskApp {
                                 .px_2()
                                 .on_click(
                                     cx.listener(move |a, _, w, cx| {
-                                        a.open_task(report, w, cx);
-                                        a.view_task_result(report, cx);
+                                        a.request_recent(
+                                            report,
+                                            crate::navigation_context::RecentSurface::Result,
+                                            w,
+                                            cx,
+                                        )
                                     }),
                                 ),
                         )
                     })
-                    .when(self.store.goal_tasks_complete(goal_id), |d| {
+                    .when(!archived_goal && self.store.goal_tasks_complete(goal_id), |d| {
                         d.child(quiet_button(format!("topic-export-{goal_id}"), "Export")
                             .h_8().px_2()
                             .disabled(self.goal_busy(goal_id))
@@ -530,7 +554,7 @@ impl TaskApp {
                 .child(self.topic_plan_action(id, cx))
                 .child(self.topic_publish_button(id, cx))
                 .child(primary_button("topic-new-goal", "New research").disabled(archived).on_click(cx.listener(move |a, _, w, cx| {
-                    a.open_project_plan(project, w, cx); a.planning_topic = Some(id); cx.notify();
+                    a.open_topic_creation(id, w, cx);
                 })))
                 .child(tool_icon("topic-actions-menu", assets::IconName::Ellipsis, "More topic actions")
                     .dropdown_menu_with_anchor(Anchor::TopRight, move |menu, _, _| {
@@ -558,7 +582,7 @@ impl TaskApp {
                 .child(self.layout_switch(cx))
                 .child(div().flex_1().min_w_0().child(label(format!("{} research goal{}{}", goals.len(), if goals.len() == 1 { "" } else { "s" }, if archived { " · Archived topic. Existing goals and results remain available." } else { " · Open a goal to explore its steps and materials." }), cx))))
             .when_some(topic.replanned_from, |d, source| d.child(row().px_6().pb_2()
-                .child(quiet_button("replan-source", self.store.topics.iter().find(|t| t.id == source)
+                .child(link_button("replan-source", self.store.topics.iter().find(|t| t.id == source)
                     .map(|t| format!("From {} · Open original topic", t.display_name()))
                     .unwrap_or_else(|| "Original topic unavailable".into()))
                     .disabled(!self.store.topics.iter().any(|t| t.id == source))
@@ -572,7 +596,7 @@ impl TaskApp {
             ))
             .child(self.todo_batch_bar(Some(project), cx))
             .when(self.layout == Layout::Board, |d| d.child(self.board(&goals.iter().map(|t| (*t).clone()).collect::<Vec<_>>(), cx)))
-            .when(self.layout == Layout::List, |d| d.child(col().id("topic-goals").px_6().pt_3().pb_5().overflow_y_scroll().flex_1().min_h_0()
+            .when(self.layout == Layout::List, |d| d.child(col().id("topic-goals").track_scroll(&self.navigation.topic_scroll).px_6().pt_3().pb_5().overflow_y_scroll().flex_1().min_h_0()
                 .when(goals.is_empty(), |d| d.child(muted("No research goals yet. Create one here or assign an existing goal using its Topic property.", cx)))
                 .child(list)))
             .into_any_element()

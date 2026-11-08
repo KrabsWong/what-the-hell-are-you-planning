@@ -1,0 +1,1 @@
+Recovery scroll passed at both window sizes; screenshots: /Users/fuxingxing/workspaces/what-the-hell-are-you-planning/.local/recovery-scroll-qa

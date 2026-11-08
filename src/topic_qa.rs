@@ -156,7 +156,7 @@ pub fn run() {
         w.render_frame(cx);
         assert!(w.try_find("goal-steps-list").is_some());
         let child = app.read(cx).store.research_children(goal)[0];
-        let before = app.read(cx).store.runs.len();
+        let before = app.read(cx).store.runs().len();
         w.click(format!("goal-step-{child}"), cx);
         assert_eq!(app.read(cx).selected, Some(child));
         w.render_frame(cx);
@@ -173,7 +173,7 @@ pub fn run() {
         assert_eq!(app.read(cx).selected, Some(goal));
         assert!(w.try_find("goal-steps-board").is_some());
         assert_eq!(
-            app.read(cx).store.runs.len(),
+            app.read(cx).store.runs().len(),
             before,
             "Viewing steps never executes work"
         );
@@ -198,7 +198,7 @@ pub fn run() {
     failed.id = 2;
     failed.task_id = children[1];
     failed.status = "Failed".into();
-    fixture.runs.extend([running, failed]);
+    fixture.extend_runs([running, failed]);
     fixture.task_mut(children[0]).unwrap().title =
         "收集官方财报与投资者电话会：核实收入、毛利率、现金流及未来季度指引，保留完整来源".into();
     fixture
@@ -260,7 +260,9 @@ pub fn run() {
         w.click("navigation-back", cx);
         assert_eq!(app.read(cx).scope, Scope::Topic(topic));
         w.render_frame(cx);
-        w.click("rename-topic", cx);
+        w.click("topic-actions-menu", cx);
+        w.render_frame(cx);
+        w.click(1usize, cx); // Rename topic
         w.render_frame(cx);
         app.read(cx)
             .topic_editor
@@ -280,8 +282,15 @@ pub fn run() {
                 .name,
             "英伟达长期研究"
         );
+    })
+    .unwrap();
+    cx.run_until_parked();
+    cx.update_window(handle, |_, w, cx| {
         w.render_frame(cx);
-        w.click("archive-topic", cx);
+        w.click("topic-actions-menu", cx);
+        w.render_frame(cx);
+        assert_eq!(w.find(3usize).label(), Some("Archive topic"));
+        w.click(3usize, cx); // Archive topic
         assert!(
             app.read(cx)
                 .store
@@ -296,15 +305,22 @@ pub fn run() {
             a.scope = Scope::All;
             assert!(!a.visible_tasks().iter().any(|t| t.id == goal));
             a.scope = Scope::Archive;
+            a.layout = crate::app::Layout::List;
             assert!(a.visible_tasks().iter().any(|t| t.id == goal));
             cx.notify();
         });
         w.render_frame(cx);
         w.click(SharedString::from(format!("topic-link-{topic}")), cx);
         assert_eq!(app.read(cx).scope, Scope::Topic(topic));
-
+    })
+    .unwrap();
+    cx.run_until_parked();
+    cx.update_window(handle, |_, w, cx| {
         w.render_frame(cx);
-        w.click("archive-topic", cx);
+        w.click("topic-actions-menu", cx);
+        w.render_frame(cx);
+        assert_eq!(w.find(3usize).label(), Some("Restore topic"));
+        w.click(3usize, cx); // Restore topic
         assert!(
             !app.read(cx)
                 .store
@@ -339,7 +355,9 @@ pub fn run() {
         });
         w.render_frame(cx);
         w.press("cmd-k", cx);
-        assert_eq!(app.read(cx).scope, Scope::All);
+        // Opening Search is an overlay: it must not rewrite the caller's page.
+        assert_eq!(app.read(cx).scope, Scope::Topic(topic));
+        assert!(app.read(cx).global_search_ui.open);
         app.update(cx, |a, cx| a.navigate(Scope::Topic(topic), w, cx));
         Theme::change(ThemeMode::Dark, Some(w), cx);
     })
@@ -413,8 +431,8 @@ fn steps_screenshot(
         for step in store.research_children(goal) {
             cx.update_window(handle, |_, w, cx| {
                 app.update(cx, |a, cx| {
-                    a.store.runs[0].task_id = step;
-                    a.store.runs[0].status = "Running".into();
+                    a.store.run_at_mut(0).unwrap().task_id = step;
+                    a.store.run_at_mut(0).unwrap().status = "Running".into();
                     a.open_task(step, w, cx);
                 });
                 w.render_frame(cx);
@@ -496,6 +514,10 @@ pub fn sidebar() {
         });
     }).unwrap();
     println!("Sidebar startup QA passed");
+    drop(cx);
+    // T07: exercise real period-scoped neighbor controls while this existing
+    // sidebar entry is already selected; no separate dispatch flag is added.
+    crate::navigation_qa::run();
 }
 
 /// Isolated migration checks do not depend on unrelated workflow fixtures.
@@ -669,7 +691,7 @@ pub fn goal_actions() {
         let mut run = store.prepare_run(*id).unwrap();
         run.status = "Succeeded".into();
         run.output = "# Completed result".into();
-        store.runs.push(run);
+        store.push_run(run);
         store.task_mut(*id).unwrap().stage = crate::domain::Stage::Done;
     }
     store.sync_goal_progress(goal);
@@ -756,7 +778,7 @@ pub fn goal_actions() {
         assert_eq!(app.read(cx).selected, Some(report));
         // An old successful report is insufficient when the latest attempt failed.
         app.update(cx, |a, cx| {
-            a.store.runs.last_mut().unwrap().status = "Failed".into();
+            { let index = a.store.runs().len() - 1; a.store.run_at_mut(index).unwrap().status = "Failed".into(); }
             cx.notify();
         });
         w.render_frame(cx);
@@ -769,7 +791,7 @@ pub fn goal_actions() {
         assert_eq!(app.read(cx).task_result_context, None);
         app.update(cx, |a, cx| {
             a.navigate(Scope::Topic(topic), w, cx);
-            a.store.runs.clear();
+            a.store.clear_runs();
             cx.notify();
         });
         w.render_frame(cx);

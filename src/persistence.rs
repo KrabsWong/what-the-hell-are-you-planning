@@ -120,6 +120,7 @@ impl Storage {
 
     /// A missing file is a new workspace; invalid files are never treated as empty data.
     pub fn load(&self) -> Result<Option<Store>, String> {
+        let _span = crate::persistence_metrics::Span::start("load.total");
         let result = self.load_uncached();
         if result.is_ok() {
             *self.validated.lock().unwrap_or_else(|e| e.into_inner()) = file_stamp(&self.path);
@@ -134,11 +135,16 @@ impl Storage {
             .is_some_and(|extension| extension == "sqlite3")
         {
             if self.path.exists() {
-                let mut loaded = crate::sqlite_storage::load(&self.path, &self.workspace_root)?;
+                let mut loaded = {
+                    let _span = crate::persistence_metrics::Span::start("load.sqlite_read");
+                    crate::sqlite_storage::load(&self.path, &self.workspace_root)?
+                };
                 if let Some(store) = &mut loaded {
+                    let _span = crate::persistence_metrics::Span::start("load.normalize");
                     normalize_automation_schema(store)?;
                     store.validate_automation_integrity()?;
                     store.normalize_topics();
+                    store.normalize_planning_ownership();
                 }
                 return Ok(loaded);
             }
@@ -147,6 +153,7 @@ impl Storage {
                 return Ok(None);
             };
             normalize_automation_schema(&mut store)?;
+            store.normalize_planning_ownership();
             store.validate_automation_integrity()?;
             let parent = self.ensure_parent()?;
             let temporary = parent.join(format!(
@@ -213,22 +220,29 @@ impl Storage {
         normalize_automation_schema(&mut file.workspace)?;
         file.workspace.validate_automation_integrity()?;
         file.workspace.normalize_topics();
+        file.workspace.normalize_planning_ownership();
         Ok(Some(file.workspace))
     }
 
     pub fn save(&self, workspace: &Store) -> Result<(), String> {
+        let _span = crate::persistence_metrics::Span::start("save.total");
         // Refuse to overwrite damaged data or a file written by a newer application.
         // A store this instance already read or wrote is revalidated only if the file
         // changed underneath us.
-        let current = file_stamp(&self.path);
-        let known = *self.validated.lock().unwrap_or_else(|e| e.into_inner());
-        let legacy_pending = current.is_none()
-            && self
-                .path
-                .extension()
-                .is_some_and(|extension| extension == "sqlite3")
-            && self.path.with_file_name("workspace.json").exists();
+        let (current, known, legacy_pending) = {
+            let _span = crate::persistence_metrics::Span::start("save.stamp_check");
+            let current = file_stamp(&self.path);
+            let known = *self.validated.lock().unwrap_or_else(|e| e.into_inner());
+            let legacy_pending = current.is_none()
+                && self
+                    .path
+                    .extension()
+                    .is_some_and(|extension| extension == "sqlite3")
+                && self.path.with_file_name("workspace.json").exists();
+            (current, known, legacy_pending)
+        };
         if known != current || legacy_pending {
+            let _span = crate::persistence_metrics::Span::start("save.reload");
             self.load()?;
         }
         if self
@@ -237,7 +251,10 @@ impl Storage {
             .is_some_and(|extension| extension == "sqlite3")
         {
             self.ensure_parent()?;
-            let result = crate::sqlite_storage::save(&self.path, &self.workspace_root, workspace);
+            let result = {
+                let _span = crate::persistence_metrics::Span::start("save.sqlite");
+                crate::sqlite_storage::save(&self.path, &self.workspace_root, workspace)
+            };
             if result.is_ok() {
                 *self.validated.lock().unwrap_or_else(|e| e.into_inner()) = file_stamp(&self.path);
             }
@@ -315,7 +332,7 @@ impl Storage {
                     || original.comments != task.comments
             }) || task.research.is_some()
                 || !task.attachments.is_empty()
-                || workspace.runs.iter().any(|run| run.task_id == *id)
+                || workspace.runs().iter().any(|run| run.task_id == *id)
             {
                 return Err(format!(
                     "Task {id} contains real or unrecognized data; it was not removed."
@@ -572,7 +589,7 @@ mod tests {
         assert_eq!(restored, expected);
         assert!(restored.prepare_run(1).is_err());
         assert_eq!(restored.tasks, old.tasks);
-        assert_eq!(restored.runs, old.runs);
+        assert_eq!(restored.runs(), old.runs());
         assert_eq!(fs::read(storage.path()).unwrap(), before_bytes);
         assert_eq!(storage.load().unwrap(), Some(expected.clone()));
         storage.save(&restored).unwrap();
@@ -693,8 +710,8 @@ mod tests {
         }
         fs::write(storage.path(), serde_json::to_vec(&data).unwrap()).unwrap();
         let loaded = storage.load().unwrap().unwrap();
-        assert!(loaded.automations.is_empty());
-        assert!(loaded.automation_occurrences.is_empty());
+        assert!(loaded.automations().is_empty());
+        assert!(loaded.all_occurrences().is_empty());
         storage.save(&loaded).unwrap();
         let saved: serde_json::Value =
             serde_json::from_slice(&fs::read(storage.path()).unwrap()).unwrap();

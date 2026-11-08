@@ -1,0 +1,2 @@
+#!/bin/sh
+printf '%s\n' 'Offline fixture: no browser actions' '[ego-browser:skill] end of guide'

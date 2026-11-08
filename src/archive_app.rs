@@ -25,7 +25,7 @@ impl ArchiveTarget {
         }
     }
     fn runs(self, store: &Store) -> Vec<u64> {
-        store.runs.iter().filter(|r| {
+        store.runs().iter().filter(|r| {
             let related = if r.project_plan.is_some() {
                 matches!(self, Self::Topic(topic) if store.request_for_run(r.id).is_some_and(|q| q.topic_id == Some(topic)))
             } else { self.contains(store, r.task_id) };
@@ -35,6 +35,45 @@ impl ArchiveTarget {
     }
 }
 impl TaskApp {
+    pub(crate) fn restore_archived(&mut self, id: u64, cx: &mut Context<Self>) {
+        self.snapshot();
+        let mut message = "Nothing to restore";
+        let mut result = Ok(());
+        let mut visited = std::collections::HashSet::new();
+        loop {
+            let Some(owner) = crate::archive_presentation::restore_owner(&self.store, id) else {
+                break;
+            };
+            let key = match owner {
+                crate::archive_presentation::ArchivedOwner::Topic(topic) => format!("topic:{topic}"),
+                crate::archive_presentation::ArchivedOwner::Task(task) => format!("task:{task}"),
+            };
+            if !visited.insert(key) {
+                result = Err("Archive ownership could not be resolved without a cycle. No further changes were made.".into());
+                break;
+            }
+            let next = match owner {
+                crate::archive_presentation::ArchivedOwner::Topic(topic) => {
+                    message = "Topic restored · retained results are available again";
+                    self.store.set_topic_archived(topic, false)
+                }
+                crate::archive_presentation::ArchivedOwner::Task(task) => {
+                    message = "Restored · retained results are available again";
+                    self.store.restore(task)
+                }
+            };
+            if let Err(error) = next {
+                result = Err(error);
+                break;
+            }
+        }
+        let still_archived = self.store.task_is_archived(id);
+        if result.is_ok() && still_archived {
+            result = Err("Some archived ownership remains unresolved. Review the goal and its topic before retrying.".into());
+            message = "Restore incomplete";
+        }
+        self.finish(result, message, cx);
+    }
     pub(crate) fn request_archive(&mut self, target: ArchiveTarget, w: &mut Window, cx: &mut Context<Self>) {
         // Automation periods and their steps are owned by the automation, not by
         // Research. They are archived with their automation, never individually.
@@ -90,7 +129,7 @@ impl TaskApp {
         for id in runs {
             let owned = self.active_runs.iter().any(|a| a.id == id);
             if owned { self.cancel_run_id(id, cx); }
-            let run = self.store.runs.iter_mut().find(|r| r.id == id).unwrap();
+            let mut run = self.store.run_mut(id).unwrap();
             if !run.started_at.is_empty() && (run.session_id.is_some() || run.agent == "Codex")
                 && !(owned && run.agent == "Codex") { remote.push(run.clone()); }
             run.status = if owned || remote.last().is_some_and(|r| r.id == id) { "Cancelling" } else { "Cancelled" }.into();
@@ -119,7 +158,7 @@ impl TaskApp {
             let _ = this.update(cx, |a, cx| {
                 for (id, result) in results {
                     let owned = a.active_runs.iter().any(|r| r.id == id);
-                    if let Some(run) = a.store.runs.iter_mut().find(|r| r.id == id) {
+                    if let Some(mut run) = a.store.run_mut(id) {
                         match result {
                             Ok(()) => {
                                 if !owned { run.status = "Cancelled".into(); run.ended_at = Some(opencode::timestamp()); }

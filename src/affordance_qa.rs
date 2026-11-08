@@ -9,8 +9,8 @@ use crate::{
 use gpui_kit::{test::TestWindowExt, *};
 use std::{path::Path, sync::Arc, time::Duration};
 
-const TOPICS: &str = r#"{"tasks":[{"title":"未来一年半导体存储供需与行业机会","brief":"比较 DRAM、NAND 与 HBM 需求，注明日期与来源，检查风险和证据缺口。"},{"title":"先进封装与设备产业链研究","brief":"检查产能、资本开支与需求的变化。"}]}"#;
-const STEPS: &str = r#"{"tasks":[{"title":"采集原始公告与新闻","instructions":"保存实际来源和日期。","kind":"collect","depends_on":[]},{"title":"核对材料并分析供需","instructions":"引用补充材料与前序来源。","kind":"analyze","depends_on":[0]},{"title":"整理最终研究报告","instructions":"区分事实、推断和风险。","kind":"advise","depends_on":[1]}]}"#;
+const TOPICS: &str = r#"{"tasks":[{"title":"Semiconductor memory supply, demand and industry opportunities for the next year","brief":"Compare DRAM, NAND and HBM demand, record dates and sources, and identify risks and evidence gaps."},{"title":"Advanced packaging and equipment supply-chain research","brief":"Check changes in capacity, capital expenditure and demand."}]}"#;
+const STEPS: &str = r#"{"tasks":[{"title":"Collect original announcements and news","instructions":"Save actual sources and dates.","kind":"collect","depends_on":[]},{"title":"Verify materials and analyze supply and demand","instructions":"Cite supplemental materials and earlier sources.","kind":"analyze","depends_on":[0]},{"title":"Prepare the final research report","instructions":"Separate facts, inferences and risks.","kind":"advise","depends_on":[1]}]}"#;
 
 pub fn run() {
     let root = std::env::current_dir()
@@ -27,7 +27,7 @@ pub fn run() {
             std::fs::create_dir_all(&directory).unwrap();
             let path = directory.join("workspace.json");
             let mut store = Store::empty();
-            store.projects[0].name = "半导体行业研究".into();
+            store.projects[0].name = "Semiconductor industry research".into();
             store.research_config.models =
                 ["qa/planner", "qa/collector", "qa/analyst", "qa/adviser"].map(String::from);
             store.appearance = mode;
@@ -75,7 +75,7 @@ pub fn run() {
             screenshot(&mut cx, handle, &directory, "02-planning-hover.png");
             cx.update_window(handle, |_, w, cx| {
                 w.click("project-plan-brief", cx);
-                w.input("全球半导体市场，未来一年；需要原始证据与风险。", cx);
+                w.input("Global semiconductor market for the next year; require primary evidence and risks.", cx);
             })
             .unwrap();
             // Dispatching a Root action is deferred; each key gets an event-loop turn.
@@ -98,7 +98,7 @@ pub fn run() {
             cx.update_window(handle, |_, _, cx| {
                 assert_eq!(
                     app.read(cx).project_brief.read(cx).value().as_ref(),
-                    "全球半导体市场，未来一年；需要原始证据与风险。",
+                    "Global semiconductor market for the next year; require primary evidence and risks.",
                     "Tab must leave the plain-text form without inserting indentation"
                 );
             })
@@ -129,7 +129,11 @@ pub fn run() {
             cx.update_window(handle, |_, w, cx| {
                 w.click("save-project-context", cx);
                 assert!(app.read(cx).planning_project.is_none());
-                assert!(app.read(cx).store.research_requests.iter().any(|request| request.input.contains("全球半导体市场")));
+                assert!(app.read(cx).store.research_requests.iter().any(|request| request.input.contains("Global semiconductor market")));
+                // The overlay no longer changes the route; return to the project
+                // through its real sidebar row before reopening from its toolbar.
+                w.click("project-1", cx);
+                w.render_frame(cx);
                 w.click("plan-project", cx);
             }).unwrap();
             cx.update_window(handle, |_, w, cx| {
@@ -143,7 +147,7 @@ pub fn run() {
                 });
                 w.render_frame(cx);
                 assert_ne!(w.find("generate-project-plan").disabled(), Some(true));
-                assert!(app.read(cx).store.runs.is_empty());
+                assert!(app.read(cx).store.runs().is_empty());
             })
             .unwrap();
             screenshot(&mut cx, handle, &directory, "04-planning-ready.png");
@@ -160,26 +164,38 @@ pub fn run() {
                     })
                 })
                 .unwrap();
-            screenshot(&mut cx, handle, &directory, "05-kanban.png");
-            cx.update_window(handle, |_, w, cx| {
-                w.click(format!("approve-topic-{goal}"), cx);
-                assert_eq!(app.read(cx).store.task(goal).unwrap().stage, Stage::Planned);
-                assert!(app.read(cx).store.runs.is_empty());
+            // A reviewable plan is generated before approval. Approval then
+            // covers the complete step graph; generating steps after approval
+            // would invalidate the saved approval snapshot.
+            let (children, material) = cx.update_window(handle, |_, _, cx| {
                 app.update(cx, |a, cx| {
-                    let children = a.store.apply_research_plan(goal, STEPS).unwrap();
-                    let source = directory.join("补充材料：行业公告与数据.pdf");
+                    let children = a.store.apply_proposed_research_plan(goal, STEPS).unwrap();
+                    let source = directory.join("supplemental-materials-industry-announcements.pdf");
                     std::fs::write(&source, include_bytes!("test-fixtures/supplement.pdf")).unwrap();
                     let material = crate::attachments::import_file(&directory, &source).unwrap();
                     a.store.task_mut(goal).unwrap().attachments.push(material.clone());
+                    cx.notify();
+                    (children, material)
+                })
+            }).unwrap();
+            cx.update_window(handle, |_, w, cx| w.render_frame(cx)).unwrap();
+            screenshot(&mut cx, handle, &directory, "05-kanban.png");
+            cx.update_window(handle, |_, w, cx| {
+                let topics: Vec<u64> = app.read(cx).store.topics.iter().map(|topic| topic.id).collect();
+                scroll_card_into_view(w, cx, &format!("approve-topic-{goal}"), &topics);
+                w.click(format!("approve-topic-{goal}"), cx);
+                assert_eq!(app.read(cx).store.task(goal).unwrap().stage, Stage::Planned);
+                assert!(app.read(cx).store.runs().is_empty());
+                app.update(cx, |a, cx| {
                     let mut run = a.store.prepare_run(children[0]).unwrap();
                     run.status = "Succeeded".into();
-                    run.output = "## 研究证据（界面验收）\n\n这是独立 QA 数据，不是实际市场结论。\n\n[查看原始公告](https://example.com/announcement)\n\n来源链接应与正文清楚区分。".into();
-                    run.sources = vec![Source { title: "原始公司公告与财报：供需数据来源".into(), url: "https://example.com/announcement".into(), published_at: "2026-10-29 (QA)".into() }];
+                    run.output = "## Research evidence (UI acceptance)\n\nThis is isolated QA data, not an actual market conclusion.\n\n[View the original announcement](https://example.com/announcement)\n\nSource links must remain visually distinct from the body.".into();
+                    run.sources = vec![Source { title: "Original company announcement and filings: supply and demand data".into(), url: "https://example.com/announcement".into(), published_at: "2026-10-29 (QA)".into() }];
                     run.attachments = vec![material];
                     run.logs = vec!["[fixture] Native UI evidence only, no external process was launched.".into()];
                     run.ended_at = Some(crate::opencode::timestamp());
                     run.exit_code = Some(0);
-                    a.store.runs.push(run);
+                    a.store.push_run(run);
                     a.store.set_stage(children[0], Stage::Done).unwrap();
                     a.open_task(goal, w, cx);
                 });
@@ -216,7 +232,7 @@ pub fn run() {
             })
             .unwrap();
             cx.update_window(handle, |_, w, cx| {
-                w.click("runs", cx);
+                click_in(w, cx, "sidebar-scroll", "runs");
             })
             .unwrap();
             screenshot(&mut cx, handle, &directory, "12-result-links.png");
@@ -251,7 +267,7 @@ pub fn run() {
                     a.store.projects.extend((2..=9).map(|id| {
                         let mut extra = project.clone();
                         extra.id = id;
-                        extra.name = format!("QA 行业研究 {id}");
+                        extra.name = format!("QA industry research {id}");
                         extra.key = format!("QA{id}");
                         extra
                     }));
@@ -326,7 +342,40 @@ fn click_in(w: &mut Window, cx: &mut App, scroll: &str, id: &str) {
             cx,
         );
     }
+    assert!(w.find(id.to_string()).visible(), "Could not scroll to {id}");
     w.click(id.to_string(), cx);
+}
+
+/// Scroll the Backlog cards column by dispatching at a visible topic header
+/// inside it. The column itself is a layout node rather than an observed test
+/// target, so use whichever topic header is currently visible and switch to a
+/// later group after the column moves.
+fn scroll_card_into_view(w: &mut Window, cx: &mut App, id: &str, topics: &[u64]) {
+    w.render_frame(cx);
+    for _ in 0..30 {
+        let bounds = w.find(id.to_string()).bounds();
+        let viewport = w.viewport_size();
+        let top = px(110.);
+        let bottom = viewport.height - px(40.);
+        if bounds.top() >= top && bounds.bottom() <= bottom {
+            break;
+        }
+        let anchor = topics.iter().find_map(|topic| {
+            let anchor = format!("board-topic-backlog-{topic}");
+            w.try_find(anchor.clone())
+                .filter(|snapshot| snapshot.visible())
+                .map(|_| anchor)
+        });
+        let Some(anchor) = anchor else { break; };
+        let delta = if bounds.top() < top { 120. } else { -120. };
+        w.scroll(
+            anchor,
+            ScrollDelta::Pixels(point(px(0.), px(delta))),
+            cx,
+        );
+        w.render_frame(cx);
+    }
+    assert!(w.find(id.to_string()).visible(), "Could not scroll to {id}");
 }
 
 fn screenshot(cx: &mut HeadlessAppContext, handle: AnyWindowHandle, root: &Path, name: &str) {

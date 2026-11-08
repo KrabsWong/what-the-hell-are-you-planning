@@ -155,7 +155,7 @@ mod tests {
         let mut run = store.prepare_run(id).unwrap();
         run.status = "Succeeded".into();
         run.output = "Saved evidence".into();
-        store.runs.push(run);
+        store.push_run(run);
         store.set_stage(id, Stage::Done).unwrap();
     }
     #[test]
@@ -234,7 +234,7 @@ mod tests {
         let mut run = s.prepare_run(ids[0]).unwrap();
         run.status = "Succeeded".into();
         run.output = "Unparsed output awaiting validation".into();
-        s.runs.push(run);
+        s.push_run(run);
         s.set_stage(ids[0], Stage::InProgress).unwrap();
         assert!(s.ready_research_tasks(goal).unwrap().is_empty());
         assert!(!s.goal_tasks_complete(goal));

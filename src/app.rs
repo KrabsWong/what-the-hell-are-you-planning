@@ -34,10 +34,207 @@ pub enum Scope {
     AutomationRuns,
     Settings,
 }
-#[derive(Clone, Copy, PartialEq)]
+#[derive(Clone, Copy, Debug, PartialEq)]
 pub enum Layout {
     List,
     Board,
+}
+
+/// Result of admitting one run to the execution queue. Navigation is separate:
+/// background dispatch returns this value to its caller, while an explicit user
+/// command decides whether to open a progress surface.
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub(crate) struct RunDispatch {
+    pub run_id: u64,
+    pub automation_owned: bool,
+}
+
+pub(crate) struct PreparedRunDispatch {
+    pub run: AgentRun,
+    pub files: Vec<PathBuf>,
+}
+
+/// A failed dispatch commit retains only the intent, never the old run id or
+/// full staged store. Retry rebuilds the run from the current store.
+#[derive(Clone, Debug, PartialEq)]
+pub(crate) enum LaunchIntent {
+    Occurrence(u64),
+    Task(u64),
+    RequestPlan {
+        request_id: u64,
+    },
+    ProjectPlan {
+        project_id: u64,
+    },
+    ReportRegeneration {
+        source_id: u64,
+        style: String,
+        occurrence: Option<u64>,
+    },
+}
+
+#[derive(Clone)]
+pub(crate) struct PendingDispatch {
+    pub intent: LaunchIntent,
+    pub files: Vec<PathBuf>,
+}
+
+/// One chronological Undo entry. Legacy whole-store snapshots and scoped typed
+/// task-edit inverses share one stack so the latest user change is always the
+/// next entry. A scoped entry never consumes a legacy snapshot.
+#[derive(Clone, Debug, PartialEq)]
+pub(crate) enum UndoRecord {
+    Legacy(Store),
+    TaskEdit(crate::scoped_edit::TaskEditUndo),
+    Comment(crate::scoped_edit::CommentEditUndo),
+    Material(crate::scoped_material::MaterialUndo),
+    Settings(crate::scoped_settings::SettingsUndo),
+}
+
+fn undo_entry_references_reserved(entry: &UndoRecord, reserved: &[String]) -> bool {
+    if reserved.is_empty() {
+        return false;
+    }
+    let references = match entry {
+        UndoRecord::Material(undo) => undo.reference_paths(),
+        UndoRecord::Legacy(store) => store
+            .tasks
+            .iter()
+            .flat_map(|task| task.attachments.iter())
+            .chain(store.runs().iter().flat_map(|run| run.attachments.iter()))
+            .map(|attachment| attachment.relative_path.clone())
+            .collect(),
+        UndoRecord::TaskEdit(_) | UndoRecord::Comment(_) | UndoRecord::Settings(_) => Vec::new(),
+    };
+    references.iter().any(|path| reserved.contains(path))
+}
+
+#[derive(Clone, Debug, Default, PartialEq)]
+pub(crate) struct UndoStack {
+    entries: Vec<UndoRecord>,
+}
+
+impl UndoStack {
+    fn push(&mut self, entry: UndoRecord) {
+        self.entries.push(entry);
+        if self.entries.len() > 30 {
+            self.entries.remove(0);
+        }
+    }
+
+    pub(crate) fn push_legacy(&mut self, store: Store) {
+        self.push(UndoRecord::Legacy(store));
+    }
+
+    pub(crate) fn push_task_edit(&mut self, undo: crate::scoped_edit::TaskEditUndo) {
+        self.push(UndoRecord::TaskEdit(undo));
+    }
+
+    pub(crate) fn push_comment(&mut self, undo: crate::scoped_edit::CommentEditUndo) {
+        self.push(UndoRecord::Comment(undo));
+    }
+
+    pub(crate) fn push_material(&mut self, undo: crate::scoped_material::MaterialUndo) {
+        self.push(UndoRecord::Material(undo));
+    }
+
+    pub(crate) fn push_settings(&mut self, undo: crate::scoped_settings::SettingsUndo) {
+        self.push(UndoRecord::Settings(undo));
+    }
+
+    pub(crate) fn pop(&mut self) -> Option<UndoRecord> {
+        self.entries.pop()
+    }
+
+    pub(crate) fn peek(&self) -> Option<&UndoRecord> {
+        self.entries.last()
+    }
+
+    /// Remove only legacy whole-store snapshots. Scoped task-edit inverses keep
+    /// their own field/approval/runtime guards and remain valid across unrelated
+    /// runtime work.
+    pub(crate) fn clear_legacy(&mut self) -> usize {
+        let before = self.entries.len();
+        self.entries.retain(|entry| match entry {
+            UndoRecord::Legacy(_) => false,
+            UndoRecord::TaskEdit(_)
+            | UndoRecord::Comment(_)
+            | UndoRecord::Material(_)
+            | UndoRecord::Settings(_) => true,
+        });
+        before - self.entries.len()
+    }
+
+    pub(crate) fn len(&self) -> usize {
+        self.entries.len()
+    }
+
+    pub(crate) fn is_empty(&self) -> bool {
+        self.entries.is_empty()
+    }
+
+    pub(crate) fn clear(&mut self) {
+        self.entries.clear();
+    }
+
+    pub(crate) fn material_reference_paths(&self) -> Vec<String> {
+        self.entries
+            .iter()
+            .filter_map(|entry| match entry {
+                UndoRecord::Material(undo) => Some(undo.reference_paths()),
+                _ => None,
+            })
+            .flatten()
+            .collect()
+    }
+
+    pub(crate) fn drop_last_legacy_if_equal(&mut self, store: &Store) {
+        if matches!(self.entries.last(), Some(UndoRecord::Legacy(previous)) if previous == store) {
+            self.entries.pop();
+        }
+    }
+}
+
+/// Automation ownership is a closed graph: definitions, occurrences, the
+/// generated automation project and the tasks/topics/requests they own. A
+/// whole-store snapshot that differs in any of these cannot be applied without
+/// orphaning records or rolling back schedules, so Undo rejects it instead of
+/// partially merging.
+fn automation_state_differs(a: &Store, b: &Store) -> bool {
+    a.automations() != b.automations()
+        || a.all_occurrences() != b.all_occurrences()
+        || a.projects
+            .iter()
+            .filter(|project| project.kind == ProjectKind::Automation)
+            .collect::<Vec<_>>()
+            != b.projects
+                .iter()
+                .filter(|project| project.kind == ProjectKind::Automation)
+                .collect::<Vec<_>>()
+        || a.tasks
+            .iter()
+            .filter(|task| task.automation_id.is_some())
+            .collect::<Vec<_>>()
+            != b.tasks
+                .iter()
+                .filter(|task| task.automation_id.is_some())
+                .collect::<Vec<_>>()
+        || a.topics
+            .iter()
+            .filter(|topic| topic.automation_id.is_some())
+            .collect::<Vec<_>>()
+            != b.topics
+                .iter()
+                .filter(|topic| topic.automation_id.is_some())
+                .collect::<Vec<_>>()
+        || a.research_requests
+            .iter()
+            .filter(|request| request.automation_id.is_some())
+            .collect::<Vec<_>>()
+            != b.research_requests
+                .iter()
+                .filter(|request| request.automation_id.is_some())
+                .collect::<Vec<_>>()
 }
 #[derive(Clone, Copy, Debug, PartialEq)]
 pub enum AllStatus {
@@ -119,7 +316,28 @@ pub struct TaskApp {
     pub results_split: Entity<gpui_kit::base::ResizableState>,
     pub search: Entity<InputState>,
     pub query: String,
+    /// Global search overlay (footer Search / ⌘K), separate from the list-local
+    /// `search` filter above.
+    pub global_search: Entity<InputState>,
+    pub global_search_ui: crate::global_search::GlobalSearchUi,
+    pub global_search_focus: FocusHandle,
     pub draft: Option<Draft>,
+    /// T21 Phase 2a: a Save that opened the blocking impact review. This is
+    /// pending user input, never a save or durability claim.
+    pub(crate) research_save_impact: Option<crate::research_input_app::PendingResearchSave>,
+    /// T21 Phase 2c: task whose retained result versions are open, and the
+    /// selected run.
+    pub(crate) previous_versions_task: Option<u64>,
+    pub(crate) previous_versions_run: Option<u64>,
+    pub(crate) previous_versions_scroll: ScrollHandle,
+    pub(crate) previous_version_text: Option<Entity<gpui_kit::base::text::TextViewState>>,
+    /// Concrete first control focused when a T21 modal opens, so native focus
+    /// lands on an actionable control rather than only the trap container.
+    pub(crate) dialog_first_focus: FocusHandle,
+    /// T19 opener for ordinary application dialogs. Restored on close/cancel.
+    pub(crate) dialog_opener_focus: Option<gpui_kit::WeakFocusHandle>,
+    pub(crate) research_save_opener: Option<FocusHandle>,
+    pub(crate) previous_versions_opener: Option<FocusHandle>,
     pub property: Option<Property>,
     pub editing: bool,
     pub comment: Entity<TextareaState>,
@@ -132,7 +350,59 @@ pub struct TaskApp {
     pub show_done: bool,
     pub compact: bool,
     pub collapsed: Vec<u64>,
-    pub undo: Vec<Store>,
+    pub undo: UndoStack,
+    /// A task-editor save whose durable write failed. The editor draft and T21
+    /// review remain; retry re-prepares against the current store.
+    pub(crate) pending_task_edit: Option<crate::task_edit_app::PendingTaskEdit>,
+    pub(crate) pending_comment_edit: Option<crate::task_edit_app::PendingCommentEdit>,
+    pub(crate) pending_material_edit: Option<crate::material_app::PendingMaterialEdit>,
+    pub(crate) material_verifier: crate::material_verify::MaterialVerifier,
+    pub(crate) pending_material_job: Option<crate::material_app::PendingMaterialJob>,
+    pub(crate) material_cleanup_reserved: Vec<String>,
+    pub(crate) pending_cleanup_retry: Vec<crate::scoped_material::CleanupObligation>,
+    /// Set when a durable automation mutation discarded undo entries that could
+    /// otherwise restore stale definitions, occurrences, cursors or approvals.
+    /// The footer shows this instead of "Nothing to undo".
+    pub undo_invalidation: Option<String>,
+    /// Failed fail-closed command retained for reprepare against the current store.
+    pub(crate) pending_commit: Option<crate::domain_command::PreparedCommand>,
+    /// Failed emergency stop retained for retry; external work is already stopped.
+    pub(crate) pending_stop: Option<crate::domain_command::PreparedCommand>,
+    /// Failed dispatch retained as intent; retry rebuilds run/ids from current state.
+    pub(crate) pending_dispatch: Option<PendingDispatch>,
+    /// Exact reserved dispatch (run id included) retained across busy/backpressure
+    /// retries; generic reprepare must never allocate a new identity.
+    pub(crate) pending_dispatch_reserved: Option<(LaunchIntent, AgentRun, Vec<std::path::PathBuf>)>,
+    /// L1b durable dispatch admission. None keeps the accepted synchronous path.
+    pub(crate) dispatch_admission: Option<crate::dispatch_admission::DispatchAdmissionAdapter>,
+    /// The admission awaiting a matching durable receipt; no queue/launch until set.
+    pub(crate) dispatch_awaiting: Option<crate::dispatch_admission::AdmissionId>,
+    /// Files recomputed for the dispatch, kept until its durable receipt.
+    pub(crate) dispatch_awaiting_files: Option<Vec<std::path::PathBuf>>,
+    pub(crate) dispatch_admission_error: Option<String>,
+    /// Operation keys whose durable payload was already merged in this session.
+    pub(crate) dispatch_applied: std::collections::BTreeSet<String>,
+    /// Operation keys already handed to the scheduler in this session.
+    pub(crate) dispatch_launched: std::collections::BTreeSet<String>,
+    /// Set while the worker owns an acknowledgement that has not been confirmed.
+    pub(crate) dispatch_ack_pending: Option<crate::dispatch_admission::AdmissionId>,
+    pub(crate) dispatch_resolution_pending: Option<(String, u64, bool, Option<u64>)>,
+    pub(crate) dispatch_resolution_new: Option<(String, u64)>,
+    pub(crate) dispatch_resolution_launch_pending: Option<String>,
+    pub(crate) dispatch_claim_pending: Option<(
+        crate::dispatch_admission::AdmissionId,
+        std::sync::Arc<crate::dispatch_intent::AdmissionParts>,
+    )>,
+    pub(crate) dispatch_recovery_done: bool,
+    #[cfg(feature = "qa")]
+    pub(crate) qa_dispatch_fake: Option<crate::dispatch_admission::FakeDispatchRunner>,
+    #[cfg(feature = "qa")]
+    pub(crate) qa_storage_writes: std::cell::Cell<usize>,
+    /// Occurrences with a stop intent that must not be auto-restarted.
+    pub(crate) stop_intents: Vec<crate::domain_command::StopIntent>,
+    /// Malformed/unreadable/newer stop journal. Automation recovery and
+    /// admission stay paused until the user resolves it.
+    pub(crate) stop_journal_error: Option<String>,
     pub focus: FocusHandle,
     pub modal_focus: FocusHandle,
     pub new_project: Option<Entity<InputState>>,
@@ -144,6 +414,12 @@ pub struct TaskApp {
     pub planning_project: Option<u64>,
     pub planning_topic: Option<u64>,
     pub planning_replan_source: Option<u64>,
+    /// Visible, validated destination of the open research-request form.
+    pub planning_destination: Option<crate::navigation_context::CreationMode>,
+    /// Why the current destination is invalid or was replaced; shown in the form.
+    pub planning_destination_error: Option<String>,
+    /// Control that opened the research-request form, restored when it closes.
+    pub(crate) planning_opener_focus: Option<gpui_kit::FocusHandle>,
     pub project_brief: Entity<TextareaState>,
     pub storage: Option<Storage>,
     pub startup: crate::startup::Startup,
@@ -152,7 +428,7 @@ pub struct TaskApp {
     pub workspace_root: Option<PathBuf>,
     pub workspace_setup: Option<mpsc::Receiver<Result<PathBuf, String>>>,
     pub storage_error: String,
-    last_saved: Store,
+    pub(crate) last_saved: Store,
     last_save: Instant,
     _storage_lock: Option<std::fs::File>,
     pub executable_input: Entity<InputState>,
@@ -197,6 +473,7 @@ pub struct TaskApp {
     pub todo_batch: Option<crate::batch::TodoBatch>,
     pub(crate) recovery: crate::recovery::Recovery,
     pub sidebar_logo: Entity<crate::brand::SidebarLogo>,
+    pub(crate) settings_content: Option<Entity<crate::settings_content::SettingsContent>>,
     pub materials_focus: FocusHandle,
     pub attachment_status: String,
     pub attachment_started: Option<Instant>,
@@ -207,10 +484,13 @@ pub struct TaskApp {
     pub expanded_request_brief: Option<u64>,
     pub goal_steps_tab: Option<u64>,
     pub steps_layout: Layout,
-    pub render_statuses: std::cell::RefCell<std::collections::HashMap<u64, crate::workflow::TaskStatus>>,
+    pub render_statuses:
+        std::cell::RefCell<std::collections::HashMap<u64, crate::workflow::TaskStatus>>,
     pub board_execution_filter: Option<crate::workflow::ExecutionGroup>,
     pub show_task_activity: bool,
     pub automation_ui: crate::automation_views::AutomationUi,
+    /// T10 return context and recent-surface memory.
+    pub(crate) navigation: crate::navigation_context_app::NavigationState,
     pub automation_generation: u64,
     pub automation_timer_armed: bool,
     pub automation_fake_mode: bool,
@@ -230,15 +510,25 @@ impl TaskApp {
         match crate::workspace::configured() {
             Ok(Some(root)) => {
                 app.workspace_root = Some(root.clone());
-                app.begin_workspace_open(Storage::new(root.join("workspace/workspace.sqlite3")), cx);
+                app.begin_workspace_open(
+                    Storage::new(root.join("workspace/workspace.sqlite3")),
+                    cx,
+                );
             }
             Ok(None) => {}
             Err(e) => app.storage_error = e,
         }
-        for input in [&app.executable_input, &app.codex_executable_input, &app.ego_input] {
-            app._subscriptions.push(cx.subscribe(input, |_, _, event, cx| {
-                if matches!(event, InputEvent::Change) { cx.notify(); }
-            }));
+        for input in [
+            &app.executable_input,
+            &app.codex_executable_input,
+            &app.ego_input,
+        ] {
+            app._subscriptions
+                .push(cx.subscribe(input, |_, _, event, cx| {
+                    if matches!(event, InputEvent::Change) {
+                        cx.notify();
+                    }
+                }));
         }
         app.startup.required = true;
         app.startup.silent = !app.workspace_required;
@@ -339,15 +629,7 @@ impl TaskApp {
             return Err("Set up your workspace before running tasks.".into());
         }
         if let Some(root) = &self.workspace_root {
-            let workspace = root.join("workspace");
-            let projects = workspace.join("projects");
-            let automations = workspace.join("automations");
-            if crate::workspace::check_directory(&projects, path).is_err()
-                && crate::workspace::check_directory(&automations, path).is_err()
-            {
-                // Report the project rule; both folders are inside the workspace.
-                crate::workspace::check_directory(&projects, path)?;
-            }
+            crate::workspace::check_project_roots(&root.join("workspace"), path)?;
         }
         Ok(())
     }
@@ -356,13 +638,38 @@ impl TaskApp {
         Self::with_store(Store::mock(), window, cx)
     }
     fn with_store(store: Store, window: &mut Window, cx: &mut Context<Self>) -> Self {
-        let search = cx.new(|cx| InputState::new(window, cx).placeholder("Search tasks…"));
+        #[cfg(feature = "qa")]
+        crate::brand::start_render_probe_logging();
+        let search = cx.new(|cx| InputState::new(window, cx).placeholder("Filter this list…"));
         let sub = cx.subscribe(&search, |this, state, event, cx| {
             if matches!(event, InputEvent::Change) {
                 this.query = state.read(cx).value().to_string();
                 cx.notify();
             }
         });
+        let global_search = cx
+            .new(|cx| InputState::new(window, cx).placeholder("Search research and automations…"));
+        let global_search_sub = cx.subscribe_in(
+            &global_search,
+            window,
+            |this, state, event, window, cx| match event {
+                InputEvent::Change if this.global_search_ui.open => {
+                    this.global_search_ui.message = None;
+                    let query = state.read(cx).value().to_string();
+                    this.global_search_ui.refresh(&this.store, &query);
+                    cx.notify();
+                }
+                // Enter belongs to the search field's own submit event, so the
+                // selected result opens whether the key arrives through the
+                // overlay's key handler or the focused input action.
+                InputEvent::PressEnter { .. } => {
+                    if this.global_search_ui.open {
+                        this.activate_selected_global_search(window, cx);
+                    }
+                }
+                _ => {}
+            },
+        );
         let focus = cx.focus_handle();
         window.focus(&focus, cx);
         let autosave = cx.observe_self(|this, cx| {
@@ -392,6 +699,7 @@ impl TaskApp {
         });
         let mut subscriptions = vec![
             sub,
+            global_search_sub,
             autosave,
             quit,
             release,
@@ -409,29 +717,46 @@ impl TaskApp {
             &automation_ui.retention,
         ] {
             subscriptions.push(cx.subscribe(input, |_, _, event, cx| {
-                if matches!(event, InputEvent::Change) { cx.notify(); }
+                if matches!(event, InputEvent::Change) {
+                    cx.notify();
+                }
             }));
         }
         for input in [&automation_ui.objective, &automation_ui.expected] {
             subscriptions.push(cx.subscribe(input, |_, _, event, cx| {
-                if matches!(event, InputEvent::Change) { cx.notify(); }
+                if matches!(event, InputEvent::Change) {
+                    cx.notify();
+                }
             }));
         }
         for input in research_models.iter().chain([&global_model]) {
-            subscriptions.push(cx.subscribe_in(input, window, move |this, input, event, w, cx| {
-                match event {
-                    InputEvent::Focus if this.scope == Scope::Settings && this.settings_tab == crate::settings_views::SettingsTab::Models => this.open_research_model_picker(&input, cx),
-                    InputEvent::PressEnter { .. } => this.finish_model_edit(input, true, w, cx),
-                    InputEvent::Blur => this.finish_model_search(input, w, cx),
-                    _ => {}
-                }
-                cx.notify();
-            }));
+            subscriptions.push(
+                cx.subscribe_in(input, window, move |this, input, event, w, cx| {
+                    match event {
+                        InputEvent::Focus
+                            if this.scope == Scope::Settings
+                                && this.settings_tab
+                                    == crate::settings_views::SettingsTab::Models =>
+                        {
+                            this.open_research_model_picker(&input, cx)
+                        }
+                        InputEvent::PressEnter { .. } => this.finish_model_edit(input, true, w, cx),
+                        InputEvent::Blur => this.finish_model_search(input, w, cx),
+                        _ => {}
+                    }
+                    cx.notify();
+                }),
+            );
         }
-        let ego_input = cx.new(|cx| InputState::new(window, cx).default_value(crate::research::default_ego_path()));
+        let ego_input = cx.new(|cx| {
+            InputState::new(window, cx).default_value(crate::research::default_ego_path())
+        });
         subscriptions.push(cx.subscribe(&ego_input, |this, input, event, cx| {
-            if matches!(event, InputEvent::Change) && this.scope == Scope::Settings
-                && this.settings_tab == crate::settings_views::SettingsTab::Models && !this.startup.required {
+            if matches!(event, InputEvent::Change)
+                && this.scope == Scope::Settings
+                && this.settings_tab == crate::settings_views::SettingsTab::Models
+                && !this.startup.required
+            {
                 let value = input.read(cx).value();
                 if value.trim() != this.store.research_config.ego_path {
                     this.store.research_config.ego_path = value.trim().to_owned();
@@ -456,8 +781,11 @@ impl TaskApp {
                     .default_value(opencode::detect_executable())
                     .placeholder("Path to opencode")
             }),
-            codex_executable_input: cx.new(|cx| InputState::new(window, cx)
-                .default_value(crate::codex::detect_executable()).placeholder("Path to codex")),
+            codex_executable_input: cx.new(|cx| {
+                InputState::new(window, cx)
+                    .default_value(crate::codex::detect_executable())
+                    .placeholder("Path to codex")
+            }),
             directory_input: cx
                 .new(|cx| InputState::new(window, cx).placeholder("/absolute/path/to/project")),
             directory_project: None,
@@ -476,7 +804,8 @@ impl TaskApp {
             publishing_scan_requested: true,
             global_model,
             creating_model_profile: false,
-            model_profile_name: cx.new(|cx| InputState::new(window, cx).placeholder("Profile name")),
+            model_profile_name: cx
+                .new(|cx| InputState::new(window, cx).placeholder("Profile name")),
             discovery: None,
             active_runs: vec![],
             queued_runs: vec![],
@@ -504,7 +833,19 @@ impl TaskApp {
             results_split: cx.new(|_| gpui_kit::base::ResizableState::default()),
             search,
             query: String::new(),
+            global_search,
+            global_search_ui: Default::default(),
+            global_search_focus: cx.focus_handle(),
             draft: None,
+            research_save_impact: None,
+            previous_versions_task: None,
+            previous_versions_run: None,
+            previous_versions_scroll: ScrollHandle::new(),
+            previous_version_text: None,
+            dialog_first_focus: cx.focus_handle(),
+            dialog_opener_focus: None,
+            research_save_opener: None,
+            previous_versions_opener: None,
             property: None,
             editing: false,
             comment: cx.new(|cx| {
@@ -521,7 +862,37 @@ impl TaskApp {
             show_done: true,
             compact: false,
             collapsed: vec![],
-            undo: vec![],
+            undo: UndoStack::default(),
+            pending_task_edit: None,
+            pending_comment_edit: None,
+            pending_material_edit: None,
+            material_verifier: crate::material_verify::MaterialVerifier::new(),
+            pending_material_job: None,
+            material_cleanup_reserved: Vec::new(),
+            pending_cleanup_retry: Vec::new(),
+            undo_invalidation: None,
+            pending_commit: None,
+            pending_stop: None,
+            pending_dispatch: None,
+            pending_dispatch_reserved: None,
+            dispatch_admission: None,
+            dispatch_awaiting: None,
+            dispatch_awaiting_files: None,
+            dispatch_admission_error: None,
+            dispatch_applied: std::collections::BTreeSet::new(),
+            dispatch_launched: std::collections::BTreeSet::new(),
+            dispatch_ack_pending: None,
+            dispatch_resolution_pending: None,
+            dispatch_resolution_new: None,
+            dispatch_resolution_launch_pending: None,
+            dispatch_claim_pending: None,
+            dispatch_recovery_done: false,
+            #[cfg(feature = "qa")]
+            qa_dispatch_fake: None,
+            #[cfg(feature = "qa")]
+            qa_storage_writes: std::cell::Cell::new(0),
+            stop_intents: vec![],
+            stop_journal_error: None,
             focus,
             modal_focus: cx.focus_handle(),
             new_project: None,
@@ -533,6 +904,9 @@ impl TaskApp {
             planning_project: None,
             planning_topic: None,
             planning_replan_source: None,
+            planning_destination: None,
+            planning_destination_error: None,
+            planning_opener_focus: None,
             project_brief: cx.new(|cx| {
                 TextareaState::new(window, cx)
                     .rows(5)
@@ -558,6 +932,7 @@ impl TaskApp {
             todo_batch: None,
             recovery: Default::default(),
             sidebar_logo: cx.new(|_| crate::brand::SidebarLogo),
+            settings_content: None,
             materials_focus: cx.focus_handle(),
             attachment_status: String::new(),
             attachment_started: None,
@@ -572,6 +947,7 @@ impl TaskApp {
             board_execution_filter: None,
             show_task_activity: false,
             automation_ui,
+            navigation: crate::navigation_context_app::NavigationState::new(),
             automation_generation: 0,
             automation_timer_armed: false,
             automation_fake_mode: false,
@@ -582,11 +958,58 @@ impl TaskApp {
             _subscriptions: subscriptions,
         }
     }
-    pub fn snapshot(&mut self) {
-        self.undo.push(self.store.clone());
-        if self.undo.len() > 30 {
-            self.undo.remove(0);
+    pub(crate) fn apply_scoped_settings(
+        &mut self,
+        change: crate::scoped_settings::SettingsChange,
+        cx: &mut Context<Self>,
+    ) -> bool {
+        let mut staged = self.store.clone();
+        let undo = match crate::scoped_settings::apply_settings_change(&mut staged, change) {
+            Ok(undo) => undo,
+            Err(crate::scoped_settings::SettingsError::NoChange) => return true,
+            Err(crate::scoped_settings::SettingsError::Rejected(message)) => {
+                self.show_save_error(message, cx);
+                return false;
+            }
+        };
+        if let Err(error) = self.save_staged_store(&staged) {
+            self.storage_error = error.clone();
+            self.show_save_error(error, cx);
+            return false;
         }
+        self.adopt_saved_store(staged);
+        self.undo_invalidation = None;
+        self.undo.push_settings(undo);
+        self.toast = "Settings saved · active work continues normally".into();
+        self.error.clear();
+        cx.notify();
+        true
+    }
+
+    pub fn snapshot(&mut self) {
+        self.undo.push_legacy(self.store.clone());
+        self.undo_invalidation = None;
+    }
+
+    /// Automation definitions, occurrences, approvals and cursors are durable
+    /// domain state that the whole-store undo snapshot cannot restore safely.
+    /// This is the single invalidation point used by every automation mutation;
+    /// ordinary edits made after it still create a fresh, safe undo entry.
+    pub(crate) fn invalidate_undo_for_automation(&mut self) {
+        let removed = self.undo.clear_legacy();
+        if removed == 0 {
+            return;
+        }
+        self.undo_invalidation = Some(
+            "Automation changes cannot be undone safely. Legacy whole-workspace undo entries were removed; scoped task edits remain available."
+                .into(),
+        );
+    }
+
+    /// True when the durable automation portion of the workspace differs from
+    /// the last confirmed write. Ordinary task/project edits leave this false.
+    pub(crate) fn automation_state_changed(&self) -> bool {
+        automation_state_differs(&self.store, &self.last_saved)
     }
     pub fn show_save_error(&mut self, message: impl Into<String>, cx: &mut Context<Self>) {
         self.error = message.into();
@@ -610,13 +1033,7 @@ impl TaskApp {
         }
     }
     pub fn finish(&mut self, result: Result<(), String>, message: &str, cx: &mut Context<Self>) {
-        if self
-            .undo
-            .last()
-            .is_some_and(|previous| previous == &self.store)
-        {
-            self.undo.pop();
-        }
+        self.undo.drop_last_legacy_if_equal(&self.store);
         match result {
             Ok(()) => {
                 self.toast = message.into();
@@ -629,6 +1046,8 @@ impl TaskApp {
         cx.notify();
     }
     pub fn navigate(&mut self, scope: Scope, window: &mut Window, cx: &mut Context<Self>) {
+        self.park_current_comment(cx);
+        self.park_research_composer(cx);
         self.task_result_context = None;
         self.clear_navigation_overlays();
         if scope == Scope::Runs {
@@ -637,10 +1056,10 @@ impl TaskApp {
             if let Some(id) = self.selected_run
                 && self
                     .store
-                    .runs
+                    .runs()
                     .iter()
                     .find(|run| run.id == id)
-                    .is_some_and(|run| run.automation_occurrence_id.is_some())
+                    .is_some_and(|run| self.store.run_is_automation_owned(run))
             {
                 self.selected_run = None;
             }
@@ -652,7 +1071,12 @@ impl TaskApp {
         self.research_model_picker = None;
         let project = match &scope {
             Scope::Project(id) => Some(*id),
-            Scope::Topic(id) => self.store.topics.iter().find(|t| t.id == *id).map(|t| t.project_id),
+            Scope::Topic(id) => self
+                .store
+                .topics
+                .iter()
+                .find(|t| t.id == *id)
+                .map(|t| t.project_id),
             _ => None,
         };
         if let Some(project) = project {
@@ -674,6 +1098,9 @@ impl TaskApp {
         if matches!(self.scope, Scope::Topic(_)) {
             window.focus(&self.focus, cx);
         }
+        if self.scope == Scope::Research {
+            self.restore_research_composer(window, cx);
+        }
         cx.notify();
     }
     pub fn open_collection_project(
@@ -682,7 +1109,7 @@ impl TaskApp {
         w: &mut Window,
         cx: &mut Context<Self>,
     ) {
-        self.navigate(Scope::Project(project), w, cx);
+        self.request_scope(Scope::Project(project), w, cx);
     }
     pub(crate) fn sidebar_scope(&self) -> Scope {
         self.selected
@@ -696,10 +1123,28 @@ impl TaskApp {
             self.store.last_active_project = Some(project);
         }
     }
+    pub(crate) fn remember_dialog_opener(&mut self, window: &Window, cx: &App) {
+        self.dialog_opener_focus = window.focused(cx).map(|opener| opener.downgrade());
+    }
+
+    pub(crate) fn restore_dialog_opener(&mut self, window: &mut Window, cx: &mut Context<Self>) {
+        let opener = self
+            .dialog_opener_focus
+            .take()
+            .and_then(|opener| opener.upgrade());
+        let target = opener.unwrap_or_else(|| self.focus.clone());
+        window.defer(cx, move |window, cx| {
+            window.focus(&target, cx);
+        });
+    }
+
     pub(crate) fn restore_sidebar(&mut self) {
-        self.expanded_sidebar_projects = self.store.last_active_project
+        self.expanded_sidebar_projects = self
+            .store
+            .last_active_project
             .filter(|id| self.store.projects.iter().any(|p| p.id == *id))
-            .into_iter().collect();
+            .into_iter()
+            .collect();
         self.collapsed_sidebar_topics = self.store.topics.iter().map(|t| t.id).collect();
         self.collapsed_sidebar_goals = self.store.tasks.iter().map(|t| t.id).collect();
     }
@@ -733,6 +1178,9 @@ impl TaskApp {
         if self.store.task(id).is_none() {
             return;
         }
+        if self.selected != Some(id) {
+            self.park_current_comment(cx);
+        }
         if self.selected != Some(id) && self.task_result_context != Some(id) {
             self.detail_scroll.set_offset(point(px(0.), px(0.)));
         }
@@ -744,13 +1192,16 @@ impl TaskApp {
         self.expanded_request_brief = None;
         self.show_task_activity = false;
         self.selected = Some(id);
+        self.navigation
+            .recent_surfaces
+            .insert(id, crate::navigation_context::RecentSurface::Task);
         self.reveal_task_project(id);
         self.sidebar_reveal = (!self.store.task_is_archived(id)).then_some(id);
         self.editing = false;
         self.draft = None;
         self.property = None;
         self.error.clear();
-        self.comment.update(cx, |s, cx| s.set_value("", window, cx));
+        self.restore_task_comment(id, window, cx);
         cx.notify();
     }
     pub fn title(&self) -> String {
@@ -792,9 +1243,14 @@ impl TaskApp {
             return false;
         }
         match &self.scope {
-            Scope::All => self.all_status.matches(&self.store.task_status(t.id, self.todo_batch.as_ref())),
+            Scope::All => self
+                .all_status
+                .matches(&self.store.task_status(t.id, self.todo_batch.as_ref())),
             Scope::Project(id) => t.project_id == *id,
-            Scope::Topic(id) => self.store.task_topic(t.id).is_some_and(|topic| topic.id == *id),
+            Scope::Topic(id) => self
+                .store
+                .task_topic(t.id)
+                .is_some_and(|topic| topic.id == *id),
             Scope::Cycle(c) => t.cycle.as_ref() == Some(c),
             _ => true,
         }
@@ -808,7 +1264,13 @@ impl TaskApp {
                 t.parent_id.is_none()
                     && self.matches_scope(t)
                     && self.store.matches_query(t, &self.query)
-                    && (self.scope == Scope::All || self.show_done || !self.store.task_status(t.id, self.todo_batch.as_ref()).phase.is_closed())
+                    && (matches!(self.scope, Scope::All | Scope::Archive)
+                        || self.show_done
+                        || !self
+                            .store
+                            .task_status(t.id, self.todo_batch.as_ref())
+                            .phase
+                            .is_closed())
             })
             .cloned()
             .collect();
@@ -816,7 +1278,10 @@ impl TaskApp {
         list
     }
     pub fn change_stage(&mut self, id: u64, stage: Stage, cx: &mut Context<Self>) {
-        if let Err(error) = self.store.validate_manual_transition(id, stage, self.todo_batch.as_ref()) {
+        if let Err(error) =
+            self.store
+                .validate_manual_transition(id, stage, self.todo_batch.as_ref())
+        {
             self.error = error;
             cx.notify();
             return;
@@ -828,25 +1293,27 @@ impl TaskApp {
             self.start_goal_batch(id, cx);
             self.scope = scope;
             self.selected = selected;
-            if self.error.is_empty() && self.store.task_status(id, self.todo_batch.as_ref()).phase == Stage::InProgress {
-                self.undo.clear();
-                self.toast = format!("Submitted · {}", self.store.task_status(id, self.todo_batch.as_ref()).label());
+            if self.error.is_empty()
+                && self.store.task_status(id, self.todo_batch.as_ref()).phase == Stage::InProgress
+            {
+                self.undo.clear_legacy();
+                self.toast = format!(
+                    "Submitted · {}",
+                    self.store.task_status(id, self.todo_batch.as_ref()).label()
+                );
             }
             cx.notify();
             return;
         }
-        if self.store.task(id).is_some_and(|t| t.stage == stage) { return; }
-        self.snapshot();
-        let result = self.store.set_stage(id, stage);
-        self.finish(result, "Task stage updated", cx);
+        if self.store.task(id).is_some_and(|t| t.stage == stage) {
+            return;
+        }
+        self.apply_task_stage(id, stage, crate::scoped_edit::StageIntent::Manual, cx);
     }
-    pub fn begin_draft(
-        &mut self,
-        id: u64,
-        window: &mut Window,
-        cx: &mut Context<Self>,
-    ) {
-        let Some(task) = self.store.task(id) else { return; };
+    pub fn begin_draft(&mut self, id: u64, window: &mut Window, cx: &mut Context<Self>) {
+        let Some(task) = self.store.task(id) else {
+            return;
+        };
         let title = cx.new(|cx| {
             InputState::new(window, cx)
                 .placeholder("What needs to be done?")
@@ -877,114 +1344,322 @@ impl TaskApp {
         });
         self.editing = true;
         self.error.clear();
+        self.begin_task_edit_baseline(cx);
         title.update(cx, |s, cx| s.focus(window, cx));
         cx.notify();
     }
-    pub fn save_draft(&mut self, window: &mut Window, cx: &mut Context<Self>) {
-        let Some(d) = &self.draft else {
-            return;
-        };
-        let title = d.title.read(cx).value().to_string();
-        let desc = d.description.read(cx).value().to_string();
-        let due = d.due.read(cx).value().to_string();
-        let labels: Vec<String> = d
-            .labels
-            .read(cx)
-            .value()
-            .split(',')
-            .map(str::trim)
-            .filter(|s| !s.is_empty())
-            .map(str::to_string)
-            .collect();
-        if title.trim().is_empty() {
-            self.show_save_error("Add a task title before saving.", cx);
-            return;
-        }
-        if !due.is_empty() && !valid_date(&due) {
-            self.show_save_error("Use a valid date in YYYY-MM-DD format.", cx);
-            return;
-        }
-        let (id, project, stage, cycle) = (d.id, d.project, d.stage, d.cycle.clone());
-        if self.store.task(id).is_some_and(|t| t.project_id != project) {
-            self.show_save_error("Move the entire topic using its Project property or topic menu, then edit task details.", cx);
-            return;
-        }
-        if self.store.task(id).is_some_and(|t| t.stage != stage) {
-            if stage == Stage::InProgress {
-                self.show_save_error("Save task details first, then submit execution from Board or the status menu.", cx);
-                return;
-            }
-            if let Err(error) = self.store.validate_manual_transition(id, stage, self.todo_batch.as_ref()) {
-                self.show_save_error(&error, cx);
-                return;
-            }
-        }
-        self.snapshot();
-        if let Err(e) = self
-            .store
-            .move_project(id, project)
-            .and_then(|_| self.store.set_stage(id, stage))
-        {
-            self.store = self.undo.pop().unwrap();
-            self.show_save_error(e, cx);
-            return;
-        }
-        if let Some(t) = self.store.task_mut(id) {
-            t.cycle = cycle;
-            t.title = title.trim().into();
-            t.description = desc;
-            t.labels = labels;
-            t.due_date = due;
-            t.activity
-                .push(crate::domain::activity_event("Task details updated"));
-        }
-        self.editing = false;
-        self.draft = None;
-        self.open_task(id, window, cx);
-        self.confirm_save("Task saved to local workspace", cx);
-        cx.notify();
+    pub fn save_draft(&mut self, window: &mut Window, cx: &mut Context<Self>) -> bool {
+        // Bool adapter for the existing caller API. The typed outcome remains
+        // internal; UI save requests use `request_save_draft`.
+        self.request_save_draft(window, cx)
     }
+    /// Scoped undo only needs the edited goal to be idle. Unrelated active or
+    /// queued runs must not block a safe task-edit inverse.
+    fn scoped_undo_busy_reason_for_task(&self, task: u64) -> Option<String> {
+        let goal = self.store.owning_research_goal(task).unwrap_or(task);
+        let pending = self.todo_batch.as_ref().is_some_and(|batch| {
+            batch.items.iter().any(|id| {
+                batch.contains_pending(*id)
+                    && (*id == task
+                        || *id == goal
+                        || self.store.owning_research_goal(*id) == Some(goal))
+            })
+        });
+        let run_is_relevant = |run_id: u64| {
+            self.store
+                .runs()
+                .iter()
+                .find(|run| run.id == run_id)
+                .is_some_and(|run| {
+                    run.task_id == task
+                        || run.task_id == goal
+                        || self.store.owning_research_goal(run.task_id) == Some(goal)
+                })
+        };
+        let active = self.active_runs.iter().any(|run| run_is_relevant(run.id))
+            || self
+                .queued_runs
+                .iter()
+                .any(|(run_id, _)| run_is_relevant(*run_id));
+        if pending || active {
+            return Some("Stop or finish work for this task before undoing this edit.".into());
+        }
+        None
+    }
+
+    /// Reason the next Undo entry cannot run now. Legacy snapshots keep the
+    /// global submitted-work protection; scoped task edits only wait for work
+    /// that belongs to the same goal.
+    fn undo_references_reserved_material(&self, entry: &UndoRecord) -> bool {
+        if self.material_cleanup_reserved.is_empty() {
+            return false;
+        }
+        let references = match entry {
+            UndoRecord::Material(undo) => undo.reference_paths(),
+            UndoRecord::Settings(_) => Vec::new(),
+            UndoRecord::Legacy(store) => store
+                .tasks
+                .iter()
+                .flat_map(|task| task.attachments.iter())
+                .chain(store.runs().iter().flat_map(|run| run.attachments.iter()))
+                .map(|attachment| attachment.relative_path.clone())
+                .collect(),
+            UndoRecord::TaskEdit(_) | UndoRecord::Comment(_) => Vec::new(),
+        };
+        references
+            .iter()
+            .any(|path| self.material_cleanup_reserved.contains(path))
+    }
+
+    pub(crate) fn undo_block_reason(&self) -> Option<String> {
+        let global_blocked = !self.active_runs.is_empty()
+            || !self.queued_runs.is_empty()
+            || self
+                .todo_batch
+                .as_ref()
+                .is_some_and(|batch| batch.items.iter().any(|id| batch.contains_pending(*id)));
+        if self.pending_material_job.is_some() {
+            return Some("Material verification is still in progress. Try again shortly.".into());
+        }
+        if self
+            .undo
+            .peek()
+            .is_some_and(|entry| self.undo_references_reserved_material(entry))
+        {
+            return Some("Material cleanup is still in progress. Try again shortly.".into());
+        }
+        match self.undo.peek() {
+            Some(UndoRecord::Legacy(_)) if global_blocked => {
+                Some("Stop or finish submitted work before undoing changes.".into())
+            }
+            Some(UndoRecord::TaskEdit(undo)) => self.scoped_undo_busy_reason_for_task(undo.id()),
+            Some(UndoRecord::Comment(undo)) => self.scoped_undo_busy_reason_for_task(undo.id()),
+            Some(UndoRecord::Material(undo)) => self.scoped_undo_busy_reason_for_task(undo.id()),
+            _ => None,
+        }
+    }
+
     pub fn undo_change(&mut self, window: &mut Window, cx: &mut Context<Self>) {
-        if !self.active_runs.is_empty() || !self.queued_runs.is_empty()
-            || self.todo_batch.as_ref().is_some_and(|b| b.items.iter().any(|id| b.contains_pending(*id))) {
-            self.error =
-                "Stop or finish submitted work before undoing changes.".into();
+        let global_blocked = !self.active_runs.is_empty()
+            || !self.queued_runs.is_empty()
+            || self
+                .todo_batch
+                .as_ref()
+                .is_some_and(|b| b.items.iter().any(|id| b.contains_pending(*id)));
+        if self.pending_material_job.is_some() {
+            self.error = "Material verification is still in progress. Try again shortly.".into();
             cx.notify();
             return;
         }
-        if let Some(mut store) = self.undo.pop() {
-            store.last_active_project = self.store.last_active_project;
-            store.runs = self.store.runs.clone();
-            store.publications = self.store.publications.clone();
-            store.report_publishing = self.store.report_publishing.clone();
-            store.next_id = store.next_id.max(self.store.next_id);
-            self.store = store;
-            crate::appearance::apply(self.store.appearance, Some(window), cx);
-            self.tabs.retain(|id| self.store.task(*id).is_some());
-            if self
-                .selected
-                .is_some_and(|id| self.store.task(id).is_none())
-            {
-                self.selected = None;
+        if self
+            .undo
+            .peek()
+            .is_some_and(|entry| self.undo_references_reserved_material(entry))
+        {
+            self.error = "Material cleanup is still in progress. Try again shortly.".into();
+            cx.notify();
+            return;
+        }
+        match self.undo.peek() {
+            None => return,
+            Some(UndoRecord::Legacy(_)) if global_blocked => {
+                self.error = "Stop or finish submitted work before undoing changes.".into();
+                cx.notify();
+                return;
             }
-            if let Scope::Project(id) = self.scope
-                && !self.store.projects.iter().any(|p| p.id == id)
-            {
-                self.scope = Scope::All;
-            }
-            if let Scope::Topic(id) = self.scope {
-                if !self.store.topics.iter().any(|t| t.id == id) {
-                    self.scope = Scope::All;
+            Some(UndoRecord::TaskEdit(undo)) => {
+                if let Some(reason) = self.scoped_undo_busy_reason_for_task(undo.id()) {
+                    self.error = reason;
+                    cx.notify();
+                    return;
                 }
             }
-            self.draft = None;
-            self.editing = false;
-            self.property = None;
-            self.refresh_research_inputs(window, cx);
-            self.refresh_global_model_input(window, cx);
-            self.toast = "Last change undone".into();
-            self.error.clear();
-            cx.notify();
+            Some(UndoRecord::Comment(undo)) => {
+                if let Some(reason) = self.scoped_undo_busy_reason_for_task(undo.id()) {
+                    self.error = reason;
+                    cx.notify();
+                    return;
+                }
+            }
+            Some(UndoRecord::Material(undo)) => {
+                if let Some(reason) = self.scoped_undo_busy_reason_for_task(undo.id()) {
+                    self.error = reason;
+                    cx.notify();
+                    return;
+                }
+            }
+            Some(UndoRecord::Settings(_)) | Some(UndoRecord::Legacy(_)) => {}
+        }
+        let Some(entry) = self.undo.pop() else {
+            return;
+        };
+        match entry {
+            UndoRecord::TaskEdit(undo) => {
+                let mut staged = self.store.clone();
+                if let Err(error) = crate::scoped_edit::undo_task_edit(&mut staged, &undo) {
+                    self.undo.push_task_edit(undo);
+                    self.error = match error {
+                        crate::scoped_edit::ScopedEditError::Rejected(message)
+                        | crate::scoped_edit::ScopedEditError::Conflict(message) => message,
+                    };
+                    cx.notify();
+                    return;
+                }
+                if let Err(error) = self.save_staged_store(&staged) {
+                    self.undo.push_task_edit(undo);
+                    self.storage_error = error.clone();
+                    self.show_save_error(error, cx);
+                    return;
+                }
+                self.adopt_saved_store(staged);
+                self.pending_task_edit = None;
+                self.pending_comment_edit = None;
+                self.research_save_impact = None;
+                self.undo_invalidation = None;
+                crate::appearance::apply(self.store.appearance, Some(window), cx);
+                self.tabs.retain(|id| self.store.task(*id).is_some());
+                if self
+                    .selected
+                    .is_some_and(|id| self.store.task(id).is_none())
+                {
+                    self.selected = None;
+                }
+                self.draft = None;
+                self.editing = false;
+                self.property = None;
+                self.refresh_research_inputs(window, cx);
+                self.refresh_global_model_input(window, cx);
+                self.toast = "Last change undone".into();
+                self.error.clear();
+                cx.notify();
+            }
+            UndoRecord::Comment(undo) => {
+                let mut staged = self.store.clone();
+                if let Err(error) = crate::scoped_edit::undo_comment_edit(&mut staged, &undo) {
+                    self.undo.push_comment(undo);
+                    self.error = match error {
+                        crate::scoped_edit::ScopedEditError::Rejected(message)
+                        | crate::scoped_edit::ScopedEditError::Conflict(message) => message,
+                    };
+                    cx.notify();
+                    return;
+                }
+                if let Err(error) = self.save_staged_store(&staged) {
+                    self.undo.push_comment(undo);
+                    self.storage_error = error.clone();
+                    self.show_save_error(error, cx);
+                    return;
+                }
+                self.adopt_saved_store(staged);
+                self.pending_task_edit = None;
+                self.pending_comment_edit = None;
+                self.research_save_impact = None;
+                self.undo_invalidation = None;
+                crate::appearance::apply(self.store.appearance, Some(window), cx);
+                self.refresh_research_inputs(window, cx);
+                self.refresh_global_model_input(window, cx);
+                self.toast = "Last change undone".into();
+                self.error.clear();
+                cx.notify();
+            }
+            UndoRecord::Settings(undo) => {
+                let mut staged = self.store.clone();
+                if let Err(error) = crate::scoped_settings::undo_settings_change(&mut staged, &undo) {
+                    self.undo.push_settings(undo);
+                    self.error = match error {
+                        crate::scoped_settings::SettingsError::Rejected(message) => message.into(),
+                        crate::scoped_settings::SettingsError::NoChange => {
+                            "Nothing to undo".into()
+                        }
+                    };
+                    cx.notify();
+                    return;
+                }
+                if let Err(error) = self.save_staged_store(&staged) {
+                    self.undo.push_settings(undo);
+                    self.storage_error = error.clone();
+                    self.show_save_error(error, cx);
+                    return;
+                }
+                self.adopt_saved_store(staged);
+                self.undo_invalidation = None;
+                crate::appearance::apply(self.store.appearance, None, cx);
+                self.toast = "Last change undone".into();
+                self.error.clear();
+                cx.notify();
+            }
+            UndoRecord::Material(undo) => {
+                let remove = matches!(undo, crate::scoped_material::MaterialUndo::Remove(_));
+                if remove {
+                    if !self.submit_material_undo_verify(undo, cx) {
+                        // The pending operation keeps ownership; a submit failure
+                        // did not consume the inverse.
+                    }
+                } else if !self.apply_material_undo(undo.clone(), cx) {
+                    self.undo.push_material(undo);
+                    self.error = if self.error.is_empty() {
+                        "Material undo did not run.".into()
+                    } else {
+                        self.error.clone()
+                    };
+                }
+            }
+            UndoRecord::Legacy(mut store) => {
+                // A snapshot that predates an automation mutation would roll back
+                // schedules, approvals, dedupe keys or the generated owner graph.
+                // Reject it whole; never partially merge it with current state.
+                if automation_state_differs(&store, &self.store) {
+                    self.undo.clear_legacy();
+                    self.undo_invalidation = Some(
+                        "Automation changes cannot be undone safely. Legacy whole-workspace undo entries were removed; scoped task edits remain available."
+                            .into(),
+                    );
+                    self.error =
+                        "Automation changes cannot be undone safely. This change was not applied."
+                            .into();
+                    cx.notify();
+                    return;
+                }
+                store.last_active_project = self.store.last_active_project;
+                // Keep the current run history without a clean-reset escape: clearing
+                // and re-pushing records exact tombstones/upserts through the guards.
+                let runs = self.store.runs().to_vec();
+                store.clear_runs();
+                for run in runs {
+                    store.push_run(run);
+                }
+                store.publications = self.store.publications.clone();
+                store.report_publishing = self.store.report_publishing.clone();
+                store.next_id = store.next_id.max(self.store.next_id);
+                self.store = store;
+                self.undo_invalidation = None;
+                crate::appearance::apply(self.store.appearance, Some(window), cx);
+                self.tabs.retain(|id| self.store.task(*id).is_some());
+                if self
+                    .selected
+                    .is_some_and(|id| self.store.task(id).is_none())
+                {
+                    self.selected = None;
+                }
+                if let Scope::Project(id) = self.scope
+                    && !self.store.projects.iter().any(|p| p.id == id)
+                {
+                    self.scope = Scope::All;
+                }
+                if let Scope::Topic(id) = self.scope {
+                    if !self.store.topics.iter().any(|t| t.id == id) {
+                        self.scope = Scope::All;
+                    }
+                }
+                self.draft = None;
+                self.editing = false;
+                self.property = None;
+                self.refresh_research_inputs(window, cx);
+                self.refresh_global_model_input(window, cx);
+                self.toast = "Last change undone".into();
+                self.error.clear();
+                cx.notify();
+            }
         }
     }
     pub fn archive_task(&mut self, id: u64, w: &mut Window, cx: &mut Context<Self>) {
@@ -997,14 +1672,14 @@ impl TaskApp {
         window: &mut Window,
         cx: &mut Context<Self>,
     ) {
-        let loaded = storage
-            .acquire_lock()
-            .and_then(|lock| {
-                storage.upgrade_paths(|_| {})?;
-                storage.load().map(|store| (lock, store))
-            });
+        let loaded = storage.acquire_lock().and_then(|lock| {
+            storage.upgrade_paths(|_| {})?;
+            storage.load().map(|store| (lock, store))
+        });
         self.attach_loaded_storage(storage, loaded, window, cx);
-        if self.storage_error.is_empty() { self.check_interrupted_sessions(cx); }
+        if self.storage_error.is_empty() {
+            self.check_interrupted_sessions(cx);
+        }
     }
     pub(crate) fn attach_loaded_storage(
         &mut self,
@@ -1038,7 +1713,8 @@ impl TaskApp {
                 self.executable_input
                     .update(cx, |s, cx| s.set_value(path, window, cx));
                 let codex_path = self.store.research_config.codex_path.clone();
-                self.codex_executable_input.update(cx, |s, cx| s.set_value(codex_path, window, cx));
+                self.codex_executable_input
+                    .update(cx, |s, cx| s.set_value(codex_path, window, cx));
                 self.refresh_research_inputs(window, cx);
                 self.refresh_global_model_input(window, cx);
                 match storage.save(&self.store) {
@@ -1054,7 +1730,14 @@ impl TaskApp {
                     }
                 }
                 self.storage = Some(storage);
-                self.recover_automations(cx);
+                // Stop intents are loaded and reconciled before recovery can
+                // enqueue or start anything. A malformed journal blocks recovery.
+                let stop_ready = self.prepare_stop_recovery(cx);
+                if stop_ready {
+                    self.recover_automations(cx);
+                } else {
+                    self.cancel_automation_timer();
+                }
             }
             Err(e) => {
                 self.storage_error = e;
@@ -1063,24 +1746,77 @@ impl TaskApp {
         }
     }
     // Every notified domain mutation is saved. Streaming runs are coalesced to two writes/second.
+    /// Persist a staged store without mutating the live one. Used by creation
+    /// forms so a failed write cannot leave a half-created request behind.
+    /// The caller adopts the staged store only after this returns `Ok`.
+    pub(crate) fn save_staged_store(&self, staged: &Store) -> Result<(), String> {
+        #[cfg(feature = "qa")]
+        self.qa_storage_writes.set(self.qa_storage_writes.get() + 1);
+        let storage = self.storage.as_ref().ok_or_else(|| {
+            "Workspace storage is unavailable. Nothing was saved; the request stays editable."
+                .to_string()
+        })?;
+        storage.save(staged).map_err(|error| error.to_string())
+    }
+
+    /// Adopt a store that was just confirmed durable. Runtime state that lives
+    /// outside `Store` (active runs, queues) is untouched.
+    pub(crate) fn adopt_saved_store(&mut self, staged: Store) {
+        self.store = staged;
+        self.last_saved = self.store.clone();
+        self.storage_error.clear();
+    }
+
     pub(crate) fn persist_if_changed(&mut self, force: bool) -> bool {
-        self.store.reconcile_goal_approvals();
+        let _total = crate::persistence_metrics::Span::start("persist.total");
+        crate::persistence_metrics::bump("persist.calls", 1);
+        // A pending command never owns the live store. Background completions
+        // may still be saved while it waits; its base becomes stale and retry
+        // reprepares from the current store instead of replaying staged data.
+        {
+            let _span = crate::persistence_metrics::Span::start("persist.reconcile");
+            self.store.reconcile_goal_approvals();
+        }
+        // Central safeguard for F03/T04: any durable automation change makes
+        // older whole-store undo entries unsafe, whether it came from the wizard,
+        // a lifecycle action or the scheduler.
+        let automation_changed = {
+            let _span = crate::persistence_metrics::Span::start("persist.automation_compare");
+            self.automation_state_changed()
+        };
+        if automation_changed {
+            self.invalidate_undo_for_automation();
+        }
         let Some(storage) = &self.storage else {
             return false;
         };
-        if self.store == self.last_saved {
+        let unchanged = {
+            let _span = crate::persistence_metrics::Span::start("persist.store_compare");
+            self.store == self.last_saved
+        };
+        if unchanged {
+            crate::persistence_metrics::bump("persist.skip.unchanged", 1);
             return false;
         }
         if !force
             && !self.active_runs.is_empty()
             && self.last_save.elapsed() < Duration::from_millis(500)
         {
+            crate::persistence_metrics::bump("persist.skip.throttle", 1);
             return false;
         }
         self.last_save = Instant::now();
-        match storage.save(&self.store) {
+        let result = {
+            let _span = crate::persistence_metrics::Span::start("persist.storage_save");
+            storage.save(&self.store)
+        };
+        match result {
             Ok(()) => {
-                self.last_saved = self.store.clone();
+                crate::persistence_metrics::bump("persist.commit.ok", 1);
+                {
+                    let _span = crate::persistence_metrics::Span::start("persist.clone_last_saved");
+                    self.last_saved = self.store.clone();
+                }
                 let had_error = !self.storage_error.is_empty();
                 self.storage_error.clear();
                 if had_error {
@@ -1089,6 +1825,7 @@ impl TaskApp {
                 had_error
             }
             Err(e) => {
+                crate::persistence_metrics::bump("persist.commit.failed", 1);
                 let changed = self.storage_error != e;
                 self.storage_error = e;
                 changed
@@ -1102,7 +1839,38 @@ impl TaskApp {
     /// Explicit retry for the footer's "Not saved" state. A plain save is not
     /// enough because the in-memory store already equals the last confirmed
     /// snapshot, so `persist_if_changed` would skip the write.
-    pub fn retry_save(&mut self, cx: &mut Context<Self>) {
+    pub fn retry_save(&mut self, window: &mut Window, cx: &mut Context<Self>) {
+        if self.pending_task_edit.is_some() {
+            self.retry_task_editor_save(window, cx);
+            cx.notify();
+            return;
+        }
+        if self.pending_comment_edit.is_some() {
+            self.retry_comment_save(window, cx);
+            cx.notify();
+            return;
+        }
+        if self.pending_material_edit.is_some() {
+            self.retry_material_save(window, cx);
+            cx.notify();
+            return;
+        }
+        if self.pending_commit.is_some()
+            || self.pending_stop.is_some()
+            || self.pending_dispatch.is_some()
+        {
+            self.retry_pending_saves(cx);
+            cx.notify();
+            return;
+        }
+        if !self.stop_intents.is_empty() || self.stop_journal_error.is_some() {
+            let ready = self.prepare_stop_recovery(cx);
+            if ready {
+                self.recover_automations(cx);
+            }
+            cx.notify();
+            return;
+        }
         let result = self
             .storage
             .as_ref()
@@ -1118,13 +1886,14 @@ impl TaskApp {
                 self.storage_error = error;
             }
             None => {
-                self.storage_error = "Workspace storage is unavailable. Reopen the workspace to reconnect.".into();
+                self.storage_error =
+                    "Workspace storage is unavailable. Reopen the workspace to reconnect.".into();
             }
         }
         cx.notify();
     }
     pub fn task_running(&self, id: u64) -> bool {
-        self.store.runs.iter().any(|r| {
+        self.store.runs().iter().any(|r| {
             r.project_plan.is_none()
                 && r.task_id == id
                 && matches!(
@@ -1140,7 +1909,7 @@ impl TaskApp {
     }
     pub fn run_goal(&self, run_id: u64) -> Option<u64> {
         self.store
-            .runs
+            .runs()
             .iter()
             .find(|r| r.id == run_id)
             .and_then(|r| self.store.task(r.task_id))
@@ -1148,6 +1917,7 @@ impl TaskApp {
             .map(|r| r.goal_id)
     }
     pub fn open_directory(&mut self, project: u64, window: &mut Window, cx: &mut Context<Self>) {
+        self.remember_dialog_opener(window, cx);
         self.directory_project = Some(project);
         self.error.clear();
         let path = self
@@ -1189,16 +1959,31 @@ impl TaskApp {
         self.error.clear();
         self.confirm_save("Project folder saved to local workspace", cx);
     }
-    pub fn discovering_codex_models(&self) -> bool { self.codex_discovery.is_some() }
+    pub fn discovering_codex_models(&self) -> bool {
+        self.codex_discovery.is_some()
+    }
     pub fn discover_codex_models(&mut self, cx: &mut Context<Self>) {
-        if self.codex_discovery.is_some() { return; }
+        if self.codex_discovery.is_some() {
+            return;
+        }
         let executable = PathBuf::from(&self.store.research_config.codex_path);
         let (tx, rx) = mpsc::channel();
         self.codex_discovery = Some(rx);
         self.codex_status = "Checking Codex…".into();
-        std::thread::spawn(move || { let _ = tx.send(crate::codex::discover(&executable)); });
+        std::thread::spawn(move || {
+            let _ = tx.send(crate::codex::discover(&executable));
+        });
         self.start_pump(cx);
         cx.notify();
+    }
+    #[cfg(feature = "qa")]
+    pub(crate) fn complete_discovery_for_qa(
+        &mut self,
+        rx: mpsc::Receiver<(PathBuf, Discovery)>,
+        cx: &mut Context<Self>,
+    ) -> bool {
+        self.discovery = Some(rx);
+        self.poll_runtime(cx)
     }
     pub fn discover_models(&mut self, cx: &mut Context<Self>) {
         if self.discovery.is_some() {
@@ -1250,6 +2035,16 @@ impl TaskApp {
         true
     }
     pub fn start_run(&mut self, id: u64, cx: &mut Context<Self>) {
+        self.start_run_with_navigation(id, true, cx);
+    }
+
+    /// Timer ticks, queue continuations and recovery imports submit work without
+    /// changing the route, selection, drafts or open dialogs.
+    pub(crate) fn start_run_background(&mut self, id: u64, cx: &mut Context<Self>) {
+        self.start_run_with_navigation(id, false, cx);
+    }
+
+    fn start_run_with_navigation(&mut self, id: u64, navigate: bool, cx: &mut Context<Self>) {
         if self.route_automation_task(id, cx) {
             return;
         }
@@ -1265,24 +2060,26 @@ impl TaskApp {
         } else if self.task_running(id) {
             self.error =
                 "This task is already running or queued. Open View progress to follow it.".into();
-        } else {
-            self.start_run_inner(id, cx);
+        } else if let Some(dispatch) = self.start_run_inner(id, cx)
+            && navigate
+        {
+            self.open_run_progress(dispatch);
         }
         if !self.error.is_empty() {
             self.task_start_feedback = Some((id, self.error.clone()));
         }
         cx.notify();
     }
-    fn start_run_inner(&mut self, id: u64, cx: &mut Context<Self>) {
+    fn start_run_inner(&mut self, id: u64, cx: &mut Context<Self>) -> Option<RunDispatch> {
         if !self.ready_to_run(cx) || self.task_running(id) {
-            return;
+            return None;
         }
         let mut run = match self.store.prepare_run(id) {
             Ok(run) => run,
             Err(e) => {
                 self.error = e;
                 cx.notify();
-                return;
+                return None;
             }
         };
         let files = match self.prepare_run_materials(id, &mut run) {
@@ -1290,17 +2087,38 @@ impl TaskApp {
             Err(e) => {
                 self.error = e;
                 cx.notify();
-                return;
+                return None;
             }
         };
-        self.launch_run(run, files, cx);
+        self.launch_run(run, files, cx)
     }
-    pub(crate) fn launch_run(
+
+    /// Open the progress surface requested by an explicit user command. Only
+    /// callers that handled a user action use this; dispatch itself never routes.
+    pub(crate) fn open_run_progress(&mut self, dispatch: RunDispatch) {
+        self.selected = None;
+        self.follow_logs = true;
+        self.show_run_result = true;
+        self.show_run_details = false;
+        if dispatch.automation_owned {
+            self.scope = Scope::AutomationRuns;
+            self.selected_run = None;
+        } else {
+            self.scope = Scope::Runs;
+            self.selected_run = Some(dispatch.run_id);
+            self.reveal_selected_run();
+        }
+    }
+
+    /// Validate and prepare a run without changing the store, queue, undo or
+    /// feedback. The existing launch checks live here; the durable dispatch
+    /// commit and queue effect happen separately.
+    pub(crate) fn prepare_run_dispatch(
         &mut self,
         mut run: AgentRun,
         files: Vec<PathBuf>,
         cx: &mut Context<Self>,
-    ) {
+    ) -> Option<PreparedRunDispatch> {
         if run.automation_occurrence_id.is_none()
             && self
                 .store
@@ -1311,26 +2129,26 @@ impl TaskApp {
             self.error = error.clone();
             self.task_start_feedback = Some((run.task_id, error));
             cx.notify();
-            return;
+            return None;
         }
         if self.store.run_is_archived(&run) {
             self.error = "Restore the archived topic or goal before executing.".into();
             cx.notify();
-            return;
+            return None;
         }
         if self.recovery_blocks_run(&run) {
             self.error =
                 "Check the previous session in Paused projects before starting again.".into();
             cx.notify();
-            return;
+            return None;
         }
         if let Err(error) = self.check_workspace_directory(std::path::Path::new(&run.directory)) {
             self.error = error.clone();
             self.task_start_feedback = Some((run.task_id, error));
             cx.notify();
-            return;
+            return None;
         }
-        if self.store.runs.iter().any(|r| {
+        if self.store.runs().iter().any(|r| {
             r.task_id == run.task_id
                 && r.project_plan == run.project_plan
                 && (run.project_plan.is_none()
@@ -1338,7 +2156,7 @@ impl TaskApp {
                         == self.store.request_for_run(run.id).map(|q| q.id))
                 && matches!(r.status.as_str(), "Queued" | "Running" | "Cancelling")
         }) {
-            return;
+            return None;
         }
         if run.project_plan.is_none() {
             run.workspace_source = match self.store.workspace_source(run.task_id) {
@@ -1346,7 +2164,7 @@ impl TaskApp {
                 Err(error) => {
                     self.error = error;
                     cx.notify();
-                    return;
+                    return None;
                 }
             };
             match self.store.execution_directory(run.task_id) {
@@ -1354,7 +2172,7 @@ impl TaskApp {
                     if let Err(error) = self.check_workspace_directory(&path) {
                         self.error = error;
                         cx.notify();
-                        return;
+                        return None;
                     }
                     if let Err(e) = if run.workspace_source.is_none() {
                         std::fs::create_dir_all(&path)
@@ -1363,7 +2181,7 @@ impl TaskApp {
                     } {
                         self.error = format!("Cannot create task working folder: {e}");
                         cx.notify();
-                        return;
+                        return None;
                     }
                     let directory = path
                         .canonicalize()
@@ -1379,7 +2197,7 @@ impl TaskApp {
                 Err(e) => {
                     self.error = e;
                     cx.notify();
-                    return;
+                    return None;
                 }
             }
         }
@@ -1414,49 +2232,163 @@ impl TaskApp {
         run.queued_at = opencode::timestamp();
         run.started_at.clear();
         run.status = "Queued".into();
-        let run_id = run.id;
-        let automation_owned = run.automation_occurrence_id.is_some();
-        self.store.runs.push(run);
-        self.persist_if_changed(true);
-        if !self.storage_error.is_empty() {
-            self.store.runs.pop();
-            cx.notify();
-            return;
+        Some(PreparedRunDispatch { run, files })
+    }
+
+    pub(crate) fn launch_intent_for(&self, run: &AgentRun) -> LaunchIntent {
+        if let Some(owner) = &run.planning_owner {
+            return LaunchIntent::RequestPlan {
+                request_id: owner.request_id,
+            };
         }
-        self.queued_runs.push((run_id, files));
-        self.undo.clear();
-        self.error.clear();
-        // Keep the recovery overview visible while its queue submits each next step.
-        if self.scope != Scope::Recovery || self.selected.is_some() {
-            self.selected = None;
-            if automation_owned {
-                // Automation periods belong to Automations, not to Research's
-                // results. Follow the period to its own results list.
-                self.scope = Scope::AutomationRuns;
-                self.selected_run = None;
-            } else {
-                self.scope = Scope::Runs;
-                self.selected_run = Some(run_id);
-                self.reveal_selected_run();
+        if let Some(project) = run.project_plan {
+            return LaunchIntent::ProjectPlan {
+                project_id: project,
+            };
+        }
+        if let Some(occurrence) = run.automation_occurrence_id {
+            return LaunchIntent::Occurrence(occurrence);
+        }
+        LaunchIntent::Task(run.task_id)
+    }
+
+    pub(crate) fn launch_run(
+        &mut self,
+        run: AgentRun,
+        files: Vec<PathBuf>,
+        cx: &mut Context<Self>,
+    ) -> Option<RunDispatch> {
+        let intent = self.launch_intent_for(&run);
+        self.launch_run_with_intent(run, files, intent, cx)
+    }
+
+    pub(crate) fn launch_run_with_intent(
+        &mut self,
+        run: AgentRun,
+        files: Vec<PathBuf>,
+        intent: LaunchIntent,
+        cx: &mut Context<Self>,
+    ) -> Option<RunDispatch> {
+        let prepared = self.prepare_run_dispatch(run, files, cx)?;
+        self.commit_prepared_dispatch(prepared, intent, cx)
+    }
+
+    /// Commit the run and its occurrence link in one staged store, then let the
+    /// existing scheduler queue effect start. No run record is written by the
+    /// effect itself.
+    pub(crate) fn commit_prepared_dispatch(
+        &mut self,
+        prepared: PreparedRunDispatch,
+        intent: LaunchIntent,
+        cx: &mut Context<Self>,
+    ) -> Option<RunDispatch> {
+        // Resolve an earlier user command before preparing this dispatch. If it
+        // still cannot save, preserve that pending intent and do not replace it
+        // with a dispatch failure.
+        if self.pending_commit.is_some()
+            || self.pending_stop.is_some()
+            || self.pending_dispatch.is_some()
+        {
+            self.retry_pending_saves(cx);
+            if self.pending_commit.is_some()
+                || self.pending_stop.is_some()
+                || self.pending_dispatch.is_some()
+            {
+                self.error =
+                    "Resolve the previous pending change before dispatching this run.".into();
+                cx.notify();
+                return None;
             }
         }
-        self.follow_logs = true;
-        self.show_run_result = true;
-        self.show_run_details = false;
-        self.toast = if automation_owned {
-            "Automation period queued · waiting for an automation slot".into()
-        } else {
-            "Task queued · waiting for a research execution slot".into()
+        let run_id = prepared.run.id;
+        let task_id = prepared.run.task_id;
+        let run_occurrence = prepared.run.automation_occurrence_id;
+        let intended_occurrence = match &intent {
+            LaunchIntent::Occurrence(id) => Some(*id),
+            LaunchIntent::ReportRegeneration { occurrence, .. } => *occurrence,
+            LaunchIntent::Task(_)
+            | LaunchIntent::RequestPlan { .. }
+            | LaunchIntent::ProjectPlan { .. } => None,
         };
-        self.start_pump(cx);
-        cx.notify();
+        if run_occurrence != intended_occurrence {
+            self.error = "The prepared run ownership does not match its dispatch intent.".into();
+            cx.notify();
+            return None;
+        }
+        // Report regeneration for an automation period is still automation-owned;
+        // never route it to ordinary Research results or the Research slot.
+        let automation_owned = run_occurrence.is_some();
+        let command = match &intent {
+            LaunchIntent::Occurrence(occurrence) => crate::domain_command::Command::DispatchRun {
+                occurrence: Some(*occurrence),
+                run: prepared.run,
+            },
+            LaunchIntent::RequestPlan { request_id } => {
+                crate::domain_command::Command::DispatchRequestPlan {
+                    request_id: *request_id,
+                    run: prepared.run,
+                }
+            }
+            LaunchIntent::ReportRegeneration {
+                source_id,
+                style,
+                occurrence,
+            } => crate::domain_command::Command::DispatchRegeneration {
+                occurrence: *occurrence,
+                source_id: *source_id,
+                style: style.clone(),
+                run: prepared.run,
+            },
+            LaunchIntent::Task(_) | LaunchIntent::ProjectPlan { .. } => {
+                crate::domain_command::Command::DispatchRun {
+                    occurrence: None,
+                    run: prepared.run,
+                }
+            }
+        };
+        if self.dispatch_admission.is_some() {
+            return self.admit_prepared_dispatch(command, intent, prepared.files, cx);
+        }
+        match self.execute_command(command, cx) {
+            Ok(_) => {
+                if let Some(entry) = self.queued_runs.iter_mut().find(|(id, _)| *id == run_id) {
+                    entry.1 = prepared.files;
+                }
+                self.undo.clear_legacy();
+                self.error.clear();
+                self.toast = if automation_owned {
+                    "Automation period queued · waiting for an automation slot".into()
+                } else {
+                    "Task queued · waiting for a research execution slot".into()
+                };
+                self.start_pump(cx);
+                cx.notify();
+                Some(RunDispatch {
+                    run_id,
+                    automation_owned,
+                })
+            }
+            Err(error) => {
+                // Retain only the typed intent. The next attempt rebuilds the
+                // run/ids from the current authoritative request/source.
+                self.pending_commit = None;
+                self.pending_dispatch = Some(PendingDispatch {
+                    intent,
+                    files: prepared.files,
+                });
+                self.error = error.clone();
+                self.task_start_feedback = Some((task_id, error));
+                cx.notify();
+                None
+            }
+        }
     }
     fn run_is_automation_owned(&self, run_id: u64) -> bool {
         self.store
-            .runs
+            .runs()
             .iter()
             .find(|run| run.id == run_id)
-            .is_some_and(|run| run.automation_occurrence_id.is_some())
+            .is_some_and(|run| self.store.run_is_automation_owned(run))
     }
     /// Research occupancy. Automation steps keep only their own automation pool
     /// busy, even though both kinds share the same physical queue and resources.
@@ -1467,7 +2399,7 @@ impl TaskApp {
             .count()
             + self
                 .store
-                .runs
+                .runs()
                 .iter()
                 .filter(|run| {
                     run.automation_occurrence_id.is_none()
@@ -1482,7 +2414,7 @@ impl TaskApp {
     /// holds the slot it already owns.
     pub(crate) fn automation_slots_used(&self) -> usize {
         let mut occupied = std::collections::BTreeSet::new();
-        for occurrence in &self.store.automation_occurrences {
+        for occurrence in self.store.all_occurrences() {
             if occurrence.status == crate::automation::OccurrenceStatus::Running {
                 occupied.insert(occurrence.id);
             }
@@ -1490,7 +2422,7 @@ impl TaskApp {
         for active in &self.active_runs {
             if let Some(occurrence) = self
                 .store
-                .runs
+                .runs()
                 .iter()
                 .find(|run| run.id == active.id)
                 .and_then(|run| run.automation_occurrence_id)
@@ -1498,7 +2430,7 @@ impl TaskApp {
                 occupied.insert(occurrence);
             }
         }
-        for run in &self.store.runs {
+        for run in self.store.runs() {
             if run.status == "Recovering"
                 && self.store.is_recovery_candidate(run)
                 && let Some(occurrence) = run.automation_occurrence_id
@@ -1513,15 +2445,14 @@ impl TaskApp {
             return;
         }
         loop {
-            let research_full =
-                self.research_slots_used() >= self.store.concurrency_limit();
+            let research_full = self.research_slots_used() >= self.store.concurrency_limit();
             let automation_full =
                 self.automation_slots_used() >= self.store.automation_concurrency_limit();
             if research_full && automation_full {
                 break;
             }
             let next = self.queued_runs.iter().position(|(id, _)| {
-                let candidate = self.store.runs.iter().find(|r| r.id == *id).unwrap();
+                let candidate = self.store.runs().iter().find(|r| r.id == *id).unwrap();
                 let automation_owned = candidate.automation_occurrence_id.is_some();
                 if automation_owned {
                     if automation_full {
@@ -1533,7 +2464,7 @@ impl TaskApp {
                         .and_then(|id| self.store.occurrence(id))
                         .map(|occurrence| occurrence.automation_id);
                     if automation.is_some_and(|automation| {
-                        self.store.automation_occurrences.iter().any(|occurrence| {
+                        self.store.all_occurrences().iter().any(|occurrence| {
                             occurrence.automation_id == automation
                                 && occurrence.id != candidate.automation_occurrence_id.unwrap_or(0)
                                 && occurrence.status == crate::automation::OccurrenceStatus::Running
@@ -1548,29 +2479,58 @@ impl TaskApp {
                 // own periods are isolated and gated only by the automation pool.
                 if candidate.project_plan.is_none() && !automation_owned {
                     let topic = self.store.execution_topic(candidate.task_id);
-                    if self.active_runs.iter().filter_map(|active| self.store.runs.iter().find(|run| run.id == active.id))
-                        .chain(self.store.runs.iter().filter(|run| run.status == "Recovering" && self.store.is_recovery_candidate(run)))
+                    if self
+                        .active_runs
+                        .iter()
+                        .filter_map(|active| {
+                            self.store.runs().iter().find(|run| run.id == active.id)
+                        })
+                        .chain(self.store.runs().iter().filter(|run| {
+                            run.status == "Recovering" && self.store.is_recovery_candidate(run)
+                        }))
                         .filter(|run| run.automation_occurrence_id.is_none())
-                        .any(|run| run.project_plan.is_none() && self.store.execution_topic(run.task_id) != topic)
-                    { return false; }
-                    let front = self.todo_batch.as_ref().and_then(|batch| batch.pending_topics(&self.store).first().copied())
-                        .or_else(|| self.queued_runs.iter().filter_map(|(id, _)| self.store.runs.iter().find(|run| run.id == *id && run.project_plan.is_none() && run.automation_occurrence_id.is_none()))
-                            .next().map(|run| self.store.execution_topic(run.task_id)));
-                    if front.is_some_and(|front| front != topic) { return false; }
+                        .any(|run| {
+                            run.project_plan.is_none()
+                                && self.store.execution_topic(run.task_id) != topic
+                        })
+                    {
+                        return false;
+                    }
+                    let front = self
+                        .todo_batch
+                        .as_ref()
+                        .and_then(|batch| batch.pending_topics(&self.store).first().copied())
+                        .or_else(|| {
+                            self.queued_runs
+                                .iter()
+                                .filter_map(|(id, _)| {
+                                    self.store.runs().iter().find(|run| {
+                                        run.id == *id
+                                            && run.project_plan.is_none()
+                                            && run.automation_occurrence_id.is_none()
+                                    })
+                                })
+                                .next()
+                                .map(|run| self.store.execution_topic(run.task_id))
+                        });
+                    if front.is_some_and(|front| front != topic) {
+                        return false;
+                    }
                 }
                 if candidate.auto_retry_attempt > 0 {
                     if candidate.retry_delay_remaining(chrono::Utc::now().timestamp()) > 0 {
                         return false;
                     }
-                    if self.todo_batch.as_ref().is_some_and(|batch|
-                        batch.run_ids.contains_key(id) && batch.state != crate::batch::BatchState::Running)
-                    {
+                    if self.todo_batch.as_ref().is_some_and(|batch| {
+                        batch.run_ids.contains_key(id)
+                            && batch.state != crate::batch::BatchState::Running
+                    }) {
                         return false;
                     }
                 }
                 !self
                     .store
-                    .runs
+                    .runs()
                     .iter()
                     .filter(|r| {
                         self.store.is_recovery_candidate(r)
@@ -1582,7 +2542,7 @@ impl TaskApp {
                     .any(|running| self.store.run_conflicts(candidate, running))
                     && !self.active_runs.iter().any(|a| {
                         self.store
-                            .runs
+                            .runs()
                             .iter()
                             .find(|r| r.id == a.id)
                             .is_some_and(|running| self.store.run_conflicts(candidate, running))
@@ -1592,8 +2552,8 @@ impl TaskApp {
                 break;
             };
             let (id, files) = self.queued_runs.remove(index);
-            let index = self.store.runs.iter().position(|r| r.id == id).unwrap();
-            let run = &self.store.runs[index];
+            let index = self.store.runs().iter().position(|r| r.id == id).unwrap();
+            let run = self.store.runs()[index].clone();
             // Queued requests are snapshots. Never execute stale approvals or evidence.
             let automation_owned_without_occurrence = run.automation_occurrence_id.is_none()
                 && self
@@ -1602,102 +2562,123 @@ impl TaskApp {
                     .is_some_and(|task| task.automation_id.is_some());
             let valid = !automation_owned_without_occurrence
                 && if let Some(request) = self.store.request_for_run(run.id) {
-                self.store.request_plan_signature(request.id).ok().as_ref()
-                    == Some(&run.input_signature)
-            } else if let Some(project) = run.project_plan {
-                self.store.project_plan_signature(project).ok().as_ref()
-                    == Some(&run.input_signature)
-            } else if run.research_kind.is_some() {
-                self.store.research_signature(run.task_id).as_ref() == Some(&run.input_signature)
-                    && !self.store.research_pending_approval(run.task_id)
-                    && self.store.task(run.task_id).is_some_and(|t| {
-                        !t.archived && !matches!(t.stage, Stage::Backlog | Stage::Cancelled)
-                    })
-            } else {
-                false
-            };
-            if !valid || self.store.run_is_archived(run) {
-                self.store.runs[index].status = "Stale".into();
-                self.store.runs[index].ended_at = Some(opencode::timestamp());
-                self.store.runs[index].logs.push(
-                    "[queue] Inputs or approval changed before execution; review and start again."
-                        .into(),
-                );
+                    self.store.request_plan_signature(request.id).ok().as_ref()
+                        == Some(&run.input_signature)
+                } else if let Some(project) = run.project_plan {
+                    self.store.project_plan_signature(project).ok().as_ref()
+                        == Some(&run.input_signature)
+                } else if run.research_kind.is_some() {
+                    self.store.research_signature(run.task_id).as_ref()
+                        == Some(&run.input_signature)
+                        && !self.store.research_pending_approval(run.task_id)
+                        && self.store.task(run.task_id).is_some_and(|t| {
+                            !t.archived && !matches!(t.stage, Stage::Backlog | Stage::Cancelled)
+                        })
+                } else {
+                    false
+                };
+            if !valid || self.store.run_is_archived(&run) {
+                {
+                    let mut run = self.store.run_at_mut(index).unwrap();
+                    run.status = "Stale".into();
+                    run.ended_at = Some(opencode::timestamp());
+                    run.logs.push(
+                        "[queue] Inputs or approval changed before execution; review and start again."
+                            .into(),
+                    );
+                }
                 self.complete_research_run(id, cx);
                 continue;
             }
             if let Err(error) = self.check_workspace_directory(std::path::Path::new(&run.directory))
             {
-                let run = &mut self.store.runs[index];
-                run.status = "Blocked".into();
-                run.ended_at = Some(opencode::timestamp());
-                run.logs.push(format!("[workspace] {error}"));
-                self.task_start_feedback = Some((run.task_id, error));
+                {
+                    let mut run = self.store.run_at_mut(index).unwrap();
+                    run.status = "Blocked".into();
+                    run.ended_at = Some(opencode::timestamp());
+                    run.logs.push(format!("[workspace] {error}"));
+                    self.task_start_feedback = Some((run.task_id, error.clone()));
+                }
                 self.complete_research_run(id, cx);
                 continue;
             }
             if let Some(source) = run.workspace_source.clone() {
                 if let Err(error) = crate::scheduler::migrate_workspace(&source, &run.directory) {
-                    let run = &mut self.store.runs[index];
-                    run.status = "Blocked".into();
-                    run.ended_at = Some(opencode::timestamp());
-                    run.logs.push(format!("[workspace] {error}"));
+                    {
+                        let mut run = self.store.run_at_mut(index).unwrap();
+                        run.status = "Blocked".into();
+                        run.ended_at = Some(opencode::timestamp());
+                        run.logs.push(format!("[workspace] {error}"));
+                        self.task_start_feedback = Some((run.task_id, error.clone()));
+                    }
                     self.error = error.clone();
-                    self.task_start_feedback = Some((run.task_id, error));
                     self.persist_if_changed(true);
                     self.complete_research_run(id, cx);
                     continue;
                 }
-                self.store.runs[index].workspace_source = None;
-                self.store.runs[index].logs.push("[workspace] Legacy research files copied to the isolated goal folder; original files preserved.".into());
+                self.store.run_at_mut(index).unwrap().workspace_source = None;
+                self.store.run_at_mut(index).unwrap().logs.push("[workspace] Legacy research files copied to the isolated goal folder; original files preserved.".into());
             }
-            if let Err(error) = crate::research::write_dependency_files(&self.store, &self.store.runs[index]) {
-                let run = &mut self.store.runs[index];
-                run.status = "Blocked".into();
-                run.ended_at = Some(opencode::timestamp());
-                run.logs.push(format!("[workspace] {error}"));
-                self.task_start_feedback = Some((run.task_id, error));
+            if let Err(error) =
+                crate::research::write_dependency_files(&self.store, &self.store.runs()[index])
+            {
+                {
+                    let mut run = self.store.run_at_mut(index).unwrap();
+                    run.status = "Blocked".into();
+                    run.ended_at = Some(opencode::timestamp());
+                    run.logs.push(format!("[workspace] {error}"));
+                    self.task_start_feedback = Some((run.task_id, error.clone()));
+                }
                 self.persist_if_changed(true);
                 self.complete_research_run(id, cx);
                 continue;
             }
             self.store.refresh_queued_browser_control(index);
-            let automation_occurrence = self.store.runs[index].automation_occurrence_id;
-            let automation_research_kind = self.store.runs[index].research_kind;
+            let automation_occurrence = self.store.runs()[index].automation_occurrence_id;
+            let automation_research_kind = self.store.runs()[index].research_kind;
             if let Some(occurrence_id) = automation_occurrence {
                 let Some(occurrence) = self.store.occurrence(occurrence_id).cloned() else {
-                    let run = &mut self.store.runs[index];
-                    run.status = "Blocked".into();
-                    run.ended_at = Some(opencode::timestamp());
-                    run.logs.push("[automation] The occurrence is missing; nothing was started.".into());
+                    {
+                        let mut run = self.store.run_at_mut(index).unwrap();
+                        run.status = "Blocked".into();
+                        run.ended_at = Some(opencode::timestamp());
+                        run.logs.push(
+                            "[automation] The occurrence is missing; nothing was started.".into(),
+                        );
+                    }
                     self.persist_if_changed(true);
                     self.complete_research_run(id, cx);
                     continue;
                 };
                 let now = Self::automation_now();
-                let regeneration = occurrence.status == crate::automation::OccurrenceStatus::Succeeded
+                let regeneration = occurrence.status
+                    == crate::automation::OccurrenceStatus::Succeeded
                     && automation_research_kind == Some(crate::research::ResearchKind::Advise);
-                if self.store.runs[index]
+                if self.store.runs()[index]
                     .deadline_at
                     .is_some_and(|deadline| now >= deadline)
                 {
-                    let run = &mut self.store.runs[index];
-                    run.status = "Stale".into();
-                    run.ended_at = Some(opencode::timestamp());
-                    run.logs.push(
-                        "[automation] Report regeneration exceeded its own time limit before starting; the previous report is preserved."
-                            .into(),
-                    );
+                    {
+                        let mut run = self.store.run_at_mut(index).unwrap();
+                        run.status = "Stale".into();
+                        run.ended_at = Some(opencode::timestamp());
+                        run.logs.push(
+                            "[automation] Report regeneration exceeded its own time limit before starting; the previous report is preserved."
+                                .into(),
+                        );
+                    }
                     self.persist_if_changed(true);
                     self.complete_research_run(id, cx);
                     continue;
                 }
                 if !regeneration && occurrence.first_start_expired(now) {
-                    let run = &mut self.store.runs[index];
-                    run.status = "Stale".into();
-                    run.ended_at = Some(opencode::timestamp());
-                    run.logs.push("[automation] The queued request exceeded its allowed delay and was skipped.".into());
-                    let _ = self.store.occurrence_mut(occurrence_id).map(|value| value.transition(
+                    {
+                        let mut run = self.store.run_at_mut(index).unwrap();
+                        run.status = "Stale".into();
+                        run.ended_at = Some(opencode::timestamp());
+                        run.logs.push("[automation] The queued request exceeded its allowed delay and was skipped.".into());
+                    }
+                    let _ = self.store.occurrence_mut(occurrence_id).map(|mut value| value.transition(
                         crate::automation::OccurrenceStatus::Skipped,
                         Some(crate::automation::OccurrenceReason::new(crate::automation::SkipCode::Expired, "The queued request exceeded its allowed delay before a slot was available.")),
                     ));
@@ -1705,16 +2686,28 @@ impl TaskApp {
                     self.complete_research_run(id, cx);
                     continue;
                 }
-                if !regeneration && occurrence.deadline_at.is_some_and(|deadline| now >= deadline) {
-                    let run = &mut self.store.runs[index];
-                    run.status = "Stale".into();
-                    run.ended_at = Some(opencode::timestamp());
-                    run.logs.push("[automation] The occurrence's total time limit was reached before this step started.".into());
-                    let _ = self.store.occurrence_mut(occurrence_id).map(|value| value.transition(
-                        crate::automation::OccurrenceStatus::Failed,
-                        Some(crate::automation::OccurrenceReason::new(crate::automation::SkipCode::Expired, "The automation's total time limit was reached.")),
-                    ));
-                    self.store.note_automation_failure(occurrence.automation_id, now);
+                if !regeneration
+                    && occurrence
+                        .deadline_at
+                        .is_some_and(|deadline| now >= deadline)
+                {
+                    {
+                        let mut run = self.store.run_at_mut(index).unwrap();
+                        run.status = "Stale".into();
+                        run.ended_at = Some(opencode::timestamp());
+                        run.logs.push("[automation] The occurrence's total time limit was reached before this step started.".into());
+                    }
+                    let _ = self.store.occurrence_mut(occurrence_id).map(|mut value| {
+                        value.transition(
+                            crate::automation::OccurrenceStatus::Failed,
+                            Some(crate::automation::OccurrenceReason::new(
+                                crate::automation::SkipCode::Expired,
+                                "The automation's total time limit was reached.",
+                            )),
+                        )
+                    });
+                    self.store
+                        .note_automation_failure(occurrence.automation_id, now);
                     self.persist_if_changed(true);
                     self.complete_research_run(id, cx);
                     continue;
@@ -1723,17 +2716,22 @@ impl TaskApp {
                     && occurrence.status != crate::automation::OccurrenceStatus::Running
                 {
                     let first_start = occurrence.actual_started_at.is_none();
-                    if let Some(value) = self.store.occurrence_mut(occurrence_id) {
-                        if let Err(error) = value.mark_running(now) {
-                            let run = &mut self.store.runs[index];
+                    let mark_error = match self.store.occurrence_mut(occurrence_id) {
+                        Some(mut value) => value.mark_running(now).err(),
+                        None => None,
+                    };
+                    if let Some(error) = mark_error {
+                        {
+                            let mut run = self.store.run_at_mut(index).unwrap();
                             run.status = "Blocked".into();
                             run.ended_at = Some(opencode::timestamp());
                             run.logs.push(format!("[automation] {error}"));
-                            self.store.mark_automation_attention(occurrence.automation_id, error);
-                            self.persist_if_changed(true);
-                            self.complete_research_run(id, cx);
-                            continue;
                         }
+                        self.store
+                            .mark_automation_attention(occurrence.automation_id, error.clone());
+                        self.persist_if_changed(true);
+                        self.complete_research_run(id, cx);
+                        continue;
                     }
                     if first_start {
                         self.automation_started
@@ -1741,8 +2739,16 @@ impl TaskApp {
                     }
                 }
             }
-            let run = &self.store.runs[index];
-            let request = opencode::Request { agent: None, browser_executable: (run.agent == "Codex" && run.research_kind == Some(crate::research::ResearchKind::Collect) && !self.store.owning_research_goal(run.task_id).is_some_and(|goal| self.store.research_browser_handed_off(goal))).then(|| PathBuf::from(&self.store.research_config.ego_path)),
+            let run = self.store.runs()[index].clone();
+            let request = opencode::Request {
+                agent: None,
+                browser_executable: (run.agent == "Codex"
+                    && run.research_kind == Some(crate::research::ResearchKind::Collect)
+                    && !self
+                        .store
+                        .owning_research_goal(run.task_id)
+                        .is_some_and(|goal| self.store.research_browser_handed_off(goal)))
+                .then(|| PathBuf::from(&self.store.research_config.ego_path)),
                 files,
                 session_id: run.session_id.clone(),
                 executable: PathBuf::from(self.store.agent_path(&run.agent)),
@@ -1751,16 +2757,16 @@ impl TaskApp {
                 prompt: run.prompt.clone(),
                 title: run.task_title.clone(),
             };
-            self.store.runs[index].status = "Running".into();
-            self.store.runs[index].started_at = opencode::timestamp();
+            self.store.run_at_mut(index).unwrap().status = "Running".into();
+            self.store.run_at_mut(index).unwrap().started_at = opencode::timestamp();
             self.persist_if_changed(true);
             if !self.storage_error.is_empty() {
-                self.store.runs[index].status = "Queued".into();
-                self.store.runs[index].started_at.clear();
+                self.store.run_at_mut(index).unwrap().status = "Queued".into();
+                self.store.run_at_mut(index).unwrap().started_at.clear();
                 self.queued_runs.insert(0, (id, request.files));
                 break;
             }
-            let started = match self.store.runs[index].agent.as_str() {
+            let started = match self.store.runs()[index].agent.as_str() {
                 "Codex" => crate::codex::start(request),
                 "OpenCode" => opencode::start(request),
                 agent => Err(format!("Unsupported agent: {agent}")),
@@ -1781,10 +2787,12 @@ impl TaskApp {
                     );
                 }
                 Err(e) => {
-                    let run = &mut self.store.runs[index];
-                    run.status = "Failed".into();
-                    run.ended_at = Some(opencode::timestamp());
-                    run.logs.push(format!("[error] {e}"));
+                    {
+                        let mut run = self.store.run_at_mut(index).unwrap();
+                        run.status = "Failed".into();
+                        run.ended_at = Some(opencode::timestamp());
+                        run.logs.push(format!("[error] {e}"));
+                    }
                     self.error = e;
                     self.complete_research_run(id, cx);
                 }
@@ -1798,13 +2806,13 @@ impl TaskApp {
         }
         if let Some(active) = self.active_runs.iter().find(|a| a.id == id) {
             active.handle.cancel();
-            if let Some(run) = self.store.runs.iter_mut().find(|r| r.id == id) {
+            if let Some(mut run) = self.store.run_mut(id) {
                 run.status = "Cancelling".into();
                 run.logs.push("[run] Cancellation requested".into());
             }
         } else if let Some(index) = self.queued_runs.iter().position(|(run, _)| *run == id) {
             self.queued_runs.remove(index);
-            if let Some(run) = self.store.runs.iter_mut().find(|r| r.id == id) {
+            if let Some(mut run) = self.store.run_mut(id) {
                 run.status = "Cancelled".into();
                 run.ended_at = Some(opencode::timestamp());
             }
@@ -1839,12 +2847,20 @@ impl TaskApp {
         .detach();
     }
     pub fn poll_runtime(&mut self, cx: &mut Context<Self>) -> bool {
-        if self.startup.workspace_pending.is_some() { cx.notify(); }
+        if self.startup.workspace_pending.is_some() {
+            cx.notify();
+        }
         self.poll_startup(cx);
+        self.poll_dispatch_admissions(cx);
         self.enforce_active_run_deadlines(Self::automation_now(), cx);
         self.poll_research_io(cx);
+        self.poll_material_jobs(cx);
         self.poll_recovery(cx);
-        if let Some(result) = self.codex_discovery.as_ref().and_then(|rx| rx.try_recv().ok()) {
+        if let Some(result) = self
+            .codex_discovery
+            .as_ref()
+            .and_then(|rx| rx.try_recv().ok())
+        {
             self.codex_discovery = None;
             match result {
                 Ok(result) => {
@@ -1852,7 +2868,10 @@ impl TaskApp {
                     self.codex_models = result.models;
                     self.codex_status = result.status;
                 }
-                Err(error) => { self.codex_status = error; self.codex_models.clear(); }
+                Err(error) => {
+                    self.codex_status = error;
+                    self.codex_models.clear();
+                }
             }
             cx.notify();
         }
@@ -1861,7 +2880,8 @@ impl TaskApp {
             self.discovery = None;
             match result {
                 Ok((version, models)) => {
-                    self.opencode_version = Some((executable.to_string_lossy().into_owned(), version));
+                    self.opencode_version =
+                        Some((executable.to_string_lossy().into_owned(), version));
                     self.connection_status = format!("{} local models available", models.len());
                     self.available_models = models;
                     self.error.clear();
@@ -1884,10 +2904,11 @@ impl TaskApp {
                 _ => None,
             }) {
                 active.handle.cancel();
-                self.toast = format!("Browser paused; research will continue with evidence gaps. {message}");
+                self.toast =
+                    format!("Browser paused; research will continue with evidence gaps. {message}");
             }
-            if let Some(run) = self.store.runs.iter_mut().find(|r| r.id == active.id) {
-                if record_events(run, &mut active.had_error, events) {
+            if let Some(mut run) = self.store.run_mut(active.id) {
+                if record_events(&mut *run, &mut active.had_error, events) {
                     completed.push(active.id);
                 }
             }
@@ -1902,8 +2923,12 @@ impl TaskApp {
         if !self.automation_timer_armed {
             self.poll_automations(cx);
         }
-        if self.queued_runs.iter().any(|(id, _)| self.store.runs.iter()
-            .any(|run| run.id == *id && run.auto_retry_attempt > 0)) {
+        if self.queued_runs.iter().any(|(id, _)| {
+            self.store
+                .runs()
+                .iter()
+                .any(|run| run.id == *id && run.auto_retry_attempt > 0)
+        }) {
             cx.notify();
         }
         if changed {
@@ -1935,8 +2960,8 @@ impl TaskApp {
         self.research_sequences.clear();
         for mut active in std::mem::take(&mut self.active_runs) {
             let (stopped, events) = active.handle.stop_and_wait(Duration::from_secs(5));
-            if let Some(run) = self.store.runs.iter_mut().find(|r| r.id == active.id) {
-                let finished = record_events(run, &mut active.had_error, events);
+            if let Some(mut run) = self.store.run_mut(active.id) {
+                let finished = record_events(&mut *run, &mut active.had_error, events);
                 if !stopped {
                     run.logs.push(
                         "[warning] Process cleanup timed out after requesting termination.".into(),
@@ -1948,10 +2973,10 @@ impl TaskApp {
                     run.logs.push("[interrupted] Application closed before a final result was received; process termination was requested.".into());
                 }
             }
-            self.finalize_research_run(active.id);
+            self.finalize_research_run_without_ui(active.id);
         }
         for (id, _) in self.queued_runs.drain(..) {
-            if let Some(run) = self.store.runs.iter_mut().find(|r| r.id == id) {
+            if let Some(mut run) = self.store.run_mut(id) {
                 run.status = "Interrupted".into();
                 run.ended_at = Some(opencode::timestamp());
             }
@@ -1979,7 +3004,8 @@ fn record_events(run: &mut AgentRun, had_error: &mut bool, events: Vec<opencode:
             opencode::Event::Session(id) => run.session_id = Some(id),
             opencode::Event::BrowserBlocked(message) => {
                 run.status = "Blocked".into();
-                run.logs.push(format!("[browser] Access paused · {message}"));
+                run.logs
+                    .push(format!("[browser] Access paused · {message}"));
                 run.logs.push(crate::research::BROWSER_HANDOFF_LOG.into());
             }
             opencode::Event::Finished {
@@ -2004,9 +3030,18 @@ fn record_events(run: &mut AgentRun, had_error: &mut bool, events: Vec<opencode:
                 }
                 run.logs.push(format!(
                     "[process] {} · exit {}",
-                    if run.status == "Succeeded" { "Exited normally (process only)" }
-                    else if run.status == "Blocked" && run.logs.iter().any(|line| line == crate::research::BROWSER_HANDOFF_LOG) { "Stopped for browser handoff (research result pending)" }
-                    else { &run.status },
+                    if run.status == "Succeeded" {
+                        "Exited normally (process only)"
+                    } else if run.status == "Blocked"
+                        && run
+                            .logs
+                            .iter()
+                            .any(|line| line == crate::research::BROWSER_HANDOFF_LOG)
+                    {
+                        "Stopped for browser handoff (research result pending)"
+                    } else {
+                        &run.status
+                    },
                     code.map(|c| c.to_string())
                         .unwrap_or("signal / unavailable".into())
                 ));
@@ -2042,23 +3077,111 @@ pub fn valid_date(s: &str) -> bool {
 mod tests {
     use super::valid_date;
     #[test]
+    fn clear_legacy_preserves_task_comment_and_material_entries_in_order() {
+        let directory = std::env::temp_dir().join(format!(
+            "t13-undo-mixed-{}-{}",
+            std::process::id(),
+            std::time::SystemTime::now()
+                .duration_since(std::time::UNIX_EPOCH)
+                .unwrap()
+                .as_nanos()
+        ));
+        let _ = std::fs::remove_dir_all(&directory);
+        std::fs::create_dir_all(&directory).unwrap();
+        let mut store = crate::domain::Store::empty();
+        store.projects[0].directory = directory.to_string_lossy().into_owned();
+        let task = store
+            .create_task("Mixed task", 1, crate::domain::Stage::Planned, None)
+            .unwrap();
+        let input = crate::scoped_edit::TaskEditInput {
+            id: task,
+            title: "Edited task".into(),
+            description: String::new(),
+            labels: vec![],
+            due_date: String::new(),
+            cycle: None,
+            priority: crate::domain::Priority::None,
+            bucket: String::new(),
+            project: Some(1),
+            stage: Some(crate::domain::Stage::Planned),
+            stage_intent: crate::scoped_edit::StageIntent::Editor,
+        };
+        let plan = crate::scoped_edit::prepare_task_edit(&store, &input).unwrap();
+        let task_edit = crate::scoped_edit::apply_task_edit(&mut store, &plan).unwrap();
+        let comment_plan =
+            crate::scoped_edit::prepare_comment_edit(&store, task, "Comment").unwrap();
+        let comment = crate::scoped_edit::apply_comment_edit(&mut store, &comment_plan).unwrap();
+        let attachment = crate::attachments::import_bytes(
+            &directory,
+            "material.pdf",
+            b"%PDF-1.4\nmixed undo fixture\n",
+        )
+        .unwrap();
+        let imported =
+            crate::scoped_material::imported_copy(&directory, task, &attachment).unwrap();
+        let material_plan = crate::scoped_material::prepare_material_add(
+            &store,
+            &directory,
+            task,
+            vec![attachment.clone()],
+            vec![imported],
+        )
+        .unwrap();
+        let material =
+            crate::scoped_material::apply_material_add(&mut store, &directory, &material_plan)
+                .unwrap();
+
+        let mut stack = super::UndoStack::default();
+        stack.push_legacy(store.clone());
+        stack.push_task_edit(task_edit.undo);
+        stack.push_comment(comment.undo);
+        stack.push_material(crate::scoped_material::MaterialUndo::Add(material.undo));
+        assert!(super::undo_entry_references_reserved(
+            stack.peek().unwrap(),
+            &[attachment.relative_path.clone()],
+        ));
+        assert_eq!(stack.len(), 4);
+        assert_eq!(stack.clear_legacy(), 1);
+        assert_eq!(stack.len(), 3);
+        assert!(matches!(stack.peek(), Some(super::UndoRecord::Material(_))));
+        assert!(
+            stack
+                .material_reference_paths()
+                .iter()
+                .any(|path| path == &attachment.relative_path)
+        );
+        assert!(matches!(stack.pop(), Some(super::UndoRecord::Material(_))));
+        assert!(matches!(stack.pop(), Some(super::UndoRecord::Comment(_))));
+        assert!(matches!(stack.pop(), Some(super::UndoRecord::TaskEdit(_))));
+        assert!(stack.pop().is_none());
+        assert!(stack.is_empty());
+        let _ = std::fs::remove_dir_all(directory);
+    }
+
+    #[test]
     fn requested_cancellation_is_not_a_retryable_failure() {
         let mut store = crate::domain::Store::mock();
         store.simulate_run(1).unwrap();
-        let run = &mut store.runs[0];
+        let mut run = store.run_at_mut(0).unwrap();
         run.status = "Cancelling".into();
-        super::record_events(run, &mut false, vec![crate::opencode::Event::Finished {
-            code: Some(1), cancelled: false, error: None,
-        }]);
+        super::record_events(
+            &mut *run,
+            &mut false,
+            vec![crate::opencode::Event::Finished {
+                code: Some(1),
+                cancelled: false,
+                error: None,
+            }],
+        );
         assert_eq!(run.status, "Cancelled");
     }
     #[test]
     fn browser_handoff_stays_blocked_after_process_cleanup() {
         let mut store = crate::domain::Store::mock();
         store.simulate_run(1).unwrap();
-        let run = &mut store.runs[0];
+        let mut run = store.run_at_mut(0).unwrap();
         assert!(super::record_events(
-            run,
+            &mut *run,
             &mut false,
             vec![
                 crate::opencode::Event::BrowserBlocked("User confirmation required".into()),
@@ -2080,10 +3203,10 @@ mod tests {
     fn shutdown_tail_events_preserve_session_output_and_final_status() {
         let mut store = crate::domain::Store::mock();
         store.simulate_run(1).unwrap();
-        let run = &mut store.runs[0];
+        let mut run = store.run_at_mut(0).unwrap();
         run.status = "Running".into();
         assert!(super::record_events(
-            run,
+            &mut *run,
             &mut false,
             vec![
                 crate::opencode::Event::Session("session".into()),
@@ -2098,7 +3221,11 @@ mod tests {
         assert_eq!(run.status, "Succeeded");
         assert_eq!(run.session_id.as_deref(), Some("session"));
         assert!(run.logs.iter().any(|s| s == "last output"));
-        assert!(run.logs.iter().any(|s| s == "[process] Exited normally (process only) · exit 0"));
+        assert!(
+            run.logs
+                .iter()
+                .any(|s| s == "[process] Exited normally (process only) · exit 0")
+        );
         assert!(!run.logs.iter().any(|s| s.starts_with("[run] Succeeded")));
     }
     #[test]

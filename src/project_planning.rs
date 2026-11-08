@@ -80,7 +80,7 @@ impl Store {
     }
 
     pub fn has_project_plan(&self, project: u64) -> bool {
-        self.runs
+        self.runs()
             .iter()
             .any(|r| r.project_plan == Some(project) && r.status == "Succeeded")
             || self.tasks.iter().any(|t| {
@@ -160,10 +160,11 @@ impl Store {
         }
         Ok(AgentRun {
         automation_occurrence_id: None,
+            planning_owner: None,
             deadline_at: None,
             auto_retry_attempt: 0,
             retry_not_before: None,
-            id: self.runs.iter().map(|r| r.id).max().unwrap_or(0) + 1,
+            id: self.runs().iter().map(|r| r.id).max().unwrap_or(0) + 1,
             task_id: 0,
             project_plan: Some(project.id),
             task_title: format!("Project goals · {}", project.name),
@@ -306,7 +307,7 @@ mod tests {
         let mut store = workspace();
         let ids = store.apply_project_plan(1, PLAN).unwrap();
         assert_eq!(ids.len(), 2);
-        assert!(store.runs.is_empty());
+        assert!(store.runs().is_empty());
         for id in ids {
             let task = store.task(id).unwrap();
             assert_eq!(task.stage, Stage::Backlog);
@@ -346,7 +347,7 @@ mod tests {
             store.project_plan_signature(1).unwrap()
         );
         assert!(store.tasks.is_empty());
-        assert!(store.runs.is_empty());
+        assert!(store.runs().is_empty());
         store.research_config.models[0].clear();
         assert!(store.prepare_project_plan(1).is_err());
         store.research_config.models[0] = "test/project-planner".into();
@@ -380,7 +381,7 @@ mod tests {
             assert!(store.prepare_project_plan(1).is_err());
         }
         assert!(store.tasks.is_empty());
-        assert!(store.runs.is_empty());
+        assert!(store.runs().is_empty());
     }
 
     #[test]
@@ -404,9 +405,9 @@ mod tests {
         let mut store = workspace();
         let mut run = store.prepare_project_plan(1).unwrap();
         run.status = "Failed".into();
-        store.runs.push(run);
+        store.push_run(run);
         assert!(!store.has_project_plan(1));
-        store.runs[0].status = "Succeeded".into();
+        store.run_at_mut(0).unwrap().status = "Succeeded".into();
         assert!(store.has_project_plan(1));
         assert!(store.prepare_project_plan(1).is_err());
         // Finalization applies the successful run, so it must not reject that run itself.

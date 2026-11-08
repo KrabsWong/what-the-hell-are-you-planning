@@ -111,7 +111,7 @@ pub fn run() {
             a.active_runs.len() == 3
                 && !a.queued_runs.is_empty()
                 && a.store
-                    .runs
+                    .runs()
                     .iter()
                     .filter(|r| r.logs.iter().any(|l| l.contains("CONCURRENCY_LIVE_MARKER")))
                     .count()
@@ -133,18 +133,18 @@ pub fn run() {
             "{}",
             a.error
         );
-        assert_eq!(a.store.runs.len(), 12);
+        assert_eq!(a.store.runs().len(), 12);
         assert!(
-            a.store.runs.iter().all(|r| r.status == "Succeeded"),
+            a.store.runs().iter().all(|r| r.status == "Succeeded"),
             "{:?}",
             a.store
-                .runs
+                .runs()
                 .iter()
                 .map(|r| (&r.status, &r.logs))
                 .collect::<Vec<_>>()
         );
         let dirs: std::collections::BTreeSet<_> =
-            a.store.runs.iter().map(|r| r.directory.clone()).collect();
+            a.store.runs().iter().map(|r| r.directory.clone()).collect();
         assert_eq!(dirs.len(), 4, "Each goal needs its own work directory");
         for goal in &goals {
             assert!(a.store.next_research_task(*goal).unwrap().is_none());
@@ -195,7 +195,7 @@ pub fn run() {
             a.active_runs.len() == 2
                 && a.active_runs.iter().all(|active| {
                     a.store
-                        .runs
+                        .runs()
                         .iter()
                         .find(|r| r.id == active.id)
                         .unwrap()
@@ -209,7 +209,7 @@ pub fn run() {
     cx.update_window(handle, |_, _, cx| {
         app.update(cx, |a, cx| {
             let task = a.store.research_children(cancel)[0];
-            let id = a.store.runs.iter().find(|r| r.task_id == task).unwrap().id;
+            let id = a.store.runs().iter().find(|r| r.task_id == task).unwrap().id;
             a.cancel_run_id(id, cx);
         })
     })
@@ -220,7 +220,7 @@ pub fn run() {
         let children = a.store.research_children(cancel);
         let runs: Vec<_> = a
             .store
-            .runs
+            .runs()
             .iter()
             .filter(|r| children.contains(&r.task_id))
             .collect();
@@ -246,7 +246,7 @@ pub fn run() {
     let (session, task) = cx
         .update_window(handle, |_, _, cx| {
             let a = app.read(cx);
-            let r = a.store.runs.last().unwrap();
+            let r = a.store.runs().last().unwrap();
             assert_eq!(r.status, "Failed");
             std::fs::write(Path::new(&r.directory).join("recovered-fail"), "recover").unwrap();
             (
@@ -264,7 +264,7 @@ pub fn run() {
     idle(&mut cx, handle, &app);
     cx.update_window(handle, |_, _, cx| {
         let a = app.read(cx);
-        let runs: Vec<_> = a.store.runs.iter().filter(|r| r.task_id == task).collect();
+        let runs: Vec<_> = a.store.runs().iter().filter(|r| r.task_id == task).collect();
         assert_eq!(runs.len(), 5); // Initial failure, three retries, then explicit recovery.
         assert_eq!(runs[4].status, "Succeeded");
         assert_eq!(runs[4].session_id.as_deref(), Some(session.as_str()));
@@ -367,14 +367,14 @@ print(json.dumps({'type':'text','part':{'text':json.dumps({'status':'complete','
         let app = app.unwrap();
         let handle: AnyWindowHandle = window.into();
         cx.update_window(handle, |_, _, cx| app.update(cx, |a, cx| a.start_todo_batch(1, cx))).unwrap();
-        let ready = |a: &TaskApp| a.active_runs.iter().filter(|active| a.store.runs.iter().any(|r| r.id == active.id && r.logs.iter().any(|l| l.contains("LIMIT_GATE_READY")))).count();
+        let ready = |a: &TaskApp| a.active_runs.iter().filter(|active| a.store.runs().iter().any(|r| r.id == active.id && r.logs.iter().any(|l| l.contains("LIMIT_GATE_READY")))).count();
         wait_limit(&mut cx, handle, &app, limit, |a| ready(a) == limit);
         cx.update_window(handle, |_, _, cx| {
             app.update(cx, |a, cx| {
                 a.set_execution_concurrency(1, cx);
                 a.poll_runtime(cx);
                 assert_eq!(a.active_runs.len(), limit, "Lowering the limit must not cancel active work");
-                let running: Vec<_> = a.store.runs.iter().filter(|r| r.status == "Running").collect();
+                let running: Vec<_> = a.store.runs().iter().filter(|r| r.status == "Running").collect();
                 for run in running.iter().take(limit - 1) {
                     std::fs::write(Path::new(&run.directory).join("release"), "").unwrap();
                 }
@@ -385,8 +385,8 @@ print(json.dumps({'type':'text','part':{'text':json.dumps({'status':'complete','
             app.update(cx, |a, cx| {
                 for _ in 0..3 { a.poll_runtime(cx); }
                 assert_eq!(a.active_runs.len(), 1);
-                assert_eq!(a.store.runs.iter().filter(|r| !r.started_at.is_empty()).count(), limit, "No replacement may start while the reduced limit is full");
-                assert!(a.store.runs.iter().all(|r| r.status != "Cancelled" && r.status != "Cancelling"));
+                assert_eq!(a.store.runs().iter().filter(|r| !r.started_at.is_empty()).count(), limit, "No replacement may start while the reduced limit is full");
+                assert!(a.store.runs().iter().all(|r| r.status != "Cancelled" && r.status != "Cancelling"));
                 a.set_execution_concurrency(limit, cx);
             });
         }).unwrap();
@@ -394,7 +394,7 @@ print(json.dumps({'type':'text','part':{'text':json.dumps({'status':'complete','
         std::fs::write(root.join("release-all"), "").unwrap();
         wait_limit(&mut cx, handle, &app, limit, |a| a.active_runs.is_empty() && a.queued_runs.is_empty());
         cx.update_window(handle, |_, w, cx| {
-            assert!(app.read(cx).store.runs.iter().all(|r| r.status == "Succeeded"));
+            assert!(app.read(cx).store.runs().iter().all(|r| r.status == "Succeeded"));
             w.remove_window();
         }).unwrap();
         let mut live = std::collections::BTreeSet::new();
@@ -465,8 +465,17 @@ fn wait(
         let done = cx
             .update_window(h, |_, _, cx| {
                 a.update(cx, |a, cx| {
-                    for run in &mut a.store.runs {
-                        if run.status == "Queued" && run.auto_retry_attempt > 0 { run.retry_not_before = Some(0); }
+                    let ids: Vec<u64> = a
+                        .store
+                        .runs()
+                        .iter()
+                        .filter(|run| run.status == "Queued" && run.auto_retry_attempt > 0)
+                        .map(|run| run.id)
+                        .collect();
+                    for id in ids {
+                        if let Some(mut run) = a.store.run_mut(id) {
+                            run.retry_not_before = Some(0);
+                        }
                     }
                     a.poll_runtime(cx);
                     assert!(a.active_runs.len() <= 3, "Concurrency limit exceeded");

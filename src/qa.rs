@@ -75,7 +75,7 @@ pub fn run_research_live() {
                     let a = app.read(cx);
                     let summary = a
                         .store
-                        .runs
+                        .runs()
                         .last()
                         .map(|r| {
                             format!(
@@ -127,7 +127,7 @@ pub fn run_research_live() {
         app.update(cx, |a, cx| {
             a.scope = crate::app::Scope::Runs;
             a.selected = None;
-            a.selected_run = a.store.runs.last().map(|r| r.id);
+            a.selected_run = a.store.runs().last().map(|r| r.id);
             a.show_run_result = true;
             cx.notify();
         });

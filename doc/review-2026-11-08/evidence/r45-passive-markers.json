@@ -1,0 +1,22 @@
+{
+  "idle_start": "23878\t1772\t1769\t1770\t1269",
+  "wall_epoch": 1794161730.3508842,
+  "idle_end": "38339\t3479\t3476\t3477\t2976",
+  "idle_end_wall": 1794161744.893885,
+  "idle_delta": [
+    14461,
+    1707,
+    1707,
+    1707,
+    1707
+  ],
+  "after_down": "56420\t5637\t5634\t5635\t5134",
+  "after_up": "83608\t8884\t8881\t8882\t8381",
+  "idle_renders_per_second": 118.04162920959823,
+  "limitations": [
+    "Passive optimized QA build of frozen baseline, not latest implementation.",
+    "No app input or CUA snapshots were sent during the measured idle interval; other desktop activity and coding builds were not suspended.",
+    "Counts prove render invocations, not elapsed frame costs or causation.",
+    "Scroll endpoint snapshots are not exact input-event timing."
+  ]
+}

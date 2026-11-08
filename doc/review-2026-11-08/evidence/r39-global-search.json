@@ -1,0 +1,7 @@
+{
+  "binary": ".local/opencode-dispatch/root-r38/planning-qa",
+  "sha256": "956bfe6c825b34bb78e4a734367ea2403332fdfcc6807ca9137850305d1e832c",
+  "command": "--qa-global-search",
+  "exit_code": 0,
+  "elapsed_seconds": 23.19
+}

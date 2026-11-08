@@ -111,7 +111,7 @@ pub fn run() {
             .goal_ids
             .is_empty()
     );
-    assert_eq!(snapshot(&mut cx, &app).runs[0].status, "Failed");
+    assert_eq!(snapshot(&mut cx, &app).runs()[0].status, "Failed");
     cx.update_window(handle, |_, w, cx| {
         app.update(cx, |a, cx| a.navigate(Scope::Research, w, cx));
         w.render_frame(cx);
@@ -121,8 +121,8 @@ pub fn run() {
     .unwrap();
     wait(&mut cx, handle, &app);
     let repaired = snapshot(&mut cx, &app);
-    assert_eq!(repaired.runs.iter().filter(|r| r.logs.iter().any(|l| l.starts_with("[plan repair]"))).count(), 1);
-    assert!(repaired.runs.iter().any(|r| r.status == "Failed" && r.logs.iter().any(|l| l.contains("missing field `kind`"))));
+    assert_eq!(repaired.runs().iter().filter(|r| r.logs.iter().any(|l| l.starts_with("[plan repair]"))).count(), 1);
+    assert!(repaired.runs().iter().any(|r| r.status == "Failed" && r.logs.iter().any(|l| l.contains("missing field `kind`"))));
     let goals = snapshot(&mut cx, &app).research_requests[0]
         .goal_ids
         .clone();
@@ -154,12 +154,12 @@ pub fn run() {
             assert!(app.read(cx).store.prepare_run(*child).is_err());
         }
         assert_eq!(app.read(cx).store.task(goal).unwrap().stage, Stage::Backlog);
-        let runs_before_drag = app.read(cx).store.runs.len();
+        let runs_before_drag = app.read(cx).store.runs().len();
         w.drag_to(format!("card-{goal}"), "column-todo", cx);
         assert!(app.read(cx).store.goal_execution_approved(goal));
         assert!(app.read(cx).store.research_pending_approval(other));
         assert_eq!(
-            app.read(cx).store.runs.len(),
+            app.read(cx).store.runs().len(),
             runs_before_drag,
             "Dragging must not execute"
         );
@@ -184,14 +184,14 @@ pub fn run() {
     );
     assert!(
         snapshot(&mut cx, &app)
-            .runs
+            .runs()
             .iter()
             .filter(|r| r.project_plan.is_none())
             .all(|r| snapshot(&mut cx, &app).owning_research_goal(r.task_id) == Some(goal))
     );
     let report = *children.last().unwrap();
     assert!(snapshot(&mut cx, &app).research_result(report).is_some());
-    let before = snapshot(&mut cx, &app).runs.len();
+    let before = snapshot(&mut cx, &app).runs().len();
     cx.update_window(handle, |_, w, cx| {
         app.update(cx, |a, cx| {
             a.open_task(goal, w, cx);
@@ -212,7 +212,7 @@ pub fn run() {
             a.persist_if_changed(true);
             assert_eq!(a.store.task(goal).unwrap().stage, Stage::Backlog);
             assert!(a.store.prepare_run(children[2]).is_err());
-            assert_eq!(a.store.runs.len(), before);
+            assert_eq!(a.store.runs().len(), before);
             a.change_stage(goal, Stage::Planned, cx);
             a.start_goal_batch(goal, cx);
             let _ = w;
@@ -225,7 +225,7 @@ pub fn run() {
         Stage::Done
     );
     assert_eq!(
-        snapshot(&mut cx, &app).runs.len(),
+        snapshot(&mut cx, &app).runs().len(),
         before + 2,
         "Only changed analysis and its report should rerun"
     );
@@ -263,7 +263,7 @@ pub fn run() {
     let blocked = snapshot(&mut cx, &app);
     assert!(blocked.research_result(retry_steps[0]).is_none());
     assert!(blocked.research_result(retry_steps[1]).is_some());
-    assert!(!blocked.runs.iter().any(|r| r.task_id == retry_steps[2]));
+    assert!(!blocked.runs().iter().any(|r| r.task_id == retry_steps[2]));
     assert_eq!(blocked.task(retry_goal).unwrap().stage, Stage::InProgress);
     cx.update_window(handle, |_, _, cx| {
         app.update(cx, |a, cx| {
@@ -279,7 +279,7 @@ pub fn run() {
     assert_eq!(resumed.task(retry_goal).unwrap().stage, Stage::Done);
     assert_eq!(
         resumed
-            .runs
+            .runs()
             .iter()
             .filter(|r| r.task_id == retry_steps[1])
             .count(),

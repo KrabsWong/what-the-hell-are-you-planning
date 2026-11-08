@@ -1,0 +1,1178 @@
+//! T19 ordinary keyboard/visual matrix. Offline only; native acceptance is root-owned.
+
+use crate::{
+    app::{Scope, TaskApp},
+    appearance::Appearance,
+    domain::Store,
+    persistence::Storage,
+};
+use gpui_kit::{test::TestWindowExt, *};
+use std::{path::Path, sync::Arc, time::Duration};
+
+pub fn run() {
+    let root = std::env::current_dir()
+        .unwrap()
+        .join(format!(".local/t19-qa/{}", std::process::id()));
+    let _ = std::fs::remove_dir_all(&root);
+    std::fs::create_dir_all(&root).unwrap();
+    visual_matrix(&root);
+    settings_retained_invalidation(&root);
+    settings_scroll_probe(&root);
+    keyboard_matrix(&root);
+    automation_result_keyboard(&root);
+    global_search_keyboard(&root);
+    task_form_dirty_keyboard(&root);
+    println!("T19 QA passed · {}", root.display());
+}
+
+fn fixture(directory: &Path) -> Store {
+    let mut store = Store::mock();
+    store.projects[0].directory = directory.to_string_lossy().into();
+    store.projects[1].directory = directory.to_string_lossy().into();
+    store
+}
+
+fn search_fixture(directory: &Path) -> Store {
+    let mut store = fixture(directory);
+    store
+        .create_research_goal(
+            "Polish market research".into(),
+            "Track the Polish market signal.".into(),
+            1,
+        )
+        .unwrap();
+    store
+}
+
+fn visual_matrix(root: &Path) {
+    for (width, height) in [(1440., 920.), (1000., 680.)] {
+        for mode in [Appearance::Light, Appearance::Dark] {
+            for surface in ["project-rename", "topic-move", "directory", "new-project"] {
+                visual_surface(root, mode, width, height, surface);
+            }
+            visual_search(root, mode, width, height);
+            visual_dirty_exit(root, mode, width, height);
+            visual_automation_settings(root, mode, width, height);
+            visual_automation_result(root, mode, width, height);
+            visual_settings(root, mode, width, height);
+        }
+    }
+}
+
+fn visual_surface(root: &Path, mode: Appearance, width: f32, height: f32, surface: &str) {
+    let directory = root.join(format!("{surface}-{mode:?}-{width}"));
+    std::fs::create_dir_all(&directory).unwrap();
+    let mut store = fixture(&directory);
+    store.appearance = mode;
+    if surface == "project-rename" {
+        store.projects[0].name =
+            "A deliberately long English and 中文 project name used to verify readable disclosure"
+                .into();
+    }
+    let path = directory.join("workspace.sqlite3");
+    Storage::new(path.clone()).save(&store).unwrap();
+    let (mut cx, handle, app) = with_app(store, &path, width, height, |app, w, cx| {
+        app.scope = Scope::All;
+        match surface {
+            "project-rename" => app.open_project_rename(1, w, cx),
+            "topic-move" => app.request_topic_move(1, w, cx),
+            "directory" => app.open_directory(1, w, cx),
+            "new-project" => {
+                app.remember_dialog_opener(w, cx);
+                let input = cx.new(|cx| {
+                    gpui_kit::component::input::InputState::new(w, cx).placeholder("Project name")
+                });
+                input.update(cx, |state, cx| state.focus(w, cx));
+                app.new_project = Some(input);
+            }
+            _ => unreachable!(),
+        }
+        cx.notify();
+    });
+    cx.update_window(handle, |_, w, cx| {
+        w.render_frame(cx);
+        if surface == "directory" || surface == "new-project" {
+            app.update(cx, |app, cx| {
+                app.error = if surface == "directory" {
+                    "Enter an existing absolute folder path.".into()
+                } else {
+                    "A project name is required".into()
+                };
+                cx.notify();
+            });
+            w.render_frame(cx);
+        }
+        match surface {
+            "project-rename" => {
+                w.find("rename-project-name");
+                assert!(w.find("cancel-project-rename").visible());
+            }
+            "topic-move" => {
+                assert!(w.find("cancel-topic-move").visible());
+            }
+            "directory" => {
+                w.find("directory-path");
+                assert!(w.find("cancel-directory").visible());
+            }
+            "new-project" => {
+                w.find("project-name");
+                assert!(w.find("cancel-project").visible());
+            }
+            _ => unreachable!(),
+        }
+        let _ = app;
+    })
+    .unwrap();
+    screenshot(&mut cx, handle, &directory, &format!("{surface}.png"));
+    cx.update_window(handle, |_, w, _| w.remove_window())
+        .unwrap();
+}
+
+fn visual_search(root: &Path, mode: Appearance, width: f32, height: f32) {
+    let directory = root.join(format!("search-{mode:?}-{width}"));
+    std::fs::create_dir_all(&directory).unwrap();
+    let mut store = fixture(&directory);
+    store.appearance = mode;
+    let path = directory.join("workspace.sqlite3");
+    Storage::new(path.clone()).save(&store).unwrap();
+    let (mut cx, handle, app) = with_app(store, &path, width, height, |app, w, cx| {
+        app.scope = Scope::All;
+        app.focus_search(w, cx);
+        cx.notify();
+    });
+    cx.update_window(handle, |_, w, cx| {
+        w.render_frame(cx);
+        assert!(w.find("global-search-input").focused() == Some(true));
+        w.click("global-search-input", cx);
+        w.input("Polish", cx);
+    })
+    .unwrap();
+    // Input subscriptions update search results after the window event returns.
+    cx.run_until_parked();
+    cx.update_window(handle, |_, w, cx| {
+        w.render_frame(cx);
+        assert_eq!(
+            app.read(cx).global_search.read(cx).value().as_ref(),
+            "Polish"
+        );
+        // Children also match their parent's title in the search context.
+        let targets: std::collections::BTreeSet<_> = app
+            .read(cx)
+            .global_search_ui
+            .hits
+            .iter()
+            .map(|hit| hit.target.id())
+            .collect();
+        assert_eq!(targets, [1, 2, 3, 4, 5].into_iter().collect());
+        assert!(
+            w.within("global-search-results")
+                .find("global-search-result-research-1")
+                .visible()
+        );
+    })
+    .unwrap();
+    screenshot(&mut cx, handle, &directory, "search.png");
+    cx.update_window(handle, |_, w, _| w.remove_window())
+        .unwrap();
+}
+
+fn visual_dirty_exit(root: &Path, mode: Appearance, width: f32, height: f32) {
+    let directory = root.join(format!("dirty-{mode:?}-{width}"));
+    std::fs::create_dir_all(&directory).unwrap();
+    let mut store = fixture(&directory);
+    store.appearance = mode;
+    let path = directory.join("workspace.sqlite3");
+    Storage::new(path.clone()).save(&store).unwrap();
+    let (mut cx, handle, app) = with_app(store, &path, width, height, |app, w, cx| {
+        app.scope = Scope::All;
+        app.open_task(1, w, cx);
+        app.begin_draft(1, w, cx);
+        let title = app.draft.as_ref().unwrap().title.clone();
+        title.update(cx, |state, cx| state.set_value("Dirty visual task", w, cx));
+        cx.notify();
+    });
+    cx.update_window(handle, |_, w, cx| {
+        w.render_frame(cx);
+        w.press("escape", cx);
+        w.render_frame(cx);
+        w.find("dirty-exit-stay");
+        let _ = app;
+    })
+    .unwrap();
+    screenshot(&mut cx, handle, &directory, "dirty-exit.png");
+    cx.update_window(handle, |_, w, _| w.remove_window())
+        .unwrap();
+}
+
+fn visual_automation_settings(root: &Path, mode: Appearance, width: f32, height: f32) {
+    let directory = root.join(format!("automation-settings-{mode:?}-{width}"));
+    std::fs::create_dir_all(&directory).unwrap();
+    let mut store = fixture(&directory);
+    store.appearance = mode;
+    let path = directory.join("workspace.sqlite3");
+    Storage::new(path.clone()).save(&store).unwrap();
+    let (mut cx, handle, app) = with_app(store, &path, width, height, |app, w, cx| {
+        app.scope = Scope::Automations;
+        app.start_automation_create(w, cx);
+        app.automation_ui.objective.update(cx, |state, cx| {
+            state.set_value("Visual automation settings keyboard check", w, cx)
+        });
+        assert!(app.save_automation_draft(cx));
+        let id = app.store.automations().last().unwrap().id;
+        app.open_automation(id, w, cx);
+        app.open_automation_settings(w, cx);
+        cx.notify();
+    });
+    cx.update_window(handle, |_, w, cx| {
+        w.render_frame(cx);
+        w.find("automation-settings-body");
+        assert!(w.find("close-automation-settings").visible());
+        let _ = app;
+    })
+    .unwrap();
+    screenshot(&mut cx, handle, &directory, "automation-settings.png");
+    cx.update_window(handle, |_, w, cx| {
+        w.press("escape", cx);
+        w.render_frame(cx);
+        assert!(!app.read(cx).automation_ui.settings_dialog);
+    })
+    .unwrap();
+    cx.update_window(handle, |_, w, _| w.remove_window())
+        .unwrap();
+}
+
+fn now_seconds() -> i64 {
+    chrono::Utc::now().timestamp()
+}
+
+fn automation_result_fixture(directory: &Path) -> (Store, u64, u64) {
+    let mut store = Store::empty();
+    store.projects[0].name = "T19 automation".into();
+    store.projects[0].directory = directory.to_string_lossy().into();
+    store.default_model = "qa/automation".into();
+    let template = crate::automation_execution::build_template(
+        "Track a public signal and cite the source.",
+        "A short sourced report.",
+    )
+    .unwrap();
+    let schedule = crate::automation_schedule::Schedule {
+        spec: crate::automation_schedule::ScheduleSpec::Interval { minutes: 10 },
+        timezone: "Asia/Shanghai".into(),
+    };
+    let automation = store
+        .create_automation_draft(
+            1,
+            crate::automation::AutomationShape::Research,
+            "T19 result reader".into(),
+            "Track a public signal and cite the source.".into(),
+            "A short sourced report.".into(),
+            schedule,
+            Default::default(),
+            Some(template),
+            now_seconds(),
+        )
+        .unwrap();
+    store
+        .approve_and_enable(automation, vec![], now_seconds())
+        .unwrap();
+    let occurrence = store
+        .request_manual_occurrence(automation, "t19-result", now_seconds())
+        .unwrap();
+    let mut report = String::from("# T19 automation report\n\n");
+    for index in 0..40 {
+        report.push_str(&format!(
+            "Paragraph {index} of the retained automation result.\n\n"
+        ));
+    }
+    let output = serde_json::json!({
+        "status": "complete",
+        "report": report,
+        "sources": [{"title": "T19 source", "url": "https://example.com/t19", "published_at": "unknown"}]
+    })
+    .to_string();
+    let run_id = store.runs().iter().map(|run| run.id).max().unwrap_or(0) + 1;
+    let run = crate::domain::AgentRun {
+        automation_occurrence_id: Some(occurrence.id),
+        planning_owner: None,
+        deadline_at: None,
+        auto_retry_attempt: 0,
+        retry_not_before: None,
+        project_plan: None,
+        id: run_id,
+        task_id: 0,
+        task_title: "T19 automation report".into(),
+        directory: directory.to_string_lossy().into(),
+        prompt: "T19".into(),
+        started_at: crate::opencode::timestamp(),
+        queued_at: String::new(),
+        workspace_source: None,
+        ended_at: Some(crate::opencode::timestamp()),
+        session_id: None,
+        exit_code: Some(0),
+        agent: "OpenCode".into(),
+        model: "qa/automation".into(),
+        stage: crate::domain::Stage::Done,
+        status: "Succeeded".into(),
+        logs: vec![],
+        output,
+        attachments: vec![],
+        research_kind: Some(crate::research::ResearchKind::Advise),
+        sources: vec![],
+        input_signature: String::new(),
+    };
+    store.push_run(run);
+    let occurrence_id = occurrence.id;
+    {
+        let mut stored = store.occurrence_mut(occurrence_id).unwrap();
+        stored.status = crate::automation::OccurrenceStatus::Succeeded;
+        stored.run_ids = vec![run_id];
+        stored.final_run_id = Some(run_id);
+    }
+    (store, automation, occurrence_id)
+}
+
+fn visual_automation_result(root: &Path, mode: Appearance, width: f32, height: f32) {
+    let directory = root.join(format!("automation-result-{mode:?}-{width}"));
+    std::fs::create_dir_all(&directory).unwrap();
+    let (mut store, automation, occurrence) = automation_result_fixture(&directory);
+    store.appearance = mode;
+    let path = directory.join("workspace.sqlite3");
+    Storage::new(path.clone()).save(&store).unwrap();
+    let (mut cx, handle, app) = with_app(store, &path, width, height, |app, w, cx| {
+        app.scope = Scope::Automations;
+        app.open_automation(automation, w, cx);
+        app.open_occurrence_result(occurrence, w, cx);
+        cx.notify();
+    });
+    cx.update_window(handle, |_, w, cx| {
+        w.render_frame(cx);
+        w.find("automation-result-body");
+        assert!(w.find("close-automation-result-footer").visible());
+        let _ = app;
+    })
+    .unwrap();
+    screenshot(&mut cx, handle, &directory, "automation-result.png");
+    cx.update_window(handle, |_, w, cx| {
+        w.press("escape", cx);
+        w.render_frame(cx);
+        assert!(app.read(cx).automation_ui.result_dialog.is_none());
+    })
+    .unwrap();
+    cx.update_window(handle, |_, w, _| w.remove_window())
+        .unwrap();
+}
+
+fn automation_result_keyboard(root: &Path) {
+    let directory = root.join("keyboard-automation-result");
+    std::fs::create_dir_all(&directory).unwrap();
+    let (store, automation, occurrence) = automation_result_fixture(&directory);
+    let path = directory.join("workspace.sqlite3");
+    Storage::new(path.clone()).save(&store).unwrap();
+    let (mut cx, handle, app) = with_app(store, &path, 1000., 680., |app, w, cx| {
+        app.scope = Scope::Automations;
+        app.open_automation(automation, w, cx);
+        cx.notify();
+    });
+    for activation in ["enter", "space", "escape"] {
+        let (opener, background) = cx
+            .update_window(handle, |_, w, cx| {
+                w.render_frame(cx);
+                let background = (app.read(cx).scope.clone(), app.read(cx).selected);
+                w.click(format!("open-occurrence-{occurrence}"), cx);
+                let opener = app
+                    .read(cx)
+                    .dialog_opener_focus
+                    .as_ref()
+                    .and_then(|focus| focus.upgrade())
+                    .expect("live result opener");
+                (opener, background)
+            })
+            .unwrap();
+        cx.run_until_parked();
+        cx.update_window(handle, |_, w, cx| {
+            w.render_frame(cx);
+            assert_eq!(app.read(cx).automation_ui.result_dialog, Some(occurrence));
+            assert_eq!(
+                w.focused(cx),
+                Some(app.read(cx).dialog_first_focus.clone()),
+                "result opens on Close"
+            );
+            assert_eq!(
+                w.find("close-automation-result-footer").focused(),
+                Some(true)
+            );
+        })
+        .unwrap();
+        if activation == "escape" {
+            for key in ["tab", "shift-tab"] {
+                for _ in 0..24 {
+                    cx.update_window(handle, |_, w, cx| {
+                        w.press(key, cx);
+                    })
+                    .unwrap();
+                    cx.run_until_parked();
+                    cx.update_window(handle, |_, w, cx| {
+                        w.render_frame(cx);
+                        assert!(
+                            focus_inside(w, "automation-result-focus"),
+                            "{key}: focus escaped result dialog"
+                        );
+                    })
+                    .unwrap();
+                }
+            }
+        }
+        cx.update_window(handle, |_, w, cx| w.press(activation, cx))
+            .unwrap();
+        cx.run_until_parked();
+        cx.update_window(handle, |_, w, cx| {
+            w.render_frame(cx);
+            assert!(
+                app.read(cx).automation_ui.result_dialog.is_none(),
+                "{activation}: result did not close"
+            );
+            assert_eq!(
+                w.focused(cx),
+                Some(opener),
+                "{activation}: opener not restored"
+            );
+            assert_eq!(
+                (app.read(cx).scope.clone(), app.read(cx).selected),
+                background,
+                "{activation}: background changed"
+            );
+        })
+        .unwrap();
+    }
+    cx.update_window(handle, |_, w, _| w.remove_window())
+        .unwrap();
+}
+
+fn visual_settings(root: &Path, mode: Appearance, width: f32, height: f32) {
+    let directory = root.join(format!("settings-{mode:?}-{width}"));
+    std::fs::create_dir_all(&directory).unwrap();
+    let mut store = fixture(&directory);
+    store.appearance = mode;
+    store.report_publishing.repository = "owner/visual-repo".into();
+    store.report_publishing.branch = "main".into();
+    let path = directory.join("workspace.sqlite3");
+    Storage::new(path.clone()).save(&store).unwrap();
+    let (mut cx, handle, app) = with_app(store, &path, width, height, |app, w, cx| {
+        app.scope = Scope::Settings;
+        app.settings_tab = crate::settings_views::SettingsTab::Models;
+        app.available_models = vec!["local/plan-model".into(), "local/collect-model".into()];
+        app.ego_status = "Runtime ready".into();
+        cx.notify();
+        let _ = w;
+    });
+    cx.update_window(handle, |_, w, cx| {
+        w.render_frame(cx);
+        w.find("research-global-model");
+        click_in_settings(w, cx, "research-global-model");
+        w.render_frame(cx);
+        w.find("research-global-model-options");
+        w.find("research-model-option-local/plan-model");
+    })
+    .unwrap();
+    screenshot(&mut cx, handle, &directory, "settings-models-picker.png");
+    cx.update_window(handle, |_, w, cx| {
+        w.press("escape", cx);
+        w.render_frame(cx);
+        assert!(
+            w.try_find("research-global-model-options").is_none(),
+            "Escape dismisses the settings model picker"
+        );
+        w.within("settings-tabs").click(0usize, cx);
+        w.render_frame(cx);
+        w.find("appearance-light");
+        w.find("concurrency-increase");
+    })
+    .unwrap();
+    screenshot(&mut cx, handle, &directory, "settings-general.png");
+    cx.update_window(handle, |_, w, cx| {
+        w.within("settings-tabs").click(2usize, cx);
+        w.render_frame(cx);
+        w.find("publishing-repository");
+        assert_eq!(
+            app.read(cx).publishing_inputs[0].read(cx).value().as_ref(),
+            "owner/visual-repo"
+        );
+        w.find("save-publishing");
+    })
+    .unwrap();
+    screenshot(&mut cx, handle, &directory, "settings-publishing.png");
+    cx.update_window(handle, |_, w, _| w.remove_window())
+        .unwrap();
+}
+
+fn settings_retained_invalidation(root: &Path) {
+    let directory = root.join("settings-retained-invalidation");
+    std::fs::create_dir_all(&directory).unwrap();
+    let store = fixture(&directory);
+    let path = directory.join("workspace.sqlite3");
+    Storage::new(path.clone()).save(&store).unwrap();
+    let (mut cx, handle, app) = with_app(store, &path, 1440., 920., |app, w, cx| {
+        app.scope = Scope::Settings;
+        app.settings_tab = crate::settings_views::SettingsTab::Models;
+        cx.notify();
+        let _ = w;
+    });
+    cx.update_window(handle, |_, w, cx| {
+        w.render_frame(cx);
+        w.find("research-global-model");
+
+        // Theme change reaches the retained page and selects the matching control.
+        app.update(cx, |app, cx| app.set_appearance(Appearance::Dark, w, cx));
+        w.render_frame(cx);
+        assert_eq!(app.read(cx).store.appearance, Appearance::Dark);
+        w.within("settings-tabs").click(0usize, cx);
+        w.render_frame(cx);
+        assert!(
+            gpui_kit::component::Theme::global(cx).is_dark(),
+            "dark theme must reach the retained page theme"
+        );
+
+        // External store update reaches the retained page.
+        w.within("settings-tabs").click(1usize, cx);
+        w.render_frame(cx);
+        app.update(cx, |app, cx| {
+            app.store.create_model_profile("T19 Profile").unwrap();
+            app.store.apply_model_profile("T19 Profile");
+            cx.notify();
+        });
+        w.render_frame(cx);
+        assert_eq!(
+            app.read(cx).store.active_model_profile.as_deref(),
+            Some("T19 Profile")
+        );
+        let picker = w
+            .find("model-profile-picker")
+            .label()
+            .map(str::to_string)
+            .unwrap_or_default();
+        assert!(picker.contains("T19 Profile"), "{picker}");
+
+        // Nested input state survives tab changes.
+        let nested = app.read(cx).global_model.clone();
+        nested.update(cx, |state, cx| state.set_value("test/nested-model", w, cx));
+        w.within("settings-tabs").click(0usize, cx);
+        w.render_frame(cx);
+        w.find("appearance-light");
+        w.within("settings-tabs").click(1usize, cx);
+        w.render_frame(cx);
+        assert_eq!(nested.read(cx).value().as_ref(), "test/nested-model");
+
+        // Async provider completion through the real poll path updates the
+        // rendered model catalog without a manual forced rebuild.
+        let (tx, rx) = std::sync::mpsc::channel();
+        tx.send((
+            std::path::PathBuf::from("/t19/opencode"),
+            Ok((
+                "t19-version".to_string(),
+                vec!["local/one".to_string(), "local/two".to_string()],
+            )),
+        ))
+        .unwrap();
+        app.update(cx, |app, cx| {
+            app.complete_discovery_for_qa(rx, cx);
+        });
+        w.render_frame(cx);
+        assert_eq!(app.read(cx).connection_status, "2 local models available");
+        assert_eq!(app.read(cx).available_models.len(), 2);
+        click_in_settings(w, cx, "research-model-0");
+        w.find("research-model-0-options");
+        w.find("research-model-option-local/one");
+        w.find("research-model-option-local/two");
+
+        // Escape dismisses suggestions without moving focus, so the next
+        // Shift+Tab returns to the preceding provider picker instead of the
+        // window footer.
+        let model_focus = w.focused(cx);
+        assert!(model_focus.is_some(), "model input must own keyboard focus");
+        w.press("escape", cx);
+        w.render_frame(cx);
+        assert!(
+            w.try_find("research-model-0-options").is_none(),
+            "Escape must dismiss the model suggestions"
+        );
+        assert_eq!(
+            w.focused(cx),
+            model_focus,
+            "Escape must keep focus in the model input"
+        );
+        // Headless frames do not resolve focus traversal out of a focused
+        // Input (native Tab order is verified separately), so exercise the
+        // app's TabPrev action and require either the restored provider focus
+        // or retained input focus. Both prove Escape did not focus the root.
+        let tab_prev = cx
+            .build_action("root::TabPrev", None)
+            .expect("base TabPrev action registered");
+        w.dispatch_action(tab_prev, cx);
+        w.render_frame(cx);
+        let retained = w.focused(cx) == model_focus
+            || w.find("model-agent-0").focused() == Some(true);
+        assert!(
+            retained,
+            "TabPrev after dismissing suggestions must keep settings focus"
+        );
+        assert_ne!(
+            w.focused(cx),
+            Some(app.read(cx).focus.clone()),
+            "dismissing suggestions must not focus the window root"
+        );
+        assert_ne!(
+            w.find("footer-new-research").focused(),
+            Some(true),
+            "dismissing suggestions must not send focus to the footer"
+        );
+
+        // Publishing tab synchronizes its nested inputs from the store on a
+        // real tab activation, and its controls stay live in the retained page.
+        app.update(cx, |app, cx| {
+            app.store.report_publishing.repository = "owner/t19-repo".into();
+            app.store.report_publishing.branch = "t19-branch".into();
+            cx.notify();
+        });
+        w.within("settings-tabs").click(2usize, cx);
+        w.render_frame(cx);
+        w.find("publishing-repository");
+        w.find("publishing-branch");
+        w.find("publishing-url");
+        assert!(w.find("save-publishing").visible());
+        let repository = app.read(cx).publishing_inputs[0].clone();
+        let branch = app.read(cx).publishing_inputs[1].clone();
+        assert_eq!(repository.read(cx).value().as_ref(), "owner/t19-repo");
+        assert_eq!(branch.read(cx).value().as_ref(), "t19-branch");
+
+        // Runtime probe completion through the real polling path reaches the
+        // rendered Models page (channel result, not a direct field assignment).
+        w.within("settings-tabs").click(1usize, cx);
+        w.render_frame(cx);
+        let (probe_tx, probe_rx) = std::sync::mpsc::channel();
+        probe_tx
+            .send(Ok("Runtime ready · T19 probe".to_string()))
+            .unwrap();
+        app.update(cx, |app, cx| {
+            app.ego_probe = Some(probe_rx);
+            app.poll_research_io(cx);
+        });
+        w.render_frame(cx);
+        assert!(app.read(cx).ego_probe.is_none());
+        assert_eq!(app.read(cx).ego_status, "Runtime ready · T19 probe");
+        assert_eq!(
+            w.find("ego-status").label().map(str::to_string).unwrap_or_default(),
+            "Runtime ready · T19 probe"
+        );
+
+        // Save errors surface through the existing feedback banner.
+        app.update(cx, |app, cx| {
+            app.show_save_error("T19 settings error probe", cx);
+        });
+        w.render_frame(cx);
+        assert!(app.read(cx).error.contains("T19 settings error probe"));
+        assert!(
+            w.find("save-feedback").visible(),
+            "save errors must render the feedback banner"
+        );
+
+        // Concurrency stays semantic and visible on the General page.
+        w.within("settings-tabs").click(0usize, cx);
+        w.render_frame(cx);
+        app.update(cx, |app, cx| app.set_execution_concurrency(2, cx));
+        w.render_frame(cx);
+        assert_eq!(app.read(cx).store.concurrency_limit(), 2);
+        assert!(
+            gpui_kit::component::Theme::global(cx).is_dark(),
+            "theme survives the remaining semantic transitions"
+        );
+    })
+    .unwrap();
+    cx.update_window(handle, |_, w, _| w.remove_window())
+        .unwrap();
+}
+
+fn click_in_settings(w: &mut Window, cx: &mut App, id: &str) {
+    w.render_frame(cx);
+    for _ in 0..30 {
+        let bounds = w.find(id.to_string()).bounds();
+        let top = w.find("model-settings-scroll").bounds().top();
+        if bounds.top() >= top && bounds.bottom() <= w.viewport_size().height - px(40.) {
+            break;
+        }
+        let delta = if bounds.top() < top { 200. } else { -200. };
+        w.scroll(
+            "model-settings-scroll",
+            ScrollDelta::Pixels(point(px(0.), px(delta))),
+            cx,
+        );
+    }
+    w.click(id.to_string(), cx);
+}
+
+fn settings_scroll_probe(root: &Path) {
+    let directory = root.join("settings-scroll-probe");
+    std::fs::create_dir_all(&directory).unwrap();
+    let store = fixture(&directory);
+    let path = directory.join("workspace.sqlite3");
+    Storage::new(path.clone()).save(&store).unwrap();
+    let (mut cx, handle, app) = with_app(store, &path, 1440., 920., |app, w, cx| {
+        app.scope = Scope::Settings;
+        app.settings_tab = crate::settings_views::SettingsTab::Models;
+        cx.notify();
+        let _ = w;
+    });
+    cx.update_window(handle, |_, w, cx| {
+        w.render_frame(cx);
+        let start = crate::brand::scroll_render_probe();
+        for _ in 0..60 {
+            w.render_frame(cx);
+        }
+        let idle = crate::brand::scroll_render_probe();
+        for _gesture in 0..6 {
+            for _frame in 0..10 {
+                w.scroll(
+                    "model-settings-scroll",
+                    ScrollDelta::Pixels(point(px(0.), px(-320.))),
+                    cx,
+                );
+                w.render_frame(cx);
+            }
+        }
+        let gesture = crate::brand::scroll_render_probe();
+        let delta = |end: crate::brand::ScrollRenderProbe,
+                     start: crate::brand::ScrollRenderProbe| {
+            (
+                end.app - start.app,
+                end.sidebar - start.sidebar,
+                end.logo - start.logo,
+                end.settings - start.settings,
+                end.general - start.general,
+            )
+        };
+        let idle_delta = delta(idle, start);
+        let gesture_delta = delta(gesture, idle);
+        println!(
+            "scroll probe 60 idle frames: app={} sidebar={} logo={} settings={} general={}",
+            idle_delta.0, idle_delta.1, idle_delta.2, idle_delta.3, idle_delta.4
+        );
+        println!(
+            "scroll probe 6 gesture x10 frames: app={} sidebar={} logo={} settings={} general={}",
+            gesture_delta.0, gesture_delta.1, gesture_delta.2, gesture_delta.3, gesture_delta.4
+        );
+        let before_general = crate::brand::scroll_render_probe().general;
+        app.update(cx, |app, cx| {
+            app.settings_tab = crate::settings_views::SettingsTab::General;
+            cx.notify();
+        });
+        w.render_frame(cx);
+        let after_general = crate::brand::scroll_render_probe().general;
+        assert!(
+            after_general > before_general,
+            "General tab must still construct its settings subtree"
+        );
+        let _ = app;
+    })
+    .unwrap();
+    cx.update_window(handle, |_, w, _| w.remove_window())
+        .unwrap();
+}
+
+fn keyboard_matrix(root: &Path) {
+    let scenarios: &[(&str, fn(&mut TaskApp, &mut Window, &mut Context<TaskApp>))] = &[
+        ("project-rename", |app, w, cx| {
+            app.open_project_rename(1, w, cx)
+        }),
+        ("topic-move", |app, w, cx| app.request_topic_move(1, w, cx)),
+        ("directory", |app, w, cx| app.open_directory(1, w, cx)),
+    ];
+    for (surface, open) in scenarios {
+        keyboard_surface(root, surface, *open);
+    }
+}
+
+fn keyboard_surface(
+    root: &Path,
+    surface: &str,
+    open: fn(&mut TaskApp, &mut Window, &mut Context<TaskApp>),
+) {
+    let directory = root.join(format!("keyboard-{surface}"));
+    std::fs::create_dir_all(&directory).unwrap();
+    let store = fixture(&directory);
+    let path = directory.join("workspace.sqlite3");
+    Storage::new(path.clone()).save(&store).unwrap();
+    let (mut cx, handle, app) = with_app(store, &path, 1000., 680., |app, w, cx| {
+        app.scope = Scope::All;
+        app.selected = Some(1);
+        cx.notify();
+    });
+    let mut opener: Option<FocusHandle> = None;
+    let mut background: (Scope, Option<u64>) = (Scope::All, None);
+    cx.update_window(handle, |_, w, cx| {
+        w.render_frame(cx);
+        w.click("project-1", cx);
+        w.render_frame(cx);
+        opener = w.focused(cx);
+        background = (app.read(cx).scope.clone(), app.read(cx).selected);
+        assert!(opener.is_some(), "{surface}: real opener focus required");
+        app.update(cx, |app, cx| open(app, w, cx));
+        w.render_frame(cx);
+    })
+    .unwrap();
+    cx.run_until_parked();
+    if surface == "topic-move" {
+        cx.update_window(handle, |_, w, cx| {
+            w.click("topic-move-project", cx);
+            w.render_frame(cx);
+            w.press("escape", cx);
+            w.render_frame(cx);
+            assert!(
+                dialog_open(&app.read(cx), surface),
+                "first Escape must close only the Select popup"
+            );
+        })
+        .unwrap();
+        cx.run_until_parked();
+    }
+    for key in ["tab", "tab", "tab", "tab", "tab", "tab", "tab", "tab"] {
+        cx.update_window(handle, |_, w, cx| {
+            w.press(key, cx);
+            w.render_frame(cx);
+        })
+        .unwrap();
+        cx.run_until_parked();
+        cx.update_window(handle, |_, w, _| {
+            assert!(focus_inside_dialog(w, surface), "{surface}: Tab escaped");
+        })
+        .unwrap();
+    }
+    for key in [
+        "shift-tab",
+        "shift-tab",
+        "shift-tab",
+        "shift-tab",
+        "shift-tab",
+        "shift-tab",
+        "shift-tab",
+        "shift-tab",
+    ] {
+        cx.update_window(handle, |_, w, cx| {
+            w.press(key, cx);
+            w.render_frame(cx);
+        })
+        .unwrap();
+        cx.run_until_parked();
+        cx.update_window(handle, |_, w, _| {
+            assert!(
+                focus_inside_dialog(w, surface),
+                "{surface}: Shift-Tab escaped"
+            );
+        })
+        .unwrap();
+    }
+    // Close the cycle pass, then reopen from the page for activation.
+    cx.update_window(handle, |_, w, cx| {
+        w.press("escape", cx);
+        w.render_frame(cx);
+    })
+    .unwrap();
+    cx.run_until_parked();
+    cx.update_window(handle, |_, w, cx| {
+        w.render_frame(cx);
+        assert!(
+            !dialog_open(&app.read(cx), surface),
+            "{surface}: Escape did not close"
+        );
+        assert_eq!(
+            w.focused(cx),
+            opener,
+            "{surface}: opener not restored after Escape"
+        );
+        app.update(cx, |app, cx| open(app, w, cx));
+        w.render_frame(cx);
+    })
+    .unwrap();
+    cx.run_until_parked();
+    // Real Enter/Space activation from the visible Cancel control.
+    let cancel_id = match surface {
+        "project-rename" => "cancel-project-rename",
+        "topic-move" => "cancel-topic-move",
+        "directory" => "cancel-directory",
+        _ => unreachable!(),
+    };
+    let mut activated = false;
+    for _ in 0..10 {
+        let hit = cx
+            .update_window(handle, |_, w, _| w.find(cancel_id).focused() == Some(true))
+            .unwrap();
+        if hit {
+            activated = true;
+            break;
+        }
+        cx.update_window(handle, |_, w, cx| {
+            w.press("tab", cx);
+            w.render_frame(cx);
+        })
+        .unwrap();
+        cx.run_until_parked();
+    }
+    assert!(activated, "{surface}: Cancel never received focus");
+    cx.update_window(handle, |_, w, cx| {
+        w.press("enter", cx);
+        w.render_frame(cx);
+    })
+    .unwrap();
+    cx.run_until_parked();
+    cx.update_window(handle, |_, w, cx| {
+        w.render_frame(cx);
+        assert!(
+            !dialog_open(&app.read(cx), surface),
+            "{surface}: Enter did not activate Cancel"
+        );
+        assert_eq!(
+            w.focused(cx),
+            opener,
+            "{surface}: opener not restored after Cancel"
+        );
+        assert_eq!(
+            (app.read(cx).scope.clone(), app.read(cx).selected),
+            background.clone(),
+            "{surface}: background moved after Cancel"
+        );
+        app.update(cx, |app, cx| open(app, w, cx));
+        w.render_frame(cx);
+    })
+    .unwrap();
+    cx.run_until_parked();
+    cx.update_window(handle, |_, w, cx| {
+        w.press("escape", cx);
+        w.render_frame(cx);
+    })
+    .unwrap();
+    cx.run_until_parked();
+    cx.update_window(handle, |_, w, cx| {
+        w.render_frame(cx);
+        assert!(
+            !dialog_open(&app.read(cx), surface),
+            "{surface}: Escape did not close"
+        );
+        assert_eq!(
+            w.focused(cx),
+            opener,
+            "{surface}: opener not restored after Escape"
+        );
+        assert_eq!(
+            (app.read(cx).scope.clone(), app.read(cx).selected),
+            background.clone(),
+            "{surface}: background moved after Escape"
+        );
+    })
+    .unwrap();
+    cx.update_window(handle, |_, w, _| w.remove_window())
+        .unwrap();
+}
+
+fn global_search_keyboard(root: &Path) {
+    let directory = root.join("keyboard-global-search");
+    std::fs::create_dir_all(&directory).unwrap();
+    let store = search_fixture(&directory);
+    let path = directory.join("workspace.sqlite3");
+    Storage::new(path.clone()).save(&store).unwrap();
+    let (mut cx, handle, app) = with_app(store, &path, 1000., 680., |app, w, cx| {
+        app.scope = Scope::All;
+        cx.notify();
+    });
+    let mut opener: Option<FocusHandle> = None;
+    cx.update_window(handle, |_, w, cx| {
+        w.render_frame(cx);
+        w.click("footer-search", cx);
+        w.render_frame(cx);
+        opener = app.read(cx).global_search_ui.previous_focus.clone();
+        assert!(opener.is_some(), "Search must remember its live opener");
+        assert_eq!(w.find("global-search-input").focused(), Some(true));
+        w.input("Polish", cx);
+        w.render_frame(cx);
+    })
+    .unwrap();
+    cx.run_until_parked();
+    cx.update_window(handle, |_, w, cx| {
+        w.render_frame(cx);
+        assert!(
+            !app.read(cx).global_search_ui.hits.is_empty(),
+            "Polish fixture must produce search hits"
+        );
+        for key in ["tab", "tab", "tab", "tab", "tab", "tab"] {
+            w.press(key, cx);
+            w.render_frame(cx);
+            assert!(search_focus_inside(w), "Tab left visible search controls");
+        }
+        for key in [
+            "shift-tab",
+            "shift-tab",
+            "shift-tab",
+            "shift-tab",
+            "shift-tab",
+            "shift-tab",
+        ] {
+            w.press(key, cx);
+            w.render_frame(cx);
+            assert!(
+                search_focus_inside(w),
+                "Shift-Tab left visible search controls"
+            );
+        }
+        w.click("global-search-input", cx);
+        w.press("down", cx);
+        w.render_frame(cx);
+        w.press("escape", cx);
+        w.render_frame(cx);
+        assert!(!app.read(cx).global_search_ui.open);
+        assert_eq!(w.focused(cx), opener, "search opener restored");
+        assert_eq!(app.read(cx).scope, Scope::All);
+    })
+    .unwrap();
+    cx.update_window(handle, |_, w, _| w.remove_window())
+        .unwrap();
+}
+
+fn search_focus_inside(w: &mut Window) -> bool {
+    w.find("global-search-input").focused() == Some(true)
+        || w.find("global-search-close").focused() == Some(true)
+        || ["all", "research", "automations"]
+            .iter()
+            .any(|key| w.find(format!("global-search-domain-{key}")).focused() == Some(true))
+}
+
+fn task_form_dirty_keyboard(root: &Path) {
+    let directory = root.join("keyboard-task-dirty");
+    std::fs::create_dir_all(&directory).unwrap();
+    let store = fixture(&directory);
+    let path = directory.join("workspace.sqlite3");
+    Storage::new(path.clone()).save(&store).unwrap();
+    let (mut cx, handle, app) = with_app(store, &path, 1000., 680., |app, w, cx| {
+        app.scope = Scope::All;
+        app.open_task(1, w, cx);
+        app.begin_draft(1, w, cx);
+        let title = app.draft.as_ref().unwrap().title.clone();
+        title.update(cx, |state, cx| {
+            state.set_value("Dirty keyboard task", w, cx)
+        });
+        cx.notify();
+    });
+    cx.update_window(handle, |_, w, cx| {
+        w.render_frame(cx);
+        w.press("escape", cx);
+        w.render_frame(cx);
+        assert!(app.read(cx).navigation.pending_exit.is_some());
+        w.find("dirty-exit-stay");
+        for _ in 0..6 {
+            w.press("tab", cx);
+            w.render_frame(cx);
+            let inside = ["dirty-exit-stay", "dirty-exit-discard", "dirty-exit-save"]
+                .iter()
+                .any(|id| w.find(*id).focused() == Some(true));
+            assert!(inside, "Tab left dirty-exit controls");
+        }
+        w.press("escape", cx);
+        w.render_frame(cx);
+        assert!(app.read(cx).navigation.pending_exit.is_none());
+        assert!(app.read(cx).draft.is_some());
+        assert_eq!(app.read(cx).selected, Some(1));
+        w.press("escape", cx);
+        w.render_frame(cx);
+        if app.read(cx).draft.is_some() {
+            w.click("dirty-exit-stay", cx);
+            w.render_frame(cx);
+        }
+        assert!(app.read(cx).draft.is_some(), "Stay keeps the draft");
+    })
+    .unwrap();
+    cx.update_window(handle, |_, w, _| w.remove_window())
+        .unwrap();
+}
+
+fn dialog_open(app: &TaskApp, surface: &str) -> bool {
+    match surface {
+        "project-rename" => app.project_rename.is_some(),
+        "topic-move" => app.topic_move.is_some(),
+        "directory" => app.directory_project.is_some(),
+        _ => false,
+    }
+}
+
+fn focus_inside(w: &mut Window, scope: &'static str) -> bool {
+    w.within(scope)
+        .elements()
+        .iter()
+        .any(|element| element.focused() == Some(true))
+}
+
+fn focus_inside_dialog(w: &mut Window, surface: &str) -> bool {
+    let ids: &[&str] = match surface {
+        "project-rename" => &[
+            "rename-project-name",
+            "cancel-project-rename",
+            "save-project-rename",
+        ],
+        "topic-move" => &[
+            "topic-move-project",
+            "cancel-topic-move",
+            "confirm-topic-move",
+        ],
+        "directory" => &["directory-path", "cancel-directory", "save-directory"],
+        _ => &[],
+    };
+    ids.iter().any(|id| {
+        w.try_find(*id)
+            .is_some_and(|snapshot| snapshot.focused() == Some(true))
+    })
+}
+
+fn with_app<F>(
+    store: Store,
+    path: &Path,
+    width: f32,
+    height: f32,
+    configure: F,
+) -> (HeadlessAppContext, AnyWindowHandle, Entity<TaskApp>)
+where
+    F: FnOnce(&mut TaskApp, &mut Window, &mut Context<TaskApp>),
+{
+    let mut cx = HeadlessAppContext::with_platform(
+        platform::current_platform(true).text_system(),
+        Arc::new(crate::ui_assets::AppAssets),
+        platform::current_headless_renderer,
+    );
+    cx.update(init);
+    let mut entity = None;
+    let handle = cx
+        .open_window(size(px(width), px(height)), |w, cx| {
+            let view = cx.new(|cx| TaskApp::new_mock(w, cx));
+            view.update(cx, |app, cx| {
+                app.attach_storage(Storage::new(path.to_path_buf()), w, cx);
+                assert!(app.storage_error.is_empty(), "{}", app.storage_error);
+                let appearance = store.appearance;
+                app.store = store;
+                app.set_appearance(appearance, w, cx);
+                configure(app, w, cx);
+                cx.notify();
+            });
+            entity = Some(view.clone());
+            cx.new(|cx| base::Root::new(view, w, cx))
+        })
+        .unwrap()
+        .into();
+    (cx, handle, entity.unwrap())
+}
+
+fn screenshot(cx: &mut HeadlessAppContext, handle: AnyWindowHandle, directory: &Path, name: &str) {
+    for _ in 0..4 {
+        cx.run_until_parked();
+        cx.update_window(handle, |_, w, cx| w.render_frame(cx))
+            .unwrap();
+        std::thread::sleep(Duration::from_millis(20));
+    }
+    cx.capture_screenshot(handle)
+        .unwrap()
+        .save(directory.join(name))
+        .unwrap();
+}

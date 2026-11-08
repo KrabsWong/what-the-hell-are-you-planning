@@ -1,0 +1,6 @@
+{
+  "unsigned_sha256": "83f71c373795303843f9816895c8ec23c06fc2c0ac633f2adaaed749eb533216",
+  "signed_sha256": "9a25d7c43cea72d0f5ace8faafe4643c176a352bebad964c52d3b5c31ea62b12",
+  "guard_exit": 2,
+  "diagnostic_only": true
+}

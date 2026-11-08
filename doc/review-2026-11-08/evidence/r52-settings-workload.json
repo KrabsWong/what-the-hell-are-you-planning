@@ -1,0 +1,48 @@
+{
+  "trace": ".local/native-review/r52-settings-retained-light.trace",
+  "pid": 69124,
+  "build_manifest": "r48-retained-install.json",
+  "gestures": [
+    {
+      "direction": "down",
+      "start": 1794163390951,
+      "end": 1794163391035
+    },
+    {
+      "direction": "up",
+      "start": 1794163391035,
+      "end": 1794163391096
+    },
+    {
+      "direction": "down",
+      "start": 1794163391096,
+      "end": 1794163391169
+    },
+    {
+      "direction": "up",
+      "start": 1794163391169,
+      "end": 1794163391244
+    },
+    {
+      "direction": "down",
+      "start": 1794163391244,
+      "end": 1794163391315
+    },
+    {
+      "direction": "up",
+      "start": 1794163391315,
+      "end": 1794163391377
+    },
+    {
+      "direction": "down",
+      "start": 1794163395708,
+      "end": 1794163395782
+    },
+    {
+      "direction": "up",
+      "start": 1794163401526,
+      "end": 1794163401625
+    }
+  ],
+  "observation": "Native screenshots confirmed Browser runtime at bottom and Global default at top. Eight successful CUA gestures. No frame-time inference from screenshot."
+}

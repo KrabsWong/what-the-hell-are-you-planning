@@ -32,7 +32,7 @@ print(json.dumps({"type":"text","part":{"text":json.dumps(result)}}))
         let mut run = store.prepare_run(step).unwrap();
         run.status = "Succeeded".into();
         run.output = "Verified fixture evidence".into();
-        store.runs.push(run);
+        store.push_run(run);
         store.set_stage(step, Stage::Done).unwrap();
     }
     let task = steps[2];
@@ -62,7 +62,7 @@ print(json.dumps({"type":"text","part":{"text":json.dumps(result)}}))
             let mut failed = a.store.prepare_run(task).unwrap();
             failed.status = "Failed".into();
             let failed_id = failed.id;
-            a.store.runs.push(failed);
+            a.store.push_run(failed);
             a.complete_research_run(failed_id, cx);
             assert_eq!(a.queued_runs.len(), 1);
             let retry_id = a.queued_runs[0].0;
@@ -73,12 +73,12 @@ print(json.dumps({"type":"text","part":{"text":json.dumps(result)}}))
             );
             a.cancel_run_id(retry_id, cx);
             assert!(a.queued_runs.is_empty());
-            assert_eq!(a.store.runs.last().unwrap().status, "Cancelled");
+            assert_eq!(a.store.runs().last().unwrap().status, "Cancelled");
 
             let mut failed = a.store.prepare_run(task).unwrap();
             failed.status = "Failed".into();
             let failed_id = failed.id;
-            a.store.runs.push(failed);
+            a.store.push_run(failed);
             a.todo_batch = Some(TodoBatch {
                 project_id: 1,
                 items: vec![goal],
@@ -107,7 +107,7 @@ print(json.dumps({"type":"text","part":{"text":json.dumps(result)}}))
                     .contains_key(&failed_id)
             );
             a.pause_todo_batch(cx);
-            a.store.runs.last_mut().unwrap().retry_not_before = Some(0);
+            { let index = a.store.runs().len() - 1; a.store.run_at_mut(index).unwrap().retry_not_before = Some(0); }
             a.poll_runtime(cx);
             assert!(
                 a.active_runs.is_empty(),
@@ -138,8 +138,8 @@ print(json.dumps({"type":"text","part":{"text":json.dumps(result)}}))
     }
     cx.update_window(handle, |_, _, cx| {
         app.update(cx, |a, _| {
-            assert_eq!(a.store.runs.last().unwrap().status, "Succeeded");
-            assert_eq!(a.store.runs.last().unwrap().auto_retry_attempt, 1);
+            assert_eq!(a.store.runs().last().unwrap().status, "Succeeded");
+            assert_eq!(a.store.runs().last().unwrap().auto_retry_attempt, 1);
             let batch = a.todo_batch.as_ref().unwrap();
             assert_eq!(batch.state, BatchState::Finished);
             assert_eq!(batch.completed, 1);

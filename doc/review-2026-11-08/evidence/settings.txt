@@ -1,0 +1,1 @@
+MODEL SETTINGS QA PASSED: validation, picker filtering, save, inheritance, individual/all-stage reset, profiles create/apply/update/delete/undo, planning eligibility and restart; light/dark at both sizes. /Users/fuxingxing/workspaces/what-the-hell-are-you-planning/.local/settings-qa/51886

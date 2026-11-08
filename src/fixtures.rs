@@ -227,15 +227,16 @@ impl Store {
         }).collect();
         let mut store = Self {
             automation_schema_version: crate::automation::AUTOMATION_SCHEMA_VERSION,
-            automations: vec![],
-            automation_occurrences: vec![],
+            automations: super::tracked::automation_new(),
+            automation_occurrences: super::tracked::occurrence_new(),
             tasks,
             projects,
             topics: vec![],
             research_requests: vec![],
             policies,
-            runs: vec![],
+            runs: super::tracked::run_new(),
             next_id: 23,
+            run_id_floor: 0,
             opencode_path: String::new(),
             default_model: String::new(),
             model_profiles: vec![],
@@ -265,11 +266,12 @@ impl Store {
         let identifier = self.identifier(task);
         let run = AgentRun {
             automation_occurrence_id: None,
+            planning_owner: None,
             deadline_at: None,
             auto_retry_attempt: 0,
             retry_not_before: None,
             project_plan: None,
-            id: self.runs.iter().map(|r|r.id).max().unwrap_or(0)+1,
+            id: self.runs().iter().map(|r|r.id).max().unwrap_or(0)+1,
             task_title:task.title.clone(),directory:String::new(),prompt:policy.prompt.clone(),queued_at: String::new(), workspace_source: None, started_at:String::new(),ended_at:None,session_id:None,exit_code:None,
             task_id: id, agent: policy.agent.clone(), model: policy.model.clone(), stage: task.stage,
             status: "Simulated".into(), output:String::new(), attachments:vec![],research_kind:None,sources:vec![],input_signature:String::new(),
@@ -281,7 +283,7 @@ impl Store {
                 "[simulation] Preview complete. Task stage is unchanged.".into(),
             ],
         };
-        self.runs.push(run);
+        self.push_run(run);
         self.task_mut(id)
             .unwrap()
             .activity

@@ -1,0 +1,4 @@
+Material import 1/1: 0.01s, success=true
+Material import 1/1: 0.01s, success=true
+Material import 1/1: 0.01s, success=true
+ATTACHMENT QA PASSED: paste shortcut, file drop, original bytes, blank PDF, inheritance, CLI --file; no OCR/cache. /Users/fuxingxing/workspaces/what-the-hell-are-you-planning/.local/attachment-qa/51937

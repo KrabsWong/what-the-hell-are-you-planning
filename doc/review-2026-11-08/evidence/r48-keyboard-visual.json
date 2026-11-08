@@ -1,0 +1,8 @@
+{
+  "binary": ".local/opencode-dispatch/t21-artifacts/t19-retained-inval-022537",
+  "sha256": "756c54efe58d4623d3961527284512b4aae5489bdc1ed7b12df97e75a7551433",
+  "guard_exit": 2,
+  "qa_exit": 0,
+  "elapsed_seconds": 12.523498917,
+  "limitation": "Forced headless frames do not establish native cached reuse or actual invalidation."
+}

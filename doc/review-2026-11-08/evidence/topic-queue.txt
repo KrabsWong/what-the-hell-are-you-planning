@@ -1,0 +1,1 @@
+Topic queue QA passed: append at capacity, grouped FIFO, three slots, retry exhaustion, continuation, admission failure pause/resume, pause and stop.

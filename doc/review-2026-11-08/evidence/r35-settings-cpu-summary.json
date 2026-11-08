@@ -1,0 +1,30 @@
+{
+  "source": ".local/native-review/r35-settings-scroll-light-cpu.xml",
+  "sample_count": 17325,
+  "thread_sample_weight_ms": {
+    "planning-native-review (0x8ba581) (planning-native-review, pid: 25910)": 544.0,
+    "Main Thread (0x8b6c89) (planning-native-review, pid: 25910)": 15536.0,
+    "planning-native-review (0x8bbb4c) (planning-native-review, pid: 25910)": 503.0,
+    "planning-native-review (0x8b752a) (planning-native-review, pid: 25910)": 187.0,
+    "planning-native-review (0x8b6cd9) (planning-native-review, pid: 25910)": 525.0,
+    "CVDisplayLink (0x8bba9e) (planning-native-review, pid: 25910)": 30.0
+  },
+  "top_self_sample_weight_ms": {
+    "_platform_memmove": 2236.0,
+    "_RINvNtNtCs8Tx3unzGSfM_5taffy7compute7flexbox19compute_preliminaryINtNtNtB6_4tree10taffy_tree9TaffyViewNtNtCsjE5euUI2csz_4gpui5taffy11NodeContextNCNvMB1E_NtB1E_17TaffyLayoutEngine14compute_layouts_0EEB1G_": 503.0,
+    "start_wqthread": 430.0,
+    "_xzm_xzone_malloc_tiny": 426.0,
+    "iokit_user_client_trap": 352.0,
+    "_xzm_free_main": 324.0,
+    "_platform_memcmp": 318.0,
+    "_RINvMs_NtCsjE5euUI2csz_4gpui5sceneNtB5_5Scene16insert_primitiveNtB5_16MonochromeSpriteEB7_": 253.0,
+    "_RINvNtNtCs8Tx3unzGSfM_5taffy7compute5block13compute_innerINtNtNtB6_4tree10taffy_tree9TaffyViewNtNtCsjE5euUI2csz_4gpui5taffy11NodeContextNCNvMB1w_NtB1w_17TaffyLayoutEngine14compute_layouts_0EEB1y_": 220.0,
+    "_RNvXs0_NtNtNtCs9nEiEE0E2Vj_4core4iter8adapters3mapINtB5_3MapINtNtB7_6filter6FilterIBX_IBN_INtNtB7_9enumerate9EnumerateNtNtNtCs8Tx3unzGSfM_5taffy4tree10taffy_tree18TaffyTreeChildIterENCINvNtNtB1Y_7compute7flexbox29generate_anonymous_flex_itemsINtB1U_9TaffyViewNtNtCsjE5euUI2csz_4gpui5taffy11NodeContextNCNvMB4b_NtB4b_17TaffyLayoutEngine14compute_layouts_0EE0ENCB2W_s_0ENCB2W_s0_0ENCB2W_s1_0ENtNtNtB9_6traits8iterator8Iterator4nextB4d_": 197.0,
+    "mach_msg2_trap": 193.0,
+    "_RNvMs_NtCsjE5euUI2csz_4gpui11bounds_treeINtB4_10BoundsTreeNtNtB6_8geometry12ScaledPixelsE17find_max_orderingB6_": 192.0,
+    "_RNvXsd_NtNtCs8Tx3unzGSfM_5taffy4tree10taffy_treeINtB5_9TaffyViewNtNtCsjE5euUI2csz_4gpui5taffy11NodeContextNCNvMB12_NtB12_17TaffyLayoutEngine14compute_layouts_0ENtNtB7_6traits9CacheTree9cache_getB14_": 180.0,
+    "stat": 166.0,
+    "_RNvXs7_NtNtCsjE5euUI2csz_4gpui3app10entity_mapNtB5_9AnyEntityNtNtNtCs9nEiEE0E2Vj_4core3ops4drop4Drop4drop": 156.0
+  },
+  "interpretation": "Statistical CPU sample weights only, not exact elapsed frame times. Debug build and concurrent workloads; no causal attribution or release performance acceptance."
+}

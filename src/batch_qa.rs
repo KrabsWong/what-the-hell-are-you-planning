@@ -87,7 +87,7 @@ pub fn run() {
         url: "https://example.com/batch-evidence".into(),
         published_at: "2026-10-29 QA fixture".into(),
     }];
-    initial.runs.push(prior);
+    initial.push_run(prior);
     initial.set_stage(steps[0], Stage::Done).unwrap();
     let second = goal(&mut initial, "Second planned research", 1);
     initial.apply_research_plan(second, PLAN).unwrap();
@@ -129,7 +129,7 @@ pub fn run() {
             );
             a.start_todo_batch(1, cx);
             assert_eq!(
-                a.store.runs.len(),
+                a.store.runs().len(),
                 2,
                 "Duplicate click must not submit duplicate jobs"
             );
@@ -158,15 +158,15 @@ pub fn run() {
             BatchState::Paused(_)
         ));
         assert_eq!(
-            a.store.runs.len(),
+            a.store.runs().len(),
             2,
             "Pause must finish submitted jobs without submitting subsequent steps"
         );
-        assert!(a.store.runs.iter().all(|r| r.status == "Succeeded"));
+        assert!(a.store.runs().iter().all(|r| r.status == "Succeeded"));
         assert_eq!(a.store.research_children(second).len(), 3);
         assert!(
             !a.store
-                .runs
+                .runs()
                 .iter()
                 .any(|r| a.store.research_children(second).contains(&r.task_id))
         );
@@ -188,11 +188,11 @@ pub fn run() {
             assert!(matches!(b.state, BatchState::Finished), "{}", a.error);
             assert_eq!(b.completed, 2);
             assert_eq!(b.runs_completed, 5);
-            assert_eq!(a.store.runs.len(), 6);
-            assert!(a.store.runs.iter().all(|r| r.status == "Succeeded"));
+            assert_eq!(a.store.runs().len(), 6);
+            assert!(a.store.runs().iter().all(|r| r.status == "Succeeded"));
             assert_eq!(
                 a.store
-                    .runs
+                    .runs()
                     .iter()
                     .filter(|r| r.task_id == steps[0])
                     .count(),
@@ -203,14 +203,14 @@ pub fn run() {
             assert!(a.store.next_research_task(second).unwrap().is_none());
             assert!(
                 !a.store
-                    .runs
+                    .runs()
                     .iter()
                     .any(|r| r.task_id == backlog || r.task_id == other)
             );
             assert_eq!(a.store.task(ordinary).unwrap().stage, Stage::Planned);
             assert_eq!(a.store.todo_batch_items(1), vec![late]);
             assert!(
-                !a.store.runs.iter().any(|r| r.task_id == late),
+                !a.store.runs().iter().any(|r| r.task_id == late),
                 "A frozen batch must not absorb newly created Todo tasks"
             );
             a.store.clone()
@@ -219,7 +219,7 @@ pub fn run() {
     screenshot(&mut cx, handle, &root, "04-finished-batch.png");
     cx.update_window(handle, |_, _, cx| {
         app.update(cx, |a, cx| {
-            assert!(!a.store.runs.iter().any(|r| r.task_id == ordinary));
+            assert!(!a.store.runs().iter().any(|r| r.task_id == ordinary));
             a.store.set_stage(late, Stage::Backlog).unwrap();
             a.cancel_todo_batch(cx);
         })
@@ -232,7 +232,7 @@ pub fn run() {
         assert_eq!(
             app.read(cx)
                 .store
-                .runs
+                .runs()
                 .iter()
                 .filter(|r| r.task_id == blocked.1[0])
                 .count(),
@@ -282,8 +282,8 @@ pub fn run() {
     cx.update_window(handle, |_, _, cx| {
         app.update(cx, |a, cx| {
             assert!(a.todo_batch.is_none());
-            assert_eq!(a.store.runs.last().unwrap().status, "Cancelled");
-            assert!(!a.store.runs.iter().any(|r| r.task_id == cancelled.1[1]));
+            assert_eq!(a.store.runs().last().unwrap().status, "Cancelled");
+            assert!(!a.store.runs().iter().any(|r| r.task_id == cancelled.1[1]));
             archive_goal(a, cancelled.0);
             cx.notify();
         })
@@ -331,7 +331,7 @@ pub fn run() {
             a.todo_batch.as_ref().unwrap().state,
             BatchState::Paused(_)
         ));
-        assert!(!a.store.runs.iter().any(|r| r.task_id == storage_goal.1[1]));
+        assert!(!a.store.runs().iter().any(|r| r.task_id == storage_goal.1[1]));
     })
     .unwrap();
     cx.update_window(handle, |_, _, cx| {
@@ -347,15 +347,18 @@ pub fn run() {
     cx.update_window(handle, |_, _, cx| {
         let store = &app.read(cx).store;
         assert!(store.goal_tasks_complete(storage_goal.0));
-        assert_eq!(store.runs.iter().filter(|r| r.task_id == storage_goal.1[0]).count(), 1,
+        assert_eq!(store.runs().iter().filter(|r| r.task_id == storage_goal.1[0]).count(), 1,
             "Restoring storage must not repeat successful external work");
     }).unwrap();
-    // Pausing during planning leaves the controls on the Runs surface.
+    // Queue submission is an explicit in-place command; background planning
+    // must not navigate away from the project surface.
     let paused_plan = cx
         .update_window(handle, |_, _, cx| {
             app.update(cx, |a, cx| {
                 a.cancel_todo_batch(cx);
                 let id = goal(&mut a.store, "Pause during planning", 1);
+                a.store.apply_research_plan(id, PLAN).unwrap();
+                a.store.set_stage(id, Stage::Planned).unwrap();
                 a.start_todo_batch(1, cx);
                 a.pause_todo_batch(cx);
                 id
@@ -365,18 +368,22 @@ pub fn run() {
     idle(&mut cx, handle, &app);
     cx.update_window(handle, |_, _, cx| {
         let a = app.read(cx);
-        assert_eq!(a.scope, Scope::Runs);
+        assert_eq!(a.scope, Scope::Project(1));
         assert_eq!(a.selected, None);
         assert_eq!(a.store.research_children(paused_plan).len(), 3);
         assert!(matches!(
             a.todo_batch.as_ref().unwrap().state,
             BatchState::Paused(_)
         ));
+        let submitted: Vec<_> = a
+            .store
+            .runs()
+            .iter()
+            .filter(|r| a.store.research_children(paused_plan).contains(&r.task_id))
+            .collect();
         assert!(
-            !a.store
-                .runs
-                .iter()
-                .any(|r| a.store.research_children(paused_plan).contains(&r.task_id))
+            submitted.len() <= 1,
+            "Pause must not admit additional child runs after the already queued first step"
         );
     })
     .unwrap();
@@ -439,7 +446,7 @@ fn pending_result_checks(
             assert!(a.store.research_result(item).is_some());
             let batch = a.todo_batch.as_ref().unwrap();
             assert!(matches!(batch.state, BatchState::Paused(_)));
-            assert_eq!(batch.run_ids.get(&a.store.runs.last().unwrap().id), Some(&goal_id));
+            assert_eq!(batch.run_ids.get(&a.store.runs().last().unwrap().id), Some(&goal_id));
             a.store.add_comment(item, "Include the newly supplied source clarification.").unwrap();
             assert!(a.store.research_result(item).is_none());
             a.storage = Some(Storage::new(path.to_path_buf()));
@@ -472,7 +479,7 @@ fn pending_result_checks(
     cx.update_window(handle, |_, _, cx| {
         let a = app.read(cx);
         assert!(a.store.goal_tasks_complete(goal_id));
-        assert_eq!(a.store.runs.iter().filter(|r| r.task_id == item).count(), 2);
+        assert_eq!(a.store.runs().iter().filter(|r| r.task_id == item).count(), 2);
         assert!(a.store.research_result(item).unwrap().prompt.contains("newly supplied source clarification"));
     }).unwrap();
 }
@@ -523,7 +530,7 @@ fn context() -> HeadlessAppContext {
 fn streamed(app: &TaskApp) -> bool {
     app.active_runs.first().is_some_and(|a| {
         app.store
-            .runs
+            .runs()
             .iter()
             .find(|r| r.id == a.id)
             .is_some_and(|r| r.logs.iter().any(|l| l.contains("BATCH_LIVE_MARKER")))
@@ -611,7 +618,7 @@ fn render_variants(root: &Path, store: &Store, first: u64, second: u64) {
             let app = app.unwrap();
             let handle = window.into();
             screenshot(&mut cx, handle, &dir, "idle.png");
-            cx.update_window(handle,|_,w,cx|app.update(cx,|a,cx|{a.todo_batch=Some(TodoBatch{failed_tasks:vec![],project_id:1,items:vec![first,second],completed:1,runs_completed:2,state:BatchState::Paused("Paused after the current task. Resume to run the remaining Todo items.".into()),run_ids:Default::default(),done_items:vec![first],failed_items:vec![]});a.navigate(Scope::Runs,w,cx);a.selected_run=a.store.runs.last().map(|r|r.id);a.show_run_result=true;})).unwrap();
+            cx.update_window(handle,|_,w,cx|app.update(cx,|a,cx|{a.todo_batch=Some(TodoBatch{failed_tasks:vec![],project_id:1,items:vec![first,second],completed:1,runs_completed:2,state:BatchState::Paused("Paused after the current task. Resume to run the remaining Todo items.".into()),run_ids:Default::default(),done_items:vec![first],failed_items:vec![]});a.navigate(Scope::Runs,w,cx);a.selected_run=a.store.runs().last().map(|r|r.id);a.show_run_result=true;})).unwrap();
             screenshot(&mut cx, handle, &dir, "paused.png");
             cx.update_window(handle, |_, _, cx| {
                 app.update(cx, |a, cx| {

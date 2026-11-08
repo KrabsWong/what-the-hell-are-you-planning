@@ -1,0 +1,4 @@
+
+thread 'main' (7926432) panicked at /Users/fuxingxing/.cargo/registry/src/index.crates.io-1949cf8c6b5b557f/gpui-kit-0.8.1/src/test.rs:153:5:
+ElementId Name("approve-topic-1") is not visible (path [View(EntityId(63v1)), Name("gpui_component::window_border::WindowBorder"), Name("root"), View(EntityId(1v1)), Name("app"), Name("gpui_base::resizable::panel::ResizablePanelGroup"), Name("workspace-split"), Name("gpui_base::resizable::panel::ResizablePanel"), NamedInteger("resizable-panel", 1), Name("board-scroll"), Name("column-backlog"), Name("cards-backlog"), Name("board-topic-group-backlog-2"), Name("context-menu-Name(\"task-context-1\")"), Name("task-context-1"), Name("card-1"), Name("gpui_component::button::button::Button"), Name("gpui_base::button::Button"), Name("approve-topic-1")])
+note: run with `RUST_BACKTRACE=1` environment variable to display a backtrace

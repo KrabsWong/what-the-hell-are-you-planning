@@ -195,7 +195,7 @@ impl Store {
     // Superseded attempts are history, not live resource owners.
     pub(crate) fn is_recovery_candidate(&self, run: &AgentRun) -> bool {
         matches!(run.status.as_str(), "Interrupted" | "Recovering")
-            && !self.runs.iter().any(|newer| {
+            && !self.runs().iter().any(|newer| {
                 newer.id > run.id
                     && newer.task_id == run.task_id
                     && newer.project_plan == run.project_plan
@@ -220,7 +220,7 @@ impl Store {
                 .iter()
                 .filter(|t| t.research.as_ref().is_some_and(|r| r.goal_id == task.id))
                 .any(|t| {
-                    self.runs
+                    self.runs()
                         .iter()
                         .rev()
                         .find(|r| r.task_id == t.id && r.project_plan.is_none())
@@ -242,7 +242,7 @@ impl TaskApp {
         }
         let runs: Vec<_> = self
             .store
-            .runs
+            .runs()
             .iter()
             .filter(|run| self.store.is_recovery_candidate(run))
             .cloned()
@@ -271,7 +271,7 @@ impl TaskApp {
     }
     pub(crate) fn recovery_blocks_run(&self, run: &AgentRun) -> bool {
         self.store
-            .runs
+            .runs()
             .iter()
             .rev()
             .find(|r| r.task_id == run.task_id && r.project_plan == run.project_plan)
@@ -282,7 +282,7 @@ impl TaskApp {
     }
     pub(crate) fn recovery_blocks_task(&self, task: u64) -> bool {
         self.store
-            .runs
+            .runs()
             .iter()
             .rev()
             .find(|r| r.task_id == task && r.project_plan.is_none())
@@ -317,7 +317,7 @@ impl TaskApp {
         for (id, check) in updates {
             let current = self
                 .store
-                .runs
+                .runs()
                 .iter()
                 .find(|r| r.id == id)
                 .is_some_and(|r| matches!(r.status.as_str(), "Interrupted" | "Recovering"));
@@ -326,7 +326,7 @@ impl TaskApp {
             }
             let expired_regeneration = self
                 .store
-                .runs
+                .runs()
                 .iter()
                 .find(|run| run.id == id)
                 .is_some_and(|run| {
@@ -337,7 +337,7 @@ impl TaskApp {
                     )
                 });
             if expired_regeneration {
-                if let Some(run) = self.store.runs.iter_mut().find(|run| run.id == id) {
+                if let Some(mut run) = self.store.run_mut(id) {
                     run.status = "Cancelled".into();
                     run.ended_at = Some(opencode::timestamp());
                     if !run.logs.iter().any(|line| line.contains("time limit")) {
@@ -353,17 +353,19 @@ impl TaskApp {
                 continue;
             }
             if let SessionCheck::Complete(output) = &check {
-                let run = self.store.runs.iter_mut().find(|r| r.id == id).unwrap();
-                run.output = output.clone();
-                run.status = "Succeeded".into();
-                run.ended_at = Some(opencode::timestamp());
-                run.logs.push("[recovery] Imported completed session output; validating against the saved inputs.".into());
-                self.finalize_research_run(id);
+                {
+                    let mut run = self.store.run_mut(id).unwrap();
+                    run.output = output.clone();
+                    run.status = "Succeeded".into();
+                    run.ended_at = Some(opencode::timestamp());
+                    run.logs.push("[recovery] Imported completed session output; validating against the saved inputs.".into());
+                }
+                self.finalize_research_run(id, cx);
                 self.publishing_scan_requested = true;
                 self.persist_if_changed(true);
             }
             if !matches!(check, SessionCheck::Complete(_)) {
-                let run = self.store.runs.iter_mut().find(|r| r.id == id).unwrap();
+                let mut run = self.store.run_mut(id).unwrap();
                 run.status = if check == SessionCheck::Running {
                     "Recovering"
                 } else {
@@ -433,7 +435,7 @@ impl TaskApp {
     ) {
         let Some(occurrence) = self
             .store
-            .runs
+            .runs()
             .iter()
             .find(|run| run.id == run_id)
             .and_then(|run| run.automation_occurrence_id)
@@ -443,6 +445,21 @@ impl TaskApp {
         let now = Self::automation_now();
         match check {
             SessionCheck::Complete(_) => {
+                if let Err(error) =
+                    crate::automation_runtime::confirm_complete_recovery(&mut self.store, occurrence)
+                {
+                    self.error = format!("Automation recovery could not advance: {error}");
+                    self.store.mark_automation_attention(
+                        self.store
+                            .occurrence(occurrence)
+                            .map(|value| value.automation_id)
+                            .unwrap_or_default(),
+                        self.error.clone(),
+                    );
+                    self.persist_if_changed(true);
+                    cx.notify();
+                    return;
+                }
                 self.automation_after_run(occurrence, run_id, cx);
             }
             SessionCheck::Running => {
@@ -455,7 +472,7 @@ impl TaskApp {
                     .occurrence(occurrence)
                     .is_some_and(|value| value.status.is_terminal())
                 {
-                    if let Some(run) = self.store.runs.iter_mut().find(|run| run.id == run_id) {
+                    if let Some(mut run) = self.store.run_mut(run_id) {
                         let note = "[automation] The period already ended; its background session is still running and cannot extend the period.";
                         if !run.logs.iter().any(|line| line == note) {
                             run.logs.push(note.into());
@@ -465,7 +482,7 @@ impl TaskApp {
                     cx.notify();
                     return;
                 }
-                if let Some(value) = self.store.occurrence_mut(occurrence)
+                if let Some(mut value) = self.store.occurrence_mut(occurrence)
                     && value.status != crate::automation::OccurrenceStatus::Running
                 {
                     let _ = value.transition(
@@ -572,7 +589,7 @@ impl TaskApp {
         let mut projects = self.store.paused_project_goals();
         let planning: Vec<_> = self
             .store
-            .runs
+            .runs()
             .iter()
             .filter(|r| {
                 r.project_plan.is_some()
@@ -679,7 +696,7 @@ impl TaskApp {
                     } else {
                         "Needs review · approval changed".to_string()
                     };
-                    for run in self.store.runs.iter().filter(|r| {
+                    for run in self.store.runs().iter().filter(|r| {
                         self.run_goal(r.id) == Some(goal) && self.store.is_recovery_candidate(r)
                     }) {
                         match self.recovery.checks.get(&run.id) {
@@ -761,7 +778,7 @@ impl TaskApp {
             }
             let requests: Vec<_> = planning
                 .iter()
-                .filter(|r| r.project_plan == Some(project))
+                .filter(|r| r.project_plan == Some(project) && !self.store.run_is_automation_owned(r))
                 .collect();
             if !requests.is_empty() {
                 view = view.child(

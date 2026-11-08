@@ -68,7 +68,10 @@ impl ExecutionStatus {
     ) -> gpui_kit::AnyElement {
         use gpui_kit::*;
         let color = self.color(cx);
-        let frame = div().w(px(16.)).h(px(16.)).flex_shrink_0().flex().items_center().justify_center()
+        // Reserve the ripple's full reach inside the frame. Parent cards and
+        // buttons clip their content box, so a ripple that overflows a 16 px box
+        // gets sliced at the edge; 24 px keeps the animation whole everywhere.
+        let frame = div().w(px(24.)).h(px(24.)).flex_shrink_0().flex().items_center().justify_center()
             .text_color(rgb(color));
         let icon = self.icon();
         match self {
@@ -82,8 +85,8 @@ impl ExecutionStatus {
                         // so live work stays visible without the glyph itself
                         // moving. It starts and ends transparent, which also
                         // keeps the reduced-motion frame static and clean.
-                        let size = 12. + 18. * phase;
-                        let inset = (16. - size) / 2.;
+                        let size = 16. + 7. * phase;
+                        let inset = (24. - size) / 2.;
                         let fade = (std::f32::consts::PI * phase).sin();
                         let line = ((fade * 0.8) * 255.) as u32;
                         let wash = ((fade * 0.16) * 255.) as u32;

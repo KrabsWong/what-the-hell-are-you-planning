@@ -1,0 +1,25 @@
+{
+  "binary_sha256": "78934b1b19f82f9f975204574129d91ba7215458a7d6ebe3d55ae28a92c1792c",
+  "guard_exit": 2,
+  "provenance": "OpenCode immutable candidate; full source-to-binary provenance remains to be reviewed",
+  "results": [
+    {
+      "flag": "--qa-navigation-context",
+      "exit_code": 0,
+      "seconds": 21.493,
+      "log": "r61-navigation-context.log"
+    },
+    {
+      "flag": "--qa-settings",
+      "exit_code": 0,
+      "seconds": 16.417,
+      "log": "r61-settings.log"
+    },
+    {
+      "flag": "--qa-keyboard-visual",
+      "exit_code": 0,
+      "seconds": 16.591,
+      "log": "r61-keyboard-visual.log"
+    }
+  ]
+}

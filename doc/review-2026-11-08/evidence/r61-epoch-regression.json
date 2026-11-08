@@ -1,0 +1,6 @@
+{
+  "command": "cargo test --features qa reviewed_stale_scalar_receipt_cannot_clear_a_new_generation --quiet",
+  "exit_code": 101,
+  "seconds": 42.926,
+  "log": "r61-epoch-regression.log"
+}

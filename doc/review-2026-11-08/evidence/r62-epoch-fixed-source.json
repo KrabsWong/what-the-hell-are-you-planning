@@ -1,0 +1,6 @@
+{
+  "base": "/Users/fuxingxing/workspaces/what-the-hell-are-you-planning/.local/r61-epoch-regression-source",
+  "source": "/Users/fuxingxing/workspaces/what-the-hell-are-you-planning/.local/r62-epoch-fixed-source",
+  "change": "Only replace domain_tracked.rs with current OpenCode fix; retain independent root regression unchanged",
+  "domain_tracked_sha256": "67ad558c0584881ef13dc3cc51b12a8722c45c72452cf401e905268cc46a844b"
+}

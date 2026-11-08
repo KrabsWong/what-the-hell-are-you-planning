@@ -1,0 +1,6 @@
+{
+  "command": "cargo test --features qa --quiet",
+  "exit_code": 0,
+  "seconds": 47.718,
+  "log": "r62-epoch-fixed-tests.log"
+}

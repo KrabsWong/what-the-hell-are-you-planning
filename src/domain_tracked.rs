@@ -380,9 +380,10 @@ impl<T> TrackedScalar<T> {
 
     /// Clean load: adopt a persisted value without claiming a change.
     pub(crate) fn load(&mut self, value: T) {
+        // Generations are monotonic for the lifetime of this value. A load of
+        // an existing handle must not rewind the stale-receipt barrier.
         self.value = value;
         self.dirty = false;
-        self.epoch = 0;
     }
 
     pub(crate) fn get(&self) -> &T {
@@ -421,7 +422,8 @@ impl<T> TrackedScalar<T> {
 
     pub(in crate::domain) fn clear_dirty(&mut self) {
         self.dirty = false;
-        self.epoch = 0;
+        // `epoch` is intentionally not reset: an acknowledged receipt keeps its
+        // identity and can never match a later generation.
     }
 
     pub(crate) fn epoch(&self) -> u64 {
@@ -621,7 +623,6 @@ impl<T> TrackedList<T> {
     pub(crate) fn load(&mut self, items: Vec<T>) {
         self.items = items;
         self.dirty = false;
-        self.epoch = 0;
     }
 
     pub(crate) fn is_dirty(&self) -> bool {
@@ -630,7 +631,7 @@ impl<T> TrackedList<T> {
 
     pub(crate) fn clear_dirty(&mut self) {
         self.dirty = false;
-        self.epoch = 0;
+        // Monotonic; never rewound by an acknowledgement.
     }
 
     pub(crate) fn epoch(&self) -> u64 {
@@ -978,6 +979,40 @@ mod tests {
         assert!(vec.pending_changes().is_err(), "violation must remain sticky");
         vec.clear_dirty();
         assert!(vec.pending_changes().is_ok());
+    }
+
+    #[test]
+    fn replacement_marks_tombstones_and_retained_upserts() {
+        let mut vec = TrackedVec::from_vec(
+            vec![task(1, "first"), task(2, "second")],
+            |task| EntityKey::Task(task.id),
+            |task| EntityPayload::Task(task.clone()),
+        )
+        .unwrap();
+        vec.replace_tracked(vec![task(1, "renamed"), task(3, "third")]);
+        let changes = vec.pending_changes().unwrap();
+        assert!(changes.contains(&EntityChange::Delete(EntityKey::Task(2))));
+        assert!(changes.contains(&EntityChange::Upsert(EntityPayload::Task(task(
+            1, "renamed"
+        )))));
+        assert!(changes.contains(&EntityChange::Upsert(EntityPayload::Task(task(
+            3, "third"
+        )))));
+    }
+
+    #[test]
+    fn replacement_with_duplicate_identity_changes_nothing() {
+        let mut vec = TrackedVec::from_vec(
+            vec![task(1, "first")],
+            |task| EntityKey::Task(task.id),
+            |task| EntityPayload::Task(task.clone()),
+        )
+        .unwrap();
+        vec.replace_tracked(vec![task(2, "second"), task(2, "duplicate")]);
+        assert_eq!(vec.len(), 1);
+        assert_eq!(vec[0].id, 1);
+        assert!(vec.is_dirty(), "duplicate replacement is a sticky violation");
+        assert!(vec.pending_changes().is_err());
     }
 
     #[test]

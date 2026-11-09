@@ -910,6 +910,14 @@ impl Store {
         self.tasks
             .tracked_mut(crate::persistence_journal::EntityKey::Task(id))
     }
+
+    /// O(1) task mutation for bounded commands that already built an id→index
+    /// map in one pass. Used by scoped Undo so K deltas never rescan T tasks.
+    pub(crate) fn task_at_index_mut(&mut self, index: usize) -> Option<&mut Task> {
+        let id = self.tasks.get(index)?.id;
+        self.tasks
+            .tracked_mut_index(index, crate::persistence_journal::EntityKey::Task(id))
+    }
     pub fn task_at_mut(&mut self, index: usize) -> Option<&mut Task> {
         let id = self.tasks.get(index)?.id;
         self.task_mut(id)
@@ -972,6 +980,12 @@ impl Store {
         self.projects
             .tracked_mut(crate::persistence_journal::EntityKey::Project(id))
     }
+
+    pub(crate) fn project_at_index_mut(&mut self, index: usize) -> Option<&mut Project> {
+        let id = self.projects.get(index)?.id;
+        self.projects
+            .tracked_mut_index(index, crate::persistence_journal::EntityKey::Project(id))
+    }
     pub fn push_project(&mut self, project: Project) {
         self.projects.push_tracked(project);
     }
@@ -997,6 +1011,12 @@ impl Store {
         self.topics
             .tracked_mut(crate::persistence_journal::EntityKey::Topic(id))
     }
+
+    pub(crate) fn topic_at_index_mut(&mut self, index: usize) -> Option<&mut Topic> {
+        let id = self.topics.get(index)?.id;
+        self.topics
+            .tracked_mut_index(index, crate::persistence_journal::EntityKey::Topic(id))
+    }
     pub fn push_topic(&mut self, topic: Topic) {
         self.topics.push_tracked(topic);
     }
@@ -1021,6 +1041,17 @@ impl Store {
     ) -> Option<&mut crate::request_planning::ResearchRequest> {
         self.research_requests
             .tracked_mut(crate::persistence_journal::EntityKey::ResearchRequest(id))
+    }
+
+    pub(crate) fn request_at_index_mut(
+        &mut self,
+        index: usize,
+    ) -> Option<&mut crate::request_planning::ResearchRequest> {
+        let id = self.research_requests.get(index)?.id;
+        self.research_requests.tracked_mut_index(
+            index,
+            crate::persistence_journal::EntityKey::ResearchRequest(id),
+        )
     }
     pub fn push_request(&mut self, request: crate::request_planning::ResearchRequest) {
         self.research_requests.push_tracked(request);
@@ -1456,6 +1487,55 @@ impl Store {
         delta: crate::persistence_journal::MetadataDelta,
     ) {
         self.apply_loaded_metadata(delta);
+    }
+
+    /// Merge one journal group into the live store while preserving mutation
+    /// tracking. The form/command path applies the exact typed delta it already
+    /// validated, then drains the live dirty set and submits that snapshot. An
+    /// acknowledgement retires only the drained epoch, so a later edit in the
+    /// same field is never cleared by this write.
+    pub(crate) fn apply_live_journal_group(
+        &mut self,
+        changes: &[crate::persistence_journal::EntityChange],
+        metadata: &[crate::persistence_journal::MetadataDelta],
+    ) {
+        for change in changes {
+            self.apply_entity_change(change);
+        }
+        for delta in metadata {
+            self.apply_live_metadata_delta(delta);
+        }
+    }
+
+    /// Tracked metadata write. Unlike `apply_loaded_metadata`, this marks the
+    /// field dirty so the merged value is part of the next staged group.
+    pub(crate) fn apply_live_metadata_delta(
+        &mut self,
+        delta: crate::persistence_journal::MetadataDelta,
+    ) {
+        use crate::persistence_journal::MetadataDelta;
+        match delta {
+            MetadataDelta::NextId(value) => self.set_next_id(value),
+            MetadataDelta::RunIdFloor(value) => self.set_run_id_floor(value),
+            MetadataDelta::DefaultModel(value) => self.set_default_model(value),
+            MetadataDelta::OpenCodePath(value) => self.set_opencode_path(value),
+            MetadataDelta::Appearance(value) => self.set_appearance(value),
+            MetadataDelta::LastActiveProject(value) => self.set_last_active_project(value),
+            MetadataDelta::AutomationSchemaVersion(value) => {
+                self.set_automation_schema_version(value)
+            }
+            MetadataDelta::MaxConcurrentRuns(value) => self.set_max_concurrent_runs(value),
+            MetadataDelta::MaxConcurrentAutomations(value) => {
+                self.set_max_concurrent_automations(value)
+            }
+            MetadataDelta::ResearchConfig(value) => self.set_research_config(value),
+            MetadataDelta::ModelProfiles(value) => self.model_profiles.replace_tracked(value),
+            MetadataDelta::ActiveModelProfile(value) => self.set_active_model_profile(value),
+            MetadataDelta::Topics(value) => self.replace_topics(value),
+            MetadataDelta::ResearchRequests(value) => self.replace_requests(value),
+            MetadataDelta::Publications(value) => self.replace_publications(value),
+            MetadataDelta::PublishingConfig(value) => self.set_report_publishing(value),
+        }
     }
 
     pub(crate) fn dirty_epoch(&self) -> u64 {
@@ -2219,10 +2299,9 @@ impl Store {
             .filter_map(|r| r.planning_run_id)
             .collect();
         let approved: Vec<_> = ids.iter().copied().filter(|id| self.goal_execution_approved(*id)).collect();
-        let valid: Vec<_> = ids.iter().filter_map(|id| self.research_result(*id).map(|r| (*id, r.id))).collect();
         // One pass over run history builds both the id→index map used for O(1)
-        // writes and the latest reusable result per task used by the prospective
-        // signature walk. No per-id rescans.
+        // writes and the latest reusable result per task used by reusable-result
+        // validation and the prospective signature walk. No per-id rescans.
         let mut run_index = std::collections::HashMap::with_capacity(self.runs.len());
         let mut latest_results: std::collections::HashMap<u64, (u64, String)> =
             std::collections::HashMap::new();
@@ -2236,6 +2315,27 @@ impl Store {
                 latest_results.insert(run.task_id, (run.id, run.input_signature.clone()));
             }
         }
+        // Reusable set from the same precomputed maps instead of one history
+        // scan per task.
+        let mut current_memo = std::collections::HashMap::new();
+        let mut current_approved = std::collections::HashMap::new();
+        let empty_moved = std::collections::HashSet::new();
+        let valid: Vec<_> = ids
+            .iter()
+            .filter_map(|id| {
+                let signature = self.research_signature_after_move(
+                    *id,
+                    &empty_moved,
+                    0,
+                    &mut current_approved,
+                    &latest_results,
+                    &mut current_memo,
+                    &mut Vec::new(),
+                )?;
+                let (run, run_signature) = latest_results.get(id)?;
+                (run_signature == &signature).then_some((*id, *run))
+            })
+            .collect();
         // Compute every refreshed signature before writing. A malformed graph
         // is rejected while the store and tracking state are still untouched.
         let moved: std::collections::HashSet<u64> = ids.iter().copied().collect();

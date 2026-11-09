@@ -1,0 +1,7 @@
+{
+  "base": "r82 isolated domain source",
+  "only_override": "src/scoped_domain.rs",
+  "override_sha256": "38e8d4dcdd0659d6491541c483b952c31dc77113f807de6da6a13d1d63fdf404",
+  "exit": 0,
+  "seconds": 26.604
+}

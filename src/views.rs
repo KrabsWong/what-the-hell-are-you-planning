@@ -1855,7 +1855,7 @@ impl TaskApp {
             }
             main = main.child(self.todo_batch_bar(Some(id), cx));
         }
-        if self.query.ends_with("status:") || self.query.ends_with("stage:") {
+        if self.query().ends_with("status:") || self.query().ends_with("stage:") {
             main = main.child(
                 row()
                     .px_6()
@@ -1863,7 +1863,7 @@ impl TaskApp {
                     .children(Stage::ALL.into_iter().map(|stage| {
                         button(format!("suggest-{}", stage.key()), stage.label()).on_click(
                             cx.listener(move |this, _, w, cx| {
-                                let q = format!("{}{}", this.query, stage.key());
+                                let q = format!("{}{}", this.query(), stage.key());
                                 this.search.update(cx, |s, cx| s.set_value(q, w, cx));
                             }),
                         )
@@ -4003,7 +4003,7 @@ impl TaskApp {
                             .child(button("discard-draft", "Cancel").on_click(cx.listener(
                                 |this, _, w, cx| {
                                     this.draft = None;
-                                    this.editing = false;
+                                    let _ = this.close_task_editor_overlay();
                                     this.error.clear();
                                     this.save_feedback = None;
                                     w.focus(&this.focus, cx);
@@ -4274,7 +4274,7 @@ impl Render for TaskApp {
                     let planning_opener = this.planning_opener_focus.take();
                     this.save_feedback = None;
                     this.draft = None;
-                    this.editing = false;
+                    let _ = this.close_task_editor_overlay();
                     this.property = None;
                     this.new_project = None;
                     this.topic_editor = None;
@@ -4323,7 +4323,7 @@ impl Render for TaskApp {
                 ),
             )
             .child(self.retained_footer(cx));
-        if self.editing {
+        if self.editing() {
             root = root.child(self.editor_overlay(cx));
         }
         if self.research_save_impact.is_some() {

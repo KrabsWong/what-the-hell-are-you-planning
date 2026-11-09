@@ -104,7 +104,7 @@ pub fn run() {
             );
             cx.update_window(handle, |_, w, cx| {
                 app.update(cx, |a, cx| {
-                    assert!(a.settings_tab == crate::settings_views::SettingsTab::Publishing);
+                    assert!(a.settings_tab() == crate::settings_views::SettingsTab::Publishing);
                     a.settings_scroll.set_offset(point(px(0.), px(0.)));
                     cx.notify();
                 });

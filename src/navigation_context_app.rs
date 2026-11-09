@@ -57,6 +57,9 @@ pub(crate) struct NavigationState {
     /// example a planning attempt reviewed from Settings). S4 replaces this
     /// payload with a typed overlay; it is never route identity.
     pub selected_attempt: Option<u64>,
+    /// Last Settings section, used as the default when Settings is entered
+    /// again. The active page stores its own typed tab.
+    pub settings_section: crate::navigation_route::SettingsSection,
 }
 
 impl NavigationState {
@@ -77,6 +80,7 @@ impl NavigationState {
             decision_return_focus: None,
             after_save_target: None,
             selected_attempt: None,
+            settings_section: crate::navigation_route::SettingsSection::General,
         }
     }
 
@@ -239,7 +243,7 @@ impl TaskApp {
                 },
             },
             Scope::Settings => Origin::SettingsPage {
-                tab: settings_index(self.settings_tab),
+                tab: settings_index(self.settings_tab()),
                 scroll: ScrollState {
                     x: self.settings_scroll.offset().x.as_f32(),
                     y: pixels_y(&self.settings_scroll),
@@ -253,7 +257,7 @@ impl TaskApp {
             },
             scope => Origin::ResearchList {
                 scope: scope.clone(),
-                query: self.query.clone(),
+                query: self.query(),
                 all_status: self.all_status,
                 layout: self.layout,
                 scroll: ResearchScroll {
@@ -358,7 +362,7 @@ impl TaskApp {
                 self.navigate(scope, w, cx);
                 self.all_status = all_status;
                 self.layout = layout;
-                self.query = query.clone();
+                self.set_query(query.clone());
                 self.search.update(cx, |s, cx| s.set_value(query, w, cx));
                 self.navigation
                     .task_list_scroll
@@ -436,7 +440,7 @@ impl TaskApp {
             }
             Origin::SettingsPage { tab, scroll } => {
                 self.navigate(Scope::Settings, w, cx);
-                self.settings_tab = settings_tab(tab);
+                self.set_settings_tab(settings_tab(tab));
                 self.settings_scroll
                     .set_offset(point(px(scroll.x), px(scroll.y)));
             }
@@ -882,7 +886,7 @@ impl TaskApp {
         match surface {
             DecisionSurface::TaskEdit { .. } => {
                 self.draft = None;
-                self.editing = false;
+                let _ = self.close_task_editor_overlay();
                 self.navigation.task_edit_baseline = None;
                 self.error.clear();
                 w.focus(&self.focus, cx);
@@ -964,7 +968,7 @@ impl TaskApp {
         match surface {
             D::TaskEditor => {
                 self.draft = None;
-                self.editing = false;
+                let _ = self.close_task_editor_overlay();
                 self.navigation.task_edit_baseline = None;
                 self.error.clear();
                 w.focus(&self.focus, cx);

@@ -1,0 +1,9 @@
+{
+  "base": "ed40899",
+  "only_override": "src/topic_qa.rs",
+  "override_sha256": "c04238637e6fdd816d7c00c2d8f9e51135820b78b68f8d98f969a5155b10c5a3",
+  "build_exit": 0,
+  "sha256": "b497884fe0e0c78bb1908dff77cccdd3364301462a7832774881f8954210ae7f",
+  "guard_exit": 2,
+  "qa_exit": 0
+}

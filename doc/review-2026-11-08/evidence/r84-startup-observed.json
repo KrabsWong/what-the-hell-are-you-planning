@@ -1,0 +1,9 @@
+{
+  "base": "r83 integrated",
+  "only_override": "src/startup.rs observed wrapper",
+  "override_sha256": "54e527d4907f32983ade7ab12686ee0af41f249df7c7a8df649eb554c6be8cc0",
+  "build_exit": 0,
+  "sha256": "bb76a39af80256b6dd736dc63f2683c0a79dda0e5e19b3b8c8541b8fcbd01478",
+  "guard_exit": 2,
+  "qa_exit": 0
+}

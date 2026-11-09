@@ -74,7 +74,7 @@ Dependencies below are mandatory merge prerequisites unless explicitly called â€
 
 ## T04 â€” Prevent whole-Store Undo from erasing automation changes
 
-**Status:** reopened after the T13 integration regression on 2026-11-08: durable Pause leaves a legacy whole-Store Undo snapshot active. Earlier acceptance is historical; current reacceptance requires the fixed full automation regression. See [independent verification](IMPLEMENTATION.md#t04-independent-acceptance-t09-late-completion-returned). T01 and T20 remain release gates.
+**Status:** reaccepted for frozen commit `ed40899` with the topic QA fixture correction and independent strengthened Undo assertions (2026-11-09). Full automation QA passed, including five Undo sites checked against complete definitions, occurrences/dedupe keys, runtime history and ID floors in memory and on disk. See [r81 evidence](evidence/r81-undo.json). Subsequent indexed Undo and asynchronous persistence changes require integrated revalidation; T01 and T20 remain release gates. The earlier legacy-snapshot regression is historical.
 
 **Priority/size:** P1/M. **Findings:** F03. **Dependencies:** none.
 

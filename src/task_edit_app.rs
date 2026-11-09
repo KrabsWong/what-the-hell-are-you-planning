@@ -236,7 +236,7 @@ impl TaskApp {
             self.undo.push_task_edit(applied.undo.clone());
         }
         if let Some(window) = navigate_editor {
-            self.editing = false;
+            let _ = self.close_task_editor_overlay();
             self.draft = None;
             self.navigation.task_edit_baseline = None;
             self.open_task(id, window, cx);

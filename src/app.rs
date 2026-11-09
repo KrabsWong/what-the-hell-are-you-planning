@@ -270,7 +270,6 @@ pub struct TaskApp {
     pub sidebar_split: Entity<gpui_kit::base::ResizableState>,
     pub results_split: Entity<gpui_kit::base::ResizableState>,
     pub search: Entity<InputState>,
-    pub query: String,
     /// Global search overlay (footer Search / ⌘K), separate from the list-local
     /// `search` filter above.
     pub global_search: Entity<InputState>,
@@ -294,7 +293,6 @@ pub struct TaskApp {
     pub(crate) research_save_opener: Option<FocusHandle>,
     pub(crate) previous_versions_opener: Option<FocusHandle>,
     pub property: Option<Property>,
-    pub editing: bool,
     pub comment: Entity<TextareaState>,
     pub report_regeneration: Option<(u64, Entity<TextareaState>)>,
     pub toast: String,
@@ -381,6 +379,25 @@ pub struct TaskApp {
     pub(crate) planning_opener_focus: Option<gpui_kit::FocusHandle>,
     pub project_brief: Entity<TextareaState>,
     pub storage: Option<Storage>,
+    /// Ordinary and command writes are submitted as typed groups to the existing
+    /// bounded persistence worker; the legacy writer is never used in this mode.
+    pub(crate) live_save_enabled: bool,
+    pub(crate) live_save_inflight_epoch: Option<u64>,
+    pub(crate) live_command_generation: Option<u64>,
+    pub(crate) live_command_applying: bool,
+    /// Exact ordered continuation for a form/command/runtime write. At most one
+    /// primary continuation exists; a second form save is rejected instead of
+    /// overwriting it.
+    pub(crate) live_primary: Option<crate::live_save_app::LivePending>,
+    /// Ordinary coalesced write currently in flight (not a form/command).
+    pub(crate) live_inflight: Option<crate::live_save_app::LiveInflight>,
+    pub(crate) live_workspace: Option<u64>,
+    /// Submission/worker failure kept distinct from the pending state. The dirty
+    /// edits remain in memory and retry; no effects run.
+    pub(crate) live_failure: Option<String>,
+    pub(crate) live_retry_at: Option<Instant>,
+    /// Window-dependent acknowledgements (focus/navigation/draft cleanup).
+    pub(crate) deferred_ui: Vec<crate::live_save_app::DeferredUiAction>,
     pub startup: crate::startup::Startup,
     pub workspace_required: bool,
     pub workspace_choice: Option<PathBuf>,
@@ -403,7 +420,6 @@ pub struct TaskApp {
     pub codex_version: Option<String>,
     pub codex_discovery: Option<mpsc::Receiver<Result<crate::codex::Discovery, String>>>,
     pub settings_scroll: ScrollHandle,
-    pub settings_tab: crate::settings_views::SettingsTab,
     pub global_model: Entity<InputState>,
     pub model_profile_name: Entity<InputState>,
     pub creating_model_profile: bool,
@@ -605,7 +621,7 @@ impl TaskApp {
         let search = cx.new(|cx| InputState::new(window, cx).placeholder("Filter this list…"));
         let sub = cx.subscribe(&search, |this, state, event, cx| {
             if matches!(event, InputEvent::Change) {
-                this.query = state.read(cx).value().to_string();
+                this.set_query(state.read(cx).value().to_string());
                 cx.notify();
             }
         });
@@ -697,7 +713,7 @@ impl TaskApp {
                     match event {
                         InputEvent::Focus
                             if this.scope() == Scope::Settings
-                                && this.settings_tab
+                                && this.settings_tab()
                                     == crate::settings_views::SettingsTab::Models =>
                         {
                             this.open_research_model_picker(&input, cx)
@@ -716,7 +732,7 @@ impl TaskApp {
         subscriptions.push(cx.subscribe(&ego_input, |this, input, event, cx| {
             if matches!(event, InputEvent::Change)
                 && this.scope() == Scope::Settings
-                && this.settings_tab == crate::settings_views::SettingsTab::Models
+                && this.settings_tab() == crate::settings_views::SettingsTab::Models
                 && !this.startup.required
             {
                 let value = input.read(cx).value();
@@ -730,6 +746,16 @@ impl TaskApp {
         Self {
             last_saved: store.clone(),
             storage: None,
+            live_save_enabled: false,
+            live_save_inflight_epoch: None,
+            live_command_generation: None,
+            live_command_applying: false,
+            live_primary: None,
+            live_inflight: None,
+            live_workspace: None,
+            live_failure: None,
+            live_retry_at: None,
+            deferred_ui: Vec::new(),
             startup: Default::default(),
             workspace_required: false,
             workspace_choice: None,
@@ -760,7 +786,6 @@ impl TaskApp {
             codex_discovery: None,
             available_models: vec![],
             settings_scroll: ScrollHandle::new(),
-            settings_tab: Default::default(),
             publishing_inputs: std::array::from_fn(|_| cx.new(|cx| InputState::new(window, cx))),
             publishing_job: None,
             publishing_scan_requested: true,
@@ -791,7 +816,6 @@ impl TaskApp {
             sidebar_split: cx.new(|_| gpui_kit::base::ResizableState::default()),
             results_split: cx.new(|_| gpui_kit::base::ResizableState::default()),
             search,
-            query: String::new(),
             global_search,
             global_search_ui: Default::default(),
             global_search_focus: cx.focus_handle(),
@@ -806,7 +830,6 @@ impl TaskApp {
             research_save_opener: None,
             previous_versions_opener: None,
             property: None,
-            editing: false,
             comment: cx.new(|cx| {
                 TextareaState::new(window, cx)
                     .placeholder("Leave a comment…")
@@ -1049,6 +1072,55 @@ impl TaskApp {
         self.nav.route().legacy_scope()
     }
 
+    /// List-local filter text owned by the typed ResearchList page.
+    pub(crate) fn query(&self) -> String {
+        match self.nav.route() {
+            crate::navigation_route::Route::ResearchList(page) => page.query().to_owned(),
+            _ => String::new(),
+        }
+    }
+
+    pub(crate) fn set_query(&mut self, query: String) {
+        let _ = self.nav.set_research_query(query);
+    }
+
+    pub(crate) fn clear_query(&mut self) {
+        self.set_query(String::new());
+    }
+
+    /// Active Settings section, or the last preference when another page is
+    /// visible. The active Settings page owns its tab in the typed route.
+    pub(crate) fn settings_section(&self) -> crate::navigation_route::SettingsSection {
+        match self.nav.route() {
+            crate::navigation_route::Route::Settings(page) => page.tab(),
+            _ => self.navigation.settings_section,
+        }
+    }
+
+    pub(crate) fn settings_tab(&self) -> crate::settings_views::SettingsTab {        match self.settings_section() {
+            crate::navigation_route::SettingsSection::General => {
+                crate::settings_views::SettingsTab::General
+            }
+            crate::navigation_route::SettingsSection::Models => {
+                crate::settings_views::SettingsTab::Models
+            }
+            crate::navigation_route::SettingsSection::Publishing => {
+                crate::settings_views::SettingsTab::Publishing
+            }
+        }
+    }
+
+    pub(crate) fn set_settings_tab(&mut self, tab: crate::settings_views::SettingsTab) {
+        use crate::navigation_route::SettingsSection;
+        let section = match tab {
+            crate::settings_views::SettingsTab::General => SettingsSection::General,
+            crate::settings_views::SettingsTab::Models => SettingsSection::Models,
+            crate::settings_views::SettingsTab::Publishing => SettingsSection::Publishing,
+        };
+        self.navigation.settings_section = section;
+        let _ = self.nav.set_settings_tab(section);
+    }
+
     /// Task detail identity is the typed `ResearchTask` route; there is no
     /// separate writable `selected` field.
     pub(crate) fn selected(&self) -> Option<u64> {
@@ -1224,6 +1296,38 @@ impl TaskApp {
         self.nav.clear_overlays();
     }
 
+    pub(crate) fn task_editor_overlay(&self) -> Option<u64> {
+        match self
+            .nav
+            .overlay(crate::navigation_route::OverlayKind::TaskEditor)
+        {
+            Some(crate::navigation_route::Overlay::TaskEditor { task }) => Some(task),
+            _ => None,
+        }
+    }
+
+    pub(crate) fn editing(&self) -> bool {
+        self.task_editor_overlay().is_some()
+    }
+
+    pub(crate) fn push_task_editor_overlay(&mut self, task: u64) -> bool {
+        self.nav
+            .push_overlay(
+                &self.store,
+                crate::navigation_route::Overlay::TaskEditor { task },
+            )
+            .is_ok()
+    }
+
+    pub(crate) fn close_task_editor_overlay(&mut self) -> bool {
+        self.nav
+            .remove_overlay(
+                &self.store,
+                crate::navigation_route::OverlayKind::TaskEditor,
+            )
+            .is_ok()
+    }
+
     /// Settings over the currently selected automation detail.
     pub(crate) fn settings_overlay(&self) -> bool {
         matches!(
@@ -1347,6 +1451,11 @@ impl TaskApp {
                 selection,
             );
         }
+        if matches!(scope, Scope::Settings) {
+            return crate::navigation_route::Route::Settings(
+                crate::navigation_route::SettingsPage::new(self.settings_section()),
+            );
+        }
         crate::navigation_route::Route::for_scope(
             scope,
             self.all_status,
@@ -1354,6 +1463,7 @@ impl TaskApp {
             self.automation_ui.result_filter,
             self.automation_ui.history_limit,
         )
+        .with_research_query(self.query())
     }
 
     /// Apply a route derived from the current page preferences. A rejected
@@ -1443,11 +1553,11 @@ impl TaskApp {
         if !self.install_route(route) {
             self.toast = "That page is no longer available. Returned to a safe parent.".into();
         }
-        self.editing = false;
+        let _ = self.close_task_editor_overlay();
         self.draft = None;
         self.property = None;
         self.error.clear();
-        self.query.clear();
+        self.clear_query();
         self.search.update(cx, |s, cx| s.set_value("", window, cx));
         if matches!(scope, Scope::Topic(_)) {
             window.focus(&self.focus, cx);
@@ -1560,7 +1670,7 @@ impl TaskApp {
             .insert(id, crate::navigation_context::RecentSurface::Task);
         self.reveal_task_project(id);
         self.sidebar_reveal = (!self.store.task_is_archived(id)).then_some(id);
-        self.editing = false;
+        let _ = self.close_task_editor_overlay();
         self.draft = None;
         self.property = None;
         self.error.clear();
@@ -1626,7 +1736,7 @@ impl TaskApp {
             .filter(|t| {
                 t.parent_id.is_none()
                     && self.matches_scope(t)
-                    && self.store.matches_query(t, &self.query)
+                    && self.store.matches_query(t, &self.query())
                     && (matches!(self.scope(), Scope::All | Scope::Archive)
                         || self.show_done
                         || !self
@@ -1702,7 +1812,12 @@ impl TaskApp {
                     .default_value(task.due_date.clone())
             }),
         });
-        self.editing = true;
+        if !self.push_task_editor_overlay(id) {
+            self.draft = None;
+            self.error = "Open the task before editing it.".into();
+            cx.notify();
+            return;
+        }
         self.error.clear();
         self.begin_task_edit_baseline(cx);
         title.update(cx, |s, cx| s.focus(window, cx));
@@ -1875,7 +1990,7 @@ impl TaskApp {
                 self.tabs.retain(|id| self.store.task(*id).is_some());
                 self.reconcile_nav_after_store_change();
                 self.draft = None;
-                self.editing = false;
+                let _ = self.close_task_editor_overlay();
                 self.property = None;
                 self.refresh_research_inputs(window, cx);
                 self.refresh_global_model_input(window, cx);
@@ -1988,7 +2103,7 @@ impl TaskApp {
                     self.set_scope_identity(Scope::All);
                 }
                 self.draft = None;
-                self.editing = false;
+                let _ = self.close_task_editor_overlay();
                 self.property = None;
                 self.refresh_research_inputs(window, cx);
                 self.refresh_global_model_input(window, cx);
@@ -2085,16 +2200,32 @@ impl TaskApp {
     }
     // Every notified domain mutation is saved. Streaming runs are coalesced to two writes/second.
     /// Persist a staged store without mutating the live one. Used by creation
-    /// forms so a failed write cannot leave a half-created request behind.
-    /// The caller adopts the staged store only after this returns `Ok`.
-    pub(crate) fn save_staged_store(&self, staged: &Store) -> Result<(), String> {
+    /// forms so a rejected write cannot leave a half-created request behind.
+    ///
+    /// In live mode the validated typed delta is merged into the live store and
+    /// submitted to the ordered worker. `Pending` means the data is in memory
+    /// and queued but not yet durable: the caller keeps its form open and defers
+    /// saved status, effects and acknowledgement-only UI work.
+    pub(crate) fn save_staged_store(
+        &mut self,
+        staged: &Store,
+        completion: crate::live_save_app::LiveCompletion,
+        cx: &mut Context<Self>,
+    ) -> Result<crate::live_save_app::SaveAcceptance, String> {
         #[cfg(feature = "qa")]
         self.qa_storage_writes.set(self.qa_storage_writes.get() + 1);
+        if self.live_persistence_active() {
+            self.merge_staged_store(staged)?;
+            let acceptance = self.submit_live_snapshot(completion, cx)?;
+            return Ok(acceptance);
+        }
         let storage = self.storage.as_ref().ok_or_else(|| {
             "Workspace storage is unavailable. Nothing was saved; the request stays editable."
                 .to_string()
         })?;
-        storage.save(staged).map_err(|error| error.to_string())
+        storage.save(staged).map_err(|error| error.to_string())?;
+        self.complete_live_now(completion, cx);
+        Ok(crate::live_save_app::SaveAcceptance::Durable)
     }
 
     /// Adopt a store that was just confirmed durable. Runtime state that lives
@@ -2115,9 +2246,6 @@ impl TaskApp {
             let _span = crate::persistence_metrics::Span::start("persist.reconcile");
             self.store.reconcile_goal_approvals();
         }
-        let Some(storage) = &self.storage else {
-            return false;
-        };
         let unchanged = !self.store.has_tracked_changes();
         if unchanged {
             crate::persistence_metrics::bump("persist.skip.unchanged", 1);
@@ -2130,6 +2258,54 @@ impl TaskApp {
             crate::persistence_metrics::bump("persist.skip.throttle", 1);
             return false;
         }
+        if self.live_persistence_active() {
+            if self.live_inflight.is_some() {
+                return false;
+            }
+            // While a form/command group is in flight, its own dirty epoch is
+            // already covered. Only a strictly newer edit needs a follow-up.
+            if let Some(pending) = self.live_primary.as_ref()
+                && pending.epoch == self.store.dirty_epoch()
+                && !pending.durable
+            {
+                if pending.generation == 0 {
+                    let _ = self.submit_primary_group_in_persist();
+                }
+                return false;
+            }
+            let delta = match self.store.drain_store_delta() {
+                Ok(delta) => delta,
+                Err(error) => {
+                    self.storage_error = error;
+                    return false;
+                }
+            };
+            if delta.changes.is_empty() && delta.metadata.is_empty() {
+                return false;
+            }
+            let Some(adapter) = self.dispatch_admission.as_mut() else {
+                self.storage_error = "Live persistence is unavailable.".into();
+                return false;
+            };
+            return match adapter.submit_live_group(delta.changes, delta.metadata, delta.epoch) {
+                Ok(generation) => {
+                    self.live_inflight = Some(crate::live_save_app::LiveInflight {
+                        generation,
+                        epoch: delta.epoch,
+                    });
+                    self.live_failure = None;
+                    self.last_save = Instant::now();
+                    false
+                }
+                Err(error) => {
+                    self.storage_error = error;
+                    false
+                }
+            };
+        }
+        let Some(storage) = &self.storage else {
+            return false;
+        };
         let receipt = match self.store.drain_store_delta() {
             Ok(receipt) => receipt,
             Err(error) => {

@@ -764,12 +764,12 @@ fn run_checks(layout_only: bool) {
                 );
                 w.click(0usize, cx);
                 w.render_frame(cx);
-                assert!(app.read(cx).editing, "menu opens the real Edit task form");
+                assert!(app.read(cx).editing(), "menu opens the real Edit task form");
                 assert!(app.read(cx).draft.is_some());
                 scroll_to(w, cx, "draft-scroll", "discard-draft");
                 w.click("discard-draft", cx);
                 w.render_frame(cx);
-                assert!(!app.read(cx).editing);
+                assert!(!app.read(cx).editing());
                 assert!(app.read(cx).draft.is_none());
             })
             .unwrap();
@@ -1347,7 +1347,7 @@ fn run_checks(layout_only: bool) {
             screenshot(&mut cx, handle, &directory, "21-all-board-tags.png");
             cx.update_window(handle, |_, w, cx| {
                 app.update(cx, |a, cx| {
-                    a.query.clear();
+                    a.clear_query();
                     a.search.update(cx, |s, cx| s.set_value("", w, cx));
                 });
                 w.click("all-status-filter", cx);

@@ -63,7 +63,21 @@ for entry in entries:
         except subprocess.TimeoutExpired:
             code, status = None, 'timeout'
             stream.write('\n[timeout] Independent gate exceeded 1200 seconds. Diagnose before changing bounds.\n')
-    manifest['results'].append({'entry': flag, 'status': status, 'exit_code': code, 'elapsed_seconds': round(time.time()-started, 2), 'log': log.name, 'alias_note': entry.get('note', '')})
+    observation = {}
+    if flag == '--qa-automation-perf' and code == 0:
+        measured = re.search(r'synchronous UI-triggered save block (\d+) ms', log.read_text())
+        if measured:
+            milliseconds = int(measured.group(1))
+            observation = {
+                'ui_save_block_ms': milliseconds,
+                'acceptance_note': 'One sample can reject a blocking save; it cannot prove p95 responsiveness or native scrolling smoothness.',
+            }
+            if milliseconds >= 50:
+                status = 'performance_rejected'
+        else:
+            status = 'measurement_review_required'
+            observation = {'acceptance_note': 'Save timing output changed or is missing. Review the actual UI measurement before accepting this entry.'}
+    manifest['results'].append({'entry': flag, 'status': status, 'exit_code': code, 'elapsed_seconds': round(time.time()-started, 2), 'log': log.name, 'alias_note': entry.get('note', ''), **observation})
     (out/'index.json').write_text(json.dumps(manifest, indent=2)+'\n')
     print('END', flag, status, code, flush=True)
 raise SystemExit(0 if all(r['status']=='passed' for r in manifest['results']) else 1)

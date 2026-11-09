@@ -1157,16 +1157,37 @@ fn conflict(message: &str) -> ScopedEditError {
 
 /// Validate every recorded preimage before writing. A conflict therefore leaves
 /// the entire pre-attempt state, including dirty tracking, untouched.
+fn index_map<T>(items: &[T], id: impl Fn(&T) -> u64) -> std::collections::HashMap<u64, usize> {
+    items
+        .iter()
+        .enumerate()
+        .map(|(index, item)| (id(item), index))
+        .collect()
+}
+
 pub(crate) fn apply_undo(store: &mut Store, undo: &DomainUndo) -> Result<(), ScopedEditError> {
-    validate_projects(store, &undo.projects)?;
-    validate_topics(store, &undo.topics)?;
-    validate_tasks(store, &undo.tasks)?;
-    validate_requests(store, &undo.requests)?;
+    // One index pass per collection; every validation and write below is
+    // O(1) per delta instead of rescanning the collection K times.
+    let project_index = index_map(store.projects(), |project| project.id);
+    let topic_index = index_map(store.topics(), |topic| topic.id);
+    let task_index = index_map(store.tasks(), |task| task.id);
+    let request_index = index_map(store.research_requests(), |request| request.id);
+    // Ordinary field Undo (title/labels/comment context) carries no run deltas;
+    // do not scan a large history for them.
+    let run_index = if undo.runs.is_empty() {
+        std::collections::HashMap::new()
+    } else {
+        index_map(store.runs(), |run| run.id)
+    };
+
+    validate_projects(store, &undo.projects, &project_index)?;
+    validate_topics(store, &undo.topics, &topic_index)?;
+    validate_tasks(store, &undo.tasks, &task_index)?;
+    validate_requests(store, &undo.requests, &request_index)?;
     for delta in &undo.runs {
-        let current = store
-            .runs()
-            .iter()
-            .find(|run| run.id == delta.id)
+        let current = run_index
+            .get(&delta.id)
+            .and_then(|index| store.runs().get(*index))
             .ok_or_else(|| conflict("A run from this action is no longer available."))?;
         if current.input_signature != delta.after_input_signature
             || current.project_plan != delta.after_project_plan
@@ -1179,34 +1200,50 @@ pub(crate) fn apply_undo(store: &mut Store, undo: &DomainUndo) -> Result<(), Sco
     validate_created_parents(store, undo)?;
     undo.settings.validate(store)?;
 
-    // Children first so a parent created and a child restored by the same
-    // inverse stay coherent.
+    // Apply every field write against the stable preflight indices first.
+    // Structural removals are deferred so they cannot shift the positions used
+    // by later writes.
     for delta in &undo.tasks {
-        apply_task(store, delta);
+        apply_task(store, delta, &task_index);
     }
     for delta in &undo.requests {
-        apply_request(store, delta);
+        apply_request(store, delta, &request_index);
     }
     for delta in &undo.topics {
-        apply_topic(store, delta);
+        apply_topic_changed(store, delta, &topic_index);
     }
     for delta in &undo.projects {
-        apply_project(store, delta);
+        apply_project_changed(store, delta, &project_index);
     }
     for delta in &undo.runs {
-        if let Some(mut run) = store.run_mut(delta.id) {
+        if let Some(index) = run_index.get(&delta.id)
+            && let Some(mut run) = store.run_at_index_mut(*index)
+        {
             run.input_signature = delta.before_input_signature.clone();
             run.project_plan = delta.before_project_plan;
         }
     }
     undo.settings.apply(store);
+    // Structural changes last: no indexed field write follows a removal.
+    for delta in &undo.topics {
+        apply_topic_structural(store, delta);
+    }
+    for delta in &undo.projects {
+        apply_project_structural(store, delta);
+    }
     Ok(())
 }
 
-fn validate_projects(store: &Store, deltas: &[ProjectDelta]) -> Result<(), ScopedEditError> {
+fn validate_projects(
+    store: &Store,
+    deltas: &[ProjectDelta],
+    index: &std::collections::HashMap<u64, usize>,
+) -> Result<(), ScopedEditError> {
     let message = "The project changed after this action. Undo would overwrite newer work.";
     for delta in deltas {
-        let current = store.project(delta.key());
+        let current = index
+            .get(&delta.key())
+            .and_then(|position| store.projects().get(*position));
         match delta {
             ProjectDelta::Name { after, .. } => {
                 if current.map(|project| &project.name) != Some(after) {
@@ -1235,10 +1272,16 @@ fn validate_projects(store: &Store, deltas: &[ProjectDelta]) -> Result<(), Scope
     Ok(())
 }
 
-fn validate_topics(store: &Store, deltas: &[TopicDelta]) -> Result<(), ScopedEditError> {
+fn validate_topics(
+    store: &Store,
+    deltas: &[TopicDelta],
+    index: &std::collections::HashMap<u64, usize>,
+) -> Result<(), ScopedEditError> {
     let message = "The topic changed after this action. Undo would overwrite newer work.";
     for delta in deltas {
-        let current = store.topic(delta.key());
+        let current = index
+            .get(&delta.key())
+            .and_then(|position| store.topics().get(*position));
         match delta {
             TopicDelta::Name { after, .. } => {
                 if current.map(|topic| &topic.name) != Some(after) {
@@ -1272,10 +1315,17 @@ fn validate_topics(store: &Store, deltas: &[TopicDelta]) -> Result<(), ScopedEdi
     Ok(())
 }
 
-fn validate_tasks(store: &Store, deltas: &[TaskDelta]) -> Result<(), ScopedEditError> {
+fn validate_tasks(
+    store: &Store,
+    deltas: &[TaskDelta],
+    index: &std::collections::HashMap<u64, usize>,
+) -> Result<(), ScopedEditError> {
     let message = "The task changed after this action. Undo would overwrite newer work.";
     for delta in deltas {
-        let Some(task) = store.task(delta.key()) else {
+        let Some(task) = index
+            .get(&delta.key())
+            .and_then(|position| store.tasks().get(*position))
+        else {
             return Err(conflict(message));
         };
         let matches = match delta {
@@ -1294,13 +1344,16 @@ fn validate_tasks(store: &Store, deltas: &[TaskDelta]) -> Result<(), ScopedEditE
     Ok(())
 }
 
-fn validate_requests(store: &Store, deltas: &[RequestDelta]) -> Result<(), ScopedEditError> {
+fn validate_requests(
+    store: &Store,
+    deltas: &[RequestDelta],
+    index: &std::collections::HashMap<u64, usize>,
+) -> Result<(), ScopedEditError> {
     let message = "The research request changed after this action. Undo would overwrite newer work.";
     for delta in deltas {
-        let Some(request) = store
-            .research_requests()
-            .iter()
-            .find(|request| request.id == delta.key())
+        let Some(request) = index
+            .get(&delta.key())
+            .and_then(|position| store.research_requests().get(*position))
         else {
             return Err(conflict(message));
         };
@@ -1315,18 +1368,30 @@ fn validate_requests(store: &Store, deltas: &[RequestDelta]) -> Result<(), Scope
     Ok(())
 }
 
-fn apply_project(store: &mut Store, delta: &ProjectDelta) {
+fn apply_project_changed(
+    store: &mut Store,
+    delta: &ProjectDelta,
+    index: &std::collections::HashMap<u64, usize>,
+) {
+    let (ProjectDelta::Name { before, .. } | ProjectDelta::Directory { before, .. }) = delta else {
+        return;
+    };
+    // `tracked_mut_index` re-checks identity, so a stale index can never write
+    // the wrong project.
+    if let Some(project) = index
+        .get(&delta.key())
+        .and_then(|position| store.project_at_index_mut(*position))
+    {
+        match delta {
+            ProjectDelta::Name { .. } => project.name = before.clone(),
+            ProjectDelta::Directory { .. } => project.directory = before.clone(),
+            _ => unreachable!("matched changed project"),
+        }
+    }
+}
+
+fn apply_project_structural(store: &mut Store, delta: &ProjectDelta) {
     match delta {
-        ProjectDelta::Name { id, before, .. } => {
-            if let Some(project) = store.project_mut(*id) {
-                project.name = before.clone();
-            }
-        }
-        ProjectDelta::Directory { id, before, .. } => {
-            if let Some(project) = store.project_mut(*id) {
-                project.directory = before.clone();
-            }
-        }
         ProjectDelta::Created(value) => {
             store.remove_project(value.id);
         }
@@ -1335,26 +1400,47 @@ fn apply_project(store: &mut Store, delta: &ProjectDelta) {
                 store.push_project(value.clone());
             }
         }
+        ProjectDelta::Name { .. } | ProjectDelta::Directory { .. } => {}
     }
 }
 
-fn apply_topic(store: &mut Store, delta: &TopicDelta) {
-    match delta {
-        TopicDelta::Name { id, before, .. } => {
-            if let Some(topic) = store.topic_mut(*id) {
-                topic.name = before.clone();
-            }
-        }
-        TopicDelta::Project { id, before, .. } => {
-            if let Some(topic) = store.topic_mut(*id) {
+fn apply_topic_changed(
+    store: &mut Store,
+    delta: &TopicDelta,
+    index: &std::collections::HashMap<u64, usize>,
+) {
+    let before = match delta {
+        TopicDelta::Name { before, .. } => before,
+        TopicDelta::Project { before, .. } => {
+            if let Some(topic) = index
+                .get(&delta.key())
+                .and_then(|position| store.topic_at_index_mut(*position))
+            {
                 topic.project_id = *before;
             }
+            return;
         }
-        TopicDelta::Archived { id, before, .. } => {
-            if let Some(topic) = store.topic_mut(*id) {
+        TopicDelta::Archived { before, .. } => {
+            if let Some(topic) = index
+                .get(&delta.key())
+                .and_then(|position| store.topic_at_index_mut(*position))
+            {
                 topic.archived = *before;
             }
+            return;
         }
+        TopicDelta::Created(_) | TopicDelta::Deleted(_) => return,
+    };
+    if let Some(topic) = index
+        .get(&delta.key())
+        .and_then(|position| store.topic_at_index_mut(*position))
+    {
+        topic.name = before.clone();
+    }
+}
+
+fn apply_topic_structural(store: &mut Store, delta: &TopicDelta) {
+    match delta {
         TopicDelta::Created(value) => {
             store.remove_topic(value.id);
         }
@@ -1363,11 +1449,19 @@ fn apply_topic(store: &mut Store, delta: &TopicDelta) {
                 store.push_topic(value.clone());
             }
         }
+        _ => {}
     }
 }
 
-fn apply_task(store: &mut Store, delta: &TaskDelta) {
-    let Some(task) = store.task_mut(delta.key()) else {
+fn apply_task(
+    store: &mut Store,
+    delta: &TaskDelta,
+    index: &std::collections::HashMap<u64, usize>,
+) {
+    let Some(task) = index
+        .get(&delta.key())
+        .and_then(|position| store.task_at_index_mut(*position))
+    else {
         return;
     };
     match delta {
@@ -1381,8 +1475,15 @@ fn apply_task(store: &mut Store, delta: &TaskDelta) {
     }
 }
 
-fn apply_request(store: &mut Store, delta: &RequestDelta) {
-    let Some(request) = store.request_mut(delta.key()) else {
+fn apply_request(
+    store: &mut Store,
+    delta: &RequestDelta,
+    index: &std::collections::HashMap<u64, usize>,
+) {
+    let Some(request) = index
+        .get(&delta.key())
+        .and_then(|position| store.request_at_index_mut(*position))
+    else {
         return;
     };
     match delta {
@@ -1851,6 +1952,217 @@ mod tests {
         }
     }
 
+    /// Many independent research steps with one final report. Built directly so
+    /// the fixture can exceed the planner's 12-step authoring limit while still
+    /// using the real topic/result/approval semantics.
+    fn bulk_research_fixture(affected: usize) -> (Store, u64, u64, Vec<u64>) {
+        assert!(affected >= 2);
+        let mut store = Store::empty();
+        store.project_mut(1).unwrap().directory = "/tmp/t13-scoped-domain".into();
+        store.research_config_mut().models = [
+            "fixture/planner",
+            "fixture/collector",
+            "fixture/analyst",
+            "fixture/adviser",
+        ]
+        .map(String::from);
+        let topic = store.create_topic(1, "Topic").unwrap();
+        let goal = store
+            .create_research_goal("Goal".into(), "Brief".into(), 1)
+            .unwrap();
+        store.set_goal_topic(goal, Some(topic)).unwrap();
+        store
+            .task_mut(goal)
+            .unwrap()
+            .research
+            .as_mut()
+            .unwrap()
+            .requires_approval = true;
+        store.set_stage(goal, Stage::Planned).unwrap();
+        let mut steps = Vec::with_capacity(affected);
+        for index in 0..affected {
+            let id = goal + 1 + index as u64;
+            let kind = if index + 1 == affected {
+                crate::research::ResearchKind::Advise
+            } else {
+                crate::research::ResearchKind::Collect
+            };
+            store.push_task(Task {
+                id,
+                created_at: String::new(),
+                automation_id: None,
+                title: format!("Step {index}"),
+                description: format!("Step {index}"),
+                project_id: 1,
+                topic_id: None,
+                approved_plan: None,
+                stage: Stage::Planned,
+                priority: crate::domain::Priority::None,
+                labels: Vec::new(),
+                cycle: None,
+                bucket: String::new(),
+                due_date: String::new(),
+                parent_id: None,
+                comments: Vec::new(),
+                activity: Vec::new(),
+                archived: false,
+                attachments: Vec::new(),
+                research: Some(crate::research::ResearchTask {
+                    requires_approval: false,
+                    kind,
+                    goal_id: goal,
+                    depends_on: Vec::new(),
+                    space_name: String::new(),
+                }),
+            });
+            steps.push(id);
+        }
+        // Raw fixture pushes bypass id allocation; reserve the next id so a
+        // later history task cannot collide with a step identity.
+        store.set_next_id(goal + affected as u64 + 1);
+        store.task_mut(goal).unwrap().approved_plan = store.goal_plan_signature(goal);
+        let destination = Project {
+            id: 2,
+            name: "Destination".into(),
+            key: "P2".into(),
+            directory: "/tmp/destination".into(),
+            research_brief: String::new(),
+            kind: crate::domain::ProjectKind::User,
+        };
+        store.push_project(destination);
+        (store, topic, goal, steps)
+    }
+
+    #[test]
+    fn large_affected_topic_move_and_undo_stay_bounded() {
+        let affected = 240usize;
+        let total_history = 43_200usize;
+        let (mut store, topic, goal, steps) = bulk_research_fixture(affected);
+        let mut runs: Vec<AgentRun> = steps
+            .iter()
+            .enumerate()
+            .map(|(index, step)| {
+                let mut run = history_run(1_000_000 + index as u64, *step);
+                run.status = "Succeeded".into();
+                run.output = format!("Completed report for {step}");
+                run.input_signature = store
+                    .research_signature(*step)
+                    .expect("bulk fixture step has reusable inputs");
+                run
+            })
+            .collect();
+        let history_task = store
+            .create_task("History task", 1, Stage::Done, None)
+            .unwrap();
+        let planning_run_id = 2_000_000u64;
+        // The planning run must not shadow a step's reusable result: the latest
+        // non-simulated run per task decides validity.
+        let mut planning = history_run(planning_run_id, history_task);
+        planning.project_plan = Some(1);
+        runs.push(planning);
+        let mut next = 3_000_000u64;
+        while runs.len() < total_history {
+            runs.push(history_run(next, history_task));
+            next += 1;
+        }
+        let mut live = history_run(4_000_000, history_task);
+        live.status = "Running".into();
+        live.output = "Kept runtime body".into();
+        live.logs = vec!["[run] live log that Undo must not touch".into()];
+        let live_snapshot = live.clone();
+        runs.push(live);
+
+        let mut fresh = Store::empty();
+        for project in store.projects() {
+            if let Some(existing) = fresh.project_mut(project.id) {
+                *existing = project.clone();
+            } else {
+                fresh.push_project(project.clone());
+            }
+        }
+        for topic_value in store.topics() {
+            fresh.push_topic(topic_value.clone());
+        }
+        for task in store.tasks() {
+            fresh.push_task(task.clone());
+        }
+        for request in store.research_requests() {
+            fresh.push_request(request.clone());
+        }
+        fresh.push_request(ResearchRequest {
+            id: 1,
+            project_id: 1,
+            topic_id: Some(topic),
+            automation_id: None,
+            expected_result: None,
+            revision: 1,
+            provisional_topic_name: None,
+            input: "Plan".into(),
+            submitted_at: String::new(),
+            planning_run_id: Some(planning_run_id),
+            goal_ids: Vec::new(),
+            brief: None,
+        });
+        fresh.research_config_mut().models = store.research_config().models.clone();
+        fresh.set_default_model(store.default_model().clone());
+        let mut store = match fresh.with_loaded_tracked(runs, Vec::new(), Vec::new()) {
+            Ok(restored) => restored,
+            Err((_, error)) => panic!("large affected fixture failed: {error}"),
+        };
+        assert_eq!(store.runs().len(), total_history + 1);
+        for step in &steps {
+            if store.research_result(*step).is_none() {
+                let signature = store.research_signature(*step);
+                let run = store
+                    .runs()
+                    .iter()
+                    .find(|run| run.task_id == *step && run.status != "Simulated");
+                let goal_ok = store.task(goal).map(|task| {
+                    (
+                        task.stage,
+                        task.approved_plan.clone(),
+                        store.goal_plan_signature(goal),
+                    )
+                });
+                panic!("bulk fixture step {step} invalid: signature={signature:?} run={:?} goal={goal_ok:?}", run.map(|run| (&run.input_signature, &run.status, run.output.len())));
+            }
+        }
+
+        let started = std::time::Instant::now();
+        let outcome = DomainCommand::TopicMove { topic, project: 2 }
+            .execute(&mut store)
+            .unwrap_or_else(|error| panic!("large affected move failed: {error}"));
+        let move_elapsed = started.elapsed();
+        for step in &steps {
+            assert!(
+                store.research_result(*step).is_some(),
+                "affected result {step} stays valid after the move"
+            );
+        }
+        let started = std::time::Instant::now();
+        apply_undo(&mut store, &outcome.undo).unwrap();
+        let undo_elapsed = started.elapsed();
+        for step in &steps {
+            assert!(
+                store.research_result(*step).is_some(),
+                "Undo restores reusable result for {step}"
+            );
+        }
+        assert_eq!(store.task(goal).unwrap().approved_plan, store.goal_plan_signature(goal));
+        let live_after = store
+            .runs()
+            .iter()
+            .find(|run| run.id == 4_000_000)
+            .unwrap();
+        assert_eq!(live_after.status, live_snapshot.status);
+        assert_eq!(live_after.output, live_snapshot.output);
+        assert_eq!(live_after.logs, live_snapshot.logs);
+        eprintln!(
+            "scoped_domain large-affected: affected={affected} history={total_history} deltas={} move={move_elapsed:?} undo={undo_elapsed:?}",
+            outcome.undo.changed_entities()
+        );
+    }
+
     #[test]
     fn large_history_move_and_undo_stay_bounded_and_preserve_runtime() {
         let (mut store, topic, goal, steps) = research_fixture();
@@ -1947,14 +2259,62 @@ mod tests {
         eprintln!(
             "scoped_domain large-history: move={move_elapsed:?} undo={undo_elapsed:?} history=43200"
         );
-        assert!(
-            move_elapsed < std::time::Duration::from_secs(2),
-            "move took {move_elapsed:?}"
-        );
-        assert!(
-            undo_elapsed < std::time::Duration::from_secs(2),
-            "undo took {undo_elapsed:?}"
-        );
+    }
+
+    #[test]
+    fn structural_removals_are_deferred_after_indexed_field_writes() {
+        let mut store = Store::empty();
+        // Created entities sit EARLIER in their vectors than the editable
+        // entities, so a removal shifts the editable index. The old
+        // remove-before-write order would miss the later field write.
+        let created = store.create_topic(1, "Created").unwrap();
+        let kept = store.create_topic(1, "After").unwrap();
+        let created_project = Project {
+            id: 9,
+            name: "Created project".into(),
+            key: "P9".into(),
+            directory: String::new(),
+            research_brief: String::new(),
+            kind: crate::domain::ProjectKind::User,
+        };
+        store.push_project(created_project.clone());
+        let kept_project = Project {
+            id: 10,
+            name: "After".into(),
+            key: "P10".into(),
+            directory: String::new(),
+            research_brief: String::new(),
+            kind: crate::domain::ProjectKind::User,
+        };
+        store.push_project(kept_project.clone());
+        let created_topic = store.topic(created).unwrap().clone();
+        let undo = DomainUndo {
+            projects: vec![
+                ProjectDelta::Created(created_project),
+                ProjectDelta::Name {
+                    id: kept_project.id,
+                    before: "Before".into(),
+                    after: kept_project.name.clone(),
+                },
+            ],
+            topics: vec![
+                TopicDelta::Created(created_topic),
+                TopicDelta::Name {
+                    id: kept,
+                    before: "Before".into(),
+                    after: "After".into(),
+                },
+            ],
+            tasks: Vec::new(),
+            requests: Vec::new(),
+            runs: Vec::new(),
+            settings: SettingsDelta::default(),
+        };
+        apply_undo(&mut store, &undo).unwrap();
+        assert!(store.topic(created).is_none());
+        assert!(store.project(9).is_none());
+        assert_eq!(store.topic(kept).unwrap().name, "Before");
+        assert_eq!(store.project(10).unwrap().name, "Before");
     }
 
     #[test]

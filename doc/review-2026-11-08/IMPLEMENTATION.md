@@ -1966,3 +1966,88 @@ After the user manually unlocked the Mac, Computer accessed the isolated r65 nat
 Root verified T12 and T14 sessions terminal before resuming those same sessions. T12 reports S2/S3 and automation-overlay S4 completed, including atomic planning-attempt ownership checks; editor/search/composer S4, page-state S5 and live return-frame S6 remain required. T14 explicitly confirms that ordinary synchronous saves, startup activation, durable command continuations, full snapshot retirement and indexed/lazy UI reads remain incomplete. Both sessions were resumed with the full remaining scope, rather than accepting the partial checkpoint as task completion.
 
 The current icon embedding checker passed with 51 registered icons, and `git diff --check` passed. A same-branch WIP backup preserves current source and evidence; it is not release acceptance. Screenshots, raw traces and logs remain local.
+
+
+## r77 independent committed-source verification
+
+Root independently ran `cargo test --features qa --quiet` against an exact archive of pushed commit `ed40899`; the command exited zero in 53.661 seconds. [Result](evidence/r76-full-tests.json). This does not replace native/performance acceptance. The topic-migration failure was traced to a fixture with no attached storage, while the scoped rename command correctly requires durable storage. Root prepared an independent derivation of the same commit with only the updated `topic_qa.rs` fixture, retaining existing cancel, invalid-input and valid-save assertions; its guarded QA run is in progress.
+
+T14 again ended with a dependency explanation rather than implementing the known command/form continuation prerequisite. Root verified its terminal state and resumed the same session with an explicit code-first prerequisite assignment. T19 was asked to provide an exact-source optimized isolated candidate after its repaint/geometry regression work; installation and native acceptance remain root-owned.
+
+
+## r78 topic fixture accepted narrowly; live continuation rejected
+
+Root's exact `ed40899` derivation with only the real-workspace topic fixture built successfully. Its immutable candidate passed the invalid-QA guard (exit 2), then `--qa-topic-migration` exited zero with existing cancel, invalid-name and valid-save assertions retained. This resolves the specific fixture regression; it does not prove the full current-source release matrix. [Independent result](evidence/r77-topic-fixture.json).
+
+The new live command implementation submits a prepared delta, then reprepares against potentially changed state on its durable receipt and applies through `NoopSink`. Root rejected this design before activation: the recomputed write set and effects may differ from what was committed. Required correction is exact acknowledged-write-set application with field/epoch conflict handling, or a new generation for changed data before effects. Single pending-command correlation must not be overwritten, and callback errors must not be immediately cleared by the enclosing receipt handler. Concurrent edits, second commands and changed preparation require explicit tests.
+
+T19's startup regression manually calls pump ticks and renders frames; root requested real scheduled startup completion without user events in addition. Manual method invocation alone cannot demonstrate the native repaint defect is fixed.
+
+
+## r79 automation recheck and meaningful performance gating
+
+Root independently ran full automation QA against the frozen `ed40899` plus topic-fixture-only candidate. The SHA-verified binary passed the invalid guard, and automation QA exited zero in 42.412 seconds. [Result](evidence/r79-automation.json). The earlier T13 candidate's legacy planning-overlay failure is not reproduced on this newer integrated derivation; T12 was informed to preserve the working contract.
+
+Root reviewed the command scaling fixture: its 43,200 records are unrelated to the moved topic, leaving the affected write set small. T13 received requirements for representative large affected move/Undo sets and indexed inverse validation/writes, while retaining unrelated runtime preservation.
+
+Root strengthened `script/run_review_gate.py`: a measured synchronous UI save block of at least 50 ms is now `performance_rejected` even if the executable exits zero. Missing/changed timing output requires measurement review. The real 1,336 ms log was replayed through the actual classification code and rejected; script syntax passed. A below-threshold single sample still does not prove p95 responsiveness or native scrolling acceptance.
+
+
+## r80 persistence ownership handoff after terminal checkpoint
+
+Root verified the previous T14 session terminal. Its code still leaves live activation disabled, form saves reporting success on enqueue, and whole-Store prepared-command comparisons/copies in the prospective live path. These are incomplete requirements, not acceptable performance tradeoffs. Root handed the existing work to a fresh OpenCode session using the same required model and a compact local handoff, covering durable form/command continuations, one bounded writer, startup activation and actual indexed/lazy UI reads. No parallel T14 owner remains active.
+
+T19 received the precise compile issue in its asynchronous startup regression: the `cx` inside a window-update closure is `App`, not the headless context/executor. Scheduled progress must be driven outside that borrow with supported APIs. Current source is not yet accepted as buildable; prior frozen candidates remain separately identified.
+
+
+## r81 stronger Undo invariants and index-lifetime review
+
+Root prepared an isolated derivation of the previously passing r77 candidate, strengthening every Undo site in the automation regression with full automation/occurrence/run equality and identity-floor checks, both in memory and after reading the saved database. Its build and guarded automation run are in progress; no pass is claimed yet.
+
+The new indexed Undo implementation received another source-review finding: removing a created topic/project shifts vector positions before later deltas use the original index map. Required correction is to defer removals or otherwise preserve stable lookup identities, with a mixed removal/edit regression. Root also required skipping history-index construction for empty run deltas so ordinary title Undo does not scan unrelated history.
+
+
+## r82 T04 frozen-candidate reacceptance
+
+Root's r81 independent derivation built, passed the invalid-QA guard, and passed the full automation QA with strengthened assertions at five Undo sites. Complete automation definitions, periods/dedupe keys, runtime history and identity floors match both in memory and after reading the database. [Evidence](evidence/r81-undo.json). T04 is reaccepted specifically for this frozen candidate; the ongoing indexed Undo and live persistence work must rerun the same assertions before integrated acceptance. T13 received the exact diagnostic source and instructions to integrate the assertions without overwriting unrelated QA changes.
+
+
+Root started independent scoped-domain tests against a frozen derivation containing the latest domain/index changes and deferred-removal correction. The asynchronous build/test handle remains active. Startup scheduler review also found the proposed always-restart timer lacks a demonstrated pre-fix race: root required a failing reproduction and burst-scheduling coverage, since repeatedly restarting the timer can delay polling. The current keep-alive predicate omits live persistence states; T14/T19 were asked to coordinate receipt draining and follow-up dirty saves without relying on user input.
+
+
+## r83 affected-history fixture failure and regression quality
+
+Root's independent r82 scoped-domain run exited 101: 12 tests passed and the new large-affected-history test failed its `research_result` precondition before executing the move. [Result](evidence/r82-scoped-tests.json). This is not evidence of a post-move product failure; the fixture must first prove its completed reports are valid. The unrelated-history case measured move 4.820 ms and Undo 1.004 ms, which does not substitute for the failed affected-history case.
+
+Root also reviewed the structural-removal regression: it removes an item appended after the edited survivor, so the survivor's index never shifts. T13 was required to place the removed entity before the survivor and demonstrate failure against the prior indexed implementation. A green test that does not exercise index movement is insufficient evidence for this fix.
+
+
+Root directly corrected the persistent startup-test compilation blocker after assigning narrow ownership: clock advancement and executor draining now occur on `HeadlessAppContext` outside the `App`/window update borrow. All completion/notification/render assertions remain. Function ownership was returned to T19 immediately afterward. Root froze the current integrated source and started `cargo check --features qa`; neither compilation success nor native root-cause resolution is assumed before evidence.
+
+
+## r84 startup observation boundary
+
+The r83 integrated build and invalid guard succeeded, but keyboard/visual QA exited 101 after 13.946 seconds because `startup-checking` was absent from the observation registry. The startup view has an ID but no observation wrapper, so this failure alone does not establish a native repaint failure. [Result](evidence/r83-keyboard-visual.json). T19 received the exact missing-observation finding. Root prepared a controlled r83 derivation changing only the startup element's observation wrapper; unchanged startup assertions are being rerun.
+
+
+## r85 asynchronous form-identity boundary review
+
+The new live-save continuation module now distinguishes pending acceptance from durability, but root found that task/request completion clears the current editor/composer unconditionally. Waiting for Store dirty state to clear cannot protect edits still held in input controls or a different form opened while the receipt is pending. T14 received requirements for captured form identity and input revision, preserving later drafts and current navigation on late receipts. Root also required comparing the captured workspace/incarnation rather than overwriting it on receipt, and exact accepted-generation correlation rather than matching an unsubmitted generation-zero continuation by epoch alone. Delayed-ack, changed-form and workspace-switch cases are required before activation.
+
+
+The controlled r84 startup-observation derivation built, passed the invalid-QA guard and passed the full keyboard/visual QA. [Result](evidence/r84-startup-observed.json). This isolates the r83 missing-element failure to test observation. It does not prove the native stale-startup-frame defect is fixed, nor justify the epoch-pump rewrite. T19 was asked to run the same scheduled-completion case with the original boolean pump and retain native verification as a separate requirement.
+
+
+## r86 corrected affected-history derivation and form-instance identity
+
+Root froze the corrected scoped-domain file over the prior isolated domain baseline and started an independent scoped test run. The updated structural-removal fixture now places removed entities before surviving edited entities, so it exercises actual index movement. The affected-history fixture no longer assigns its planning run to a completed step, avoiding accidental shadowing of that step's reusable result. These corrections remain subject to the running test.
+
+Live completion now compares task and field values, but root required a distinct editor/composer instance identity as well: closing and reopening the same task with identical values while a receipt is pending must not let that receipt close the new form. New validation errors must likewise survive unrelated late receipts.
+
+
+The r86 independent scoped run passed all 13 tests. The corrected 240-affected-step / 43,200-history case produced 485 deltas and measured move 63.323 ms, Undo 1.146 ms in debug. The unrelated-history case measured move 4.784 ms, Undo 1.137 ms. [Result](evidence/r86-scoped-tests.json). These are domain-level measurements, not native responsiveness acceptance; optimized actual-command scaling and UI evidence remain required. Crash binaries were filtered out by the scoped test selector, so this run does not claim crash-suite coverage.
+
+
+## r87 same-branch work-in-progress backup
+
+Root is preserving the latest navigation migration, indexed Undo, live-save continuation work and independent r76–r86 evidence in the same development branch. The current live-save integration is still under active implementation and is not claimed buildable or accepted by the earlier frozen-candidate results. Icon embedding passed for 51 registered assets and whitespace validation passed. Screenshots, raw traces, logs and local candidate binaries are excluded from staging.

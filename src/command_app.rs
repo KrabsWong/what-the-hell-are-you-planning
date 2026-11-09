@@ -31,6 +31,14 @@ impl CommitSink for StorageSink<'_> {
     }
 }
 
+struct NoopSink;
+
+impl CommitSink for NoopSink {
+    fn save(&self, _store: &Store) -> Result<(), String> {
+        Ok(())
+    }
+}
+
 fn command_error_text(error: CommandError) -> String {
     match error {
         CommandError::Rejected(message) | CommandError::Conflict(message) => message,
@@ -89,10 +97,44 @@ impl TaskApp {
         prepared: PreparedCommand,
         cx: &mut Context<Self>,
     ) -> Result<CommandReceipt, String> {
+        let class = prepared.class;
+        if self.live_save_enabled && self.live_command_generation.is_some() {
+            return Err(
+                "A previous command is still saving. Wait for its durable receipt before retrying."
+                    .into(),
+            );
+        }
+        if self.live_save_enabled {
+            let delta = prepared
+                .staged
+                .drain_store_delta()
+                .map_err(|error| error.to_string())?;
+            if !delta.changes.is_empty() || !delta.metadata.is_empty() {
+                let Some(adapter) = self.dispatch_admission.as_mut() else {
+                    return Err("Live persistence is unavailable. Nothing was saved.".into());
+                };
+                let generation = adapter
+                    .submit_live_group(delta.changes, delta.metadata, delta.epoch)
+                    .map_err(|error| format!("Live save was not submitted: {error}"))?;
+                self.live_command_generation = Some(generation);
+                if class == CommandClass::StopExternalWork {
+                    self.pending_stop = Some(prepared);
+                } else {
+                    self.pending_commit = Some(prepared);
+                }
+                return Err("Saving before the command is applied.".into());
+            }
+            let result = crate::domain_command::commit_prepared(
+                &NoopSink,
+                &mut self.store,
+                &mut self.last_saved,
+                prepared,
+            );
+            return self.finish_commit_result(result, class, cx);
+        }
         let Some(storage) = self.storage.as_ref() else {
             return Err("Workspace storage is unavailable. Nothing was saved.".into());
         };
-        let class = prepared.class;
         let sink = StorageSink {
             storage,
             #[cfg(feature = "qa")]
@@ -104,6 +146,15 @@ impl TaskApp {
             &mut self.last_saved,
             prepared,
         );
+        self.finish_commit_result(result, class, cx)
+    }
+
+    fn finish_commit_result(
+        &mut self,
+        result: Result<CommandReceipt, CommitError>,
+        class: CommandClass,
+        cx: &mut Context<Self>,
+    ) -> Result<CommandReceipt, String> {
         match result {
             Ok(receipt) => {
                 self.storage_error.clear();
@@ -146,9 +197,71 @@ impl TaskApp {
         }
     }
 
+    /// Apply a command whose typed group is already durable. The staged command
+    /// is repreprepared against current state and committed through a no-op sink.
+    fn finish_live_command(&mut self, cx: &mut Context<Self>) {
+        let pending = self.pending_commit.take().or_else(|| self.pending_stop.take());
+        let Some(prepared) = pending else { return; };
+        let class = prepared.class;
+        // Apply exactly the acknowledged prepared write set. No reprepare under
+        // the no-op sink: effects must match the durable group.
+        let result = crate::domain_command::commit_prepared(
+            &NoopSink,
+            &mut self.store,
+            &mut self.last_saved,
+            prepared,
+        );
+        match result {
+            Ok(receipt) => {
+                self.storage_error.clear();
+                if class != CommandClass::OrdinaryEdit {
+                    self.invalidate_undo_for_automation();
+                }
+                if class == CommandClass::StopExternalWork
+                    && let Some(subject) = receipt.subject
+                {
+                    self.clear_stop_intent(subject);
+                    self.automation_ui.feedback = Some(Ok(
+                        "Stopped. The cancellation is saved and this period will not restart."
+                            .into(),
+                    ));
+                }
+                let effects = receipt.effects.clone();
+                self.apply_effects(effects, cx);
+            }
+            Err(CommitError::Stale { pending, .. }) => {
+                // A concurrent edit invalidated the acknowledged base. The
+                // retained command must be reprepared and submitted as a NEW
+                // generation; no effects may run for the old group.
+                match crate::domain_command::reprepare(pending, &self.store) {
+                    Ok(prepared) => match self.commit_prepared_command(prepared, cx) {
+                        Ok(_) => {}
+                        Err(error) => {
+                            self.storage_error = error;
+                        }
+                    },
+                    Err(error) => {
+                        self.storage_error = command_error_text(error);
+                    }
+                }
+            }
+            Err(CommitError::NotDurable { message, pending }) => {
+                self.storage_error = message;
+                if pending.class == CommandClass::StopExternalWork {
+                    self.pending_stop = Some(pending);
+                } else {
+                    self.pending_commit = Some(pending);
+                }
+            }
+        }
+    }
+
     /// Footer Retry save / next-command retry. It never replays the old staged
     /// store: it reprepares from the current store under the retained identity.
     pub(crate) fn retry_pending_saves(&mut self, cx: &mut Context<Self>) {
+        if self.live_save_enabled && self.live_command_generation.is_some() {
+            return;
+        }
         if let Some(pending) = self.pending_commit.take() {
             match crate::domain_command::reprepare(pending, &self.store) {
                 Ok(prepared) => {
@@ -684,13 +797,16 @@ impl TaskApp {
                     self.dispatch_ack_pending = None;
                     changed = true;
                 }
-                crate::dispatch_admission::AdmissionUpdate::LiveSaveDurable { epoch, .. } => {
-                    self.store.retire_epoch(epoch);
-                    self.storage_error.clear();
+                crate::dispatch_admission::AdmissionUpdate::LiveSaveDurable { generation, epoch } => {
+                    self.on_live_durable(generation, epoch, cx);
                     changed = true;
                 }
-                crate::dispatch_admission::AdmissionUpdate::LiveSaveError { reason, .. } => {
-                    self.storage_error = reason;
+                crate::dispatch_admission::AdmissionUpdate::LiveSaveError {
+                    generation,
+                    epoch,
+                    reason,
+                } => {
+                    self.on_live_failure(generation, epoch, reason, cx);
                     changed = true;
                 }
                 crate::dispatch_admission::AdmissionUpdate::StaleAck { reason, .. }

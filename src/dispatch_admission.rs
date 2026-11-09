@@ -1017,6 +1017,28 @@ impl DispatchAdmissionAdapter {
         !self.live_saves.is_empty() || self.live_retained.is_some()
     }
 
+    /// True while this exact generation still belongs to an unacknowledged live
+    /// save. A duplicate or stale receipt for another generation must never
+    /// complete a UI continuation.
+    pub(crate) fn live_tracks(&self, generation: u64) -> bool {
+        self.live_saves.contains_key(&generation)
+    }
+
+    pub(crate) fn live_workspace(&self) -> u64 {
+        self.workspace
+    }
+
+    /// Explicit footer retry: re-drain a retained live group and ask the worker
+    /// to retry a parked generation. Effects remain gated on the next exact
+    /// durable receipt.
+    pub(crate) fn retry_live(&mut self) -> Result<(), String> {
+        self.retry_live_group();
+        if self.live_retained.is_some() {
+            return Err("The previous live save is still retained by the persistence worker.".into());
+        }
+        self.worker.retry()
+    }
+
     fn retry_live_group(&mut self) {
         let Some((group, epoch)) = self.live_retained.take() else {
             return;
@@ -1101,9 +1123,9 @@ fn extract_parts(prepared: &PreparedCommand) -> Result<AdmissionParts, String> {
         }
         None => None,
     };
-    let next_id = (prepared.staged.next_id() != prepared.base.store().next_id())
+    let next_id = (prepared.staged.next_id() != prepared.base.next_id)
         .then_some(prepared.staged.next_id());
-    let run_id_floor = (prepared.staged.run_id_floor() != prepared.base.store().run_id_floor())
+    let run_id_floor = (prepared.staged.run_id_floor() != prepared.base.run_id_floor)
         .then_some(prepared.staged.run_id_floor());
     Ok(AdmissionParts {
         operation_key: prepared.id.operation_key.clone(),

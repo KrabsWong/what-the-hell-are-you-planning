@@ -19,6 +19,7 @@ pub fn run() {
     settings_retained_invalidation(&root);
     footer_retention_invalidation(&root);
     sidebar_retained_surface(&root);
+    startup_completion_scheduled(&root);
     settings_scroll_probe(&root);
     keyboard_matrix(&root);
     automation_result_keyboard(&root);
@@ -461,7 +462,7 @@ fn visual_settings(root: &Path, mode: Appearance, width: f32, height: f32) {
     Storage::new(path.clone()).save(&store).unwrap();
     let (mut cx, handle, app) = with_app(store, &path, width, height, |app, w, cx| {
         app.set_scope_identity(Scope::Settings);
-        app.settings_tab = crate::settings_views::SettingsTab::Models;
+        app.set_settings_tab(crate::settings_views::SettingsTab::Models);
         app.available_models = vec!["local/plan-model".into(), "local/collect-model".into()];
         app.ego_status = "Runtime ready".into();
         cx.notify();
@@ -528,7 +529,7 @@ fn settings_retained_invalidation(root: &Path) {
     Storage::new(path.clone()).save(&store).unwrap();
     let (mut cx, handle, app) = with_app(store, &path, 1440., 920., |app, w, cx| {
         app.set_scope_identity(Scope::Settings);
-        app.settings_tab = crate::settings_views::SettingsTab::Models;
+        app.set_settings_tab(crate::settings_views::SettingsTab::Models);
         cx.notify();
         let _ = w;
     });
@@ -898,6 +899,76 @@ fn sidebar_retained_surface(root: &Path) {
         .unwrap();
 }
 
+fn startup_completion_scheduled(root: &Path) {
+    use std::sync::atomic::Ordering;
+    let directory = root.join("startup-scheduled");
+    std::fs::create_dir_all(&directory).unwrap();
+    let store = fixture(&directory);
+    let path = directory.join("workspace.sqlite3");
+    Storage::new(path.clone()).save(&store).unwrap();
+    let (mut cx, handle, app) = with_app(store, &path, 1000., 680., |app, w, cx| {
+        app.set_scope_identity(Scope::All);
+        cx.notify();
+        let _ = w;
+    });
+    let count = Arc::new(std::sync::atomic::AtomicUsize::new(0));
+    let probe = cx.update(|cx| cx.new(|_| NotifyProbe { count: count.clone(), _subscription: None }));
+    probe.update(&mut cx, |this, cx| {
+        this._subscription = Some(cx.observe(&app, |this, _, _| {
+            this.count.fetch_add(1, Ordering::SeqCst);
+        }));
+    });
+    let before = cx.update_window(handle, |_, w, cx| {
+        let (tx, rx) = std::sync::mpsc::channel();
+        app.update(cx, |app, cx| {
+            app.startup.pending = Some(rx);
+            app.startup.required = true;
+            app.startup.silent = true;
+            app.start_pump(cx);
+        });
+        w.render_frame(cx);
+        w.find("startup-checking");
+        let before = count.load(Ordering::SeqCst);
+        tx.send([
+            Ok("1.0".to_string()),
+            Err("Codex not configured".to_string()),
+            Err("ego not configured".to_string()),
+        ])
+        .unwrap();
+        drop(tx);
+        before
+    })
+    .unwrap();
+    // Drive the headless executor outside the App/window update borrow.
+    // No manual pump tick, click, resize, or render happens here.
+    for _ in 0..8 {
+        cx.advance_clock(std::time::Duration::from_millis(100));
+        cx.run_until_parked();
+        if cx.update(|cx| app.read(cx).startup.pending.is_none()) {
+            break;
+        }
+    }
+    cx.update_window(handle, |_, w, cx| {
+        assert!(
+            app.read(cx).startup.pending.is_none(),
+            "the scheduled pump must consume startup completion without user input"
+        );
+        assert!(
+            count.load(Ordering::SeqCst) > before,
+            "startup completion must notify the root view for repaint"
+        );
+        w.render_frame(cx);
+        assert!(
+            w.try_find("startup-checking").is_none(),
+            "Starting… must disappear after scheduled startup completion"
+        );
+        w.find("startup-recheck");
+    })
+    .unwrap();
+    cx.update_window(handle, |_, w, _| w.remove_window())
+        .unwrap();
+}
+
 fn click_in_settings(w: &mut Window, cx: &mut App, id: &str) {
     w.render_frame(cx);
     for _ in 0..30 {
@@ -924,7 +995,7 @@ fn settings_scroll_probe(root: &Path) {
     Storage::new(path.clone()).save(&store).unwrap();
     let (mut cx, handle, app) = with_app(store, &path, 1440., 920., |app, w, cx| {
         app.set_scope_identity(Scope::Settings);
-        app.settings_tab = crate::settings_views::SettingsTab::Models;
+        app.set_settings_tab(crate::settings_views::SettingsTab::Models);
         cx.notify();
         let _ = w;
     });
@@ -968,7 +1039,7 @@ fn settings_scroll_probe(root: &Path) {
         );
         let before_general = crate::brand::scroll_render_probe().general;
         app.update(cx, |app, cx| {
-            app.settings_tab = crate::settings_views::SettingsTab::General;
+            app.set_settings_tab(crate::settings_views::SettingsTab::General);
             cx.notify();
         });
         w.render_frame(cx);

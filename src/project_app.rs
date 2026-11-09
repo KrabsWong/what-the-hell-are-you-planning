@@ -266,6 +266,16 @@ impl TaskApp {
         self.dispatch_research_request(id, true, cx);
     }
 
+    /// Start a request whose save was just acknowledged without moving the
+    /// user's route. Background/ack-driven work never changes navigation.
+    pub(crate) fn retry_research_request_without_navigation(
+        &mut self,
+        id: u64,
+        cx: &mut Context<Self>,
+    ) {
+        self.dispatch_research_request(id, false, cx);
+    }
+
     /// Automatic plan repair continues in the background without taking over the
     /// current page or selection.
     pub(crate) fn retry_research_request_background(&mut self, id: u64, cx: &mut Context<Self>) {

@@ -408,7 +408,7 @@ fn research_scope_origin(
             a.all_status = AllStatus::Open;
             a.search
                 .update(cx, |input, cx| input.set_value("supply", w, cx));
-            a.query = "supply".into();
+            a.set_query("supply".into());
             cx.notify();
         });
         let mut opener = None;
@@ -826,7 +826,7 @@ fn settings_origin(
 ) {
     let (mut cx, handle, app) = with_app(&fixture.store, path, width, height, |a, w, cx| {
         a.navigate(Scope::Settings, w, cx);
-        a.settings_tab = crate::settings_views::SettingsTab::Models;
+        a.set_settings_tab(crate::settings_views::SettingsTab::Models);
     });
     cx.update_window(handle, |_, w, cx| {
         w.render_frame(cx);
@@ -841,7 +841,7 @@ fn settings_origin(
         assert!(!app.read(cx).global_search_ui.open);
         assert_eq!(app.read(cx).scope(), Scope::Settings);
         assert!(
-            app.read(cx).settings_tab == crate::settings_views::SettingsTab::Models,
+            app.read(cx).settings_tab() == crate::settings_views::SettingsTab::Models,
             "Settings origin must keep the selected tab"
         );
         assert_eq!(w.focused(cx), opener);

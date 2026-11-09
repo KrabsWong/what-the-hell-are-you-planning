@@ -528,13 +528,20 @@ pub fn run_migration() {
     let goal = store.create_task("Semiconductor research", 1, crate::domain::Stage::Planned, None).unwrap();
     store.create_task("Review earnings sources", 1, crate::domain::Stage::Planned, Some(goal)).unwrap();
     let topic = store.task_topic(goal).unwrap().id;
+    // The rename flow now commits through the durable scoped command path, so
+    // the fixture must provide a real workspace instead of an in-memory store.
+    let workspace = root.join("workspace.sqlite3");
+    Storage::new(workspace.clone()).save(&store).unwrap();
     let mut cx = HeadlessAppContext::with_platform(
         platform::current_platform(true).text_system(), Arc::new(crate::ui_assets::AppAssets), platform::current_headless_renderer);
     cx.update(|cx| { init(cx); Theme::change(ThemeMode::Light, None, cx); });
     let mut app = None;
     let window = cx.open_window(size(px(1440.), px(900.)), |w, cx| {
         let view = cx.new(|cx| TaskApp::new_mock(w, cx));
-        view.update(cx, |a, cx| { a.store = store; a.navigate(Scope::Topic(topic), w, cx); });
+        view.update(cx, |a, cx| {
+            a.attach_storage(Storage::new(workspace.clone()), w, cx);
+            a.navigate(Scope::Topic(topic), w, cx);
+        });
         app = Some(view.clone());
         cx.new(|cx| base::Root::new(view, w, cx))
     }).unwrap();
@@ -669,7 +676,7 @@ pub fn run_migration() {
         assert_eq!(app.read(cx).scope(), Scope::Topic(moved_topic));
         app.update(cx, |a, cx| {
             a.navigate(Scope::Project(1), w, cx);
-            a.query = "Moved goal one".into(); cx.notify();
+            a.set_query("Moved goal one".into()); cx.notify();
         });
         w.render_frame(cx);
         assert!(w.find(format!("collection-topic-{moved_topic}")).label().unwrap().contains("1 goals"));

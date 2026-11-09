@@ -1,0 +1,9 @@
+{
+  "base": "r77 fixture-only source",
+  "undo_sites": 5,
+  "source_sha256": "ed99306e50fec936b21c9b9f6016fd7aeebbc332ebec45e03bca4aca0bd32d9f",
+  "build_exit": 0,
+  "binary_sha256": "b15e678fd950376b9fb84344db496dc185e4accd712e2886d0d51706a6b5c1d5",
+  "guard_exit": 2,
+  "qa_exit": 0
+}

@@ -3131,7 +3131,22 @@ fn undo_protection_check(root: &Path) {
     assert!(reason.is_none());
     assert_eq!(status, DefinitionStatus::Paused);
     cx.update_window(handle, |_, w, cx| {
-        app.update(cx, |a, cx| a.undo_change(w, cx));
+        app.update(cx, |a, cx| {
+            let definitions = a.store.automations().to_vec();
+            let occurrences = a.store.all_occurrences().to_vec();
+            let runs = a.store.runs().to_vec();
+            let ids = (a.store.next_id(), a.store.run_id_floor());
+            a.undo_change(w, cx);
+            assert_eq!(a.store.automations(), definitions.as_slice(), "Undo preserves full definitions");
+            assert_eq!(a.store.all_occurrences(), occurrences.as_slice(), "Undo preserves full periods and keys");
+            assert_eq!(a.store.runs(), runs.as_slice(), "Undo preserves full runtime history");
+            assert_eq!((a.store.next_id(), a.store.run_id_floor()), ids, "Undo preserves identity floors");
+            let disk = a.storage.as_ref().unwrap().load().unwrap().unwrap();
+            assert_eq!(disk.automations(), definitions.as_slice(), "Durable definitions survive Undo");
+            assert_eq!(disk.all_occurrences(), occurrences.as_slice(), "Durable periods and keys survive Undo");
+            assert_eq!(disk.runs(), runs.as_slice(), "Durable runtime history survives Undo");
+            assert_eq!((disk.next_id(), disk.run_id_floor()), ids, "Durable identity floors survive Undo");
+        });
     })
     .unwrap();
     let (title, status) = read_state(&mut cx, &app, |a| {
@@ -3158,7 +3173,22 @@ fn undo_protection_check(root: &Path) {
                 )
                 .is_some());
             assert!(a.undo_invalidation.is_none(), "no legacy barrier remains");
+{
+            let definitions = a.store.automations().to_vec();
+            let occurrences = a.store.all_occurrences().to_vec();
+            let runs = a.store.runs().to_vec();
+            let ids = (a.store.next_id(), a.store.run_id_floor());
             a.undo_change(w, cx);
+            assert_eq!(a.store.automations(), definitions.as_slice(), "Undo preserves full definitions");
+            assert_eq!(a.store.all_occurrences(), occurrences.as_slice(), "Undo preserves full periods and keys");
+            assert_eq!(a.store.runs(), runs.as_slice(), "Undo preserves full runtime history");
+            assert_eq!((a.store.next_id(), a.store.run_id_floor()), ids, "Undo preserves identity floors");
+            let disk = a.storage.as_ref().unwrap().load().unwrap().unwrap();
+            assert_eq!(disk.automations(), definitions.as_slice(), "Durable definitions survive Undo");
+            assert_eq!(disk.all_occurrences(), occurrences.as_slice(), "Durable periods and keys survive Undo");
+            assert_eq!(disk.runs(), runs.as_slice(), "Durable runtime history survives Undo");
+            assert_eq!((disk.next_id(), disk.run_id_floor()), ids, "Durable identity floors survive Undo");
+        };
         });
     })
     .unwrap();
@@ -3227,7 +3257,22 @@ fn undo_protection_check(root: &Path) {
     assert!(cursor.is_some_and(|cursor| cursor > now), "cursor advanced");
     assert_eq!(title, "Ordinary edit four");
     cx.update_window(handle, |_, w, cx| {
-        app.update(cx, |a, cx| a.undo_change(w, cx));
+        app.update(cx, |a, cx| {
+            let definitions = a.store.automations().to_vec();
+            let occurrences = a.store.all_occurrences().to_vec();
+            let runs = a.store.runs().to_vec();
+            let ids = (a.store.next_id(), a.store.run_id_floor());
+            a.undo_change(w, cx);
+            assert_eq!(a.store.automations(), definitions.as_slice(), "Undo preserves full definitions");
+            assert_eq!(a.store.all_occurrences(), occurrences.as_slice(), "Undo preserves full periods and keys");
+            assert_eq!(a.store.runs(), runs.as_slice(), "Undo preserves full runtime history");
+            assert_eq!((a.store.next_id(), a.store.run_id_floor()), ids, "Undo preserves identity floors");
+            let disk = a.storage.as_ref().unwrap().load().unwrap().unwrap();
+            assert_eq!(disk.automations(), definitions.as_slice(), "Durable definitions survive Undo");
+            assert_eq!(disk.all_occurrences(), occurrences.as_slice(), "Durable periods and keys survive Undo");
+            assert_eq!(disk.runs(), runs.as_slice(), "Durable runtime history survives Undo");
+            assert_eq!((disk.next_id(), disk.run_id_floor()), ids, "Durable identity floors survive Undo");
+        });
     })
     .unwrap();
     let (title, occurrences, cursor) = read_state(&mut cx, &app, |a| {
@@ -3279,7 +3324,22 @@ fn undo_protection_check(root: &Path) {
     assert_eq!(undo_len, 1, "saving a draft records no undo entry");
     assert!(reason.is_none());
     cx.update_window(handle, |_, w, cx| {
-        app.update(cx, |a, cx| a.undo_change(w, cx));
+        app.update(cx, |a, cx| {
+            let definitions = a.store.automations().to_vec();
+            let occurrences = a.store.all_occurrences().to_vec();
+            let runs = a.store.runs().to_vec();
+            let ids = (a.store.next_id(), a.store.run_id_floor());
+            a.undo_change(w, cx);
+            assert_eq!(a.store.automations(), definitions.as_slice(), "Undo preserves full definitions");
+            assert_eq!(a.store.all_occurrences(), occurrences.as_slice(), "Undo preserves full periods and keys");
+            assert_eq!(a.store.runs(), runs.as_slice(), "Undo preserves full runtime history");
+            assert_eq!((a.store.next_id(), a.store.run_id_floor()), ids, "Undo preserves identity floors");
+            let disk = a.storage.as_ref().unwrap().load().unwrap().unwrap();
+            assert_eq!(disk.automations(), definitions.as_slice(), "Durable definitions survive Undo");
+            assert_eq!(disk.all_occurrences(), occurrences.as_slice(), "Durable periods and keys survive Undo");
+            assert_eq!(disk.runs(), runs.as_slice(), "Durable runtime history survives Undo");
+            assert_eq!((disk.next_id(), disk.run_id_floor()), ids, "Durable identity floors survive Undo");
+        });
     })
     .unwrap();
     let (automations, title) = read_state(&mut cx, &app, |a| {
@@ -3325,7 +3385,22 @@ fn undo_protection_check(root: &Path) {
     assert!(cursor.is_some());
     assert_eq!(undo_len, 1, "enabling records no undo entry");
     cx.update_window(handle, |_, w, cx| {
-        app.update(cx, |a, cx| a.undo_change(w, cx));
+        app.update(cx, |a, cx| {
+            let definitions = a.store.automations().to_vec();
+            let occurrences = a.store.all_occurrences().to_vec();
+            let runs = a.store.runs().to_vec();
+            let ids = (a.store.next_id(), a.store.run_id_floor());
+            a.undo_change(w, cx);
+            assert_eq!(a.store.automations(), definitions.as_slice(), "Undo preserves full definitions");
+            assert_eq!(a.store.all_occurrences(), occurrences.as_slice(), "Undo preserves full periods and keys");
+            assert_eq!(a.store.runs(), runs.as_slice(), "Undo preserves full runtime history");
+            assert_eq!((a.store.next_id(), a.store.run_id_floor()), ids, "Undo preserves identity floors");
+            let disk = a.storage.as_ref().unwrap().load().unwrap().unwrap();
+            assert_eq!(disk.automations(), definitions.as_slice(), "Durable definitions survive Undo");
+            assert_eq!(disk.all_occurrences(), occurrences.as_slice(), "Durable periods and keys survive Undo");
+            assert_eq!(disk.runs(), runs.as_slice(), "Durable runtime history survives Undo");
+            assert_eq!((disk.next_id(), disk.run_id_floor()), ids, "Durable identity floors survive Undo");
+        });
     })
     .unwrap();
     assert_eq!(

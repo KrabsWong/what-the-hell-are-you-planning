@@ -55,40 +55,29 @@ pub(crate) enum CommandClass {
     StopExternalWork,
 }
 
-/// The state a command was prepared from. `exact` is authoritative in T13 S0.
-/// `revision` is a cheap content stamp and the seam T14 replaces with an ordered
-/// generation/acknowledgement. A stale base never assigns the staged store.
+/// The state a command was prepared from. The revision is the store's
+/// monotonic tracked-mutation stamp: every tracked entity/scalar write advances
+/// it, so a stale base never replays pipelined state. It deliberately does not
+/// clone or hash the whole store on the UI thread.
 #[derive(Clone, Debug, PartialEq)]
 pub(crate) struct CommandBase {
     pub revision: u64,
-    exact: Box<Store>,
+    pub next_id: u64,
+    pub run_id_floor: u64,
 }
 
 impl CommandBase {
     pub(crate) fn capture(store: &Store) -> Self {
         Self {
-            revision: state_revision(store),
-            exact: Box::new(store.clone()),
+            revision: store.dirty_epoch(),
+            next_id: store.next_id(),
+            run_id_floor: store.run_id_floor(),
         }
     }
 
     pub(crate) fn matches(&self, store: &Store) -> bool {
-        self.revision == state_revision(store) && self.exact.as_ref() == store
+        self.revision == store.dirty_epoch()
     }
-
-    pub(crate) fn store(&self) -> &Store {
-        &self.exact
-    }
-}
-
-fn state_revision(store: &Store) -> u64 {
-    // A content stamp, not a cryptographic identity. Exact equality remains the
-    // correctness check in S0; S1/T14 may replace this with a monotonic counter.
-    let mut hasher = std::collections::hash_map::DefaultHasher::new();
-    serde_json::to_vec(store)
-        .unwrap_or_default()
-        .hash(&mut hasher);
-    hasher.finish()
 }
 
 #[derive(Clone, Debug, PartialEq, Eq)]

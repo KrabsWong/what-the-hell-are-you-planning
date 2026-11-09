@@ -275,7 +275,7 @@ impl TaskApp {
     }
 
     pub fn open_model_settings(&mut self, w: &mut Window, cx: &mut Context<Self>) {
-        self.settings_tab = SettingsTab::Models;
+        self.set_settings_tab(SettingsTab::Models);
         self.settings_scroll.set_offset(point(px(0.), px(0.)));
         self.navigate(Scope::Settings, w, cx);
     }
@@ -448,7 +448,7 @@ impl TaskApp {
                 .child(label("Projects, reports, materials and app data are stored in this folder's workspace subfolder.", cx))
                 .child(div().text_sm().child(selectable(root.to_string_lossy().into_owned())))))
         };
-        let panel = match self.settings_tab {
+        let panel = match self.settings_tab() {
             SettingsTab::General => build_general(),
             SettingsTab::Publishing => self.publishing_settings_panel(cx),
             SettingsTab::Models => self.research_settings_panel(cx),
@@ -470,20 +470,20 @@ impl TaskApp {
                     .child(
                         TabBar::new("settings-tabs")
                             .underline()
-                            .selected_index(Self::settings_tab_index(self.settings_tab))
+                            .selected_index(Self::settings_tab_index(self.settings_tab()))
                             .child(Tab::new().label("General"))
                             .child(Tab::new().label("Agent & models"))
                             .child(Tab::new().label("Publishing"))
                             .on_click(cx.listener(|this, index, w, cx| {
                                 this.refresh_publishing_inputs(w, cx);
                                 this.research_model_picker = None;
-                                this.settings_tab = SettingsTab::ALL[*index];
+                                this.set_settings_tab(SettingsTab::ALL[*index]);
                                 this.settings_scroll.set_offset(point(px(0.), px(0.)));
                                 cx.notify();
                             })),
                     ),
             )
-            .when(self.settings_tab == SettingsTab::Models, |view| {
+            .when(self.settings_tab() == SettingsTab::Models, |view| {
                 view.child(
                     div()
                         .flex_shrink_0()

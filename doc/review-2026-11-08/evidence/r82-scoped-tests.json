@@ -1,0 +1,10 @@
+{
+  "base": "r77 fixture-only source",
+  "overrides": {
+    "src/domain.rs": "7bd6e39b40860a55e65a5d52de96fe2256da174236f55806f987d2725ecc0bae",
+    "src/domain_tracked.rs": "7667e8cfa18f21ab57629121618d1c175387faada5aa4f73b06d151cffa7d3c3",
+    "src/scoped_domain.rs": "57ea7d59a8572cfaef9132f5c63a41bf397158198f373ffad760239902090f8f"
+  },
+  "exit": 101,
+  "seconds": 47.604
+}

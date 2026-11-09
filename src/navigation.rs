@@ -436,7 +436,7 @@ impl TaskApp {
     pub(crate) fn clear_navigation_overlays(&mut self) {
         self.save_feedback = None;
         self.draft = None;
-        self.editing = false;
+        let _ = self.close_task_editor_overlay();
         self.navigation.task_edit_baseline = None;
         self.property = None;
         self.new_project = None;

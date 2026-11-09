@@ -110,6 +110,9 @@ pub(crate) struct ResearchListPage {
     scope: ResearchScope,
     all_status: AllStatus,
     layout: Layout,
+    /// List-local filter text. Structural navigation clears it; Back restores
+    /// the captured page value.
+    query: String,
 }
 
 impl ResearchListPage {
@@ -118,7 +121,12 @@ impl ResearchListPage {
             scope,
             all_status,
             layout,
+            query: String::new(),
         }
+    }
+    pub(crate) fn with_query(mut self, query: String) -> Self {
+        self.query = query;
+        self
     }
     pub(crate) fn scope(&self) -> &ResearchScope {
         &self.scope
@@ -128,6 +136,9 @@ impl ResearchListPage {
     }
     pub(crate) fn layout(&self) -> Layout {
         self.layout
+    }
+    pub(crate) fn query(&self) -> &str {
+        &self.query
     }
 }
 
@@ -286,6 +297,12 @@ pub(crate) enum Route {
 impl Route {
     pub(crate) fn research_list(scope: ResearchScope, all_status: AllStatus, layout: Layout) -> Self {
         Self::ResearchList(ResearchListPage::new(scope, all_status, layout))
+    }
+    pub(crate) fn with_research_query(self, query: String) -> Self {
+        match self {
+            Self::ResearchList(page) => Self::ResearchList(page.with_query(query)),
+            other => other,
+        }
     }
     pub(crate) fn research_task(task: TaskId) -> Self {
         Self::research_task_from(task, Scope::All, TaskPanel::Overview, Layout::List)
@@ -1191,6 +1208,16 @@ impl NavState {
         }
     }
 
+    pub(crate) fn set_research_query(&mut self, query: String) -> Result<(), NavReject> {
+        match &mut self.route {
+            Route::ResearchList(page) => {
+                page.query = query;
+                Ok(())
+            }
+            _ => Err(NavReject::InvalidRoute),
+        }
+    }
+
     pub(crate) fn set_research_filters(
         &mut self,
         all_status: AllStatus,
@@ -1732,10 +1759,7 @@ impl EditorTarget {
 
 fn validate_overlay_base(base: &Route, overlay: Overlay) -> Result<(), NavReject> {
     match overlay {
-        Overlay::TaskEditor { task } => match base {
-            Route::ResearchTask(page) if page.task() == task => Ok(()),
-            _ => Err(NavReject::InvalidStack),
-        },
+        Overlay::TaskEditor { .. } => Ok(()),
         Overlay::AutomationSettings { automation } => match base {
             Route::AutomationDetail(page) if page.automation() == automation => Ok(()),
             _ => Err(NavReject::InvalidStack),
@@ -1764,10 +1788,7 @@ fn validate_overlay_base(base: &Route, overlay: Overlay) -> Result<(), NavReject
             },
             _ => Err(NavReject::InvalidStack),
         },
-        Overlay::ResearchImpactReview { .. } => match base {
-            Route::ResearchTask(_) => Ok(()),
-            _ => Err(NavReject::InvalidStack),
-        },
+        Overlay::ResearchImpactReview { .. } => Ok(()),
         Overlay::DraftDecision { .. } => match base {
             Route::ResearchTask(_)
             | Route::AutomationEditor(_)

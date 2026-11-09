@@ -1,0 +1,256 @@
+{
+  "fixture": "r187-ordinary-valid-1000",
+  "logical_size": [
+    1000,
+    680
+  ],
+  "theme": "System / dark",
+  "binary_sha256": "f259ae5f2c269f7c4265a43302c9f3e692408671ecfde0f5dc2da74d32e85a26",
+  "private_probe_sha256": "23f1495bf85e7cc93157e3147bcc7ad8303a9122752f7ff3659baf1758ff8853",
+  "local_raw_log": ".local/native-review/r207-board-scroll.jsonl",
+  "raw_log_sha256": "4efaa8428e4e8d13938b6ea531e3f13f2935976c2b94973a04a19abd7ee1350d",
+  "observations": [
+    {
+      "seq": 1,
+      "event": "registered",
+      "pid": 71840,
+      "path": "/Users/fuxingxing/workspaces/what-the-hell-are-you-planning/.local/native-review/r207-board-scroll.jsonl",
+      "board_bounds": {
+        "left": 260.0,
+        "top": 183.5,
+        "right": 1000.0,
+        "bottom": 651.0
+      },
+      "board_max_offset": {
+        "x": 1198.0,
+        "y": 0.0
+      },
+      "board_offset": {
+        "x": 0.0,
+        "y": 0.0
+      }
+    },
+    {
+      "seq": 2,
+      "event": "scroll",
+      "phase": "Capture",
+      "position": {
+        "x": 725.0,
+        "y": 275.0
+      },
+      "position_inside_board": true,
+      "raw_delta": {
+        "kind": "pixels",
+        "x": 0.0,
+        "y": 0.0
+      },
+      "pixel_delta": {
+        "x": 0.0,
+        "y": 0.0
+      },
+      "source": "Pointer",
+      "touch_phase": "Moved",
+      "board_bounds": {
+        "left": 260.0,
+        "top": 183.5,
+        "right": 1000.0,
+        "bottom": 651.0
+      },
+      "board_max_offset": {
+        "x": 1198.0,
+        "y": 0.0
+      },
+      "board_offset": {
+        "x": 0.0,
+        "y": 0.0
+      }
+    },
+    {
+      "seq": 3,
+      "event": "scroll",
+      "phase": "Bubble",
+      "position": {
+        "x": 725.0,
+        "y": 275.0
+      },
+      "position_inside_board": true,
+      "raw_delta": {
+        "kind": "pixels",
+        "x": 0.0,
+        "y": 0.0
+      },
+      "pixel_delta": {
+        "x": 0.0,
+        "y": 0.0
+      },
+      "source": "Pointer",
+      "touch_phase": "Moved",
+      "board_bounds": {
+        "left": 260.0,
+        "top": 183.5,
+        "right": 1000.0,
+        "bottom": 651.0
+      },
+      "board_max_offset": {
+        "x": 1198.0,
+        "y": 0.0
+      },
+      "board_offset": {
+        "x": 0.0,
+        "y": 0.0
+      }
+    },
+    {
+      "seq": 4,
+      "event": "scroll",
+      "phase": "Capture",
+      "position": {
+        "x": 725.0,
+        "y": 275.0
+      },
+      "position_inside_board": true,
+      "raw_delta": {
+        "kind": "pixels",
+        "x": 0.0,
+        "y": 0.0
+      },
+      "pixel_delta": {
+        "x": 0.0,
+        "y": 0.0
+      },
+      "source": "Pointer",
+      "touch_phase": "Moved",
+      "board_bounds": {
+        "left": 260.0,
+        "top": 183.5,
+        "right": 1000.0,
+        "bottom": 651.0
+      },
+      "board_max_offset": {
+        "x": 1198.0,
+        "y": 0.0
+      },
+      "board_offset": {
+        "x": 0.0,
+        "y": 0.0
+      }
+    },
+    {
+      "seq": 5,
+      "event": "scroll",
+      "phase": "Bubble",
+      "position": {
+        "x": 725.0,
+        "y": 275.0
+      },
+      "position_inside_board": true,
+      "raw_delta": {
+        "kind": "pixels",
+        "x": 0.0,
+        "y": 0.0
+      },
+      "pixel_delta": {
+        "x": 0.0,
+        "y": 0.0
+      },
+      "source": "Pointer",
+      "touch_phase": "Moved",
+      "board_bounds": {
+        "left": 260.0,
+        "top": 183.5,
+        "right": 1000.0,
+        "bottom": 651.0
+      },
+      "board_max_offset": {
+        "x": 1198.0,
+        "y": 0.0
+      },
+      "board_offset": {
+        "x": 0.0,
+        "y": 0.0
+      }
+    },
+    {
+      "seq": 6,
+      "event": "scroll",
+      "phase": "Capture",
+      "position": {
+        "x": 725.0,
+        "y": 275.0
+      },
+      "position_inside_board": true,
+      "raw_delta": {
+        "kind": "pixels",
+        "x": 0.0,
+        "y": -1362.0
+      },
+      "pixel_delta": {
+        "x": 0.0,
+        "y": -1362.0
+      },
+      "source": "Pointer",
+      "touch_phase": "Moved",
+      "board_bounds": {
+        "left": 260.0,
+        "top": 183.5,
+        "right": 1000.0,
+        "bottom": 651.0
+      },
+      "board_max_offset": {
+        "x": 1198.0,
+        "y": 0.0
+      },
+      "board_offset": {
+        "x": 0.0,
+        "y": 0.0
+      }
+    },
+    {
+      "seq": 7,
+      "event": "scroll",
+      "phase": "Bubble",
+      "position": {
+        "x": 725.0,
+        "y": 275.0
+      },
+      "position_inside_board": true,
+      "raw_delta": {
+        "kind": "pixels",
+        "x": 0.0,
+        "y": -1362.0
+      },
+      "pixel_delta": {
+        "x": 0.0,
+        "y": -1362.0
+      },
+      "source": "Pointer",
+      "touch_phase": "Moved",
+      "board_bounds": {
+        "left": 260.0,
+        "top": 183.5,
+        "right": 1000.0,
+        "bottom": 651.0
+      },
+      "board_max_offset": {
+        "x": 1198.0,
+        "y": 0.0
+      },
+      "board_offset": {
+        "x": 0.0,
+        "y": 0.0
+      }
+    }
+  ],
+  "actions": [
+    "Board opened from List",
+    "right 6 pages at physical [1450,550]: dx=0,dy=0; no visual movement",
+    "left 6 pages at same point: dx=0,dy=0; no visual movement",
+    "down 2 pages at same point: dx=0,dy=-1362"
+  ],
+  "classification": "Native horizontal acceptance blocked by zero-delta tool input, not an established product defect. Actual horizontal ScrollEvent handling independently passes r205 in three hit regions. No native horizontal pass claimed.",
+  "scope": "Private paint-phase observer only; production source and database untouched. App quit after capture.",
+  "limits": [
+    "Bubble may precede board handling; do not infer handling failure from matching Capture/Bubble offsets.",
+    "This capture establishes the zero delta of these CUA actions, not behavior of a physical trackpad."
+  ]
+}

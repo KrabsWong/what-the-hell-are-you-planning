@@ -2873,3 +2873,10 @@ Root held an isolated SQLite write transaction, changed Dark to System, and scro
 ### r204 large Light reader
 
 Native 1440×920 Light reader passed opening, six-page scrolling to Sources/steps and back to metadata/report start, and Close returning to Automation results. The retained r190 large binary has the same reader code; subsequent product changes only affect result-list mount restoration. Evidence: `evidence/r204-large-light-reader.json`. R3 first-round surface gaps are closed.
+
+
+## r207 — Native Board discrepancy classified
+
+The corrected private paint-phase observer captured CUA right6 and left6 at physical (1450,550), inside the compact Board. Both delivered ScrollEvent dx=0/dy=0. A down2 control at the same point delivered dy=-1362. The Board had 1198px horizontal extent. Therefore the unchanged columns do not establish a product handling defect. Root independently passed all three real rendered horizontal-event cases in r205. Native physical horizontal scrolling remains **Blocked by tooling**, not Passed; carry it as a named first-round verification deferral. See [capture evidence](evidence/r207-native-board-input.json).
+
+The first probe compile failed E0521 because its listener captured a borrowed ScrollHandle; OpenCode corrected ownership before the successful build and capture. The observer exists only in the private isolated source. No product Board change or production workspace access occurred. The isolated app was quit after capture. Final result-row qualifier acceptance and T20 disposition remain pending.

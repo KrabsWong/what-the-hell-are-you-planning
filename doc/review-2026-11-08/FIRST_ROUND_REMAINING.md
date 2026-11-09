@@ -16,7 +16,7 @@ Status: in progress; not release approval. Authority: [TASKS](TASKS.md). Current
 
 ## R2 — Verify ordinary List and Board
 
-**Current result:** ordinary List passed both sizes/themes in r197/r198. Board horizontal access failed native verification and remains open.
+**Current result:** ordinary List passed both sizes/themes in r197/r198. The Board discrepancy is now classified: r207 captured zero dx/dy for native right/left CUA actions inside the Board, while a vertical control delivered dy=-1362. Root independently passed three rendered horizontal ScrollEvent cases in r205. Native physical horizontal verification remains tool-blocked and is a named first-round verification deferral, not a product failure or a native pass. See [input evidence](evidence/r207-native-board-input.json).
 
 **Do:** natively inspect the corrected 80-goal / 240-step ordinary fixture with unrelated 1,000-period automation history.
 

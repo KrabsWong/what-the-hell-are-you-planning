@@ -1,6 +1,6 @@
 # Implementation and independent review
 
-The authoritative scope and acceptance criteria remain in [TASKS.md](TASKS.md). Implementation is delegated to local OpenCode in bounded batches. A task is accepted only after independent diff review and verification; an agent's completion message alone is not acceptance.
+The authoritative scope and acceptance criteria remain in [TASKS.md](TASKS.md). Start with the [current release gate](#current-release-gate-status-r204); older dated entries preserve investigation history. Implementation is delegated to local OpenCode in bounded batches. A task is accepted only after independent diff review and verification; an agent's completion message alone is not acceptance.
 
 ## r143 focused acceptance update
 
@@ -44,19 +44,21 @@ For the step-count control, the ordinary click/Back path with real filtered, scr
 
 All work for this optimization goal uses `feature/review-2026-11-08-optimization`. The user authorized periodic checkpoint commits and pushes on 2026-11-09 to prevent code loss. Checkpoints may contain unfinished work and failing acceptance cases; they are not releases or task sign-off. Root owns Git staging, commits and pushes. Implementers continue on this same shared branch. Local `.local/` workspaces, binaries, runtime traces and credentials remain excluded by repository policy. Validation screenshots also remain local and must not be committed or pushed. The initial checkpoint predated this screenshot instruction; cleanup commit `e60ab38` removed all 60 tracked review screenshots from the branch tip and added ignore rules, preserving local copies. Earlier Git history was not rewritten.
 
-## Current release gate status (r191)
+## Current release gate status (r204)
 
-The application is **not accepted for delivery**. All 25 tasks remain in scope. Existing focused/native evidence is retained; the following table identifies current release work without treating a changed HEAD as a reason to repeat unrelated accepted flows.
+**Not yet approved for delivery.** All 25 tasks remain in scope. Earlier dated notes below are historical checkpoints, not the current disposition. The bounded remaining checklist is [FIRST_ROUND_REMAINING.md](FIRST_ROUND_REMAINING.md).
 
 | Gate | Current evidence and remaining work |
 | --- | --- |
-| T01 / T20 integrated regression | The complete r174 ledger retained 52 passes and three nonpasses. Recovery and render failures have independently verified replacements in r179/r181. The r183 runner distinguishes legacy latency diagnostics from required live performance. r191 independently passes 740 QA-enabled unit tests and 13 integrations. The r191 ledger was terminated after its binary provenance was rejected; a forced build and full replay are required. |
-| T14 / T15 live performance | The provenance-valid r194 candidate passes all fourteen 500/1,000-record live p95 gates at 4.559–18.755 ms. The withdrawn r193 attribution remains rejected. Full regression and remaining native coverage are separate. |
-| T19 native scrolling | r190 fixes large-gesture displacement and preserves the Load more anchor in both themes. First open and first downward scroll each miss one refresh; under the subsequent user update these are recorded follow-ups, not independent release blockers. The r188 historical report outliers are also retained for follow-up. A corrected ordinary fixture has been delivered and its hash/integrity independently checked; native ordinary and remaining surface/size/theme/concurrent-save checks are required. |
-| Changed lifecycle and archived readers | r180 verifies durable lifecycle completion and replanning; r181 verifies retained archived E20/A21 bodies and restoration to Done. These observed fixes stand, subject to final integrated regression. |
-| First-round follow-ups | Archived upstream-waiting wording, exhaustive rare state combinations and large-history latency stress remain explicitly distinguishable from core acceptance. The final task disposition must list each deferred remainder and its follow-up criterion. |
+| T01 integrated regression | The provenance-verified r194 standalone ledger completed all 55 entries: 53/54 required checks initially passed and the one obsolete automation assertion passed its independent r196 replacement; one diagnostic also completed. [Ledger](evidence/r199-offline-ledger.json). Default and QA-enabled unit/integration results remain [separate](evidence/r191-full-tests.json). |
+| T14 / T15 live performance | All fourteen required 500/1,000-record live operation p95 gates pass at 4.559–18.755 ms. [Evidence](evidence/r195-current-live-performance.json). The r193 current-source attribution is withdrawn and is not used for acceptance. |
+| T19 native surfaces | Ordinary List passes both sizes/themes. Large results and compact results pagination/Close anchors pass; compact results required the reviewed r200 zero-restore fix. Material grid, settings, automation dialog and long readers pass the bounded size/theme checks. [r200](evidence/r200-compact-results.json), [r201](evidence/r201-compact-reader-settings.json), [r204](evidence/r204-large-light-reader.json). |
+| T19 concurrent durability | Saving remains visible while native scrolling moves the ordinary List; Saved follows transaction release with the same anchor. Reopened SQLite confirms the intended preference and integrity. [r203](evidence/r203-concurrent-save-scroll.json). |
+| Native Board | Horizontal ScrollEvent tests move Done into view, but Computer horizontal gestures leave native columns unchanged. This is an unresolved delivery/routing discrepancy, not a proven product cause. A private event probe is under review. [r202](evidence/r202-board-retry.json). |
+| Result-state consistency | A historical incomplete period has an incomplete qualifier in its definition history/reader but only Succeeded in global results. A bounded consistency review is assigned; do not call that entry fully verified. |
+| T20 final disposition | Final task/case matrix and delivery decision remain pending the board discrepancy and result-state review. Accepted earlier lifecycle, keyboard, archive, ownership and workspace evidence is retained. |
 
-See [r190 wheel and anchor evidence](evidence/r190-scroll-native.json), [r191 full tests](evidence/r191-full-tests.json), [r180 lifecycle evidence](evidence/r180-lifecycle-native.json), [r181 archive/capacity evidence](evidence/r181-native-capacity.json), [r182 dedicated trace](evidence/r182-dedicated-scroll.json), [r183 classifier checks](evidence/r183-runner-classification.json), [r187 wheel/pagination evidence](evidence/r187-scroll-native.json), and [r188 report evidence](evidence/r188-report-native.json). The historical table below is preserved for audit; its superseded runtime and planning blockers are not the current status.
+Occasional measured hitches, rare combinations and named cosmetic remainders may be deferred under the user policy in TASKS. Such deferrals must identify trigger, impact, evidence and a follow-up criterion. They are not passing tests.
 
 ## Historical full-scope snapshot (through r151)
 

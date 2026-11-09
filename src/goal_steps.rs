@@ -37,7 +37,7 @@ impl Store {
             return StepState::Running;
         }
         if task.stage == Stage::Done
-            && (task.research.is_none() || self.research_result(id).is_some())
+            && (task.research.is_none() || self.research_result_available_or_pending(id))
         {
             return StepState::Done;
         }

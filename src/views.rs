@@ -2728,7 +2728,8 @@ impl TaskApp {
             .is_some_and(|r| r.kind == crate::research::ResearchKind::Goal);
         let version_history_count = self.previous_version_entries(id).len();
         let show_version_history = version_history_count > 0
-            && (version_history_count > 1 || self.store.research_result(id).is_none());
+            && (version_history_count > 1
+                || !self.store.research_result_available_or_pending(id));
         let result_target = if self.store.task_is_archived(id) {
             crate::archive_presentation::result_target(&self.store, id, is_goal)
         } else if is_goal {
@@ -2736,9 +2737,11 @@ impl TaskApp {
                 .research_children(id)
                 .into_iter()
                 .rev()
-                .find(|child| self.store.research_result(*child).is_some())
+                .find(|child| self.store.research_result_available_or_pending(*child))
         } else {
-            self.store.research_result(id).map(|_| id)
+            self.store
+                .research_result_available_or_pending(id)
+                .then_some(id)
         };
         let result_is_report = result_target
             .and_then(|target| self.store.task(target))
@@ -3177,7 +3180,7 @@ impl TaskApp {
             && if archived {
                 crate::archive_presentation::validated_history_result(&self.store, id).is_some()
             } else {
-                self.store.research_result(id).is_some()
+                self.store.research_result_available_or_pending(id)
             };
         let retained_invalid = archived
             && !has_result

@@ -90,7 +90,8 @@ impl Store {
         if children.is_empty() { return Ok(vec![goal]); }
         Ok(children.into_iter().filter(|id| {
             let task = self.task(*id).unwrap();
-            task.stage != Stage::Cancelled && self.research_result(*id).is_none()
+            task.stage != Stage::Cancelled
+                && !self.research_result_available_or_pending(*id)
                 && task.research.as_ref().unwrap().depends_on.iter().all(|dep| {
                     self.task(*dep).is_some_and(|t| !t.archived && t.stage == Stage::Done && t.research.as_ref().is_some_and(|r| r.goal_id == goal))
                         && self.research_result(*dep).is_some()

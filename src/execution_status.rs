@@ -207,7 +207,7 @@ impl Store {
         {
             return Running;
         }
-        if (is_goal && self.goal_tasks_complete(id))
+        if (is_goal && (self.goal_tasks_complete(id) || self.goal_tasks_present(id)))
             || (!is_goal && self.step_state(id) == StepState::Done)
         {
             return Done;

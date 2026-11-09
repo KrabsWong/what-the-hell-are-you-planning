@@ -38,7 +38,7 @@ impl TaskApp {
             let children = self.store.research_children(id);
             let completed = children
                 .iter()
-                .filter(|id| self.store.research_result(**id).is_some())
+                .filter(|id| self.store.research_result_available_or_pending(**id))
                 .count();
             let title = format!("{} · {}", self.store.identifier(task), task.title);
             let hint = title
@@ -445,7 +445,7 @@ impl TaskApp {
         let complete = !children.is_empty()
             && children
                 .iter()
-                .all(|child| self.store.research_result(*child).is_some());
+                .all(|child| self.store.research_result_available_or_pending(*child));
         let browser = quiet_button("task-open-ego", "Open ego(lite)").icon(assets::IconName::ExternalLink)
             .tooltip("Opens the browser app. Select the research Space in ego(lite).")
             .on_click(cx.listener(|this, _, _, cx| this.open_ego(cx)));
@@ -495,7 +495,7 @@ impl TaskApp {
                 .unwrap_or_else(|| {
                     children
                         .iter()
-                        .filter(|child| self.store.research_result(**child).is_some())
+                        .filter(|child| self.store.research_result_available_or_pending(**child))
                         .count()
                 });
             let complete = history

@@ -1,0 +1,37 @@
+{
+  "round": "r170",
+  "status": "restart source accepted; native and combined candidate pending",
+  "files": {
+    "src/research.rs": "45c23d46daad279c896a0d3da1fcb37932e7c4f8b75d34c0217c55d2201a9af9",
+    "src/execution_status.rs": "4eb5f0a3770a582cf5797cf0688153bd19635fa7bc35a64cb515a39a5d086c1c",
+    "src/goal_steps.rs": "2873e9bc2a4f49ce8879360e1a39d0e1f94b22b9f02a50375c59fcdb714c2db1",
+    "src/batch.rs": "63d9d47b8ec7942ad3e84b54745d19d5679822bf2b3f802154874c17613ad164",
+    "src/research_views.rs": "3cf3cd1ebd14869915fecace627d1d7cb13b37f7c866bd39cdfadd40ec13c6ce",
+    "src/run_views.rs": "1f7bd03331e537da0b71dacbf29693d1269bf35d0c07c5696e441fe72d697daf",
+    "src/topic_views.rs": "27744bf59a034cf4fb3b12e05d18498121b6948167ae9ae36e9c65ba73d28cd4",
+    "src/views.rs": "c13356b9595412e816e8fb6938e9bcf61cffe57c52278800d69b42fd10dcbccb"
+  },
+  "independent_tests": {
+    "command": "CARGO_TARGET_DIR=.local/r164-status-clean-target CARGO_INCREMENTAL=0 PATH=/opt/homebrew/opt/node@24/bin:$PATH cargo test --quiet --features qa --manifest-path .local/r164-status-source/Cargo.toml",
+    "unit_passed": 722,
+    "ignored": 2,
+    "integration_passed": [
+      8,
+      2,
+      3
+    ],
+    "log": ".local/opencode-dispatch/r170-restart-tests.log"
+  },
+  "review": "Strict result consumers remain content-gated; result presentation and counts use signature-validated lazy presence, including dependency identities. Partial lazy completion excluded from requeue. Detail no longer advertises stale result solely because body is pending.",
+  "native": {
+    "candidate": "r167 committed material/indexed renderer; excludes restart fix",
+    "action": "Escape from Period 43162 report",
+    "observed": "Modal controls removed; 40 result controls and Load more 43160 remaining returned. Screenshot timed out.",
+    "limits": "No scroll-position or updated restart candidate acceptance."
+  },
+  "remaining": [
+    "Planning adapter request durability and replay tests",
+    "Private visible-row/report virtualization",
+    "Integrated native and full release gate"
+  ]
+}

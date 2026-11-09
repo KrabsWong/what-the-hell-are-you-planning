@@ -96,6 +96,8 @@ FINAL RESPONSE CONTRACT: Return ONLY a JSON object {"status":"complete" or "part
 #[derive(Default)]
 struct Validation<'a> {
     results: HashMap<u64, Option<&'a AgentRun>>,
+    /// Presentation-only results may return a run whose durable body is lazy.
+    presented: HashMap<u64, Option<&'a AgentRun>>,
     approvals: HashMap<u64, bool>,
 }
 
@@ -566,24 +568,148 @@ impl Store {
     }
     /// A successful result exists but only its body is still lazy. This is a
     /// presentation/status distinction, never permission to read empty content
-    /// or admit dependent work.
+    /// or admit dependent work. Dependency signatures are resolved with the
+    /// same lazy-aware recursion so a dependent Analyze/Advise remains pending
+    /// while its Collect ancestor body is unloaded.
     pub(crate) fn research_result_body_pending(&self, id: u64) -> Option<u64> {
-        let signature = self.research_signature(id)?;
-        // Only the newest non-Simulated attempt can represent the current
-        // result. A later failure/retry makes an older lazy body historical.
+        let result = self.research_result_present(id)?;
+        self.run_body_is_lazy(result.id).then_some(result.id)
+    }
+
+    /// Presentation-only current result: strict content or a signature-matched
+    /// lazy body. Never use this for prompt construction, export or admission.
+    pub(crate) fn research_result_available_or_pending(&self, id: u64) -> bool {
+        self.research_result_present(id).is_some()
+    }
+
+    pub(crate) fn research_result_present(&self, id: u64) -> Option<&AgentRun> {
+        self.research_result_present_checked(id, &mut vec![], &mut Validation::default())
+    }
+
+    fn research_result_present_checked<'a>(
+        &'a self,
+        id: u64,
+        visiting: &mut Vec<u64>,
+        cache: &mut Validation<'a>,
+    ) -> Option<&'a AgentRun> {
+        self.research_result_present_checked_mode(id, visiting, cache, false)
+    }
+
+    fn research_result_present_checked_mode<'a>(
+        &'a self,
+        id: u64,
+        visiting: &mut Vec<u64>,
+        cache: &mut Validation<'a>,
+        allow_archived: bool,
+    ) -> Option<&'a AgentRun> {
+        if visiting.contains(&id) {
+            return None;
+        }
+        if let Some(result) = cache.presented.get(&id) {
+            return *result;
+        }
         let latest = self
             .runs()
             .iter()
             .rev()
-            .find(|run| run.task_id == id && run.status != "Simulated")?;
-        (latest.status == "Succeeded"
-            && self.run_body_is_lazy(latest.id)
-            && latest.input_signature == signature)
-            .then_some(latest.id)
+            .find(|run| run.task_id == id && run.status != "Simulated");
+        let Some(result) = latest.filter(|run| run.status == "Succeeded") else {
+            cache.presented.insert(id, None);
+            return None;
+        };
+        if result.output.trim().is_empty() && !self.run_body_is_lazy(result.id) {
+            cache.presented.insert(id, None);
+            return None;
+        }
+        visiting.push(id);
+        let signature =
+            self.research_present_signature_checked_mode(id, visiting, cache, allow_archived);
+        visiting.pop();
+        let result = (signature.as_ref() == Some(&result.input_signature)
+            && (!result.output.trim().is_empty() || self.run_body_is_lazy(result.id)))
+        .then_some(result);
+        cache.presented.insert(id, result);
+        result
     }
 
-    pub(crate) fn research_result_available_or_pending(&self, id: u64) -> bool {
-        self.research_result(id).is_some() || self.research_result_body_pending(id).is_some()
+    fn research_present_signature_checked_mode<'a>(
+        &'a self,
+        id: u64,
+        visiting: &mut Vec<u64>,
+        cache: &mut Validation<'a>,
+        allow_archived: bool,
+    ) -> Option<String> {
+        if let Some(goal) = self.owning_research_goal(id) {
+            let approved = *cache.approvals.entry(goal).or_insert_with(|| {
+                if allow_archived {
+                    self.historical_goal_approved(goal)
+                } else {
+                    self.goal_execution_approved(goal)
+                }
+            });
+            if !approved {
+                return None;
+            }
+        }
+        let task = self
+            .task(id)
+            .filter(|t| (allow_archived || !t.archived) && t.stage != Stage::Cancelled)?;
+        let research = task.research.as_ref()?;
+        let mut parents = vec![];
+        let mut cursor = Some(id);
+        let mut ancestors = vec![];
+        while let Some(id) = cursor {
+            if ancestors.contains(&id) {
+                return None;
+            }
+            ancestors.push(id);
+            let t = self
+                .task(id)
+                .filter(|t| (allow_archived || !t.archived) && t.stage != Stage::Cancelled)?;
+            parents.push(serde_json::json!([
+                t.id,
+                t.title,
+                t.description,
+                t.comments,
+                crate::attachments::signature_payload(&t.attachments),
+                t.project_id
+            ]));
+            cursor = t.parent_id;
+        }
+        let mut dependencies = vec![];
+        for dep in &research.depends_on {
+            let r = self.research_result_present_checked_mode(
+                *dep,
+                visiting,
+                cache,
+                allow_archived,
+            )?;
+            dependencies.push(r.id);
+        }
+        let directory = &self
+            .projects()
+            .iter()
+            .find(|p| p.id == task.project_id)?
+            .directory;
+        serde_json::to_string(&(
+            parents,
+            dependencies,
+            directory,
+            research.kind,
+            research.goal_id,
+        ))
+        .ok()
+    }
+
+    pub(crate) fn goal_tasks_present(&self, goal: u64) -> bool {
+        let children = self.research_children(goal);
+        !children.is_empty()
+            && self.has_research_plan(goal)
+            && children.iter().all(|id| {
+                self.task(*id)
+                    .is_some_and(|task| task.stage == Stage::Done)
+                    && self.research_result_available_or_pending(*id)
+            })
     }
 
     pub fn research_result(&self, id: u64) -> Option<&AgentRun> {
@@ -2017,4 +2143,125 @@ mod tests {
             ids.len()
         );
     }
+    #[test]
+    fn lazy_completed_goal_remains_done_for_presentation_but_strict_admission_waits() {
+        let root = std::env::temp_dir().join(format!(
+            "planning-r164-lazy-status-{}-{}",
+            std::process::id(),
+            std::time::SystemTime::now()
+                .duration_since(std::time::UNIX_EPOCH)
+                .unwrap()
+                .as_nanos()
+        ));
+        std::fs::create_dir_all(&root).unwrap();
+        let mut store = Store::mock();
+        store.project_at_mut(0).unwrap().directory = root.to_string_lossy().into_owned();
+        store.research_config_mut().models = ["test/plan", "test/collect", "test/analyze", "test/advise"]
+            .map(String::from);
+        let goal = store
+            .create_research_goal(
+                "Completed lazy goal".into(),
+                "Verify restart presentation.".into(),
+                1,
+            )
+            .unwrap();
+        let plan = r#"{"tasks":[{"title":"Collect evidence","instructions":"Collect sources.","kind":"collect","depends_on":[]},{"title":"Analyze evidence","instructions":"Analyze sources.","kind":"analyze","depends_on":[0]},{"title":"Write report","instructions":"Write the report.","kind":"advise","depends_on":[1]}]}"#;
+        let steps = store.apply_research_plan(goal, plan).unwrap();
+        let mut run_ids = Vec::new();
+        for id in &steps {
+            let mut run = store.prepare_run(*id).unwrap();
+            run.status = "Succeeded".into();
+            run.output = format!("# Completed report {id}\n\nSynthetic body for lazy status verification.");
+            run_ids.push(run.id);
+            store.push_run(run);
+            store.set_stage(*id, Stage::Done).unwrap();
+        }
+        store.task_mut(goal).unwrap().stage = Stage::Done;
+        let path = root.join("workspace.sqlite3");
+        let database = crate::sqlite_v4::SqliteV4::create_seeded(&path, &root, 0x52_31_36_34, &store)
+            .unwrap();
+        let mut lazy = database.load_store_lazy().unwrap();
+        assert_eq!(lazy.task(goal).unwrap().stage, Stage::Done);
+        for (step, run_id) in steps.iter().zip(&run_ids) {
+            assert_eq!(lazy.task(*step).unwrap().stage, Stage::Done);
+            assert!(lazy.run_body_is_lazy(*run_id));
+            assert!(lazy.research_result(*step).is_none());
+            assert_eq!(lazy.research_result_body_pending(*step), Some(*run_id));
+            assert!(lazy.research_result_available_or_pending(*step));
+            assert_eq!(lazy.step_state(*step), crate::goal_steps::StepState::Done);
+        }
+        assert!(lazy.goal_tasks_present(goal));
+        assert!(!lazy.goal_tasks_complete(goal), "strict admission must wait for bodies");
+        assert_eq!(
+            lazy.execution_status(goal, None),
+            crate::execution_status::ExecutionStatus::Done
+        );
+        for (step, run_id) in steps.iter().zip(&run_ids) {
+            let body = database.body(*run_id).unwrap().unwrap();
+            assert!(lazy.hydrate_run_body(*run_id, body));
+            assert!(lazy.research_result(*step).is_some());
+        }
+        assert!(lazy.goal_tasks_complete(goal));
+        let _ = std::fs::remove_dir_all(root);
+    }
+
+    #[test]
+    fn lazy_partial_goal_does_not_requeue_done_or_failed_current_step() {
+        let root = std::env::temp_dir().join(format!(
+            "planning-r164-lazy-partial-{}-{}",
+            std::process::id(),
+            std::time::SystemTime::now()
+                .duration_since(std::time::UNIX_EPOCH)
+                .unwrap()
+                .as_nanos()
+        ));
+        std::fs::create_dir_all(&root).unwrap();
+        let mut store = Store::mock();
+        store.project_at_mut(0).unwrap().directory = root.to_string_lossy().into_owned();
+        store.research_config_mut().models = ["test/plan", "test/collect", "test/analyze", "test/advise"]
+            .map(String::from);
+        let goal = store
+            .create_research_goal("Partial lazy goal".into(), "Verify restart eligibility.".into(), 1)
+            .unwrap();
+        let plan = r#"{"tasks":[{"title":"Collect evidence","instructions":"Collect sources.","kind":"collect","depends_on":[]},{"title":"Analyze evidence","instructions":"Analyze sources.","kind":"analyze","depends_on":[0]},{"title":"Write report","instructions":"Write the report.","kind":"advise","depends_on":[1]}]}"#;
+        let steps = store.apply_research_plan(goal, plan).unwrap();
+        let mut first = store.prepare_run(steps[0]).unwrap();
+        first.status = "Succeeded".into();
+        first.output = "# Completed collection\n\nSynthetic body.".into();
+        let first_id = first.id;
+        store.push_run(first);
+        store.set_stage(steps[0], Stage::Done).unwrap();
+        let mut second = store.prepare_run(steps[1]).unwrap();
+        second.status = "Succeeded".into();
+        second.output = "stale success".into();
+        store.push_run(second);
+        let mut failed = store.prepare_run(steps[1]).unwrap();
+        failed.status = "Failed".into();
+        failed.output = String::new();
+        store.push_run(failed);
+        store.task_mut(steps[1]).unwrap().stage = Stage::InProgress;
+        let path = root.join("workspace.sqlite3");
+        let database = crate::sqlite_v4::SqliteV4::create_seeded(&path, &root, 0x52_31_36_35, &store)
+            .unwrap();
+        let mut lazy = database.load_store_lazy().unwrap();
+        assert!(lazy.research_result(*steps.first().unwrap()).is_none());
+        assert!(lazy.research_result_available_or_pending(steps[0]));
+        assert!(lazy.research_result_present(steps[1]).is_none());
+        assert!(lazy.research_result_body_pending(steps[1]).is_none());
+        assert!(!lazy.goal_tasks_present(goal));
+        assert_ne!(
+            lazy.execution_status(goal, None),
+            crate::execution_status::ExecutionStatus::Done
+        );
+        let ready = lazy.ready_research_tasks(goal).unwrap();
+        assert!(!ready.contains(&steps[0]), "lazy Done step must not be requeued");
+        assert!(!ready.contains(&steps[1]), "failed current step waits for its lazy dependency");
+        let body = database.body(first_id).unwrap().unwrap();
+        assert!(lazy.hydrate_run_body(first_id, body));
+        let ready = lazy.ready_research_tasks(goal).unwrap();
+        assert_eq!(ready, vec![steps[1]], "failed current step becomes the only retry candidate");
+        assert!(lazy.research_result_present(steps[1]).is_none());
+        let _ = std::fs::remove_dir_all(root);
+    }
+
 }

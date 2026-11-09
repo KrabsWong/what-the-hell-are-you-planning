@@ -450,7 +450,7 @@ impl TaskApp {
                 .unwrap_or_else(|| {
                     children
                         .iter()
-                        .filter(|id| self.store.research_result(**id).is_some())
+                        .filter(|id| self.store.research_result_available_or_pending(**id))
                         .count()
                 });
             let report = if archived_goal {
@@ -464,7 +464,7 @@ impl TaskApp {
                             .task(**id)
                             .and_then(|t| t.research.as_ref())
                             .is_some_and(|r| r.kind == crate::research::ResearchKind::Advise)
-                            && self.store.research_result(**id).is_some()
+                            && self.store.research_result_available_or_pending(**id)
                     })
                     .copied()
             };

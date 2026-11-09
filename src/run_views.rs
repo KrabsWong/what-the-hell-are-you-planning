@@ -1016,7 +1016,7 @@ impl TaskApp {
             }
             let completed = tasks
                 .iter()
-                .filter(|id| self.store.research_result(***id).is_some())
+                .filter(|id| self.store.research_result_available_or_pending(***id))
                 .count();
             stages = stages.child(
                 row()

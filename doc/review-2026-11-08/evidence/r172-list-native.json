@@ -1,0 +1,58 @@
+{
+  "round": "r172",
+  "scope": "Private list virtualization prototype only; based on r167, not integrated with later status/admission changes",
+  "candidate_sha256": "9712be2e6e47430a424aeda45e48bb399a60871f19f61334018bb911e3a5444f",
+  "installed_sha256": "1ab926bcd0ba94691fb85126f59e67016329156fb9669b51d2d15b4e8f978642",
+  "fixture": ".local/native-review/r158-large-workspace",
+  "periods": 43200,
+  "actions": [
+    "Cold open Automation results",
+    "Scroll down two pages",
+    "Load more20 to40",
+    "Scroll down two pages",
+    "Open row at05:57:25 then Escape",
+    "Scroll up two pages then down three"
+  ],
+  "interaction": "PASS for observed Load more viewport preservation and modal-close row restoration",
+  "measurements": {
+    "present_frames": 5466,
+    "measured_frames": 5465,
+    "late_frames": 8,
+    "missed_refreshes": 9,
+    "work_ms": {
+      "p50": 1.359292,
+      "p95": 4.2345,
+      "p99": 4.937167,
+      "max": 22.800417
+    },
+    "input_late": 4,
+    "input_on_time": 6,
+    "dropped_samples": 0,
+    "note": "Concurrent external agent work; diagnostic, not quiet final acceptance. Includes report open/close; no report scrolling."
+  },
+  "window": {
+    "start_ns": 1794210022098768000,
+    "end_ns": 1794210135065039000
+  },
+  "verdict": "Smoothness failed; prototype not integrated",
+  "longest_draw": {
+    "kind": "draw",
+    "window": 4294967297,
+    "wall_unix_ns": 1794210038625750250,
+    "mono_ns": 21973735250,
+    "invalidations": 10,
+    "refresh_ns": 8333333,
+    "draw_duration_ns": 22753041,
+    "dirty_to_draw_ns": 30765583,
+    "request_layout_ns": 658209,
+    "prepaint_ns": 14405666,
+    "paint_ns": 7394792
+  },
+  "limitations": [
+    "Concurrent OpenCode work/builds; not quiet release gate",
+    "No report scrolling in this interval",
+    "No controlled before/after percentage comparison"
+  ],
+  "rework": "Cold prepaint/paint remains expensive; examine visible row work and overdraw. Separate single-surface report virtualization continues.",
+  "production": "Untouched"
+}

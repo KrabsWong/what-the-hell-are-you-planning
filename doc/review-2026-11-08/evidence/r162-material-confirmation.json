@@ -1,0 +1,30 @@
+{
+  "candidate_sha256": "47af9a8cebd7e7a820b7627cc0ee43f812daf24bfb7853a3d92d80f55d1c9e8f",
+  "status": "failed",
+  "fixture": "isolated synthetic G23",
+  "steps": [
+    "Completed goal Overview -> Add Files -> r146-material.png",
+    "Impact dialog correctly explained approval withdrawal and retained reports",
+    "Click Add material once"
+  ],
+  "observed": [
+    "Saved Materials added banner appeared",
+    "Materials count became 1 and goal moved to Backlog",
+    "Impact modal remained open saying NOTHING HAS BEEN SAVED YET with active Add material and Cancel"
+  ],
+  "disk_verified": {
+    "goal_id": 23,
+    "stage": "Backlog",
+    "attachment_count": 1,
+    "name": "r146-material.png",
+    "size": 79,
+    "sha256": "553c5d80d1b9ccfae7b5e7b99fa49b25354f68118f3a6418e7c54ba2b644210e"
+  },
+  "source_finding": "confirm_research_save keeps research_save_impact on Saving; LiveCompletion::Material clears pending_material_edit but does not dismiss the corresponding impact overlay.",
+  "required_rework": [
+    "Clear only the matching material confirmation after durable receipt",
+    "Restore expected focus and retain truthful failure/retry states",
+    "Exercise real confirmation and asynchronous completion, disk reload and duplicate prevention"
+  ],
+  "boundary": "Verification wake and attachment durability are now native-observed, but successful material confirmation UX is not accepted."
+}

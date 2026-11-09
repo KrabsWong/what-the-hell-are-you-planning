@@ -2583,3 +2583,7 @@ The initial private scrolling cache was returned for revision before integration
 ## r162: material saves durably but confirmation remains stale
 
 Native Add Files now wakes verification and presents the impact review. After one Add material confirmation, the saved banner and Materials 1 appeared and SQLite contained the attachment with the expected hash; goal approval was withdrawn as explained. However, the impact dialog remained open claiming nothing had been saved and still offered Add material. This is a failed confirmation workflow. Root traced the missing matching-dialog cleanup in asynchronous Material completion and returned it to OpenCode for a focused repair and real confirm/ACK regression. See [retained failure](evidence/r162-material-confirmation.json). The isolated app remains on this state; production was untouched.
+
+## r163: native first execution completes without changing the route
+
+On the same isolated integration candidate, root approved the never-executed G19, observed durable Saved feedback and clicked Run goal once. E20, A21 and R22 completed sequentially with exactly one successful run each. Root switched to All automations while the final step was running; completion preserved that page. Read-only database comparison confirms no prior runs and the three new successful records. See [first-execution evidence](evidence/r163-native-first-execution.json). This closes the bounded native idle-first submission case; material confirmation and scrolling remain failed/pending gates.

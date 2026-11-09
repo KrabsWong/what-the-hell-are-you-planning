@@ -1,0 +1,31 @@
+{
+  "scope": "Private scroll optimization source review; not integrated native acceptance",
+  "private_source_sha256": {
+    "src/result_presentation.rs": "f2d8e7fd0f47b83dc3f042c33cfc286b2725fc47685bfba709be246596dafd40",
+    "src/automation_views.rs": "058a9f8099d6e720d08cdf507caeff1f03d62fed83c211603671351de10692be",
+    "src/app.rs": "ed85881731c6fa4281c63bc151dfd32d83a1da1a8d1af0be5f820645ef4bfa8a"
+  },
+  "root_validation": {
+    "command": "PLANNING_NODE=<Node 24> CARGO_TARGET_DIR=.local/native-review/r158-target cargo test --release --features frame-probe --manifest-path .local/native-review/r158-scroll-fix-source/Cargo.toml result_presentation::tests",
+    "exit_code": 0,
+    "passed": 16,
+    "filtered": 714,
+    "integration": "Filtered out by this focused command; not claimed."
+  },
+  "review": [
+    "Positional run index observes hydrated bodies directly instead of retaining presentation output.",
+    "Ordinary research None-occurrence regeneration matches the original semantics.",
+    "Standalone presentation and occurrence-report helpers avoid constructing a full run index.",
+    "Global results order and counts reuse an epoch/filter cache; hydration does not reorder positions.",
+    "Whole workspace hydration clears order and run caches because dirty epochs are not workspace identities."
+  ],
+  "integration": "Product-only patch prepared and git apply --check passed. Not applied while OpenCode owns automation_views.rs for planning repair.",
+  "native_candidate": "Prior private frozen binary predates latest semantic/cache fixes and must not be installed.",
+  "material_checkpoint": "021c832 commits only reviewed material changes; index content matched the candidate manifest hashes.",
+  "remaining": [
+    "Planning continuation focused tests and root review",
+    "Combined native material/replan/reopen",
+    "Quiet native scrolling validation",
+    "Final frozen release inventory"
+  ]
+}

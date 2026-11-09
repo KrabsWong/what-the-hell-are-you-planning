@@ -2599,3 +2599,9 @@ Native Settings → Replan with an edited expected result saved the new draft ve
 Root independently passed dispatch-admission, navigation-context and task-edit on the frozen material-confirmation candidate. The exact material receipt now dismisses its matching impact review after durable ACK. Navigation and edit checks cover the newly activated deferred UI caller; native confirmation/reopen remains pending. See [focused evidence](evidence/r165-material-focused-review.json). Computer access was confirmed after the user unlocked the Mac.
 
 Independent review of the private scroll optimization caught a semantic regression: ordinary research runs without an automation occurrence would no longer show regeneration freshness. OpenCode must preserve that behavior and add a focused regression before integration. The draft-save-to-planner continuation is also under review, including failed-save retry and stale-form handling. Neither unfinished fix is accepted by the material checks.
+
+## r166: material checkpoint and corrected indexed presentation review
+
+The reviewed material-confirmation implementation is checkpointed in `021c832`; staged source hashes matched its tested candidate manifest. Root independently passed all 16 result-presentation tests in the corrected private scroll source. Review confirms ordinary research regeneration is preserved, standalone readers avoid eager full indices, and workspace hydration clears positional caches. See [source review](evidence/r166-scroll-source-review.json). The product-only integration patch is prepared but not applied while the planning owner edits the same file. No native smoothness acceptance is inferred.
+
+Review of the planning continuation found that generic draft completion closed the wizard before the continuation checked ownership. OpenCode is repairing that ordering and verifying one-click start, retained-save retry, cancellation and the unchanged-draft path before handoff.

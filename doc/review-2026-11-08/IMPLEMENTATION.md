@@ -2677,3 +2677,11 @@ The frozen r174 standalone ledger has passed live persistence and live performan
 Root independently passed 732 unit tests (two existing ignored tests) and all 13 integration/crash tests on the frozen two-file archived-reader repair. Archived history now uses the history-aware presentation signature and retained-result lookup; real changed input remains stale. Strict content validation and execution eligibility are unchanged. Native confirmation of this repair remains pending. See [source evidence](evidence/r176-archive-reader-source.json).
 
 On the still-running r174 isolated build, dark theme preserves the completed G19 list and readable final report. View final report opens R22 Run 27 and Back returns to G19 Steps. This verifies the observed route and theme only; it does not accept the pending archived-reader or automation receipt fixes.
+
+## r177: required-size performance needs a quiet repeat; search routes pass
+
+Root froze and built c113c16 with the new required-size performance fixtures. The actual live-persistence run failed three 500-period gates: Save draft 63.838 ms, Enable 64.160 ms, and Pause 57.809 ms. All seven 1,000-period gates passed. Other builds and the r174 xl stress entry were active, so contention is a hypothesis, not a proven explanation. Preserve this failure and repeat under quiet conditions before accepting or assigning a product bottleneck. Native scrolling is still unverified at the required size.
+
+The separate legacy automation fixture reports 108 ms synchronous save at 1,000 periods. Source inspection confirms its QA-only attachment explicitly omits LiveStartup and measures Storage.save, so it is not evidence of the production ordered writer. The original r174 ledger remains unchanged; scope classifications are separate evidence, never rewritten passes.
+
+On the r174 native candidate, focused Cmd+K and footer Search open the same search. Escape returns to G19; keyboard selection of Period 3 opens the correct recurring-research period. Closing it returns to the owning automation and Back returns to G19. See [performance and search evidence](evidence/r177-performance-search.json).

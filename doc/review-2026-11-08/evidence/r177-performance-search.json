@@ -1,0 +1,120 @@
+{
+  "round": "r177",
+  "source_manifest": {
+    "base": "c113c16eeadfdaae3cbd7aad5186755c1fbfec49",
+    "source": "/Users/fuxingxing/workspaces/what-the-hell-are-you-planning/.local/opencode-dispatch/r177-performance-source",
+    "files": {
+      "src/automation_qa.rs": "0e47c6beceb3224047d0f70288341334e4d395e9dbd3fcfdaf4d57261907d938",
+      "src/live_performance_qa.rs": "54b239dec1af5c4b5f3b38d61a39975eb1eec130376f1f1d52e2436541797712",
+      "script/run_review_gate.py": "78ac6122f0c47b262c56244710bfd500c3fca6b77081fb35c1e8dc4b44be47c9"
+    }
+  },
+  "binary": {
+    "path": "/Users/fuxingxing/workspaces/what-the-hell-are-you-planning/.local/opencode-dispatch/r177-performance-9d8f076cb2c4ed366dea85e286007f33340ed1b764b2bbb02294acdd222bab51",
+    "sha256": "9d8f076cb2c4ed366dea85e286007f33340ed1b764b2bbb02294acdd222bab51",
+    "guard_exit": 2
+  },
+  "live_performance": {
+    "exit_code": 1,
+    "log": ".local/opencode-dispatch/r177-live-performance.log",
+    "report": ".local/live-performance-qa/22182/report.json",
+    "gates": {
+      "small-500": {
+        "editor": {
+          "p95_us": 31917,
+          "target_us": 50000,
+          "passed": true
+        },
+        "automation_save_draft": {
+          "p95_us": 63838,
+          "target_us": 50000,
+          "passed": false
+        },
+        "automation_enable": {
+          "p95_us": 64160,
+          "target_us": 50000,
+          "passed": false
+        },
+        "automation_pause": {
+          "p95_us": 57809,
+          "target_us": 50000,
+          "passed": false
+        },
+        "settings": {
+          "p95_us": 31228,
+          "target_us": 50000,
+          "passed": true
+        },
+        "scoped_task_undo": {
+          "p95_us": 38222,
+          "target_us": 50000,
+          "passed": true
+        },
+        "history_page": {
+          "p95_us": 44697,
+          "target_us": 50000,
+          "passed": true
+        }
+      },
+      "required-1000": {
+        "editor": {
+          "p95_us": 30852,
+          "target_us": 50000,
+          "passed": true
+        },
+        "automation_save_draft": {
+          "p95_us": 9359,
+          "target_us": 50000,
+          "passed": true
+        },
+        "automation_enable": {
+          "p95_us": 9776,
+          "target_us": 50000,
+          "passed": true
+        },
+        "automation_pause": {
+          "p95_us": 8765,
+          "target_us": 50000,
+          "passed": true
+        },
+        "settings": {
+          "p95_us": 3784,
+          "target_us": 50000,
+          "passed": true
+        },
+        "scoped_task_undo": {
+          "p95_us": 4532,
+          "target_us": 50000,
+          "passed": true
+        },
+        "history_page": {
+          "p95_us": 8253,
+          "target_us": 50000,
+          "passed": true
+        }
+      }
+    },
+    "conditions": "Concurrent r174 xl stress gate and OpenCode builds; retain failure and repeat under quiet conditions before attributing cause.",
+    "acceptance": "Not passed. Native scroll acceptance is separate."
+  },
+  "legacy_fixture": {
+    "periods": 1000,
+    "save_ms": 108,
+    "path": "QA-only attach_storage -> attach_loaded_storage_live(None) -> Storage.save; not production ordered persistence",
+    "classification": "Retained legacy diagnostic; no production responsiveness claim."
+  },
+  "native_search": {
+    "candidate": "r174 integrated",
+    "passed": [
+      "Focused Cmd+K and footer Search open the same global search.",
+      "Typing Review yields separate research, automation and period results.",
+      "Escape closes search without leaving G19.",
+      "Keyboard selection of Period 3 opens the corresponding recurring-research period.",
+      "Escape closes the period to its automation; Back returns to G19."
+    ],
+    "notes": [
+      "Initial Cmd+K before explicitly focusing the app did not open search; a content click then Cmd+K worked.",
+      "AX Pick did not activate the result; keyboard arrows and Enter did. These tool observations are not VoiceOver scope."
+    ]
+  }
+}

@@ -2851,3 +2851,7 @@ The explicitly sized1000×680 isolated build verifies ordinary List Done/3-of-3 
 ### r199 compact materials and settings
 
 Native 1000×680 verification passed material-grid scrolling in both themes, exact attachment24 opening, all three settings tabs with bottom content reachable, and Back restoring TASK-G23 with its material scroll position. Evidence: `evidence/r199-compact-material-settings.json`. Save acknowledgement was visible, but overlapping an in-flight save with scrolling was not established. No timing acceptance is claimed.
+
+### r200 compact results repair accepted
+
+OpenCode removed a pending zero scroll-restore target that could cancel initial wheel input. Root reviewed the bounded change, independently passed the immediate route-mount wheel test, rebuilt the isolated app, and verified the actual Board-to-results sidebar path at 1000×680. Both themes scroll; Load more and reader Close preserve the visible anchor. See `evidence/r200-compact-results.json`. Board horizontal access remains open.

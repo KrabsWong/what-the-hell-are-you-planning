@@ -552,9 +552,24 @@ fn result_scroll_step(
     attempts: u8,
 ) -> ResultScrollStep {
     if reset {
+        // A fresh list at the top needs no restore target. Keeping a pending
+        // zero target would cancel the first wheel gestures on a newly mounted
+        // route.
+        if handle.abs() <= 0.5 {
+            return ResultScrollStep::Settle {
+                handle: 0.0,
+                synced: 0.0,
+            };
+        }
         return ResultScrollStep::Apply(handle);
     }
     if let Some(target) = target {
+        if target.abs() <= 0.5 {
+            return ResultScrollStep::Settle {
+                handle: current,
+                synced: current,
+            };
+        }
         if (current - target).abs() <= 1.0 || attempts >= 6 {
             return ResultScrollStep::Settle {
                 handle: current,
@@ -5858,6 +5873,64 @@ mod tests {
         assert!(
             offset <= px(-100.),
             "400 px scroll after reset must displace the list, got {offset:?}"
+        );
+    }
+
+    #[gpui_kit::test]
+    fn compact_route_switch_wheel_moves_immediately(cx: &mut TestAppContext) {
+        let cx = cx.add_empty_window();
+        cx.update(|_, cx| init(cx));
+        let store = results_store();
+        let (app, cx) = cx.add_window_view(|window, cx| {
+            let mut app = TaskApp::new_mock(window, cx);
+            app.store = store;
+            app.automation_ui.history_limit = 20;
+            app
+        });
+        cx.simulate_resize(size(px(1000.), px(680.)));
+        cx.update(|window, cx| window.render_frame(cx));
+        cx.update(|_, cx| {
+            app.update(cx, |app, cx| {
+                app.set_scope_identity(crate::app::Scope::All);
+                cx.notify();
+            });
+        });
+        cx.update(|window, cx| window.render_frame(cx));
+        cx.update(|_, cx| {
+            app.update(cx, |app, cx| {
+                app.set_scope_identity(crate::app::Scope::AutomationRuns);
+                cx.notify();
+            });
+        });
+        cx.update(|window, cx| window.render_frame(cx));
+        let body = cx
+            .update(|window, _| window.try_find("automation-results-scroll").unwrap().bounds());
+        let before = cx.update(|_, cx| {
+            app.read(cx)
+                .automation_ui
+                .result_list
+                .scroll_px_offset_for_scrollbar()
+                .y
+                .as_f32()
+        });
+        // Wheel immediately after the route mount: no extra settling frame.
+        cx.simulate_event(ScrollEvent {
+            position: body.center(),
+            delta: ScrollDelta::Pixels(point(px(0.), px(-300.))),
+            ..Default::default()
+        });
+        cx.update(|window, cx| window.render_frame(cx));
+        let after = cx.update(|_, cx| {
+            app.read(cx)
+                .automation_ui
+                .result_list
+                .scroll_px_offset_for_scrollbar()
+                .y
+                .as_f32()
+        });
+        assert!(
+            after <= before - 200.0,
+            "compact route-mount wheel must apply its delta, before={before} after={after}"
         );
     }
 

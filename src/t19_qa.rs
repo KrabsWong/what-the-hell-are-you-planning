@@ -943,8 +943,7 @@ fn sidebar_retained_surface(root: &Path) {
         w.press("escape", cx);
         w.render_frame(cx);
 
-        // Wheel scrolling moves the retained navigation and the overlay mark
-        // together; a far scroll clips the mark instead of leaving it floating.
+        // Wheel scrolling moves only navigation; the identity stays fixed.
         let before_scroll = app.read(cx).sidebar_scroll.offset().y;
         w.scroll(
             "sidebar-scroll",
@@ -958,8 +957,8 @@ fn sidebar_retained_surface(root: &Path) {
         let slot = w.find("sidebar-brand-slot").bounds();
         let moved = w.find("sidebar-brand-overlay").bounds();
         assert!(
-            moved.top() < brand.top(),
-            "brand must follow sidebar scroll"
+            (moved.top() - brand.top()).abs() <= px(0.5),
+            "brand must stay fixed above navigation scroll"
         );
         assert!(
             (moved.top() - slot.top()).abs() <= px(0.5)
@@ -967,8 +966,7 @@ fn sidebar_retained_surface(root: &Path) {
                 && (moved.size.width - slot.size.width).abs() <= px(0.5),
             "brand overlay must match the identity-row slot at nonzero scroll"
         );
-        // Scroll to the content end; the mark either remains inside the clip
-        // rectangle or is clipped once its anchor leaves the viewport.
+        // Scroll to the content end without moving the identity row.
         for _ in 0..20 {
             let before = app.read(cx).sidebar_scroll.offset().y;
             w.scroll(
@@ -981,18 +979,12 @@ fn sidebar_retained_surface(root: &Path) {
                 break;
             }
         }
-        let end = app.read(cx).sidebar_scroll.offset().y;
-        let clipped = w.find("sidebar-brand-overlay");
+        let mark = w.find("sidebar-brand-overlay");
         let end_slot = w.find("sidebar-brand-slot").bounds();
-        if end_slot.bottom() <= clip.top() {
-            assert!(
-                clipped.bounds().bottom() <= clip.top(),
-                "brand must be clipped at the title-bar edge"
-            );
-        } else {
-            assert!(clipped.visible(), "brand must remain inside the clip");
-            assert!(clipped.bounds().bottom() <= clip.bottom());
-        }
+        assert!(mark.visible(), "brand must remain visible after scrolling");
+        assert!((mark.bounds().top() - brand.top()).abs() <= px(0.5));
+        assert!((end_slot.top() - slot.top()).abs() <= px(0.5));
+        assert!(mark.bounds().bottom() <= clip.bottom());
 
         // Dragging the resize divider still resizes the sidebar panel.
         let width_before = w.find("sidebar-scroll").bounds().size.width;

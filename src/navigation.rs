@@ -126,16 +126,16 @@ impl crate::domain::Store {
         }
         match task.research.as_ref().map(|r| r.kind) {
             Some(ResearchKind::Goal) => {
-                if !self.goal_tasks_complete(id) { return None; }
+                if !self.goal_tasks_present(id) { return None; }
                 let children = self.research_children(id);
                 children.iter().rev()
                     .filter(|child| self.task(**child).and_then(|t| t.research.as_ref()).is_some_and(|r| r.kind == ResearchKind::Advise))
                     .chain(children.iter().rev())
-                    .find_map(|child| self.research_result(*child).map(|r| r.id))
+                    .find_map(|child| self.research_result_present(*child).map(|r| r.id))
             }
-            Some(_) => self.research_result(id).map(|r| r.id),
+            Some(_) => self.research_result_present(id).map(|r| r.id),
             None => self.runs().iter().rev().find(|r| r.task_id == id && r.project_plan.is_none())
-                .filter(|r| r.status == "Succeeded" && !r.output.trim().is_empty()).map(|r| r.id),
+                .filter(|r| r.status == "Succeeded" && (!r.output.trim().is_empty() || self.run_body_is_lazy(r.id))).map(|r| r.id),
         }
     }
 
@@ -368,8 +368,8 @@ impl TaskApp {
         if let Some(run) = result { self.show_task_result(run, cx); }
     }
 
-    /// Activate a resolved neighbor. Task detail keeps the detail surface; the
-    /// result surface preserves the established result-first behavior.
+    /// Ordinary research neighbors prefer completed results from either surface.
+    /// Automation detail navigation retains its period-specific surface policy.
     pub(crate) fn open_navigation_target(
         &mut self,
         target: &NeighborTarget,
@@ -379,7 +379,7 @@ impl TaskApp {
     ) {
         match target {
             NeighborTarget::Task(id) => {
-                if open_result {
+                if open_result || self.store.task(*id).is_some_and(|task| task.automation_id.is_none()) {
                     self.open_sidebar_task(*id, window, cx);
                 } else {
                     self.open_task(*id, window, cx);
@@ -637,6 +637,53 @@ mod tests {
 
     fn template() -> crate::automation::AutomationTemplate {
         crate::automation_execution::build_template("Track public filings", "A cited note").unwrap()
+    }
+
+    #[test]
+    fn completed_navigation_accepts_lazy_current_results_after_restart() {
+        let root = std::env::temp_dir().join(format!(
+            "planning-navigation-lazy-{}-{}",
+            std::process::id(),
+            std::time::SystemTime::now().duration_since(std::time::UNIX_EPOCH).unwrap().as_nanos()
+        ));
+        std::fs::create_dir_all(&root).unwrap();
+        let mut store = Store::empty();
+        store.project_at_mut(0).unwrap().directory = root.to_string_lossy().into_owned();
+        store.set_default_model("test/model".into());
+        let goal = store.create_research_goal("Completed goal".into(), "Navigation fixture".into(), 1).unwrap();
+        let steps = store.apply_research_plan(goal, r#"{"tasks":[{"title":"Collect","instructions":"Collect evidence","kind":"collect","depends_on":[]},{"title":"Analyze","instructions":"Analyze evidence","kind":"analyze","depends_on":[0]},{"title":"Report","instructions":"Write report","kind":"advise","depends_on":[1]}]}"#).unwrap();
+        let mut runs = Vec::new();
+        for step in &steps {
+            let mut run = store.prepare_run(*step).unwrap();
+            run.status = "Succeeded".into();
+            run.output = format!("Completed result for {step}");
+            runs.push(run.id);
+            store.push_run(run);
+            store.set_stage(*step, Stage::Done).unwrap();
+        }
+        store.task_mut(goal).unwrap().stage = Stage::Done;
+        let database = crate::sqlite_v4::SqliteV4::create_seeded(
+            &root.join("workspace.sqlite3"), &root, 1, &store,
+        ).unwrap();
+        let lazy = database.load_store_lazy().unwrap();
+        for (step, run) in steps.iter().zip(&runs) {
+            assert!(lazy.run_body_is_lazy(*run));
+            assert!(lazy.research_result(*step).is_none());
+            assert_eq!(lazy.completed_sidebar_result(*step), Some(*run));
+        }
+        assert!(!lazy.goal_tasks_complete(goal));
+        assert_eq!(lazy.completed_sidebar_result(goal), runs.last().copied());
+
+        let mut stale = lazy.clone();
+        stale.task_mut(steps[0]).unwrap().description.push_str(" Changed input.");
+        assert_eq!(stale.completed_sidebar_result(steps[0]), None);
+        assert_eq!(stale.completed_sidebar_result(goal), None);
+        let mut failed = lazy.clone();
+        failed.last_run_mut().unwrap().status = "Failed".into();
+        assert_eq!(failed.completed_sidebar_result(*steps.last().unwrap()), None);
+        assert_eq!(failed.completed_sidebar_result(goal), None);
+        drop(database);
+        std::fs::remove_dir_all(root).unwrap();
     }
 
     #[test]

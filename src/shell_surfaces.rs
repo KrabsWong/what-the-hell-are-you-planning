@@ -86,9 +86,7 @@ impl Render for BrandOverlay {
         let Some(parent) = self.parent.upgrade() else {
             return div().into_any_element();
         };
-        let (offset, accent) = parent.read_with(cx, |app, cx| {
-            (app.sidebar_scroll.offset().y, crate::appearance::palette(cx).accent)
-        });
+        let accent = parent.read_with(cx, |_, cx| crate::appearance::palette(cx).accent);
         let elapsed = self.started.elapsed().as_secs_f32();
         #[cfg(feature = "qa")]
         let static_diagnostic =
@@ -120,7 +118,7 @@ impl Render for BrandOverlay {
             div()
                 .id("sidebar-brand-overlay")
                 .absolute()
-                .top(px(14.) + offset)
+                .top(px(14.))
                 .left(px(8.))
                 .size(px(32.))
                 .child(crate::brand::sidebar_logo_at(accent, phase)),
@@ -157,8 +155,8 @@ impl Render for FooterBar {
 
 impl TaskApp {
     /// The navigation sidebar is retained as a sibling of the animated brand
-    /// mark. The mark is painted as an overlay that follows the sidebar scroll
-    /// offset; animation therefore dirties only the cheap overlay branch, not
+    /// mark. The mark stays anchored to the fixed identity row above the scroll
+    /// area; animation therefore dirties only the cheap overlay branch, not
     /// the navigation tree. Semantic changes still notify the parent and
     /// rebuild the cached sidebar.
     pub(crate) fn retained_sidebar(&mut self, cx: &mut Context<Self>) -> AnyElement {
@@ -190,7 +188,7 @@ impl TaskApp {
                     .top(px(if cfg!(target_os = "macos") { 44. } else { 12. }))
                     .left(px(12.))
                     .right(px(12.))
-                    .bottom(px(12.))
+                    .h(px(60.))
                     .overflow_hidden()
                     .child(
                         self.brand_overlay

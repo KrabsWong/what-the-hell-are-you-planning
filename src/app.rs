@@ -556,6 +556,7 @@ pub struct TaskApp {
     pub expanded_request_brief: Option<u64>,
     pub render_statuses:
         std::cell::RefCell<std::collections::HashMap<u64, crate::workflow::TaskStatus>>,
+    pub render_status_epoch: std::cell::Cell<u64>,
     pub board_execution_filter: Option<crate::workflow::ExecutionGroup>,
     pub show_task_activity: bool,
     pub automation_ui: crate::automation_views::AutomationUi,
@@ -744,6 +745,9 @@ impl TaskApp {
         let focus = cx.focus_handle();
         window.focus(&focus, cx);
         let autosave = cx.observe_self(|this, cx| {
+            // Wheel events redraw ancestor views without changing task state.
+            // Invalidate status validation only for semantic app updates.
+            this.render_statuses.borrow_mut().clear();
             if this.persist_if_changed(false) {
                 cx.notify();
             }
@@ -1016,11 +1020,11 @@ impl TaskApp {
             }),
             research_title: cx.new(|cx| {
                 InputState::new(window, cx)
-                    .placeholder("e.g. 本周美股科技板块有哪些值得关注的变化？")
+                    .placeholder("e.g. What changed in US technology stocks this week?")
             }),
             research_brief: cx.new(|cx| {
                 TextareaState::new(window, cx)
-                    .placeholder("市场／股票代码、时间范围和研究问题…")
+                    .placeholder("Market or ticker, time range, and research question…")
                     .rows(6)
             }),
             research_project: 1,
@@ -1047,6 +1051,7 @@ impl TaskApp {
             show_task_details: false,
             expanded_request_brief: None,
             render_statuses: Default::default(),
+            render_status_epoch: Default::default(),
             board_execution_filter: None,
             show_task_activity: false,
             automation_ui,
@@ -2665,6 +2670,7 @@ impl TaskApp {
     ) {
         self.store = store.unwrap_or_else(Store::empty);
         self.automation_ui.clear_store_caches();
+        self.render_statuses.borrow_mut().clear();
         self.restore_sidebar();
         self.store.recover_interrupted_runs();
         self.recover_publications();

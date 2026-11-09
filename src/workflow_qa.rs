@@ -306,7 +306,19 @@ pub fn scroll_benchmark() {
     for n in 0..30 {
         let start = Instant::now();
         cx.update_window(handle, |_, w, cx| {
-            w.scroll("board-scroll", ScrollDelta::Pixels(point(px(if n < 15 { -12. } else { 12. }), px(0.))), cx);
+            let position = w.find("board-scroll").bounds().center();
+            w.dispatch_event(MouseMoveEvent {
+                position,
+                ..Default::default()
+            }.to_platform_input(), cx);
+            w.dispatch_event(ScrollEvent {
+                position,
+                delta: ScrollDelta::Pixels(point(px(if n < 15 { -12. } else { 12. }), px(0.))),
+                ..Default::default()
+            }.to_platform_input(), cx);
+            // The normal input path redraws dirty views. render_frame() forces
+            // a full window refresh and defeats retained scrolling entirely.
+            w.draw(cx).clear(cx);
         }).unwrap();
         elapsed.push(start.elapsed().as_secs_f64() * 1000.);
         if n == 14 {
@@ -324,4 +336,71 @@ pub fn scroll_benchmark() {
     }).unwrap();
     elapsed.sort_by(f64::total_cmp);
     println!("Board scroll workload: 24 goals / 72 completed steps; median {:.2} ms, p95 {:.2} ms per scroll+render", elapsed[15], elapsed[28]);
+    cx.update_window(handle, |_, w, cx| {
+        app.update(cx, |a, cx| {
+            a.navigate(Scope::Settings, w, cx);
+            a.set_settings_tab(crate::settings_views::SettingsTab::Models);
+            cx.notify();
+        });
+        w.render_frame(cx);
+    }).unwrap();
+    let mut elapsed = Vec::new();
+    for n in 0..60 {
+        let start = Instant::now();
+        cx.update_window(handle, |_, w, cx| {
+            let position = w.find("model-settings-scroll").bounds().center();
+            w.dispatch_event(MouseMoveEvent {
+                position,
+                ..Default::default()
+            }.to_platform_input(), cx);
+            w.dispatch_event(ScrollEvent {
+                position,
+                delta: ScrollDelta::Pixels(point(px(0.), px(if n < 30 { -12. } else { 12. }))),
+                ..Default::default()
+            }.to_platform_input(), cx);
+            w.draw(cx).clear(cx);
+            if n == 29 {
+                assert!(app.read(cx).settings_scroll.offset().y < px(-100.),
+                    "Vertical gesture must move settings");
+            }
+        }).unwrap();
+        elapsed.push(start.elapsed().as_secs_f64() * 1000.);
+    }
+    elapsed.sort_by(f64::total_cmp);
+    println!("Settings vertical scroll: median {:.2} ms, p95 {:.2} ms per scroll+render", elapsed[30], elapsed[56]);
+    cx.update_window(handle, |_, w, cx| {
+        app.update(cx, |a, cx| {
+            a.navigate(Scope::All, w, cx);
+            a.expanded_sidebar_projects = vec![1];
+            a.collapsed_sidebar_topics.clear();
+            a.collapsed_sidebar_goals.clear();
+            cx.notify();
+        });
+        w.render_frame(cx);
+    }).unwrap();
+    let brand_top = cx.update_window(handle, |_, w, _| w.find("sidebar-brand-overlay").bounds().top()).unwrap();
+    let mut elapsed = Vec::new();
+    for n in 0..120 {
+        let start = Instant::now();
+        cx.update_window(handle, |_, w, cx| {
+            let position = w.find("sidebar-scroll").bounds().center();
+            w.dispatch_event(MouseMoveEvent { position, ..Default::default() }.to_platform_input(), cx);
+            w.dispatch_event(ScrollEvent {
+                position,
+                delta: ScrollDelta::Pixels(point(px(0.), px(if n < 60 { -24. } else { 24. }))),
+                ..Default::default()
+            }.to_platform_input(), cx);
+            w.draw(cx).clear(cx);
+            assert!((w.find("sidebar-brand-overlay").bounds().top() - brand_top).abs() <= px(0.5),
+                "Logo must stay fixed during normal scroll dispatch");
+            if n == 59 {
+                assert!(app.read(cx).sidebar_scroll.offset().y < px(-500.),
+                    "Vertical gesture must move the expanded sidebar");
+            }
+        }).unwrap();
+        elapsed.push(start.elapsed().as_secs_f64() * 1000.);
+    }
+    elapsed.sort_by(f64::total_cmp);
+    println!("Expanded sidebar scroll: 24 goals / 72 steps; median {:.2} ms, p95 {:.2} ms per scroll+render", elapsed[60], elapsed[113]);
+
 }

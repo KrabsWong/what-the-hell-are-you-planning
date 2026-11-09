@@ -201,6 +201,19 @@ pub fn run() {
                 });
             }).unwrap();
             screenshot(&mut cx, handle, &directory, "06-task-materials.png");
+            cx.update_window(handle, |_, w, _| assert_task_properties_layout(w)).unwrap();
+            cx.update_window(handle, |_, w, cx| {
+                let split = app.read(cx).sidebar_split.clone();
+                split.update(cx, |s, cx| s.resize_panel(0, px(480.), w, cx));
+            }).unwrap();
+            screenshot(&mut cx, handle, &directory, "06-task-materials-wide-sidebar.png");
+            cx.update_window(handle, |_, w, _| assert_task_properties_layout(w)).unwrap();
+            cx.update_window(handle, |_, w, cx| {
+                let split = app.read(cx).sidebar_split.clone();
+                split.update(cx, |s, cx| s.resize_panel(0, px(260.), w, cx));
+            }).unwrap();
+            screenshot(&mut cx, handle, &directory, "06-task-materials-restored.png");
+            cx.update_window(handle, |_, w, _| assert_task_properties_layout(w)).unwrap();
             cx.update_window(handle, |_, w, cx| {
                 click_in(w, cx, "detail-scroll", "property-Stage");
                 assert!(w.try_find("set-todo").is_some());
@@ -376,6 +389,34 @@ fn scroll_card_into_view(w: &mut Window, cx: &mut App, id: &str, topics: &[u64])
         w.render_frame(cx);
     }
     assert!(w.find(id.to_string()).visible(), "Could not scroll to {id}");
+}
+
+fn assert_task_properties_layout(w: &mut Window) {
+    let detail = w.find("detail-scroll").bounds();
+    let properties = w.find("task-properties").bounds();
+    let status_label = w.find("task-status-label").bounds();
+    let status_value = w.find("task-execution-status").bounds();
+    assert!(
+        (status_label.center().y - status_value.center().y).abs() <= px(1.),
+        "Status label and value must share a row: {status_label:?}, {status_value:?}"
+    );
+    assert!(
+        status_value.left() >= status_label.right()
+            && (status_value.right() - (properties.right() - px(12.))).abs() <= px(1.),
+        "Status value must align to the right of its label: {status_value:?}"
+    );
+    assert!(
+        detail.right() <= w.viewport_size().width + px(1.),
+        "Task detail must fit the available workspace: {detail:?}"
+    );
+    assert!(
+        (properties.size.width - px(240.)).abs() <= px(1.),
+        "Task properties must retain their fixed width: {properties:?}"
+    );
+    assert!(
+        (detail.right() - properties.right() - px(16.)).abs() <= px(1.),
+        "Task properties must stay aligned to the right inset: {properties:?} in {detail:?}"
+    );
 }
 
 fn screenshot(cx: &mut HeadlessAppContext, handle: AnyWindowHandle, root: &Path, name: &str) {

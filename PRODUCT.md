@@ -18,7 +18,7 @@ Keep the current native desktop direction: simple, restrained and practical. No 
 
 ## Anti-references
 
-The user explicitly rejected buttons and links that disguise themselves as body text, interactions that only become visible on hover, and secondary actions that disappear into explanatory copy without a border or color. Status tags must not look like buttons.
+Keep action labels and icons visible at rest and distinct from explanatory copy. Auxiliary actions and icon controls follow the main-branch appearance, without permanent button surfaces or borders on every control. Preserve hover and keyboard focus feedback. Status tags must not look like buttons.
 
 ## Design Principles
 

@@ -344,6 +344,8 @@ If an application termination cannot wait for the worker, startup reapplies a ty
 
 ## Deferred result loading
 
+For ordinary research, sidebar selection and Previous/Next navigation open a completed step's current result directly; a goal whose steps are all complete opens its final report. This applies from both task details and result readers, including after restart while report bodies are still lazy. Incomplete, busy, stale, or failed work keeps the task detail entry point. Explicit detail and breadcrumb actions remain available.
+
 On restart, a current successful result may have its body loaded on demand. Completion labels, step counts and result navigation retain that result when its request signature and dependency run identities remain current. A lazy completed step is not queued again. Prompt construction, export and dependent execution still require hydrated content; a newer failed attempt or changed inputs must not inherit completion from an older success. Archived readers distinguish a saved result awaiting review from missing or invalid content. Validation remains strict until the result and required dependency bodies are available; an unopened body alone is not evidence that a saved result was lost.
 
 Archived report readers use history-aware freshness checks: archiving alone does not make a retained, signature-matched report stale or legacy. Lazy saved bodies remain pending content validation until loaded. This presentation rule does not permit execution, export, or dependent work to bypass strict result validation; changed research inputs still mark the retained report stale.

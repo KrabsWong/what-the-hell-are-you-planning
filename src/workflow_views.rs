@@ -7,7 +7,10 @@ impl TaskApp {
             return status.clone();
         }
         let status = self.store.task_status(id, self.todo_batch.as_ref());
-        self.render_statuses.borrow_mut().insert(id, status.clone());
+        // Retry explanations include a wall-clock countdown.
+        if status.execution != crate::execution_status::ExecutionStatus::Retrying {
+            self.render_statuses.borrow_mut().insert(id, status.clone());
+        }
         status
     }
 

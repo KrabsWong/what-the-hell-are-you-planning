@@ -813,6 +813,22 @@ impl TaskApp {
                     cx.notify();
                 })));
         }
+        if run.research_kind == Some(ResearchKind::Advise)
+            && run.status == "Succeeded"
+            && !self.store.task_is_archived(run.task_id)
+        {
+            let source_id = run.id;
+            actions = actions.child(primary_button("regenerate-report", "Regenerate")
+                .disabled(self.task_running(id))
+                .tooltip("Rewrite this report using existing evidence and analysis")
+                .on_click(cx.listener(move |a, _, w, cx| {
+                    a.report_regeneration = Some((source_id, cx.new(|cx|
+                        gpui_kit::component::input::TextareaState::new(w, cx)
+                            .placeholder("Optional: tone, audience or length…")
+                            .rows(3))));
+                    cx.notify();
+                })));
+        }
         if readable && !planning && self.store.task(context_task.unwrap_or(id)).is_some() {
             let navigation = self.store.task_navigation(context_task.unwrap_or(id));
             let previous_enabled = navigation.previous.resolved(&self.store).is_some();
@@ -852,22 +868,6 @@ impl TaskApp {
                     .icon(assets::IconName::ExternalLink)
                     .on_click(cx.listener(|this, _, _, cx| this.open_ego(cx))),
             );
-        }
-        if run.research_kind == Some(ResearchKind::Advise)
-            && run.status == "Succeeded"
-            && !self.store.task_is_archived(run.task_id)
-        {
-            let source_id = run.id;
-            actions = actions.child(quiet_button("regenerate-report", "Regenerate")
-                .disabled(self.task_running(id))
-                .tooltip("Rewrite this report using existing evidence and analysis")
-                .on_click(cx.listener(move |a, _, w, cx| {
-                    a.report_regeneration = Some((source_id, cx.new(|cx|
-                        gpui_kit::component::input::TextareaState::new(w, cx)
-                            .placeholder("Optional: tone, audience or length…")
-                            .rows(3))));
-                    cx.notify();
-                })));
         }
         if active {
             if run_goal.is_some_and(|goal| self.research_sequences.contains(&goal)) {
@@ -1099,6 +1099,7 @@ impl TaskApp {
         }
         col()
             .flex_1()
+            .w_full()
             .min_w_0()
             .h_full()
             .gap_1()

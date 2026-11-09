@@ -16,15 +16,15 @@ pub fn button(id: impl Into<ElementId>, text: impl Into<SharedString>) -> Button
         .px_3()
         .rounded(px(6.))
 }
-/// Shared neutral secondary action. The surface and full border stay visible at
-/// rest so an action is recognizable without hovering (DESIGN: Secondary).
+/// Auxiliary actions use the main-branch ghost style without competing with
+/// the primary action. Labels remain visible at rest.
 pub fn quiet_button(id: impl Into<ElementId>, text: impl Into<SharedString>) -> Button {
-    button(id, text)
+    button(id, text).ghost()
 }
 /// Documented compound exception: rows, tree items, segmented tabs and menu
 /// entries already own their surface, so a second border would read as a nested
-/// control. Use this only for those compound targets, never for standalone
-/// actions such as Cancel, Close, Open or Settings.
+/// control. Keep this helper for compound targets; standalone auxiliary
+/// actions use quiet_button even though both currently share ghost styling.
 pub fn row_button(id: impl Into<ElementId>, text: impl Into<SharedString>) -> Button {
     button(id, text).ghost()
 }
@@ -35,6 +35,7 @@ pub fn tool_icon(
 ) -> Button {
     let name = name.into();
     Button::new(id)
+        .ghost()
         .h(px(32.))
         .rounded(px(6.))
         .icon(icon)

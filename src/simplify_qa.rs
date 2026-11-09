@@ -230,7 +230,8 @@ fn run_checks(layout_only: bool) {
     let root = std::env::current_dir()
         .unwrap()
         .join(format!(".local/simplify-qa/{}", std::process::id()));
-    for (width, height) in [(1440., 920.), (1000., 680.)] {
+    let sizes = if layout_only { vec![(1440., 920.), (1000., 680.), (2672., 920.)] } else { vec![(1440., 920.), (1000., 680.)] };
+    for (width, height) in sizes {
         for mode in [Appearance::Light, Appearance::Dark] {
             let directory = root.join(format!("{mode:?}-{width}"));
             std::fs::create_dir_all(&directory).unwrap();
@@ -255,7 +256,7 @@ fn run_checks(layout_only: bool) {
                 let mut run = store.prepare_run(*task).unwrap();
                 run.status = "Succeeded".into();
                 run.output = if layout_only {
-                    REPORT.repeat(12)
+                    format!("{}\n\n| Field | Value |\n| --- | --- |\n| File | `/Users/fixture/workspace/research/attachments/2026-11-09-evidence-source-document-with-a-long-filename-and-original-metadata.pdf` |\n\n{}", REPORT, REPORT.repeat(12))
                 } else {
                     REPORT.into()
                 };
@@ -297,6 +298,9 @@ fn run_checks(layout_only: bool) {
                         assert!(a.storage_error.is_empty(), "{}", a.storage_error);
                         a.note_selected_run(Some(report_id));
                         a.navigate(Scope::Runs, w, cx);
+                        if layout_only {
+                            a.set_result_selection(Some(*steps.last().unwrap()), Some(report_id));
+                        }
                     });
                     entity = Some(view.clone());
                     cx.new(|cx| base::Root::new(view, w, cx))
@@ -306,6 +310,27 @@ fn run_checks(layout_only: bool) {
             let app = entity.unwrap();
             if layout_only {
                 screenshot(&mut cx, handle, &directory, "compact-result.png");
+                for sidebar_width in [480., 260.] {
+                    cx.update_window(handle, |_, w, cx| {
+                        let sidebar = app.read(cx).sidebar_split.clone();
+                        sidebar.update(cx, |s, cx| s.resize_panel(0, px(sidebar_width), w, cx));
+                        w.render_frame(cx);
+                    }).unwrap();
+                    screenshot(&mut cx, handle, &directory, &format!("report-sidebar-{sidebar_width}.png"));
+                    cx.update_window(handle, |_, w, _| {
+                        let viewport = w.find("research-result-viewport").bounds();
+                        let scroll = w.find("research-result-scroll").bounds();
+                        let regenerate = w.find("regenerate-report").bounds();
+                        let previous = w.find("previous-task").bounds();
+                        let next = w.find("next-task").bounds();
+                        assert!(regenerate.right() <= previous.left() && previous.right() <= next.left(),
+                            "Regenerate must precede the Previous/Next arrows at window width {width}, sidebar {sidebar_width}");
+                        assert!((viewport.right() - (w.viewport_size().width - px(16.))).abs() <= px(1.),
+                            "Report must fill the available right pane at window width {width}, sidebar {sidebar_width}: {viewport:?}");
+                        assert!((scroll.size.width - viewport.size.width).abs() <= px(1.),
+                            "Report scroll surface must match its viewport: {scroll:?} in {viewport:?}");
+                    }).unwrap();
+                }
                 cx.update_window(handle, |_, w, cx| {
                     w.click("regenerate-report", cx);
                     w.render_frame(cx);

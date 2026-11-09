@@ -702,38 +702,32 @@ impl TaskApp {
             .border_r_1()
             .border_color(rgb(colors.line))
             .p_3();
+        let identity = row()
+            .h(px(60.))
+            .flex_shrink_0()
+            .px_2()
+            .gap_3()
+            .child(observed(
+                div()
+                    .id("sidebar-brand-slot")
+                    .size(px(32.))
+                    .flex_shrink_0(),
+            ))
+            .child(
+                div()
+                    .flex_1()
+                    .min_w_0()
+                    .text_sm()
+                    .font_weight(FontWeight::SEMIBOLD)
+                    .line_height(relative(1.3))
+                    .child(selectable("What the hell are you planning?")),
+            );
         let mut side = col()
             .id("sidebar-scroll")
             .track_scroll(&self.sidebar_scroll)
-            .on_scroll(cx.listener(|this, _, _, cx| {
-                if let Some(overlay) = &this.brand_overlay {
-                    overlay.update(cx, |_, cx| cx.notify());
-                }
-            }))
             .flex_1()
             .min_h_0()
-            .overflow_y_scroll()
-            .child(
-                row()
-                    .min_h(px(60.))
-                    .px_2()
-                    .gap_3()
-                    .child(observed(
-                        div()
-                            .id("sidebar-brand-slot")
-                            .size(px(32.))
-                            .flex_shrink_0(),
-                    ))
-                    .child(
-                        div()
-                            .flex_1()
-                            .min_w_0()
-                            .text_sm()
-                            .font_weight(FontWeight::SEMIBOLD)
-                            .line_height(relative(1.3))
-                            .child(selectable("What the hell are you planning?")),
-                    ),
-            );
+            .overflow_y_scroll();
         // Automations lead the sidebar: it is the app's scheduled-work domain,
         // separate from the Research domain below it.
         let automation_count = self
@@ -992,6 +986,7 @@ impl TaskApp {
                         let tid = task.id;
                         let has_steps = tasks.iter().any(|t| t.parent_id == Some(tid));
                         let status = self.display_task_status(tid);
+                        let execution = status.execution;
                         let hint_heading =
                             format!("{} · {}", self.store.identifier(task), status.label(),);
                         let hint_title = task.title.clone();
@@ -1039,12 +1034,7 @@ impl TaskApp {
                                     .w_full()
                                     .min_w_0()
                                     .gap_2()
-                                    .child(task_state_icon(
-                                        &self.store,
-                                        task,
-                                        self.todo_batch.as_ref(),
-                                        cx,
-                                    ))
+                                    .child(execution.icon_view(format!("task-state-icon-{tid}"), cx))
                                     .child(single_line_text(
                                         format!("sidebar-task-title-{tid}"),
                                         format!(
@@ -1162,6 +1152,7 @@ impl TaskApp {
                         .bg(rgb(colors.side)),
                 )
             })
+            .child(identity)
             .child(side.map(observed))
             .child(
                 row()
@@ -3347,24 +3338,24 @@ impl TaskApp {
         let status = self.display_task_status(id);
         let execution = status.execution;
         properties = properties.child(
-            col()
-                .gap_1()
+            row()
+                .justify_between()
                 .w_full()
                 .min_w_0()
-                .child(label("Status", cx))
-                // Read-only status: a chip, not a focusable button. Stack under its
-                // label and allow the full status text to wrap at narrow widths.
+                .child(label("Status", cx).id("task-status-label").flex_shrink_0().map(observed))
+                // Keep the read-only value aligned with the other properties.
+                // Longer status labels can wrap within the value column.
                 .child(
                     div()
                         .id("task-execution-status")
                         .role(Role::Label)
                         .aria_label(status.label())
-                        .w_full()
+                        .max_w(px(164.))
                         .min_w_0()
                         .py_0p5()
                         .px_2()
                         .flex()
-                        .items_start()
+                        .items_center()
                         .gap_2()
                         .text_color(rgb(execution.color(cx)))
                         .tooltip({
@@ -3377,8 +3368,8 @@ impl TaskApp {
                         .child(execution.icon_view(format!("task-status-icon-{id}"), cx))
                         .child(
                             div()
-                                .flex_1()
                                 .min_w_0()
+                                .text_right()
                                 .whitespace_normal()
                                 .line_height(relative(1.3))
                                 .child(selectable(status.label())),
@@ -3641,7 +3632,7 @@ impl TaskApp {
                     .flex_1()
                     .min_h_0()
                     .child(body)
-                    .child(properties)
+                    .child(properties.id("task-properties").map(observed))
                     .map(observed),
             )
             .into_any_element()
@@ -4230,9 +4221,14 @@ impl Render for TaskApp {
             self.window_close_ready = false;
             window.remove_window();
         }
-        // A scroll invalidates this view too. Reuse expensive status validation
-        // within this frame only; the next render always sees current domain state.
-        self.render_statuses.borrow_mut().clear();
+        // Queue state is transient; otherwise tracked store mutations and app
+        // notifications invalidate statuses, not wheel/animation redraws.
+        let status_epoch = self.store.dirty_epoch();
+        if self.render_status_epoch.replace(status_epoch) != status_epoch
+            || self.todo_batch.is_some()
+        {
+            self.render_statuses.borrow_mut().clear();
+        }
         if let Some(id) = self.sidebar_reveal.take() {
             // Deferred effects run after this frame has laid out expanded ancestors.
             let entity = cx.entity().downgrade();

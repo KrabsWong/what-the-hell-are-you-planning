@@ -2,16 +2,16 @@
 
 ## Direction
 
-Keep the existing native workspace layout, system fonts and warm neutral palette. Light mode serves daytime reading and dark mode serves dim environments; both must show control boundaries at rest. Default pages serve non-developer research workflows, with technical configuration and diagnostics on demand. Preserve the existing palette, button discoverability and all execution capabilities.
+Keep the existing native workspace layout, system fonts and warm neutral palette. Light mode serves daytime reading and dark mode serves dim environments; both must keep action labels and icons visible at rest. Default pages serve non-developer research workflows, with technical configuration and diagnostics on demand. Preserve the existing palette, button discoverability and all execution capabilities.
 
 ## Components
 
 - Primary: solid deep warm fill (solid light warm fill in dark mode) for create, generate, save and run. Emphasize one advancing action per local action group.
-- Secondary: always-visible neutral surface and full border for frequent supporting actions such as settings, edit, copy, close or back. Never make these ghost buttons by default. `controls::quiet_button` is the standard; `controls::row_button` is only for compound surfaces that already provide their own boundary: sidebar/tree rows, board cards, popup menu rows and segmented controls. Task tabs keep their own shared-border rule below.
+- Secondary: use the main-branch ghost style for supporting actions such as settings, edit, copy, close or back. Labels remain visible, with hover and focus feedback instead of a permanent button border. `controls::quiet_button` is the standard; `controls::row_button` is for compound surfaces: sidebar/tree rows, board cards, popup menu rows and segmented controls. Task tabs keep their own shared-border rule below.
 - Action hierarchy: reserve the primary fill for the one advancing action in a local group. Use secondary controls for frequent supporting actions, direct Lucide icon controls for compact well-understood actions, and a More (…) menu for suitable low-frequency actions. Do not render every action as an equally prominent button, and do not flatten everything to ghost styling either. Each icon/More trigger keeps a full hit area, tooltip and meaningful accessibility label, and its destination or state must stay unambiguous.
 - Selection: bordered selection control; the selected state uses an accent surface/text and a clear visual change, and also sets the toggled semantic state. `controls::select_button` owns this appearance; selection never borrows the primary fill. Selection stays distinct from the one advancing action in the group.
 - Link: underlined accent text for navigation, sources and opening files; body-text URLs follow the same rule. Settings actions remain buttons.
-- Icon: fixed square hit area, full boundary, tooltip and accessibility_label. `controls::tool_icon` supplies that boundary; never leave a bare × or +. The same control may host a More menu for low-frequency actions, but must not hide the page's main action or an important disabled reason.
+- Icon: display the Lucide icon directly without a permanent button surface or border, matching main. `controls::tool_icon` retains a fixed square hit area, hover and focus feedback, tooltip and accessibility_label; never substitute a bare text × or +. The same control may host a More menu for low-frequency actions, but must not hide the page's main action or an important disabled reason.
 - Task tab: the title and close icon share one background and border, with no separate button border inside. The close icon is always visible and keeps its own hit area, hover and focus feedback. Long titles ellipsize to the available width, reveal the full name on hover, and never compress the close area.
 - Danger: red outline and tint via `controls::danger_button` for stopping an active run, cancelling an active period or removing material. Ordinary Close or Cancel uses the secondary control, not danger color.
 - Disabled: keep the shape, weaken fill and text, and explain the business reason near the button; never trigger the action.
@@ -20,6 +20,10 @@ Keep the existing native workspace layout, system fonts and warm neutral palette
 ## Geometry and typography
 
 Action buttons are about 32 px tall with 6 px radius and 14 px system font; Undo in the bottom status bar uses a compact 24 px button. Toolbars stay on one line and truncate long titles instead of compressing buttons. Horizontally scrollable boards keep their current column widths. Form/detail action rows may wrap. Sidebar content scrolls and the theme switch stays fixed at the bottom instead of being pushed out as projects grow.
+
+The sidebar brand mark and app name stay fixed above the navigation scroll area. Scrolling moves only the navigation list; the workspace switcher stays fixed below it.
+
+Report readers fill the available content width and reflow when the window or navigation sidebar changes size. Task details use a flexible body beside a fixed 240 px Task properties column, matching the main-branch layout; the properties column does not expand or stack below the body.
 
 ## Workspace identity and status bar
 
@@ -41,7 +45,7 @@ Actual scrolling smoothness on the isolated native application is mandatory and 
 
 ## Source of truth
 
-`appearance.rs` owns theme and component colors. `controls.rs` owns button/link factories. Pages choose action semantics and bind behavior only; do not reintroduce a global ghost default. Strike the hierarchy from one advancing primary action per local group down to secondary, icon and More actions; verify it in both themes. Native screenshots and interaction acceptance cover 1440×920, 1000×680 and both light and dark themes.
+`appearance.rs` owns theme and component colors. `controls.rs` owns button/link factories. Pages choose action semantics and bind behavior only; auxiliary and icon controls follow the main-branch ghost styling while primary, selection and destructive actions retain their distinct styles. Strike the hierarchy from one advancing primary action per local group down to secondary, icon and More actions; verify it in both themes. Native screenshots and interaction acceptance cover 1440×920, 1000×680 and both light and dark themes.
 
 ## Model settings
 

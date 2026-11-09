@@ -1,4 +1,4 @@
-//! T07: sidebar navigation stays inside the active automation period.
+//! Sidebar navigation opens completed research results and preserves automation periods.
 //!
 //! The existing `--qa-sidebar` entry calls this after its startup checks, so the
 //! suite exercises real Previous/Next/Overview/Back controls without adding a
@@ -22,6 +22,9 @@ use gpui_kit::{
 use std::{path::Path, sync::Arc, time::Duration};
 
 struct Fixture {
+    research_goal: u64,
+    research_steps: Vec<u64>,
+    research_runs: Vec<u64>,
     first_automation: u64,
     first_period: u64,
     first_steps: Vec<u64>,
@@ -134,9 +137,28 @@ fn fixture() -> (Store, Fixture) {
     let _ = finish_steps(&mut store, other_period);
     let _ = finish_steps(&mut store, other_second_period);
     let first_steps = finish_steps(&mut store, first_period);
+    let research_goal = store.create_research_goal(
+        "Completed ordinary research".into(), "Verify result-first navigation.".into(), 1,
+    ).unwrap();
+    let research_steps = store.apply_research_plan(research_goal,
+        r#"{"tasks":[{"title":"Collect evidence","instructions":"Collect sources.","kind":"collect","depends_on":[]},{"title":"Analyze evidence","instructions":"Analyze sources.","kind":"analyze","depends_on":[0]},{"title":"Write report","instructions":"Write the report.","kind":"advise","depends_on":[1]}]}"#,
+    ).unwrap();
+    let mut research_runs = Vec::new();
+    for step in &research_steps {
+        let mut run = store.prepare_run(*step).unwrap();
+        run.status = "Succeeded".into();
+        run.output = format!("# Ordinary research report {step}\n\nCompleted navigation fixture.");
+        research_runs.push(run.id);
+        store.push_run(run);
+        store.set_stage(*step, Stage::Done).unwrap();
+    }
+    store.task_mut(research_goal).unwrap().stage = Stage::Done;
     (
         store,
         Fixture {
+            research_goal,
+            research_steps,
+            research_runs,
             first_automation,
             first_period,
             first_steps,
@@ -366,6 +388,7 @@ pub fn run() {
     let app = app.unwrap();
     let handle: AnyWindowHandle = window.into();
 
+    exercise_completed_research(&mut cx, &app, handle, &fixture, "light");
     exercise(&mut cx, &app, handle, &fixture, "light");
     verify_structural_paths(&mut cx, &app, handle, &fixture);
     screenshot(&mut cx, handle, &root, "navigation-light.png");
@@ -374,10 +397,83 @@ pub fn run() {
         w.render_frame(cx);
     })
     .unwrap();
+    exercise_completed_research(&mut cx, &app, handle, &fixture, "dark");
     exercise(&mut cx, &app, handle, &fixture, "dark");
     verify_structural_paths(&mut cx, &app, handle, &fixture);
     screenshot(&mut cx, handle, &root, "navigation-dark.png");
     println!("Sidebar navigation QA passed · {}", root.display());
+}
+
+fn exercise_completed_research(
+    cx: &mut HeadlessAppContext,
+    app: &Entity<TaskApp>,
+    handle: AnyWindowHandle,
+    fixture: &Fixture,
+    theme: &str,
+) {
+    let goal = fixture.research_goal;
+    let steps = &fixture.research_steps;
+    let runs = &fixture.research_runs;
+    let final_run = *runs.last().unwrap();
+    cx.update_window(handle, |_, w, cx| {
+        app.update(cx, |a, cx| {
+            a.structural_navigation();
+            a.navigate(Scope::Project(1), w, cx);
+            a.expanded_sidebar_projects = vec![1];
+            a.collapsed_sidebar_goals.retain(|id| *id != goal);
+            a.collapsed_sidebar_topics.clear();
+            a.sidebar_scroll.set_offset(point(px(0.), px(0.)));
+            cx.notify();
+        });
+        w.render_frame(cx);
+    }).unwrap();
+    cx.run_until_parked();
+    for (task, run) in std::iter::once((goal, final_run))
+        .chain(steps.iter().copied().zip(runs.iter().copied()))
+    {
+        cx.update_window(handle, |_, w, cx| {
+            w.render_frame(cx);
+            w.click(format!("sidebar-task-{task}"), cx);
+            w.render_frame(cx);
+            let a = app.read(cx);
+            assert_eq!(a.task_result_context(), Some(task),
+                "{theme}: sidebar opens the completed task's result context");
+            assert_eq!(a.selected_run(), Some(run),
+                "{theme}: a goal opens its final report and a step opens its own report");
+            assert!(w.find("research-result-scroll").visible(),
+                "{theme}: completed sidebar targets show the report reader");
+        }).unwrap();
+    }
+    for from_result in [false, true] {
+        for (origin, control, target, run) in [
+            (steps[0], "previous-task", goal, final_run),
+            (steps[0], "next-task", steps[1], runs[1]),
+            (steps[1], "previous-task", steps[0], runs[0]),
+            (steps[1], "next-task", steps[2], runs[2]),
+        ] {
+            cx.update_window(handle, |_, w, cx| {
+                app.update(cx, |a, cx| {
+                    a.open_task(origin, w, cx);
+                    if from_result {
+                        a.view_task_result(origin, cx);
+                    }
+                });
+                w.render_frame(cx);
+                if !from_result {
+                    assert_eq!(app.read(cx).selected(), Some(origin),
+                        "{theme}: regression starts on explicit task detail");
+                }
+                w.click(control, cx);
+                w.render_frame(cx);
+                let a = app.read(cx);
+                assert_eq!(a.task_result_context(), Some(target),
+                    "{theme}: {control} prefers completed results from detail and reader");
+                assert_eq!(a.selected_run(), Some(run),
+                    "{theme}: {control} opens the target's report, not the prior report");
+                assert!(w.find("research-result-scroll").visible());
+            }).unwrap();
+        }
+    }
 }
 
 fn exercise(

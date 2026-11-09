@@ -587,6 +587,8 @@ impl TaskApp {
         let run_id = run.id;
         col()
             .flex_1()
+            .w_full()
+            .min_w_0()
             .min_h_0()
             .gap_1()
             .when(archived_run, |d| {
@@ -619,6 +621,8 @@ impl TaskApp {
                 col()
                     .id("research-result-viewport")
                     .relative()
+                    .w_full()
+                    .min_w_0()
                     .flex_1()
                     .min_h_0()
                     .overflow_hidden()
@@ -626,6 +630,8 @@ impl TaskApp {
                         col()
                         .id("research-result-scroll")
                         .track_scroll(&self.result_scroll)
+                        .w_full()
+                        .min_w_0()
                         .flex_1()
                         .min_h_0()
                         .overflow_y_scroll()
@@ -652,6 +658,7 @@ impl TaskApp {
                             )
                             .markdown_extensions(crate::rich_markdown::extensions())
                             .w_full()
+                            .min_w_0()
                             .flex_shrink_0()
                             .on_link_click(|url, _, _, cx| {
                                 if url.starts_with("https://") || url.starts_with("http://") {

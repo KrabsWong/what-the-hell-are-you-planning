@@ -2751,3 +2751,7 @@ Root built a frozen intermediate list candidate independently and opened the exi
 ## r185: viewport fixed; wheel scrolling still rejected
 
 The next independently built candidate displays the title, filter and initial result rows, resolving the r184 blank content. Native downward gestures of two and three pages at separate points still leave the same header and first 00:54 row visible, so Load more is unreachable. The same Computer gesture moved the baseline list in r182. This remains a functional blocker; timing a stationary view is not smoothness acceptance. OpenCode must exercise real TaskApp wheel delivery and repair viewport/scroll synchronization before another native pass. See [scroll rejection](evidence/r185-list-scroll-rejection.json).
+
+## r186: ordinary research list moves; board count/content mismatch investigated
+
+Root independently checked the hashes and SQLite integrity of the new ordinary, latest-report and material fixtures. The ordinary copy exposes 80 root goals. Its list moves on real downward/upward gestures, unlike the rejected automation-results candidate. The board displays Todo 80 but no cards, and a downward gesture does not reveal them. The fixture records raw Done while the rendered list derives Todo/0 of 3; fixture validity and board status/rendering are being diagnosed before assigning a product cause. Neither the empty board nor this bounded dark/large-window sample accepts the full scrolling matrix. See [native and fixture evidence](evidence/r186-research-native.json).

@@ -1,0 +1,32 @@
+{
+  "window": {
+    "start_wall_ns": 1794205118032005000,
+    "surface": "Automation results, 43,200 periods/30,240 own reports, light",
+    "process_snapshot": [],
+    "end_wall_ns": 1794205184055089000,
+    "actions": "Seven list scrolls, Load more from 20 to 40, another scroll, open Period 43162, three report scrolls",
+    "end_process_snapshot": []
+  },
+  "candidate_sha256": "ffd7a8187b167b2988cb7fa2ca6cc3449133ad3f76fa46b90699a5dcca955850",
+  "presents": 3462,
+  "late_presents": 20,
+  "max_cpu_work_ns": 40284458,
+  "max_draw_ns": 40188459,
+  "input_samples": 15,
+  "late_input_frames": 15,
+  "dropped_samples": 0,
+  "native_observations": [
+    "43,200 history count visible",
+    "Load more changed remaining count from 43,180 to 43,160",
+    "Opened Period 43162 and observed its own synthetic report title/body",
+    "Scrolled long report to Findings 2 through 5"
+  ],
+  "setup": "Root copied verified synthetic fixture to r158-large-workspace/workspace. Native onboarding configured existing offline fixture-agent and fixture-browser; no external research. Small fixture preserved.",
+  "limitations": [
+    "Probe candidate predates committed COW/SetRead and pending T12 changes; current-branch comparison required",
+    "Reports are readable synthetic legacy reports, not proof of current report validation semantics",
+    "No compiler processes at bracket edges; continuous contention was not sampled",
+    "CPU submission timings are not scan-out"
+  ],
+  "disposition": "FAILED diagnostic; assigned OpenCode source/phase attribution and narrow private repair."
+}

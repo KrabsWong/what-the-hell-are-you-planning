@@ -1,0 +1,136 @@
+{
+  "round": "r182",
+  "binary_sha256": "76413340c4d06a0391f74a28f5474688b830ca90ec964f5d37005689a8ce2d43",
+  "fixture_periods": 1000,
+  "theme": "dark",
+  "trace": ".local/native-review/r182-scroll.csv.frames.jsonl",
+  "trace_sha256": "64a8229cd0060bf8d6b2b42f4942acd02435b23743136f1b06c9193ae104f675",
+  "windows": [
+    {
+      "name": "cold_results",
+      "start_ms": 1794214077265,
+      "end_ms": 1794214078373,
+      "presents": 56,
+      "late": 1,
+      "missed_refreshes": 1,
+      "draw_duration_ms": {
+        "p95": 0.619583,
+        "max": 15.57225
+      },
+      "prepaint_ms": {
+        "p95": 0.134708,
+        "max": 6.3675
+      },
+      "paint_ms": {
+        "p95": 0.215833,
+        "max": 8.708459
+      },
+      "work_ms": {
+        "p95": 0.6255,
+        "max": 16.571791
+      }
+    },
+    {
+      "name": "scroll_20_down",
+      "start_ms": 1794214082825,
+      "end_ms": 1794214084985,
+      "presents": 128,
+      "late": 0,
+      "missed_refreshes": 0,
+      "draw_duration_ms": {
+        "p95": 2.269292,
+        "max": 4.395917
+      },
+      "prepaint_ms": {
+        "p95": 0.491417,
+        "max": 1.713458
+      },
+      "paint_ms": {
+        "p95": 0.93625,
+        "max": 2.263209
+      },
+      "work_ms": {
+        "p95": 2.278917,
+        "max": 4.495666
+      }
+    },
+    {
+      "name": "load_more_40",
+      "start_ms": 1794214095477,
+      "end_ms": 1794214097123,
+      "presents": 90,
+      "late": 1,
+      "missed_refreshes": 1,
+      "draw_duration_ms": {
+        "p95": 3.059667,
+        "max": 11.7165
+      },
+      "prepaint_ms": {
+        "p95": 0.626417,
+        "max": 6.343667
+      },
+      "paint_ms": {
+        "p95": 1.214041,
+        "max": 4.721875
+      },
+      "work_ms": {
+        "p95": 3.070166,
+        "max": 11.745625
+      }
+    },
+    {
+      "name": "scroll_40_down",
+      "start_ms": 1794214101903,
+      "end_ms": 1794214103236,
+      "presents": 69,
+      "late": 1,
+      "missed_refreshes": 1,
+      "draw_duration_ms": {
+        "p95": 1.093125,
+        "max": 8.658916
+      },
+      "prepaint_ms": {
+        "p95": 0.228334,
+        "max": 3.077375
+      },
+      "paint_ms": {
+        "p95": 0.396875,
+        "max": 5.019166
+      },
+      "work_ms": {
+        "p95": 1.097625,
+        "max": 8.677667
+      }
+    },
+    {
+      "name": "scroll_40_up",
+      "start_ms": 1794214108169,
+      "end_ms": 1794214108777,
+      "presents": 25,
+      "late": 0,
+      "missed_refreshes": 0,
+      "draw_duration_ms": {
+        "p95": 1.058959,
+        "max": 7.999333
+      },
+      "prepaint_ms": {
+        "p95": 0.200833,
+        "max": 3.139333
+      },
+      "paint_ms": {
+        "p95": 0.383,
+        "max": 4.30475
+      },
+      "work_ms": {
+        "p95": 1.0915,
+        "max": 8.036
+      }
+    }
+  ],
+  "limitations": [
+    "One gesture per scroll window; API brackets include observation time and animation frames.",
+    "No report-scroll acceptance yet.",
+    "Present work is CPU timing and not scan-out."
+  ],
+  "conclusion": "Twenty-row down and forty-row up have no late presents in observed brackets. Forty-row down has a late present; cold open and load-more also miss the budget. Keep acceptance open and optimize the demonstrated path."
+}

@@ -1,0 +1,19 @@
+{
+  "fixture": "r187-ordinary-valid-1000",
+  "binary_manifest": ".local/native-review/r200-build-manifest.json",
+  "logical_size": [
+    1000,
+    680
+  ],
+  "method": "Held BEGIN IMMEDIATE on disposable isolated database; changed Dark to System theme and scrolled ordinary List before releasing transaction. No product delay patch.",
+  "observed_pending": "Saving changes\u2026 visible after up2pages moved first visible goal27 to goal63.",
+  "observed_ack": "Settings saved \u00b7 active work continues normally after transaction release; goal63 remains at same visible position.",
+  "lock_acquired_unix": 1794219780.802475,
+  "lock_released_unix": 1794219794.741759,
+  "durable_appearance": "system",
+  "integrity": "ok",
+  "limits": [
+    "Initial4second automatic-release attempt observed only Saved, so it is not used to establish overlap.",
+    "Lock timing is not UI latency; acceptance rests on visible scroll displacement while Saving plus eventual durable acknowledgement."
+  ]
+}

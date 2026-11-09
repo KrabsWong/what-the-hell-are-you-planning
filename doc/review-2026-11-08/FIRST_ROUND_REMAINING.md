@@ -28,7 +28,7 @@ Status: in progress; not release approval. Authority: [TASKS](TASKS.md). Current
 
 ## R3 — Complete missing compact/theme surfaces
 
-**Current result:** r199 passed compact materials and all settings tabs, including exact task/scroll restoration. Compact results failed r198; the zero-target restore fix passed root tests and r200 native both-theme scrolling, pagination-anchor and reader Close checks. r201 passed compact reader and automation Settings dialog in both themes. Only the large light-reader check remains in R3. See [compact evidence](evidence/r199-compact-material-settings.json).
+**Current result:** r199 passed compact materials and all settings tabs, including exact task/scroll restoration. Compact results failed r198; the zero-target restore fix passed root tests and r200 native both-theme scrolling, pagination-anchor and reader Close checks. r201 passed compact reader and automation Settings dialog in both themes. r204 passed the large Light reader check; R3 is complete for the first round. See [compact evidence](evidence/r199-compact-material-settings.json).
 
 **Do:** fill the missing Automation results, long reader, settings and material-page coverage.
 
@@ -39,6 +39,8 @@ Status: in progress; not release approval. Authority: [TASKS](TASKS.md). Current
 **Dependencies:** R1 quiet measurement completion. Existing large-window results, dark reader and material/settings evidence are retained; do not repeat their entire workflows.
 
 ## R4 — Save while scrolling
+
+**Current result:** passed r203. A held isolated SQLite write transaction kept the theme save pending while native List scrolling moved goal27 to goal63. Saving changed to Saved after release with the same visible anchor, and a read-only reopened database confirms appearance=system and integrity=ok. See [concurrent evidence](evidence/r203-concurrent-save-scroll.json).
 
 **Do:** verify one representative harmless save overlapping native scrolling.
 

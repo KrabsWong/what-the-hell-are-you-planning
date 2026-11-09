@@ -2863,3 +2863,11 @@ Both themes passed 1000×680 long-report down/up scrolling to Sources and step a
 ### r202 board native discrepancy retained
 
 OpenCode rendered horizontal-event tests pass at header, empty column and card positions. Root retried both native horizontal directions inside the observed Todo card at physical (1450,550), with no visible movement. This is an unresolved native acceptance discrepancy, not a proven product root cause. A bounded private event probe is assigned to distinguish delivered deltas from routing. See `evidence/r202-board-retry.json`.
+
+### r203 concurrent native save and scroll
+
+Root held an isolated SQLite write transaction, changed Dark to System, and scrolled the ordinary List from goal27 to goal63 while the footer still showed Saving changes. After release, Saved appeared without an anchor jump. Reopened read-only SQLite confirms appearance=system and integrity=ok. R4 passes; see `evidence/r203-concurrent-save-scroll.json`. No production data or product instrumentation changed.
+
+### r204 large Light reader
+
+Native 1440×920 Light reader passed opening, six-page scrolling to Sources/steps and back to metadata/report start, and Close returning to Automation results. The retained r190 large binary has the same reader code; subsequent product changes only affect result-list mount restoration. Evidence: `evidence/r204-large-light-reader.json`. R3 first-round surface gaps are closed.

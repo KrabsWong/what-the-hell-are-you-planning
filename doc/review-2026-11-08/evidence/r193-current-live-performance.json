@@ -1,0 +1,1460 @@
+{
+  "binary_sha256": "678194e994b3fb1a1ed880e691e350d798fddd5cc70876b50ad5594892e01dd0",
+  "commit": "a2c2c4d",
+  "entry": "--qa-live-performance",
+  "entry_result": "passed",
+  "full_ledger": "still running; no full-ledger pass claimed",
+  "log": ".local/opencode-dispatch/r191-final-gate/qa-live-performance.log",
+  "report": {
+    "scope": "Actual live TaskApp via Some(LiveStartup) + ordered worker; editor save, command-level automation SaveDraft, automation Enable/Pause, settings save, scoped task Undo and indexed first-page path.",
+    "gate_scope": "Per-operation p95 gates run on the 500- and 1,000-occurrence fixtures with 8 KiB report bodies. Large 43,200/86,400 fixtures run only with PLANNING_LIVE_PERF_STRESS=1|43200|86400|all and are non-gating diagnostics.",
+    "hardware": {
+      "cpu": "Apple M1 Pro",
+      "memory_bytes": "34359738368",
+      "os_build": "26B123",
+      "arch": "aarch64"
+    },
+    "profile": {
+      "qa_feature": true,
+      "debug_assertions": true,
+      "executable": "/Users/fuxingxing/workspaces/what-the-hell-are-you-planning/.local/opencode-dispatch/r191-final-gate/qa-candidate",
+      "argv": [
+        "/Users/fuxingxing/workspaces/what-the-hell-are-you-planning/.local/opencode-dispatch/r191-final-gate/qa-candidate",
+        "--qa-live-performance"
+      ],
+      "source_sha256": "54b239dec1af5c4b5f3b38d61a39975eb1eec130376f1f1d52e2436541797712"
+    },
+    "samples": 30,
+    "warmup": 3,
+    "target_p95_ui_us": 50000,
+    "body_read_instrumentation": null,
+    "body_read_note": "No live run-body byte counter exists; do not invent one.",
+    "fixtures": [
+      {
+        "occurrences": 500,
+        "materialized_runs": 500,
+        "body_bytes": 8192,
+        "db_bytes": 4296704,
+        "editor": {
+          "samples": 30,
+          "ui_sync": {
+            "count": 30,
+            "p50_us": 133,
+            "p95_us": 163,
+            "p99_us": 164,
+            "max_us": 164
+          },
+          "ack_pump": {
+            "count": 30,
+            "p50_us": 2454,
+            "p95_us": 3258,
+            "p99_us": 3337,
+            "max_us": 3337
+          },
+          "render": {
+            "count": 30,
+            "p50_us": 2112,
+            "p95_us": 2668,
+            "p99_us": 2679,
+            "max_us": 2679
+          },
+          "main_thread_total": {
+            "count": 30,
+            "p50_us": 4726,
+            "p95_us": 5746,
+            "p99_us": 5770,
+            "max_us": 5770
+          },
+          "durable_wall": {
+            "count": 30,
+            "p50_us": 8677,
+            "p95_us": 9933,
+            "p99_us": 9980,
+            "max_us": 9980
+          },
+          "final_title": "Live perf 32",
+          "disk_title": "Live perf 32"
+        },
+        "automation_save_draft": {
+          "samples": 30,
+          "ui_sync": {
+            "count": 30,
+            "p50_us": 81,
+            "p95_us": 107,
+            "p99_us": 151,
+            "max_us": 151
+          },
+          "ack_pump": {
+            "count": 30,
+            "p50_us": 5978,
+            "p95_us": 6769,
+            "p99_us": 6889,
+            "max_us": 6889
+          },
+          "render": {
+            "count": 30,
+            "p50_us": 4728,
+            "p95_us": 5327,
+            "p99_us": 5488,
+            "max_us": 5488
+          },
+          "main_thread_total": {
+            "count": 30,
+            "p50_us": 10717,
+            "p95_us": 11916,
+            "p99_us": 12061,
+            "max_us": 12061
+          },
+          "durable_wall": {
+            "count": 30,
+            "p50_us": 13239,
+            "p95_us": 14437,
+            "p99_us": 14580,
+            "max_us": 14580
+          },
+          "disk_name": "Live automation 32",
+          "occurrences_unchanged": 500,
+          "runs_unchanged": 400
+        },
+        "automation_lifecycle": {
+          "enable": {
+            "samples": 30,
+            "ui_sync": {
+              "count": 30,
+              "p50_us": 364,
+              "p95_us": 420,
+              "p99_us": 481,
+              "max_us": 481
+            },
+            "ack_pump": {
+              "count": 30,
+              "p50_us": 5434,
+              "p95_us": 6345,
+              "p99_us": 6414,
+              "max_us": 6414
+            },
+            "render": {
+              "count": 30,
+              "p50_us": 4225,
+              "p95_us": 5067,
+              "p99_us": 5428,
+              "max_us": 5428
+            },
+            "main_thread_total": {
+              "count": 30,
+              "p50_us": 10133,
+              "p95_us": 11296,
+              "p99_us": 12112,
+              "max_us": 12112
+            },
+            "durable_wall": {
+              "count": 30,
+              "p50_us": 12648,
+              "p95_us": 13810,
+              "p99_us": 14663,
+              "max_us": 14663
+            }
+          },
+          "pause": {
+            "samples": 30,
+            "ui_sync": {
+              "count": 30,
+              "p50_us": 47,
+              "p95_us": 60,
+              "p99_us": 60,
+              "max_us": 60
+            },
+            "ack_pump": {
+              "count": 30,
+              "p50_us": 4774,
+              "p95_us": 5410,
+              "p99_us": 5433,
+              "max_us": 5433
+            },
+            "render": {
+              "count": 30,
+              "p50_us": 4135,
+              "p95_us": 4551,
+              "p99_us": 4683,
+              "max_us": 4683
+            },
+            "main_thread_total": {
+              "count": 30,
+              "p50_us": 8910,
+              "p95_us": 9895,
+              "p99_us": 10134,
+              "max_us": 10134
+            },
+            "durable_wall": {
+              "count": 30,
+              "p50_us": 11425,
+              "p95_us": 12415,
+              "p99_us": 12660,
+              "max_us": 12660
+            }
+          },
+          "disk_status": "Some(Paused)",
+          "occurrences_unchanged": 500
+        },
+        "settings": {
+          "samples": 30,
+          "ui_sync": {
+            "count": 30,
+            "p50_us": 19,
+            "p95_us": 26,
+            "p99_us": 29,
+            "max_us": 29
+          },
+          "ack_pump": {
+            "count": 30,
+            "p50_us": 1946,
+            "p95_us": 2512,
+            "p99_us": 2549,
+            "max_us": 2549
+          },
+          "render": {
+            "count": 30,
+            "p50_us": 1749,
+            "p95_us": 2210,
+            "p99_us": 2299,
+            "max_us": 2299
+          },
+          "main_thread_total": {
+            "count": 30,
+            "p50_us": 3720,
+            "p95_us": 4695,
+            "p99_us": 4778,
+            "max_us": 4778
+          },
+          "durable_wall": {
+            "count": 30,
+            "p50_us": 5752,
+            "p95_us": 7068,
+            "p99_us": 7251,
+            "max_us": 7251
+          },
+          "disk_max_concurrent_runs": 1
+        },
+        "scoped_task_undo": {
+          "samples": 30,
+          "ui_sync": {
+            "count": 30,
+            "p50_us": 411,
+            "p95_us": 492,
+            "p99_us": 620,
+            "max_us": 620
+          },
+          "ack_pump": {
+            "count": 30,
+            "p50_us": 2151,
+            "p95_us": 2696,
+            "p99_us": 2720,
+            "max_us": 2720
+          },
+          "render": {
+            "count": 30,
+            "p50_us": 2016,
+            "p95_us": 2594,
+            "p99_us": 2699,
+            "max_us": 2699
+          },
+          "main_thread_total": {
+            "count": 30,
+            "p50_us": 4630,
+            "p95_us": 5481,
+            "p99_us": 5633,
+            "max_us": 5633
+          },
+          "durable_wall": {
+            "count": 30,
+            "p50_us": 7664,
+            "p95_us": 8535,
+            "p99_us": 9184,
+            "max_us": 9184
+          },
+          "disk_title": "Live perf 32"
+        },
+        "append_ack_shared_snapshot": {
+          "run_id": 401,
+          "condition": "snapshot clone retained across append and update",
+          "append_ui_us": 75,
+          "append_pump_us": 2356,
+          "update_ui_us": 17,
+          "update_pump_us": 2076,
+          "wall_us": 10485,
+          "disk_status": "Succeeded",
+          "disk_output": "append-ack output"
+        },
+        "history_page": {
+          "samples": 30,
+          "ui_sync": {
+            "count": 30,
+            "p50_us": 6,
+            "p95_us": 10,
+            "p99_us": 16,
+            "max_us": 16
+          },
+          "ack_pump": {
+            "count": 30,
+            "p50_us": 4298,
+            "p95_us": 5122,
+            "p99_us": 5587,
+            "max_us": 5587
+          },
+          "render": {
+            "count": 30,
+            "p50_us": 4160,
+            "p95_us": 5164,
+            "p99_us": 5189,
+            "max_us": 5189
+          },
+          "main_thread_total": {
+            "count": 30,
+            "p50_us": 8662,
+            "p95_us": 10277,
+            "p99_us": 10297,
+            "max_us": 10297
+          },
+          "durable_wall": {
+            "count": 30,
+            "p50_us": 13255,
+            "p95_us": 14669,
+            "p99_us": 15205,
+            "max_us": 15205
+          },
+          "first_page_rows": 20,
+          "order": "newest-first by descending occurrence id",
+          "page_metrics_source": "separate read-only HistoryReader validation request on the same database; NOT the 30 UI page queries",
+          "page_metrics_note": "body_reads is the backend handle's cumulative body-table read count for this validation request; it is not attributed to the timed UI requests.",
+          "page_metrics": {
+            "occurrence_rows": 20,
+            "run_rows": 0,
+            "fullscan_steps": 0,
+            "page_vm_steps": 331,
+            "total_count_vm_steps": 1511,
+            "unread_count_vm_steps": 359,
+            "body_reads": 0
+          }
+        },
+        "peak_rss_bytes": 81739776,
+        "label": "small-500",
+        "gating": true
+      },
+      {
+        "occurrences": 1000,
+        "materialized_runs": 1000,
+        "body_bytes": 8192,
+        "db_bytes": 8486912,
+        "editor": {
+          "samples": 30,
+          "ui_sync": {
+            "count": 30,
+            "p50_us": 125,
+            "p95_us": 148,
+            "p99_us": 188,
+            "max_us": 188
+          },
+          "ack_pump": {
+            "count": 30,
+            "p50_us": 2457,
+            "p95_us": 3032,
+            "p99_us": 3258,
+            "max_us": 3258
+          },
+          "render": {
+            "count": 30,
+            "p50_us": 2045,
+            "p95_us": 2533,
+            "p99_us": 2625,
+            "max_us": 2625
+          },
+          "main_thread_total": {
+            "count": 30,
+            "p50_us": 4627,
+            "p95_us": 5649,
+            "p99_us": 5767,
+            "max_us": 5767
+          },
+          "durable_wall": {
+            "count": 30,
+            "p50_us": 8349,
+            "p95_us": 9672,
+            "p99_us": 10088,
+            "max_us": 10088
+          },
+          "final_title": "Live perf 32",
+          "disk_title": "Live perf 32"
+        },
+        "automation_save_draft": {
+          "samples": 30,
+          "ui_sync": {
+            "count": 30,
+            "p50_us": 79,
+            "p95_us": 93,
+            "p99_us": 94,
+            "max_us": 94
+          },
+          "ack_pump": {
+            "count": 30,
+            "p50_us": 5663,
+            "p95_us": 6503,
+            "p99_us": 6505,
+            "max_us": 6505
+          },
+          "render": {
+            "count": 30,
+            "p50_us": 4412,
+            "p95_us": 5325,
+            "p99_us": 5608,
+            "max_us": 5608
+          },
+          "main_thread_total": {
+            "count": 30,
+            "p50_us": 10232,
+            "p95_us": 11483,
+            "p99_us": 12174,
+            "max_us": 12174
+          },
+          "durable_wall": {
+            "count": 30,
+            "p50_us": 12695,
+            "p95_us": 13999,
+            "p99_us": 14719,
+            "max_us": 14719
+          },
+          "disk_name": "Live automation 32",
+          "occurrences_unchanged": 1000,
+          "runs_unchanged": 800
+        },
+        "automation_lifecycle": {
+          "enable": {
+            "samples": 30,
+            "ui_sync": {
+              "count": 30,
+              "p50_us": 393,
+              "p95_us": 460,
+              "p99_us": 487,
+              "max_us": 487
+            },
+            "ack_pump": {
+              "count": 30,
+              "p50_us": 5691,
+              "p95_us": 6366,
+              "p99_us": 6575,
+              "max_us": 6575
+            },
+            "render": {
+              "count": 30,
+              "p50_us": 4351,
+              "p95_us": 5097,
+              "p99_us": 5224,
+              "max_us": 5224
+            },
+            "main_thread_total": {
+              "count": 30,
+              "p50_us": 10717,
+              "p95_us": 11690,
+              "p99_us": 11845,
+              "max_us": 11845
+            },
+            "durable_wall": {
+              "count": 30,
+              "p50_us": 13233,
+              "p95_us": 14212,
+              "p99_us": 14359,
+              "max_us": 14359
+            }
+          },
+          "pause": {
+            "samples": 30,
+            "ui_sync": {
+              "count": 30,
+              "p50_us": 58,
+              "p95_us": 80,
+              "p99_us": 82,
+              "max_us": 82
+            },
+            "ack_pump": {
+              "count": 30,
+              "p50_us": 4929,
+              "p95_us": 5842,
+              "p99_us": 6065,
+              "max_us": 6065
+            },
+            "render": {
+              "count": 30,
+              "p50_us": 4288,
+              "p95_us": 5152,
+              "p99_us": 5346,
+              "max_us": 5346
+            },
+            "main_thread_total": {
+              "count": 30,
+              "p50_us": 9520,
+              "p95_us": 10856,
+              "p99_us": 11493,
+              "max_us": 11493
+            },
+            "durable_wall": {
+              "count": 30,
+              "p50_us": 12033,
+              "p95_us": 13326,
+              "p99_us": 14037,
+              "max_us": 14037
+            }
+          },
+          "disk_status": "Some(Paused)",
+          "occurrences_unchanged": 1000
+        },
+        "settings": {
+          "samples": 30,
+          "ui_sync": {
+            "count": 30,
+            "p50_us": 23,
+            "p95_us": 30,
+            "p99_us": 52,
+            "max_us": 52
+          },
+          "ack_pump": {
+            "count": 30,
+            "p50_us": 1963,
+            "p95_us": 2601,
+            "p99_us": 2691,
+            "max_us": 2691
+          },
+          "render": {
+            "count": 30,
+            "p50_us": 1795,
+            "p95_us": 2348,
+            "p99_us": 2395,
+            "max_us": 2395
+          },
+          "main_thread_total": {
+            "count": 30,
+            "p50_us": 3864,
+            "p95_us": 4885,
+            "p99_us": 4913,
+            "max_us": 4913
+          },
+          "durable_wall": {
+            "count": 30,
+            "p50_us": 5913,
+            "p95_us": 7376,
+            "p99_us": 7608,
+            "max_us": 7608
+          },
+          "disk_max_concurrent_runs": 1
+        },
+        "scoped_task_undo": {
+          "samples": 30,
+          "ui_sync": {
+            "count": 30,
+            "p50_us": 418,
+            "p95_us": 540,
+            "p99_us": 578,
+            "max_us": 578
+          },
+          "ack_pump": {
+            "count": 30,
+            "p50_us": 2327,
+            "p95_us": 2888,
+            "p99_us": 2931,
+            "max_us": 2931
+          },
+          "render": {
+            "count": 30,
+            "p50_us": 2053,
+            "p95_us": 2704,
+            "p99_us": 2768,
+            "max_us": 2768
+          },
+          "main_thread_total": {
+            "count": 30,
+            "p50_us": 4897,
+            "p95_us": 5896,
+            "p99_us": 5925,
+            "max_us": 5925
+          },
+          "durable_wall": {
+            "count": 30,
+            "p50_us": 7962,
+            "p95_us": 8906,
+            "p99_us": 8987,
+            "max_us": 8987
+          },
+          "disk_title": "Live perf 32"
+        },
+        "append_ack_shared_snapshot": {
+          "run_id": 801,
+          "condition": "snapshot clone retained across append and update",
+          "append_ui_us": 123,
+          "append_pump_us": 2237,
+          "update_ui_us": 13,
+          "update_pump_us": 2169,
+          "wall_us": 10227,
+          "disk_status": "Succeeded",
+          "disk_output": "append-ack output"
+        },
+        "history_page": {
+          "samples": 30,
+          "ui_sync": {
+            "count": 30,
+            "p50_us": 6,
+            "p95_us": 9,
+            "p99_us": 13,
+            "max_us": 13
+          },
+          "ack_pump": {
+            "count": 30,
+            "p50_us": 4474,
+            "p95_us": 5566,
+            "p99_us": 5764,
+            "max_us": 5764
+          },
+          "render": {
+            "count": 30,
+            "p50_us": 4268,
+            "p95_us": 4920,
+            "p99_us": 5647,
+            "max_us": 5647
+          },
+          "main_thread_total": {
+            "count": 30,
+            "p50_us": 8795,
+            "p95_us": 10593,
+            "p99_us": 11220,
+            "max_us": 11220
+          },
+          "durable_wall": {
+            "count": 30,
+            "p50_us": 13359,
+            "p95_us": 15689,
+            "p99_us": 15942,
+            "max_us": 15942
+          },
+          "first_page_rows": 20,
+          "order": "newest-first by descending occurrence id",
+          "page_metrics_source": "separate read-only HistoryReader validation request on the same database; NOT the 30 UI page queries",
+          "page_metrics_note": "body_reads is the backend handle's cumulative body-table read count for this validation request; it is not attributed to the timed UI requests.",
+          "page_metrics": {
+            "occurrence_rows": 20,
+            "run_rows": 0,
+            "fullscan_steps": 0,
+            "page_vm_steps": 331,
+            "total_count_vm_steps": 3011,
+            "unread_count_vm_steps": 710,
+            "body_reads": 0
+          }
+        },
+        "peak_rss_bytes": 96452608,
+        "label": "required-1000",
+        "gating": true
+      }
+    ],
+    "touched_collection_cases": {
+      "runs_43200": {
+        "actual_runs_before": 43200,
+        "samples": [
+          {
+            "run_collection_len_before": 43200,
+            "run_collection_len_after_append": 43201,
+            "append_ui_us": 8224,
+            "append_ack_pump_us": 528557,
+            "update_ui_us": 543,
+            "update_ack_pump_us": 652034,
+            "wall_us": 2214044
+          },
+          {
+            "run_collection_len_before": 43201,
+            "run_collection_len_after_append": 43202,
+            "append_ui_us": 7334,
+            "append_ack_pump_us": 648391,
+            "update_ui_us": 1062,
+            "update_ack_pump_us": 580994,
+            "wall_us": 2536870
+          },
+          {
+            "run_collection_len_before": 43202,
+            "run_collection_len_after_append": 43203,
+            "append_ui_us": 6446,
+            "append_ack_pump_us": 566661,
+            "update_ui_us": 538,
+            "update_ack_pump_us": 584206,
+            "wall_us": 2209300
+          },
+          {
+            "run_collection_len_before": 43203,
+            "run_collection_len_after_append": 43204,
+            "append_ui_us": 6870,
+            "append_ack_pump_us": 526632,
+            "update_ui_us": 514,
+            "update_ack_pump_us": 516144,
+            "wall_us": 2104225
+          },
+          {
+            "run_collection_len_before": 43204,
+            "run_collection_len_after_append": 43205,
+            "append_ui_us": 6103,
+            "append_ack_pump_us": 519733,
+            "update_ui_us": 504,
+            "update_ack_pump_us": 580243,
+            "wall_us": 2210520
+          }
+        ],
+        "sample_note": "five bounded one-shot append+update samples with a retained Store clone; not a p95 claim",
+        "disk_run_count": 43205,
+        "condition": "snapshot clone retained across each append/update"
+      },
+      "runs_86400": {
+        "actual_runs_before": 86400,
+        "samples": [
+          {
+            "run_collection_len_before": 86400,
+            "run_collection_len_after_append": 86401,
+            "append_ui_us": 15774,
+            "append_ack_pump_us": 1419769,
+            "update_ui_us": 2133,
+            "update_ack_pump_us": 1417937,
+            "wall_us": 5733350
+          },
+          {
+            "run_collection_len_before": 86401,
+            "run_collection_len_after_append": 86402,
+            "append_ui_us": 14059,
+            "append_ack_pump_us": 1467980,
+            "update_ui_us": 1192,
+            "update_ack_pump_us": 1460399,
+            "wall_us": 5773219
+          },
+          {
+            "run_collection_len_before": 86402,
+            "run_collection_len_after_append": 86403,
+            "append_ui_us": 12390,
+            "append_ack_pump_us": 1418930,
+            "update_ui_us": 1186,
+            "update_ack_pump_us": 1411718,
+            "wall_us": 5764517
+          },
+          {
+            "run_collection_len_before": 86403,
+            "run_collection_len_after_append": 86404,
+            "append_ui_us": 12585,
+            "append_ack_pump_us": 1485239,
+            "update_ui_us": 1214,
+            "update_ack_pump_us": 1410706,
+            "wall_us": 5725910
+          },
+          {
+            "run_collection_len_before": 86404,
+            "run_collection_len_after_append": 86405,
+            "append_ui_us": 12674,
+            "append_ack_pump_us": 1412857,
+            "update_ui_us": 1259,
+            "update_ack_pump_us": 1420127,
+            "wall_us": 5784514
+          }
+        ],
+        "sample_note": "five bounded one-shot append+update samples with a retained Store clone; not a p95 claim",
+        "disk_run_count": 86405,
+        "condition": "snapshot clone retained across each append/update"
+      },
+      "occurrences_43200": {
+        "actual_occurrences_before": 43200,
+        "disk_occurrence_count": 43200,
+        "cases": {
+          "direct_mark_read": {
+            "case": "direct_mark_read",
+            "retained_state": "none: live store is the only owner; identity lookup scans to the recorded occurrence index",
+            "samples": [
+              {
+                "occurrence_id": 7,
+                "occurrence_index": 6,
+                "sample_position": "head",
+                "occurrence_collection_len": 43200,
+                "retained_state": "none: live store is the only owner; identity lookup scans to the recorded occurrence index",
+                "ui_us": 25,
+                "ack_pump_us": 3578,
+                "wall_us": 7685
+              },
+              {
+                "occurrence_id": 10804,
+                "occurrence_index": 10803,
+                "sample_position": "quarter",
+                "occurrence_collection_len": 43200,
+                "retained_state": "none: live store is the only owner; identity lookup scans to the recorded occurrence index",
+                "ui_us": 118,
+                "ack_pump_us": 3284,
+                "wall_us": 6913
+              },
+              {
+                "occurrence_id": 21604,
+                "occurrence_index": 21603,
+                "sample_position": "middle",
+                "occurrence_collection_len": 43200,
+                "retained_state": "none: live store is the only owner; identity lookup scans to the recorded occurrence index",
+                "ui_us": 195,
+                "ack_pump_us": 3181,
+                "wall_us": 6597
+              },
+              {
+                "occurrence_id": 32404,
+                "occurrence_index": 32403,
+                "sample_position": "three_quarter",
+                "occurrence_collection_len": 43200,
+                "retained_state": "none: live store is the only owner; identity lookup scans to the recorded occurrence index",
+                "ui_us": 299,
+                "ack_pump_us": 3581,
+                "wall_us": 7024
+              },
+              {
+                "occurrence_id": 43195,
+                "occurrence_index": 43194,
+                "sample_position": "tail",
+                "occurrence_collection_len": 43200,
+                "retained_state": "none: live store is the only owner; identity lookup scans to the recorded occurrence index",
+                "ui_us": 394,
+                "ack_pump_us": 4330,
+                "wall_us": 8411
+              }
+            ],
+            "sample_note": "five bounded one-shot direct mark-read + live snapshot ACK samples; not a p95 claim"
+          },
+          "noop_form_then_direct": {
+            "case": "noop_form_then_direct",
+            "retained_state": "after a real no-op task form save; if live last_saved was re-pinned, this mark-read copies",
+            "noop_form_warmup_outcome": "Saving",
+            "noop_form_save_outcomes": [
+              "Saved",
+              "Saved",
+              "Saved",
+              "Saved",
+              "Saved"
+            ],
+            "samples": [
+              {
+                "occurrence_id": 4,
+                "occurrence_index": 3,
+                "sample_position": "head",
+                "noop_form_save_outcome": "Saved",
+                "noop_form_save_ui_us": 274,
+                "occurrence_collection_len": 43200,
+                "retained_state": "after a real no-op task form save; if live last_saved was re-pinned, this mark-read copies",
+                "ui_us": 20,
+                "ack_pump_us": 3090,
+                "wall_us": 6365
+              },
+              {
+                "occurrence_id": 10798,
+                "occurrence_index": 10797,
+                "sample_position": "quarter",
+                "noop_form_save_outcome": "Saved",
+                "noop_form_save_ui_us": 266,
+                "occurrence_collection_len": 43200,
+                "retained_state": "after a real no-op task form save; if live last_saved was re-pinned, this mark-read copies",
+                "ui_us": 111,
+                "ack_pump_us": 3982,
+                "wall_us": 7442
+              },
+              {
+                "occurrence_id": 21598,
+                "occurrence_index": 21597,
+                "sample_position": "middle",
+                "noop_form_save_outcome": "Saved",
+                "noop_form_save_ui_us": 268,
+                "occurrence_collection_len": 43200,
+                "retained_state": "after a real no-op task form save; if live last_saved was re-pinned, this mark-read copies",
+                "ui_us": 230,
+                "ack_pump_us": 3593,
+                "wall_us": 7492
+              },
+              {
+                "occurrence_id": 32398,
+                "occurrence_index": 32397,
+                "sample_position": "three_quarter",
+                "noop_form_save_outcome": "Saved",
+                "noop_form_save_ui_us": 303,
+                "occurrence_collection_len": 43200,
+                "retained_state": "after a real no-op task form save; if live last_saved was re-pinned, this mark-read copies",
+                "ui_us": 293,
+                "ack_pump_us": 3163,
+                "wall_us": 6737
+              },
+              {
+                "occurrence_id": 43198,
+                "occurrence_index": 43197,
+                "sample_position": "tail",
+                "noop_form_save_outcome": "Saved",
+                "noop_form_save_ui_us": 271,
+                "occurrence_collection_len": 43200,
+                "retained_state": "after a real no-op task form save; if live last_saved was re-pinned, this mark-read copies",
+                "ui_us": 428,
+                "ack_pump_us": 3714,
+                "wall_us": 7497
+              }
+            ],
+            "sample_note": "five bounded one-shot no-op form save followed by direct mark-read + live snapshot ACK; not a p95 claim"
+          },
+          "toggle_command": {
+            "case": "toggle_command",
+            "retained_state": "none: live direct SetRead path; no whole Store staging; position-dependent identity lookup only",
+            "samples": [
+              {
+                "occurrence_id": 1,
+                "occurrence_index": 0,
+                "sample_position": "head",
+                "occurrence_collection_len": 43200,
+                "retained_state": "none: live direct SetRead path; no whole Store staging; position-dependent identity lookup only",
+                "ui_us": 35,
+                "ack_pump_us": 3356,
+                "wall_us": 6940
+              },
+              {
+                "occurrence_id": 10800,
+                "occurrence_index": 10799,
+                "sample_position": "quarter",
+                "occurrence_collection_len": 43200,
+                "retained_state": "none: live direct SetRead path; no whole Store staging; position-dependent identity lookup only",
+                "ui_us": 77,
+                "ack_pump_us": 3102,
+                "wall_us": 6483
+              },
+              {
+                "occurrence_id": 21600,
+                "occurrence_index": 21599,
+                "sample_position": "middle",
+                "occurrence_collection_len": 43200,
+                "retained_state": "none: live direct SetRead path; no whole Store staging; position-dependent identity lookup only",
+                "ui_us": 136,
+                "ack_pump_us": 3114,
+                "wall_us": 6423
+              },
+              {
+                "occurrence_id": 32400,
+                "occurrence_index": 32399,
+                "sample_position": "three_quarter",
+                "occurrence_collection_len": 43200,
+                "retained_state": "none: live direct SetRead path; no whole Store staging; position-dependent identity lookup only",
+                "ui_us": 188,
+                "ack_pump_us": 3155,
+                "wall_us": 6782
+              },
+              {
+                "occurrence_id": 43200,
+                "occurrence_index": 43199,
+                "sample_position": "tail",
+                "occurrence_collection_len": 43200,
+                "retained_state": "none: live direct SetRead path; no whole Store staging; position-dependent identity lookup only",
+                "ui_us": 263,
+                "ack_pump_us": 3912,
+                "wall_us": 8509
+              }
+            ],
+            "sample_note": "five bounded one-shot real toggle_automation_read command + live snapshot ACK samples; not a p95 claim"
+          },
+          "retained_snapshot_diagnostic": {
+            "case": "retained_snapshot_diagnostic",
+            "retained_state": "one full Store clone retained across the mutation",
+            "samples": [
+              {
+                "occurrence_id": 13,
+                "occurrence_index": 12,
+                "sample_position": "head",
+                "occurrence_collection_len": 43200,
+                "retained_state": "one full Store clone retained across the mutation",
+                "ui_us": 23138,
+                "ack_pump_us": 3477,
+                "wall_us": 30598
+              },
+              {
+                "occurrence_id": 10795,
+                "occurrence_index": 10794,
+                "sample_position": "quarter",
+                "occurrence_collection_len": 43200,
+                "retained_state": "one full Store clone retained across the mutation",
+                "ui_us": 17755,
+                "ack_pump_us": 3354,
+                "wall_us": 25379
+              },
+              {
+                "occurrence_id": 21595,
+                "occurrence_index": 21594,
+                "sample_position": "middle",
+                "occurrence_collection_len": 43200,
+                "retained_state": "one full Store clone retained across the mutation",
+                "ui_us": 18050,
+                "ack_pump_us": 3511,
+                "wall_us": 25559
+              },
+              {
+                "occurrence_id": 32395,
+                "occurrence_index": 32394,
+                "sample_position": "three_quarter",
+                "occurrence_collection_len": 43200,
+                "retained_state": "one full Store clone retained across the mutation",
+                "ui_us": 18427,
+                "ack_pump_us": 3297,
+                "wall_us": 25435
+              },
+              {
+                "occurrence_id": 43192,
+                "occurrence_index": 43191,
+                "sample_position": "tail",
+                "occurrence_collection_len": 43200,
+                "retained_state": "one full Store clone retained across the mutation",
+                "ui_us": 18650,
+                "ack_pump_us": 3283,
+                "wall_us": 25639
+              }
+            ],
+            "sample_note": "five bounded one-shot direct mark-read + live snapshot ACK samples; not a p95 claim"
+          },
+          "forced_last_saved_then_direct": {
+            "case": "forced_last_saved_then_direct",
+            "retained_state": "diagnostic: last_saved replaced with a full Store clone before direct mark-read",
+            "samples": [
+              {
+                "occurrence_id": 16,
+                "occurrence_index": 15,
+                "sample_position": "head",
+                "occurrence_collection_len": 43200,
+                "retained_state": "diagnostic: last_saved replaced with a full Store clone before direct mark-read",
+                "ui_us": 17797,
+                "ack_pump_us": 3175,
+                "wall_us": 24494
+              },
+              {
+                "occurrence_id": 10807,
+                "occurrence_index": 10806,
+                "sample_position": "quarter",
+                "occurrence_collection_len": 43200,
+                "retained_state": "diagnostic: last_saved replaced with a full Store clone before direct mark-read",
+                "ui_us": 110,
+                "ack_pump_us": 3100,
+                "wall_us": 6321
+              },
+              {
+                "occurrence_id": 21607,
+                "occurrence_index": 21606,
+                "sample_position": "middle",
+                "occurrence_collection_len": 43200,
+                "retained_state": "diagnostic: last_saved replaced with a full Store clone before direct mark-read",
+                "ui_us": 190,
+                "ack_pump_us": 3314,
+                "wall_us": 6759
+              },
+              {
+                "occurrence_id": 32407,
+                "occurrence_index": 32406,
+                "sample_position": "three_quarter",
+                "occurrence_collection_len": 43200,
+                "retained_state": "diagnostic: last_saved replaced with a full Store clone before direct mark-read",
+                "ui_us": 291,
+                "ack_pump_us": 4112,
+                "wall_us": 7743
+              },
+              {
+                "occurrence_id": 43186,
+                "occurrence_index": 43185,
+                "sample_position": "tail",
+                "occurrence_collection_len": 43200,
+                "retained_state": "diagnostic: last_saved replaced with a full Store clone before direct mark-read",
+                "ui_us": 430,
+                "ack_pump_us": 3537,
+                "wall_us": 7444
+              }
+            ],
+            "sample_note": "five bounded one-shot direct mark-read + live snapshot ACK samples; not a p95 claim"
+          }
+        },
+        "sample_note": "five bounded one-shot samples per case; not a p95 claim"
+      },
+      "occurrences_86400": {
+        "actual_occurrences_before": 86400,
+        "disk_occurrence_count": 86400,
+        "cases": {
+          "direct_mark_read": {
+            "case": "direct_mark_read",
+            "retained_state": "none: live store is the only owner; identity lookup scans to the recorded occurrence index",
+            "samples": [
+              {
+                "occurrence_id": 7,
+                "occurrence_index": 6,
+                "sample_position": "head",
+                "occurrence_collection_len": 86400,
+                "retained_state": "none: live store is the only owner; identity lookup scans to the recorded occurrence index",
+                "ui_us": 20,
+                "ack_pump_us": 4481,
+                "wall_us": 9040
+              },
+              {
+                "occurrence_id": 21604,
+                "occurrence_index": 21603,
+                "sample_position": "quarter",
+                "occurrence_collection_len": 86400,
+                "retained_state": "none: live store is the only owner; identity lookup scans to the recorded occurrence index",
+                "ui_us": 205,
+                "ack_pump_us": 4789,
+                "wall_us": 9661
+              },
+              {
+                "occurrence_id": 43204,
+                "occurrence_index": 43203,
+                "sample_position": "middle",
+                "occurrence_collection_len": 86400,
+                "retained_state": "none: live store is the only owner; identity lookup scans to the recorded occurrence index",
+                "ui_us": 508,
+                "ack_pump_us": 4964,
+                "wall_us": 10617
+              },
+              {
+                "occurrence_id": 64804,
+                "occurrence_index": 64803,
+                "sample_position": "three_quarter",
+                "occurrence_collection_len": 86400,
+                "retained_state": "none: live store is the only owner; identity lookup scans to the recorded occurrence index",
+                "ui_us": 675,
+                "ack_pump_us": 4742,
+                "wall_us": 10226
+              },
+              {
+                "occurrence_id": 86395,
+                "occurrence_index": 86394,
+                "sample_position": "tail",
+                "occurrence_collection_len": 86400,
+                "retained_state": "none: live store is the only owner; identity lookup scans to the recorded occurrence index",
+                "ui_us": 1032,
+                "ack_pump_us": 5039,
+                "wall_us": 10826
+              }
+            ],
+            "sample_note": "five bounded one-shot direct mark-read + live snapshot ACK samples; not a p95 claim"
+          },
+          "noop_form_then_direct": {
+            "case": "noop_form_then_direct",
+            "retained_state": "after a real no-op task form save; if live last_saved was re-pinned, this mark-read copies",
+            "noop_form_warmup_outcome": "Saving",
+            "noop_form_save_outcomes": [
+              "Saved",
+              "Saved",
+              "Saved",
+              "Saved",
+              "Saved"
+            ],
+            "samples": [
+              {
+                "occurrence_id": 4,
+                "occurrence_index": 3,
+                "sample_position": "head",
+                "noop_form_save_outcome": "Saved",
+                "noop_form_save_ui_us": 263,
+                "occurrence_collection_len": 86400,
+                "retained_state": "after a real no-op task form save; if live last_saved was re-pinned, this mark-read copies",
+                "ui_us": 19,
+                "ack_pump_us": 4406,
+                "wall_us": 9008
+              },
+              {
+                "occurrence_id": 21598,
+                "occurrence_index": 21597,
+                "sample_position": "quarter",
+                "noop_form_save_outcome": "Saved",
+                "noop_form_save_ui_us": 255,
+                "occurrence_collection_len": 86400,
+                "retained_state": "after a real no-op task form save; if live last_saved was re-pinned, this mark-read copies",
+                "ui_us": 205,
+                "ack_pump_us": 5341,
+                "wall_us": 10531
+              },
+              {
+                "occurrence_id": 43198,
+                "occurrence_index": 43197,
+                "sample_position": "middle",
+                "noop_form_save_outcome": "Saved",
+                "noop_form_save_ui_us": 310,
+                "occurrence_collection_len": 86400,
+                "retained_state": "after a real no-op task form save; if live last_saved was re-pinned, this mark-read copies",
+                "ui_us": 492,
+                "ack_pump_us": 4748,
+                "wall_us": 10598
+              },
+              {
+                "occurrence_id": 64798,
+                "occurrence_index": 64797,
+                "sample_position": "three_quarter",
+                "noop_form_save_outcome": "Saved",
+                "noop_form_save_ui_us": 293,
+                "occurrence_collection_len": 86400,
+                "retained_state": "after a real no-op task form save; if live last_saved was re-pinned, this mark-read copies",
+                "ui_us": 680,
+                "ack_pump_us": 4953,
+                "wall_us": 10336
+              },
+              {
+                "occurrence_id": 86398,
+                "occurrence_index": 86397,
+                "sample_position": "tail",
+                "noop_form_save_outcome": "Saved",
+                "noop_form_save_ui_us": 308,
+                "occurrence_collection_len": 86400,
+                "retained_state": "after a real no-op task form save; if live last_saved was re-pinned, this mark-read copies",
+                "ui_us": 1025,
+                "ack_pump_us": 4846,
+                "wall_us": 10724
+              }
+            ],
+            "sample_note": "five bounded one-shot no-op form save followed by direct mark-read + live snapshot ACK; not a p95 claim"
+          },
+          "toggle_command": {
+            "case": "toggle_command",
+            "retained_state": "none: live direct SetRead path; no whole Store staging; position-dependent identity lookup only",
+            "samples": [
+              {
+                "occurrence_id": 1,
+                "occurrence_index": 0,
+                "sample_position": "head",
+                "occurrence_collection_len": 86400,
+                "retained_state": "none: live direct SetRead path; no whole Store staging; position-dependent identity lookup only",
+                "ui_us": 24,
+                "ack_pump_us": 4821,
+                "wall_us": 10057
+              },
+              {
+                "occurrence_id": 21600,
+                "occurrence_index": 21599,
+                "sample_position": "quarter",
+                "occurrence_collection_len": 86400,
+                "retained_state": "none: live direct SetRead path; no whole Store staging; position-dependent identity lookup only",
+                "ui_us": 130,
+                "ack_pump_us": 4373,
+                "wall_us": 9037
+              },
+              {
+                "occurrence_id": 43200,
+                "occurrence_index": 43199,
+                "sample_position": "middle",
+                "occurrence_collection_len": 86400,
+                "retained_state": "none: live direct SetRead path; no whole Store staging; position-dependent identity lookup only",
+                "ui_us": 251,
+                "ack_pump_us": 4450,
+                "wall_us": 9485
+              },
+              {
+                "occurrence_id": 64800,
+                "occurrence_index": 64799,
+                "sample_position": "three_quarter",
+                "occurrence_collection_len": 86400,
+                "retained_state": "none: live direct SetRead path; no whole Store staging; position-dependent identity lookup only",
+                "ui_us": 537,
+                "ack_pump_us": 5626,
+                "wall_us": 11273
+              },
+              {
+                "occurrence_id": 86400,
+                "occurrence_index": 86399,
+                "sample_position": "tail",
+                "occurrence_collection_len": 86400,
+                "retained_state": "none: live direct SetRead path; no whole Store staging; position-dependent identity lookup only",
+                "ui_us": 1032,
+                "ack_pump_us": 4648,
+                "wall_us": 11044
+              }
+            ],
+            "sample_note": "five bounded one-shot real toggle_automation_read command + live snapshot ACK samples; not a p95 claim"
+          },
+          "retained_snapshot_diagnostic": {
+            "case": "retained_snapshot_diagnostic",
+            "retained_state": "one full Store clone retained across the mutation",
+            "samples": [
+              {
+                "occurrence_id": 13,
+                "occurrence_index": 12,
+                "sample_position": "head",
+                "occurrence_collection_len": 86400,
+                "retained_state": "one full Store clone retained across the mutation",
+                "ui_us": 47042,
+                "ack_pump_us": 4624,
+                "wall_us": 57263
+              },
+              {
+                "occurrence_id": 21595,
+                "occurrence_index": 21594,
+                "sample_position": "quarter",
+                "occurrence_collection_len": 86400,
+                "retained_state": "one full Store clone retained across the mutation",
+                "ui_us": 36572,
+                "ack_pump_us": 5067,
+                "wall_us": 47264
+              },
+              {
+                "occurrence_id": 43195,
+                "occurrence_index": 43194,
+                "sample_position": "middle",
+                "occurrence_collection_len": 86400,
+                "retained_state": "one full Store clone retained across the mutation",
+                "ui_us": 36114,
+                "ack_pump_us": 4974,
+                "wall_us": 46543
+              },
+              {
+                "occurrence_id": 64795,
+                "occurrence_index": 64794,
+                "sample_position": "three_quarter",
+                "occurrence_collection_len": 86400,
+                "retained_state": "one full Store clone retained across the mutation",
+                "ui_us": 37956,
+                "ack_pump_us": 5047,
+                "wall_us": 47881
+              },
+              {
+                "occurrence_id": 86392,
+                "occurrence_index": 86391,
+                "sample_position": "tail",
+                "occurrence_collection_len": 86400,
+                "retained_state": "one full Store clone retained across the mutation",
+                "ui_us": 37878,
+                "ack_pump_us": 5418,
+                "wall_us": 48794
+              }
+            ],
+            "sample_note": "five bounded one-shot direct mark-read + live snapshot ACK samples; not a p95 claim"
+          },
+          "forced_last_saved_then_direct": {
+            "case": "forced_last_saved_then_direct",
+            "retained_state": "diagnostic: last_saved replaced with a full Store clone before direct mark-read",
+            "samples": [
+              {
+                "occurrence_id": 16,
+                "occurrence_index": 15,
+                "sample_position": "head",
+                "occurrence_collection_len": 86400,
+                "retained_state": "diagnostic: last_saved replaced with a full Store clone before direct mark-read",
+                "ui_us": 36733,
+                "ack_pump_us": 4992,
+                "wall_us": 47466
+              },
+              {
+                "occurrence_id": 21607,
+                "occurrence_index": 21606,
+                "sample_position": "quarter",
+                "occurrence_collection_len": 86400,
+                "retained_state": "diagnostic: last_saved replaced with a full Store clone before direct mark-read",
+                "ui_us": 331,
+                "ack_pump_us": 5467,
+                "wall_us": 11194
+              },
+              {
+                "occurrence_id": 43207,
+                "occurrence_index": 43206,
+                "sample_position": "middle",
+                "occurrence_collection_len": 86400,
+                "retained_state": "diagnostic: last_saved replaced with a full Store clone before direct mark-read",
+                "ui_us": 475,
+                "ack_pump_us": 5284,
+                "wall_us": 11418
+              },
+              {
+                "occurrence_id": 64807,
+                "occurrence_index": 64806,
+                "sample_position": "three_quarter",
+                "occurrence_collection_len": 86400,
+                "retained_state": "diagnostic: last_saved replaced with a full Store clone before direct mark-read",
+                "ui_us": 811,
+                "ack_pump_us": 5311,
+                "wall_us": 10700
+              },
+              {
+                "occurrence_id": 86386,
+                "occurrence_index": 86385,
+                "sample_position": "tail",
+                "occurrence_collection_len": 86400,
+                "retained_state": "diagnostic: last_saved replaced with a full Store clone before direct mark-read",
+                "ui_us": 1292,
+                "ack_pump_us": 5337,
+                "wall_us": 11616
+              }
+            ],
+            "sample_note": "five bounded one-shot direct mark-read + live snapshot ACK samples; not a p95 claim"
+          }
+        },
+        "sample_note": "five bounded one-shot samples per case; not a p95 claim"
+      }
+    },
+    "peak_rss_bytes": 999292928,
+    "gates": {
+      "small-500": {
+        "editor": {
+          "p95_us": 5746,
+          "target_us": 50000,
+          "passed": true
+        },
+        "automation_save_draft": {
+          "p95_us": 11916,
+          "target_us": 50000,
+          "passed": true
+        },
+        "automation_enable": {
+          "p95_us": 11296,
+          "target_us": 50000,
+          "passed": true
+        },
+        "automation_pause": {
+          "p95_us": 9895,
+          "target_us": 50000,
+          "passed": true
+        },
+        "settings": {
+          "p95_us": 4695,
+          "target_us": 50000,
+          "passed": true
+        },
+        "scoped_task_undo": {
+          "p95_us": 5481,
+          "target_us": 50000,
+          "passed": true
+        },
+        "history_page": {
+          "p95_us": 10277,
+          "target_us": 50000,
+          "passed": true
+        }
+      },
+      "required-1000": {
+        "editor": {
+          "p95_us": 5649,
+          "target_us": 50000,
+          "passed": true
+        },
+        "automation_save_draft": {
+          "p95_us": 11483,
+          "target_us": 50000,
+          "passed": true
+        },
+        "automation_enable": {
+          "p95_us": 11690,
+          "target_us": 50000,
+          "passed": true
+        },
+        "automation_pause": {
+          "p95_us": 10856,
+          "target_us": 50000,
+          "passed": true
+        },
+        "settings": {
+          "p95_us": 4885,
+          "target_us": 50000,
+          "passed": true
+        },
+        "scoped_task_undo": {
+          "p95_us": 5896,
+          "target_us": 50000,
+          "passed": true
+        },
+        "history_page": {
+          "p95_us": 10593,
+          "target_us": 50000,
+          "passed": true
+        }
+      }
+    }
+  }
+}

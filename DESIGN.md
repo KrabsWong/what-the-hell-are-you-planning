@@ -37,7 +37,7 @@ Readable text must be drag-selectable and copyable with ⌘C: body copy, titles,
 
 ## Scrolling acceptance
 
-Actual scrolling smoothness on the isolated native application is mandatory and is defined by the authoritative [scrolling acceptance contract](doc/review-2026-11-08/TASKS.md#mandatory-scrolling-acceptance). Static screenshots, averages or synthetic slices do not satisfy it; reproducible hitches remain failures until fixed and rerun.
+Actual scrolling smoothness on the isolated native application is mandatory and is defined by the authoritative [scrolling acceptance contract](doc/review-2026-11-08/TASKS.md#mandatory-scrolling-acceptance). Static screenshots, averages or synthetic slices do not satisfy it. Under the first-round acceptance update, occasional isolated hitches may be documented and deferred; repeated or sustained stalls and incorrect scrolling remain failures.
 
 ## Source of truth
 

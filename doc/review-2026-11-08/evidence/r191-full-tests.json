@@ -1,0 +1,21 @@
+{
+  "source_sha256": "095cc61b10e09794547a0515af12090739894659dbff9ba5aa2a1efda0666fa5",
+  "default_suite": {
+    "command": "PATH=/opt/homebrew/opt/node@24/bin:$PATH cargo test --quiet",
+    "passed": 737,
+    "ignored": 2,
+    "integration_passed": 2,
+    "exit_code": 0,
+    "log": ".local/opencode-dispatch/r191-root-full-tests-node.log"
+  },
+  "qa_suite": {
+    "command": "PATH=/opt/homebrew/opt/node@24/bin:$PATH cargo test --features qa --quiet",
+    "passed": 740,
+    "ignored": 2,
+    "integration_passed": 13,
+    "exit_code": 0,
+    "log": ".local/opencode-dispatch/r191-root-full-qa-tests.log"
+  },
+  "initial_failure": "Default first run without Node PATH: 736 passed, publishing test failed because node executable missing. Corrected environment rerun passed. Original log retained at .local/opencode-dispatch/r191-root-full-tests.log.",
+  "scope": "Unit and integration regression only; 55-entry standalone ledger and full native acceptance remain separate."
+}

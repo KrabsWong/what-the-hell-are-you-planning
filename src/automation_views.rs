@@ -423,6 +423,12 @@ pub struct AutomationUi {
     pub history_limit: usize,
     pub(crate) result_order: std::cell::RefCell<ResultOrderCache>,
     pub(crate) run_index: std::cell::RefCell<RunIndexCache>,
+    pub(crate) result_list: ListState,
+    pub(crate) result_list_key: std::cell::RefCell<ResultListKey>,
+    pub(crate) result_scroll_synced: std::cell::Cell<f32>,
+    pub(crate) result_scroll_target: std::cell::Cell<Option<f32>>,
+    pub(crate) result_scroll_attempts: std::cell::Cell<u8>,
+    pub(crate) result_list_width: std::rc::Rc<std::cell::Cell<Option<f32>>>,
     pub show_technical: bool,
     pub show_cleanup: bool,
     pub cleanup_preview: String,
@@ -524,6 +530,131 @@ impl RunIndexCache {
     }
 }
 
+#[derive(Debug, PartialEq)]
+enum ResultScrollStep {
+    Apply(f32),
+    Settle { handle: f32, synced: f32 },
+    WriteBack { handle: f32, synced: f32 },
+    Idle,
+}
+
+/// Keep the list authoritative during an external restore. The handle value is
+/// only written back after the list has caught up, so a stale ScrollHandle can
+/// never overwrite the newest list offset. Restore is a relative pixel
+/// `scroll_by`; `scroll_to(item_ix: 0, large offset_in_item)` is clamped by
+/// ListState to the first item height and cannot express an arbitrary offset.
+fn result_scroll_step(
+    reset: bool,
+    handle: f32,
+    synced: f32,
+    current: f32,
+    target: Option<f32>,
+    attempts: u8,
+) -> ResultScrollStep {
+    if reset {
+        return ResultScrollStep::Apply(handle);
+    }
+    if let Some(target) = target {
+        if (current - target).abs() <= 1.0 || attempts >= 6 {
+            return ResultScrollStep::Settle {
+                handle: current,
+                synced: current,
+            };
+        }
+        return ResultScrollStep::Apply(target);
+    }
+    if (handle - synced).abs() > 0.5 {
+        return ResultScrollStep::Apply(handle);
+    }
+    if (current - synced).abs() > 0.5 {
+        return ResultScrollStep::WriteBack {
+            handle: current,
+            synced: current,
+        };
+    }
+    ResultScrollStep::Idle
+}
+
+#[derive(Clone, Default, PartialEq, Eq, Debug)]
+struct ResultListKey {
+    filter: Option<u64>,
+    limit: usize,
+    ids: Vec<u64>,
+    items: usize,
+    structure: u8,
+}
+
+impl ResultListKey {
+    fn structure_of(items: &[AutomationResultsItem]) -> u8 {
+        match items.last() {
+            Some(AutomationResultsItem::EmptyAll) => 1,
+            Some(AutomationResultsItem::EmptyFiltered) => 2,
+            Some(AutomationResultsItem::LoadMore) => 4,
+            _ => 0,
+        }
+    }
+}
+
+#[derive(Clone, Copy)]
+enum AutomationResultsItem {
+    Header,
+    Row(usize),
+    EmptyAll,
+    EmptyFiltered,
+    LoadMore,
+}
+
+/// Initial height hint for unmeasured rows so ListState knows the scrollable
+/// extent before offscreen items are rendered. Real heights replace it.
+const RESULT_ROW_HEIGHT_HINT: f32 = 56.;
+
+struct AutomationResultsPlan {
+    items: Vec<AutomationResultsItem>,
+    rows: Vec<(u64, usize)>,
+    total: usize,
+    all_total: usize,
+    queued: usize,
+    waiting: usize,
+    filter: Option<u64>,
+    limit: usize,
+}
+
+impl AutomationResultsPlan {
+    fn new(
+        rows: Vec<(u64, usize)>,
+        total: usize,
+        all_total: usize,
+        queued: usize,
+        waiting: usize,
+        filter: Option<u64>,
+        limit: usize,
+    ) -> Self {
+        let mut items = vec![AutomationResultsItem::Header];
+        if total == 0 {
+            items.push(if all_total == 0 {
+                AutomationResultsItem::EmptyAll
+            } else {
+                AutomationResultsItem::EmptyFiltered
+            });
+        } else {
+            items.extend((0..rows.len()).map(AutomationResultsItem::Row));
+            if total > limit {
+                items.push(AutomationResultsItem::LoadMore);
+            }
+        }
+        Self {
+            items,
+            rows,
+            total,
+            all_total,
+            queued,
+            waiting,
+            filter,
+            limit,
+        }
+    }
+}
+
 impl AutomationUi {
     pub fn new(window: &mut Window, cx: &mut Context<TaskApp>) -> Self {
         let input =
@@ -564,6 +695,12 @@ impl AutomationUi {
             history_limit: 20,
             result_order: std::cell::RefCell::new(ResultOrderCache::default()),
             run_index: std::cell::RefCell::new(RunIndexCache::default()),
+            result_list: ListState::new(0, ListAlignment::Top, px(64.)),
+            result_list_key: std::cell::RefCell::new(ResultListKey::default()),
+            result_scroll_synced: std::cell::Cell::new(0.0),
+            result_scroll_target: std::cell::Cell::new(None),
+            result_scroll_attempts: std::cell::Cell::new(0),
+            result_list_width: std::rc::Rc::new(std::cell::Cell::new(None)),
             show_technical: false,
             show_cleanup: false,
             cleanup_preview: String::new(),
@@ -2769,40 +2906,179 @@ impl TaskApp {
 
     /// All automation periods in one place, separate from project/topic results.
     pub(crate) fn automation_results(&self, cx: &mut Context<Self>) -> AnyElement {
-        // A saved filter only applies while its automation still exists; a
-        // removed automation falls back to the unfiltered list.
         let filter = self
             .automation_ui
             .result_filter
             .filter(|id| self.store.automation(*id).is_some());
         let epoch = self.store.dirty_epoch();
-        let (shown, total, all_total, queued, waiting) = {
+        let plan = {
             let mut cache = self.automation_ui.result_order.borrow_mut();
             cache.refresh(epoch, filter, &self.store);
             let occurrences = self.store.all_occurrences();
-            let shown = cache
+            let rows = cache
                 .indices
                 .iter()
                 .take(self.automation_ui.history_limit)
-                .filter_map(|index| occurrences.get(*index))
+                .filter_map(|index| occurrences.get(*index).map(|occurrence| (occurrence.id, *index)))
                 .collect::<Vec<_>>();
-            (
-                shown,
+            std::sync::Arc::new(AutomationResultsPlan::new(
+                rows,
                 cache.filtered_total,
                 cache.all_total,
                 cache.queued,
                 cache.waiting,
-            )
+                filter,
+                self.automation_ui.history_limit,
+            ))
         };
-        let mut panel = col()
+
+        // Reset only when the visible set/filter/limit changes. Unrelated saves
+        // and read markers move dirty_epoch but must not discard list heights.
+        // Full ordered visible identity: middle-row replacements or reorders must
+        // invalidate measured heights, not only endpoint changes.
+        let key = ResultListKey {
+            filter,
+            limit: plan.limit,
+            ids: plan.rows.iter().map(|(id, _)| *id).collect(),
+            items: plan.items.len(),
+            structure: ResultListKey::structure_of(&plan.items),
+        };
+        let previous = self.automation_ui.result_list_key.borrow().clone();
+        // Load more appends rows to the same filtered prefix. Splice instead of
+        // reset so the visible row stays anchored and measured offsets survive.
+        let append = previous.filter == filter
+            && previous.limit < plan.limit
+            && previous.items > 0
+            && previous.ids.len() < plan.rows.len()
+            && plan
+                .rows
+                .iter()
+                .take(previous.ids.len())
+                .map(|(id, _)| *id)
+                .eq(previous.ids.iter().copied());
+        let reset = key != previous && !append;
+        if append {
+            let prefix = 1 + previous.ids.len();
+            self.automation_ui
+                .result_list
+                .splice(prefix..previous.items, plan.items.len().saturating_sub(prefix));
+        } else if reset {
+            self.automation_ui
+                .result_list
+                .reset_with_uniform_height(plan.items.len(), px(RESULT_ROW_HEIGHT_HINT));
+        }
+        if append {
+            // This API maps every item to Unmeasured while preserving measured
+            // size hints; it does not reset the scroll anchor. The all-item
+            // conversion is why it is limited to reset/append/width changes.
+            let _ = self
+                .automation_ui
+                .result_list
+                .clone()
+                .with_uniform_item_height(px(RESULT_ROW_HEIGHT_HINT));
+        }
+        *self.automation_ui.result_list_key.borrow_mut() = key;
+        let handle = self.automation_ui.scroll.offset().y.as_f32();
+        let current = self
+            .automation_ui
+            .result_list
+            .scroll_px_offset_for_scrollbar()
+            .y
+            .as_f32();
+        let step = result_scroll_step(
+            reset,
+            handle,
+            self.automation_ui.result_scroll_synced.get(),
+            current,
+            self.automation_ui.result_scroll_target.get(),
+            self.automation_ui.result_scroll_attempts.get(),
+        );
+        match step {
+            ResultScrollStep::Apply(offset) => {
+                // `scroll_to(item_ix: 0, offset_in_item: large)` is clamped by
+                // ListState to the first item's height. A relative pixel scroll
+                // is the supported way to restore an arbitrary offset.
+                self.automation_ui
+                    .result_list
+                    .scroll_by(px(current - offset));
+                self.automation_ui.result_scroll_target.set(Some(offset));
+                self.automation_ui
+                    .result_scroll_attempts
+                    .set(self.automation_ui.result_scroll_attempts.get().saturating_add(1));
+            }
+            ResultScrollStep::Settle { handle, synced } => {
+                self.automation_ui
+                    .scroll
+                    .set_offset(point(px(0.), px(handle)));
+                self.automation_ui.result_scroll_synced.set(synced);
+                self.automation_ui.result_scroll_target.set(None);
+                self.automation_ui.result_scroll_attempts.set(0);
+            }
+            ResultScrollStep::WriteBack { handle, synced } => {
+                self.automation_ui
+                    .scroll
+                    .set_offset(point(px(0.), px(handle)));
+                self.automation_ui.result_scroll_synced.set(synced);
+            }
+            ResultScrollStep::Idle => {}
+        }
+
+        let entity = cx.entity().downgrade();
+        // A definite, full-height flex column is required: the inner ListState
+        // resolves its viewport from this parent. A plain block div leaves the
+        // list at zero height and paints no items.
+        let hint_state = self.automation_ui.result_list.clone();
+        let hint_width = self.automation_ui.result_list_width.clone();
+        col()
+            .on_children_prepainted(move |bounds, _, _| {
+                // Width changes make ListState drop every cached height hint.
+                // Restore them only on that transition (or the first paint),
+                // not after every frame, so measured rows are not re-measured.
+                let width = bounds.first().map(|bounds| bounds.size.width.as_f32());
+                if width.is_some() && hint_width.get() != width {
+                    hint_width.set(width);
+                    let _ = hint_state
+                        .clone()
+                        .with_uniform_item_height(px(RESULT_ROW_HEIGHT_HINT));
+                }
+            })
             .id("automation-results-scroll")
             .w_full()
-            .track_scroll(&self.automation_ui.scroll)
-            .flex_1()
             .h_full()
+            .flex_1()
             .min_h_0()
+            .child(
+                list(
+                    self.automation_ui.result_list.clone(),
+                    move |index, _, cx| {
+                        let Some(entity) = entity.upgrade() else {
+                            return div().into_any_element();
+                        };
+                        entity.update(cx, |app, cx| {
+                            app.automation_results_item(&plan, index, cx)
+                        })
+                    },
+                )
+                .w_full()
+                .flex_1()
+                .min_h_0(),
+            )
+            .map(observed)
+            .into_any_element()
+    }
+
+    fn automation_results_header(
+        &self,
+        plan: &AutomationResultsPlan,
+        cx: &mut Context<Self>,
+    ) -> AnyElement {
+        let heading = match plan.filter {
+            Some(_) => format!("Periods · {} of {}", plan.total, plan.all_total),
+            None => format!("Periods · {}", plan.total),
+        };
+        let mut panel = col()
+            .w_full()
             .min_w_0()
-            .overflow_y_scroll()
             .p_6()
             .gap_4()
             .child(
@@ -2810,7 +3086,14 @@ impl TaskApp {
                     .w_full()
                     .min_w_0()
                     .gap_1()
-                    .child(div().text_lg().font_weight(FontWeight::SEMIBOLD).child(selectable("Automation results")))
+                    .child(
+                        div()
+                            .id("automation-results-title")
+                            .text_lg()
+                            .font_weight(FontWeight::SEMIBOLD)
+                            .child(selectable("Automation results"))
+                            .map(observed),
+                    )
                     .child(crate::views::observed(
                         div()
                             .id("automation-results-subtitle")
@@ -2823,16 +3106,7 @@ impl TaskApp {
                             )),
                     )),
             );
-        if total == 0 {
-            panel = panel.child(overview_note(
-                "No automation runs yet. Create or enable an automation to collect periods here.",
-                cx,
-            ));
-        } else {
-            let heading = match filter {
-                Some(_) => format!("Periods · {total} of {all_total}"),
-                None => format!("Periods · {total}"),
-            };
+        if plan.total > 0 {
             panel = panel.child(
                 col()
                     .w_full()
@@ -2861,46 +3135,83 @@ impl TaskApp {
                             .child(muted("Unread results are marked with a dot.", cx)),
                     )),
             );
-            if queued > 0 || waiting > 0 {
+            if plan.queued > 0 || plan.waiting > 0 {
                 panel = panel.child(overview_note(
                     format!(
-                        "Automation slots: {} of {} running · {queued} queued · {waiting} waiting to retry. Automation and research queues are independent.",
+                        "Automation slots: {} of {} running · {} queued · {} waiting to retry. Automation and research queues are independent.",
                         self.automation_slots_used(),
-                        self.store.automation_concurrency_limit()
+                        self.store.automation_concurrency_limit(),
+                        plan.queued,
+                        plan.waiting
                     ),
                     cx,
                 ));
             }
-            if total == 0 {
-                panel = panel.child(overview_note(
+        }
+        panel.into_any_element()
+    }
+
+    fn automation_results_item(
+        &self,
+        plan: &AutomationResultsPlan,
+        index: usize,
+        cx: &mut Context<Self>,
+    ) -> AnyElement {
+        match plan.items[index] {
+            AutomationResultsItem::Header => self.automation_results_header(plan, cx),
+            AutomationResultsItem::Row(row) => {
+                let (id, position) = plan.rows[row];
+                let occurrence = self
+                    .store
+                    .all_occurrences()
+                    .get(position)
+                    .filter(|occurrence| occurrence.id == id)
+                    .or_else(|| self.store.occurrence(id));
+                let Some(occurrence) = occurrence else {
+                    return div().into_any_element();
+                };
+                div()
+                    .w_full()
+                    .min_w_0()
+                    .px_6()
+                    .pb_1()
+                    .child(self.automation_occurrence_row(occurrence, true, cx))
+                    .into_any_element()
+            }
+            AutomationResultsItem::EmptyAll => div()
+                .p_6()
+                .child(overview_note(
+                    "No automation runs yet. Create or enable an automation to collect periods here.",
+                    cx,
+                ))
+                .into_any_element(),
+            AutomationResultsItem::EmptyFiltered => div()
+                .p_6()
+                .child(overview_note(
                     "No periods for this automation yet. Pick another automation or clear the filter.",
                     cx,
-                ));
-            }
-            let mut history = col().w_full().min_w_0().gap_1().flex_shrink_0();
-            for occurrence in shown {
-                history = history.child(self.automation_occurrence_row(occurrence, true, cx));
-            }
-            panel = panel.child(history);
-            if total > self.automation_ui.history_limit {
-                let remaining = total - self.automation_ui.history_limit;
-                panel = panel.child(
+                ))
+                .into_any_element(),
+            AutomationResultsItem::LoadMore => div()
+                .px_6()
+                .pb_6()
+                .child(
                     quiet_button(
                         "load-more-automation-results",
-                        format!("Load more · {remaining} remaining"),
+                        format!(
+                            "Load more · {} remaining",
+                            plan.total.saturating_sub(plan.limit)
+                        ),
                     )
                     .on_click(cx.listener(|app, _, _, cx| {
                         app.automation_ui.history_limit += 20;
                         cx.notify();
                     })),
-                );
-            }
+                )
+                .into_any_element(),
         }
-        panel.map(observed).into_any_element()
     }
 
-    /// Narrows the all-results list to one automation. The control stays in the
-    /// results header so the filter is discoverable without a separate page.
     fn automation_results_filter_control(&self, cx: &mut Context<Self>) -> AnyElement {
         let selected = self.automation_ui.result_filter;
         let label = selected
@@ -5203,6 +5514,378 @@ mod tests {
         contrast_against, format_in_zone_precise, result_tint_color, ResultTints,
         DARK_RESULT_PANEL_RGB, LIGHT_RESULT_PANEL_RGB, RESULT_NAME_MIN_CONTRAST,
     };
+    use gpui_kit::{
+        div, init, list, point, px, size, AppContext as _, Context, Entity, IntoElement,
+        ListAlignment, ListOffset, ListState, ParentElement as _, Render, ScrollDelta,
+        ScrollEvent, Styled as _, TestAppContext, VisualTestContext, Window,
+    };
+    use gpui_kit::test::TestWindowExt;
+    use crate::app::TaskApp;
+    use crate::automation::{
+        AutomationOccurrence, AutomationOccurrenceSnapshot, AutomationPolicy, AutomationShape,
+        OccurrenceStatus, TimeWindow, TriggerSource,
+    };
+    use crate::automation_schedule::{Schedule, ScheduleSpec};
+    use crate::domain::Store;
+
+    #[test]
+    fn result_scroll_bridge_keeps_list_offset_authoritative() {
+        use super::{result_scroll_step, ResultScrollStep};
+
+        // External restore, including a large item_ix=0 offset.
+        assert_eq!(
+            result_scroll_step(false, -50_000.0, 0.0, 0.0, None, 0),
+            ResultScrollStep::Apply(-50_000.0)
+        );
+        // While restoring, a stale current offset must not be written back.
+        assert_eq!(
+            result_scroll_step(false, -50_000.0, 0.0, 0.0, Some(-50_000.0), 1),
+            ResultScrollStep::Apply(-50_000.0)
+        );
+        // The list caught up: settle the handle to the list's offset.
+        assert_eq!(
+            result_scroll_step(false, -50_000.0, 0.0, -50_000.0, Some(-50_000.0), 2),
+            ResultScrollStep::Settle {
+                handle: -50_000.0,
+                synced: -50_000.0
+            }
+        );
+        // If the requested offset is beyond the list maximum, settle at the
+        // actual current offset after bounded attempts.
+        assert_eq!(
+            result_scroll_step(false, -50_000.0, 0.0, -3_000.0, Some(-50_000.0), 6),
+            ResultScrollStep::Settle {
+                handle: -3_000.0,
+                synced: -3_000.0
+            }
+        );
+        // User scrolling writes the new list offset back; it never reapplies
+        // the old handle value.
+        assert_eq!(
+            result_scroll_step(false, 0.0, 0.0, -120.0, None, 0),
+            ResultScrollStep::WriteBack {
+                handle: -120.0,
+                synced: -120.0
+            }
+        );
+        assert_eq!(
+            result_scroll_step(false, -120.0, -120.0, -120.0, None, 0),
+            ResultScrollStep::Idle
+        );
+    }
+
+    #[test]
+    fn result_list_key_tracks_middle_rows_not_only_endpoints() {
+        use super::ResultListKey;
+        let base = ResultListKey {
+            filter: None,
+            limit: 20,
+            ids: vec![10, 9, 8, 7],
+            items: 21,
+            structure: 0,
+        };
+        let middle_replaced = ResultListKey {
+            ids: vec![10, 9, 99, 7],
+            ..ResultListKey {
+                filter: None,
+                limit: 20,
+                ids: Vec::new(),
+                items: 21,
+                structure: 0,
+            }
+        };
+        assert_ne!(base, middle_replaced);
+        let footer_added = ResultListKey {
+            items: 22,
+            structure: 4,
+            ..ResultListKey {
+                filter: None,
+                limit: 20,
+                ids: vec![10, 9, 8, 7],
+                items: 21,
+                structure: 0,
+            }
+        };
+        assert_ne!(base, footer_added);
+        assert_eq!(
+            base,
+            ResultListKey {
+                filter: None,
+                limit: 20,
+                ids: vec![10, 9, 8, 7],
+                items: 21,
+                structure: 0,
+            }
+        );
+    }
+
+    fn results_store() -> Store {
+        let template = crate::automation_execution::build_template(
+            "Capacity check",
+            "Short report",
+        )
+        .unwrap();
+        let mut seed = Store::empty();
+        seed.project_mut(1).unwrap().directory = "/tmp".into();
+        seed.set_default_model("qa/model".into());
+        seed.research_config_mut().models = std::array::from_fn(|_| "qa/model".into());
+        let automation = seed
+            .create_automation_draft(
+                1,
+                AutomationShape::Research,
+                "Capacity check".into(),
+                "Capacity check".into(),
+                "Short report".into(),
+                Schedule {
+                    spec: ScheduleSpec::Interval { minutes: 60 },
+                    timezone: "UTC".into(),
+                },
+                AutomationPolicy::default(),
+                Some(template.clone()),
+                1,
+            )
+            .unwrap();
+        let definition = seed.automation(automation).unwrap().clone();
+        let mut occurrences = Vec::new();
+        for index in 0..25u64 {
+            occurrences.push(AutomationOccurrence {
+                id: index + 1,
+                automation_id: automation,
+                definition_version: 1,
+                source: TriggerSource::Scheduled,
+                trigger_key: format!("qa-{index}"),
+                scheduled_for: Some(index as i64),
+                requested_at: None,
+                actual_started_at: Some(index as i64 + 1),
+                timezone: "UTC".into(),
+                reference_time: index as i64,
+                data_window: TimeWindow::unresolved("qa"),
+                snapshot: AutomationOccurrenceSnapshot {
+                    objective: "Capacity check".into(),
+                    expected_result: "Short report".into(),
+                    shape: Some(AutomationShape::Research),
+                    template: template.clone(),
+                    models: std::array::from_fn(|_| "qa/model".into()),
+                    agents: Default::default(),
+                    materials: Vec::new(),
+                    policy: AutomationPolicy::default(),
+                    approval_version: 1,
+                    approval_signature: "qa".into(),
+                },
+                status: OccurrenceStatus::Succeeded,
+                reason: None,
+                research_goal_id: None,
+                research_goal_ids: Vec::new(),
+                research_topic_id: None,
+                run_ids: Vec::new(),
+                final_run_id: None,
+                unread: false,
+                skipped_count: 0,
+                skipped_from: None,
+                skipped_to: None,
+                created_at: index as i64,
+                deadline_at: None,
+                retry_requested_at: None,
+            });
+        }
+        Store::empty()
+            .with_loaded_tracked(vec![], vec![definition], occurrences)
+            .unwrap()
+    }
+
+    struct ResultsHarness(Entity<TaskApp>);
+    impl Render for ResultsHarness {
+        fn render(&mut self, _: &mut Window, cx: &mut Context<Self>) -> impl IntoElement {
+            div()
+                .size_full()
+                .child(self.0.update(cx, |app, cx| app.automation_results(cx)))
+        }
+    }
+
+    #[gpui_kit::test]
+    fn results_page_renders_header_rows_and_load_more_after_scroll(
+        cx: &mut TestAppContext,
+    ) {
+        let cx = cx.add_empty_window();
+        cx.update(|_, cx| init(cx));
+        let store = results_store();
+        let (harness, cx) = cx.add_window_view(|window, cx| {
+            let app = cx.new(|cx| {
+                let mut app = TaskApp::new_mock(window, cx);
+                app.store = store;
+                app.automation_ui.history_limit = 20;
+                app
+            });
+            ResultsHarness(app)
+        });
+        let app = cx.update(|_, cx| harness.read(cx).0.clone());
+        cx.run_until_parked();
+        cx.update(|window, cx| window.render_frame(cx));
+        assert!(cx
+            .update(|window, _| window.try_find("automation-results-title"))
+            .is_some(), "results title must render");
+        assert!(cx
+            .update(|window, _| window.try_find("automation-occurrence-25"))
+            .is_some(), "first result row must render");
+        let first_row = cx
+            .update(|window, _| window.try_find("automation-occurrence-25").unwrap().bounds());
+        assert!(cx
+            .update(|window, _| window.try_find("load-more-automation-results"))
+            .is_none(), "Load more starts below the viewport");
+        let body = cx
+            .update(|window, _| window.try_find("automation-results-scroll").unwrap().bounds());
+        let wheel = point(body.center().x, body.center().y);
+        let offset = |cx: &mut VisualTestContext| {
+            cx.update(|_, cx| {
+                app.read(cx)
+                    .automation_ui
+                    .result_list
+                    .scroll_px_offset_for_scrollbar()
+                    .y
+                    .as_f32()
+            })
+        };
+        let before = offset(cx);
+        cx.simulate_event(ScrollEvent {
+            position: wheel,
+            delta: ScrollDelta::Pixels(point(px(0.), px(-300.))),
+            ..Default::default()
+        });
+        cx.update(|window, cx| window.render_frame(cx));
+        let after = offset(cx);
+        assert!(
+            after <= before - 200.0,
+            "one wheel event must apply its pixel delta, before={before} after={after}"
+        );
+        for _ in 0..7 {
+            cx.simulate_event(ScrollEvent {
+                position: wheel,
+                delta: ScrollDelta::Pixels(point(px(0.), px(-300.))),
+                ..Default::default()
+            });
+        }
+        cx.update(|window, cx| window.render_frame(cx));
+        let moved = cx.update(|window, _| {
+            window
+                .try_find("automation-occurrence-25")
+                .map(|snapshot| snapshot.bounds().top() < first_row.top())
+                .unwrap_or(true)
+        });
+        assert!(moved, "wheel must displace or unmount the top rows");
+        assert!(cx
+            .update(|window, _| window.try_find("load-more-automation-results"))
+            .is_some(), "Load more must render after scrolling");
+
+        let list_top = |cx: &mut VisualTestContext| {
+            cx.update(|window, _| window.try_find("automation-results-scroll").unwrap().bounds().top().as_f32())
+        };
+        let top_visible = |cx: &mut VisualTestContext| {
+            let top = list_top(cx);
+            let mut best: Option<(u64, f32)> = None;
+            for id in (1..=25u64).rev() {
+                if let Some(snapshot) =
+                    cx.update(|window, _| window.try_find(format!("automation-occurrence-{id}")))
+                {
+                    let candidate = snapshot.bounds().top().as_f32();
+                    if candidate >= top - 1.0
+                        && best.is_none_or(|(_, current)| candidate < current)
+                    {
+                        best = Some((id, candidate));
+                    }
+                }
+            }
+            best
+        };
+        let anchored = top_visible(cx).expect("a row must be visible before Load more");
+        cx.update(|window, cx| window.click("load-more-automation-results", cx));
+        cx.update(|window, cx| window.render_frame(cx));
+        let after_append = top_visible(cx).expect("a row must remain visible after Load more");
+        assert_eq!(anchored.0, after_append.0, "Load more must keep the same top row");
+        assert!(
+            (anchored.1 - after_append.1).abs() <= 2.0,
+            "Load more must keep the top row anchored: {} -> {}",
+            anchored.1,
+            after_append.1
+        );
+    }
+
+    #[gpui_kit::test]
+    fn result_list_restores_large_offset_and_resets(cx: &mut TestAppContext) {
+        let cx = cx.add_empty_window();
+        let state = ListState::new(0, ListAlignment::Top, px(64.));
+        state.reset_with_uniform_height(40, px(40.));
+        struct TestView(ListState);
+        impl Render for TestView {
+            fn render(
+                &mut self,
+                _: &mut Window,
+                _: &mut Context<Self>,
+            ) -> impl IntoElement {
+                list(self.0.clone(), |_, _, _| {
+                    div().h(px(40.)).w_full().into_any_element()
+                })
+                .w_full()
+                .h_full()
+            }
+        }
+        let draw = |cx: &mut VisualTestContext| {
+            let _ = cx.draw(
+                point(px(0.), px(0.)),
+                size(px(100.), px(200.)),
+                |_, cx| cx.new(|_| TestView(state.clone())).into_any_element(),
+            );
+        };
+        draw(cx);
+        // Arbitrary pixel restore uses scroll_by; item_ix 0 with a large
+        // offset_in_item is clamped upstream to the first item height.
+        state.scroll_by(px(800.));
+        draw(cx);
+        let top = state.logical_scroll_top();
+        let offset = state.scroll_px_offset_for_scrollbar().y;
+        assert!(top.item_ix > 0, "800 px must displace the top item");
+        assert!(
+            offset <= px(-100.),
+            "800 px scroll must leave a pixel offset, got {offset:?}"
+        );
+
+        state.reset(40);
+        // Reset clears measured heights; the bridge retries after the first
+        // post-reset layout, which this intermediate draw represents.
+        draw(cx);
+        state.scroll_by(px(400.));
+        draw(cx);
+        let offset = state.scroll_px_offset_for_scrollbar().y;
+        assert!(
+            offset <= px(-100.),
+            "400 px scroll after reset must displace the list, got {offset:?}"
+        );
+    }
+
+    #[test]
+    fn result_plan_preserves_empty_filter_rows_and_load_more() {
+        use super::{AutomationResultsItem, AutomationResultsPlan};
+
+        let empty = AutomationResultsPlan::new(vec![], 0, 0, 0, 0, None, 20);
+        assert!(matches!(empty.items[0], AutomationResultsItem::Header));
+        assert!(matches!(empty.items[1], AutomationResultsItem::EmptyAll));
+
+        let filtered = AutomationResultsPlan::new(vec![], 0, 10, 0, 0, Some(1), 20);
+        assert!(matches!(filtered.items[1], AutomationResultsItem::EmptyFiltered));
+
+        let rows: Vec<(u64, usize)> = (0..20).map(|index| (index as u64 + 1, index)).collect();
+        let first_page = AutomationResultsPlan::new(rows.clone(), 20, 20, 0, 0, None, 20);
+        assert_eq!(first_page.items.len(), 21);
+        assert!(first_page
+            .items
+            .iter()
+            .all(|item| !matches!(item, AutomationResultsItem::LoadMore)));
+
+        let more = AutomationResultsPlan::new(rows, 40, 40, 2, 1, None, 20);
+        assert_eq!(more.items.len(), 22);
+        assert!(matches!(more.items[21], AutomationResultsItem::LoadMore));
+        assert_eq!(more.queued, 2);
+        assert_eq!(more.waiting, 1);
+    }
 
     #[test]
     fn occurrence_times_keep_second_precision() {

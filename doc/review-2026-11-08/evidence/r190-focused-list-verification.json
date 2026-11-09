@@ -1,0 +1,11 @@
+{
+  "source_sha256": "095cc61b10e09794547a0515af12090739894659dbff9ba5aa2a1efda0666fa5",
+  "command": "cargo test --features qa automation_views::tests -- --test-threads=1",
+  "exit_code": 0,
+  "passed": 11,
+  "failed": 0,
+  "scope": "Focused automation view suite including rendered wheel delta and Load more anchor. Integration suites filtered out; not a full regression pass.",
+  "log": ".local/opencode-dispatch/r190-root-automation-tests.log",
+  "native_build_manifest": ".local/native-review/r190-build-manifest.json",
+  "native_build": "passed; subsequent native evidence is r190-scroll-native.json"
+}

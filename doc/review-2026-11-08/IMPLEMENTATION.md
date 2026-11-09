@@ -2784,3 +2784,15 @@ Performance remains unaccepted: opening recorded 19.58 ms maximum CPU present wo
 Native review on the frozen r187 build verified the 24-material grid, scrolling to the last row, and opening card 24 in Preview at the exact isolated attachment path. The workspace menu opens Settings; General, Agent & models and Publishing tabs render, and Back restores All research (the settings origin in this visit). No settings were saved or reports published. This is functional coverage, not timed smoothness acceptance. [Evidence and bounded follow-up](evidence/r189-material-settings-native.json).
 
 Nonblocking T11 follow-up: replace the automatic-publishing full-width toggle button with a switch/checkbox showing explicit On/Off state. Preserve the existing publication disclosure and confirmation; acceptance requires distinguishable states in both themes without hover or color alone. No prerequisite task is required. This follows the approved first-round policy for visual refinements and does not waive scroll or execution gates.
+
+
+## r190 wheel extent and pagination anchor verified
+
+The independently built final list candidate now moves by multiple rows on large wheel gestures, reaches Load more, and retains the same clipped 00:46 / full 00:45 rows at the same position after appending the next page. Light-theme downward scrolling moves from the header and 00:54 to 00:30; upward scrolling restores the header and 00:54. Dark and light observations use a 1440 by 920 logical window and the isolated 1,000-period fixture. Root independently passed all eleven automation-view tests. This accepts the reproduced wheel extent and pagination-anchor fixes, not the complete T19 matrix.
+
+Opening still recorded 15.995 ms maximum frame-work elapsed time and one missed refresh; the first downward gesture recorded 11.245 ms and one missed refresh. Load more and subsequent recorded gestures had no missed refreshes, with maxima between 4.690 and 7.987 ms. The light upward window contains only one present and is insufficient for a sustained smoothness conclusion. Frame-work elapsed time is not CPU sampling or scan-out latency. Ordinary-workspace fixture verification, reader diagnosis, smaller-window and concurrent-save coverage remain open. See [native evidence](evidence/r190-scroll-native.json) and [focused tests](evidence/r190-focused-list-verification.json).
+
+
+## r191 integrated unit and integration regression
+
+Root independently passed the current list candidate with 740 QA-enabled unit tests and 13 integration tests; two existing unit tests remain ignored. Default-feature coverage also passed 737 unit tests and two integrations. An initial default run failed only because Node was absent from PATH; the corrected Node 24 environment passed. Original and corrected logs remain local. This supports checkpointing the reviewed virtual-list fix; the standalone 55-entry ledger and outstanding native performance matrix remain required. [Verification](evidence/r191-full-tests.json).

@@ -1,0 +1,22 @@
+{
+  "round": "r184",
+  "candidate": {
+    "note": "Frozen in-progress candidate for independent native diagnosis; not acceptance of later source changes.",
+    "base_native_manifest": ".local/native-review/r180-build-manifest.json",
+    "automation_views_sha256": "0c3ed4efc4055472c5ee4bdc8b91d0b398c46f714d0d8dd8458e4d77436c241f",
+    "source": "/Users/fuxingxing/workspaces/what-the-hell-are-you-planning/.local/native-review/r184-list-source",
+    "candidate_sha256": "e2184d060dcb6eb187c3fa06145f100824beaa176d706616e3a89615dbc84fc5",
+    "installed_sha256": "eefc115f93399a9e9c2aab27c2d4aee5ace21dfe469baae4dbd3dbe6d47f4973"
+  },
+  "result": "failed",
+  "reproduction": [
+    "Launch isolated r178-fixture-1000.",
+    "Click Automation results in sidebar.",
+    "Observe breadcrumb and sidebar count1000 but blank content area.",
+    "Scroll down one page; content remains blank."
+  ],
+  "diagnosis": "Viewport sizing is suspected; implementation must prove actual rendered list bounds.",
+  "performance_acceptance": false,
+  "reason": "Blank content cannot establish rendering performance.",
+  "followup": "OpenCode must repair layout and add a rendered interaction regression before native rerun."
+}

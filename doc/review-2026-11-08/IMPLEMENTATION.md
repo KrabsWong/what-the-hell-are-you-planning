@@ -2729,3 +2729,7 @@ The release runner now separates the legacy QA attachment's raw latency diagnost
 Root independently passed thirteen classifier checks and replayed the retained real logs: r179 quiet remains passed; r177 remains failed with its original 63.838/64.160/57.809 ms gates. A synthetic legacy 108 ms sample remains explicitly diagnostic, not passed. All 49 standalone entry names are documented and match src/main.rs. This accepts classifier behavior only, not a new whole-release run. See [classification evidence](evidence/r183-runner-classification.json).
 
 TASKS now applies the previously approved 1,000-record boundary consistently in its scrolling and T14/T15 clauses; large-history diagnostics and correctness obligations remain. The list virtualization candidate remains unaccepted pending scroll-restoration and native verification.
+
+## r184: virtual-list candidate rejected natively
+
+Root built a frozen intermediate list candidate independently and opened the existing 1,000-period fixture. Automation results rendered its breadcrumb and sidebar count but no title, filter, rows or Load more; a downward scroll left the content blank. This is a blocking functional regression, not a performance improvement. The implementation remains uncommitted and was returned to OpenCode for viewport sizing and a real rendered interaction check. No timing from this empty view is accepted as scrolling evidence. See [native rejection](evidence/r184-list-native-rejection.json).

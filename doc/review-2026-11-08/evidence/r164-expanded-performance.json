@@ -1,0 +1,49 @@
+{
+  "candidate_sha256": "cb36098c0a2407580ac32db55b5d40d519f6db9b3cb4844a295eebe601a616ca",
+  "exit_code": 0,
+  "gates": {
+    "editor": {
+      "p95_us": 7954,
+      "target_us": 50000,
+      "passed": true
+    },
+    "automation_save_draft": {
+      "p95_us": 17480,
+      "target_us": 50000,
+      "passed": true
+    },
+    "automation_enable": {
+      "p95_us": 17561,
+      "target_us": 50000,
+      "passed": true
+    },
+    "automation_pause": {
+      "p95_us": 16196,
+      "target_us": 50000,
+      "passed": true
+    },
+    "settings": {
+      "p95_us": 7633,
+      "target_us": 50000,
+      "passed": true
+    },
+    "scoped_task_undo": {
+      "p95_us": 8271,
+      "target_us": 50000,
+      "passed": true
+    },
+    "history_page": {
+      "p95_us": 14939,
+      "target_us": 50000,
+      "passed": true
+    }
+  },
+  "scope": "Expanded actual live operation harness; quiet runtime/native scrolling acceptance is not established. Native app and external coding/build work overlapped.",
+  "fixture_sizes": [
+    48,
+    43200,
+    86400
+  ],
+  "report_scope": "Actual live TaskApp via Some(LiveStartup) + ordered worker; editor save, command-level automation SaveDraft, automation Enable/Pause, settings save, scoped task Undo and indexed first-page path.",
+  "gate_scope": "Per-operation p95 gates use the 43,200-occurrence fixture (fixtures[1]). The 86,400-occurrence fixture is measured for RSS/DB/latency but is not gated by this run."
+}

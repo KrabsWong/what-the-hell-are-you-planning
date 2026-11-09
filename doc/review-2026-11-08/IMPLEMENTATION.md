@@ -2587,3 +2587,9 @@ Native Add Files now wakes verification and presents the impact review. After on
 ## r163: native first execution completes without changing the route
 
 On the same isolated integration candidate, root approved the never-executed G19, observed durable Saved feedback and clicked Run goal once. E20, A21 and R22 completed sequentially with exactly one successful run each. Root switched to All automations while the final step was running; completion preserved that page. Read-only database comparison confirms no prior runs and the three new successful records. See [first-execution evidence](evidence/r163-native-first-execution.json). This closes the bounded native idle-first submission case; material confirmation and scrolling remain failed/pending gates.
+
+## r164: expanded performance diagnostics and native replanning hand-off gap
+
+Root independently ran the expanded performance candidate to completion. All seven 43,200-period operation gates passed: editor, draft save, enable, pause, settings, scoped Undo and visible history. The run also measured 86,400 periods and bounded mutation diagnostics. Native and external coding/build work overlapped, so this is not quiet performance or scrolling acceptance. See [diagnostic results](evidence/r164-expanded-performance.json).
+
+Native Settings → Replan with an edited expected result saved the new draft version, but the first Generate plan click did not launch planning and left a red instruction to retry after saving. Root traced the synchronous saved-id expectation in start_automation_planning and assigned exact-receipt continuation plus a real one-click live regression to OpenCode. See [native replanning failure](evidence/r164-native-replanning.json). Existing material-confirmation and scrolling rework continue independently.

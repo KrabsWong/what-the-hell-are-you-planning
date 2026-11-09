@@ -364,10 +364,35 @@ print(json.dumps({'type':'text','part':{'text':json.dumps(result)}}),flush=True)
         );
         std::thread::sleep(Duration::from_millis(20));
     }
+    // Resume all is disabled while a session check is in flight and refuses
+    // to queue work. A check launched after the stop marker can finish after
+    // the retry, so wait for the settled state instead of racing it.
+    let settle_deadline = Instant::now() + Duration::from_secs(10);
+    loop {
+        let settled = cx
+            .update_window(handle, |_, w, cx| {
+                app.update(cx, |a, cx| a.poll_runtime(cx));
+                w.render_frame(cx);
+                !app.read(cx).recovery_pending()
+            })
+            .unwrap();
+        if settled {
+            break;
+        }
+        assert!(
+            Instant::now() < settle_deadline,
+            "session checks did not settle before resume"
+        );
+        std::thread::sleep(Duration::from_millis(20));
+    }
     cx.update_window(handle, |_, w, cx| {
         app.update(cx, |a, cx| a.navigate(Scope::Recovery, w, cx));
         w.render_frame(cx);
         w.click("resume-all-projects", cx);
+        assert!(
+            app.read(cx).recovery_pending(),
+            "Resume all must queue recovery work after session checks settle"
+        );
     }).unwrap();
     cx.capture_screenshot(handle)
         .unwrap()
@@ -391,7 +416,17 @@ print(json.dumps({'type':'text','part':{'text':json.dumps(result)}}),flush=True)
         assert!(
             Instant::now() < deadline,
             "resume timed out: {}",
-            cx.update(|cx| app.read(cx).error.clone())
+            cx.update(|cx| {
+                let a = app.read(cx);
+                format!(
+                    "error {:?}; runs {}; checks {:?}; goal states {:?} / {:?}",
+                    a.error,
+                    a.store.runs().len(),
+                    a.recovery.checks,
+                    a.goal_run_state(goals[0].0),
+                    a.goal_run_state(goals[1].0),
+                )
+            })
         );
         std::thread::sleep(Duration::from_millis(20));
     }

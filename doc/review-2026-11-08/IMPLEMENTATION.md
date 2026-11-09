@@ -2691,3 +2691,9 @@ On the r174 native candidate, focused Cmd+K and footer Search open the same sear
 The frozen r174 standalone gate completed all 55 entries: 52 passed, recovery and render-perf failed, and automation-perf retained its original performance-rejected status. All six persistence-performance modes, including xl, completed successfully. The automation-perf result measures the legacy QA-only writer with 43,200 periods and is an out-of-scope latency diagnostic; it is not rewritten as passed. The two functional/harness failures still require explained fixes and independent replacement evidence. See [complete offline ledger](evidence/r178-complete-offline-ledger.json).
 
 Root review of the automation lifecycle repair found a further identity gap: a new unsaved Quick form edited while Enable awaits its durable receipt must adopt the newly created definition id before preserving the newer dirty fields, otherwise the next save can create another definition. This was returned to OpenCode for a bounded repair and regression. Other lifecycle checks reported by OpenCode remain provisional until independently verified.
+
+## r179: recovery QA race resolved independently
+
+Root independently passed the frozen recovery/render candidate: 734 unit tests (two existing ignored tests), all 13 integration/crash tests, and both standalone recovery and render-perf entries. Recovery previously clicked Resume all while a background session check still disabled it. The repair waits for the existing check to settle, asserts the click admitted recovery work, and preserves the original completion assertions and deadline. This checkpoint accepts that bounded recovery QA fix.
+
+The render entry now works against the v4 synthetic fixture, but its final snapshot-reading implementation is still under review; a separate completion will record that source. No whole-release pass is claimed. See [independent evidence](evidence/r179-recovery-verification.json).

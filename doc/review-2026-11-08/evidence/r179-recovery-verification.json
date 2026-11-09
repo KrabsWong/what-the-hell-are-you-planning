@@ -1,0 +1,38 @@
+{
+  "round": "r179",
+  "source_manifest": {
+    "base": "b5163584a120bdcda3a312d9a9bc4938e4ae6c73",
+    "files": {
+      "src/recovery_qa.rs": "9fa79e40e477796e7955a4711d1bcc04c71db2de7bb9509f175b005c5e49bc63",
+      "src/render_qa.rs": "e11f5f1c77e30b0f18238d6f80f7d6775a08165a626d9ec974c3c7b6a6e7905b"
+    }
+  },
+  "binary": {
+    "path": "/Users/fuxingxing/workspaces/what-the-hell-are-you-planning/.local/opencode-dispatch/r179-qa-c0839460bd644b043c569fc1f64b5cf9619fbfcc4924bc8135a2bdc7e1c9cfd7",
+    "sha256": "c0839460bd644b043c569fc1f64b5cf9619fbfcc4924bc8135a2bdc7e1c9cfd7",
+    "source_manifest": ".local/opencode-dispatch/r178-qa-source.json"
+  },
+  "full_suite": {
+    "unit_passed": 734,
+    "ignored": 2,
+    "integration_passed": [
+      8,
+      2,
+      3
+    ],
+    "log": ".local/opencode-dispatch/r178-qa-tests.log"
+  },
+  "focused": [
+    {
+      "flag": "--qa-recovery",
+      "exit_code": 0,
+      "log": ".local/opencode-dispatch/r179--qa-recovery.log"
+    },
+    {
+      "flag": "--qa-render-perf",
+      "exit_code": 0,
+      "log": ".local/opencode-dispatch/r179--qa-render-perf.log"
+    }
+  ],
+  "acceptance": "Recovery QA settled-state repair accepted. Render result passes on the frozen synthetic fixture, but final snapshot implementation remains under review and is not included in this checkpoint. Native and performance gates remain open."
+}

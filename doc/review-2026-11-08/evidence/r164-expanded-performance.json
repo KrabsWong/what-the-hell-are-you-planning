@@ -40,10 +40,15 @@
   },
   "scope": "Expanded actual live operation harness; quiet runtime/native scrolling acceptance is not established. Native app and external coding/build work overlapped.",
   "fixture_sizes": [
-    48,
+    500,
     43200,
     86400
   ],
   "report_scope": "Actual live TaskApp via Some(LiveStartup) + ordered worker; editor save, command-level automation SaveDraft, automation Enable/Pause, settings save, scoped task Undo and indexed first-page path.",
-  "gate_scope": "Per-operation p95 gates use the 43,200-occurrence fixture (fixtures[1]). The 86,400-occurrence fixture is measured for RSS/DB/latency but is not gated by this run."
+  "gate_scope": "Per-operation p95 gates use the 43,200-occurrence fixture (fixtures[1]). The 86,400-occurrence fixture is measured for RSS/DB/latency but is not gated by this run.",
+  "materialized_runs": [
+    20,
+    240,
+    480
+  ]
 }

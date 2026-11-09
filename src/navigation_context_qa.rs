@@ -337,21 +337,24 @@ pub fn run() {
         assert_eq!(
             app.read(cx).selected(),
             Some(id),
-            "row click did not open the task; pending={:?} origins={}",
+            "row click did not open the task; pending={:?} returns={}",
             app.read(cx).navigation.pending_exit,
-            app.read(cx).navigation.origins.len()
+            app.read(cx).return_frames().len()
         );
         assert_eq!(
-            app.read(cx).navigation.origins.len(),
+            app.read(cx).return_frames().len(),
             1,
-            "clicking a row must record one origin"
+            "clicking a row must record one return frame"
         );
-        if let Some(crate::navigation_context::Origin::ResearchList { query, .. }) =
-            app.read(cx).navigation.origins.peek()
+        if let Some(crate::navigation_route::Route::ResearchList(page)) = app
+            .read(cx)
+            .return_frames()
+            .last()
+            .map(|frame| &frame.route)
         {
-            assert_eq!(query, "Row", "captured origin must include the filter");
+            assert_eq!(page.query(), "Row", "captured return frame must include the filter");
         } else {
-            panic!("row drill-down captured the wrong origin");
+            panic!("row drill-down captured the wrong return frame");
         }
         w.click("navigation-back", cx);
         w.render_frame(cx);

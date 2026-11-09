@@ -36,7 +36,7 @@ impl SaveAcceptance {
 }
 
 /// UI-only work that runs after the corresponding write is durable.
-#[derive(Clone, Debug)]
+#[derive(Clone, Debug, PartialEq)]
 pub(crate) enum LiveCompletion {
     None,
     Status(String),
@@ -139,6 +139,14 @@ pub(crate) struct LiveGroup {
     pub completions: Vec<LiveCompletion>,
 }
 
+/// Result of stopping one agent process off the UI thread.
+pub(crate) struct StoppedRun {
+    pub id: u64,
+    pub stopped: bool,
+    pub events: Vec<crate::opencode::Event>,
+    pub had_error: bool,
+}
+
 #[derive(Clone, Debug)]
 pub(crate) enum DeferredUiAction {
     ClearComment { task: u64, body: String },
@@ -153,6 +161,29 @@ pub(crate) const MAX_LIVE_FOLLOWUP_GROUPS: usize = 16;
 /// new actions instead of growing an unbounded effect queue.
 pub(crate) const MAX_RETAINED_COMPLETIONS: usize = 256;
 pub(crate) const MAX_RETAINED_COMPLETION_BYTES: usize = 256 * 1024;
+
+fn followup_usage(groups: &std::collections::VecDeque<LiveGroup>) -> (usize, usize) {
+    let mut count = 0usize;
+    let mut bytes = 0usize;
+    for group in groups {
+        for completion in &group.completions {
+            count = count.saturating_add(1);
+            bytes = bytes.saturating_add(completion.estimated_bytes());
+        }
+    }
+    (count, bytes)
+}
+
+fn followup_has_capacity(
+    groups: &std::collections::VecDeque<LiveGroup>,
+    estimate_bytes: usize,
+) -> bool {
+    let (count, bytes) = followup_usage(groups);
+    let needs_group = !groups.iter().any(|group| group.generation == 0);
+    count < MAX_RETAINED_COMPLETIONS
+        && bytes.saturating_add(estimate_bytes) <= MAX_RETAINED_COMPLETION_BYTES
+        && (!needs_group || groups.len() < MAX_LIVE_FOLLOWUP_GROUPS)
+}
 
 impl LiveCompletion {
     fn is_effect(&self) -> bool {
@@ -244,8 +275,15 @@ impl TaskApp {
     /// dirty follow-up has been acknowledged.
     pub(crate) fn live_needs_pump(&self) -> bool {
         self.live_persistence_active()
-            && (self.live_has_pending_receipts()
+            && (self
+                .dispatch_admission
+                .as_ref()
+                .is_some_and(|adapter| {
+                    !adapter.is_started() && adapter.startup_error().is_none()
+                })
+                || self.live_has_pending_receipts()
                 || self.live_has_deferred_runtime()
+                || self.history_needs_pump()
                 || (self.store.has_tracked_changes() && self.live_failure.is_none()))
     }
 
@@ -298,15 +336,7 @@ impl TaskApp {
     /// (generation 0) group accepts additional completions without consuming a
     /// new slot.
     fn retained_completion_usage(&self) -> (usize, usize) {
-        let mut count = 0usize;
-        let mut bytes = 0usize;
-        for group in &self.live_followups {
-            for completion in &group.completions {
-                count = count.saturating_add(1);
-                bytes = bytes.saturating_add(completion.estimated_bytes());
-            }
-        }
-        (count, bytes)
+        followup_usage(&self.live_followups)
     }
 
     /// Reserve capacity for one more auxiliary continuation before any Store
@@ -316,12 +346,7 @@ impl TaskApp {
         if !self.live_persistence_active() {
             return Ok(());
         }
-        let (count, bytes) = self.retained_completion_usage();
-        let needs_group = !self.live_followups.iter().any(|group| group.generation == 0);
-        if count >= MAX_RETAINED_COMPLETIONS
-            || bytes.saturating_add(estimate_bytes) > MAX_RETAINED_COMPLETION_BYTES
-            || (needs_group && self.live_followups.len() >= MAX_LIVE_FOLLOWUP_GROUPS)
-        {
+        if !followup_has_capacity(&self.live_followups, estimate_bytes) {
             return Err(
                 "Persistence is still confirming earlier changes. This action was not applied; retry when the workspace is saved."
                     .into(),
@@ -637,6 +662,14 @@ impl TaskApp {
         {
             let _ = self.submit_pending_followups(Some(cx));
         }
+        if !self.store.has_tracked_changes()
+            && self.live_primary.is_none()
+            && self.live_followups.is_empty()
+            && let Some(path) = self.live_recovery_path.take()
+        {
+            // The recovered sidecar is now durable in the database.
+            let _ = crate::persistence_live::clear_recovery(&path);
+        }
         cx.notify();
     }
 
@@ -668,6 +701,25 @@ impl TaskApp {
         self.storage_error = reason;
         self.live_retry_at = Some(std::time::Instant::now() + std::time::Duration::from_millis(300));
         cx.notify();
+    }
+
+    /// Reattach the ordered worker after an attachment failure. The v4
+    /// workspace stays read-only (never a legacy write) until this succeeds.
+    pub(crate) fn retry_live_attachment(&mut self, cx: &mut Context<Self>) -> Result<(), String> {
+        let Some((path, root, incarnation)) = self.live_attach.clone() else {
+            return Err("This workspace has no incremental persistence target.".into());
+        };
+        let intent_path = path.with_extension("dispatch-intents.json");
+        self.dispatch_admission = None;
+        self.attach_dispatch_admission(&path, &root, incarnation, intent_path)?;
+        self.live_save_enabled = true;
+        self.live_workspace = Some(incarnation);
+        self.live_failure = None;
+        self.live_retry_at = None;
+        self.storage_error.clear();
+        let _ = self.persist_live_followup();
+        self.start_pump(cx);
+        Ok(())
     }
 
     /// Replay one-shot runtime callbacks once continuation capacity frees.
@@ -719,12 +771,621 @@ impl TaskApp {
         }
     }
 
+    pub(crate) fn start_history_reader(&mut self, path: &std::path::Path, root: &std::path::Path, incarnation: u64) {
+        match crate::history_reader::HistoryReader::start(path, root, incarnation) {
+            Ok(reader) => self.history_reader = Some(reader),
+            Err(error) => {
+                self.storage_error = format!(
+                    "Indexed history and lazy report loading are unavailable; the workspace remains readable from the loaded copy: {error}"
+                );
+            }
+        }
+    }
+
+    pub(crate) fn current_history_automation(&self) -> Option<u64> {
+        self.automation_detail_id().or(self.automation_ui.selected)
+    }
+
+    fn next_history_request(&mut self) -> u64 {
+        self.history_request_seq = self.history_request_seq.wrapping_add(1).max(1);
+        self.history_request_seq
+    }
+
+    pub(crate) fn request_history_page(&mut self, automation: u64, cx: &mut Context<Self>) {
+        let (cursor, watermark, reset) = self
+            .history_cache
+            .get(&automation)
+            .map(|cache| (cache.next.clone(), cache.watermark, cache.rows.is_empty()))
+            .unwrap_or((None, None, true));
+        let request_id = self.next_history_request();
+        let result = match self.history_reader.as_ref() {
+            Some(reader) => {
+                reader.request_page(request_id, automation, cursor, watermark, 20)
+            }
+            None => return,
+        };
+        match result {
+            Ok(()) => {
+                let cache = self.history_cache.entry(automation).or_default();
+                cache.state = crate::history_reader::HistoryLoad::Loading { request_id };
+                cache.reset = reset;
+                cx.notify();
+            }
+            Err(error) => {
+                let cache = self.history_cache.entry(automation).or_default();
+                cache.state = crate::history_reader::HistoryLoad::Failed {
+                    error,
+                    retry_at: std::time::Instant::now()
+                        + std::time::Duration::from_secs(2),
+                };
+            }
+        }
+    }
+
+    pub(crate) fn load_more_automation_history(
+        &mut self,
+        automation: u64,
+        cx: &mut Context<Self>,
+    ) {
+        let can = self
+            .history_cache
+            .get(&automation)
+            .is_some_and(|cache| {
+                cache.next.is_some()
+                    && !matches!(
+                        cache.state,
+                        crate::history_reader::HistoryLoad::Loading { .. }
+                    )
+            });
+        if can {
+            self.request_history_page(automation, cx);
+        }
+    }
+
+    /// True while indexed history or a lazy body is still expected. Keeps the
+    /// bounded pump alive only until the reader answers, then lets it idle.
+    pub(crate) fn history_needs_pump(&self) -> bool {
+        if self.history_reader.is_none() {
+            return false;
+        }
+        if let Some(run_id) = self.displayed_run_id()
+            && self
+                .store
+                .runs()
+                .iter()
+                .find(|run| run.id == run_id)
+                .is_some_and(|run| run.output.is_empty())
+            && !self.run_body_state.contains_key(&run_id)
+        {
+            return true;
+        }
+        if self.run_body_state.values().any(|state| {
+            matches!(
+                state,
+                crate::history_reader::BodyLoad::Loading { .. }
+                    | crate::history_reader::BodyLoad::NotRequested
+            ) || matches!(
+                state,
+                crate::history_reader::BodyLoad::Failed { retry_at, .. }
+                    if *retry_at <= std::time::Instant::now()
+            )
+        }) {
+            return true;
+        }
+        if let Some(automation) = self.current_history_automation() {
+            return match self.history_cache.get(&automation) {
+                None => true,
+                Some(cache) => matches!(
+                    &cache.state,
+                    crate::history_reader::HistoryLoad::NotRequested
+                        | crate::history_reader::HistoryLoad::Loading { .. }
+                ) || matches!(
+                    &cache.state,
+                    crate::history_reader::HistoryLoad::Failed { retry_at, .. }
+                        if *retry_at <= std::time::Instant::now()
+                ),
+            };
+        }
+        false
+    }
+
+    /// Bounded poll of indexed pages and lazy report bodies. Never blocks.
+    pub(crate) fn poll_history_io(&mut self, cx: &mut Context<Self>) {
+        let mut changed = false;
+        if let Some(reader) = self.history_reader.as_mut() {
+            for response in reader.poll(8) {
+                changed = true;
+                match response {
+                    crate::history_reader::ReaderResponse::Page {
+                        request_id,
+                        automation,
+                        result,
+                    } => {
+                        let Some(cache) = self.history_cache.get_mut(&automation) else {
+                            continue;
+                        };
+                        if !matches!(
+                            cache.state,
+                            crate::history_reader::HistoryLoad::Loading {
+                                request_id: active
+                            } if active == request_id
+                        ) {
+                            // A stale response for an older cursor/reset must not
+                            // overwrite or clear the newer request.
+                            continue;
+                        }
+                        match result {
+                            Ok(page) => {
+                                if matches!(
+                                    page.contract,
+                                    crate::sqlite_v4::PageContract::Invalidated { .. }
+                                ) {
+                                    // Concurrent insert/retry changed activity after
+                                    // the watermark: restart from page one rather
+                                    // than silently skipping a row.
+                                    self.history_cache.insert(
+                                        automation,
+                                        crate::history_reader::HistoryCache::default(),
+                                    );
+                                    self.request_history_page(automation, cx);
+                                    continue;
+                                }
+                                if let crate::sqlite_v4::PageContract::Stable { watermark } =
+                                    page.contract
+                                {
+                                    cache.watermark = Some(watermark);
+                                }
+                                cache.total = page.total;
+                                if cache.reset {
+                                    cache.rows.clear();
+                                }
+                                for row in page.rows {
+                                    if let Some(existing) =
+                                        cache.rows.iter_mut().find(|existing| existing.id == row.id)
+                                    {
+                                        *existing = row;
+                                    } else {
+                                        cache.rows.push(row);
+                                    }
+                                }
+                                cache.rows.sort_by(|a, b| {
+                                    b.activity_utc
+                                        .cmp(&a.activity_utc)
+                                        .then(b.activity_rank.cmp(&a.activity_rank))
+                                        .then(b.id.cmp(&a.id))
+                                });
+                                cache.next = page.next;
+                                cache.state = if cache.rows.is_empty() {
+                                    crate::history_reader::HistoryLoad::LoadedEmpty
+                                } else {
+                                    crate::history_reader::HistoryLoad::Loaded
+                                };
+                            }
+                            Err(error) => {
+                                cache.state = crate::history_reader::HistoryLoad::Failed {
+                                    error,
+                                    retry_at: std::time::Instant::now()
+                                        + std::time::Duration::from_secs(2),
+                                };
+                            }
+                        }
+                    }
+                    crate::history_reader::ReaderResponse::Body {
+                        request_id,
+                        run_id,
+                        result,
+                    } => {
+                        let matches_loading = matches!(
+                            self.run_body_state.get(&run_id),
+                            Some(crate::history_reader::BodyLoad::Loading {
+                                request_id: active
+                            }) if *active == request_id
+                        );
+                        if !matches_loading {
+                            continue;
+                        }
+                        match result {
+                            Ok(Some(body)) if !body.is_empty() => {
+                                self.store.hydrate_run_body(run_id, body);
+                                self.run_body_state
+                                    .insert(run_id, crate::history_reader::BodyLoad::Loaded);
+                            }
+                            Ok(_) => {
+                                self.run_body_state
+                                    .insert(run_id, crate::history_reader::BodyLoad::Absent);
+                            }
+                            Err(error) => {
+                                self.run_body_state.insert(
+                                    run_id,
+                                    crate::history_reader::BodyLoad::Failed {
+                                        error,
+                                        retry_at: std::time::Instant::now()
+                                            + std::time::Duration::from_secs(2),
+                                    },
+                                );
+                            }
+                        }
+                    }
+                }
+            }
+        }
+        // Start only missing/expired-retry requests; loaded/empty/absent states
+        // are terminal and never re-request on every poll.
+        if let Some(automation) = self.current_history_automation() {
+            let request = match self.history_cache.get(&automation) {
+                None => true,
+                Some(cache) => matches!(
+                    cache.state,
+                    crate::history_reader::HistoryLoad::NotRequested
+                ) || matches!(
+                    cache.state,
+                    crate::history_reader::HistoryLoad::Failed { retry_at, .. }
+                        if retry_at <= std::time::Instant::now()
+                ),
+            };
+            if request {
+                self.request_history_page(automation, cx);
+            }
+        }
+        if let Some(run_id) = self.displayed_run_id() {
+            let has_body = self
+                .store
+                .runs()
+                .iter()
+                .find(|run| run.id == run_id)
+                .is_some_and(|run| !run.output.is_empty());
+            if !has_body {
+                let request = match self.run_body_state.get(&run_id) {
+                    None => true,
+                    Some(crate::history_reader::BodyLoad::NotRequested) => true,
+                    Some(crate::history_reader::BodyLoad::Failed { retry_at, .. }) => {
+                        retry_at <= &std::time::Instant::now()
+                    }
+                    Some(
+                        crate::history_reader::BodyLoad::Loading { .. }
+                        | crate::history_reader::BodyLoad::Loaded
+                        | crate::history_reader::BodyLoad::Absent,
+                    ) => false,
+                };
+                if request {
+                    let request_id = self.next_history_request();
+                    let sent = self
+                        .history_reader
+                        .as_ref()
+                        .is_some_and(|reader| reader.request_body(request_id, run_id).is_ok());
+                    self.run_body_state.insert(
+                        run_id,
+                        if sent {
+                            crate::history_reader::BodyLoad::Loading { request_id }
+                        } else {
+                            crate::history_reader::BodyLoad::Failed {
+                                error: "history reader is busy".into(),
+                                retry_at: std::time::Instant::now()
+                                    + std::time::Duration::from_secs(2),
+                            }
+                        },
+                    );
+                }
+            }
+        }
+        if changed {
+            cx.notify();
+        }
+    }
+
+    /// Everything that could still be lost on an immediate normal quit.
+    pub(crate) fn live_clean_for_quit(&self) -> bool {
+        if !self.live_persistence_active() {
+            // An unavailable incremental backend must not be treated as a
+            // successfully saved workspace while dirty edits are retained.
+            return !self.live_required && !self.store.has_tracked_changes();
+        }
+        !self.store.has_tracked_changes()
+            && self.live_primary.is_none()
+            && self.live_followups.is_empty()
+            && !self.live_has_deferred_runtime()
+            && !self
+                .dispatch_admission
+                .as_ref()
+                .is_some_and(|adapter| adapter.live_pending())
+    }
+
+    /// Start a nonblocking graceful quit. Process stopping and persistence both
+    /// run off the UI thread; the window stays open until every accepted write
+    /// is durable or a recoverable failure is reported.
+    pub(crate) fn begin_graceful_quit(
+        &mut self,
+        sender: std::sync::mpsc::Sender<bool>,
+        cx: &mut Context<Self>,
+    ) {
+        if self.quit_requested {
+            return;
+        }
+        self.quit_requested = true;
+        self.quit_sender = Some(sender);
+        self.begin_quit_shutdown(cx);
+        // Idle/clean/queued-only sessions have no stop worker; still run the
+        // drain check so the quit completes instead of waiting forever.
+        self.finish_live_quit_drain(cx);
+        self.start_pump(cx);
+        self.toast = "Saving before quitting…".into();
+        cx.notify();
+    }
+
+    fn begin_quit_shutdown(&mut self, cx: &mut Context<Self>) {
+        self.cancel_automation_timer();
+        self.research_sequences.clear();
+        for (id, _) in std::mem::take(&mut self.queued_runs) {
+            if let Some(mut run) = self.store.run_mut(id) {
+                run.status = "Interrupted".into();
+                run.ended_at = Some(crate::opencode::timestamp());
+            }
+        }
+        if self.quit_stopping.is_some() || self.active_runs.is_empty() {
+            return;
+        }
+        let runs = std::mem::take(&mut self.active_runs);
+        let (tx, rx) = std::sync::mpsc::channel();
+        std::thread::Builder::new()
+            .name("t14-quit-stop".into())
+            .spawn(move || {
+                let stopped = runs
+                    .into_iter()
+                    .map(|mut active| {
+                        let (stopped, events) =
+                            active.handle.stop_and_wait(std::time::Duration::from_secs(5));
+                        StoppedRun {
+                            id: active.id,
+                            stopped,
+                            events,
+                            had_error: active.had_error,
+                        }
+                    })
+                    .collect();
+                let _ = tx.send(stopped);
+            })
+            .ok();
+        self.quit_stopping = Some(rx);
+        self.start_pump(cx);
+    }
+
+    fn poll_quit_stopping(&mut self) {
+        let Some(rx) = self.quit_stopping.as_ref() else {
+            return;
+        };
+        let Ok(results) = rx.try_recv() else {
+            return;
+        };
+        self.quit_stopping = None;
+        for mut result in results {
+            if let Some(mut run) = self.store.run_mut(result.id) {
+                let finished = crate::app::record_events(
+                    &mut *run,
+                    &mut result.had_error,
+                    std::mem::take(&mut result.events),
+                );
+                if !result.stopped {
+                    run.logs.push(
+                        "[warning] Process cleanup timed out after requesting termination.".into(),
+                    );
+                }
+                if (!finished || run.status == "Cancelled") && run.status != "Blocked" {
+                    run.status = "Interrupted".into();
+                    run.ended_at = Some(crate::opencode::timestamp());
+                    run.logs.push("[interrupted] Application closed before a final result was received; process termination was requested.".into());
+                }
+            }
+            self.finalize_research_run_without_ui(result.id);
+        }
+    }
+
+    /// Veto a platform close until the live writes are durable. Called from the
+    /// window's should-close handler on the UI thread.
+    pub(crate) fn can_close_window(&mut self, cx: &mut Context<Self>) -> bool {
+        if self.live_clean_for_quit()
+            && self.active_runs.is_empty()
+            && self.quit_stopping.is_none()
+            && !self.live_has_deferred_runtime()
+        {
+            return true;
+        }
+        self.window_close_requested = true;
+        self.begin_quit_shutdown(cx);
+        let _ = self.persist_live_followup();
+        if let Some(pending) = self.live_primary.as_ref()
+            && pending.generation == 0
+        {
+            let _ = self.submit_primary_group(Some(cx));
+        } else if self.live_followups.iter().any(|group| group.generation == 0) {
+            let _ = self.submit_pending_followups(Some(cx));
+        }
+        self.start_pump(cx);
+        self.toast = "Saving before closing…".into();
+        cx.notify();
+        false
+    }
+
+    /// Called from the pump. Completes the graceful quit/close exactly once.
+    pub(crate) fn finish_live_quit_drain(&mut self, cx: &mut Context<Self>) {
+        self.poll_quit_stopping();
+        if !self.quit_requested && !self.window_close_requested {
+            return;
+        }
+        if self.quit_stopping.is_some() {
+            return;
+        }
+        if self.live_required && !self.live_persistence_active() {
+            // Fail closed: attempt one nonblocking reattach, otherwise report a
+            // recoverable failure and keep the window open.
+            if self.retry_live_attachment(cx).is_err() {
+                self.quit_requested = false;
+                self.window_close_requested = false;
+                self.window_close_ready = false;
+                if let Some(sender) = self.quit_sender.take() {
+                    let _ = sender.send(false);
+                }
+                self.error = self.storage_error.clone();
+                self.toast = "Not closed · persistence is unavailable".into();
+                cx.notify();
+                return;
+            }
+        }
+        let _ = self.persist_live_followup();
+        if let Some(pending) = self.live_primary.as_ref()
+            && pending.generation == 0
+        {
+            let _ = self.submit_primary_group(Some(cx));
+        }
+        if self.live_followups.iter().any(|group| group.generation == 0) {
+            let _ = self.submit_pending_followups(Some(cx));
+        }
+        if self.live_clean_for_quit() {
+            self.quit_requested = false;
+            self.window_close_requested = false;
+            if self.window_close_registered {
+                // The window handler observes this in render and removes the
+                // window; clearing the request without closing would strand it.
+                self.window_close_ready = true;
+            }
+            if let Some(sender) = self.quit_sender.take() {
+                let _ = sender.send(true);
+            }
+            cx.notify();
+            return;
+        }
+        if let Some(reason) = self.live_failure.clone() {
+            self.quit_requested = false;
+            self.window_close_requested = false;
+            self.window_close_ready = false;
+            if let Some(sender) = self.quit_sender.take() {
+                let _ = sender.send(false);
+            }
+            self.error = format!(
+                "The workspace was not fully saved; the window stays open so you can retry. {reason}"
+            );
+            self.toast = "Not closed · a save is still failing".into();
+            cx.notify();
+        }
+    }
+
+    /// Platform/menu termination cannot be cancelled by GPUI (the quit future
+    /// is polled for 200 ms). This emergency path requests process cancellation
+    /// without waiting and writes a durable typed recovery sidecar so the next
+    /// start reapplies anything that was not acknowledged.
+    pub(crate) fn emergency_shutdown(&mut self) {
+        self.cancel_automation_timer();
+        self.research_sequences.clear();
+        for active in std::mem::take(&mut self.active_runs) {
+            active.handle.cancel();
+            if let Some(mut run) = self.store.run_mut(active.id) {
+                if !matches!(run.status.as_str(), "Succeeded" | "Failed" | "Blocked") {
+                    run.status = "Interrupted".into();
+                    run.ended_at = Some(crate::opencode::timestamp());
+                }
+            }
+        }
+        for (id, _) in std::mem::take(&mut self.queued_runs) {
+            if let Some(mut run) = self.store.run_mut(id) {
+                run.status = "Interrupted".into();
+                run.ended_at = Some(crate::opencode::timestamp());
+            }
+        }
+        if let Some(storage) = self.storage.as_ref()
+            && let Some(incarnation) = self.live_workspace
+        {
+            let mut groups = Vec::new();
+            let mut durable_generation = 0;
+            if let Some(adapter) = self.dispatch_admission.as_ref() {
+                durable_generation = adapter.durable_generation();
+                for group in adapter.live_snapshot() {
+                    let intent_hash = crate::sqlite_v4::SqliteV4::group_intent_hash(&group)
+                        .unwrap_or_default();
+                    groups.push(crate::persistence_live::RecoveryGroup {
+                        generation: group.generation(),
+                        intent_hash,
+                        changes: group.changes().to_vec(),
+                        metadata: group.metadata().to_vec(),
+                        effects: group.effects().to_vec(),
+                    });
+                }
+            }
+            if let Ok(delta) = self.store.drain_store_delta() {
+                // Accepted groups are still tracked dirty until their receipt.
+                // Keep only tail values that differ from the latest accepted
+                // payload for the same key/field; duplicating an accepted group
+                // as generation zero would let an old snapshot overwrite a
+                // later durable edit after a crash.
+                let mut latest_changes = std::collections::HashMap::new();
+                let mut latest_metadata = std::collections::HashMap::new();
+                for group in &groups {
+                    for change in &group.changes {
+                        latest_changes.insert(change.key(), change.clone());
+                    }
+                    for metadata in &group.metadata {
+                        latest_metadata.insert(metadata.field(), metadata.clone());
+                    }
+                }
+                let changes: Vec<_> = delta
+                    .changes
+                    .into_iter()
+                    .filter(|change| {
+                        latest_changes.get(&change.key()) != Some(change)
+                    })
+                    .collect();
+                let metadata: Vec<_> = delta
+                    .metadata
+                    .into_iter()
+                    .filter(|metadata| {
+                        latest_metadata.get(metadata.field()) != Some(metadata)
+                    })
+                    .collect();
+                if !changes.is_empty() || !metadata.is_empty() {
+                    groups.push(crate::persistence_live::RecoveryGroup {
+                        generation: 0,
+                        intent_hash: String::new(),
+                        changes,
+                        metadata,
+                        effects: Vec::new(),
+                    });
+                }
+            }
+            let snapshot_id = format!(
+                "{}-{}-{}",
+                incarnation,
+                std::process::id(),
+                std::time::SystemTime::now()
+                    .duration_since(std::time::UNIX_EPOCH)
+                    .map(|value| value.as_nanos())
+                    .unwrap_or_default(),
+            );
+            let plan = crate::persistence_live::RecoveryPlan {
+                snapshot_id,
+                incarnation,
+                durable_generation,
+                groups,
+            };
+            if let Err(error) =
+                crate::persistence_live::write_recovery(storage.path(), &plan)
+            {
+                self.storage_error = format!(
+                    "Emergency recovery snapshot could not be written; unacknowledged changes may be lost: {error}"
+                );
+                eprintln!("{}", self.storage_error);
+            }
+        }
+        let _ = self.persist_live_followup();
+    }
+
     /// A workspace switch owns a new incarnation. Drop every old continuation
     /// and in-flight correlation before the new worker is attached; an old
     /// adapter/ACK must never complete a form in the new workspace.
     pub(crate) fn reset_live_state(&mut self) {
         self.live_primary = None;
         self.live_followups.clear();
+        self.history_reader = None;
+        self.history_cache.clear();
+        self.run_body_state.clear();
+        self.history_request_seq = 0;
         self.live_deferred_runs.clear();
         self.live_deferred_after_run.clear();
         self.live_deferred_recovery = false;
@@ -1041,5 +1702,64 @@ impl TaskApp {
     /// form even if the text and destination happen to be equal.
     pub(crate) fn bump_planning_form_epoch(&mut self) {
         self.planning_form_epoch = self.planning_form_epoch.wrapping_add(1).max(1);
+    }
+}
+
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    fn group(completions: Vec<LiveCompletion>) -> LiveGroup {
+        LiveGroup {
+            generation: 0,
+            epoch: 1,
+            workspace: 7,
+            completions,
+        }
+    }
+
+    #[test]
+    fn distinct_enqueue_ids_are_retained_verbatim() {
+        let a = LiveCompletion::EnqueueNext { occurrence: 11 };
+        let b = LiveCompletion::EnqueueNext { occurrence: 22 };
+        let group = group(vec![a.clone(), b.clone()]);
+        assert_eq!(group.completions, vec![a, b]);
+    }
+
+    #[test]
+    fn distinct_clear_stop_intents_are_retained_verbatim() {
+        let a = LiveCompletion::ClearStopIntent {
+            occurrence: 11,
+            resume_recovery: true,
+        };
+        let b = LiveCompletion::ClearStopIntent {
+            occurrence: 22,
+            resume_recovery: false,
+        };
+        let group = group(vec![a.clone(), b.clone()]);
+        assert_eq!(group.completions, vec![a, b]);
+    }
+
+    #[test]
+    fn capacity_bounds_total_retained_completions_not_just_groups() {
+        let completions: Vec<_> = (0..MAX_RETAINED_COMPLETIONS)
+            .map(|id| LiveCompletion::EnqueueNext { occurrence: id as u64 })
+            .collect();
+        let mut groups = std::collections::VecDeque::new();
+        groups.push_back(group(completions));
+        assert!(!followup_has_capacity(&groups, 0));
+        assert!(followup_has_capacity(&groups, 0) == false);
+    }
+
+    #[test]
+    fn capacity_bounds_bytes_and_allows_pending_group_append() {
+        let text = "x".repeat(MAX_RETAINED_COMPLETION_BYTES);
+        let mut groups = std::collections::VecDeque::new();
+        groups.push_back(group(vec![LiveCompletion::Status(text)]));
+        assert!(!followup_has_capacity(&groups, 1));
+        let mut appended = std::collections::VecDeque::new();
+        appended.push_back(group(Vec::new()));
+        assert!(followup_has_capacity(&appended, MAX_RETAINED_COMPLETION_BYTES));
     }
 }

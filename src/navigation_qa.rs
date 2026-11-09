@@ -148,6 +148,47 @@ fn fixture() -> (Store, Fixture) {
     )
 }
 
+fn verify_structural_paths(
+    cx: &mut HeadlessAppContext,
+    app: &Entity<TaskApp>,
+    handle: AnyWindowHandle,
+    fixture: &Fixture,
+) {
+    cx.update_window(handle, |_, w, cx| {
+        app.update(cx, |a, cx| {
+            a.structural_navigation();
+            a.navigate(crate::app::Scope::Settings, w, cx);
+            let (links, current) = a.navigation_path();
+            assert!(links.is_empty(), "Settings is not a Research child");
+            assert_eq!(current, "Settings");
+
+            a.structural_navigation();
+            a.navigate(crate::app::Scope::AutomationRuns, w, cx);
+            let (links, current) = a.navigation_path();
+            assert_eq!(
+                links.first().map(|(_, title, _)| title.as_str()),
+                Some("Automations"),
+                "Automation results belong to Automations"
+            );
+            assert_eq!(current, "Automation results");
+
+            a.open_occurrence_result(fixture.first_period, w, cx);
+            assert_eq!(a.period_overlay(), Some(fixture.first_period));
+            a.close_occurrence_result(w, cx);
+            assert_eq!(a.scope(), crate::app::Scope::AutomationRuns);
+            a.go_back(w, cx);
+            assert_eq!(
+                a.scope(),
+                crate::app::Scope::Automations,
+                "Automation results fall back to Automations, never Research"
+            );
+            a.open_task(fixture.first_steps[0], w, cx);
+            cx.notify();
+        });
+    })
+    .unwrap();
+}
+
 pub fn run() {
     let root = std::env::temp_dir().join(format!("planning-navigation-qa-{}", std::process::id()));
     std::fs::create_dir_all(&root).unwrap();
@@ -182,6 +223,7 @@ pub fn run() {
     let handle: AnyWindowHandle = window.into();
 
     exercise(&mut cx, &app, handle, &fixture, "light");
+    verify_structural_paths(&mut cx, &app, handle, &fixture);
     screenshot(&mut cx, handle, &root, "navigation-light.png");
     cx.update_window(handle, |_, w, cx| {
         Theme::change(ThemeMode::Dark, Some(w), cx);
@@ -189,6 +231,7 @@ pub fn run() {
     })
     .unwrap();
     exercise(&mut cx, &app, handle, &fixture, "dark");
+    verify_structural_paths(&mut cx, &app, handle, &fixture);
     screenshot(&mut cx, handle, &root, "navigation-dark.png");
     println!("Sidebar navigation QA passed · {}", root.display());
 }

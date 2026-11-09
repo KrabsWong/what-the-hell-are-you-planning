@@ -247,6 +247,16 @@ impl<T> TrackedVec<T> {
         }
     }
 
+    /// Replace one item without marking a change. Only for hydrating a value
+    /// that is already durable (for example a lazily fetched report body).
+    pub(crate) fn set_clean(&mut self, index: usize, apply: impl FnOnce(&mut T)) -> bool {
+        let Some(item) = self.items.get_mut(index) else {
+            return false;
+        };
+        apply(item);
+        true
+    }
+
     pub(crate) fn epoch(&self) -> u64 {
         self.dirty.epoch
     }

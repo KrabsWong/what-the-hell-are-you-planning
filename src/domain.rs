@@ -414,6 +414,8 @@ pub struct Store {
     automation_occurrences: TrackedVec<crate::automation::AutomationOccurrence>,
     #[serde(default)]
     report_publishing: TrackedScalar<crate::report_publish::PublishingConfig>,
+    #[serde(default)]
+    recovery_snapshot: TrackedScalar<String>,
     #[serde(default = "publication_tracked", deserialize_with = "deserialize_publications")]
     publications: TrackedList<crate::report_publish::Publication>,
     #[serde(default = "task_tracked", deserialize_with = "deserialize_tasks")]
@@ -525,6 +527,12 @@ impl Store {
     pub fn report_publishing(&self) -> &crate::report_publish::PublishingConfig {
         self.report_publishing.get()
     }
+    pub fn recovery_snapshot(&self) -> &String {
+        self.recovery_snapshot.get()
+    }
+    pub fn set_recovery_snapshot(&mut self, value: String) {
+        self.recovery_snapshot.set(value);
+    }
 
     /// Every human-facing project picker and navigation list uses this view.
     pub fn visible_projects(&self) -> impl Iterator<Item = &Project> {
@@ -600,6 +608,7 @@ impl Store {
             automations: automation_tracked(),
             automation_occurrences: occurrence_tracked(),
             report_publishing: TrackedScalar::new(Default::default()),
+            recovery_snapshot: TrackedScalar::new(String::new()),
             publications: publication_tracked(),
             tasks: task_tracked(),
             projects: project_tracked(),
@@ -1386,6 +1395,11 @@ impl Store {
                 self.report_publishing.get().clone(),
             ));
         }
+        if self.recovery_snapshot.is_dirty() {
+            deltas.push(MetadataDelta::RecoverySnapshot(
+                self.recovery_snapshot.get().clone(),
+            ));
+        }
         deltas
     }
 
@@ -1535,6 +1549,7 @@ impl Store {
             MetadataDelta::ResearchRequests(value) => self.replace_requests(value),
             MetadataDelta::Publications(value) => self.replace_publications(value),
             MetadataDelta::PublishingConfig(value) => self.set_report_publishing(value),
+            MetadataDelta::RecoverySnapshot(value) => self.set_recovery_snapshot(value),
         }
     }
 
@@ -1562,6 +1577,7 @@ impl Store {
             self.research_config.epoch(),
             self.active_model_profile.epoch(),
             self.report_publishing.epoch(),
+            self.recovery_snapshot.epoch(),
         ] {
             epoch = epoch.saturating_add(scalar);
         }
@@ -1600,6 +1616,15 @@ impl Store {
         }
     }
 
+    /// Install a report body fetched from durable storage without creating a
+    /// dirty write. The body already exists on disk; only the UI copy was lazy.
+    pub(crate) fn hydrate_run_body(&mut self, run_id: u64, body: String) -> bool {
+        let Some(index) = self.runs().iter().position(|run| run.id == run_id) else {
+            return false;
+        };
+        self.runs.set_clean(index, |run| run.output = body)
+    }
+
     pub(crate) fn drain_metadata_deltas(
         &mut self,
     ) -> Vec<crate::persistence_journal::MetadataDelta> {
@@ -1623,6 +1648,7 @@ impl Store {
             || self.active_model_profile.is_dirty()
             || self.publications.is_dirty()
             || self.report_publishing.is_dirty()
+            || self.recovery_snapshot.is_dirty()
     }
 
     pub(crate) fn clear_metadata_dirty(&mut self) {
@@ -1640,6 +1666,7 @@ impl Store {
         self.active_model_profile.clear_dirty();
         self.publications.clear_dirty();
         self.report_publishing.clear_dirty();
+        self.recovery_snapshot.clear_dirty();
     }
 
     /// Acknowledged durable write: every pending entity and metadata change is
@@ -1832,6 +1859,7 @@ impl Store {
             }
             MetadataDelta::Publications(value) => self.publications.load(value),
             MetadataDelta::PublishingConfig(value) => self.report_publishing.load(value),
+            MetadataDelta::RecoverySnapshot(value) => self.recovery_snapshot.load(value),
         }
     }
 

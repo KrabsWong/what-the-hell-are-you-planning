@@ -11,8 +11,8 @@ use std::{
 
 pub struct ActiveRun {
     pub id: u64,
-    handle: opencode::Running,
-    had_error: bool,
+    pub(crate) handle: opencode::Running,
+    pub(crate) had_error: bool,
 }
 pub enum AttachmentImport {
     Progress(String),
@@ -386,6 +386,10 @@ pub struct TaskApp {
     /// Ordinary and command writes are submitted as typed groups to the existing
     /// bounded persistence worker; the legacy writer is never used in this mode.
     pub(crate) live_save_enabled: bool,
+    /// A v4 workspace was selected. Legacy writes must never be used, even if
+    /// the worker failed to attach; the backend stays unavailable until retry.
+    pub(crate) live_required: bool,
+    pub(crate) live_attach: Option<(PathBuf, PathBuf, u64)>,
     pub(crate) live_save_inflight_epoch: Option<u64>,
     pub(crate) live_command_generation: Option<u64>,
     pub(crate) live_command_applying: bool,
@@ -407,6 +411,26 @@ pub struct TaskApp {
     pub(crate) live_deferred_runs: std::collections::VecDeque<u64>,
     pub(crate) live_deferred_after_run: std::collections::VecDeque<(u64, u64)>,
     pub(crate) live_deferred_recovery: bool,
+    /// Graceful quit/close: the worker and lock stay alive until every accepted
+    /// mutation is durable. The window is not closed on failure.
+    pub(crate) quit_requested: bool,
+    pub(crate) quit_sender: Option<std::sync::mpsc::Sender<bool>>,
+    pub(crate) quit_stopping: Option<
+        std::sync::mpsc::Receiver<Vec<crate::live_save_app::StoppedRun>>,
+    >,
+    pub(crate) window_close_requested: bool,
+    pub(crate) window_close_ready: bool,
+    pub(crate) window_close_registered: bool,
+    pub(crate) pending_workspace_switch: Option<Storage>,
+    /// Sidecar that must be removed after its recovered delta is durable.
+    pub(crate) live_recovery_path: Option<PathBuf>,
+    /// T15 off-thread indexed history and on-demand report bodies.
+    pub(crate) history_reader: Option<crate::history_reader::HistoryReader>,
+    pub(crate) history_cache:
+        std::collections::BTreeMap<u64, crate::history_reader::HistoryCache>,
+    pub(crate) run_body_state:
+        std::collections::BTreeMap<u64, crate::history_reader::BodyLoad>,
+    pub(crate) history_request_seq: u64,
     /// Window-dependent acknowledgements (focus/navigation/draft cleanup).
     pub(crate) deferred_ui: Vec<crate::live_save_app::DeferredUiAction>,
     pub startup: crate::startup::Startup,
@@ -665,10 +689,10 @@ impl TaskApp {
             }
         });
         let quit = cx.on_app_quit(|this, _| {
-            this.shutdown();
+            this.emergency_shutdown();
             async {}
         });
-        let release = cx.on_release(|this, _| this.shutdown());
+        let release = cx.on_release(|this, _| this.emergency_shutdown());
         let global_model = cx.new(|cx| {
             InputState::new(window, cx)
                 .default_value(store.default_model().clone())
@@ -756,6 +780,8 @@ impl TaskApp {
             last_saved: store.clone(),
             storage: None,
             live_save_enabled: false,
+            live_required: false,
+            live_attach: None,
             live_save_inflight_epoch: None,
             live_command_generation: None,
             live_command_applying: false,
@@ -767,6 +793,18 @@ impl TaskApp {
             live_deferred_runs: std::collections::VecDeque::new(),
             live_deferred_after_run: std::collections::VecDeque::new(),
             live_deferred_recovery: false,
+            quit_requested: false,
+            quit_sender: None,
+            quit_stopping: None,
+            window_close_requested: false,
+            window_close_ready: false,
+            window_close_registered: false,
+            pending_workspace_switch: None,
+            live_recovery_path: None,
+            history_reader: None,
+            history_cache: std::collections::BTreeMap::new(),
+            run_body_state: std::collections::BTreeMap::new(),
+            history_request_seq: 0,
             deferred_ui: Vec::new(),
             startup: Default::default(),
             workspace_required: false,
@@ -1242,6 +1280,186 @@ impl TaskApp {
         match self.nav.route() {
             crate::navigation_route::Route::ResearchResult(page) => page.run(),
             _ => self.navigation.selected_attempt,
+        }
+    }
+
+    fn stage_index(stage: crate::domain::Stage) -> u8 {
+        crate::domain::Stage::BOARD_ORDER
+            .iter()
+            .position(|value| *value == stage)
+            .unwrap_or(0) as u8
+    }
+
+    /// Capture the complete live page for a typed Back frame: route, typed
+    /// overlays, scroll bookmarks and the page-local filters/layout that are not
+    /// yet part of route identity.
+    pub(crate) fn capture_return_frame(&self) -> crate::navigation_route::ReturnFrame {
+        use crate::navigation_route::{PageState, ReturnFrame, ScrollBookmark, ScrollKey};
+        let mut scroll = ScrollBookmark::default();
+        scroll.set(
+            ScrollKey::TaskList,
+            0.0,
+            self.navigation.task_list_scroll.0.borrow().base_handle.offset().y.as_f32(),
+        );
+        scroll.set(
+            ScrollKey::BoardX,
+            self.navigation.board_scroll.offset().x.as_f32(),
+            0.0,
+        );
+        for stage in crate::domain::Stage::BOARD_ORDER {
+            scroll.set(
+                ScrollKey::BoardColumn(Self::stage_index(stage)),
+                0.0,
+                self.navigation.board_column(stage).offset().y.as_f32(),
+            );
+        }
+        scroll.set(
+            ScrollKey::Topic,
+            self.navigation.topic_scroll.offset().x.as_f32(),
+            self.navigation.topic_scroll.offset().y.as_f32(),
+        );
+        scroll.set(
+            ScrollKey::TaskDetail,
+            self.detail_scroll.offset().x.as_f32(),
+            self.detail_scroll.offset().y.as_f32(),
+        );
+        scroll.set(
+            ScrollKey::Result,
+            self.result_scroll.offset().x.as_f32(),
+            self.result_scroll.offset().y.as_f32(),
+        );
+        scroll.set(
+            ScrollKey::Settings,
+            self.settings_scroll.offset().x.as_f32(),
+            self.settings_scroll.offset().y.as_f32(),
+        );
+        scroll.set(
+            ScrollKey::Dialog,
+            self.automation_ui.dialog_scroll.offset().x.as_f32(),
+            self.automation_ui.dialog_scroll.offset().y.as_f32(),
+        );
+        scroll.set(
+            ScrollKey::PeriodBody,
+            self.automation_ui.scroll.offset().x.as_f32(),
+            self.automation_ui.scroll.offset().y.as_f32(),
+        );
+        ReturnFrame {
+            route: self.nav.route().clone(),
+            overlays: self.nav.overlays().to_vec(),
+            scroll,
+            result_fallback: None,
+            page: PageState {
+                query: self.query(),
+                all_status: self.all_status,
+                layout: self.layout,
+                results_filter: self.automation_ui.result_filter,
+                history_limit: self.automation_ui.history_limit,
+                settings_tab: self.settings_section(),
+                steps_layout: self.steps_layout(),
+            },
+        }
+    }
+
+    pub(crate) fn record_return_frame(&mut self, frame: crate::navigation_route::ReturnFrame) {
+        self.nav.record_return(frame);
+    }
+
+    pub(crate) fn clear_return_frames(&mut self) {
+        self.nav.clear_returns();
+    }
+
+    pub(crate) fn has_return_frames(&self) -> bool {
+        !self.nav.returns().is_empty()
+    }
+
+    pub(crate) fn return_frames(&self) -> &crate::navigation_route::ReturnStack {
+        self.nav.returns()
+    }
+
+    pub(crate) fn back_frame(
+        &mut self,
+    ) -> Result<crate::navigation_route::NavEffect, crate::navigation_route::NavReject> {
+        self.nav.back(&self.store)
+    }
+
+    /// Apply one typed return frame after `NavState::back` restored its route.
+    pub(crate) fn apply_return_frame(
+        &mut self,
+        frame: crate::navigation_route::ReturnFrame,
+        window: &mut Window,
+        cx: &mut Context<Self>,
+    ) {
+        use crate::navigation_route::ScrollKey;
+        self.all_status = frame.page.all_status;
+        self.layout = frame.page.layout;
+        self.navigation.settings_section = frame.page.settings_tab;
+        self.navigation.steps_layout = frame.page.steps_layout;
+        self.automation_ui.result_filter = frame.page.results_filter;
+        self.automation_ui.history_limit = frame.page.history_limit;
+        match &frame.route {
+            crate::navigation_route::Route::AutomationList => {
+                self.automation_ui.selected = None;
+                self.automation_ui.creating = false;
+                self.automation_ui.editing = None;
+            }
+            crate::navigation_route::Route::AutomationDetail(page) => {
+                self.automation_ui.selected = Some(page.automation());
+                self.automation_ui.creating = false;
+                self.automation_ui.editing = None;
+            }
+            crate::navigation_route::Route::AutomationEditor(page) => {
+                self.automation_ui.creating = true;
+                self.automation_ui.editing = page.editing();
+                if let Some(id) = page.editing() {
+                    self.automation_ui.selected = Some(id);
+                }
+            }
+            _ => {}
+        }
+        let query = frame.page.query.clone();
+        let _ = self.nav.set_research_query(query.clone());
+        self.search.update(cx, |state, cx| state.set_value(query, window, cx));
+        if let Some((x, y)) = frame.scroll.get(ScrollKey::TaskList) {
+            self.navigation
+                .task_list_scroll
+                .0
+                .borrow()
+                .base_handle
+                .set_offset(point(px(0.), px(y)));
+            let _ = x;
+        }
+        if let Some((x, _)) = frame.scroll.get(ScrollKey::BoardX) {
+            self.navigation.board_scroll.set_offset(point(px(x), px(0.)));
+        }
+        for stage in crate::domain::Stage::BOARD_ORDER {
+            if let Some((_, y)) = frame
+                .scroll
+                .get(ScrollKey::BoardColumn(Self::stage_index(stage)))
+            {
+                self.navigation
+                    .board_column(stage)
+                    .set_offset(point(px(0.), px(y)));
+            }
+        }
+        if let Some((x, y)) = frame.scroll.get(ScrollKey::Topic) {
+            self.navigation.topic_scroll.set_offset(point(px(x), px(y)));
+        }
+        if let Some((x, y)) = frame.scroll.get(ScrollKey::TaskDetail) {
+            self.detail_scroll.set_offset(point(px(x), px(y)));
+        }
+        if let Some((x, y)) = frame.scroll.get(ScrollKey::Result) {
+            self.result_scroll.set_offset(point(px(x), px(y)));
+        }
+        if let Some((x, y)) = frame.scroll.get(ScrollKey::Settings) {
+            self.settings_scroll.set_offset(point(px(x), px(y)));
+        }
+        if let Some((x, y)) = frame.scroll.get(ScrollKey::Dialog) {
+            self.automation_ui
+                .dialog_scroll
+                .set_offset(point(px(x), px(y)));
+        }
+        if let Some((x, y)) = frame.scroll.get(ScrollKey::PeriodBody) {
+            self.automation_ui.scroll.set_offset(point(px(x), px(y)));
         }
     }
 
@@ -2250,50 +2468,88 @@ impl TaskApp {
         window: &mut Window,
         cx: &mut Context<Self>,
     ) {
+        self.attach_loaded_storage_live(storage, loaded, None, window, cx);
+    }
+
+    /// Attach a workspace using the incremental v4 backend when `live` is
+    /// present. Migration/load already happened on the background thread; this
+    /// path attaches the single ordered worker and never performs a legacy
+    /// synchronous save before the first edit.
+    pub(crate) fn attach_loaded_storage_live(
+        &mut self,
+        storage: Storage,
+        loaded: Result<(std::fs::File, Option<Store>), String>,
+        live: Option<crate::persistence_live::LiveStartup>,
+        window: &mut Window,
+        cx: &mut Context<Self>,
+    ) {
         match loaded {
             Ok((lock, store)) => {
-                self._storage_lock = Some(lock);
-                self.store = store.unwrap_or_else(Store::empty);
-                self.restore_sidebar();
-                self.store.recover_interrupted_runs();
-                self.recover_publications();
-                self.store.reconcile_goal_approvals();
-                let project = self
-                    .store
-                    .visible_projects()
-                    .map(|p| p.id)
-                    .next()
-                    .unwrap_or(0);
-                self.connection_project = project;
-                self.research_project = project;
-                self.set_scope_identity(Scope::All);
-                crate::appearance::apply(self.store.appearance(), Some(window), cx);
-                if self.store.opencode_path().is_empty() {
-                    self.store.set_opencode_path(opencode::detect_executable());
-                }
-                let path = self.store.opencode_path().clone();
-                self.executable_input
-                    .update(cx, |s, cx| s.set_value(path, window, cx));
-                let codex_path = self.store.research_config().codex_path.clone();
-                self.codex_executable_input
-                    .update(cx, |s, cx| s.set_value(codex_path, window, cx));
-                self.refresh_research_inputs(window, cx);
-                self.refresh_global_model_input(window, cx);
-                match storage.save(&self.store) {
-                    Ok(()) => {
-                        self.store =
-                            std::mem::replace(&mut self.store, Store::empty()).into_durably_saved();
-                        self.last_saved = self.store.clone();
-                        self.toast = "All changes saved".into();
+                if let Some(live) = live {
+                    self.reset_live_state();
+                    self._storage_lock = Some(lock);
+                    self.hydrate_loaded_store(store, window, cx);
+                    self.live_required = true;
+                    self.live_attach =
+                        Some((live.path.clone(), live.root.clone(), live.incarnation));
+                    self.live_recovery_path = Some(live.path.clone());
+                    // Durability in live mode is proven by the ordered receipt.
+                    // Do not clone the whole history into a second UI copy; an
+                    // empty baseline can only understate durability, never claim
+                    // a write that did not happen.
+                    self.last_saved = Store::empty();
+                    let intent_path = live.path.with_extension("dispatch-intents.json");
+                    match self.attach_dispatch_admission(
+                        &live.path,
+                        &live.root,
+                        live.incarnation,
+                        intent_path,
+                    ) {
+                        Ok(()) => {
+                            self.live_save_enabled = true;
+                            self.live_workspace = Some(live.incarnation);
+                            self.start_history_reader(
+                                &live.path,
+                                &live.root,
+                                live.incarnation,
+                            );
+                            self.storage_error.clear();
+                            self.start_pump(cx);
+                        }
+                        Err(error) => {
+                            self.live_save_enabled = false;
+                            self.storage_error = format!(
+                                "Incremental persistence could not start. The workspace is read-only until the worker reattaches; legacy writes are disabled: {error}"
+                            );
+                            self.toast = "Persistence unavailable · changes are not being saved".into();
+                        }
                     }
-                    Err(e) => {
-                        self.storage_error = e;
-                        self.storage = None;
-                        self._storage_lock = None;
-                        return;
+                    self.storage = Some(storage);
+                    if let Some(warning) = live.recovery_warning.clone() {
+                        self.storage_error = warning.clone();
+                        self.toast = warning;
                     }
+                } else {
+                    self.live_required = false;
+                    self.live_attach = None;
+                    self._storage_lock = Some(lock);
+                    self.hydrate_loaded_store(store, window, cx);
+                    match storage.save(&self.store) {
+                        Ok(()) => {
+                            self.store =
+                                std::mem::replace(&mut self.store, Store::empty()).into_durably_saved();
+                            self.last_saved = self.store.clone();
+                            self.toast = "All changes saved".into();
+                        }
+                        Err(e) => {
+                            self.storage_error = e;
+                            self.storage = None;
+                            self._storage_lock = None;
+                            return;
+                        }
+                    }
+                    self.storage = Some(storage);
                 }
-                self.storage = Some(storage);
                 // Stop intents are loaded and reconciled before recovery can
                 // enqueue or start anything. A malformed journal blocks recovery.
                 let stop_ready = self.prepare_stop_recovery(cx);
@@ -2309,6 +2565,41 @@ impl TaskApp {
             }
         }
     }
+
+    fn hydrate_loaded_store(
+        &mut self,
+        store: Option<Store>,
+        window: &mut Window,
+        cx: &mut Context<Self>,
+    ) {
+        self.store = store.unwrap_or_else(Store::empty);
+        self.restore_sidebar();
+        self.store.recover_interrupted_runs();
+        self.recover_publications();
+        self.store.reconcile_goal_approvals();
+        let project = self
+            .store
+            .visible_projects()
+            .map(|p| p.id)
+            .next()
+            .unwrap_or(0);
+        self.connection_project = project;
+        self.research_project = project;
+        self.set_scope_identity(Scope::All);
+        crate::appearance::apply(self.store.appearance(), Some(window), cx);
+        if self.store.opencode_path().is_empty() {
+            self.store.set_opencode_path(opencode::detect_executable());
+        }
+        let path = self.store.opencode_path().clone();
+        self.executable_input
+            .update(cx, |s, cx| s.set_value(path, window, cx));
+        let codex_path = self.store.research_config().codex_path.clone();
+        self.codex_executable_input
+            .update(cx, |s, cx| s.set_value(codex_path, window, cx));
+        self.refresh_research_inputs(window, cx);
+        self.refresh_global_model_input(window, cx);
+    }
+
     // Every notified domain mutation is saved. Streaming runs are coalesced to two writes/second.
     /// Persist a staged store without mutating the live one. Used by creation
     /// forms so a rejected write cannot leave a half-created request behind.
@@ -2330,6 +2621,12 @@ impl TaskApp {
             self.merge_staged_store(staged)?;
             let acceptance = self.submit_live_snapshot(completion, cx)?;
             return Ok(acceptance);
+        }
+        if self.live_required {
+            return Err(
+                "Incremental persistence is unavailable. Nothing was written to a legacy file; retry the save when the worker is attached."
+                    .into(),
+            );
         }
         let storage = self.storage.as_ref().ok_or_else(|| {
             "Workspace storage is unavailable. Nothing was saved; the request stays editable."
@@ -2372,6 +2669,12 @@ impl TaskApp {
         }
         if self.live_persistence_active() {
             self.persist_live_followup();
+            return false;
+        }
+        if self.live_required {
+            self.storage_error =
+                "Incremental persistence is unavailable; changes are kept in memory and retry after the worker reattaches."
+                    .into();
             return false;
         }
         let Some(storage) = &self.storage else {
@@ -2448,6 +2751,19 @@ impl TaskApp {
             let ready = self.prepare_stop_recovery(cx);
             if ready {
                 self.recover_automations(cx);
+            }
+            cx.notify();
+            return;
+        }
+        if self.live_required && !self.live_persistence_active() {
+            match self.retry_live_attachment(cx) {
+                Ok(()) => {
+                    self.toast = "Persistence reattached".into();
+                }
+                Err(error) => {
+                    self.storage_error = error;
+                    self.show_save_error(self.storage_error.clone(), cx);
+                }
             }
             cx.notify();
             return;
@@ -3444,9 +3760,12 @@ impl TaskApp {
             cx.notify();
         }
         self.poll_startup(cx);
+        self.poll_pending_workspace_switch(cx);
         self.poll_dispatch_admissions(cx);
         self.poll_live_retry();
+        self.poll_history_io(cx);
         self.drain_live_deferred_runtime(cx);
+        self.finish_live_quit_drain(cx);
         self.enforce_active_run_deadlines(Self::automation_now(), cx);
         self.poll_research_io(cx);
         self.poll_material_jobs(cx);
@@ -3544,7 +3863,10 @@ impl TaskApp {
             || self.ego_probe.is_some()
             || self.attachment_import.is_some()
             || self.publishing_job.is_some()
-            || self.recovery_pending();
+            || self.recovery_pending()
+            || self.quit_requested
+            || self.window_close_requested
+            || self.live_needs_pump();
         if !keep {
             self.pumping = false;
         }
@@ -3579,7 +3901,7 @@ impl TaskApp {
         self.persist_if_changed(true);
     }
 }
-fn record_events(run: &mut AgentRun, had_error: &mut bool, events: Vec<opencode::Event>) -> bool {
+pub(crate) fn record_events(run: &mut AgentRun, had_error: &mut bool, events: Vec<opencode::Event>) -> bool {
     let mut finished = false;
     for event in events {
         match event {

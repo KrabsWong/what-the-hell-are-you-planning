@@ -1,0 +1,11 @@
+{
+  "candidate": "r98 frozen integration with strengthened post-commit recovery test",
+  "source_sha256": "f7ebff54f1ad6d104c9f6e80462f8f6ec0c78bf41afc1948f7126379b067cddd",
+  "command": "cargo test --features qa --quiet persistence_live:: -- --nocapture",
+  "exit_code": 101,
+  "passed": 5,
+  "failed": 1,
+  "regression": "same-incarnation stale recovery replaced Later durable title with Committed title after a subsequent durable commit",
+  "foreign_incarnation_case": "passed in this snapshot",
+  "scope": "Does not validate subsequent generation-inequality rejection or partial-drain recovery"
+}

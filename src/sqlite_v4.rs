@@ -404,6 +404,25 @@ impl SqliteV4 {
         }
     }
 
+    /// Intent hash of a group, exposed for crash-recovery receipts.
+    pub(crate) fn group_intent_hash(group: &StagedGroup) -> Result<String, String> {
+        intent_hash(group).map_err(|error| format!("{error:?}"))
+    }
+
+    /// Whether a durable generation exists with the exact same payload intent.
+    pub(crate) fn commit_matches(&self, generation: u64, hash: &str) -> Result<bool, String> {
+        let stored: Option<String> = self
+            .connection
+            .query_row(
+                "SELECT intent_hash FROM commits WHERE generation=?1",
+                [sql_i64(generation, "commit generation")?],
+                |row| row.get(0),
+            )
+            .optional()
+            .map_err(|error| format!("cannot read commit {generation}: {error}"))?;
+        Ok(stored.as_deref() == Some(hash))
+    }
+
     pub(crate) fn commit_group(
         &mut self,
         group: &StagedGroup,
@@ -602,6 +621,17 @@ impl SqliteV4 {
     }
 
     pub(crate) fn load_store(&self) -> Result<Store, String> {
+        self.load_store_impl(true)
+    }
+
+    /// Startup hydration without report bodies. Bodies are read one at a time
+    /// through `body(run_id)` when a result is displayed, so opening the first
+    /// history page never deserializes every historical report.
+    pub(crate) fn load_store_lazy(&self) -> Result<Store, String> {
+        self.load_store_impl(false)
+    }
+
+    fn load_store_impl(&self, include_bodies: bool) -> Result<Store, String> {
         let transaction = self
             .connection
             .unchecked_transaction()
@@ -665,6 +695,11 @@ impl SqliteV4 {
             &meta,
             "report_publishing",
         )?));
+        store.set_metadata(MetadataDelta::RecoverySnapshot(parse_meta_or(
+            &meta,
+            "recovery_snapshot",
+            String::new(),
+        )?));
         store.set_metadata(MetadataDelta::Publications(parse_meta(
             &meta,
             "publications",
@@ -687,7 +722,7 @@ impl SqliteV4 {
             &self.root,
             WorkTable::Projects,
         )?)?;
-        let runs = load_runs(&transaction, &self.root)?;
+        let runs = load_runs(&transaction, &self.root, include_bodies)?;
         store.policies(load_policies(&transaction)?)?;
         let automations = load_rows(
             &transaction,
@@ -1394,6 +1429,7 @@ fn metadata_value(delta: &MetadataDelta) -> Result<Value, String> {
         MetadataDelta::ResearchRequests(value) => serde_json::to_value(value),
         MetadataDelta::Publications(value) => serde_json::to_value(value),
         MetadataDelta::PublishingConfig(value) => serde_json::to_value(value),
+        MetadataDelta::RecoverySnapshot(value) => serde_json::to_value(value),
     }
     .map_err(|error| error.to_string())
 }
@@ -1433,6 +1469,10 @@ fn seed_metadata(
         (
             "report_publishing",
             serde_json::to_value(&store.report_publishing()),
+        ),
+        (
+            "recovery_snapshot",
+            serde_json::to_value(store.recovery_snapshot()),
         ),
         ("publications", serde_json::to_value(&store.publications())),
         ("topics", serde_json::to_value(&store.topics())),
@@ -1516,11 +1556,17 @@ fn load_policies(connection: &Connection) -> Result<Vec<StagePolicy>, String> {
     Ok(values)
 }
 
-fn load_runs(connection: &Connection, root: &Path) -> Result<Vec<AgentRun>, String> {
+fn load_runs(
+    connection: &Connection,
+    root: &Path,
+    include_bodies: bool,
+) -> Result<Vec<AgentRun>, String> {
     let mut statement = connection
-        .prepare(
-            "SELECT r.payload,b.body FROM runs r LEFT JOIN run_bodies b ON b.run_id=r.id ORDER BY r.position",
-        )
+        .prepare(if include_bodies {
+            "SELECT r.payload,b.body FROM runs r LEFT JOIN run_bodies b ON b.run_id=r.id ORDER BY r.position"
+        } else {
+            "SELECT r.payload,NULL FROM runs r ORDER BY r.position"
+        })
         .map_err(|error| error.to_string())?;
     let rows = statement
         .query_map([], |row| {

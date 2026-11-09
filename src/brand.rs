@@ -320,3 +320,60 @@ pub(crate) fn verify_frames() {
     }
     println!("24 consecutive 60 Hz motion samples: {}", root.display());
 }
+
+/// Elapsed-time helpers for the brand overlay. The approved motion is a pure
+/// function of time, so frames can be skipped during the lead-in/hold segments
+/// where the mark is visually static without changing timing or geometry.
+pub(crate) fn brand_phase(elapsed_seconds: f32) -> f32 {
+    (elapsed_seconds.max(0.) % CYCLE_SECONDS) / CYCLE_SECONDS
+}
+
+pub(crate) fn brand_frame_is_static(elapsed_seconds: f32) -> bool {
+    let time = elapsed_seconds.max(0.) % CYCLE_SECONDS;
+    let local = if time >= 2.48 { time - 2.48 } else { time };
+    !(local > 0.48 && local < 2.0)
+}
+
+/// Seconds until the next moving segment starts after a static frame.
+pub(crate) fn brand_next_motion_wait(elapsed_seconds: f32) -> f32 {
+    let time = elapsed_seconds.max(0.) % CYCLE_SECONDS;
+    for start in [0.48_f32, 2.96, CYCLE_SECONDS + 0.48] {
+        if start > time {
+            return start - time;
+        }
+    }
+    CYCLE_SECONDS + 0.48 - time
+}
+
+/// Static mark used by the retained sidebar overlay. The caller owns frame
+/// scheduling so static lead-in/hold segments do not repaint the window.
+pub(crate) fn sidebar_logo_at(color: u32, phase: f32) -> AnyElement {
+    div()
+        .id("sidebar-brand")
+        .relative()
+        .size(px(32.))
+        .flex_shrink_0()
+        .child(logo_frame(color, phase))
+        .into_any_element()
+}
+
+#[cfg(test)]
+mod overlay_animation_tests {
+    use super::{brand_frame_is_static, brand_next_motion_wait, brand_phase};
+
+    #[test]
+    fn static_segments_and_motion_starts_are_exact() {
+        for static_at in [0.0, 0.2, 0.479, 2.0, 2.2, 2.48, 2.7, 2.959, 4.48, 4.9, 4.959] {
+            assert!(brand_frame_is_static(static_at), "{static_at}");
+        }
+        for moving_at in [0.481, 0.7, 1.9, 2.961, 3.5, 4.4] {
+            assert!(!brand_frame_is_static(moving_at), "{moving_at}");
+        }
+        assert!((brand_phase(0.48) - 0.48 / 4.96).abs() < 1e-5);
+        assert!((brand_phase(4.96) - 0.0).abs() < 1e-5);
+        assert!((brand_next_motion_wait(0.0) - 0.48).abs() < 1e-5);
+        assert!((brand_next_motion_wait(2.48) - 0.48).abs() < 1e-5);
+        assert!((brand_next_motion_wait(2.1) - 0.86).abs() < 1e-5);
+        assert!((brand_next_motion_wait(4.48) - 0.96).abs() < 1e-5);
+    }
+}

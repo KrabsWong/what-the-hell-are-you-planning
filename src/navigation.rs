@@ -466,16 +466,19 @@ impl TaskApp {
     }
 
     pub(crate) fn go_back(&mut self, w: &mut Window, cx: &mut Context<Self>) {
-        let resolution = self.navigation.origins.take_back(&self.store);
-        if let Some(route) = resolution.route {
-            self.apply_origin(route, w, cx);
-            if let Some(notice) = resolution.notice {
-                self.toast = notice;
+        if self.has_return_frames() {
+            match self.back_frame() {
+                Ok(crate::navigation_route::NavEffect::Back { restored }) => {
+                    self.apply_return_frame(restored.frame, w, cx);
+                    if let Some(notice) = restored.notice {
+                        self.toast = notice;
+                    }
+                    cx.notify();
+                }
+                Ok(_) => {}
+                Err(_) => {}
             }
             return;
-        }
-        if let Some(notice) = resolution.notice {
-            self.toast = notice;
         }
         let (parents, _) = self.navigation_path();
         if let Some((_, _, target)) = parents.last() {

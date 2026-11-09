@@ -85,6 +85,13 @@ impl Storage {
     /// Returns the retained old-format backup, or None when no upgrade is needed.
     pub fn upgrade_paths(&self, progress: impl FnMut(&'static str)) -> Result<Option<PathBuf>, String> {
         if self.path.extension().is_some_and(|extension| extension == "sqlite3") {
+            if self.path.is_file()
+                && crate::sqlite_v4::schema_version(&self.path)? == 4
+            {
+                // Incremental v4 is migrated/validated by persistence_live after
+                // the workspace lock is held; the v1/v2 path writer must not run.
+                return Ok(None);
+            }
             crate::sqlite_storage::upgrade_paths(&self.path, &self.workspace_root, progress)
         } else {
             Ok(None)

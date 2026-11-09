@@ -1,0 +1,12 @@
+{
+  "base": "r96 frozen integration",
+  "sole_override": "independent foreign-workspace recovery regression",
+  "source_sha256": "e0b06145ad4ffc4611d73dcdd7b5dfe796f6903f7de7c19e45009d4bde204dc9",
+  "command": "cargo test --features qa --quiet persistence_live:: -- --nocapture",
+  "exit_code": 101,
+  "passed": 1,
+  "failed": 2,
+  "regression_observed": "replacement/model was overwritten by old-workspace/model",
+  "other_failure": "existing_v4_reuses_persisted_incarnation expected migrated_store None",
+  "scope": "Confirms unsafe replay on frozen r96; newer identity fix requires independent revalidation"
+}

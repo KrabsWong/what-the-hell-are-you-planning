@@ -1173,7 +1173,7 @@ fn run_checks(layout_only: bool) {
             assert!(original_result.is_some());
             choose_menu(&mut cx, handle, "run-actions-menu", 1);
             cx.update_window(handle, |_, w, cx| {
-                println!("Result origin before Back: {:?}; history: {:?}", app.read(cx).capture_origin(), app.read(cx).navigation.origins);
+                println!("Result origin before Back: {:?}; history: {:?}", app.read(cx).capture_origin(), app.read(cx).return_frames());
                 assert_eq!(app.read(cx).selected(), Some(steps[2]));
                 w.render_frame(cx);
                 w.click("navigation-back", cx);
@@ -1181,7 +1181,7 @@ fn run_checks(layout_only: bool) {
             .unwrap();
             cx.run_until_parked();
             cx.update_window(handle, |_, w, cx| {
-                assert!(app.read(cx).selected().is_none(), "Back must restore result; selected={:?}, origin={:?}, history={:?}, notice={}", app.read(cx).selected(), app.read(cx).capture_origin(), app.read(cx).navigation.origins, app.read(cx).toast);
+                assert!(app.read(cx).selected().is_none(), "Back must restore result; selected={:?}, origin={:?}, history={:?}, notice={}", app.read(cx).selected(), app.read(cx).capture_origin(), app.read(cx).return_frames(), app.read(cx).toast);
                 assert_eq!(app.read(cx).selected_run(), original_result);
                 assert_eq!(app.read(cx).task_result_context(), Some(steps[2]));
                 assert!(app.read(cx).show_run_result);

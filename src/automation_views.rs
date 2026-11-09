@@ -2554,18 +2554,52 @@ impl TaskApp {
 
         // History is a compact, newest-first list. Each row opens its result in
         // a dialog; nothing expands inside the page.
-        let mut occurrences: Vec<_> = self
-            .store
-            .all_occurrences()
-            .iter()
-            .filter(|o| o.automation_id == id)
-            .collect();
-        occurrences.sort_by(|a, b| compare_newest_first(a, b));
-        let shown = occurrences
-            .iter()
-            .take(self.automation_ui.history_limit)
-            .copied()
-            .collect::<Vec<_>>();
+        // In live mode the indexed reader owns the visible page order and
+        // pagination. The in-memory store remains the row payload source, but
+        // the page query is the actual history path (no full-history scan).
+        let paged_ids: Option<Vec<u64>> = self
+            .history_cache
+            .get(&id)
+            .filter(|cache| !cache.rows.is_empty())
+            .map(|cache| cache.rows.iter().map(|row| row.id).collect());
+        let paged_total = self
+            .history_cache
+            .get(&id)
+            .map(|cache| cache.total)
+            .unwrap_or(0);
+        let paged_more = self
+            .history_cache
+            .get(&id)
+            .is_some_and(|cache| cache.next.is_some());
+        let mut occurrences: Vec<_> = match &paged_ids {
+            Some(ids) => ids
+                .iter()
+                .filter_map(|id| self.store.occurrence(*id))
+                .collect(),
+            None => self
+                .store
+                .all_occurrences()
+                .iter()
+                .filter(|o| o.automation_id == id)
+                .collect(),
+        };
+        if paged_ids.is_none() {
+            occurrences.sort_by(|a, b| compare_newest_first(a, b));
+        }
+        let total = if paged_ids.is_some() {
+            paged_total.max(occurrences.len())
+        } else {
+            occurrences.len()
+        };
+        let shown = if paged_ids.is_some() {
+            occurrences.clone()
+        } else {
+            occurrences
+                .iter()
+                .take(self.automation_ui.history_limit)
+                .copied()
+                .collect::<Vec<_>>()
+        };
         if occurrences.is_empty() {
             panel = panel.child(overview_note(
                 "No runs yet. Enabling or Run manually will create the first period.",
@@ -2578,7 +2612,7 @@ impl TaskApp {
                     .child(
                         div()
                             .font_weight(FontWeight::SEMIBOLD)
-                            .child(selectable(format!("History · {}", occurrences.len()))),
+                            .child(selectable(format!("History · {total}"))),
                     )
                     .child(overview_note(
                         "Newest activity first. Unread results are marked with a dot.",
@@ -2590,7 +2624,16 @@ impl TaskApp {
                 history = history.child(self.automation_occurrence_row(occurrence, false, cx));
             }
             panel = panel.child(history);
-            if occurrences.len() > self.automation_ui.history_limit {
+            if paged_ids.is_some() {
+                if paged_more {
+                    panel = panel.child(
+                        quiet_button("load-more-history", "Load more history".to_string())
+                            .on_click(cx.listener(move |app, _, _, cx| {
+                                app.load_more_automation_history(id, cx);
+                            })),
+                    );
+                }
+            } else if occurrences.len() > self.automation_ui.history_limit {
                 let remaining = occurrences.len() - self.automation_ui.history_limit;
                 panel = panel.child(
                     quiet_button(

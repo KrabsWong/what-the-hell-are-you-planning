@@ -40,6 +40,7 @@ mod dispatch_intent;
 #[cfg(feature = "qa")]
 mod dispatch_admission_qa;
 mod domain_command;
+mod history_reader;
 mod live_save_app;
 mod scoped_domain;
 mod scoped_edit;
@@ -388,10 +389,9 @@ fn main() {
     application().with_assets(ui_assets::AppAssets).run(|cx| {
         init(cx);
         cx.bind_keys([KeyBinding::new("cmd-q", Quit, None)]);
-        cx.on_action(|_: &Quit, cx| cx.quit());
         appearance::apply(appearance::Appearance::default(), None, cx);
         let bounds = Bounds::centered(None, size(px(1440.), px(920.)), cx);
-        open_window(
+        let handle = open_window(
             WindowOptions {
                 window_bounds: Some(WindowBounds::Windowed(bounds)),
                 window_min_size: Some(size(px(1000.), px(680.))),
@@ -409,6 +409,34 @@ fn main() {
             |window, cx| cx.new(|cx| app::TaskApp::new(window, cx)),
         )
         .expect("Could not open the application window");
+        let (quit_tx, quit_rx) = std::sync::mpsc::channel::<bool>();
+        let app_entity = handle.1.clone();
+        cx.on_action(move |_: &Quit, cx| {
+            let _ = app_entity.update(cx, |app, cx| {
+                app.begin_graceful_quit(quit_tx.clone(), cx)
+            });
+        });
+        // Poll the completion channel on the foreground executor so the quit
+        // request never blocks the UI thread. The app quits only after the
+        // persistence owner reports success.
+        let quit_task = cx.spawn(async move |cx| {
+            let mut receiver = quit_rx;
+            loop {
+                match receiver.try_recv() {
+                    Ok(true) => {
+                        cx.update(|cx| cx.quit());
+                        return;
+                    }
+                    Ok(false) => {}
+                    Err(std::sync::mpsc::TryRecvError::Disconnected) => return,
+                    Err(std::sync::mpsc::TryRecvError::Empty) => {}
+                }
+                cx.background_executor()
+                    .timer(std::time::Duration::from_millis(50))
+                    .await;
+            }
+        });
+        quit_task.detach();
         cx.activate(true);
     });
 }

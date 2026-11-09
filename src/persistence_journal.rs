@@ -73,7 +73,7 @@ impl WorkTable {
 
 /// Stable identity of one changed entity. Policy rows have no numeric id, so the
 /// stage ordinal is the row identity, matching the real `policies` table.
-#[derive(Clone, Copy, Debug, PartialEq, Eq, PartialOrd, Ord, Hash, Serialize)]
+#[derive(Clone, Copy, Debug, PartialEq, Eq, PartialOrd, Ord, Hash, Serialize, serde::Deserialize)]
 pub(crate) enum EntityKey {
     Task(u64),
     Project(u64),
@@ -106,7 +106,7 @@ impl EntityKey {
 
 /// One owned entity payload. These are real domain types, not a generic value
 /// container, so a future writer can map each variant to its table.
-#[derive(Clone, Debug, PartialEq, Serialize)]
+#[derive(Clone, Debug, PartialEq, Serialize, serde::Deserialize)]
 pub(crate) enum EntityPayload {
     Task(Task),
     Project(Project),
@@ -161,7 +161,7 @@ pub(crate) enum ChangeKind {
 /// One explicit entity change supplied by the caller after a validated domain
 /// delta. The payload is the full owned entity, so approval/activity companions
 /// are included by construction.
-#[derive(Clone, Debug, PartialEq, Serialize)]
+#[derive(Clone, Debug, PartialEq, Serialize, serde::Deserialize)]
 pub(crate) enum EntityChange {
     Upsert(EntityPayload),
     Delete(EntityKey),
@@ -198,7 +198,7 @@ impl EntityChange {
 
 /// Typed delta for fields persisted in the current single metadata row. This is
 /// a real seam, not a generic map: each variant names the actual field/type.
-#[derive(Clone, Debug, PartialEq, Serialize)]
+#[derive(Clone, Debug, PartialEq, Serialize, serde::Deserialize)]
 pub(crate) enum MetadataDelta {
     NextId(u64),
     /// Next unreserved run id. Must survive seed/load and every incremental
@@ -218,6 +218,9 @@ pub(crate) enum MetadataDelta {
     ResearchRequests(Vec<ResearchRequest>),
     Publications(Vec<Publication>),
     PublishingConfig(PublishingConfig),
+    /// Snapshot id of the emergency plan whose recovered writes are durable in
+    /// this same atomic group. Startup uses it to retire a sidecar exactly once.
+    RecoverySnapshot(String),
 }
 
 impl MetadataDelta {
@@ -239,6 +242,7 @@ impl MetadataDelta {
             Self::ResearchRequests(_) => "research_requests",
             Self::Publications(_) => "publications",
             Self::PublishingConfig(_) => "report_publishing",
+            Self::RecoverySnapshot(_) => "recovery_snapshot",
         }
     }
 
@@ -1533,6 +1537,10 @@ fn metadata_heap(delta: &MetadataDelta) -> usize {
         }
         MetadataDelta::PublishingConfig(config) => {
             publishing_config_heap(size_of::<MetadataDelta>(), config)
+        }
+        MetadataDelta::RecoverySnapshot(text) => {
+            let value = size_of::<MetadataDelta>();
+            self::text(value, text)
         }
     }
 }

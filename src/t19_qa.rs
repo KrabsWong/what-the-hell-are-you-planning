@@ -901,6 +901,10 @@ fn sidebar_retained_surface(root: &Path) {
 
 fn startup_completion_scheduled(root: &Path) {
     use std::sync::atomic::Ordering;
+    struct NotifyProbe {
+        count: Arc<std::sync::atomic::AtomicUsize>,
+        _subscription: Option<gpui_kit::Subscription>,
+    }
     let directory = root.join("startup-scheduled");
     std::fs::create_dir_all(&directory).unwrap();
     let store = fixture(&directory);

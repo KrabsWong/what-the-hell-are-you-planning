@@ -1344,6 +1344,12 @@ impl TaskApp {
                 "Edit automation".into(),
             );
         }
+        // Settings is a workspace-level destination reached from the workspace
+        // menu, not a child of Research. Back uses an explicit return frame when
+        // one exists; the structural trail has no All-research parent.
+        if self.scope() == Scope::Settings {
+            return (vec![], "Settings".into());
+        }
         // Automation results are a child of Automations, not of Research. A step
         // opened from a period keeps its own task path below.
         if self.scope() == Scope::AutomationRuns
@@ -4115,6 +4121,25 @@ impl Render for TaskApp {
     fn render(&mut self, window: &mut Window, cx: &mut Context<Self>) -> impl IntoElement {
         #[cfg(feature = "qa")]
         crate::brand::note_app_render();
+        if self.history_needs_pump() {
+            self.start_pump(cx);
+        }
+        if !self.window_close_registered {
+            self.window_close_registered = true;
+            let weak = cx.weak_entity();
+            window.on_window_should_close(cx, move |_window, cx| {
+                weak.update(cx, |app, cx| app.can_close_window(cx))
+                    .unwrap_or(true)
+            });
+        }
+        if self.window_close_requested && !self.quit_requested && self.live_clean_for_quit() {
+            self.window_close_requested = false;
+            self.window_close_ready = true;
+        }
+        if self.window_close_ready {
+            self.window_close_ready = false;
+            window.remove_window();
+        }
         // A scroll invalidates this view too. Reuse expensive status validation
         // within this frame only; the next render always sees current domain state.
         self.render_statuses.borrow_mut().clear();

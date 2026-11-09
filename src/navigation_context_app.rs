@@ -24,7 +24,6 @@ use crate::settings_views::SettingsTab;
 use gpui_kit::*;
 
 pub(crate) struct NavigationState {
-    pub origins: OriginStack,
     /// Last surface opened for each task tab, so Recently opened can reopen a
     /// report instead of always dropping to the detail page.
     pub recent_surfaces: BTreeMap<u64, RecentSurface>,
@@ -67,7 +66,6 @@ pub(crate) struct NavigationState {
 impl NavigationState {
     pub(crate) fn new() -> Self {
         Self {
-            origins: OriginStack::new(),
             recent_surfaces: BTreeMap::new(),
             task_list_scroll: UniformListScrollHandle::new(),
             topic_scroll: ScrollHandle::new(),
@@ -119,28 +117,37 @@ fn pixels_y(handle: &ScrollHandle) -> f32 {
 }
 
 impl TaskApp {
-    /// Clear the return history for an explicit structural navigation.
+    /// Clear the typed return history for an explicit structural navigation.
     pub(crate) fn structural_navigation(&mut self) {
-        self.navigation.origins.clear();
+        self.clear_return_frames();
     }
 
     pub(crate) fn record_origin(&mut self) {
-        let origin = self.capture_origin();
-        self.navigation.origins.record(origin);
+        let frame = self.capture_return_frame();
+        self.record_return_frame(frame);
     }
 
     /// A card's "Open steps" belongs to the goal; its Back target is the goal's
     /// topic when it has one, not the unrelated board currently on screen.
     pub(crate) fn record_goal_origin(&mut self, task: u64) {
         if let Some(topic) = self.store.task_topic(task) {
-            self.navigation.origins.record(Origin::ResearchTopic {
-                topic: topic.id,
-                layout: self.layout,
-                scroll: ScrollState {
-                    x: self.navigation.topic_scroll.offset().x.as_f32(),
-                    y: pixels_y(&self.navigation.topic_scroll),
-                },
-            });
+            let mut frame = self.capture_return_frame();
+            frame.route = crate::navigation_route::Route::research_list(
+                crate::navigation_route::ResearchScope::Topic(topic.id),
+                frame.page.all_status,
+                frame.page.layout,
+            )
+            .with_research_query(String::new());
+            frame.overlays.clear();
+            let mut scroll = crate::navigation_route::ScrollBookmark::default();
+            scroll.set(
+                crate::navigation_route::ScrollKey::Topic,
+                self.navigation.topic_scroll.offset().x.as_f32(),
+                self.navigation.topic_scroll.offset().y.as_f32(),
+            );
+            frame.scroll = scroll;
+            frame.page.query.clear();
+            self.record_return_frame(frame);
         } else {
             self.record_origin();
         }
@@ -524,9 +531,9 @@ impl TaskApp {
         w: &mut Window,
         cx: &mut Context<Self>,
     ) {
-        let origin = self.capture_origin();
+        let frame = self.capture_return_frame();
         self.apply_target(target, w, cx);
-        self.navigation.origins.record(origin);
+        self.record_return_frame(frame);
         cx.notify();
     }
 
@@ -551,17 +558,7 @@ impl TaskApp {
                 }
             }
             NavigationTarget::ResearchResult { task, run } => {
-                self.apply_origin(
-                    Origin::ResearchResult {
-                        task: Some(task),
-                        run,
-                        project: None,
-                        topic: None,
-                        scroll: ScrollState::default(),
-                    },
-                    w,
-                    cx,
-                );
+                self.set_result_selection(Some(task), run);
             }
             NavigationTarget::SettingsPage => self.navigate(Scope::Settings, w, cx),
             NavigationTarget::AutomationList => self.open_automations(w, cx),

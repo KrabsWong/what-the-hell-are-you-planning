@@ -568,7 +568,14 @@ impl TaskApp {
     /// old staged store. Only exact payloads are merged into live state.
     pub(crate) fn poll_dispatch_admissions(&mut self, cx: &mut Context<Self>) -> bool {
         let updates = match self.dispatch_admission.as_mut() {
-            Some(adapter) => adapter.poll(),
+            Some(adapter) => {
+                let updates = adapter.poll();
+                if let Some(error) = adapter.startup_error().map(str::to_owned) {
+                    self.live_failure = Some(error.clone());
+                    self.storage_error = error;
+                }
+                updates
+            }
             None => return false,
         };
         let mut changed = false;
@@ -1657,6 +1664,12 @@ impl TaskApp {
     ) -> Result<crate::live_save_app::SaveAcceptance, String> {
         if self.live_persistence_active() {
             return self.submit_live_auxiliary(completion, cx);
+        }
+        if self.live_required {
+            return Err(
+                "Incremental persistence is unavailable. Nothing was written to a legacy file; retry when the worker is attached."
+                    .into(),
+            );
         }
         let receipt = self.store.drain_store_delta()?;
         let Some(storage) = self.storage.as_ref() else {

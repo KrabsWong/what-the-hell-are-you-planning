@@ -322,19 +322,12 @@ impl TaskApp {
             }
         };
         if acceptance.is_durable() {
-            self.adopt_saved_store(staged);
-            if self
-                .pending_material_edit
-                .as_ref()
-                .is_some_and(|pending| pending.prepared == prepared)
-            {
-                self.pending_material_edit = None;
+            // The Material completion already pushed the inverse, cleared the
+            // pending owner and set the durable toast; only a non-live save
+            // still needs the staged store adopted into the live tree.
+            if !self.live_persistence_active() {
+                self.adopt_saved_store(staged);
             }
-            self.undo_invalidation = None;
-            self.undo.push_material(undo);
-            self.error.clear();
-            self.toast = format!("{message} · Undo is available");
-            self.save_feedback = Some(Ok(message.into()));
         } else {
             self.pending_material_edit = None;
             self.toast = format!("Saving {message}…");

@@ -64,6 +64,8 @@ impl Render for SidebarSurface {
 
 pub(crate) struct BrandOverlay {
     parent: WeakEntity<TaskApp>,
+    started: std::time::Instant,
+    wake_scheduled: bool,
 }
 
 impl BrandOverlay {
@@ -71,12 +73,14 @@ impl BrandOverlay {
         let _ = cx;
         Self {
             parent: parent.downgrade(),
+            started: std::time::Instant::now(),
+            wake_scheduled: false,
         }
     }
 }
 
 impl Render for BrandOverlay {
-    fn render(&mut self, _window: &mut Window, cx: &mut Context<Self>) -> impl IntoElement {
+    fn render(&mut self, window: &mut Window, cx: &mut Context<Self>) -> impl IntoElement {
         #[cfg(feature = "qa")]
         crate::brand::note_logo_render();
         let Some(parent) = self.parent.upgrade() else {
@@ -85,6 +89,38 @@ impl Render for BrandOverlay {
         let (offset, accent) = parent.read_with(cx, |app, cx| {
             (app.sidebar_scroll.offset().y, crate::appearance::palette(cx).accent)
         });
+        let elapsed = self.started.elapsed().as_secs_f32();
+        #[cfg(feature = "qa")]
+        let static_diagnostic =
+            std::env::var("PLANNING_T19_DIAGNOSTIC_STATIC_LOGO").as_deref() == Ok("1");
+        #[cfg(not(feature = "qa"))]
+        let static_diagnostic = false;
+        let phase = crate::brand::brand_phase(elapsed);
+        let static_frame = static_diagnostic
+            || cx.reduce_motion()
+            || crate::brand::brand_frame_is_static(elapsed);
+        if !static_frame {
+            window.request_animation_frame();
+        } else if !static_diagnostic
+            && !cx.reduce_motion()
+            && !self.wake_scheduled
+        {
+            // Wake exactly when the next moving segment starts; do not repaint
+            // the window during the visually static lead-in/hold.
+            self.wake_scheduled = true;
+            let wait = crate::brand::brand_next_motion_wait(elapsed);
+            cx.spawn(async move |this, cx| {
+                cx.background_executor()
+                    .timer(std::time::Duration::from_secs_f32(wait.max(0.001)))
+                    .await;
+                let _ = this.update(cx, |this, cx| {
+                    this.wake_scheduled = false;
+                    cx.notify();
+                });
+            })
+            .detach();
+        }
+        let phase = if static_diagnostic { 0.0 } else { phase };
         observed(
             div()
                 .id("sidebar-brand-overlay")
@@ -92,7 +128,7 @@ impl Render for BrandOverlay {
                 .top(px(14.) + offset)
                 .left(px(8.))
                 .size(px(32.))
-                .child(crate::brand::sidebar_logo(accent)),
+                .child(crate::brand::sidebar_logo_at(accent, phase)),
         )
         .into_any_element()
     }

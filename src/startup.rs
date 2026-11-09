@@ -17,6 +17,7 @@ pub(crate) struct PreparedWorkspace {
     lock: std::fs::File,
     store: Option<crate::domain::Store>,
     backup: Option<std::path::PathBuf>,
+    live: Option<crate::persistence_live::LiveStartup>,
 }
 pub(crate) enum WorkspaceOpenEvent {
     Progress(&'static str),
@@ -48,6 +49,36 @@ fn probe_agent(agent: &str, path: &str) -> Result<String, String> {
 impl TaskApp {
     pub(crate) fn begin_workspace_open(&mut self, storage: crate::persistence::Storage, cx: &mut Context<Self>) {
         if self.startup.workspace_pending.is_some() { return; }
+        if self.pending_workspace_switch.is_some() { return; }
+        // A workspace switch owns the old worker until every accepted write is
+        // durable. Defer the new open instead of dropping the adapter/worker.
+        if self.live_persistence_active() && !self.live_clean_for_quit() {
+            self.pending_workspace_switch = Some(storage);
+            let _ = self.persist_live_followup();
+            if let Some(pending) = self.live_primary.as_ref()
+                && pending.generation == 0
+            {
+                let _ = self.submit_primary_group_in_persist();
+            }
+            self.start_pump(cx);
+            self.toast = "Saving before switching workspace…".into();
+            cx.notify();
+            return;
+        }
+        self.begin_workspace_open_now(storage, cx);
+    }
+
+    pub(crate) fn poll_pending_workspace_switch(&mut self, cx: &mut Context<Self>) {
+        if self.startup.workspace_pending.is_some() { return; }
+        let Some(storage) = self.pending_workspace_switch.take() else { return; };
+        if !self.live_clean_for_quit() {
+            self.pending_workspace_switch = Some(storage);
+            return;
+        }
+        self.begin_workspace_open_now(storage, cx);
+    }
+
+    fn begin_workspace_open_now(&mut self, storage: crate::persistence::Storage, cx: &mut Context<Self>) {
         // An old workspace's clock must never dispatch into the new store.
         self.cancel_automation_timer();
         self.workspace_required = true;
@@ -62,8 +93,16 @@ impl TaskApp {
             let result = (|| {
                 let lock = storage.acquire_lock()?;
                 let backup = storage.upgrade_paths(|phase| { let _ = tx.send(WorkspaceOpenEvent::Progress(phase)); })?;
-                let store = storage.load()?;
-                Ok(PreparedWorkspace { storage, lock, store, backup })
+                let mut live = crate::persistence_live::select_existing(&storage)?;
+                if live.is_none() {
+                    live = crate::persistence_live::create_new(&storage)?;
+                }
+                let store = if let Some(live) = &mut live {
+                    live.migrated_store.take()
+                } else {
+                    storage.load()?
+                };
+                Ok(PreparedWorkspace { storage, lock, store, backup, live })
             })();
             let _ = tx.send(WorkspaceOpenEvent::Complete(result));
         });
@@ -85,7 +124,13 @@ impl TaskApp {
                     match result {
                         Ok(prepared) => {
                             self.startup.upgrade_backup = prepared.backup;
-                            self.attach_loaded_storage(prepared.storage, Ok((prepared.lock, prepared.store)), window, cx);
+                            self.attach_loaded_storage_live(
+                                prepared.storage,
+                                Ok((prepared.lock, prepared.store)),
+                                prepared.live,
+                                window,
+                                cx,
+                            );
                             self.workspace_required = self.storage.is_none() || !self.storage_error.is_empty();
                             if !self.workspace_required {
                                 self.startup.silent = self.startup.upgrade_backup.is_none();

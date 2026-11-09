@@ -1,0 +1,17 @@
+{
+  "candidate": "r101b controlled derivation",
+  "base": "r101 frozen integration",
+  "overrides": [
+    "strengthen stale recovery with dirty tail",
+    "strengthen late-gap test with valid earlier group",
+    "remove duplicated closing fragment captured during editing"
+  ],
+  "source_sha256": "4882bbd78ed2d523909ab98fa26646f0da74b2a4cdb4abaf282bda85321051db",
+  "command": "cargo test --features qa --quiet persistence_live:: -- --nocapture",
+  "exit_code": 101,
+  "passed": 7,
+  "failed": 1,
+  "late_gap_case": "passed",
+  "dirty_tail_case": "failed: Committed title overwrote Later durable title",
+  "scope": "Later snapshot identity/atomic marker work is not covered"
+}

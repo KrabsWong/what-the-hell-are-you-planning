@@ -688,8 +688,6 @@ fn move_topic(
     project: u64,
     undo: &mut DomainUndo,
 ) -> Result<(), String> {
-    #[cfg(test)]
-    let __t_start = std::time::Instant::now();
     let topic_before = store.topic(topic).cloned().ok_or("Topic not found.")?;
     if !store.projects().iter().any(|value| value.id == project) {
         return Err("Project not found.".into());
@@ -763,12 +761,7 @@ fn move_topic(
         })
         .collect();
     let runs_before = capture_runs(store, &run_ids);
-    #[cfg(test)]
-    eprintln!("  scoped_move preimage={:?}", __t_start.elapsed());
-
     store.move_topic_project(topic, project)?;
-    #[cfg(test)]
-    eprintln!("  scoped_move after_core={:?}", __t_start.elapsed());
 
     let topic_after = store.topic(topic).cloned().ok_or("Topic not found.")?;
     if topic_before.project_id != topic_after.project_id {
@@ -822,8 +815,6 @@ fn move_topic(
         }
     }
     undo.runs = changed_runs(store, runs_before);
-    #[cfg(test)]
-    eprintln!("  scoped_move total={:?}", __t_start.elapsed());
     Ok(())
 }
 
@@ -2187,7 +2178,7 @@ mod tests {
             move_elapsed,
             undo_elapsed,
             core_elapsed,
-            signature_elapsed + blockers_elapsed,
+            blockers_elapsed,
             signature_elapsed.as_micros(),
             outcome.undo.changed_entities(),
         )
@@ -2197,10 +2188,10 @@ mod tests {
     fn large_affected_topic_move_scales_across_workloads() {
         let history = 43_200usize;
         for affected in [3usize, 240, 800] {
-            let (move_elapsed, undo_elapsed, core_elapsed, preflight, signature_us, deltas) =
+            let (move_elapsed, undo_elapsed, core_elapsed, blockers, signature_us, deltas) =
                 scale_case(affected, history);
             eprintln!(
-                "scoped_domain scale: affected={affected} history={history} deltas={deltas} signature_scan={signature_us}us preflight={preflight:?} core_move={core_elapsed:?} command_move={move_elapsed:?} undo={undo_elapsed:?}"
+                "scoped_domain scale: affected={affected} history={history} deltas={deltas} canonical_signature_scan={signature_us}us blockers={blockers:?} core_move={core_elapsed:?} command_move={move_elapsed:?} undo={undo_elapsed:?}"
             );
         }
     }

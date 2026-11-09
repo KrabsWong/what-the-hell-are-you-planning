@@ -602,6 +602,8 @@ pub(crate) enum ScrollKey {
     BoardX,
     BoardColumn(u8),
     Topic,
+    TaskDetail,
+    AutomationDetail,
     PeriodBody,
     Settings,
     Result,
@@ -639,6 +641,33 @@ pub(crate) struct ReturnFrame {
     /// Captured at push time for a deleted selected run. It never lives on the
     /// live result page and cannot become a second navigation authority.
     pub result_fallback: Option<ResultFallback>,
+    /// Page-local filters/layout that are not part of the route identity yet.
+    pub page: PageState,
+}
+
+#[derive(Clone, Debug, PartialEq)]
+pub(crate) struct PageState {
+    pub query: String,
+    pub all_status: AllStatus,
+    pub layout: Layout,
+    pub results_filter: Option<AutomationId>,
+    pub history_limit: usize,
+    pub settings_tab: SettingsSection,
+    pub steps_layout: Layout,
+}
+
+impl Default for PageState {
+    fn default() -> Self {
+        Self {
+            query: String::new(),
+            all_status: AllStatus::All,
+            layout: Layout::List,
+            results_filter: None,
+            history_limit: 20,
+            settings_tab: SettingsSection::General,
+            steps_layout: Layout::Board,
+        }
+    }
 }
 
 #[derive(Clone, Debug, Default, PartialEq)]
@@ -826,6 +855,15 @@ impl NavState {
     pub(crate) fn returns(&self) -> &ReturnStack {
         &self.returns
     }
+    pub(crate) fn last_return(&self) -> Option<&ReturnFrame> {
+        self.returns.last()
+    }
+    pub(crate) fn record_return(&mut self, frame: ReturnFrame) {
+        self.returns.record(frame);
+    }
+    pub(crate) fn clear_returns(&mut self) {
+        self.returns.clear();
+    }
     pub(crate) fn remember_recent_surface(&mut self, task: TaskId, surface: RecentSurface) {
         self.recent_surfaces.insert(task, surface);
     }
@@ -928,6 +966,7 @@ impl NavState {
                     overlays: self.overlays.clone(),
                     scroll,
                     result_fallback,
+                    page: PageState::default(),
                 };
                 self.returns.record(frame);
                 self.overlays.clear();
@@ -1083,6 +1122,7 @@ impl NavState {
             overlays: vec![],
             scroll: ScrollBookmark::default(),
             result_fallback: None,
+            page: PageState::default(),
         };
         *self = candidate;
         Ok(NavEffect::Back {
@@ -3172,6 +3212,7 @@ mod tests {
             overlays: vec![],
             scroll: ScrollBookmark::default(),
             result_fallback: None,
+            page: PageState::default(),
         };
         stack.record(frame.clone());
         stack.record(frame.clone());
@@ -3186,6 +3227,7 @@ mod tests {
                 overlays: vec![],
                 scroll: ScrollBookmark::default(),
                 result_fallback: None,
+                page: PageState::default(),
             });
         }
         assert_eq!(stack.len(), MAX_RETURN_DEPTH);

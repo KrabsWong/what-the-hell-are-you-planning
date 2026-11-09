@@ -143,6 +143,9 @@ pub(crate) struct DispatchAdmissionAdapter {
     status_pending: BTreeMap<u64, StatusPending>,
     live_saves: BTreeMap<u64, u64>,
     live_retained: Option<(StagedGroup, u64)>,
+    /// Exact accepted live groups retained for crash recovery until their
+    /// receipt arrives. Cleared on the matching durable acknowledgement.
+    live_copies: BTreeMap<u64, StagedGroup>,
     resolution_keys: BTreeMap<String, String>,
     known_keys: BTreeSet<String>,
     max_pending: usize,
@@ -212,6 +215,7 @@ impl DispatchAdmissionAdapter {
             status_pending: BTreeMap::new(),
             live_saves: BTreeMap::new(),
             live_retained: None,
+            live_copies: BTreeMap::new(),
             resolution_keys: BTreeMap::new(),
             known_keys: BTreeSet::new(),
             max_pending: options.max_retained_groups.max(1),
@@ -434,6 +438,7 @@ impl DispatchAdmissionAdapter {
                 WorkerEvent::Returned { group, .. } => {
                     let generation = group.generation();
                     if let Some(epoch) = self.live_saves.get(&generation).copied() {
+                        self.live_copies.remove(&generation);
                         self.live_retained = Some((group, epoch));
                         updates.push(AdmissionUpdate::LiveSaveError {
                             generation,
@@ -469,6 +474,7 @@ impl DispatchAdmissionAdapter {
                 WorkerEvent::Rejected { reason, group, .. } => {
                     let generation = group.generation();
                     if let Some(epoch) = self.live_saves.get(&generation).copied() {
+                        self.live_copies.remove(&generation);
                         self.live_retained = Some((group, epoch));
                         updates.push(AdmissionUpdate::LiveSaveError {
                             generation,
@@ -880,6 +886,7 @@ impl DispatchAdmissionAdapter {
         match classify_live_receipt(&self.live_saves, self.workspace, &receipt) {
             LiveReceiptMatch::Durable(epoch) => {
                 self.live_saves.remove(&receipt.generation);
+                self.live_copies.remove(&receipt.generation);
                 updates.push(AdmissionUpdate::LiveSaveDurable {
                     generation: receipt.generation,
                     epoch,
@@ -1000,8 +1007,12 @@ impl DispatchAdmissionAdapter {
             .map_err(|error| format!("cannot stage live save group: {error:?}"))?;
         let generation = group.generation();
         self.live_saves.insert(generation, epoch);
+        let copy = group.clone();
         match self.worker.submit(group) {
-            SubmitOutcome::Accepted => Ok(generation),
+            SubmitOutcome::Accepted => {
+                self.live_copies.insert(generation, copy);
+                Ok(generation)
+            }
             SubmitOutcome::NotReady(group) | SubmitOutcome::Backpressure(group) => {
                 self.live_retained = Some((group, epoch));
                 Ok(generation)
@@ -1011,6 +1022,19 @@ impl DispatchAdmissionAdapter {
                 Err("live persistence worker is closed".into())
             }
         }
+    }
+
+    /// Accepted live groups still awaiting a receipt, in generation order, plus
+    /// the retained group. Recovery writes these exact boundaries.
+    pub(crate) fn live_snapshot(&self) -> Vec<StagedGroup> {
+        let mut groups: Vec<StagedGroup> = self.live_copies.values().cloned().collect();
+        if let Some((group, _)) = &self.live_retained
+            && !groups.iter().any(|existing| existing.generation() == group.generation())
+        {
+            groups.push(group.clone());
+        }
+        groups.sort_by_key(StagedGroup::generation);
+        groups
     }
 
     pub(crate) fn live_pending(&self) -> bool {
@@ -1026,6 +1050,18 @@ impl DispatchAdmissionAdapter {
 
     pub(crate) fn live_workspace(&self) -> u64 {
         self.workspace
+    }
+
+    pub(crate) fn durable_generation(&self) -> u64 {
+        self.worker.durable_generation()
+    }
+
+    pub(crate) fn is_started(&self) -> bool {
+        self.worker.is_started()
+    }
+
+    pub(crate) fn startup_error(&self) -> Option<&str> {
+        self.worker.startup_error()
     }
 
     /// Explicit footer retry: re-drain a retained live group and ask the worker
@@ -1044,8 +1080,11 @@ impl DispatchAdmissionAdapter {
             return;
         };
         let generation = group.generation();
+        let copy = group.clone();
         match self.worker.submit(group) {
-            SubmitOutcome::Accepted => {}
+            SubmitOutcome::Accepted => {
+                self.live_copies.insert(generation, copy);
+            }
             SubmitOutcome::NotReady(group) | SubmitOutcome::Backpressure(group) => {
                 self.live_retained = Some((group, epoch));
             }

@@ -2103,3 +2103,52 @@ Root reviewed the production application lifecycle before live-path activation. 
 ## r93 same-branch integration backup
 
 Root is backing up the current typed page-state migration, scoped Undo improvements, pending/durable continuation work and r87–r92 review evidence on the existing development branch. The recursive layout getter has been corrected in current source, but the latest independently compiled r91 snapshot failed and the live path remains disabled. This commit is a work-in-progress backup, not a release candidate or full acceptance. Lucide embedding passed for 51 registered icons. Screenshots, traces, local logs and candidate binaries remain excluded.
+
+
+WIP commit `54db910` was pushed to the same development branch. An exact-commit archive compile left one error, the missing startup notification probe. Root added only the four-line local probe type, retained all assertions, and independently compiled that controlled r94 derivation successfully. [Evidence](evidence/r94-compile.json). The first archive attempt failed on the host Python tar API; its accidentally started parent-worktree compile is excluded from acceptance. The successful r94 check uses the verified extracted commit plus the stated sole override. Runtime and release gates remain open.
+
+
+The r94 frozen derivation passed the full test command: 678 unit tests (2 ignored), 8 dispatch crash tests and 3 SQLite v4 crash tests, exit 0, with Node v24.22.2. [Evidence](evidence/r94-tests.json). This covers only commit `54db910` plus the probe definition, not subsequent graceful-shutdown/live activation edits or native behavior.
+
+
+## r95 live attachment must not fall back to legacy writes
+
+The current worktree now activates live persistence when an incremental workspace attaches. Root found that adapter attachment failure disables the live flag but still retains `Some(storage)`, allowing generic save methods to select their legacy branch for a migrated workspace. T14 must fail closed with explicit unavailable-backend semantics, prove that no legacy write is attempted, and test attach failure after migration followed by mutation, autosave, retry and successful recovery. The startup full-Store `last_saved` clone also remains subject to the original UI-thread allocation requirement. These current-worktree changes are separate from the passing r94 frozen tests.
+
+
+The immutable r94 candidate built and passed the invalid-QA isolation guard, then all five targeted UI checks: navigation-context, keyboard-visual, global-search, topics and automation. [Evidence](evidence/r94-ui-qa.json). The binary hash is recorded with individual exits and durations. These headless checks do not replace native scrolling, screenshots or current live-path activation acceptance.
+
+
+## r96 live lifecycle and recovery identity review
+
+The r96 frozen integration compiled successfully. [Evidence](evidence/r96-compile.json). Root returned four lifecycle gaps: idle quit may fail to start its drain pump, unavailable live persistence is incorrectly considered clean, repeated window close can bypass an in-flight process-stop worker, and close completion needs an explicit wake/close action. Root also required workspace identity and commit correlation in the new recovery sidecar, explicit write-error handling, and validation of platform quit paths. A controlled r97 derivation adds an independent regression that leaves an old recovery sidecar while replacing the SQLite workspace with a distinct incarnation; startup must reject the stale recovery or preserve replacement values. That test is running.
+
+
+The r97 independent recovery test reproduced cross-workspace overwrite: startup changed the replacement workspace model from `replacement/model` to `old-workspace/model`. The focused run exited 101 with one pass and two failures; the other failure was the existing startup test's outdated `migrated_store` assertion. [Evidence](evidence/r97-recovery.json). T14 received the regression. Root also rejected the new same-incarnation replay test as insufficient: replaying identical values cannot show that a stale recovery preserves a later durable edit to the same entity. That later-edit case is now explicitly required.
+
+
+The r98 independent focused run passed five cases, including the new foreign-incarnation protection, but failed the strengthened later-commit case: stale recovery replaced `Later durable title` with `Committed title`. [Evidence](evidence/r98-recovery.json). T14 received the exact regression. Its subsequent blanket rejection of unequal generations still needs a partial-drain case: when A commits and B remains pending, startup must preserve the newer committed state and recover B. Retaining a stale file for manual inspection alone does not prove normal-quit durability. Computer was checked again and still reported the Mac locked; the existing unlock handoff remains pending.
+
+
+## r99–r100 native access restored and clean scrolling trace
+
+After the user unlocked the Mac, root resumed native inspection of the isolated r88 diagnostic. Its stale Starting frame cleared on window Raise without resizing, so a resize-specific explanation is unsupported. Result Escape preserved the underlying list. Two older-diagnostic return-context mismatches were observed and returned to T12 for current-version verification. [Native observations](evidence/r99-native.json).
+
+The first 30-second Instruments recording crashed during finalization and could not export; it is excluded. A second 12.768-second trace completed and exported successfully, with all eight gestures inside the window and zero Cargo/rustc samples during recording. It recorded 18 hitches overall: none overlapping the short input-call intervals, nine within explicitly extended 500 ms settling windows. Accessibility observations occurred between gestures, so this does not by itself prove those nine were caused by scrolling. Main-thread samples point to paint, scene replay and bounds-tree insertion; sidebar work was small in this candidate. [Trace analysis](evidence/r100-native-scroll.json). Root restored all four OpenCode sessions after recording, and T19 received the trace plus a requirement to separate idle repaint, scrolling and observation overhead before choosing a fix. Full native smoothness remains unaccepted.
+
+
+## r101 recovery tail and reader lifecycle review
+
+Root reviewed the new recovery plan and actual history reader integration. Emergency snapshots append a generation-zero dirty tail even when changes are merely awaiting an accepted group's acknowledgement; the stale-plan test must include that actual tail. Root strengthened the same-entity stale recovery test accordingly and the gap test to include an earlier valid group. The r101 capture caught an in-progress duplicate closing statement/brace; a controlled r101b derivation removes only that syntax fragment and retains both stronger tests. It is running independently.
+
+T15 also received requirements to remove the reader's synchronous Drop join, bound request/response queues, correlate page responses with their request/cache generation, and distinguish not-loaded from valid-empty or failed results. Current empty-history/body conditions otherwise re-request indefinitely. Idle opening must start IO polling; pending reads must keep it alive, and settled idle state must stop it. These are acceptance requirements for the actual UI path, not just the indexed database API.
+
+
+The syntax-corrected r101b focused run passed seven cases and failed the dirty-tail stale-recovery case: `Committed title` replaced `Later durable title`. Whole-plan validation now passes the stronger late-gap case. [Evidence](evidence/r101-recovery.json). T14 is adding snapshot identity and an atomic recovery marker; root requires testing the actual capture/recover/commit/new-edit/crash-before-retirement sequence, not inferring success from hand-built accepted-only plans.
+
+Root also inspected the pinned GPUI implementation: native `on_app_quit` futures receive only 200 ms, and windows are cleared before those futures are awaited. T14 received these concrete lifecycle constraints; moving a long drain into the callback alone cannot prove normal platform Quit safety.
+
+
+## r102 live integration and native evidence backup
+
+Root is preserving the current live activation, graceful-exit/recovery rework, indexed history reader, navigation return-frame work and r94–r101 independent evidence on the existing development branch. The current worktree remains in progress and is not accepted by earlier frozen results. The latest controlled recovery test is still red; native scrolling requires further controls and the full matrix. Icon embedding passed for 51 registered assets and whitespace validation passed. Local screenshots, raw traces, logs and binaries are excluded.

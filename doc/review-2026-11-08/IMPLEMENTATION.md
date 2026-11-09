@@ -2051,3 +2051,55 @@ The r86 independent scoped run passed all 13 tests. The corrected 240-affected-s
 ## r87 same-branch work-in-progress backup
 
 Root is preserving the latest navigation migration, indexed Undo, live-save continuation work and independent r76–r86 evidence in the same development branch. The current live-save integration is still under active implementation and is not claimed buildable or accepted by the earlier frozen-candidate results. Icon embedding passed for 51 registered assets and whitespace validation passed. Screenshots, raw traces, logs and local candidate binaries are excluded from staging.
+
+
+WIP commit `957d268` was pushed successfully to `feature/review-2026-11-08-optimization`. Root started a paired startup derivation from r84 with the original boolean pump restored. Only the epoch-specific method test is removed; the actual scheduled-completion, notification and rendered-state assertions remain unchanged. This comparison tests whether the proposed scheduler change is necessary for the observed headless behavior; native stale-frame reproduction remains separate.
+
+
+## r88 pending-capacity preflight review
+
+The new command path applies a typed delta to live state before `submit_live_snapshot` checks whether the primary continuation slot is occupied. The outer guard still checks legacy pending fields. Root returned the requirement to reserve/check capacity before any live mutation, or retain each accepted mutation in a bounded continuation queue. A second command rejected during an in-flight primary must leave values, dirty deltas and pending effects unchanged; otherwise it can be persisted later without its intended continuation.
+
+
+The paired r87 candidate with the original boolean pump built and passed the guarded full keyboard/visual QA, retaining the actual scheduled-startup assertions. [Result](evidence/r87-original-pump.json). Both original and epoch-based pumps pass this headless case; it does not reproduce the native stale-frame observation and cannot justify claiming that a scheduler rewrite fixes it. T19 was informed to keep native root-cause investigation separate.
+
+
+Root prepared an optimized isolated native diagnostic from the independently passed r87 original-pump source. Its sole isolation override hardcodes the existing local review bootstrap path. This r88 build is intended to investigate startup/sidebar behavior and is explicitly not the final integrated release candidate. The user's production app and workspace are not restart targets.
+
+
+## r89 bounded-queue correctness and native diagnostic preparation
+
+Root rejected a live follow-up overflow branch that calls `pop_front` when coalescing fails: it can drop an unrelated accepted completion/effect. T14 must reject before mutation or retain each accepted obligation safely; heterogeneous over-capacity tests must prove no accepted effect disappears.
+
+The optimized r88 isolated diagnostic built in 37.36 seconds and passed the invalid-QA guard. [Build evidence](evidence/r88-native-build.json). Root started navigation-context and keyboard/visual QA before any installation; replacement is gated on both results and exact isolated bundle identity/hash/process checks. This diagnostic is for native startup/sidebar investigation, not final release acceptance.
+
+
+The r88 optimized diagnostic passed navigation-context and keyboard/visual QA. Root verified the exact isolated bundle/process/hash, stopped only isolated PID 81259, backed up the signed executable and installed/verified the new signed diagnostic (`55f56309ae92f4251be952ed03c4f3284e7d8c86811e9fd9c53956c393320263`). [Installation evidence](evidence/r88-native-install.json). Computer then reported the Mac locked again; native launch/visual behavior was not observed. A new manual-unlock handoff is pending while code work continues.
+
+
+## r90 continuation identity and resumed native handoff
+
+Root found that follow-up coalescing also replaces distinct `EnqueueNext` occurrence IDs and distinct `ClearStopIntent` obligations merely because their enum kinds match. These are not equivalent effects. T14 received requirements to preserve distinct identities, prove same-identity merge semantics, reserve bounded capacity before mutation, and test heterogeneous capacity overflow with exactly-once effects after durability. The live path remains disabled and is not accepted.
+
+After the user reported unlocking, Computer still returned `Mac is locked` while acquiring the isolated review app. Root requested another unlock retry and continued code review; no native launch or visual acceptance is claimed. A frozen 437-file integration snapshot was captured for an independent compile check.
+
+
+The r90 frozen integration compile check exited 101 on an extra closing delimiter in `EditCommand::guard_reprepare`, `src/domain_command.rs:291`. The current source retained the same delimiter when checked; T14 received the exact failure. [Evidence](evidence/r90-compile.json). Root also rejected the replacement queue design's unbounded per-group completion vector: a group-count limit alone does not bound retained obligations while the worker is unavailable.
+
+
+## r91 runtime backpressure must preserve completion events
+
+The live queue now has total retained-completion count and byte checks, and the r90 parser delimiter was removed in the current source. Neither change has independent passing integration evidence yet. Root found a new callback boundary to verify: `automation_after_run` returns when auxiliary capacity is full, although its research/recovery callers have already consumed the run completion. T14 must demonstrate eventual reconciliation after capacity is available without user input or restart, exactly-once next-stage effects, and durability before dispatch. Rejecting a fresh user action and deferring an already-received runtime event require different handling.
+
+
+The r91 frozen compile check exited 101 with 12 errors: ten QA field-to-getter migration sites (T12), a missing `NotifyProbe` type (T19), and one stale persistence method signature (T14). Root also identified an unconditional recursive `ResearchTaskPage::steps_layout` getter, a runtime failure that appears only as a compiler warning. Each finding was returned to its owner with source locations and unchanged-assertion requirements. [Evidence](evidence/r91-compile.json). This candidate is not buildable or accepted.
+
+
+## r92 graceful shutdown requires live persistence ownership
+
+Root reviewed the production application lifecycle before live-path activation. `on_app_quit` calls `shutdown` and returns an empty future; `shutdown` only queues the live save. `PersistenceWorker::Drop` requests shutdown and detaches an unfinished thread, while queued groups may be returned to an owner that is being dropped. These paths do not yet prove durability for accepted edits or final runtime output on normal Quit or workspace switching. T14 received the requirement for a nonblocking graceful-close protocol retaining the worker, lock and receipt owner, and delayed-write save/quit/reopen plus failure tests through the actual app lifecycle. Worker-only shutdown accounting is insufficient evidence.
+
+
+## r93 same-branch integration backup
+
+Root is backing up the current typed page-state migration, scoped Undo improvements, pending/durable continuation work and r87–r92 review evidence on the existing development branch. The recursive layout getter has been corrected in current source, but the latest independently compiled r91 snapshot failed and the live path remains disabled. This commit is a work-in-progress backup, not a release candidate or full acceptance. Lucide embedding passed for 51 registered icons. Screenshots, traces, local logs and candidate binaries remain excluded.

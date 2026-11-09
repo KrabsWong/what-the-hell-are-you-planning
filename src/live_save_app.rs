@@ -47,7 +47,7 @@ pub(crate) enum LiveCompletion {
         /// draft, a reopened editor or a different editor is never cleared and
         /// the late ACK never navigates.
         expected: crate::draft_exit::TaskEditValues,
-        instance: TaskEditorInstance,
+        instance: Option<TaskEditorInstance>,
         close_editor: bool,
         undo: crate::scoped_edit::TaskEditUndo,
     },
@@ -60,8 +60,15 @@ pub(crate) enum LiveCompletion {
         undo: crate::scoped_material::MaterialUndo,
         message: String,
     },
+    MaterialUndo {
+        cleanup: Vec<crate::scoped_material::ImportedCopy>,
+    },
     Settings {
         undo: crate::scoped_settings::SettingsUndo,
+        message: String,
+    },
+    Domain {
+        undo: Option<crate::scoped_domain::DomainUndo>,
         message: String,
     },
     Request {
@@ -121,9 +128,81 @@ pub(crate) struct LiveInflight {
     pub epoch: u64,
 }
 
+/// One submitted ordinary/runtime group and every continuation that becomes
+/// eligible when that exact epoch is durable. Distinct occurrence/run IDs are
+/// never merged across entries: each completion is retained verbatim.
+#[derive(Clone, Debug)]
+pub(crate) struct LiveGroup {
+    pub generation: u64,
+    pub epoch: u64,
+    pub workspace: u64,
+    pub completions: Vec<LiveCompletion>,
+}
+
 #[derive(Clone, Debug)]
 pub(crate) enum DeferredUiAction {
     ClearComment { task: u64, body: String },
+}
+
+/// Groups retained outside the worker's ordered acknowledgement window. Kept
+/// below `WorkerOptions::max_retained_groups` so a reservation always leaves
+/// room for the primary group and the adapter's one retained group.
+pub(crate) const MAX_LIVE_FOLLOWUP_GROUPS: usize = 16;
+/// Hard bound on retained post-commit continuations across every group. The
+/// UI reserves capacity before mutating; a stalled worker therefore rejects
+/// new actions instead of growing an unbounded effect queue.
+pub(crate) const MAX_RETAINED_COMPLETIONS: usize = 256;
+pub(crate) const MAX_RETAINED_COMPLETION_BYTES: usize = 256 * 1024;
+
+impl LiveCompletion {
+    fn is_effect(&self) -> bool {
+        matches!(
+            self,
+            Self::Command { .. }
+                | Self::AutomationTicks { .. }
+                | Self::EnqueueNext { .. }
+                | Self::ClearStopIntent { .. }
+                | Self::RetryQueued { .. }
+        )
+    }
+
+    /// Conservative size of the retained effect payload. Distinct IDs and
+    /// notices are counted; nothing is merged or dropped to fit.
+    pub(crate) fn estimated_bytes(&self) -> usize {
+        let base = std::mem::size_of::<Self>();
+        match self {
+            Self::None => 0,
+            Self::Status(message) => base.saturating_add(message.capacity()),
+            Self::AutomationTicks {
+                queued,
+                superseded,
+                notice,
+            } => base
+                .saturating_add(queued.capacity().saturating_mul(8))
+                .saturating_add(superseded.capacity().saturating_mul(8))
+                .saturating_add(notice.as_ref().map_or(0, |text| text.capacity())),
+            Self::EnqueueNext { .. } => base.saturating_add(8),
+            Self::RetryQueued { notice, .. } => base
+                .saturating_add(8)
+                .saturating_add(notice.as_ref().map_or(0, |text| text.capacity())),
+            Self::ClearStopIntent { .. } => base.saturating_add(8),
+            // Form/command completions are primary-only; count a conservative
+            // slot if one is ever retained as an auxiliary effect.
+            Self::Command { effects, .. } => base
+                .saturating_add(effects.capacity().saturating_mul(std::mem::size_of::<crate::domain_command::CommandEffect>())),
+            Self::TaskEdit { expected, .. } => base
+                .saturating_add(expected.title.capacity())
+                .saturating_add(expected.description.capacity()),
+            Self::Comment { body, .. } => base.saturating_add(body.capacity()),
+            Self::Material { message, .. } => base.saturating_add(message.capacity()),
+            Self::MaterialUndo { cleanup } => base
+                .saturating_add(cleanup.capacity().saturating_mul(std::mem::size_of::<crate::scoped_material::ImportedCopy>())),
+            Self::Settings { message, .. } => base.saturating_add(message.capacity()),
+            Self::Domain { message, .. } => base.saturating_add(message.capacity()),
+            Self::Request { input, .. } => base.saturating_add(input.capacity()),
+            Self::UndoApplied => base,
+        }
+    }
 }
 
 impl TaskApp {
@@ -138,11 +217,27 @@ impl TaskApp {
 
     pub(crate) fn live_has_pending_receipts(&self) -> bool {
         self.live_primary.is_some()
-            || self.live_inflight.is_some()
+            || !self.live_followups.is_empty()
             || self
                 .dispatch_admission
                 .as_ref()
                 .is_some_and(|adapter| adapter.live_pending())
+    }
+
+    /// Preflight before any live mutation. A second form/command save is
+    /// rejected while a primary continuation is in flight, so no validated
+    /// change can be merged and then lose its completion.
+    pub(crate) fn live_can_accept_primary(&self) -> Result<(), String> {
+        if !self.live_persistence_active() {
+            return Ok(());
+        }
+        if self.live_primary.is_some() {
+            return Err(
+                "A previous save is still waiting for its durable receipt. Its changes stay in the workspace and retry automatically."
+                    .into(),
+            );
+        }
+        Ok(())
     }
 
     /// Keep the bounded poll loop alive until every accepted group and every
@@ -150,6 +245,7 @@ impl TaskApp {
     pub(crate) fn live_needs_pump(&self) -> bool {
         self.live_persistence_active()
             && (self.live_has_pending_receipts()
+                || self.live_has_deferred_runtime()
                 || (self.store.has_tracked_changes() && self.live_failure.is_none()))
     }
 
@@ -163,22 +259,21 @@ impl TaskApp {
         self.submit_primary_group(None)
     }
 
-    /// Submit the current dirty snapshot. The caller must have already merged
-    /// any validated staged values into the live store, so the drained group is
-    /// the exact durable write set, including concurrent later edits.
+    /// Submit a follow-up group from the autosave/pump path.
+    pub(crate) fn submit_followups_in_persist(&mut self) -> Result<(), String> {
+        self.submit_pending_followups(None)
+    }
+
+    /// Submit the current dirty snapshot as the form/command primary group. The
+    /// caller must have merged validated staged values into the live store.
     pub(crate) fn submit_live_snapshot(
         &mut self,
         completion: LiveCompletion,
         cx: &mut Context<Self>,
     ) -> Result<SaveAcceptance, String> {
+        self.live_can_accept_primary()?;
         if !self.live_persistence_active() {
             return Err("Live persistence is unavailable.".into());
-        }
-        if self.live_primary.is_some() {
-            return Err(
-                "A previous save is still waiting for its durable receipt. Its changes stay in the workspace and retry automatically."
-                    .into(),
-            );
         }
         let delta = self.store.drain_store_delta()?;
         if delta.changes.is_empty() && delta.metadata.is_empty() {
@@ -199,6 +294,100 @@ impl TaskApp {
         Ok(SaveAcceptance::Pending)
     }
 
+    /// Whether one more ordinary/runtime completion can be retained. A pending
+    /// (generation 0) group accepts additional completions without consuming a
+    /// new slot.
+    fn retained_completion_usage(&self) -> (usize, usize) {
+        let mut count = 0usize;
+        let mut bytes = 0usize;
+        for group in &self.live_followups {
+            for completion in &group.completions {
+                count = count.saturating_add(1);
+                bytes = bytes.saturating_add(completion.estimated_bytes());
+            }
+        }
+        (count, bytes)
+    }
+
+    /// Reserve capacity for one more auxiliary continuation before any Store
+    /// mutation. `estimate_bytes` covers the completion payload the caller is
+    /// about to create.
+    pub(crate) fn live_reserve_auxiliary(&self, estimate_bytes: usize) -> Result<(), String> {
+        if !self.live_persistence_active() {
+            return Ok(());
+        }
+        let (count, bytes) = self.retained_completion_usage();
+        let needs_group = !self.live_followups.iter().any(|group| group.generation == 0);
+        if count >= MAX_RETAINED_COMPLETIONS
+            || bytes.saturating_add(estimate_bytes) > MAX_RETAINED_COMPLETION_BYTES
+            || (needs_group && self.live_followups.len() >= MAX_LIVE_FOLLOWUP_GROUPS)
+        {
+            return Err(
+                "Persistence is still confirming earlier changes. This action was not applied; retry when the workspace is saved."
+                    .into(),
+            );
+        }
+        Ok(())
+    }
+
+    /// Conservative default reservation for small runtime effects.
+    pub(crate) fn live_can_accept_auxiliary(&self) -> Result<(), String> {
+        self.live_reserve_auxiliary(4096)
+    }
+
+    /// Submit an ordinary/runtime group that may coexist with a form/command
+    /// primary. Its effects are retained by epoch in a bounded queue and run
+    /// only when an acknowledgement covers that epoch.
+    pub(crate) fn submit_live_auxiliary(
+        &mut self,
+        completion: LiveCompletion,
+        cx: &mut Context<Self>,
+    ) -> Result<SaveAcceptance, String> {
+        if !self.live_persistence_active() {
+            return Err("Live persistence is unavailable.".into());
+        }
+        let delta = self.store.drain_store_delta()?;
+        if delta.changes.is_empty() && delta.metadata.is_empty() {
+            self.complete_live_now(completion, cx);
+            return Ok(SaveAcceptance::Durable);
+        }
+        self.retain_completion(completion);
+        self.last_save = std::time::Instant::now();
+        self.submit_pending_followups(Some(cx))?;
+        self.start_pump(cx);
+        Ok(SaveAcceptance::Pending)
+    }
+
+    /// Append a completion to the pending (not yet submitted) group, or open a
+    /// new reserved group. Callers must run `live_can_accept_auxiliary` before
+    /// mutating; this function never drops an accepted effect.
+    fn retain_completion(
+        &mut self,
+        completion: LiveCompletion,
+    ) {
+        let workspace = self.live_workspace.unwrap_or(0);
+        let epoch = self.store.dirty_epoch();
+        if let Some(group) = self
+            .live_followups
+            .iter_mut()
+            .find(|group| group.generation == 0)
+        {
+            group.completions.push(completion);
+            group.epoch = group.epoch.max(epoch);
+            return;
+        }
+        // Capacity was reserved by the caller. If an invariant breach still
+        // reaches here, preserve the effect rather than silently dropping it;
+        // the admission preflight is the actual memory bound.
+        debug_assert!(self.live_followups.len() < MAX_LIVE_FOLLOWUP_GROUPS);
+        self.live_followups.push_back(LiveGroup {
+            generation: 0,
+            epoch,
+            workspace,
+            completions: vec![completion],
+        });
+    }
+
     fn submit_primary_group(&mut self, cx: Option<&mut Context<Self>>) -> Result<(), String> {
         let Some(pending) = self.live_primary.as_ref() else {
             return Ok(());
@@ -208,7 +397,6 @@ impl TaskApp {
         }
         let delta = self.store.drain_store_delta()?;
         if delta.changes.is_empty() && delta.metadata.is_empty() {
-            self.live_primary = None;
             return Ok(());
         }
         let workspace = self.live_workspace.unwrap_or(0);
@@ -243,39 +431,153 @@ impl TaskApp {
         }
     }
 
-    /// Retry a deferred primary submission or a blocked/retained worker group.
-    /// Effects remain gated on the next matching receipt.
+    fn submit_pending_followups(
+        &mut self,
+        cx: Option<&mut Context<Self>>,
+    ) -> Result<(), String> {
+        if !self.live_followups.iter().any(|group| group.generation == 0) {
+            return Ok(());
+        }
+        let delta = self.store.drain_store_delta()?;
+        if delta.changes.is_empty() && delta.metadata.is_empty() {
+            return Ok(());
+        }
+        let workspace = self.live_workspace.unwrap_or(0);
+        let Some(adapter) = self.dispatch_admission.as_mut() else {
+            return Err("Live persistence is unavailable.".into());
+        };
+        let generation = match adapter.submit_live_group(delta.changes, delta.metadata, delta.epoch) {
+            Ok(generation) => generation,
+            Err(error) if error.contains("not ready") => {
+                self.storage_error = "Saving will start when persistence is ready.".into();
+                return Ok(());
+            }
+            Err(error) => {
+                self.live_failure = Some(error.clone());
+                self.storage_error = error.clone();
+                return Err(error);
+            }
+        };
+        for group in self.live_followups.iter_mut() {
+            if group.generation == 0 && group.epoch <= delta.epoch {
+                // The submitted snapshot covers this group's mutations.
+                group.generation = generation;
+                group.epoch = delta.epoch;
+                group.workspace = workspace;
+            }
+        }
+        self.live_failure = None;
+        self.last_save = std::time::Instant::now();
+        if let Some(cx) = cx {
+            self.start_pump(cx);
+        }
+        Ok(())
+    }
+
+    /// Autosave/pump submission. Coalesces one dirty snapshot into the ordered
+    /// journal, records a plain follow-up group, and returns whether work was
+    /// submitted. A newer edit during an in-flight primary becomes its own group
+    /// rather than being lost or clearing the form early.
+    pub(crate) fn persist_live_followup(&mut self) -> bool {
+        if !self.live_persistence_active() {
+            return false;
+        }
+        if !self.store.has_tracked_changes() {
+            if self.live_followups.iter().any(|group| group.generation == 0) {
+                let _ = self.submit_pending_followups(None);
+            }
+            if self
+                .live_primary
+                .as_ref()
+                .is_some_and(|pending| pending.generation == 0)
+            {
+                let _ = self.submit_primary_group(None);
+            }
+            return false;
+        }
+        let epoch = self.store.dirty_epoch();
+        if let Some(pending) = self.live_primary.as_ref() {
+            if pending.generation == 0 {
+                if let Err(error) = self.submit_primary_group(None) {
+                    self.storage_error = error;
+                    return false;
+                }
+                return true;
+            }
+            if !pending.durable && pending.epoch == epoch {
+                // This snapshot is already the primary group.
+                return false;
+            }
+        }
+        if self
+            .live_followups
+            .iter()
+            .any(|group| group.generation == 0 || group.epoch == epoch)
+        {
+            let _ = self.submit_pending_followups(None);
+            return false;
+        }
+        let delta = match self.store.drain_store_delta() {
+            Ok(delta) => delta,
+            Err(error) => {
+                self.storage_error = error;
+                return false;
+            }
+        };
+        if delta.changes.is_empty() && delta.metadata.is_empty() {
+            return false;
+        }
+        let Some(adapter) = self.dispatch_admission.as_mut() else {
+            self.storage_error = "Live persistence is unavailable.".into();
+            return false;
+        };
+        match adapter.submit_live_group(delta.changes, delta.metadata, delta.epoch) {
+            Ok(generation) => {
+                self.live_followups.push_back(LiveGroup {
+                    generation,
+                    epoch: delta.epoch,
+                    workspace: self.live_workspace.unwrap_or(0),
+                    completions: Vec::new(),
+                });
+                self.live_failure = None;
+                self.last_save = std::time::Instant::now();
+                true
+            }
+            Err(error) => {
+                self.storage_error = error;
+                false
+            }
+        }
+    }
+
+    /// Retry deferred primary/follow-up submissions and a blocked/retained
+    /// worker group. Effects remain gated on the next matching receipt.
     pub(crate) fn retry_live_persistence(&mut self, cx: &mut Context<Self>) {
         if !self.live_persistence_active() {
             return;
         }
         self.live_failure = None;
         self.live_retry_at = None;
-        if self
-            .live_primary
-            .as_ref()
-            .is_some_and(|pending| pending.generation == 0)
-        {
-            if let Err(error) = self.submit_primary_group(Some(cx)) {
-                self.live_failure = Some(error.clone());
-                self.storage_error = error;
-            }
-            return;
-        }
+        let _ = self.submit_primary_group(Some(cx));
+        let _ = self.submit_pending_followups(Some(cx));
         if let Some(adapter) = self.dispatch_admission.as_mut()
             && let Err(error) = adapter.retry_live()
         {
             self.live_failure = Some(error.clone());
             self.storage_error = error;
         }
-        if self.live_inflight.is_none() && self.store.has_tracked_changes() {
+        if self.store.has_tracked_changes()
+            && self.live_primary.as_ref().is_none_or(|pending| pending.durable)
+            && !self.live_followups.iter().any(|group| group.generation == 0)
+        {
             self.persist_if_changed(true);
         }
         self.start_pump(cx);
     }
 
     /// Called for every live receipt after the adapter has validated its
-    /// workspace, generation and empty effect list.
+    /// workspace, generation and empty effect list. Runs only continuations
+    /// whose captured epoch is covered by this acknowledgement.
     pub(crate) fn on_live_durable(
         &mut self,
         generation: u64,
@@ -285,37 +587,55 @@ impl TaskApp {
         if generation == 0 {
             return;
         }
-        if let Some(inflight) = self.live_inflight
-            && inflight.generation == generation
-            && inflight.epoch == epoch
-        {
-            self.live_inflight = None;
-            self.store.retire_epoch(inflight.epoch);
-        }
-        // Exact correlation: captured workspace, generation and epoch must all
-        // match. A generation-0 deferred submission is only completed after the
-        // worker returns its real generation.
+        let workspace = self.live_workspace.unwrap_or(0);
         if let Some(pending) = self.live_primary.as_mut()
             && pending.generation == generation
             && pending.epoch == epoch
+            && pending.workspace == workspace
         {
-            if pending.workspace != self.live_workspace.unwrap_or(0) {
-                // A receipt from an older workspace incarnation must never
-                // complete or clear the current form.
-                return;
-            }
             pending.durable = true;
             self.store.retire_epoch(epoch);
             self.live_failure = None;
             self.storage_error.clear();
         }
+        // Remove and run every covered follow-up in epoch order. A deferred
+        // group (generation 0) is also covered by this snapshot's epoch.
+        let mut covered = Vec::new();
+        loop {
+            let Some(index) = self
+                .live_followups
+                .iter()
+                .position(|group| group.epoch <= epoch && group.workspace == workspace)
+            else {
+                break;
+            };
+            let group = self.live_followups.remove(index).expect("checked index");
+            covered.push(group);
+        }
+        covered.sort_by_key(|group| group.epoch);
+        for group in covered {
+            self.store.retire_epoch(group.epoch);
+            // Each completion is run exactly once, in submission order. IDs are
+            // distinct entries/content, never merged.
+            for completion in group.completions {
+                self.complete_live_now(completion, cx);
+            }
+        }
         self.finish_primary_if_ready(cx);
         if self.store.has_tracked_changes()
-            && self.live_primary.as_ref().is_some_and(|pending| pending.durable)
+            && self.live_primary.as_ref().is_none_or(|pending| pending.durable)
         {
-            // A newer edit landed while the primary group was in flight. Write
-            // it next; the form/panel still does not close until it is durable.
+            // A newer edit landed while groups were in flight. Write it next;
+            // the form still does not close until every current edit is durable.
             self.persist_if_changed(true);
+        }
+        if self
+            .live_primary
+            .as_ref()
+            .is_some_and(|pending| pending.durable)
+            || self.live_followups.iter().any(|group| group.generation == 0)
+        {
+            let _ = self.submit_pending_followups(Some(cx));
         }
         cx.notify();
     }
@@ -327,13 +647,20 @@ impl TaskApp {
         reason: String,
         cx: &mut Context<Self>,
     ) {
+        let workspace = self.live_workspace.unwrap_or(0);
         let matches_primary = self.live_primary.as_ref().is_some_and(|pending| {
-            generation != 0 && pending.generation == generation && pending.epoch == epoch
+            generation != 0
+                && pending.generation == generation
+                && pending.epoch == epoch
+                && pending.workspace == workspace
         });
-        let matches_inflight = self
-            .live_inflight
-            .is_some_and(|inflight| inflight.generation == generation && inflight.epoch == epoch);
-        if !matches_primary && !matches_inflight {
+        let matches_followup = self.live_followups.iter().any(|group| {
+            generation != 0
+                && group.generation == generation
+                && group.epoch == epoch
+                && group.workspace == workspace
+        });
+        if !matches_primary && !matches_followup {
             // Never let an unrelated receipt overwrite the current error.
             return;
         }
@@ -343,12 +670,64 @@ impl TaskApp {
         cx.notify();
     }
 
+    /// Replay one-shot runtime callbacks once continuation capacity frees.
+    /// Identities only; the underlying run/occurrence state stays in the live
+    /// store, so replaying performs the transition exactly once.
+    pub(crate) fn drain_live_deferred_runtime(&mut self, cx: &mut Context<Self>) {
+        if !self.live_persistence_active() {
+            return;
+        }
+        for _ in 0..16 {
+            if self.live_can_accept_auxiliary().is_err() {
+                break;
+            }
+            if let Some(run_id) = self.live_deferred_runs.pop_front() {
+                self.complete_research_run(run_id, cx);
+                continue;
+            }
+            if let Some((occurrence, run_id)) = self.live_deferred_after_run.pop_front() {
+                self.automation_after_run(occurrence, run_id, cx);
+                continue;
+            }
+            if self.live_deferred_recovery {
+                self.live_deferred_recovery = false;
+                self.recover_automations(cx);
+                continue;
+            }
+            break;
+        }
+    }
+
+    pub(crate) fn live_has_deferred_runtime(&self) -> bool {
+        !self.live_deferred_runs.is_empty()
+            || !self.live_deferred_after_run.is_empty()
+            || self.live_deferred_recovery
+    }
+
+    pub(crate) fn defer_run_completion(&mut self, run_id: u64) {
+        if !self.live_deferred_runs.contains(&run_id) {
+            self.live_deferred_runs.push_back(run_id);
+        }
+    }
+
+    pub(crate) fn defer_after_run(&mut self, occurrence: u64, run_id: u64) {
+        if !self
+            .live_deferred_after_run
+            .contains(&(occurrence, run_id))
+        {
+            self.live_deferred_after_run.push_back((occurrence, run_id));
+        }
+    }
+
     /// A workspace switch owns a new incarnation. Drop every old continuation
     /// and in-flight correlation before the new worker is attached; an old
     /// adapter/ACK must never complete a form in the new workspace.
     pub(crate) fn reset_live_state(&mut self) {
         self.live_primary = None;
-        self.live_inflight = None;
+        self.live_followups.clear();
+        self.live_deferred_runs.clear();
+        self.live_deferred_after_run.clear();
+        self.live_deferred_recovery = false;
         self.live_workspace = None;
         self.live_failure = None;
         self.live_retry_at = None;
@@ -388,17 +767,10 @@ impl TaskApp {
         if !pending.durable {
             return;
         }
-        let is_effect = matches!(
-            pending.completion,
-            LiveCompletion::AutomationTicks { .. }
-                | LiveCompletion::EnqueueNext { .. }
-                | LiveCompletion::ClearStopIntent { .. }
-                | LiveCompletion::RetryQueued { .. }
-        );
         // Forms and status changes close only once every current edit is
-        // durable. Post-commit effects are tied to their own group and may run
-        // even while a later edit is still being written.
-        if !is_effect && self.store.has_tracked_changes() {
+        // durable. Post-commit effects in the follow-up queue are tied to their
+        // own group and may run even while a later edit is still being written.
+        if !pending.completion.is_effect() && self.store.has_tracked_changes() {
             return;
         }
         let pending = self.live_primary.take().expect("checked above");
@@ -432,8 +804,9 @@ impl TaskApp {
                 // edits are not Store dirt, and a close+reopen of the same task
                 // creates new entities, so both are compared explicitly.
                 let same_form = close_editor
+                    && instance == self.task_editor_instance()
+                    && instance.is_some()
                     && self.task_editor_overlay() == Some(task)
-                    && self.task_editor_instance() == Some(instance)
                     && self.draft_editor_values(cx).as_ref() == Some(&expected);
                 if same_form {
                     let _ = self.close_task_editor_overlay();
@@ -466,9 +839,26 @@ impl TaskApp {
                 self.toast = format!("{message} · Undo is available");
                 self.save_feedback = Some(Ok(message));
             }
+            LiveCompletion::MaterialUndo { cleanup } => {
+                self.undo_invalidation = None;
+                crate::appearance::apply(self.store.appearance(), None, cx);
+                self.toast = "Last change undone".into();
+                self.error.clear();
+                if !cleanup.is_empty() {
+                    self.submit_material_cleanup(cleanup, cx);
+                }
+            }
             LiveCompletion::Settings { undo, message } => {
                 self.undo_invalidation = None;
                 self.undo.push_settings(undo);
+                self.toast = message;
+                self.error.clear();
+            }
+            LiveCompletion::Domain { undo, message } => {
+                self.undo_invalidation = None;
+                if let Some(undo) = undo {
+                    self.undo.push_domain(undo);
+                }
                 self.toast = message;
                 self.error.clear();
             }
@@ -478,8 +868,10 @@ impl TaskApp {
                 destination,
                 input,
                 replan_source,
+                form_epoch,
             } => {
-                let unchanged = self.planning_destination == destination
+                let unchanged = self.planning_form_epoch == form_epoch
+                    && self.planning_destination == destination
                     && self.planning_replan_source == replan_source
                     && self.project_brief.read(cx).value().trim() == input.trim();
                 if unchanged {
@@ -490,13 +882,38 @@ impl TaskApp {
                     self.planning_destination_error = None;
                     self.planning_opener_focus = None;
                     self.navigation.planning_baseline.clear();
+                    self.error.clear();
+                    self.toast = "Request saved · generate a plan when ready".into();
+                } else if self.planning_destination.is_none() {
+                    // The original form is gone and nothing newer owns the
+                    // surface; a passive acknowledgement is safe.
+                    self.error.clear();
+                    self.toast = "Request saved · generate a plan when ready".into();
                 }
-                self.error.clear();
-                self.toast = "Request saved · generate a plan when ready".into();
                 if start {
                     // Starting a saved request never moves the user's route.
                     self.retry_research_request_without_navigation(id, cx);
                 }
+            }
+            LiveCompletion::Command {
+                class,
+                subject,
+                effects,
+            } => {
+                self.storage_error.clear();
+                if class != crate::domain_command::CommandClass::OrdinaryEdit {
+                    self.invalidate_undo_for_automation();
+                }
+                if class == crate::domain_command::CommandClass::StopExternalWork
+                    && let Some(subject) = subject
+                {
+                    self.clear_stop_intent(subject);
+                    self.automation_ui.feedback = Some(Ok(
+                        "Stopped. The cancellation is saved and this period will not restart."
+                            .into(),
+                    ));
+                }
+                self.apply_effects(effects, cx);
             }
             LiveCompletion::AutomationTicks {
                 queued,
@@ -606,5 +1023,23 @@ impl TaskApp {
         } else {
             self.store.push_task(task);
         }
+    }
+
+    /// Stable entity identity of the currently open editor. Reopening the same
+    /// task replaces all of these entities.
+    pub(crate) fn task_editor_instance(&self) -> Option<TaskEditorInstance> {
+        self.draft.as_ref().map(|draft| TaskEditorInstance {
+            title: draft.title.entity_id(),
+            description: draft.description.entity_id(),
+            labels: draft.labels.entity_id(),
+            due: draft.due.entity_id(),
+        })
+    }
+
+    /// Advance the composer instance when a planning form is opened, retargeted
+    /// or closed. A close+reopen of the same destination is therefore a distinct
+    /// form even if the text and destination happen to be equal.
+    pub(crate) fn bump_planning_form_epoch(&mut self) {
+        self.planning_form_epoch = self.planning_form_epoch.wrapping_add(1).max(1);
     }
 }

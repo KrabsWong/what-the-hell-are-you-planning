@@ -1455,7 +1455,10 @@ impl TaskApp {
             input,
             now: Self::automation_now(),
         };
-        let receipt = self.execute_command(command, cx)?;
+        let run = self.execute_command(command, cx)?;
+        let receipt = run
+            .receipt()
+            .ok_or_else(|| "Saving… retry when the current change is durable.".to_string())?;
         let id = receipt
             .subject
             .ok_or_else(|| "The saved draft did not return an automation id.".to_string())?;
@@ -1480,7 +1483,16 @@ impl TaskApp {
             now: Self::automation_now(),
         };
         let saved = match self.execute_command(command, cx) {
-            Ok(receipt) => {
+            Ok(crate::command_app::CommandRun::Saving { subject }) => {
+                if let Some(id) = subject {
+                    self.automation_ui.editing = Some(id);
+                    self.automation_ui.selected = Some(id);
+                }
+                self.automation_ui.feedback =
+                    Some(Ok("Saving… the draft becomes durable after acknowledgement.".into()));
+                false
+            }
+            Ok(crate::command_app::CommandRun::Durable(receipt)) => {
                 let id = receipt.subject.expect("save draft returns a definition id");
                 self.automation_ui.creating = false;
                 self.automation_ui.selected = Some(id);
@@ -1570,7 +1582,11 @@ impl TaskApp {
             now: Self::automation_now(),
         };
         match self.execute_command(command, cx) {
-            Ok(receipt) => {
+            Ok(crate::command_app::CommandRun::Saving { .. }) => {
+                self.automation_ui.feedback =
+                    Some(Ok("Saving… enabling finishes after the durable receipt.".into()));
+            }
+            Ok(crate::command_app::CommandRun::Durable(receipt)) => {
                 let id = receipt.subject.expect("enable returns a definition id");
                 self.automation_ui.creating = false;
                 self.automation_ui.editing = None;
@@ -1617,7 +1633,11 @@ impl TaskApp {
             now: Self::automation_now(),
         };
         match self.execute_command(command, cx) {
-            Ok(_) => {
+            Ok(crate::command_app::CommandRun::Saving { .. }) => {
+                self.automation_ui.feedback =
+                    Some(Ok("Saving… the pause applies after the durable receipt.".into()));
+            }
+            Ok(crate::command_app::CommandRun::Durable(_)) => {
                 self.automation_ui.feedback = Some(Ok(
                     "Paused. Future triggers stopped and unstarted requests were cancelled. A running period can finish."
                         .into(),
@@ -1634,7 +1654,11 @@ impl TaskApp {
             now: Self::automation_now(),
         };
         match self.execute_command(command, cx) {
-            Ok(_) => {
+            Ok(crate::command_app::CommandRun::Saving { .. }) => {
+                self.automation_ui.feedback =
+                    Some(Ok("Saving… the schedule resumes after the durable receipt.".into()));
+            }
+            Ok(crate::command_app::CommandRun::Durable(_)) => {
                 self.automation_ui.feedback = Some(Ok(
                     "Enabled again. The next trigger is computed from now; time spent paused is not backfilled."
                         .into(),
@@ -1671,7 +1695,10 @@ impl TaskApp {
             now: Self::automation_now(),
         };
         match self.execute_command(command, cx) {
-            Ok(_) => {
+            Ok(crate::command_app::CommandRun::Saving { .. }) => {
+                self.toast = "Saving… the period retry applies after the durable receipt.".into();
+            }
+            Ok(crate::command_app::CommandRun::Durable(_)) => {
                 self.toast = format!(
                     "Retrying period {} in place · approved version v{} · finished steps keep their results.",
                     occurrence.id, occurrence.definition_version
@@ -1689,7 +1716,11 @@ impl TaskApp {
             now: Self::automation_now(),
         };
         match self.execute_command(command, cx) {
-            Ok(_) => {
+            Ok(crate::command_app::CommandRun::Saving { .. }) => {
+                self.automation_ui.feedback =
+                    Some(Ok("Saving… the manual run queues after the durable receipt.".into()));
+            }
+            Ok(crate::command_app::CommandRun::Durable(_)) => {
                 self.automation_ui.feedback = Some(Ok(
                     "Manual run queued. It uses the same approval and automation queue; the schedule did not move."
                         .into(),
@@ -1749,7 +1780,12 @@ impl TaskApp {
             now: Self::automation_now(),
         };
         match self.execute_command(command, cx) {
-            Ok(receipt) => {
+            Ok(crate::command_app::CommandRun::Saving { .. }) => {
+                self.automation_ui.feedback = Some(Ok(
+                    "Saving… the copy is created after the durable receipt.".into(),
+                ));
+            }
+            Ok(crate::command_app::CommandRun::Durable(receipt)) => {
                 if let Some(copy) = receipt.subject {
                     self.open_automation(copy, window, cx);
                 }
@@ -1769,7 +1805,11 @@ impl TaskApp {
             now: Self::automation_now(),
         };
         match self.execute_command(command, cx) {
-            Ok(_) => {
+            Ok(crate::command_app::CommandRun::Saving { .. }) => {
+                self.automation_ui.feedback =
+                    Some(Ok("Saving… the archive applies after the durable receipt.".into()));
+            }
+            Ok(crate::command_app::CommandRun::Durable(_)) => {
                 self.automation_ui.selected = None;
                 self.automation_ui.creating = false;
                 self.toast = "Automation archived · history kept".into();
@@ -1815,7 +1855,11 @@ impl TaskApp {
             apply: true,
         };
         match self.execute_command(command, cx) {
-            Ok(receipt) => {
+            Ok(crate::command_app::CommandRun::Saving { .. }) => {
+                self.automation_ui.cleanup_preview =
+                    "Saving… cleanup completes after the durable receipt.".into();
+            }
+            Ok(crate::command_app::CommandRun::Durable(receipt)) => {
                 if let Some(feedback) = receipt.feedback {
                     self.automation_ui.cleanup_preview = format!(
                         "{} · {}. Results and recovery records remain.",

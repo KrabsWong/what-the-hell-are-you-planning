@@ -427,7 +427,7 @@ fn research_scope_origin(
             assert_eq!(app.read(cx).scope(), scope);
             assert_eq!(app.read(cx).layout, Layout::Board);
             assert_eq!(app.read(cx).all_status, AllStatus::Open);
-            assert_eq!(app.read(cx).query, "supply");
+            assert_eq!(app.read(cx).query(), "supply");
             assert_eq!(
                 app.read(cx).search.read(cx).value().to_string(),
                 "supply"
@@ -456,7 +456,7 @@ fn research_scope_origin(
             assert_eq!(app.read(cx).scope(), scope);
             assert_eq!(app.read(cx).layout, Layout::Board);
             assert_eq!(app.read(cx).all_status, AllStatus::Open);
-            assert_eq!(app.read(cx).query, "supply");
+            assert_eq!(app.read(cx).query(), "supply");
             assert_eq!(
                 app.read(cx).search.read(cx).value().to_string(),
                 "supply"

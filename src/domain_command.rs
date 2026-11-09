@@ -55,24 +55,89 @@ pub(crate) enum CommandClass {
     StopExternalWork,
 }
 
+#[derive(Clone, Debug, PartialEq)]
+pub(crate) struct TaskBase {
+    pub fields: TaskFields,
+    pub stage: Stage,
+    pub approved_plan: Option<String>,
+}
+
+#[derive(Clone, Debug, PartialEq)]
+pub(crate) struct AutomationBase {
+    pub version: u32,
+    pub name: String,
+    pub status: crate::automation::DefinitionStatus,
+    pub approval: Option<crate::automation::AutomationApproval>,
+    pub cursor: Option<i64>,
+    pub anchor: Option<i64>,
+}
+
 /// The state a command was prepared from. The revision is the store's
 /// monotonic tracked-mutation stamp: every tracked entity/scalar write advances
 /// it, so a stale base never replays pipelined state. It deliberately does not
-/// clone or hash the whole store on the UI thread.
+/// clone or hash the whole store on the UI thread; only the command's target
+/// entity is snapshotted for its reprepare conflict check.
 #[derive(Clone, Debug, PartialEq)]
 pub(crate) struct CommandBase {
     pub revision: u64,
     pub next_id: u64,
     pub run_id_floor: u64,
+    pub tasks: std::collections::BTreeMap<u64, TaskBase>,
+    pub automations: std::collections::BTreeMap<u64, AutomationBase>,
+    pub occurrences: std::collections::BTreeMap<u64, crate::automation::OccurrenceStatus>,
 }
 
 impl CommandBase {
-    pub(crate) fn capture(store: &Store) -> Self {
-        Self {
+    pub(crate) fn capture(store: &Store, command: &Command) -> Self {
+        let mut base = Self {
             revision: store.dirty_epoch(),
             next_id: store.next_id(),
             run_id_floor: store.run_id_floor(),
+            tasks: Default::default(),
+            automations: Default::default(),
+            occurrences: Default::default(),
+        };
+        match command {
+            Command::Edit(EditCommand::TaskDetails { id, .. })
+            | Command::Edit(EditCommand::TaskStage { id, .. }) => {
+                if let Some(task) = store.task(*id) {
+                    base.tasks.insert(
+                        *id,
+                        TaskBase {
+                            fields: TaskFields::from_task(task),
+                            stage: task.stage,
+                            approved_plan: task.approved_plan.clone(),
+                        },
+                    );
+                }
+            }
+            Command::SaveDraft { id: Some(id), .. }
+            | Command::Enable { id: Some(id), .. }
+            | Command::AutomationPause { id, .. }
+            | Command::ResumeSchedule { id, .. }
+            | Command::Archive { id, .. } => {
+                if let Some(definition) = store.automation(*id) {
+                    base.automations.insert(
+                        *id,
+                        AutomationBase {
+                            version: definition.version,
+                            name: definition.name.clone(),
+                            status: definition.status,
+                            approval: definition.approval.clone(),
+                            cursor: definition.cursor,
+                            anchor: definition.anchor,
+                        },
+                    );
+                }
+            }
+            Command::RetryOccurrence { occurrence, .. } => {
+                if let Some(value) = store.occurrence(*occurrence) {
+                    base.occurrences.insert(*occurrence, value.status);
+                }
+            }
+            _ => {}
         }
+        base
     }
 
     pub(crate) fn matches(&self, store: &Store) -> bool {
@@ -193,13 +258,13 @@ impl EditCommand {
         match self {
             Self::TaskDetails { id, .. } => {
                 let before = base
-                    .store()
-                    .task(*id)
+                    .tasks
+                    .get(id)
                     .ok_or_else(|| CommandError::Conflict("The task was removed.".into()))?;
                 let now = live
                     .task(*id)
                     .ok_or_else(|| CommandError::Conflict("The task was removed.".into()))?;
-                if TaskFields::from_task(before) != TaskFields::from_task(now) {
+                if before.fields != TaskFields::from_task(now) {
                     return Err(CommandError::Conflict(
                         "The task changed after this edit was prepared.".into(),
                     ));
@@ -207,8 +272,8 @@ impl EditCommand {
             }
             Self::TaskStage { id, .. } => {
                 let before = base
-                    .store()
-                    .task(*id)
+                    .tasks
+                    .get(id)
                     .ok_or_else(|| CommandError::Conflict("The task was removed.".into()))?;
                 let now = live
                     .task(*id)
@@ -464,8 +529,8 @@ impl Command {
             Self::Edit(edit) => edit.guard_reprepare(base, live),
             Self::SaveDraft { id: Some(id), .. } => {
                 let before = base
-                    .store()
-                    .automation(*id)
+                    .automations
+                    .get(id)
                     .ok_or_else(|| CommandError::Conflict("The automation was removed.".into()))?;
                 let now = live
                     .automation(*id)
@@ -479,8 +544,8 @@ impl Command {
             }
             Self::Enable { id: Some(id), .. } => {
                 let before = base
-                    .store()
-                    .automation(*id)
+                    .automations
+                    .get(id)
                     .ok_or_else(|| CommandError::Conflict("The automation was removed.".into()))?;
                 let now = live
                     .automation(*id)
@@ -532,10 +597,7 @@ impl Command {
                 Ok(())
             }
             Self::RetryOccurrence { occurrence, .. } => {
-                let before = base
-                    .store()
-                    .occurrence(*occurrence)
-                    .map(|value| value.status);
+                let before = base.occurrences.get(occurrence).copied();
                 let now = live.occurrence(*occurrence).map(|value| value.status);
                 if before != now {
                     return Err(CommandError::Conflict(
@@ -703,7 +765,7 @@ impl Store {
                 "The command safety class does not match its operation.".into(),
             ));
         }
-        let base = CommandBase::capture(self);
+        let base = CommandBase::capture(self, &command);
         let mut staged = self.clone();
         let outcome = match &command {
             Command::Edit(edit) => apply_edit(&mut staged, edit)?,

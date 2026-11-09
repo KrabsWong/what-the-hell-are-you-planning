@@ -62,6 +62,7 @@ impl TaskApp {
         if saved {
             if self.research_topic == Some(topic) { self.research_project = project; }
             if self.planning_topic == Some(topic) {
+                self.bump_planning_form_epoch();
                 self.planning_project = Some(project);
                 self.planning_destination = Some(
                     crate::navigation_context::CreationMode::ExistingTopic { project, topic },

@@ -688,6 +688,8 @@ fn move_topic(
     project: u64,
     undo: &mut DomainUndo,
 ) -> Result<(), String> {
+    #[cfg(test)]
+    let __t_start = std::time::Instant::now();
     let topic_before = store.topic(topic).cloned().ok_or("Topic not found.")?;
     if !store.projects().iter().any(|value| value.id == project) {
         return Err("Project not found.".into());
@@ -724,9 +726,16 @@ fn move_topic(
                 ids.push(run);
             }
         }
-        for task in task_ids.iter().copied() {
-            if let Some(result) = store.research_result(task) {
-                ids.push(result.id);
+        // Latest non-simulated result per affected task, in one history pass.
+        // This mirrors the move's reusable-run selection without rescanning the
+        // history per task or recomputing canonical signatures.
+        let mut seen = std::collections::HashSet::new();
+        for run in store.runs().iter().rev() {
+            if !task_set.contains(&run.task_id) || !seen.insert(run.task_id) {
+                continue;
+            }
+            if run.status == "Succeeded" && !run.output.trim().is_empty() {
+                ids.push(run.id);
             }
         }
         ids.sort_unstable();
@@ -754,8 +763,12 @@ fn move_topic(
         })
         .collect();
     let runs_before = capture_runs(store, &run_ids);
+    #[cfg(test)]
+    eprintln!("  scoped_move preimage={:?}", __t_start.elapsed());
 
     store.move_topic_project(topic, project)?;
+    #[cfg(test)]
+    eprintln!("  scoped_move after_core={:?}", __t_start.elapsed());
 
     let topic_after = store.topic(topic).cloned().ok_or("Topic not found.")?;
     if topic_before.project_id != topic_after.project_id {
@@ -809,6 +822,8 @@ fn move_topic(
         }
     }
     undo.runs = changed_runs(store, runs_before);
+    #[cfg(test)]
+    eprintln!("  scoped_move total={:?}", __t_start.elapsed());
     Ok(())
 }
 
@@ -2033,10 +2048,17 @@ mod tests {
         (store, topic, goal, steps)
     }
 
-    #[test]
-    fn large_affected_topic_move_and_undo_stay_bounded() {
-        let affected = 240usize;
-        let total_history = 43_200usize;
+    fn scale_case(
+        affected: usize,
+        total_history: usize,
+    ) -> (
+        std::time::Duration,
+        std::time::Duration,
+        std::time::Duration,
+        std::time::Duration,
+        u128,
+        usize,
+    ) {
         let (mut store, topic, goal, steps) = bulk_research_fixture(affected);
         let mut runs: Vec<AgentRun> = steps
             .iter()
@@ -2055,8 +2077,6 @@ mod tests {
             .create_task("History task", 1, Stage::Done, None)
             .unwrap();
         let planning_run_id = 2_000_000u64;
-        // The planning run must not shadow a step's reusable result: the latest
-        // non-simulated run per task decides validity.
         let mut planning = history_run(planning_run_id, history_task);
         planning.project_plan = Some(1);
         runs.push(planning);
@@ -2107,31 +2127,34 @@ mod tests {
         fresh.set_default_model(store.default_model().clone());
         let mut store = match fresh.with_loaded_tracked(runs, Vec::new(), Vec::new()) {
             Ok(restored) => restored,
-            Err((_, error)) => panic!("large affected fixture failed: {error}"),
+            Err((_, error)) => panic!("scale fixture failed: {error}"),
         };
         assert_eq!(store.runs().len(), total_history + 1);
         for step in &steps {
-            if store.research_result(*step).is_none() {
-                let signature = store.research_signature(*step);
-                let run = store
-                    .runs()
-                    .iter()
-                    .find(|run| run.task_id == *step && run.status != "Simulated");
-                let goal_ok = store.task(goal).map(|task| {
-                    (
-                        task.stage,
-                        task.approved_plan.clone(),
-                        store.goal_plan_signature(goal),
-                    )
-                });
-                panic!("bulk fixture step {step} invalid: signature={signature:?} run={:?} goal={goal_ok:?}", run.map(|run| (&run.input_signature, &run.status, run.output.len())));
-            }
+            assert!(
+                store.research_result(*step).is_some(),
+                "fixture result must be valid before the move"
+            );
         }
+
+        let signature_started = std::time::Instant::now();
+        for step in &steps {
+            let _ = store.research_signature(*step);
+        }
+        let signature_elapsed = signature_started.elapsed();
+        let blockers_started = std::time::Instant::now();
+        let _ = store.topic_move_blockers(topic, None);
+        let blockers_elapsed = blockers_started.elapsed();
+
+        let mut probe = store.clone();
+        let core_started = std::time::Instant::now();
+        probe.move_topic_project(topic, 2).unwrap();
+        let core_elapsed = core_started.elapsed();
 
         let started = std::time::Instant::now();
         let outcome = DomainCommand::TopicMove { topic, project: 2 }
             .execute(&mut store)
-            .unwrap_or_else(|error| panic!("large affected move failed: {error}"));
+            .unwrap_or_else(|error| panic!("scale move failed: {error}"));
         let move_elapsed = started.elapsed();
         for step in &steps {
             assert!(
@@ -2139,16 +2162,19 @@ mod tests {
                 "affected result {step} stays valid after the move"
             );
         }
-        let started = std::time::Instant::now();
+        let undo_started = std::time::Instant::now();
         apply_undo(&mut store, &outcome.undo).unwrap();
-        let undo_elapsed = started.elapsed();
+        let undo_elapsed = undo_started.elapsed();
         for step in &steps {
             assert!(
                 store.research_result(*step).is_some(),
                 "Undo restores reusable result for {step}"
             );
         }
-        assert_eq!(store.task(goal).unwrap().approved_plan, store.goal_plan_signature(goal));
+        assert_eq!(
+            store.task(goal).unwrap().approved_plan,
+            store.goal_plan_signature(goal)
+        );
         let live_after = store
             .runs()
             .iter()
@@ -2157,10 +2183,26 @@ mod tests {
         assert_eq!(live_after.status, live_snapshot.status);
         assert_eq!(live_after.output, live_snapshot.output);
         assert_eq!(live_after.logs, live_snapshot.logs);
-        eprintln!(
-            "scoped_domain large-affected: affected={affected} history={total_history} deltas={} move={move_elapsed:?} undo={undo_elapsed:?}",
-            outcome.undo.changed_entities()
-        );
+        (
+            move_elapsed,
+            undo_elapsed,
+            core_elapsed,
+            signature_elapsed + blockers_elapsed,
+            signature_elapsed.as_micros(),
+            outcome.undo.changed_entities(),
+        )
+    }
+
+    #[test]
+    fn large_affected_topic_move_scales_across_workloads() {
+        let history = 43_200usize;
+        for affected in [3usize, 240, 800] {
+            let (move_elapsed, undo_elapsed, core_elapsed, preflight, signature_us, deltas) =
+                scale_case(affected, history);
+            eprintln!(
+                "scoped_domain scale: affected={affected} history={history} deltas={deltas} signature_scan={signature_us}us preflight={preflight:?} core_move={core_elapsed:?} command_move={move_elapsed:?} undo={undo_elapsed:?}"
+            );
+        }
     }
 
     #[test]

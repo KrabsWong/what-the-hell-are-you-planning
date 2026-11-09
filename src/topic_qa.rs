@@ -404,7 +404,7 @@ fn steps_screenshot(
                 a.store = store.clone();
                 a.open_goal_steps(goal, w, cx);
                 if list {
-                    a.steps_layout = crate::app::Layout::List;
+                    a.set_steps_layout(crate::app::Layout::List);
                 }
                 crate::appearance::apply(
                     if dark {
@@ -438,8 +438,8 @@ fn steps_screenshot(
                 w.render_frame(cx);
                 w.click("task-progress", cx);
                 assert_eq!(app.read(cx).selected(), Some(goal));
-                assert_eq!(app.read(cx).goal_steps_tab, Some(goal));
-                assert!(app.read(cx).steps_layout == crate::app::Layout::List);
+                assert_eq!(app.read(cx).goal_steps_tab(), Some(goal));
+                assert!(app.read(cx).steps_layout() == crate::app::Layout::List);
                 w.render_frame(cx);
                 assert!(w.try_find("goal-steps-list").is_some());
             }).unwrap();

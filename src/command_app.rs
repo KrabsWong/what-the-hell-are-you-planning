@@ -15,7 +15,7 @@ use crate::persistence::Storage;
 use crate::stop_intent::{self, StopRecord};
 use gpui_kit::*;
 
-struct StorageSink<'a> {
+pub(crate) struct StorageSink<'a> {
     storage: &'a Storage,
     #[cfg(feature = "qa")]
     writes: Option<&'a std::cell::Cell<usize>>,
@@ -36,6 +36,37 @@ struct NoopSink;
 impl CommitSink for NoopSink {
     fn save(&self, _store: &Store) -> Result<(), String> {
         Ok(())
+    }
+}
+
+/// Result of one user command.
+///
+/// `Saving` is deliberately distinct from an error: the validated command is
+/// visible in memory and queued to the ordered worker, but its effects and
+/// success feedback wait for the exact durable receipt.
+#[derive(Clone, Debug, PartialEq)]
+pub(crate) enum CommandRun {
+    Durable(CommandReceipt),
+    Saving { subject: Option<u64> },
+}
+
+impl CommandRun {
+    pub(crate) fn receipt(&self) -> Option<&CommandReceipt> {
+        match self {
+            Self::Durable(receipt) => Some(receipt),
+            Self::Saving { .. } => None,
+        }
+    }
+
+    pub(crate) fn subject(&self) -> Option<u64> {
+        match self {
+            Self::Durable(receipt) => receipt.subject,
+            Self::Saving { subject } => *subject,
+        }
+    }
+
+    pub(crate) fn is_durable(&self) -> bool {
+        matches!(self, Self::Durable(_))
     }
 }
 
@@ -65,7 +96,7 @@ impl TaskApp {
         &mut self,
         command: Command,
         cx: &mut Context<Self>,
-    ) -> Result<CommandReceipt, String> {
+    ) -> Result<CommandRun, String> {
         if self.pending_commit.is_some()
             || self.pending_stop.is_some()
             || self.pending_dispatch.is_some()
@@ -96,41 +127,55 @@ impl TaskApp {
         &mut self,
         prepared: PreparedCommand,
         cx: &mut Context<Self>,
-    ) -> Result<CommandReceipt, String> {
+    ) -> Result<CommandRun, String> {
         let class = prepared.class;
-        if self.live_save_enabled && self.live_command_generation.is_some() {
-            return Err(
-                "A previous command is still saving. Wait for its durable receipt before retrying."
-                    .into(),
-            );
-        }
-        if self.live_save_enabled {
+        if self.live_persistence_active() {
+            // Reserve the single form/command continuation slot before touching
+            // live state. A rejected second command must leave values, dirty
+            // tracking and the active continuation untouched.
+            self.live_can_accept_primary()?;
+            if !prepared.base.matches(&self.store) {
+                return Err(
+                    "The workspace changed after this command was prepared. Review it again."
+                        .into(),
+                );
+            }
             let delta = prepared
                 .staged
                 .drain_store_delta()
                 .map_err(|error| error.to_string())?;
-            if !delta.changes.is_empty() || !delta.metadata.is_empty() {
-                let Some(adapter) = self.dispatch_admission.as_mut() else {
-                    return Err("Live persistence is unavailable. Nothing was saved.".into());
-                };
-                let generation = adapter
-                    .submit_live_group(delta.changes, delta.metadata, delta.epoch)
-                    .map_err(|error| format!("Live save was not submitted: {error}"))?;
-                self.live_command_generation = Some(generation);
-                if class == CommandClass::StopExternalWork {
-                    self.pending_stop = Some(prepared);
-                } else {
-                    self.pending_commit = Some(prepared);
-                }
-                return Err("Saving before the command is applied.".into());
+            let subject = prepared.outcome.subject;
+            let completion = crate::live_save_app::LiveCompletion::Command {
+                class,
+                subject,
+                effects: prepared.outcome.effects.clone(),
+            };
+            if delta.changes.is_empty() && delta.metadata.is_empty() {
+                self.complete_live_now(completion, cx);
+                return Ok(CommandRun::Durable(CommandReceipt {
+                    subject,
+                    effects: prepared.outcome.effects,
+                    undo: prepared.outcome.undo,
+                    feedback: prepared.outcome.feedback,
+                }));
             }
-            let result = crate::domain_command::commit_prepared(
-                &NoopSink,
-                &mut self.store,
-                &mut self.last_saved,
-                prepared,
-            );
-            return self.finish_commit_result(result, class, cx);
+            // Apply exactly the validated typed delta to live state, then submit
+            // the drained snapshot. The prepared whole-store clone is dropped.
+            self.store
+                .apply_live_journal_group(&delta.changes, &delta.metadata);
+            match self.submit_live_snapshot(completion, cx)? {
+                crate::live_save_app::SaveAcceptance::Pending => {
+                    return Ok(CommandRun::Saving { subject });
+                }
+                crate::live_save_app::SaveAcceptance::Durable => {
+                    return Ok(CommandRun::Durable(CommandReceipt {
+                        subject,
+                        effects: Vec::new(),
+                        undo: prepared.outcome.undo,
+                        feedback: prepared.outcome.feedback,
+                    }));
+                }
+            }
         }
         let Some(storage) = self.storage.as_ref() else {
             return Err("Workspace storage is unavailable. Nothing was saved.".into());
@@ -154,7 +199,7 @@ impl TaskApp {
         result: Result<CommandReceipt, CommitError>,
         class: CommandClass,
         cx: &mut Context<Self>,
-    ) -> Result<CommandReceipt, String> {
+    ) -> Result<CommandRun, String> {
         match result {
             Ok(receipt) => {
                 self.storage_error.clear();
@@ -175,7 +220,7 @@ impl TaskApp {
                 }
                 let effects = receipt.effects.clone();
                 self.apply_effects(effects, cx);
-                Ok(receipt)
+                Ok(CommandRun::Durable(receipt))
             }
             Err(CommitError::NotDurable { message, pending }) => {
                 self.storage_error = message.clone();
@@ -197,69 +242,15 @@ impl TaskApp {
         }
     }
 
-    /// Apply a command whose typed group is already durable. The staged command
-    /// is repreprepared against current state and committed through a no-op sink.
-    fn finish_live_command(&mut self, cx: &mut Context<Self>) {
-        let pending = self.pending_commit.take().or_else(|| self.pending_stop.take());
-        let Some(prepared) = pending else { return; };
-        let class = prepared.class;
-        // Apply exactly the acknowledged prepared write set. No reprepare under
-        // the no-op sink: effects must match the durable group.
-        let result = crate::domain_command::commit_prepared(
-            &NoopSink,
-            &mut self.store,
-            &mut self.last_saved,
-            prepared,
-        );
-        match result {
-            Ok(receipt) => {
-                self.storage_error.clear();
-                if class != CommandClass::OrdinaryEdit {
-                    self.invalidate_undo_for_automation();
-                }
-                if class == CommandClass::StopExternalWork
-                    && let Some(subject) = receipt.subject
-                {
-                    self.clear_stop_intent(subject);
-                    self.automation_ui.feedback = Some(Ok(
-                        "Stopped. The cancellation is saved and this period will not restart."
-                            .into(),
-                    ));
-                }
-                let effects = receipt.effects.clone();
-                self.apply_effects(effects, cx);
-            }
-            Err(CommitError::Stale { pending, .. }) => {
-                // A concurrent edit invalidated the acknowledged base. The
-                // retained command must be reprepared and submitted as a NEW
-                // generation; no effects may run for the old group.
-                match crate::domain_command::reprepare(pending, &self.store) {
-                    Ok(prepared) => match self.commit_prepared_command(prepared, cx) {
-                        Ok(_) => {}
-                        Err(error) => {
-                            self.storage_error = error;
-                        }
-                    },
-                    Err(error) => {
-                        self.storage_error = command_error_text(error);
-                    }
-                }
-            }
-            Err(CommitError::NotDurable { message, pending }) => {
-                self.storage_error = message;
-                if pending.class == CommandClass::StopExternalWork {
-                    self.pending_stop = Some(pending);
-                } else {
-                    self.pending_commit = Some(pending);
-                }
-            }
-        }
-    }
+    /// Live commands retain only typed post-commit data in `live_primary`; no
+    /// whole staged store exists to replay here.
+    fn finish_live_command(&mut self, _cx: &mut Context<Self>) {}
 
     /// Footer Retry save / next-command retry. It never replays the old staged
     /// store: it reprepares from the current store under the retained identity.
     pub(crate) fn retry_pending_saves(&mut self, cx: &mut Context<Self>) {
-        if self.live_save_enabled && self.live_command_generation.is_some() {
+        if self.live_persistence_active() && self.live_has_pending_receipts() {
+            self.retry_live_persistence(cx);
             return;
         }
         if let Some(pending) = self.pending_commit.take() {
@@ -1337,7 +1328,7 @@ impl TaskApp {
         }
     }
 
-    fn apply_effects(&mut self, effects: Vec<CommandEffect>, cx: &mut Context<Self>) {
+    pub(crate) fn apply_effects(&mut self, effects: Vec<CommandEffect>, cx: &mut Context<Self>) {
         for effect in effects {
             match effect {
                 CommandEffect::EnqueueOccurrence(occurrence) => {
@@ -1564,11 +1555,22 @@ impl TaskApp {
                     self.stop_intents
                         .retain(|value| value.occurrence != intent.occurrence);
                 } else {
-                    match self.save_current_store_durably() {
-                        Ok(()) => {
+                    match self.save_current_store_durably(
+                        crate::live_save_app::LiveCompletion::ClearStopIntent {
+                            occurrence: intent.occurrence,
+                            resume_recovery: true,
+                        },
+                        cx,
+                    ) {
+                        Ok(crate::live_save_app::SaveAcceptance::Durable) => {
                             let _ = stop_intent::clear(root, intent.occurrence);
                             self.stop_intents
                                 .retain(|value| value.occurrence != intent.occurrence);
+                        }
+                        Ok(crate::live_save_app::SaveAcceptance::Pending) => {
+                            // The journal/intent stays until the durable receipt;
+                            // its completion clears it and resumes recovery.
+                            all_durable = false;
                         }
                         Err(error) => {
                             all_durable = false;
@@ -1584,6 +1586,11 @@ impl TaskApp {
             }
             self.queued_runs
                 .retain(|(id, _)| !intent.run_ids.contains(id));
+            if let Err(error) = self.live_can_accept_auxiliary() {
+                all_durable = false;
+                self.storage_error = error;
+                continue;
+            }
             let ids: Vec<u64> = self
                 .store
                 .runs()
@@ -1607,11 +1614,21 @@ impl TaskApp {
                 );
             }
             let _ = self.store.stop_occurrence(intent.occurrence, now);
-            match self.save_current_store_durably() {
-                Ok(()) => {
+            match self.save_current_store_durably(
+                crate::live_save_app::LiveCompletion::ClearStopIntent {
+                    occurrence: intent.occurrence,
+                    resume_recovery: true,
+                },
+                cx,
+            ) {
+                Ok(crate::live_save_app::SaveAcceptance::Durable) => {
                     let _ = stop_intent::clear(root, intent.occurrence);
                     self.stop_intents
                         .retain(|value| value.occurrence != intent.occurrence);
+                }
+                Ok(crate::live_save_app::SaveAcceptance::Pending) => {
+                    // Retain the journal until its matching durable receipt.
+                    all_durable = false;
                 }
                 Err(error) => {
                     all_durable = false;
@@ -1633,7 +1650,14 @@ impl TaskApp {
         all_durable && self.stop_intents.is_empty()
     }
 
-    pub(crate) fn save_current_store_durably(&mut self) -> Result<(), String> {
+    pub(crate) fn save_current_store_durably(
+        &mut self,
+        completion: crate::live_save_app::LiveCompletion,
+        cx: &mut Context<Self>,
+    ) -> Result<crate::live_save_app::SaveAcceptance, String> {
+        if self.live_persistence_active() {
+            return self.submit_live_auxiliary(completion, cx);
+        }
         let receipt = self.store.drain_store_delta()?;
         let Some(storage) = self.storage.as_ref() else {
             return Err("Workspace storage is unavailable.".into());
@@ -1643,7 +1667,8 @@ impl TaskApp {
                 self.store.retire_store_delta(&receipt);
                 self.last_saved = self.store.clone();
                 self.storage_error.clear();
-                Ok(())
+                self.complete_live_now(completion, cx);
+                Ok(crate::live_save_app::SaveAcceptance::Durable)
             }
             Err(error) => {
                 self.storage_error = error.clone();

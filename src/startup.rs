@@ -3,7 +3,7 @@ use crate::{
     app::TaskApp,
     appearance::palette,
     controls::*,
-    views::{col, label, row, selectable},
+    views::{col, label, observed, row, selectable},
 };
 use gpui_kit::{
     component::{Disableable, button::ButtonVariants, input::Input},
@@ -173,9 +173,15 @@ impl TaskApp {
                 .into_any_element();
         }
         if self.startup.silent {
-            return col().id("startup-checking").size_full()
-                .bg(rgb(colors.canvas)).items_center().justify_center()
-                .child(label("Starting…", cx)).into_any_element();
+            return observed(
+                col()
+                    .id("startup-checking")
+                    .size_full()
+                    .bg(rgb(colors.canvas))
+                    .items_center()
+                    .justify_center()
+                    .child(label("Starting…", cx)),
+            );
         }
         let dependency = |index: usize| {
             let current = match index {

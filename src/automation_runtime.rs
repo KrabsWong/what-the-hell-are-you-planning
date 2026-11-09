@@ -1701,7 +1701,19 @@ impl TaskApp {
         let now = Self::automation_now();
         let plans = self.store.plan_automation_ticks(now);
         if !plans.is_empty() {
-            let rollback = self.store.clone();
+            if let Err(error) = self.live_reserve_auxiliary(4096 + 16 * plans.len()) {
+                self.error = error;
+                self.automation_backoff_until =
+                    Some(std::time::Instant::now() + std::time::Duration::from_secs(30));
+                self.automation_timer_armed = false;
+                self.arm_automation_timer(cx);
+                cx.notify();
+                return;
+            }
+            // Live mode keeps the optimistic cursor and writes the typed group;
+            // a failed write blocks dispatch instead of cloning/restoring the
+            // whole history on the UI thread.
+            let rollback = (!self.live_persistence_active()).then(|| self.store.clone());
             let mut commits = vec![];
             let mut failure = None;
             for plan in &plans {
@@ -1724,14 +1736,30 @@ impl TaskApp {
                 }
             }
             if failure.is_none() {
-                self.persist_if_changed(true);
-                if !self.storage_error.is_empty() {
-                    failure = Some(self.storage_error.clone());
+                let mut queued = Vec::new();
+                let mut superseded = Vec::new();
+                for commit in &commits {
+                    queued.extend(commit.queued.iter().copied());
+                    superseded.extend(commit.superseded.iter().copied());
+                }
+                // Dispatch effects run only after this cursor/occurrence group
+                // is durable. The completion is retained by epoch in the bounded
+                // follow-up queue.
+                let completion = crate::live_save_app::LiveCompletion::AutomationTicks {
+                    queued,
+                    superseded,
+                    notice: None,
+                };
+                if let Err(error) = self.save_current_store_durably(completion, cx) {
+                    failure = Some(error);
                 }
             }
             if let Some(error) = failure {
-                // Nothing may be dispatched and no in-memory cursor may survive.
-                self.store = rollback;
+                // Nothing may be dispatched and no in-memory cursor may survive
+                // a failed synchronous write.
+                if let Some(rollback) = rollback {
+                    self.store = rollback;
+                }
                 self.error = format!("Automation schedule was not saved: {error}");
                 self.automation_backoff_until =
                     Some(std::time::Instant::now() + std::time::Duration::from_secs(30));
@@ -1741,14 +1769,6 @@ impl TaskApp {
                 return;
             }
             self.automation_backoff_until = None;
-            for commit in commits {
-                for id in commit.superseded {
-                    self.cancel_unstarted_automation_work(&[id]);
-                }
-                for id in commit.queued {
-                    self.enqueue_automation_occurrence(id, cx);
-                }
-            }
         }
         self.enforce_automation_timeouts(now, cx);
         self.enforce_regeneration_deadlines(now, cx);
@@ -2032,7 +2052,12 @@ impl TaskApp {
             return;
         };
         if occurrence.status == OccurrenceStatus::Queued {
-            let rollback = self.store.clone();
+            if let Err(error) = self.live_can_accept_auxiliary() {
+                self.error = error;
+                cx.notify();
+                return;
+            }
+            let rollback = (!self.live_persistence_active()).then(|| self.store.clone());
             if let Some(mut value) = self.store.occurrence_mut(occurrence_id) {
                 let _ = value.transition(
                     OccurrenceStatus::Skipped,
@@ -2042,9 +2067,15 @@ impl TaskApp {
                     )),
                 );
             }
-            if let Err(error) = self.save_current_store_durably() {
-                self.store = rollback;
-                self.error = format!("Expired automation state was not saved: {error}");
+            match self.save_current_store_durably(
+                crate::live_save_app::LiveCompletion::None,
+                cx,
+            ) {
+                Ok(_) => {}
+                Err(error) => {
+                    if let Some(rollback) = rollback { self.store = rollback; }
+                    self.error = format!("Expired automation state was not saved: {error}");
+                }
             }
         }
         let _ = now;
@@ -2062,6 +2093,11 @@ impl TaskApp {
         };
         if occurrence.status.is_terminal() {
             self.automation_started.remove(&occurrence_id);
+            return;
+        }
+        if let Err(error) = self.live_can_accept_auxiliary() {
+            self.error = error;
+            cx.notify();
             return;
         }
         for run in &occurrence.run_ids {
@@ -2088,7 +2124,7 @@ impl TaskApp {
             run.logs
                 .push("[automation] Cancelled because the occurrence time limit was reached.".into());
         }
-        let rollback = self.store.clone();
+        let rollback = (!self.live_persistence_active()).then(|| self.store.clone());
         let mut notice = None;
         if !self
             .store
@@ -2109,11 +2145,16 @@ impl TaskApp {
                 .note_automation_failure(occurrence.automation_id, now);
             self.error = "Automation stopped at its time limit.".into();
         }
-        if let Err(error) = self.save_current_store_durably() {
-            self.store = rollback;
-            self.error = format!("Automation timeout state was not saved: {error}");
-        } else if let Some(notice) = notice {
-            self.toast = notice;
+        let completion = match notice {
+            Some(notice) => crate::live_save_app::LiveCompletion::Status(notice),
+            None => crate::live_save_app::LiveCompletion::None,
+        };
+        match self.save_current_store_durably(completion, cx) {
+            Ok(_) => {}
+            Err(error) => {
+                if let Some(rollback) = rollback { self.store = rollback; }
+                self.error = format!("Automation timeout state was not saved: {error}");
+            }
         }
         cx.notify();
     }
@@ -2252,7 +2293,15 @@ impl TaskApp {
         let Some(run) = self.store.runs().iter().find(|r| r.id == run_id).cloned() else {
             return;
         };
-        let rollback = self.store.clone();
+        if self.live_can_accept_auxiliary().is_err() {
+            // One-shot run completion: retain the stable identity and replay it
+            // from the pump after acknowledgements free continuation capacity.
+            self.defer_after_run(occurrence_id, run_id);
+            self.start_pump(cx);
+            cx.notify();
+            return;
+        }
+        let rollback = (!self.live_persistence_active()).then(|| self.store.clone());
         let mut next_enqueue = None;
         let mut notice = None;
         if occurrence.status.is_terminal() {
@@ -2268,8 +2317,12 @@ impl TaskApp {
                 value.final_run_id = Some(run_id);
                 value.unread = true;
             }
-            if let Err(error) = self.save_current_store_durably() {
-                self.store = rollback;
+            let completion = match notice.clone() {
+                Some(notice) => crate::live_save_app::LiveCompletion::Status(notice),
+                None => crate::live_save_app::LiveCompletion::None,
+            };
+            if let Err(error) = self.save_current_store_durably(completion, cx) {
+                if let Some(rollback) = rollback { self.store = rollback; }
                 self.error = format!("Automation result was not saved: {error}");
                 self.automation_backoff_until = Some(
                     std::time::Instant::now() + std::time::Duration::from_secs(30),
@@ -2374,16 +2427,25 @@ impl TaskApp {
             }
             _ => {}
         }
-        if let Err(error) = self.save_current_store_durably() {
-            self.store = rollback;
+        let completion = if let Some(id) = next_enqueue {
+            crate::live_save_app::LiveCompletion::AutomationTicks {
+                queued: vec![id],
+                superseded: Vec::new(),
+                notice,
+            }
+        } else {
+            match notice {
+                Some(notice) => crate::live_save_app::LiveCompletion::Status(notice),
+                None => crate::live_save_app::LiveCompletion::None,
+            }
+        };
+        if let Err(error) = self.save_current_store_durably(completion, cx) {
+            if let Some(rollback) = rollback { self.store = rollback; }
             self.error = format!("Automation result was not saved: {error}");
             self.automation_backoff_until =
                 Some(std::time::Instant::now() + std::time::Duration::from_secs(30));
             cx.notify();
             return;
-        }
-        if let Some(notice) = notice {
-            self.toast = notice;
         }
         if self
             .store
@@ -2391,9 +2453,6 @@ impl TaskApp {
             .is_some_and(|occurrence| occurrence.status.is_terminal())
         {
             self.automation_started.remove(&occurrence_id);
-        }
-        if let Some(id) = next_enqueue {
-            self.enqueue_automation_occurrence(id, cx);
         }
         cx.notify();
     }
@@ -2404,7 +2463,13 @@ impl TaskApp {
             return;
         }
         let now = Self::automation_now();
-        let rollback = self.store.clone();
+        if self.live_can_accept_auxiliary().is_err() {
+            self.live_deferred_recovery = true;
+            self.start_pump(cx);
+            cx.notify();
+            return;
+        }
+        let rollback = (!self.live_persistence_active()).then(|| self.store.clone());
         let active: Vec<u64> = self
             .store
             .all_occurrences()
@@ -2460,22 +2525,21 @@ impl TaskApp {
             .filter(|definition| definition.status == DefinitionStatus::Enabled)
             .find_map(|definition| self.store.automation_blocker(definition))
             .map(|reason| format!("An automation needs attention: {reason}"));
-        if let Err(error) = self.save_current_store_durably() {
-            self.store = rollback;
+        let completion = crate::live_save_app::LiveCompletion::AutomationTicks {
+            queued: retry,
+            superseded: Vec::new(),
+            notice,
+        };
+        if let Err(error) = self.save_current_store_durably(completion, cx) {
+            if let Some(rollback) = rollback { self.store = rollback; }
             self.error = format!("Automation recovery was not saved: {error}");
             self.automation_backoff_until =
                 Some(std::time::Instant::now() + std::time::Duration::from_secs(30));
             cx.notify();
             return;
         }
-        if let Some(notice) = notice {
-            self.toast = notice;
-        }
         if attention {
             self.publishing_scan_requested = true;
-        }
-        for id in retry {
-            self.enqueue_automation_occurrence(id, cx);
         }
         self.arm_automation_timer(cx);
         cx.notify();

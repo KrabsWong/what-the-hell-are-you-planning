@@ -446,6 +446,9 @@ impl TaskApp {
         self.planning_project = None;
         self.planning_replan_source = None;
         self.planning_topic = None;
+        if self.planning_destination.is_some() {
+            self.bump_planning_form_epoch();
+        }
         self.planning_destination = None;
         self.planning_destination_error = None;
         self.planning_opener_focus = None;

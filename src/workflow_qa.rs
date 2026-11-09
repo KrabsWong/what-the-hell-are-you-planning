@@ -253,8 +253,8 @@ pub fn display_order() {
             a.store.reverse_tasks();
             a.collapsed_sidebar_goals.retain(|id| *id != goal);
             a.open_task(goal, w, cx);
-            a.goal_steps_tab = Some(goal);
-            a.steps_layout = Layout::List;
+            a.set_goal_steps_tab(Some(goal));
+            a.set_steps_layout(Layout::List);
             cx.notify();
             (goal, steps)
         });

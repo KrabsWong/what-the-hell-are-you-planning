@@ -1,0 +1,19 @@
+{
+  "unsigned_sha256": "12b7496451846c5d150e600b1d6c37987536068f7000c4f0c8d5467751b9a7e7",
+  "qa": [
+    {
+      "flag": "--qa-navigation-context",
+      "exit": 0
+    },
+    {
+      "flag": "--qa-keyboard-visual",
+      "exit": 0
+    }
+  ],
+  "replaced_isolated_pids": [
+    81259
+  ],
+  "previous_signed_sha256": "3899b2c6efc71ca8faf016f654b6776f88d5db6aa86cb773d0634316267b08bf",
+  "signed_sha256": "55f56309ae92f4251be952ed03c4f3284e7d8c86811e9fd9c53956c393320263",
+  "installed": true
+}

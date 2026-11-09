@@ -1503,7 +1503,7 @@ impl Store {
             self.apply_entity_change(change);
         }
         for delta in metadata {
-            self.apply_live_metadata_delta(delta);
+            self.apply_live_metadata_delta(delta.clone());
         }
     }
 

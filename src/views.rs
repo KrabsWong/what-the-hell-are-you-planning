@@ -228,7 +228,7 @@ impl TaskApp {
     pub(crate) fn layout_switch_for(&self, steps: bool, cx: &mut Context<Self>) -> AnyElement {
         let colors = palette(cx);
         let layout = if steps {
-            self.steps_layout
+            self.steps_layout()
         } else {
             self.layout
         };
@@ -252,7 +252,7 @@ impl TaskApp {
                 .when(layout == Layout::List, |b| b.bg(rgb(colors.panel)))
                 .on_click(cx.listener(move |this, _, _, cx| {
                     if steps {
-                        this.steps_layout = Layout::List;
+                        this.set_steps_layout(Layout::List);
                     } else {
                         this.layout = Layout::List;
                     }
@@ -273,7 +273,7 @@ impl TaskApp {
                 .when(layout == Layout::Board, |b| b.bg(rgb(colors.panel)))
                 .on_click(cx.listener(move |this, _, _, cx| {
                     if steps {
-                        this.steps_layout = Layout::Board;
+                        this.set_steps_layout(Layout::Board);
                     } else {
                         this.layout = Layout::Board;
                     }
@@ -2877,7 +2877,7 @@ impl TaskApp {
                     ),
                 ),
         );
-        if is_goal && self.goal_steps_tab == Some(id) {
+        if is_goal && self.goal_steps_tab() == Some(id) {
             return col()
                 .size_full()
                 .child(head)
@@ -3187,9 +3187,9 @@ impl TaskApp {
                         return;
                     }
                     if let Some(goal) = this.store.owning_research_goal(id) {
-                        let layout = this.steps_layout;
+                        let layout = this.steps_layout();
                         this.open_goal_steps(goal, w, cx);
-                        this.steps_layout = layout;
+                        this.set_steps_layout(layout);
                     } else {
                         this.view_task_result(id, cx);
                     }
@@ -4283,6 +4283,9 @@ impl Render for TaskApp {
                     this.planning_project = None;
                     this.planning_topic = None;
                     this.planning_replan_source = None;
+                    if this.planning_destination.is_some() {
+                        this.bump_planning_form_epoch();
+                    }
                     this.planning_destination = None;
                     this.planning_destination_error = None;
                     this.directory_project = None;

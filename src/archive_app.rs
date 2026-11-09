@@ -105,6 +105,10 @@ impl TaskApp {
             if batch.items.is_empty() { batch.state = crate::batch::BatchState::Finished; }
         }
         self.prune_archived_recovery_queue();
+        if let Err(error) = self.live_can_accept_auxiliary() {
+            self.storage_error = error;
+            return;
+        }
         // Remove all queued entries before callbacks can admit a dependent step.
         self.queued_runs.retain(|(id, _)| !runs.contains(id));
         let mut remote = vec![];
@@ -119,7 +123,12 @@ impl TaskApp {
             run.logs.push("[archive] Stop requested; queued and subsequent work disabled.".into());
         }
         // Persist the stop intents together with the durable archive decision.
-        if let Err(error) = self.save_current_store_durably() {
+        // Stopping a live process remains a safety action even while the write
+        // is pending; it never claims that the archive decision is saved.
+        if let Err(error) = self.save_current_store_durably(
+            crate::live_save_app::LiveCompletion::None,
+            cx,
+        ) {
             self.storage_error = error;
         }
         if remote.is_empty() { return; }

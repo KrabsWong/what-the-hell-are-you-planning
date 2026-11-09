@@ -710,6 +710,14 @@ impl TaskApp {
         }
     }
     pub fn complete_research_run(&mut self, run_id: u64, cx: &mut Context<Self>) {
+        if self.live_persistence_active() && self.live_can_accept_auxiliary().is_err() {
+            // Do not finalize yet: replaying this same id after acknowledgements
+            // free capacity performs the transition exactly once.
+            self.defer_run_completion(run_id);
+            self.start_pump(cx);
+            cx.notify();
+            return;
+        }
         self.publishing_scan_requested = true;
         let continuing_goal = self.run_goal(run_id)
             .filter(|goal| self.research_sequences.contains(goal));
@@ -729,9 +737,14 @@ impl TaskApp {
             && self.storage_error.is_empty()
             && let Some(retry) = self.store.prepare_auto_retry(run_id, chrono::Utc::now().timestamp())
         {
+            if let Err(error) = self.live_can_accept_auxiliary() {
+                self.error = error;
+                cx.notify();
+                return;
+            }
             let retry_id = retry.id;
             let attempt = retry.auto_retry_attempt;
-            let rollback = self.store.clone();
+            let rollback = (!self.live_persistence_active()).then(|| self.store.clone());
             self.store.push_run(retry);
             if let Some(occurrence) = automation_occurrence {
                 let _ = self.store.wait_for_retry(
@@ -744,25 +757,30 @@ impl TaskApp {
                     value.run_ids.push(retry_id);
                 }
             }
-            if let Err(error) = self.save_current_store_durably() {
-                self.store = rollback;
+            let completion = crate::live_save_app::LiveCompletion::RetryQueued {
+                run_id: retry_id,
+                occurrence: None,
+                goal: continuing_goal,
+                notice: Some(format!(
+                    "Retry {attempt}/3 scheduled in 30 seconds · Stop task to cancel"
+                )),
+            };
+            if let Err(error) = self.save_current_store_durably(completion, cx) {
+                if let Some(rollback) = rollback {
+                    self.store = rollback;
+                }
                 self.error = format!("Retry attempt was not saved: {error}");
                 self.automation_backoff_until =
                     Some(std::time::Instant::now() + std::time::Duration::from_secs(30));
                 cx.notify();
                 return;
             }
-            self.queued_runs.push((retry_id, vec![]));
             if let Some(batch) = &mut self.todo_batch
                 && let Some(item) = batch.run_ids.remove(&run_id)
             {
                 batch.run_ids.insert(retry_id, item);
             }
-            if let Some(goal) = continuing_goal {
-                self.research_sequences.insert(goal);
-            }
             self.error.clear();
-            self.toast = format!("Retry {attempt}/3 scheduled in 30 seconds · Stop task to cancel");
             self.start_pump(cx);
             cx.notify();
             return;

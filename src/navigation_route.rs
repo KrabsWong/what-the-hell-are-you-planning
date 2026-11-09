@@ -3293,6 +3293,20 @@ mod tests {
     }
 
     #[test]
+    fn research_task_page_accessors_return_their_fields() {
+        let page = ResearchTaskPage::new(7, TaskPanel::Steps, Layout::List, Scope::Topic(2));
+        assert_eq!(page.task(), 7);
+        assert_eq!(page.panel(), TaskPanel::Steps);
+        assert_eq!(page.steps_layout(), Layout::List);
+        assert_eq!(page.base(), &Scope::Topic(2));
+        let list = ResearchListPage::new(ResearchScope::All, AllStatus::Open, Layout::Board)
+            .with_query("supply".into());
+        assert_eq!(list.query(), "supply");
+        assert_eq!(list.layout(), Layout::Board);
+        assert_eq!(list.all_status(), AllStatus::Open);
+    }
+
+    #[test]
     fn planning_attempt_transition_is_atomic_and_owner_checked() {
         let mut store = base_store();
         let first = automation(&mut store, "First automation");

@@ -1272,7 +1272,7 @@ fn run_checks(layout_only: bool) {
             cx.run_until_parked();
             cx.update_window(handle, |_, w, cx| {
                 w.render_frame(cx);
-                assert_eq!(app.read(cx).query, "Analysis");
+                assert_eq!(app.read(cx).query(), "Analysis");
                 let ids: Vec<u64> = app.read(cx).visible_tasks().iter().map(|t| t.id).collect();
                 assert_eq!(ids, vec![done_ids.1]);
                 assert!(w.try_find("show-done").is_none());
@@ -1282,7 +1282,7 @@ fn run_checks(layout_only: bool) {
             cx.update_window(handle, |_, w, cx| {
                 w.click("collection-project-1", cx);
                 assert_eq!(app.read(cx).scope(), Scope::Project(1));
-                assert!(app.read(cx).query.is_empty());
+                assert!(app.read(cx).query().is_empty());
                 assert!(w.find("navigation-back").visible());
                 w.click("board-view", cx);
                 w.render_frame(cx);
@@ -1323,7 +1323,7 @@ fn run_checks(layout_only: bool) {
             cx.update_window(handle, |_, w, cx| {
                 w.click("navigation-back", cx);
                 assert_eq!(app.read(cx).scope(), Scope::All);
-                assert!(app.read(cx).query.is_empty());
+                assert!(app.read(cx).query().is_empty());
                 assert!(w.try_find("navigation-back").is_none());
                 assert_eq!(
                     app.read(cx).all_status,

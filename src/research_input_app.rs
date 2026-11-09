@@ -128,7 +128,8 @@ impl TaskApp {
                     self.pending_material_edit = None;
                     true
                 }
-                crate::task_edit_app::TaskSaveOutcome::PendingDurability(_)
+                crate::task_edit_app::TaskSaveOutcome::Saving
+                | crate::task_edit_app::TaskSaveOutcome::PendingDurability(_)
                 | crate::task_edit_app::TaskSaveOutcome::RetryableFailure(_) => {
                     cx.notify();
                     false
@@ -190,7 +191,8 @@ impl TaskApp {
                     self.pending_comment_edit = None;
                     true
                 }
-                crate::task_edit_app::TaskSaveOutcome::PendingDurability(_)
+                crate::task_edit_app::TaskSaveOutcome::Saving
+                | crate::task_edit_app::TaskSaveOutcome::PendingDurability(_)
                 | crate::task_edit_app::TaskSaveOutcome::RetryableFailure(_) => {
                     window.focus(&self.dialog_first_focus, cx);
                     cx.notify();
@@ -274,7 +276,8 @@ impl TaskApp {
                     self.pending_task_edit = None;
                     true
                 }
-                crate::task_edit_app::TaskSaveOutcome::PendingDurability(_)
+                crate::task_edit_app::TaskSaveOutcome::Saving
+                | crate::task_edit_app::TaskSaveOutcome::PendingDurability(_)
                 | crate::task_edit_app::TaskSaveOutcome::RetryableFailure(_) => {
                     window.focus(&self.dialog_first_focus, cx);
                     cx.notify();

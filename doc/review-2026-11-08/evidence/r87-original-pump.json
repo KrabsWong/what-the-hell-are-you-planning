@@ -1,0 +1,12 @@
+{
+  "base": "r84 observed startup candidate",
+  "change": "Restore original boolean pump; remove only epoch-specific method test; retain actual scheduled-completion assertions",
+  "hashes": {
+    "src/app.rs": "7a1ef3df4268122caf658954baee590007334329e4210298e5e0db63679f0259",
+    "src/t19_qa.rs": "8ce65406e8330e7e832c9b2df10a16bd5fa00f84846b09159024d868b5a03b11"
+  },
+  "build_exit": 0,
+  "sha256": "be6247d3b6576824a85c3d165aa0086b7763769a1366339f7b6b49fa825e247e",
+  "guard_exit": 2,
+  "qa_exit": 0
+}

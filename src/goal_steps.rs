@@ -234,8 +234,8 @@ impl TaskApp {
     }
     pub(crate) fn open_goal_steps(&mut self, goal: u64, w: &mut Window, cx: &mut Context<Self>) {
         self.open_task(goal, w, cx);
-        self.goal_steps_tab = Some(goal);
-        self.steps_layout = Layout::Board;
+        self.set_goal_steps_tab(Some(goal));
+        self.set_steps_layout(Layout::Board);
         cx.notify();
     }
     pub(crate) fn goal_tabs(&self, goal: u64, cx: &mut Context<Self>) -> AnyElement {
@@ -243,17 +243,17 @@ impl TaskApp {
             .gap_1()
             .child(
                 row_button("goal-overview-tab", "Overview").h(px(28.)).px_2().text_sm()
-                    .selected(self.goal_steps_tab != Some(goal))
+                    .selected(self.goal_steps_tab() != Some(goal))
                     .on_click(cx.listener(|a, _, _, cx| {
-                        a.goal_steps_tab = None;
+                        a.set_goal_steps_tab(None);
                         cx.notify();
                     })),
             )
             .child(
                 row_button("goal-steps-tab", "Steps").h(px(28.)).px_2().text_sm()
-                    .selected(self.goal_steps_tab == Some(goal))
+                    .selected(self.goal_steps_tab() == Some(goal))
                     .on_click(cx.listener(move |a, _, _, cx| {
-                        a.goal_steps_tab = Some(goal);
+                        a.set_goal_steps_tab(Some(goal));
                         cx.notify();
                     })),
             )
@@ -395,7 +395,7 @@ impl TaskApp {
                         .into_any_element()
                 })
         };
-        if self.steps_layout == Layout::List {
+        if self.steps_layout() == Layout::List {
             content = content.child(
                 col()
                     .id("goal-steps-list")

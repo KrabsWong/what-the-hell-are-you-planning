@@ -23,6 +23,7 @@ impl TaskApp {
         w: &mut Window,
         cx: &mut Context<Self>,
     ) {
+        self.bump_planning_form_epoch();
         self.planning_destination = Some(mode);
         self.planning_destination_error = None;
         self.navigation.planning_baseline.clear();
@@ -54,6 +55,9 @@ impl TaskApp {
     }
 
     fn clear_planning_destination(&mut self) {
+        if self.planning_destination.is_some() {
+            self.bump_planning_form_epoch();
+        }
         self.planning_destination = None;
         self.planning_destination_error = None;
         self.planning_project = None;
@@ -90,6 +94,7 @@ impl TaskApp {
         };
         match crate::navigation_context::retarget_creation(&self.store, mode, project) {
             Ok(next) => {
+                self.bump_planning_form_epoch();
                 self.planning_destination = Some(next);
                 self.planning_destination_error = None;
                 self.apply_planning_destination(next);
@@ -197,9 +202,9 @@ impl TaskApp {
     ) -> bool {
         let mut staged = self.store.clone();
         let request = if let Some(source) = self.planning_replan_source {
-            staged.create_topic_replan_request(source, input)
+            staged.create_topic_replan_request(source, input.clone())
         } else {
-            staged.create_research_request(project, topic, input)
+            staged.create_research_request(project, topic, input.clone())
         };
         let id = match request {
             Ok(id) => id,
@@ -211,27 +216,48 @@ impl TaskApp {
         };
         // Commit the request in one confirmed write. A failure leaves the live
         // store and the composer untouched, so Retry saves one request, not two.
-        if let Err(error) = self.save_staged_store(&staged) {
+        if let Err(error) = self.live_can_accept_primary() {
             self.storage_error = error.clone();
             self.error = error;
             cx.notify();
             return false;
         }
-        self.adopt_saved_store(staged);
+        let completion = crate::live_save_app::LiveCompletion::Request {
+            id,
+            start,
+            destination: self.planning_destination,
+            input: input.clone(),
+            replan_source: self.planning_replan_source,
+            form_epoch: self.planning_form_epoch,
+        };
+        let acceptance = match self.save_staged_store(&staged, completion, cx) {
+            Ok(acceptance) => acceptance,
+            Err(error) => {
+                self.storage_error = error.clone();
+                self.error = error;
+                cx.notify();
+                return false;
+            }
+        };
         if !self.expanded_sidebar_projects.contains(&project) {
             self.expanded_sidebar_projects.push(project);
         }
-        self.planning_project = None;
-        self.planning_topic = None;
-        self.planning_replan_source = None;
-        self.planning_destination = None;
-        self.planning_destination_error = None;
-        self.planning_opener_focus = None;
-        self.navigation.planning_baseline.clear();
-        self.error.clear();
-        self.toast = "Request saved · generate a plan when ready".into();
-        if start {
-            self.retry_research_request(id, cx);
+        if acceptance.is_durable() {
+            self.adopt_saved_store(staged);
+            self.planning_project = None;
+            self.planning_topic = None;
+            self.planning_replan_source = None;
+            self.planning_destination = None;
+            self.planning_destination_error = None;
+            self.planning_opener_focus = None;
+            self.navigation.planning_baseline.clear();
+            self.error.clear();
+            self.toast = "Request saved · generate a plan when ready".into();
+            if start {
+                self.retry_research_request(id, cx);
+            }
+        } else {
+            self.toast = "Saving request…".into();
         }
         cx.notify();
         true

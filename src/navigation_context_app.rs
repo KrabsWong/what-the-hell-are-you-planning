@@ -60,6 +60,8 @@ pub(crate) struct NavigationState {
     /// Last Settings section, used as the default when Settings is entered
     /// again. The active page stores its own typed tab.
     pub settings_section: crate::navigation_route::SettingsSection,
+    /// Last goal-steps layout, used when a Task page has no explicit value.
+    pub steps_layout: crate::app::Layout,
 }
 
 impl NavigationState {
@@ -81,6 +83,7 @@ impl NavigationState {
             after_save_target: None,
             selected_attempt: None,
             settings_section: crate::navigation_route::SettingsSection::General,
+            steps_layout: crate::app::Layout::Board,
         }
     }
 
@@ -191,8 +194,8 @@ impl TaskApp {
         if let Some(task) = self.selected() {
             return Origin::ResearchTask {
                 task,
-                steps_tab: self.goal_steps_tab,
-                steps_layout: self.steps_layout,
+                steps_tab: self.goal_steps_tab(),
+                steps_layout: self.steps_layout(),
                 scroll: ScrollState {
                     x: self.detail_scroll.offset().x.as_f32(),
                     y: pixels_y(&self.detail_scroll),
@@ -402,8 +405,8 @@ impl TaskApp {
                 scroll,
             } => {
                 self.open_task(task, w, cx);
-                self.goal_steps_tab = steps_tab;
-                self.steps_layout = steps_layout;
+                self.set_goal_steps_tab(steps_tab);
+                self.set_steps_layout(steps_layout);
                 self.detail_scroll
                     .set_offset(point(px(scroll.x), px(scroll.y)));
             }
@@ -900,6 +903,9 @@ impl TaskApp {
             }
             DecisionSurface::PlanningRequest => {
                 let opener = self.planning_opener_focus.take();
+                if self.planning_destination.is_some() {
+                    self.bump_planning_form_epoch();
+                }
                 self.planning_destination = None;
                 self.planning_destination_error = None;
                 self.planning_project = None;

@@ -52,6 +52,8 @@ pub(crate) struct PendingCommentEdit {
 #[derive(Clone, Debug, PartialEq)]
 pub(crate) enum TaskSaveOutcome {
     Saved,
+    /// Accepted and queued in memory, not yet durable. Never treated as Saved.
+    Saving,
     NoChanges,
     PendingImpact,
     PendingDurability(String),
@@ -218,35 +220,61 @@ impl TaskApp {
                 return TaskSaveOutcome::Rejected(message);
             }
         };
-        if let Err(error) = self.save_staged_store(&staged) {
+        let instance = self.task_editor_instance();
+        let reviewed = prepared.reviewed.clone();
+        let completion = crate::live_save_app::LiveCompletion::TaskEdit {
+            task: id,
+            expected: reviewed,
+            instance,
+            close_editor: navigate_editor.is_some(),
+            undo: applied.undo.clone(),
+        };
+        if let Err(error) = self.live_can_accept_primary() {
             self.storage_error = error.clone();
-            self.pending_task_edit = Some(PendingTaskEdit { prepared });
             self.show_save_error(&error, cx);
-            return if self.storage.is_none() {
-                TaskSaveOutcome::PendingDurability(error)
-            } else {
-                TaskSaveOutcome::RetryableFailure(error)
-            };
+            return TaskSaveOutcome::Rejected(error);
         }
-
-        self.adopt_saved_store(staged);
-        self.pending_task_edit = None;
-        self.undo_invalidation = None;
-        if !applied.undo.is_empty() {
-            self.undo.push_task_edit(applied.undo.clone());
+        let acceptance = match self.save_staged_store(&staged, completion, cx) {
+            Ok(acceptance) => acceptance,
+            Err(error) => {
+                self.storage_error = error.clone();
+                self.pending_task_edit = Some(PendingTaskEdit { prepared });
+                self.show_save_error(&error, cx);
+                return if self.storage.is_none() {
+                    TaskSaveOutcome::PendingDurability(error)
+                } else {
+                    TaskSaveOutcome::RetryableFailure(error)
+                };
+            }
+        };
+        if acceptance.is_durable() {
+            // The synchronous path completed the undo/toast continuation.
+            self.adopt_saved_store(staged);
+        } else {
+            self.pending_task_edit = None;
+            self.toast = "Saving task…".into();
         }
         if let Some(window) = navigate_editor {
-            let _ = self.close_task_editor_overlay();
-            self.draft = None;
-            self.navigation.task_edit_baseline = None;
-            self.open_task(id, window, cx);
-            self.finish_saved_exit(window, cx);
+            // Closing the editor is safe only when this exact form is still
+            // unchanged; otherwise the acknowledgement leaves the newer draft
+            // and its editor open.
+            if acceptance.is_durable() {
+                let _ = self.close_task_editor_overlay();
+                self.draft = None;
+                self.navigation.task_edit_baseline = None;
+                self.open_task(id, window, cx);
+                self.finish_saved_exit(window, cx);
+            }
         }
-        self.error.clear();
-        self.toast = "Task saved to local workspace".into();
-        self.save_feedback = Some(Ok("Task saved to local workspace".into()));
+        if acceptance.is_durable() {
+            self.error.clear();
+        }
         cx.notify();
-        TaskSaveOutcome::Saved
+        if acceptance.is_durable() {
+            TaskSaveOutcome::Saved
+        } else {
+            TaskSaveOutcome::Saving
+        }
     }
 
     /// Direct property/board change. Reuses the shared task-edit preparation
@@ -402,45 +430,61 @@ impl TaskApp {
                 return TaskSaveOutcome::Rejected(message);
             }
         };
-        if let Err(error) = self.save_staged_store(&staged) {
+        let completion = crate::live_save_app::LiveCompletion::Comment {
+            task: prepared.task,
+            body: prepared.body.clone(),
+            undo: applied.undo.clone(),
+        };
+        if let Err(error) = self.live_can_accept_primary() {
             self.storage_error = error.clone();
-            self.pending_comment_edit = Some(PendingCommentEdit { prepared });
             self.show_save_error(&error, cx);
-            return if self.storage.is_none() {
-                TaskSaveOutcome::PendingDurability(error)
-            } else {
-                TaskSaveOutcome::RetryableFailure(error)
-            };
+            return TaskSaveOutcome::Rejected(error);
         }
-        self.adopt_saved_store(staged);
-        self.pending_comment_edit = None;
-        self.undo_invalidation = None;
-        self.undo.push_comment(applied.undo.clone());
-        if let Some(window) = window {
-            // Clear only the exact draft this save owned. A newer draft typed
-            // after a failed retry, or another task's cached comment, survives.
-            let current = self.comment.read(cx).value().trim().to_string();
-            if self.selected() == Some(prepared.task) && current == prepared.body {
-                self.comment
-                    .update(cx, |state, cx| state.set_value("", window, cx));
+        let acceptance = match self.save_staged_store(&staged, completion, cx) {
+            Ok(acceptance) => acceptance,
+            Err(error) => {
+                self.storage_error = error.clone();
+                self.pending_comment_edit = Some(PendingCommentEdit { prepared });
+                self.show_save_error(&error, cx);
+                return if self.storage.is_none() {
+                    TaskSaveOutcome::PendingDurability(error)
+                } else {
+                    TaskSaveOutcome::RetryableFailure(error)
+                };
             }
-            // Clear the originating task's parked cache even while another
-            // task is selected, but never a newer/different cached draft.
-            if self
-                .navigation
-                .comments
-                .get(prepared.task)
-                .is_some_and(|text| text.trim() == prepared.body)
-            {
-                self.navigation.comments.take(prepared.task);
+        };
+        if acceptance.is_durable() {
+            self.adopt_saved_store(staged);
+            self.pending_comment_edit = None;
+            if let Some(window) = window {
+                // Clear only the exact draft this save owned. A newer draft typed
+                // after a failed retry, or another task's cached comment, survives.
+                let current = self.comment.read(cx).value().trim().to_string();
+                if self.selected() == Some(prepared.task) && current == prepared.body {
+                    self.comment
+                        .update(cx, |state, cx| state.set_value("", window, cx));
+                }
+                if self
+                    .navigation
+                    .comments
+                    .get(prepared.task)
+                    .is_some_and(|text| text.trim() == prepared.body)
+                {
+                    self.navigation.comments.take(prepared.task);
+                }
+                self.refresh_research_inputs(window, cx);
             }
-            self.refresh_research_inputs(window, cx);
+            self.error.clear();
+            self.toast = "Comment added".into();
+            self.save_feedback = Some(Ok("Comment added".into()));
+            cx.notify();
+            TaskSaveOutcome::Saved
+        } else {
+            self.pending_comment_edit = None;
+            self.toast = "Saving comment…".into();
+            cx.notify();
+            TaskSaveOutcome::Saving
         }
-        self.error.clear();
-        self.toast = "Comment added".into();
-        self.save_feedback = Some(Ok("Comment added".into()));
-        cx.notify();
-        TaskSaveOutcome::Saved
     }
 
     pub(crate) fn retry_comment_save(
@@ -569,7 +613,8 @@ impl TaskApp {
                 self.pending_task_edit = None;
                 self.research_save_impact = None;
             }
-            TaskSaveOutcome::PendingImpact
+            TaskSaveOutcome::Saving
+            | TaskSaveOutcome::PendingImpact
             | TaskSaveOutcome::PendingDurability(_)
             | TaskSaveOutcome::RetryableFailure(_) => {}
         }

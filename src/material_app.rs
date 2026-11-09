@@ -295,36 +295,57 @@ impl TaskApp {
                 }
             }
         };
-        if let Err(error) = self.save_staged_store(&staged) {
-            self.storage_error = error.clone();
-            self.pending_material_edit = Some(PendingMaterialEdit { prepared, root: data_dir.clone() });
-            self.show_save_error(&error, cx);
-            return if self.storage.is_none() {
-                TaskSaveOutcome::PendingDurability(error)
-            } else {
-                TaskSaveOutcome::RetryableFailure(error)
-            };
-        }
-        self.adopt_saved_store(staged);
-        if self
-            .pending_material_edit
-            .as_ref()
-            .is_some_and(|pending| pending.prepared == prepared)
-        {
-            self.pending_material_edit = None;
-        }
-        self.undo_invalidation = None;
-        self.undo.push_material(undo);
-        self.error.clear();
-        let message = match prepared {
+        let message = match &prepared {
             PreparedMaterialSave::Add(_) => "Materials added",
             PreparedMaterialSave::Remove(_) => "Material removed",
         };
-        self.toast = format!("{message} · Undo is available");
-        self.save_feedback = Some(Ok(message.into()));
+        let completion = crate::live_save_app::LiveCompletion::Material {
+            undo: undo.clone(),
+            message: message.into(),
+        };
+        if let Err(error) = self.live_can_accept_primary() {
+            self.storage_error = error.clone();
+            self.show_save_error(&error, cx);
+            return TaskSaveOutcome::Rejected(error);
+        }
+        let acceptance = match self.save_staged_store(&staged, completion, cx) {
+            Ok(acceptance) => acceptance,
+            Err(error) => {
+                self.storage_error = error.clone();
+                self.pending_material_edit = Some(PendingMaterialEdit { prepared, root: data_dir.clone() });
+                self.show_save_error(&error, cx);
+                return if self.storage.is_none() {
+                    TaskSaveOutcome::PendingDurability(error)
+                } else {
+                    TaskSaveOutcome::RetryableFailure(error)
+                };
+            }
+        };
+        if acceptance.is_durable() {
+            self.adopt_saved_store(staged);
+            if self
+                .pending_material_edit
+                .as_ref()
+                .is_some_and(|pending| pending.prepared == prepared)
+            {
+                self.pending_material_edit = None;
+            }
+            self.undo_invalidation = None;
+            self.undo.push_material(undo);
+            self.error.clear();
+            self.toast = format!("{message} · Undo is available");
+            self.save_feedback = Some(Ok(message.into()));
+        } else {
+            self.pending_material_edit = None;
+            self.toast = format!("Saving {message}…");
+        }
         let _ = change_set;
         cx.notify();
-        TaskSaveOutcome::Saved
+        if acceptance.is_durable() {
+            TaskSaveOutcome::Saved
+        } else {
+            TaskSaveOutcome::Saving
+        }
     }
 
     pub(crate) fn refresh_prepared_material(
@@ -428,18 +449,28 @@ impl TaskApp {
                     return false;
                 }
             };
-        if let Err(error) = self.save_staged_store(&staged) {
-            self.storage_error = error.clone();
-            self.show_save_error(error, cx);
-            return false;
-        }
-        self.adopt_saved_store(staged);
-        self.undo_invalidation = None;
-        crate::appearance::apply(self.store.appearance(), None, cx);
-        self.toast = "Last change undone".into();
-        self.error.clear();
-        if !effect.cleanup.is_empty() {
-            self.submit_material_cleanup(effect.cleanup, cx);
+        let completion = crate::live_save_app::LiveCompletion::MaterialUndo {
+            cleanup: effect.cleanup.clone(),
+        };
+        let acceptance = match self.save_staged_store(&staged, completion, cx) {
+            Ok(acceptance) => acceptance,
+            Err(error) => {
+                self.storage_error = error.clone();
+                self.show_save_error(error, cx);
+                return false;
+            }
+        };
+        if acceptance.is_durable() {
+            self.adopt_saved_store(staged);
+            self.undo_invalidation = None;
+            crate::appearance::apply(self.store.appearance(), None, cx);
+            self.toast = "Last change undone".into();
+            self.error.clear();
+            if !effect.cleanup.is_empty() {
+                self.submit_material_cleanup(effect.cleanup, cx);
+            }
+        } else {
+            self.toast = "Saving undo…".into();
         }
         cx.notify();
         true

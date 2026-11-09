@@ -326,7 +326,7 @@ pub fn run() {
     }).unwrap();
     cx.run_until_parked();
     cx.update_window(handle, |_, w, cx| {
-        assert_eq!(app.read(cx).query, "Row", "typing must settle into the filter");
+        assert_eq!(app.read(cx).query(), "Row", "typing must settle into the filter");
         let first = app.read(cx).visible_tasks()[0].id;
         scroll_over(w, ElementId::Name(format!("task-row-{first}").into()), -20.0, cx);
         w.render_frame(cx);
@@ -360,7 +360,7 @@ pub fn run() {
             "Back unexpectedly asked to save: {:?}",
             app.read(cx).navigation.pending_exit
         );
-        assert_eq!(app.read(cx).query, "Row", "list query must survive Back");
+        assert_eq!(app.read(cx).query(), "Row", "list query must survive Back");
         assert!(list_offset(app.read(cx)) < -10.0, "list scroll must be restored");
     }).unwrap();
 

@@ -262,7 +262,7 @@ print(json.dumps({'type':'text','part':{'text':json.dumps(result)}}),flush=True)
         w.render_frame(cx);
         w.click(("recovery-goal", goals[0].0), cx);
         assert_eq!(app.read(cx).selected(), Some(goals[0].0));
-        assert_ne!(app.read(cx).goal_steps_tab, Some(goals[0].0));
+        assert_ne!(app.read(cx).goal_steps_tab(), Some(goals[0].0));
         app.update(cx, |a, cx| a.navigate(Scope::Recovery, w, cx));
         w.render_frame(cx);
         w.click(("recovery-step", goals[0].1[0]), cx);
@@ -273,7 +273,7 @@ print(json.dumps({'type':'text','part':{'text':json.dumps(result)}}),flush=True)
         for layout in [crate::app::Layout::List, crate::app::Layout::Board] {
             app.update(cx, |a, cx| {
                 a.open_goal_steps(goals[1].0, w, cx);
-                a.steps_layout = layout;
+                a.set_steps_layout(layout);
             });
             w.render_frame(cx);
             w.click(format!("goal-step-{}", goals[1].1[0]), cx);

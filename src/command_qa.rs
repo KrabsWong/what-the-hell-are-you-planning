@@ -891,7 +891,11 @@ fn dispatch_checks(root: &Path) {
                 run.status = "Interrupted".into();
                 run.started_at.clear();
             }
-            a.save_current_store_durably().unwrap();
+            a.save_current_store_durably(
+                crate::live_save_app::LiveCompletion::None,
+                cx,
+            )
+            .unwrap();
             a.queued_runs.clear();
             a.qa_storage_writes.set(0);
             a.enqueue_automation_occurrence(occ.id, cx);

@@ -373,6 +373,10 @@ pub struct TaskApp {
     pub planning_replan_source: Option<u64>,
     /// Visible, validated destination of the open research-request form.
     pub planning_destination: Option<crate::navigation_context::CreationMode>,
+    /// Instance generation of the open planning composer. Reopening the same
+    /// destination/text creates a new generation so a late save receipt cannot
+    /// close or reset the new form.
+    pub(crate) planning_form_epoch: u64,
     /// Why the current destination is invalid or was replaced; shown in the form.
     pub planning_destination_error: Option<String>,
     /// Control that opened the research-request form, restored when it closes.
@@ -389,13 +393,20 @@ pub struct TaskApp {
     /// primary continuation exists; a second form save is rejected instead of
     /// overwriting it.
     pub(crate) live_primary: Option<crate::live_save_app::LivePending>,
-    /// Ordinary coalesced write currently in flight (not a form/command).
-    pub(crate) live_inflight: Option<crate::live_save_app::LiveInflight>,
+    /// Ordinary coalesced writes and runtime post-commit effects in submission
+    /// order. Bounded; compatible effects are merged instead of dropped.
+    pub(crate) live_followups: std::collections::VecDeque<crate::live_save_app::LiveGroup>,
     pub(crate) live_workspace: Option<u64>,
     /// Submission/worker failure kept distinct from the pending state. The dirty
     /// edits remain in memory and retry; no effects run.
     pub(crate) live_failure: Option<String>,
     pub(crate) live_retry_at: Option<Instant>,
+    /// One-shot runtime callbacks rejected by continuation backpressure. They
+    /// retain only stable identities and are replayed from the bounded pump
+    /// after acknowledgements free capacity; no user input or restart is needed.
+    pub(crate) live_deferred_runs: std::collections::VecDeque<u64>,
+    pub(crate) live_deferred_after_run: std::collections::VecDeque<(u64, u64)>,
+    pub(crate) live_deferred_recovery: bool,
     /// Window-dependent acknowledgements (focus/navigation/draft cleanup).
     pub(crate) deferred_ui: Vec<crate::live_save_app::DeferredUiAction>,
     pub startup: crate::startup::Startup,
@@ -405,7 +416,7 @@ pub struct TaskApp {
     pub workspace_setup: Option<mpsc::Receiver<Result<PathBuf, String>>>,
     pub storage_error: String,
     pub(crate) last_saved: Store,
-    last_save: Instant,
+    pub(crate) last_save: Instant,
     _storage_lock: Option<std::fs::File>,
     pub executable_input: Entity<InputState>,
     pub codex_executable_input: Entity<InputState>,
@@ -459,8 +470,6 @@ pub struct TaskApp {
     pub show_run_details: bool,
     pub show_task_details: bool,
     pub expanded_request_brief: Option<u64>,
-    pub goal_steps_tab: Option<u64>,
-    pub steps_layout: Layout,
     pub render_statuses:
         std::cell::RefCell<std::collections::HashMap<u64, crate::workflow::TaskStatus>>,
     pub board_execution_filter: Option<crate::workflow::ExecutionGroup>,
@@ -751,10 +760,13 @@ impl TaskApp {
             live_command_generation: None,
             live_command_applying: false,
             live_primary: None,
-            live_inflight: None,
+            live_followups: std::collections::VecDeque::new(),
             live_workspace: None,
             live_failure: None,
             live_retry_at: None,
+            live_deferred_runs: std::collections::VecDeque::new(),
+            live_deferred_after_run: std::collections::VecDeque::new(),
+            live_deferred_recovery: false,
             deferred_ui: Vec::new(),
             startup: Default::default(),
             workspace_required: false,
@@ -888,6 +900,7 @@ impl TaskApp {
             planning_topic: None,
             planning_replan_source: None,
             planning_destination: None,
+            planning_form_epoch: 0,
             planning_destination_error: None,
             planning_opener_focus: None,
             project_brief: cx.new(|cx| {
@@ -927,8 +940,6 @@ impl TaskApp {
             show_run_details: false,
             show_task_details: false,
             expanded_request_brief: None,
-            goal_steps_tab: None,
-            steps_layout: Layout::Board,
             render_statuses: Default::default(),
             board_execution_filter: None,
             show_task_activity: false,
@@ -958,15 +969,35 @@ impl TaskApp {
                 return false;
             }
         };
-        if let Err(error) = self.save_staged_store(&staged) {
-            self.storage_error = error.clone();
-            self.show_save_error(error, cx);
-            return false;
+        let acceptance = match self.save_staged_store(
+            &staged,
+            crate::live_save_app::LiveCompletion::Settings {
+                undo: undo.clone(),
+                message: "Settings saved · active work continues normally".into(),
+            },
+            cx,
+        ) {
+            Ok(acceptance) => acceptance,
+            Err(error) => {
+                self.storage_error = error.clone();
+                self.show_save_error(error, cx);
+                return false;
+            }
+        };
+        // In live mode the staged value is already merged and queued; adopting
+        // the clone again would overwrite the live store outside the journal.
+        if !self.live_persistence_active() {
+            self.adopt_saved_store(staged);
         }
-        self.adopt_saved_store(staged);
         self.undo_invalidation = None;
-        self.undo.push_settings(undo);
-        self.toast = "Settings saved · active work continues normally".into();
+        if acceptance.is_durable() && !self.live_persistence_active() {
+            // The synchronous path already completed the continuation.
+        }
+        self.toast = if acceptance.is_durable() {
+            "Settings saved · active work continues normally".into()
+        } else {
+            "Saving settings…".into()
+        };
         self.error.clear();
         cx.notify();
         true
@@ -982,6 +1013,11 @@ impl TaskApp {
         undoable: bool,
         cx: &mut Context<Self>,
     ) -> Option<crate::scoped_domain::DomainOutcome> {
+        if let Err(error) = self.live_can_accept_auxiliary() {
+            self.storage_error = error.clone();
+            self.show_save_error(error, cx);
+            return None;
+        }
         let outcome = match command.execute(&mut self.store) {
             Ok(outcome) => outcome,
             Err(error) => {
@@ -989,17 +1025,28 @@ impl TaskApp {
                 return None;
             }
         };
-        if let Err(error) = self.save_current_store_durably() {
-            let _ = crate::scoped_domain::apply_undo(&mut self.store, &outcome.undo);
-            self.storage_error = error.clone();
-            self.show_save_error(error, cx);
-            return None;
-        }
+        let acceptance = match self.save_current_store_durably(
+            crate::live_save_app::LiveCompletion::None,
+            cx,
+        ) {
+            Ok(acceptance) => acceptance,
+            Err(error) => {
+                let _ = crate::scoped_domain::apply_undo(&mut self.store, &outcome.undo);
+                self.storage_error = error.clone();
+                self.show_save_error(error, cx);
+                return None;
+            }
+        };
         self.undo_invalidation = None;
         if undoable && outcome.undo.changed_entities() > 0 {
             self.undo.push_domain(outcome.undo.clone());
         }
-        self.toast = message.into();
+        // Only a durable receipt may claim saved state.
+        self.toast = if acceptance.is_durable() {
+            message.into()
+        } else {
+            "Saving…".into()
+        };
         self.error.clear();
         cx.notify();
         Some(outcome)
@@ -1119,6 +1166,54 @@ impl TaskApp {
         };
         self.navigation.settings_section = section;
         let _ = self.nav.set_settings_tab(section);
+    }
+
+    /// Goal whose Steps tab is active; this is the typed Task panel, not a
+    /// second global selection.
+    pub(crate) fn goal_steps_tab(&self) -> Option<u64> {
+        match self.nav.route() {
+            crate::navigation_route::Route::ResearchTask(page)
+                if page.panel() == crate::navigation_route::TaskPanel::Steps =>
+            {
+                Some(page.task())
+            }
+            _ => None,
+        }
+    }
+
+    pub(crate) fn steps_layout(&self) -> Layout {
+        match self.nav.route() {
+            crate::navigation_route::Route::ResearchTask(page) => page.steps_layout(),
+            _ => self.navigation.steps_layout,
+        }
+    }
+
+    pub(crate) fn set_goal_steps_tab(&mut self, goal: Option<u64>) {
+        use crate::navigation_route::{Route, TaskPanel};
+        let crate::navigation_route::Route::ResearchTask(page) = self.nav.route() else {
+            return;
+        };
+        let task = page.task();
+        let layout = page.steps_layout();
+        let base = self.scope();
+        let panel = if goal == Some(task) {
+            TaskPanel::Steps
+        } else {
+            TaskPanel::Overview
+        };
+        self.install_route(Route::research_task_from(task, base, panel, layout));
+    }
+
+    pub(crate) fn set_steps_layout(&mut self, layout: Layout) {
+        use crate::navigation_route::Route;
+        self.navigation.steps_layout = layout;
+        let Route::ResearchTask(page) = self.nav.route() else {
+            return;
+        };
+        let task = page.task();
+        let panel = page.panel();
+        let base = self.scope();
+        self.install_route(Route::research_task_from(task, base, panel, layout));
     }
 
     /// Task detail identity is the typed `ResearchTask` route; there is no
@@ -1401,7 +1496,7 @@ impl TaskApp {
     pub(crate) fn fixture_select_task(&mut self, task: Option<u64>) {
         match task {
             Some(task) => {
-                let layout = self.steps_layout;
+                let layout = self.steps_layout();
                 self.set_task_identity(
                     task,
                     crate::navigation_route::TaskPanel::Overview,
@@ -1659,7 +1754,7 @@ impl TaskApp {
             crate::navigation_route::Route::ResearchTask(page) if page.task() == id => {
                 (page.panel(), page.steps_layout())
             }
-            _ => (crate::navigation_route::TaskPanel::Overview, self.steps_layout),
+            _ => (crate::navigation_route::TaskPanel::Overview, self.steps_layout()),
         };
         self.set_task_identity(id, panel, steps_layout);
         if self.selected() != Some(id) {
@@ -1975,13 +2070,15 @@ impl TaskApp {
                     cx.notify();
                     return;
                 }
-                if let Err(error) = self.save_staged_store(&staged) {
+                if let Err(error) = self.save_staged_store(&staged, crate::live_save_app::LiveCompletion::None, cx) {
                     self.undo.push_task_edit(undo);
                     self.storage_error = error.clone();
                     self.show_save_error(error, cx);
                     return;
                 }
-                self.adopt_saved_store(staged);
+                if !self.live_persistence_active() {
+                    self.adopt_saved_store(staged);
+                }
                 self.pending_task_edit = None;
                 self.pending_comment_edit = None;
                 self.research_save_impact = None;
@@ -2009,13 +2106,15 @@ impl TaskApp {
                     cx.notify();
                     return;
                 }
-                if let Err(error) = self.save_staged_store(&staged) {
+                if let Err(error) = self.save_staged_store(&staged, crate::live_save_app::LiveCompletion::None, cx) {
                     self.undo.push_comment(undo);
                     self.storage_error = error.clone();
                     self.show_save_error(error, cx);
                     return;
                 }
-                self.adopt_saved_store(staged);
+                if !self.live_persistence_active() {
+                    self.adopt_saved_store(staged);
+                }
                 self.pending_task_edit = None;
                 self.pending_comment_edit = None;
                 self.research_save_impact = None;
@@ -2040,13 +2139,15 @@ impl TaskApp {
                     cx.notify();
                     return;
                 }
-                if let Err(error) = self.save_staged_store(&staged) {
+                if let Err(error) = self.save_staged_store(&staged, crate::live_save_app::LiveCompletion::None, cx) {
                     self.undo.push_settings(undo);
                     self.storage_error = error.clone();
                     self.show_save_error(error, cx);
                     return;
                 }
-                self.adopt_saved_store(staged);
+                if !self.live_persistence_active() {
+                    self.adopt_saved_store(staged);
+                }
                 self.undo_invalidation = None;
                 crate::appearance::apply(self.store.appearance(), None, cx);
                 self.toast = "Last change undone".into();
@@ -2079,16 +2180,22 @@ impl TaskApp {
                     cx.notify();
                     return;
                 }
-                if let Err(error) = self.save_current_store_durably() {
-                    // Restore the state the inverse just replaced; the entry is
-                    // kept so the user can retry once storage recovers.
-                    let redo = undo.invert();
-                    let _ = crate::scoped_domain::apply_undo(&mut self.store, &redo);
-                    self.undo.push_domain(undo);
-                    self.storage_error = error.clone();
-                    self.show_save_error(error, cx);
-                    return;
-                }
+                let acceptance = match self.save_current_store_durably(
+                    crate::live_save_app::LiveCompletion::None,
+                    cx,
+                ) {
+                    Ok(acceptance) => acceptance,
+                    Err(error) => {
+                        // Restore the state the inverse just replaced; the entry
+                        // is kept so the user can retry once storage recovers.
+                        let redo = undo.invert();
+                        let _ = crate::scoped_domain::apply_undo(&mut self.store, &redo);
+                        self.undo.push_domain(undo);
+                        self.storage_error = error.clone();
+                        self.show_save_error(error, cx);
+                        return;
+                    }
+                };
                 self.undo_invalidation = None;
                 self.tabs.retain(|id| self.store.task(*id).is_some());
                 self.reconcile_nav_after_store_change();
@@ -2107,7 +2214,11 @@ impl TaskApp {
                 self.property = None;
                 self.refresh_research_inputs(window, cx);
                 self.refresh_global_model_input(window, cx);
-                self.toast = "Last change undone".into();
+                self.toast = if acceptance.is_durable() {
+                    "Last change undone".into()
+                } else {
+                    "Undoing…".into()
+                };
                 self.error.clear();
                 cx.notify();
             }
@@ -2215,6 +2326,7 @@ impl TaskApp {
         #[cfg(feature = "qa")]
         self.qa_storage_writes.set(self.qa_storage_writes.get() + 1);
         if self.live_persistence_active() {
+            self.live_can_accept_primary()?;
             self.merge_staged_store(staged)?;
             let acceptance = self.submit_live_snapshot(completion, cx)?;
             return Ok(acceptance);
@@ -2259,49 +2371,8 @@ impl TaskApp {
             return false;
         }
         if self.live_persistence_active() {
-            if self.live_inflight.is_some() {
-                return false;
-            }
-            // While a form/command group is in flight, its own dirty epoch is
-            // already covered. Only a strictly newer edit needs a follow-up.
-            if let Some(pending) = self.live_primary.as_ref()
-                && pending.epoch == self.store.dirty_epoch()
-                && !pending.durable
-            {
-                if pending.generation == 0 {
-                    let _ = self.submit_primary_group_in_persist();
-                }
-                return false;
-            }
-            let delta = match self.store.drain_store_delta() {
-                Ok(delta) => delta,
-                Err(error) => {
-                    self.storage_error = error;
-                    return false;
-                }
-            };
-            if delta.changes.is_empty() && delta.metadata.is_empty() {
-                return false;
-            }
-            let Some(adapter) = self.dispatch_admission.as_mut() else {
-                self.storage_error = "Live persistence is unavailable.".into();
-                return false;
-            };
-            return match adapter.submit_live_group(delta.changes, delta.metadata, delta.epoch) {
-                Ok(generation) => {
-                    self.live_inflight = Some(crate::live_save_app::LiveInflight {
-                        generation,
-                        epoch: delta.epoch,
-                    });
-                    self.live_failure = None;
-                    self.last_save = Instant::now();
-                    false
-                }
-                Err(error) => {
-                    self.storage_error = error;
-                    false
-                }
-            };
+            self.persist_live_followup();
+            return false;
         }
         let Some(storage) = &self.storage else {
             return false;
@@ -3374,6 +3445,8 @@ impl TaskApp {
         }
         self.poll_startup(cx);
         self.poll_dispatch_admissions(cx);
+        self.poll_live_retry();
+        self.drain_live_deferred_runtime(cx);
         self.enforce_active_run_deadlines(Self::automation_now(), cx);
         self.poll_research_io(cx);
         self.poll_material_jobs(cx);

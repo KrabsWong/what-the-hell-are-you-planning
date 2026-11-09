@@ -323,6 +323,27 @@ pub(crate) enum AutomationSaveOutcome {
     Rejected(String),
 }
 
+/// A reviewed SaveDraft that must finish before exactly one planner request is
+/// created. It is consumed only by the matching durable receipt.
+#[derive(Clone, Debug, PartialEq)]
+struct PendingAutomationPlanning {
+    input: crate::domain_command::AutomationDraftInput,
+    form_epoch: u64,
+    automation: Option<u64>,
+}
+
+#[derive(Clone, Debug, PartialEq)]
+pub(crate) struct PlanningSaveIdentity {
+    pub(crate) input: crate::domain_command::AutomationDraftInput,
+    pub(crate) form_epoch: u64,
+}
+
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+enum AutomationPlanningStart {
+    Started(u64),
+    WaitingForDraft,
+}
+
 pub struct AutomationUi {
     pub selected: Option<u64>,
     pub creating: bool,
@@ -340,6 +361,11 @@ pub struct AutomationUi {
     /// identity change clears it so a stale completion cannot repopulate a
     /// discarded plan or move the wizard forward.
     pub planning_run: Option<u64>,
+    /// SaveDraft receipt that must become durable before the planner starts.
+    pending_planning: Option<PendingAutomationPlanning>,
+    /// Planning-owned SaveDraft still in flight. Survives Back so its late
+    /// receipt cannot be mistaken for an ordinary draft completion.
+    pub(crate) planning_save_inflight: Option<PlanningSaveIdentity>,
     pub show_advanced: bool,
     pub kind: AutomationKind,
     pub interval_in_hours: bool,
@@ -484,6 +510,8 @@ impl AutomationUi {
             shape: AutomationShape::Quick,
             planning_automation: None,
             planning_run: None,
+            pending_planning: None,
+            planning_save_inflight: None,
             show_advanced: false,
             kind: AutomationKind::Daily,
             interval_in_hours: false,
@@ -1133,6 +1161,8 @@ impl TaskApp {
         self.automation_ui.scroll.set_offset(point(px(0.), px(0.)));
         self.automation_ui.planning_automation = None;
         self.automation_ui.planning_run = None;
+        self.automation_ui.pending_planning = None;
+        self.automation_ui.planning_save_inflight = None;
         self.automation_ui.show_advanced = false;
         self.automation_ui.preview.clear();
         self.automation_ui.preview_error.clear();
@@ -1217,6 +1247,8 @@ impl TaskApp {
         self.automation_ui.step = 1;
         self.automation_ui.planning_automation = None;
         self.automation_ui.planning_run = None;
+        self.automation_ui.pending_planning = None;
+        self.automation_ui.planning_save_inflight = None;
         self.automation_ui.show_advanced = false;
         self.automation_ui.preview.clear();
         self.automation_ui.preview_error.clear();
@@ -1244,6 +1276,8 @@ impl TaskApp {
         self.automation_ui.plan = None;
         self.automation_ui.planning_automation = None;
         self.automation_ui.planning_run = None;
+        self.automation_ui.pending_planning = None;
+        self.automation_ui.planning_save_inflight = None;
         self.automation_ui.preview.clear();
         self.automation_ui.preview_error.clear();
         self.automation_ui.feedback = None;
@@ -1401,10 +1435,18 @@ impl TaskApp {
                     });
                     if changed {
                         match self.start_automation_planning(cx) {
-                            Ok(automation) => {
+                            Ok(AutomationPlanningStart::Started(automation)) => {
                                 self.automation_ui.planning_automation = Some(automation);
                                 self.automation_ui.preview_error.clear();
                                 self.automation_ui.step = 3;
+                            }
+                            Ok(AutomationPlanningStart::WaitingForDraft) => {
+                                self.automation_ui.preview_error.clear();
+                                self.automation_ui.step = 3;
+                                self.automation_ui.feedback = Some(Ok(
+                                    "Saving… the planner starts after the draft is durable."
+                                        .into(),
+                                ));
                             }
                             Err(error) => self.automation_ui.preview_error = error,
                         }
@@ -1416,10 +1458,17 @@ impl TaskApp {
                 } else {
                     // Research automations are planned once, here. Periods never plan.
                     match self.start_automation_planning(cx) {
-                        Ok(automation) => {
+                        Ok(AutomationPlanningStart::Started(automation)) => {
                             self.automation_ui.planning_automation = Some(automation);
                             self.automation_ui.preview_error.clear();
                             self.automation_ui.step = 3;
+                        }
+                        Ok(AutomationPlanningStart::WaitingForDraft) => {
+                            self.automation_ui.preview_error.clear();
+                            self.automation_ui.step = 3;
+                            self.automation_ui.feedback = Some(Ok(
+                                "Saving… the planner starts after the draft is durable.".into(),
+                            ));
                         }
                         Err(error) => self.automation_ui.preview_error = error,
                     }
@@ -1432,6 +1481,9 @@ impl TaskApp {
     }
 
     pub fn automation_wizard_back(&mut self, cx: &mut Context<Self>) {
+        if self.automation_ui.pending_planning.is_some() {
+            self.automation_ui.pending_planning = None;
+        }
         if self.automation_ui.step > 1 {
             self.automation_ui.step -= 1;
         }
@@ -1441,8 +1493,74 @@ impl TaskApp {
 
     /// Run the research planning chain once for this automation and freeze the
     /// reviewed result into a template. Later periods instantiate it directly.
-    fn start_automation_planning(&mut self, cx: &mut Context<Self>) -> Result<u64, String> {
-        let id = self.save_automation_form(cx)?;
+    fn start_automation_planning(
+        &mut self,
+        cx: &mut Context<Self>,
+    ) -> Result<AutomationPlanningStart, String> {
+        let current_input = self.automation_draft_input(cx).ok();
+        if let Some(pending) = self.automation_ui.pending_planning.as_ref() {
+            let same_review = pending.form_epoch == self.automation_ui.form_epoch
+                && current_input.as_ref() == Some(&pending.input);
+            if same_review && self.live_has_pending_receipts() {
+                // The reviewed SaveDraft is still in flight or retained for
+                // Retry. Its exact durable receipt owns the one planner start.
+                return Ok(AutomationPlanningStart::WaitingForDraft);
+            }
+            if same_review {
+                // A failed save left no in-flight obligation. Drop the stale
+                // intent and submit the reviewed form again.
+                self.automation_ui.pending_planning = None;
+            }
+        }
+        self.automation_ui.pending_planning = None;
+        match self.save_automation_draft_outcome(cx) {
+            AutomationSaveOutcome::Saved => {
+                let id = self
+                    .automation_ui
+                    .selected
+                    .or(self.automation_ui.editing)
+                    .ok_or("The saved draft did not return an automation id.")?;
+                // A synchronous/no-op SaveDraft normally closes the wizard.
+                // Generate plan still owns the wizard while it starts planning.
+                self.automation_ui.creating = true;
+                self.automation_ui.editing = Some(id);
+                self.automation_ui.selected = Some(id);
+                self.begin_automation_planning(id, cx)?;
+                self.automation_ui.feedback =
+                    Some(Ok("Plan request submitted · one planner run is queued.".into()));
+                self.toast = "Automation plan requested".into();
+                Ok(AutomationPlanningStart::Started(id))
+            }
+            AutomationSaveOutcome::Saving {
+                input,
+                subject,
+                form_epoch,
+            } => {
+                self.automation_ui.planning_save_inflight = Some(PlanningSaveIdentity {
+                    input: input.clone(),
+                    form_epoch,
+                });
+                self.automation_ui.pending_planning = Some(PendingAutomationPlanning {
+                    input,
+                    form_epoch,
+                    automation: subject.or(self.automation_ui.editing),
+                });
+                Ok(AutomationPlanningStart::WaitingForDraft)
+            }
+            AutomationSaveOutcome::Rejected(error) => {
+                self.automation_ui.planning_save_inflight = None;
+                Err(error)
+            }
+        }
+    }
+
+    /// Create the immutable planning request and its single planner run after
+    /// the reviewed draft is durable.
+    fn begin_automation_planning(
+        &mut self,
+        id: u64,
+        cx: &mut Context<Self>,
+    ) -> Result<u64, String> {
         let objective = self
             .automation_ui
             .objective
@@ -1476,40 +1594,81 @@ impl TaskApp {
             crate::app::LaunchIntent::RequestPlan { request_id: request },
             cx,
         );
-        if self
-            .store
-            .runs()
-            .iter()
-            .any(|candidate| candidate.id == run_id)
-        {
-            cx.notify();
-        }
-        if !self
-            .store
-            .runs()
-            .iter()
-            .any(|candidate| candidate.id == run_id)
-        {
-            if let Some(saved) = self
-                .store.request_mut(request)
-            {
-                saved.planning_run_id = None;
-            }
-            self.persist_if_changed(true);
-            return Err(self
-                .error
-                .clone()
-                .chars()
-                .take(400)
-                .collect::<String>()
-                .split('.')
-                .next()
-                .unwrap_or("The plan could not start.")
-                .to_string());
+        // Live admission returns before its run is merged into Store. The
+        // exact reserved run identity keeps this wizard attached to that ACK.
+        let accepted = self.store.runs().iter().any(|candidate| candidate.id == run_id)
+            || self.dispatch_awaiting.as_ref().is_some_and(|pending| pending.run_id == run_id);
+        if !accepted {
+            return Err(if self.error.is_empty() {
+                "The plan could not start. Retry after resolving the pending change.".into()
+            } else {
+                self.error.clone()
+            });
         }
         self.automation_ui.planning_automation = Some(id);
         self.automation_ui.planning_run = Some(run_id);
         Ok(id)
+    }
+
+    /// Resume the reviewed planning intent after the exact durable SaveDraft
+    /// receipt. A newer form or a different receipt cannot consume it.
+    pub(crate) fn resume_automation_planning_after_save(
+        &mut self,
+        subject: Option<u64>,
+        receipt: &crate::live_save_app::AutomationSaveReceipt,
+        cx: &mut Context<Self>,
+    ) {
+        let Some(pending) = self.automation_ui.pending_planning.clone() else {
+            return;
+        };
+        if pending.form_epoch != receipt.form_epoch || pending.input != receipt.input {
+            self.automation_ui.pending_planning = None;
+            return;
+        }
+        if self.automation_ui.form_epoch != receipt.form_epoch
+            || !self.automation_ui.creating
+            || self.automation_ui.step != 3
+        {
+            // Back, Cancel, a newer form or a route change owns the surface;
+            // never launch planning from a stale waiting intent.
+            self.automation_ui.pending_planning = None;
+            return;
+        }
+        self.automation_ui.pending_planning = None;
+        let Some(id) = subject.or(pending.automation).or(self.automation_ui.editing) else {
+            self.automation_ui.feedback = Some(Err(
+                "The durable draft did not identify an automation for planning.".into(),
+            ));
+            return;
+        };
+        self.automation_ui.editing = Some(id);
+        self.automation_ui.selected = Some(id);
+        match self.begin_automation_planning(id, cx) {
+            Ok(_) => {
+                self.automation_ui.preview_error.clear();
+                self.automation_ui.step = 3;
+                self.automation_ui.feedback =
+                    Some(Ok("Plan request submitted · one planner run is queued.".into()));
+                self.toast = "Automation plan requested".into();
+                cx.notify();
+            }
+            Err(error) => {
+                self.automation_ui.preview_error = error.clone();
+                self.automation_ui.feedback = Some(Err(error));
+            }
+        }
+    }
+
+    pub(crate) fn clear_pending_automation_planning(&mut self) {
+        self.automation_ui.pending_planning = None;
+    }
+
+    pub(crate) fn clear_planning_save_inflight(&mut self) {
+        self.automation_ui.planning_save_inflight = None;
+    }
+
+    pub(crate) fn automation_planning_pending(&self) -> bool {
+        self.automation_ui.pending_planning.is_some()
     }
 
     /// Called when the planner run finishes so the review step shows the frozen
@@ -4586,6 +4745,13 @@ impl TaskApp {
                     "Each period repeats this plan unchanged after you enable it. Planning is never repeated unless you choose Replan.",
                     cx,
                 ));
+            } else if self.automation_ui.pending_planning.is_some() {
+                content = content.child(crate::views::notice_panel(
+                    crate::views::NoticeTone::Info,
+                    "Saving the reviewed request…",
+                    "The planner starts after this exact draft version is durable. No second click is needed.",
+                    cx,
+                ));
             } else if self.automation_ui.planning_automation.is_some() {
                 content = content.child(crate::views::notice_panel(
                     crate::views::NoticeTone::Info,
@@ -4605,10 +4771,16 @@ impl TaskApp {
                         .icon(assets::IconName::RefreshCw)
                         .on_click(cx.listener(|app, _, _, cx| {
                             match app.start_automation_planning(cx) {
-                                Ok(automation) => {
+                                Ok(AutomationPlanningStart::Started(automation)) => {
                                     app.automation_ui.planning_automation = Some(automation);
                                     app.automation_ui.feedback =
                                         Some(Ok("Planning started…".into()));
+                                }
+                                Ok(AutomationPlanningStart::WaitingForDraft) => {
+                                    app.automation_ui.feedback = Some(Ok(
+                                        "Saving… the planner starts after the draft is durable."
+                                            .into(),
+                                    ));
                                 }
                                 Err(error) => app.automation_ui.feedback = Some(Err(error)),
                             }

@@ -165,6 +165,17 @@ pub(crate) enum ChangeKind {
 pub(crate) enum EntityChange {
     Upsert(EntityPayload),
     Delete(EntityKey),
+    /// Atomic narrow update of one planning request's run link. It is stored in
+    /// its own metadata row so a later whole-request snapshot can never erase a
+    /// mapping that was committed for a matching revision.
+    PlanRequestMapping {
+        request_id: u64,
+        revision: u32,
+        run_id: u64,
+    },
+    /// Insert an immutable research-request revision only when it is absent.
+    /// Never replaces an existing (possibly newer) revision.
+    EnsureResearchRequest(crate::request_planning::ResearchRequest),
 }
 
 impl EntityChange {
@@ -172,6 +183,10 @@ impl EntityChange {
         match self {
             Self::Upsert(payload) => payload.key(),
             Self::Delete(key) => *key,
+            Self::PlanRequestMapping { request_id, .. } => {
+                EntityKey::ResearchRequest(*request_id)
+            }
+            Self::EnsureResearchRequest(request) => EntityKey::ResearchRequest(request.id),
         }
     }
 
@@ -183,6 +198,9 @@ impl EntityChange {
         match self {
             Self::Upsert(_) => ChangeKind::Upsert,
             Self::Delete(_) => ChangeKind::Delete,
+            Self::PlanRequestMapping { .. } | Self::EnsureResearchRequest(_) => {
+                ChangeKind::Upsert
+            }
         }
     }
 
@@ -191,7 +209,8 @@ impl EntityChange {
             // The group separately accounts the change slot; this returns only
             // the payload's owned allocations.
             Self::Upsert(payload) => payload.estimated_bytes(),
-            Self::Delete(_) => 0,
+            Self::Delete(_) | Self::PlanRequestMapping { .. } => 0,
+            Self::EnsureResearchRequest(request) => request_heap(request),
         }
     }
 }
@@ -507,6 +526,30 @@ impl CommitSink for ApplyingSink {
                 }
                 EntityChange::Delete(key) => {
                     next.remove(key);
+                }
+                EntityChange::PlanRequestMapping { .. } => {
+                    // The in-memory fake sink has no request-link map; this
+                    // variant is exercised by the real SQLite adapter tests.
+                }
+                EntityChange::EnsureResearchRequest(request) => {
+                    let key = EntityKey::ResearchRequest(request.id);
+                    match next.get(&key) {
+                        None => {
+                            next.insert(
+                                key,
+                                EntityPayload::ResearchRequest(request.clone()),
+                            );
+                        }
+                        Some(EntityPayload::ResearchRequest(existing))
+                            if existing.revision < request.revision =>
+                        {
+                            next.insert(
+                                key,
+                                EntityPayload::ResearchRequest(request.clone()),
+                            );
+                        }
+                        Some(_) => {}
+                    }
                 }
             }
         }

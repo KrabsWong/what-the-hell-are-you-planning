@@ -705,6 +705,26 @@ impl SqliteV4 {
             "publications",
         )?));
         store.set_metadata(MetadataDelta::Topics(parse_meta(&meta, "topics")?));
+        // Planning links are validated after runs load. Only rows with a
+        // marker or a valid immutable owner are projected; unmarked legacy
+        // request mappings stay exactly as stored.
+        let mut planning_markers = std::collections::BTreeMap::new();
+        for (key, value) in &meta {
+            let Some(rest) = key.strip_prefix("request_plan:") else {
+                continue;
+            };
+            let Some((id, revision)) = rest.split_once(':') else {
+                continue;
+            };
+            let (Ok(id), Ok(revision), Ok(run_id)) = (
+                id.parse::<u64>(),
+                revision.parse::<u32>(),
+                serde_json::from_value::<u64>(value.clone()),
+            ) else {
+                continue;
+            };
+            planning_markers.insert((id, revision), run_id);
+        }
         store.set_metadata(MetadataDelta::ResearchRequests(parse_meta(
             &meta,
             "research_requests",
@@ -733,6 +753,7 @@ impl SqliteV4 {
         let occurrences = load_occurrences(&transaction)?;
         store.runs(runs, automations, occurrences)?;
         let mut store = store.finish();
+        store.resolve_loaded_planning_links(&planning_markers);
         for run_id in lazy_bodies {
             store.mark_lazy_body(run_id);
         }
@@ -1038,6 +1059,67 @@ fn apply_change(
     match change {
         EntityChange::Delete(key) => delete_entity(transaction, key),
         EntityChange::Upsert(payload) => upsert_payload(transaction, payload, root, activity_seq),
+        EntityChange::PlanRequestMapping {
+            request_id,
+            revision,
+            run_id,
+        } => {
+            // A dedicated meta row survives whole `research_requests` rewrites.
+            // Never regress a newer attempt replayed after an older admission.
+            let key = format!("request_plan:{request_id}:{revision}");
+            let existing: Option<String> = transaction
+                .query_row(
+                    "SELECT payload FROM meta WHERE key=?1",
+                    [&key],
+                    |row| row.get(0),
+                )
+                .optional()
+                .map_err(|error| format!("cannot read planning request link: {error}"))?;
+            if let Some(payload) = existing
+                && let Ok(current) = serde_json::from_str::<u64>(&payload)
+                && current > *run_id
+            {
+                return Ok(());
+            }
+            let value = serde_json::to_value(run_id).map_err(|error| error.to_string())?;
+            transaction
+                .execute(
+                    "INSERT INTO meta(key,payload) VALUES(?1,?2) \
+                     ON CONFLICT(key) DO UPDATE SET payload=excluded.payload",
+                    params![key, value.to_string()],
+                )
+                .map_err(|error| format!("cannot write planning request link: {error}"))?;
+            Ok(())
+        }
+        EntityChange::EnsureResearchRequest(request) => {
+            // Insert the full immutable revision when absent, or replace an
+            // existing older revision with the accepted newer one. A newer
+            // durable revision is never discarded by this dispatch snapshot.
+            let mut values = read_meta_collection(transaction, "research_requests")?;
+            let existing = values.iter().position(|value| {
+                value.get("id").and_then(Value::as_u64) == Some(request.id)
+            });
+            match existing {
+                None => {
+                    values.push(
+                        serde_json::to_value(request).map_err(|error| error.to_string())?,
+                    );
+                    write_meta_collection(transaction, "research_requests", &values)?;
+                }
+                Some(index) => {
+                    let current_revision = values[index]
+                        .get("revision")
+                        .and_then(Value::as_u64)
+                        .unwrap_or(0);
+                    if current_revision < u64::from(request.revision) {
+                        values[index] = serde_json::to_value(request)
+                            .map_err(|error| error.to_string())?;
+                        write_meta_collection(transaction, "research_requests", &values)?;
+                    }
+                }
+            }
+            Ok(())
+        }
     }
 }
 
@@ -3345,6 +3427,128 @@ mod tests {
             .collect();
         names.sort();
         names
+    }
+
+    #[test]
+    fn planning_link_meta_rows_never_regress_attempts() {
+        let root = temp_root("planning-link-meta");
+        let path = root.join("workspace.sqlite3");
+        let mut database =
+            SqliteV4::create_seeded(&path, &root, INCARNATION, &Store::empty()).unwrap();
+        let mut journal = ChangeJournal::new(INCARNATION);
+        let newer = journal
+            .stage(vec![EntityChange::PlanRequestMapping {
+                request_id: 1,
+                revision: 1,
+                run_id: 20,
+            }])
+            .unwrap();
+        assert!(matches!(
+            database.commit_group(&newer).unwrap(),
+            CommitOutcome::Committed { .. }
+        ));
+        let older = journal
+            .stage(vec![EntityChange::PlanRequestMapping {
+                request_id: 1,
+                revision: 1,
+                run_id: 10,
+            }])
+            .unwrap();
+        assert!(matches!(
+            database.commit_group(&older).unwrap(),
+            CommitOutcome::Committed { .. }
+        ));
+        let payload: String = database
+            .connection
+            .query_row(
+                "SELECT payload FROM meta WHERE key='request_plan:1:1'",
+                [],
+                |row| row.get(0),
+            )
+            .unwrap();
+        assert_eq!(payload, "20", "an older replayed link must not win");
+    }
+
+    #[test]
+    fn ensure_request_replaces_only_an_older_revision() {
+        let root = temp_root("ensure-request-revision");
+        let path = root.join("workspace.sqlite3");
+        let mut base = Store::mock();
+        let id = base
+            .create_research_request(1, None, "old input")
+            .unwrap();
+        let mut newer = base
+            .research_requests()
+            .iter()
+            .find(|request| request.id == id)
+            .cloned()
+            .unwrap();
+        newer.revision = 2;
+        newer.input = "new input".into();
+        let older = base
+            .research_requests()
+            .iter()
+            .find(|request| request.id == id)
+            .cloned()
+            .unwrap();
+        let mut database =
+            SqliteV4::create_seeded(&path, &root, INCARNATION, &base).unwrap();
+        let mut journal = ChangeJournal::new(INCARNATION);
+        let group = journal
+            .stage(vec![EntityChange::EnsureResearchRequest(newer)])
+            .unwrap();
+        database.commit_group(&group).unwrap();
+        let durable = database.durable_generation().unwrap();
+        let mut journal = ChangeJournal::resume(INCARNATION, durable);
+        let group = journal
+            .stage(vec![EntityChange::EnsureResearchRequest(older)])
+            .unwrap();
+        database.commit_group(&group).unwrap();
+        drop(database);
+        let reopened = SqliteV4::open(&path, &root, INCARNATION)
+            .unwrap()
+            .load_store()
+            .unwrap();
+        let request = reopened
+            .research_requests()
+            .iter()
+            .find(|request| request.id == id)
+            .unwrap();
+        assert_eq!(request.revision, 2);
+        assert_eq!(request.input, "new input");
+    }
+
+    #[test]
+    fn orphan_planning_link_is_ignored_on_load() {
+        let root = temp_root("orphan-planning-link");
+        let path = root.join("workspace.sqlite3");
+        let mut base = Store::mock();
+        let id = base
+            .create_research_request(1, None, "orphan input")
+            .unwrap();
+        let mut database =
+            SqliteV4::create_seeded(&path, &root, INCARNATION, &base).unwrap();
+        database
+            .connection
+            .execute(
+                "INSERT INTO meta(key,payload) VALUES('request_plan:1:1','99')",
+                [],
+            )
+            .unwrap();
+        drop(database);
+        let reopened = SqliteV4::open(&path, &root, INCARNATION)
+            .unwrap()
+            .load_store()
+            .unwrap();
+        assert_eq!(
+            reopened
+                .research_requests()
+                .iter()
+                .find(|request| request.id == id)
+                .and_then(|request| request.planning_run_id),
+            None,
+            "a link without the owning run must not create an orphan mapping"
+        );
     }
 }
 

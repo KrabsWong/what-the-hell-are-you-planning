@@ -28,7 +28,7 @@ fn run_root() -> PathBuf {
 const CASE_ENV: &str = "LIVE_PERSISTENCE_QA_CASE";
 const ROOT_ENV: &str = "LIVE_PERSISTENCE_QA_ROOT";
 const SEQUENTIAL_ENV: &str = "LIVE_PERSISTENCE_QA_SEQUENTIAL";
-const CASES: [&str; 25] = [
+const CASES: [&str; 29] = [
     "core",
     "reopen",
     "pending-quit",
@@ -54,6 +54,10 @@ const CASES: [&str; 25] = [
     "lazy-latest-failed",
     "t04-automation-lifecycle-undo",
     "t15-incremental-sql-audit",
+    "automation-generate-plan-async",
+    "automation-generate-plan-unchanged",
+    "automation-generate-plan-retry",
+    "automation-generate-plan-cancel",
 ];
 
 fn run_case(case: &str) -> Result<(), String> {
@@ -88,6 +92,18 @@ fn run_case(case: &str) -> Result<(), String> {
         }
         "automation-save-newer-form" => {
             automation_save_case(&root.join("automation-save-newer"), false, true)
+        }
+        "automation-generate-plan-async" => {
+            automation_generate_plan_async(&root.join("automation-generate-plan-async"), false)
+        }
+        "automation-generate-plan-unchanged" => {
+            automation_generate_plan_async(&root.join("automation-generate-plan-unchanged"), true)
+        }
+        "automation-generate-plan-retry" => {
+            automation_generate_plan_retry(&root.join("automation-generate-plan-retry"))
+        }
+        "automation-generate-plan-cancel" => {
+            automation_generate_plan_cancel(&root.join("automation-generate-plan-cancel"))
         }
         "automation-rejected-unrelated-command" => automation_rejected_unrelated(
             &root.join("automation-rejected-unrelated"),
@@ -1317,6 +1333,459 @@ fn automation_rejected_unrelated(root: &Path) -> Result<(), String> {
     if count != 0 || disk != 0 {
         return Err(format!(
             "rejected automation save was committed: memory={count} disk={disk}"
+        ));
+    }
+    let _ = cx.update_window(handle, |_, w, _| w.remove_window());
+    Ok(())
+}
+
+fn automation_generate_plan_async(root: &Path, unchanged: bool) -> Result<(), String> {
+    let expected = if unchanged { "Expected old" } else { "Expected new revision" };
+    std::fs::create_dir_all(root).map_err(|error| error.to_string())?;
+    let template = crate::automation_execution::build_template("Plan async", "Expected old")?;
+    let mut store = Store::empty();
+    store.set_default_model("fixture/model".into());
+    store.project_mut(1).unwrap().directory = root.to_string_lossy().into_owned();
+    let id = store
+        .create_automation_draft(
+            1,
+            crate::automation::AutomationShape::Research,
+            "Automation 2".into(),
+            "Objective old".into(),
+            "Expected old".into(),
+            crate::automation_schedule::Schedule {
+                spec: crate::automation_schedule::ScheduleSpec::Interval { minutes: 60 },
+                timezone: "UTC".into(),
+            },
+            crate::automation::AutomationPolicy::default(),
+            if unchanged { None } else { Some(template) },
+            1_700_000_000,
+        )
+        .map_err(|error| error.to_string())?;
+    let path = seed_store(root, &store)?;
+    let (mut cx, handle, app) = open_live(root, &path)?;
+    cx.update(|cx| app.update(cx, |a, _| {
+        a.qa_dispatch_fake = Some(crate::dispatch_admission::FakeDispatchRunner::default());
+    }));
+    let (version_before, requests_before, runs_before) = cx.update(|cx| {
+        let a = app.read(cx);
+        (
+            a.store.automation(id).map(|definition| definition.version).unwrap_or(0),
+            a.store.research_requests().len(),
+            a.store.runs().len(),
+        )
+    });
+    let mut step = 0u8;
+    let mut pending_after_click = false;
+    let mut planning_run_after_click = false;
+    let mut feedback_after_click = String::new();
+    cx.update_window(handle, |_, w, cx| {
+        app.update(cx, |a, cx| {
+            a.replan_automation(id, w, cx);
+            a.automation_ui.expected.update(cx, |state, cx| {
+                state.set_value(expected, w, cx);
+            });
+            a.automation_wizard_next(w, cx);
+            a.automation_wizard_next(w, cx);
+            step = a.automation_ui.step;
+            planning_run_after_click = a.automation_ui.planning_run.is_some();
+            feedback_after_click = a
+                .automation_ui
+                .feedback
+                .clone()
+                .map(|value| match value {
+                    Ok(text) => text,
+                    Err(text) => format!("ERR:{text}"),
+                })
+                .unwrap_or_default();
+            pending_after_click = a.automation_planning_pending()
+                && a.automation_ui.planning_run.is_none()
+                && a.automation_ui.feedback.is_some()
+                && !feedback_after_click.starts_with("ERR:");
+        });
+        w.render_frame(cx);
+    })
+    .map_err(|error| format!("generate-plan click failed: {error:?}"))?;
+    if step != 3 || (!unchanged && (planning_run_after_click || !pending_after_click)) {
+        return Err(format!(
+            "Generate plan did not wait truthfully on step 3: step={step} run={planning_run_after_click} pending={pending_after_click} feedback={feedback_after_click:?}"
+        ));
+    }
+    let deadline = Instant::now() + Duration::from_secs(30);
+    let mut started = false;
+    while Instant::now() < deadline {
+        started = cx
+            .update_window(handle, |_, _, cx| {
+                app.update(cx, |a, cx| a.poll_runtime(cx));
+                let a = app.read(cx);
+                !a.live_has_pending_receipts()
+                    && a.store.automations().iter().any(|definition| {
+                        definition.id == id
+                            && definition.version >= version_before
+                            && definition.expected_result == expected
+                    })
+                    && a.store.research_requests().len() == requests_before + 1
+                    && a.store.runs().len() == runs_before + 1
+                    && a.automation_ui.planning_run.is_some()
+                    && a.qa_dispatch_fake.as_ref().is_some_and(|fake| {
+                        fake.starts.as_slice() == a.automation_ui.planning_run.as_slice()
+                    })
+                    && a.active_runs.is_empty()
+            })
+            .map_err(|error| format!("generate-plan ACK pump failed: {error:?}"))?;
+        if started {
+            break;
+        }
+        std::thread::sleep(Duration::from_millis(5));
+    }
+    if !started {
+        let state = cx.update(|cx| {
+            let a = app.read(cx);
+            format!(
+                "version={:?} requests={} runs={} planning_run={:?} pending={} step={} feedback={:?} failure={:?} receipts={}",
+                a.store.automation(id).map(|d| d.version),
+                a.store.research_requests().len(),
+                a.store.runs().len(),
+                a.automation_ui.planning_run,
+                a.automation_planning_pending(),
+                a.automation_ui.step,
+                a.automation_ui.feedback,
+                a.live_failure,
+                a.live_has_pending_receipts(),
+            )
+        });
+        return Err(format!("durable draft never started exactly one planner run: {state}"));
+    }
+    let (version_after, request, run_id, planning_run, step_after, feedback_after) =
+        cx.update(|cx| {
+            let a = app.read(cx);
+            let request = a
+                .store
+                .research_requests()
+                .iter()
+                .find(|request| request.automation_id == Some(id))
+                .cloned();
+            (
+                a.store.automation(id).map(|definition| definition.version).unwrap_or(0),
+                request,
+                a.store
+                    .runs()
+                    .iter()
+                    .find(|run| {
+                        run.planning_owner
+                            .as_ref()
+                            .is_some_and(|owner| owner.automation_id == Some(id))
+                    })
+                    .map(|run| run.id),
+                a.automation_ui.planning_run,
+                a.automation_ui.step,
+                a.automation_ui.feedback.clone(),
+            )
+        });
+    let Some(request) = request else {
+        return Err("no immutable planning request was created".into());
+    };
+    if request.input.trim() != "Objective old"
+        || request.expected_result.as_deref() != Some(expected)
+        || request.automation_id != Some(id)
+    {
+        return Err(format!("planning request revision is wrong: {request:?}"));
+    }
+    if run_id.is_none() || planning_run != run_id {
+        return Err(format!(
+            "planner token does not match the one run: run={run_id:?} planning={planning_run:?}"
+        ));
+    }
+    if version_after != version_before + u32::from(!unchanged) {
+        return Err(format!(
+            "definition version did not advance once: before={version_before} after={version_after}"
+        ));
+    }
+    if step_after != 3
+        || feedback_after
+            .as_ref()
+            .and_then(|value| value.as_ref().err())
+            .is_some()
+    {
+        return Err(format!(
+            "planning continuation did not settle: step={step_after} feedback={feedback_after:?}"
+        ));
+    }
+    if !cx.update(|cx| app.read(cx).automation_ui.creating) {
+        return Err("Generate plan closed the review wizard".into());
+    }
+    // No second click and no duplicate request/run after settling.
+    std::thread::sleep(Duration::from_millis(50));
+    let (requests_final, runs_final) = cx.update(|cx| {
+        let a = app.read(cx);
+        (a.store.research_requests().len(), a.store.runs().len())
+    });
+    if requests_final != requests_before + 1 || runs_final != runs_before + 1 {
+        return Err(format!(
+            "planning continuation duplicated work: requests={requests_before}->{requests_final} runs={runs_before}->{runs_final}"
+        ));
+    }
+    let disk = read_v4_store(root, &path)?;
+    let persisted = disk
+        .automation(id)
+        .ok_or("persisted automation missing after replan")?;
+    if persisted.expected_result != expected || persisted.version != version_after {
+        return Err("durable draft revision does not match memory".into());
+    }
+    let _ = cx.update_window(handle, |_, w, _| w.remove_window());
+    Ok(())
+}
+
+
+fn seed_planned_research_draft(root: &Path) -> Result<(u64, PathBuf), String> {
+    std::fs::create_dir_all(root).map_err(|error| error.to_string())?;
+    let template = crate::automation_execution::build_template("Plan async", "Expected old")?;
+    let mut store = Store::empty();
+    store.set_default_model("fixture/model".into());
+    store.project_mut(1).unwrap().directory = root.to_string_lossy().into_owned();
+    let id = store
+        .create_automation_draft(
+            1,
+            crate::automation::AutomationShape::Research,
+            "Automation 2".into(),
+            "Objective old".into(),
+            "Expected old".into(),
+            crate::automation_schedule::Schedule {
+                spec: crate::automation_schedule::ScheduleSpec::Interval { minutes: 60 },
+                timezone: "UTC".into(),
+            },
+            crate::automation::AutomationPolicy::default(),
+            Some(template),
+            1_700_000_000,
+        )
+        .map_err(|error| error.to_string())?;
+    let path = seed_store(root, &store)?;
+    Ok((id, path))
+}
+
+fn start_generate_plan_click(
+    cx: &mut HeadlessAppContext,
+    handle: AnyWindowHandle,
+    app: &Entity<TaskApp>,
+    id: u64,
+    expected: &str,
+) -> Result<(u8, bool, bool, String), String> {
+    let mut step = 0u8;
+    let mut pending = false;
+    let mut planning_run = false;
+    let mut feedback = String::new();
+    cx.update_window(handle, |_, w, cx| {
+        app.update(cx, |a, cx| {
+            a.replan_automation(id, w, cx);
+            a.automation_ui.expected.update(cx, |state, cx| {
+                state.set_value(expected, w, cx);
+            });
+            a.automation_wizard_next(w, cx);
+            a.automation_wizard_next(w, cx);
+            step = a.automation_ui.step;
+            pending = a.automation_planning_pending();
+            planning_run = a.automation_ui.planning_run.is_some();
+            feedback = a
+                .automation_ui
+                .feedback
+                .clone()
+                .map(|value| match value {
+                    Ok(text) => text,
+                    Err(text) => format!("ERR:{text}"),
+                })
+                .unwrap_or_default();
+        });
+        w.render_frame(cx);
+    })
+    .map_err(|error| format!("generate-plan click failed: {error:?}"))?;
+    Ok((step, pending, planning_run, feedback))
+}
+
+fn automation_generate_plan_retry(root: &Path) -> Result<(), String> {
+    let (id, path) = seed_planned_research_draft(root)?;
+    let (mut cx, handle, app) = open_live(root, &path)?;
+    cx.update(|cx| app.update(cx, |a, _| {
+        a.qa_dispatch_fake = Some(crate::dispatch_admission::FakeDispatchRunner::default());
+    }));
+    let (version_before, requests_before, runs_before) = cx.update(|cx| {
+        let a = app.read(cx);
+        (
+            a.store.automation(id).map(|d| d.version).unwrap_or(0),
+            a.store.research_requests().len(),
+            a.store.runs().len(),
+        )
+    });
+    cx.update(|cx| {
+        app.update(cx, |a, _| {
+            a.dispatch_admission
+                .as_mut()
+                .ok_or("missing dispatch admission")?
+                .set_fault(crate::sqlite_v4::Fault::BeforeCommit)
+        })
+    })
+    .map_err(|error| format!("set plan write fault failed: {error}"))?;
+    let (step, pending, planning_run, feedback) =
+        start_generate_plan_click(&mut cx, handle, &app, id, "Expected new revision")?;
+    if step != 3 || !pending || planning_run || feedback.starts_with("ERR:") {
+        return Err(format!(
+            "retry case did not wait truthfully: step={step} pending={pending} run={planning_run} feedback={feedback:?}"
+        ));
+    }
+    let deadline = Instant::now() + Duration::from_secs(20);
+    let mut failed = false;
+    while Instant::now() < deadline {
+        failed = cx
+            .update_window(handle, |_, _, cx| {
+                app.update(cx, |a, cx| a.poll_runtime(cx));
+                app.read(cx).live_failure.is_some()
+            })
+            .map_err(|error| format!("plan failure poll failed: {error:?}"))?;
+        if failed {
+            break;
+        }
+        std::thread::sleep(Duration::from_millis(5));
+    }
+    if !failed {
+        return Err("injected draft save failure was not reported".into());
+    }
+    let (pending_failed, planning_failed, requests_failed, runs_failed) = cx.update(|cx| {
+        let a = app.read(cx);
+        (
+            a.automation_planning_pending(),
+            a.automation_ui.planning_run.is_some(),
+            a.store.research_requests().len(),
+            a.store.runs().len(),
+        )
+    });
+    if !pending_failed || planning_failed || requests_failed != requests_before || runs_failed != runs_before {
+        return Err(format!(
+            "failed save lost/consumed planning intent: pending={pending_failed} run={planning_failed} requests={requests_failed} runs={runs_failed}"
+        ));
+    }
+    let disk_failed = read_v4_store(root, &path)?;
+    if disk_failed.automation(id).map(|d| d.version) != Some(version_before) {
+        return Err("failed draft save still advanced the durable version".into());
+    }
+    cx.update(|cx| {
+        app.update(cx, |a, cx| {
+            if let Some(adapter) = a.dispatch_admission.as_mut()
+                && let Err(error) = adapter.set_fault(crate::sqlite_v4::Fault::None)
+            {
+                return Err(error);
+            }
+            a.retry_live_persistence(cx);
+            Ok(())
+        })
+    })
+    .map_err(|error| format!("clear plan write fault failed: {error}"))?;
+    let deadline = Instant::now() + Duration::from_secs(30);
+    let mut started = false;
+    while Instant::now() < deadline {
+        started = cx
+            .update_window(handle, |_, _, cx| {
+                app.update(cx, |a, cx| a.poll_runtime(cx));
+                let a = app.read(cx);
+                !a.live_has_pending_receipts()
+                    && a.store.automations().iter().any(|d| {
+                        d.id == id
+                            && d.version > version_before
+                            && d.expected_result == "Expected new revision"
+                    })
+                    && a.store.research_requests().len() == requests_before + 1
+                    && a.store.runs().len() == runs_before + 1
+                    && a.automation_ui.planning_run.is_some()
+                    && a.qa_dispatch_fake.as_ref().is_some_and(|fake| {
+                        fake.starts.as_slice() == a.automation_ui.planning_run.as_slice()
+                    })
+                    && a.active_runs.is_empty()
+            })
+            .map_err(|error| format!("plan retry pump failed: {error:?}"))?;
+        if started {
+            break;
+        }
+        std::thread::sleep(Duration::from_millis(5));
+    }
+    if !started {
+        return Err("real retry did not save the draft and start one planner run".into());
+    }
+    let _ = cx.update_window(handle, |_, w, _| w.remove_window());
+    Ok(())
+}
+
+fn automation_generate_plan_cancel(root: &Path) -> Result<(), String> {
+    let (id, path) = seed_planned_research_draft(root)?;
+    let (mut cx, handle, app) = open_live(root, &path)?;
+    cx.update(|cx| app.update(cx, |a, _| {
+        a.qa_dispatch_fake = Some(crate::dispatch_admission::FakeDispatchRunner::default());
+    }));
+    let (requests_before, runs_before) = cx.update(|cx| {
+        let a = app.read(cx);
+        (a.store.research_requests().len(), a.store.runs().len())
+    });
+    let (step, pending, planning_run, feedback) =
+        start_generate_plan_click(&mut cx, handle, &app, id, "Expected new revision")?;
+    if step != 3 || !pending || planning_run || feedback.starts_with("ERR:") {
+        return Err("cancel case did not enter the waiting state".into());
+    }
+    cx.update_window(handle, |_, _, cx| {
+        app.update(cx, |a, cx| a.automation_wizard_back(cx));
+    })
+    .map_err(|error| format!("wizard back failed: {error:?}"))?;
+    let (step_after, pending_after, planning_after) = cx.update(|cx| {
+        let a = app.read(cx);
+        (
+            a.automation_ui.step,
+            a.automation_planning_pending(),
+            a.automation_ui.planning_run.is_some(),
+        )
+    });
+    if step_after != 2 || pending_after || planning_after {
+        return Err(format!(
+            "Back did not clear waiting intent: step={step_after} pending={pending_after} run={planning_after}"
+        ));
+    }
+    pump_until(&mut cx, handle, &app, "Back draft ACK", |a| {
+        !a.live_has_pending_receipts()
+    })?;
+    let (requests_after, runs_after, creating_after, route_after) = cx.update(|cx| {
+        let a = app.read(cx);
+        (a.store.research_requests().len(), a.store.runs().len(), a.automation_ui.creating, a.automation_ui.selected)
+    });
+    if requests_after != requests_before || runs_after != runs_before {
+        return Err(format!(
+            "Back launched planning after ACK: requests={requests_before}->{requests_after} runs={runs_before}->{runs_after}"
+        ));
+    }
+    if !creating_after || route_after != Some(id) {
+        return Err(format!(
+            "Back stole the wizard/route: creating={creating_after} selected={route_after:?}"
+        ));
+    }
+    // Edit/new form while waiting must also clear intent and avoid launch.
+    let (_, pending, _, _) = start_generate_plan_click(
+        &mut cx, handle, &app, id, "Expected third revision",
+    )?;
+    if !pending {
+        return Err("new-form cancellation fixture did not enter an async wait".into());
+    }
+    cx.update_window(handle, |_, w, cx| {
+        app.update(cx, |a, cx| a.start_automation_create(w, cx));
+    })
+    .map_err(|error| format!("new form while waiting failed: {error:?}"))?;
+    let pending_new = cx.update(|cx| app.read(cx).automation_planning_pending());
+    if pending_new {
+        return Err("new form while waiting retained planning intent".into());
+    }
+    pump_until(&mut cx, handle, &app, "new-form ACK", |a| {
+        !a.live_has_pending_receipts()
+    })?;
+    let (requests_new, runs_new) = cx.update(|cx| {
+        let a = app.read(cx);
+        (a.store.research_requests().len(), a.store.runs().len())
+    });
+    if requests_new != requests_before || runs_new != runs_before {
+        return Err(format!(
+            "new form while waiting launched planning: requests={requests_before}->{requests_new} runs={runs_before}->{runs_new}"
         ));
     }
     let _ = cx.update_window(handle, |_, w, _| w.remove_window());

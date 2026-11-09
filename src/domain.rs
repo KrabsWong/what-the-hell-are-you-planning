@@ -1451,6 +1451,42 @@ impl Store {
                     self.remove_occurrence(*id);
                 }
             },
+            EntityChange::PlanRequestMapping {
+                request_id,
+                revision,
+                run_id,
+            } => {
+                let owner_valid = self.runs().iter().any(|run| {
+                    run.id == *run_id
+                        && run.planning_owner.as_ref().is_some_and(|owner| {
+                            owner.request_id == *request_id && owner.revision == *revision
+                        })
+                });
+                if owner_valid
+                    && let Some(mut request) = self.request_mut(*request_id)
+                    && request.revision == *revision
+                    && request
+                        .planning_run_id
+                        .is_none_or(|current| *run_id >= current)
+                {
+                    request.planning_run_id = Some(*run_id);
+                }
+            }
+            EntityChange::EnsureResearchRequest(request) => {
+                match self
+                    .research_requests()
+                    .iter()
+                    .find(|existing| existing.id == request.id)
+                {
+                    None => self.push_request(request.clone()),
+                    Some(existing) if existing.revision < request.revision => {
+                        if let Some(mut slot) = self.request_mut(request.id) {
+                            *slot = request.clone();
+                        }
+                    }
+                    Some(_) => {}
+                }
+            }
             EntityChange::Upsert(payload) => match payload {
                 EntityPayload::Task(value) => {
                     if let Some(slot) = self.task_mut(value.id) {
@@ -2792,6 +2828,62 @@ impl StoreLoader {
     pub(crate) fn finish(mut self) -> Store {
         self.store.clear_all_tracking();
         self.store
+    }
+}
+
+impl Store {
+    /// Resolve the request -> latest planning-run projection after a load.
+    /// Only rows with actual typed admission evidence are touched:
+    /// - a `request_plan` marker for this request/revision, or
+    /// - a valid immutable run owner when the request has no existing mapping.
+    /// Unmarked legacy `planning_run_id` values are preserved exactly, and an
+    /// invalid/orphan marker never clears an existing mapping.
+    pub(crate) fn resolve_loaded_planning_links(
+        &mut self,
+        markers: &std::collections::BTreeMap<(u64, u32), u64>,
+    ) {
+        let requests: Vec<(u64, u32, Option<u64>)> = self
+            .research_requests
+            .iter()
+            .map(|request| (request.id, request.revision, request.planning_run_id))
+            .collect();
+        for (id, revision, current) in requests {
+            let owner_latest = self
+                .runs
+                .iter()
+                .filter(|run| {
+                    run.planning_owner.as_ref().is_some_and(|owner| {
+                        owner.request_id == id && owner.revision == revision
+                    })
+                })
+                .map(|run| run.id)
+                .max();
+            let marker = markers.get(&(id, revision)).copied();
+            let marker_owner = marker.filter(|run_id| {
+                self.runs.iter().any(|run| {
+                    run.id == *run_id
+                        && run.planning_owner.as_ref().is_some_and(|owner| {
+                            owner.request_id == id && owner.revision == revision
+                        })
+                })
+            });
+            // Only marker-backed rows are projected. A valid owner supersedes
+            // an older marker attempt; no marker means this is legacy/unmarked
+            // state and is preserved exactly as loaded.
+            let resolved = if marker.is_some() {
+                owner_latest.or(marker_owner)
+            } else {
+                None
+            };
+            if let Some(resolved) = resolved
+                && current != Some(resolved)
+                && let Some(mut request) = self.request_mut(id)
+                && request.revision == revision
+            {
+                request.planning_run_id = Some(resolved);
+            }
+        }
+        self.research_requests.clear_dirty();
     }
 }
 

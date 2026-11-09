@@ -8,7 +8,7 @@
 //! temp write + fsync + rename + directory fsync) before submission, so a crash
 //! or shutdown keeps the run identity without blocking the UI.
 
-use crate::dispatch_intent::AdmissionParts;
+use crate::dispatch_intent::{AdmissionParts, PlanningRequestLink};
 use crate::domain::{AgentRun, Store};
 use crate::domain_command::{Command, PreparedCommand};
 use crate::persistence_journal::{
@@ -1217,8 +1217,47 @@ fn parse_resolution(rest: &str) -> Option<(&str, bool, Option<u64>)> {
 }
 
 fn extract_parts(prepared: &PreparedCommand) -> Result<AdmissionParts, String> {
-    let Command::DispatchRun { occurrence, run } = &prepared.command else {
-        return Err("durable admission currently accepts only DispatchRun commands".into());
+    let (run, occurrence_id, planning_request, request_snapshot) = match &prepared.command {
+        Command::DispatchRun { occurrence, run } => (run, *occurrence, None, None),
+        Command::DispatchRegeneration { occurrence, run, .. } => (run, *occurrence, None, None),
+        Command::DispatchRequestPlan { request_id, run } => {
+            let owner = run.planning_owner.as_ref().ok_or_else(|| {
+                "the planning run has no immutable request owner".to_string()
+            })?;
+            if owner.request_id != *request_id {
+                return Err("the planning run belongs to another request".into());
+            }
+            let request = prepared
+                .staged
+                .research_requests()
+                .iter()
+                .find(|request| request.id == *request_id)
+                .ok_or_else(|| {
+                    "the staged command does not contain its planning request".to_string()
+                })?;
+            if request.revision != owner.revision {
+                return Err("the planning run belongs to an older request revision".into());
+            }
+            if request.planning_run_id != Some(run.id) {
+                return Err("the staged planning request is missing its run link".into());
+            }
+            (
+                run,
+                None,
+                Some(PlanningRequestLink {
+                    request_id: *request_id,
+                    revision: owner.revision,
+                    run_id: run.id,
+                }),
+                Some(request.clone()),
+            )
+        }
+        _ => {
+            return Err(
+                "durable admission accepts DispatchRun, DispatchRequestPlan and DispatchRegeneration commands"
+                    .into(),
+            );
+        }
     };
     let staged_run = prepared
         .staged
@@ -1227,9 +1266,9 @@ fn extract_parts(prepared: &PreparedCommand) -> Result<AdmissionParts, String> {
         .find(|candidate| candidate.id == run.id)
         .cloned()
         .ok_or_else(|| "the staged command does not contain its dispatch run".to_string())?;
-    let occurrence = match occurrence {
+    let occurrence = match occurrence_id {
         Some(id) => {
-            let link = prepared.staged.occurrence(*id).cloned().ok_or_else(|| {
+            let link = prepared.staged.occurrence(id).cloned().ok_or_else(|| {
                 "the staged command does not contain its occurrence link".to_string()
             })?;
             if !link.run_ids.contains(&run.id) {
@@ -1249,6 +1288,8 @@ fn extract_parts(prepared: &PreparedCommand) -> Result<AdmissionParts, String> {
         occurrence,
         next_id,
         run_id_floor,
+        planning_request,
+        request_snapshot,
     })
 }
 
@@ -1258,6 +1299,20 @@ fn stage(journal: &mut ChangeJournal, parts: &AdmissionParts) -> Result<StagedGr
         changes.push(EntityChange::Upsert(EntityPayload::Occurrence(
             occurrence.clone(),
         )));
+    }
+    if let Some(link) = &parts.planning_request {
+        changes.push(EntityChange::PlanRequestMapping {
+            request_id: link.request_id,
+            revision: link.revision,
+            run_id: link.run_id,
+        });
+    }
+    if let Some(request) = &parts.request_snapshot {
+        // New request revisions are created in memory immediately before this
+        // dispatch. Persist the full immutable revision atomically so a crash
+        // before the next live snapshot cannot leave an orphan run/link. The
+        // commit path inserts only when the request id is absent.
+        changes.push(EntityChange::EnsureResearchRequest(request.clone()));
     }
     let mut metadata: Vec<MetadataDelta> =
         parts.next_id.map(MetadataDelta::NextId).into_iter().collect();
@@ -1308,6 +1363,51 @@ pub(crate) fn apply_durable_parts(
     }
     if let Some(floor) = parts.run_id_floor {
         store.set_run_id_floor(store.run_id_floor().max(floor));
+    }
+    // A newly created immutable request revision may exist only in memory at
+    // dispatch time. Merge it when absent; replace an older revision, but never
+    // replace a newer durable one.
+    if let Some(request) = &parts.request_snapshot {
+        match store
+            .research_requests()
+            .iter()
+            .find(|existing| existing.id == request.id)
+        {
+            None => store.push_request(request.clone()),
+            Some(existing) if existing.revision < request.revision => {
+                if let Some(mut slot) = store.request_mut(request.id) {
+                    *slot = request.clone();
+                }
+            }
+            Some(_) => {}
+        }
+    }
+    // Merge only the exact revision-bound planning link, and only when the
+    // referenced run's immutable owner still matches. A replayed older link
+    // cannot regress a newer attempt for the same request/revision.
+    if let Some(link) = &parts.planning_request {
+        let owner_valid = store.runs().iter().any(|run| {
+            run.id == link.run_id
+                && run.planning_owner.as_ref().is_some_and(|owner| {
+                    owner.request_id == link.request_id && owner.revision == link.revision
+                })
+        });
+        let supersedes = store
+            .research_requests()
+            .iter()
+            .find(|request| request.id == link.request_id)
+            .is_some_and(|request| {
+                request.revision == link.revision
+                    && request
+                        .planning_run_id
+                        .is_none_or(|current| link.run_id >= current)
+            });
+        if owner_valid
+            && supersedes
+            && let Some(mut request) = store.request_mut(link.request_id)
+        {
+            request.planning_run_id = Some(link.run_id);
+        }
     }
     Ok(inserted)
 }
@@ -1398,6 +1498,232 @@ mod tests {
             )
             .unwrap();
         (store, prepared)
+    }
+
+    fn research_store(directory: &std::path::Path) -> Store {
+        let mut store = Store::mock();
+        store.project_at_mut(0).unwrap().directory =
+            directory.to_string_lossy().into_owned();
+        store.set_default_model("fixture/model".into());
+        store.research_config_mut().models =
+            std::array::from_fn(|_| "fixture/model".to_string());
+        store
+    }
+
+    fn prepared_request_plan(
+        directory: &std::path::Path,
+        run_id: u64,
+    ) -> (Store, u64, PreparedCommand) {
+        let mut store = research_store(directory);
+        let request = store
+            .create_research_request(1, None, "Plan objective")
+            .unwrap();
+        let mut run = store.prepare_request_plan(request).unwrap();
+        run.id = run_id;
+        run.status = "Queued".into();
+        run.queued_at = "2026-11-09T00:00:00Z".into();
+        run.started_at.clear();
+        let command = Command::DispatchRequestPlan { request_id: request, run };
+        let prepared = store
+            .prepare_command(
+                command.id(),
+                crate::domain_command::CommandClass::StartOrExtend,
+                command,
+            )
+            .unwrap();
+        (store, request, prepared)
+    }
+
+    fn prepared_regeneration(
+        directory: &std::path::Path,
+        run_id: u64,
+    ) -> (Store, u64, PreparedCommand) {
+        let mut store = research_store(directory);
+        let goal = store
+            .create_research_goal("Regeneration goal".into(), "Scope".into(), 1)
+            .unwrap();
+        let steps = store.apply_research_plan(goal, PLAN).unwrap();
+        for step in &steps[..2] {
+            let mut completed = store.prepare_run(*step).unwrap();
+            completed.id = 1_000 + *step;
+            completed.status = "Succeeded".into();
+            completed.output = "Completed evidence".into();
+            completed.input_signature = store.research_signature(*step).unwrap();
+            let id = *step;
+            store.push_run(completed);
+            store.set_stage(id, crate::domain::Stage::Done).unwrap();
+        }
+        let source_step = steps[2];
+        let mut source = store.prepare_run(source_step).unwrap();
+        source.id = 2_000;
+        source.status = "Succeeded".into();
+        source.output = serde_json::json!({
+            "status": "complete",
+            "report": "Prior report body.",
+            "sources": []
+        })
+        .to_string();
+        source.input_signature = store.research_signature(source_step).unwrap();
+        store.push_run(source);
+        let mut run = crate::research::prepare_report_regeneration(&store, 2_000, "shorter")
+            .unwrap();
+        run.id = run_id;
+        run.status = "Queued".into();
+        run.queued_at = "2026-11-09T00:00:00Z".into();
+        run.started_at.clear();
+        let command = Command::DispatchRegeneration {
+            occurrence: None,
+            source_id: 2_000,
+            style: "shorter".into(),
+            run,
+        };
+        let prepared = store
+            .prepare_command(
+                command.id(),
+                crate::domain_command::CommandClass::StartOrExtend,
+                command,
+            )
+            .unwrap();
+        (store, 2_000, prepared)
+    }
+
+    #[test]
+    fn request_plan_persists_new_request_run_and_link_atomically() {
+        let root = temp_root("request-plan");
+        let path = root.join("workspace.sqlite3");
+        // The request does not exist in the durable base: it is created in
+        // memory immediately before the dispatch.
+        let base = research_store(&root);
+        crate::sqlite_v4::SqliteV4::create_seeded(&path, &root, WORKSPACE, &base).unwrap();
+        let (_store, request_id, prepared) = prepared_request_plan(&root, 500);
+        let mut adapter = DispatchAdmissionAdapter::open(
+            &path,
+            &root,
+            WORKSPACE,
+            WorkerOptions::default(),
+            root.join("intent.json"),
+        )
+        .unwrap();
+        wait_ready(&mut adapter);
+        let id = adapter.admit(prepared).unwrap();
+        let durable = wait_durable(&mut adapter);
+        assert_eq!(durable.id.run_id, id.run_id);
+        assert_eq!(
+            durable
+                .parts
+                .planning_request
+                .as_ref()
+                .map(|link| (link.request_id, link.revision, link.run_id)),
+            Some((request_id, 1, id.run_id))
+        );
+        // Crash/reopen before any later live snapshot. The request content,
+        // run and revision-bound link must all be present.
+        adapter.shutdown_for_test();
+        let reopened = crate::sqlite_v4::SqliteV4::open(&path, &root, WORKSPACE)
+            .unwrap()
+            .load_store()
+            .unwrap();
+        let request = reopened
+            .research_requests()
+            .iter()
+            .find(|request| request.id == request_id)
+            .expect("planning request must be durable with its run");
+        assert_eq!(request.input, "Plan objective");
+        assert_eq!(request.revision, 1);
+        assert_eq!(request.planning_run_id, Some(id.run_id));
+        assert_eq!(
+            reopened
+                .runs()
+                .iter()
+                .filter(|run| run.id == id.run_id)
+                .count(),
+            1
+        );
+    }
+
+    #[test]
+    fn planning_link_replay_never_regresses_newer_attempt_or_orphan() {
+        let root = temp_root("planning-link");
+        let (store, request_id, prepared) = prepared_request_plan(&root, 10);
+        let mut older = extract_parts(&prepared).unwrap();
+        let mut newer = older.clone();
+        newer.run.id = 20;
+        if let Some(link) = newer.planning_request.as_mut() {
+            link.run_id = 20;
+        }
+        if let Some(snapshot) = newer.request_snapshot.as_mut() {
+            snapshot.planning_run_id = Some(20);
+        }
+        let mut live = store.clone();
+        live.push_run(older.run.clone());
+        live.push_run(newer.run.clone());
+        apply_durable_parts(&mut live, &newer).unwrap();
+        apply_durable_parts(&mut live, &older).unwrap();
+        assert_eq!(
+            live.research_requests()
+                .iter()
+                .find(|request| request.id == request_id)
+                .and_then(|request| request.planning_run_id),
+            Some(20),
+            "a replayed older attempt must not regress the newer mapping"
+        );
+        // A link whose immutable run owner does not match the request/revision
+        // (a stale or foreign link) is ignored.
+        let mut orphan = older.clone();
+        orphan.run.id = 30;
+        if let Some(owner) = orphan.run.planning_owner.as_mut() {
+            owner.request_id = request_id + 1;
+        }
+        if let Some(link) = orphan.planning_request.as_mut() {
+            link.run_id = 30;
+        }
+        apply_durable_parts(&mut live, &orphan).unwrap();
+        assert_eq!(
+            live.research_requests()
+                .iter()
+                .find(|request| request.id == request_id)
+                .and_then(|request| request.planning_run_id),
+            Some(20)
+        );
+        let _ = older;
+    }
+
+    #[test]
+    fn regeneration_intent_persists_new_run_and_keeps_source() {
+        let root = temp_root("regeneration");
+        let path = root.join("workspace.sqlite3");
+        let (store, _source, prepared) = prepared_regeneration(&root, 300);
+        crate::sqlite_v4::SqliteV4::create_seeded(&path, &root, WORKSPACE, &store).unwrap();
+        let mut adapter = DispatchAdmissionAdapter::open(
+            &path,
+            &root,
+            WORKSPACE,
+            WorkerOptions::default(),
+            root.join("intent.json"),
+        )
+        .unwrap();
+        wait_ready(&mut adapter);
+        let id = adapter.admit(prepared).unwrap();
+        let durable = wait_durable(&mut adapter);
+        adapter.acknowledge(&durable.id).unwrap();
+        wait_ack(&mut adapter, &durable.id.operation_key);
+        adapter.shutdown_for_test();
+        let reopened = crate::sqlite_v4::SqliteV4::open(&path, &root, WORKSPACE)
+            .unwrap()
+            .load_store()
+            .unwrap();
+        assert!(
+            reopened.runs().iter().any(|run| run.id == 2_000),
+            "the prior report survives regeneration"
+        );
+        assert_eq!(
+            reopened
+                .runs()
+                .iter()
+                .filter(|run| run.id == id.run_id)
+                .count(),
+            1
+        );
     }
 
     fn seeded(name: &str) -> (std::path::PathBuf, std::path::PathBuf) {

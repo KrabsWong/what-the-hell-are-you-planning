@@ -18,6 +18,10 @@ Prioritize working research and automation flows, data durability, execution own
 
 Deferral candidates require review evidence; none is automatically approved by priority label or elapsed time alone. Record decisions in IMPLEMENTATION.md and beside the affected task. The final gate covers all delivered behavior and explicitly lists any deferred remainder.
 
+## Required performance scale update
+
+On 2026-11-09 the user set the required smooth-interaction scale to at most 1,000 records. Native list and report scrolling at representative sizes up to this boundary remains a release gate. Existing 43,200- and 86,400-period results are stress diagnostics; failures exclusive to those sizes no longer block this delivery. Preserve their evidence rather than relabeling them as passes. Test the integrated candidate at the new boundary, with complete report bodies and normal animations, before accepting T19/T20. This scope change does not relax data integrity, correct navigation, or truthful state at any size.
+
 ## First-round acceptance policy update
 
 On 2026-11-09 the user explicitly authorized lower acceptance depth for nonblocking wording issues, very rare combinations and unusually stringent triggers, so one complete integrated review can finish before a later focused optimization pass. Apply this to a named remainder, not to an entire unverified feature. Record the trigger, user impact, evidence, reason for deferral and follow-up acceptance check. A deferred check is neither a passing test nor permission to describe its behavior as verified.

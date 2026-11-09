@@ -745,6 +745,17 @@ impl TaskApp {
                 && self.storage_error.is_empty())
     }
 
+    /// The one run owned by any admitted dispatch command. Planning and
+    /// regeneration use the same reserved-intent retry path as an ordinary run.
+    fn dispatched_run(command: &Command) -> Option<&crate::domain::AgentRun> {
+        match command {
+            Command::DispatchRun { run, .. }
+            | Command::DispatchRequestPlan { run, .. }
+            | Command::DispatchRegeneration { run, .. } => Some(run),
+            _ => None,
+        }
+    }
+
     /// Real command-handling path for an admitted dispatch. It prepares the same
     /// typed command the synchronous path uses, then waits for durability before
     /// any queue effect or launch.
@@ -756,7 +767,7 @@ impl TaskApp {
         cx: &mut Context<Self>,
     ) -> Option<RunDispatch> {
         if self.dispatch_awaiting.is_some() {
-            if let Command::DispatchRun { run, .. } = &command {
+            if let Some(run) = Self::dispatched_run(&command) {
                 self.pending_dispatch_reserved =
                     Some((intent.clone(), run.clone(), files.clone()));
             }
@@ -767,10 +778,7 @@ impl TaskApp {
             cx.notify();
             return None;
         }
-        let reserved_run = match &command {
-            Command::DispatchRun { run, .. } => Some(run.clone()),
-            _ => None,
-        };
+        let reserved_run = Self::dispatched_run(&command).cloned();
         let prepared = match self.store.prepare_command(command.id(), command.class(), command) {
             Ok(prepared) => prepared,
             Err(error) => {
@@ -808,7 +816,7 @@ impl TaskApp {
                 None
             }
             Err(rejection) => {
-                if let Command::DispatchRun { run, .. } = &rejection.prepared.command {
+                if let Some(run) = Self::dispatched_run(&rejection.prepared.command) {
                     self.pending_dispatch_reserved =
                         Some((intent.clone(), run.clone(), files.clone()));
                 }
@@ -1353,7 +1361,7 @@ impl TaskApp {
     /// the scheduler handoff. Only transient `Queued` runs are considered, and a
     /// run already in the queue/active set is never duplicated.
     pub(crate) fn recover_queued_dispatches(&mut self, cx: &mut Context<Self>) -> bool {
-        let candidates: Vec<(u64, String)> = self
+        let candidates: Vec<(u64, Option<u64>)> = self
             .store
             .runs()
             .iter()
@@ -1362,20 +1370,24 @@ impl TaskApp {
                     && !self.dispatch_cancelled.contains_key(&run.id)
                     && !self.queued_runs.iter().any(|(id, _)| *id == run.id)
                     && !self.active_runs.iter().any(|active| active.id == run.id)
-                    && !self.dispatch_launched.contains(&format!(
-                        "dispatch:{:?}:run:{}",
-                        run.automation_occurrence_id, run.id
-                    ))
             })
-            .map(|run| {
-                (
-                    run.id,
-                    format!("dispatch:{:?}:run:{}", run.automation_occurrence_id, run.id),
-                )
-            })
+            .map(|run| (run.id, run.automation_occurrence_id))
             .collect();
         let mut changed = false;
-        for (run_id, operation_key) in candidates {
+        for (run_id, occurrence) in candidates {
+            // The claim key differs for ordinary runs, planning requests and
+            // report regeneration. Ask the adapter for the exact claim instead
+            // of guessing one operation-key shape.
+            let operation_key = self
+                .dispatch_admission
+                .as_ref()
+                .and_then(|adapter| adapter.launch_claim_for_run(run_id))
+                .unwrap_or_else(|| {
+                    format!("dispatch:{occurrence:?}:run:{run_id}")
+                });
+            if self.dispatch_launched.contains(&operation_key) {
+                continue;
+            }
             let claimed = self
                 .dispatch_admission
                 .as_ref()

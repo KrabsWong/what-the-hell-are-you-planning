@@ -1295,13 +1295,37 @@ impl TaskApp {
                 .ok()
                 .as_ref()
                 == Some(&target.input);
+        let planning_receipt = self
+            .automation_ui
+            .planning_save_inflight
+            .as_ref()
+            .is_some_and(|pending| {
+                pending.form_epoch == target.form_epoch && pending.input == target.input
+            });
         if !same_form {
-            // Durable, but a newer form owns the surface: never overwrite it.
+            // Durable, but a newer form owns the surface: never overwrite it,
+            // and never let an older planning receipt consume it.
+            if planning_receipt {
+                self.clear_planning_save_inflight();
+            }
+            self.clear_pending_automation_planning();
             return;
         }
         if self.navigation.pending_saved_exit.is_some() {
             // A dirty-exit decision owns the close/route. Keep the wizard
             // identity intact so its exact-form poll can execute the exit.
+            return;
+        }
+        if planning_receipt {
+            self.clear_planning_save_inflight();
+            if self.automation_ui.creating && self.automation_ui.step == 3 {
+                // The reviewed Generate plan intent consumes this exact receipt.
+                self.resume_automation_planning_after_save(subject, &target, cx);
+            } else {
+                // Back/Cancel/newer surface cancelled the wait. Keep the wizard
+                // identity; do not run the ordinary draft completion.
+                self.clear_pending_automation_planning();
+            }
             return;
         }
         let Some(id) = subject.or(self.automation_ui.editing) else {

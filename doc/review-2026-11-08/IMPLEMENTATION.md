@@ -2633,3 +2633,9 @@ Root independently passed the revised eight-file restart repair: 722 unit tests,
 On the existing isolated r167 application, Escape closed the Period 43162 report and returned the 40 loaded result controls. The subsequent screenshot timed out, so scroll-position restoration is not accepted from this observation. Planning admission and the private virtualization prototype continue independently.
 
 The r170 native build from `28e9534` confirms G19 now shows Done / 3 of 3 after restart, and View final report opens R22 Run 27 with its retained body. Two same-root presentation gaps remain: the completed goal offers Resume goal, and the report falsely displays Stale input / Historical result while dependency bodies remain lazy. OpenCode is extending the bounded presentation repair and regression fixture; native completion is not broadly accepted. See [native findings](evidence/r170-restart-native.json).
+
+## r171: archive navigation passes; lazy history labels need correction
+
+On the r170 isolated build, G19 Archive → Open Steps → Back returned to the Archive list, and Restore returned G19 and its steps to Done without new runs. The route case passes. Archived labels still confuse unloaded bodies with absent or invalid retained results: E20/A21 show no retained result and the goal shows 0 of 3 validated. OpenCode must distinguish pending history validation without bypassing quality checks. See [native archive evidence](evidence/r171-archive-navigation.json).
+
+Preliminary review of the private scrolling prototype caught a reintroduced linear occurrence lookup in each visible row and fixed-height nested report readers that do not preserve the established body-scroll restoration contract. These were returned before integration; no prototype smoothness claim is accepted.

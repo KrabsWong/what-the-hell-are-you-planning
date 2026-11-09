@@ -21,7 +21,8 @@
   "pending": [
     "Latest integrated native planning and status verification",
     "<=1000 native scrolling on integrated candidate",
-    "Final standalone QA ledger and task disposition"
+    "Final standalone QA ledger and task disposition",
+    "Repair enable/pause receipt completion and dirty baseline after generated plan"
   ],
   "integrated_native": {
     "manifest": ".local/native-review/r174-build-manifest.json",
@@ -35,6 +36,19 @@
       "Planning wizard one-click continuation",
       "Archived pending-body labels",
       "<=1000-record smoothness"
-    ]
+    ],
+    "planning": {
+      "single_generate_click": "passed: request5 revision2, only run28, succeeded and rendered plan",
+      "input": "Expected result changed from revision two to revision three",
+      "enable": "failed UI completion: durable Enabled v4 at commit265, stale Saving banner and wizard persists",
+      "cancel": "incorrect dirty-draft prompt after durable enable; discard returns Enabled detail",
+      "pause": "durable Paused; saving banner remains",
+      "history": "Period3 retains approved v1, current v4, original-plan notice and final report",
+      "final_fixture_status": [
+        "automation1 Paused",
+        "automation2 Paused",
+        "automation3 Draft"
+      ]
+    }
   }
 }

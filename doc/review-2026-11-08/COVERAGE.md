@@ -2,9 +2,17 @@
 
 Baseline: `611a4586eedb56600a83c8b272a3af43ba95e4a4`. Review: 2026-11-08. This ledger supersedes the first review's partial-walkthrough coverage statement. [ISSUES.md](ISSUES.md) records defects; [TASKS.md](TASKS.md) is the implementation authority. Every current feature area is accounted for below. Coverage is not release approval: a reproduced defect is covered but failed.
 
-## Current acceptance overlay: r139/r140
+## Current acceptance overlay: r193
 
-The feature matrix below preserves the original 2026-11-08 walkthrough; its baseline passes and failures are not claims about the latest product. Current task dispositions are in [IMPLEMENTATION.md](IMPLEMENTATION.md#current-full-scope-status). The [r139 offline matrix](evidence/r139-offline-matrix.json) covers 54 entries with original failures and passing supplemental checks retained. Native [r139 ordinary execution](evidence/r139-native-dispatch.json) fails after approval; [r140 filtered period return](evidence/r140-native-period-return.json) passes the pointer return chain but reproduces a global-shortcut failure. A later unrelated report action woke one stalled ordinary step, without changing the report route; the remaining queue did not finish. Completed 3/3 ordinary archive/restore, full native keyboard and native scrolling remain open. No baseline pass overrides these newer failures.
+This file preserves the original walkthrough and intermediate failures as historical evidence. Current acceptance is governed by [the release gate status](IMPLEMENTATION.md#current-release-gate-status-r191), [TASKS.md](TASKS.md), and the dated verification entries in IMPLEMENTATION. The historical seven-failure statement and r139/r140 execution/focus defects below are not current release dispositions.
+
+The current product candidate independently passes 740 QA-enabled unit tests and 13 integrations ([r191](evidence/r191-full-tests.json)); the r191 standalone ledger was terminated after its binary provenance was rejected. The [r193 measurements](evidence/r193-current-live-performance.json) are historical diagnostics, not current-source proof; forced rebuild and replay are required. Native lifecycle execution/replanning ([r180](evidence/r180-lifecycle-native.json)), archived readers/restoration ([r181](evidence/r181-native-capacity.json)), materials/settings ([r189](evidence/r189-material-settings-native.json)), and large-wheel/pagination-anchor behavior in both themes ([r190](evidence/r190-scroll-native.json)) have subsequent evidence. Remaining ordinary, compact/theme and concurrent-update/save coverage must be recorded before first-round sign-off.
+
+The user now permits occasional isolated hitches as named follow-ups; T19-F1/F2 preserve the measured outliers. Sustained stalls, wrong scrolling/navigation, durability and execution correctness remain required. Real external-service actions and exhaustive rare environment combinations remain explicitly bounded; neither historical nor automated evidence is relabeled as native coverage.
+
+## Historical acceptance overlay: r139/r140
+
+The feature matrix below preserves the original 2026-11-08 walkthrough; its baseline passes and failures are not claims about the latest product. Current task dispositions are in [IMPLEMENTATION.md](IMPLEMENTATION.md#current-release-gate-status-r191). The [r139 offline matrix](evidence/r139-offline-matrix.json) covers 54 entries with original failures and passing supplemental checks retained. Native [r139 ordinary execution](evidence/r139-native-dispatch.json) fails after approval; [r140 filtered period return](evidence/r140-native-period-return.json) passes the pointer return chain but reproduces a global-shortcut failure. A later unrelated report action woke one stalled ordinary step, without changing the report route; the remaining queue did not finish. Completed 3/3 ordinary archive/restore, full native keyboard and native scrolling remain open. No baseline pass overrides these newer failures.
 
 ### r141 resumed archive check
 
@@ -113,7 +121,7 @@ These records specify observed effects rather than claiming that every emitted s
 | NATIVE-09 | Quick Period 4 final step → Previous → Previous | Different automation's Period 2 final step opens; F07 |
 | NATIVE-10 | All automations → footer Search | All research search replaces current domain; F08 |
 
-## External and release boundaries
+## Historical external and release boundaries (baseline)
 
 The review accounts for these boundaries; none is counted as passed:
 

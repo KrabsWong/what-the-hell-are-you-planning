@@ -1,9 +1,9 @@
 {
   "binary_sha256": "678194e994b3fb1a1ed880e691e350d798fddd5cc70876b50ad5594892e01dd0",
-  "commit": "a2c2c4d",
+  "commit": "unproven; must not attribute to a2c2c4d",
   "entry": "--qa-live-performance",
-  "entry_result": "passed",
-  "full_ledger": "still running; no full-ledger pass claimed",
+  "entry_result": "Historical binary passed; current-source provenance rejected",
+  "full_ledger": "Terminated by root after detecting identical binary hash to r181 artifact",
   "log": ".local/opencode-dispatch/r191-final-gate/qa-live-performance.log",
   "report": {
     "scope": "Actual live TaskApp via Some(LiveStartup) + ordered worker; editor save, command-level automation SaveDraft, automation Enable/Pause, settings save, scoped task Undo and indexed first-page path.",
@@ -1456,5 +1456,6 @@
         }
       }
     }
-  }
+  },
+  "provenance_correction": "r194: copied target/debug artifact hash equals r181 binary. Retain measurements only as historical diagnostic; forced rebuild and full replay required."
 }

@@ -7,6 +7,7 @@
 use crate::persistence_journal::{EntityChange, EntityKey, EntityPayload};
 use std::collections::BTreeSet;
 use std::ops::{Deref, DerefMut, Index};
+use std::sync::Arc;
 
 #[derive(Clone, Debug, Default)]
 pub(crate) struct DirtySet {
@@ -38,7 +39,10 @@ impl DirtySet {
 }
 
 pub struct TrackedVec<T> {
-    items: Vec<T>,
+    /// Shared immutable item storage. Cloning clones the item backing store in
+    /// O(1) and still copies the owned dirty set; the first mutation on one clone
+    /// copies only that collection's items (`Arc::make_mut`).
+    items: Arc<Vec<T>>,
     dirty: DirtySet,
     identity: fn(&T) -> EntityKey,
     payload: fn(&T) -> EntityPayload,
@@ -50,7 +54,7 @@ impl<T> TrackedVec<T> {
         payload: fn(&T) -> EntityPayload,
     ) -> Self {
         Self {
-            items: Vec::new(),
+            items: Arc::new(Vec::new()),
             dirty: DirtySet::default(),
             identity,
             payload,
@@ -72,7 +76,7 @@ impl<T> TrackedVec<T> {
             }
         }
         Ok(Self {
-            items,
+            items: Arc::new(items),
             dirty: DirtySet::default(),
             identity,
             payload,
@@ -86,24 +90,33 @@ impl<T> TrackedVec<T> {
     /// Expose one item for mutation. Access itself records the upsert, so a
     /// later early return cannot hide a write; identity changes remain a sticky
     /// violation checked by the next `pending_changes`.
-    pub(crate) fn tracked_mut(&mut self, key: EntityKey) -> Option<&mut T> {
+    pub(crate) fn tracked_mut(&mut self, key: EntityKey) -> Option<&mut T>
+    where
+        T: Clone,
+    {
         let index = self.items.iter().position(|item| (self.identity)(item) == key)?;
         self.dirty.mark_upsert(key);
-        Some(&mut self.items[index])
+        Some(&mut Arc::make_mut(&mut self.items)[index])
     }
 
     /// O(1) indexed mutation for callers that already hold a verified index
     /// (for example an id→index map built in one history pass). The identity is
     /// rechecked so a stale index cannot write the wrong entity.
-    pub(crate) fn tracked_mut_index(&mut self, index: usize, key: EntityKey) -> Option<&mut T> {
+    pub(crate) fn tracked_mut_index(&mut self, index: usize, key: EntityKey) -> Option<&mut T>
+    where
+        T: Clone,
+    {
         if index >= self.items.len() || (self.identity)(&self.items[index]) != key {
             return None;
         }
         self.dirty.mark_upsert(key);
-        self.items.get_mut(index)
+        Arc::make_mut(&mut self.items).get_mut(index)
     }
 
-    pub(crate) fn push_tracked(&mut self, item: T) {
+    pub(crate) fn push_tracked(&mut self, item: T)
+    where
+        T: Clone,
+    {
         let key = (self.identity)(&item);
         if self.items.iter().any(|existing| (self.identity)(existing) == key) {
             self.dirty.violation = Some(format!(
@@ -111,11 +124,14 @@ impl<T> TrackedVec<T> {
             ));
             return;
         }
-        self.items.push(item);
+        Arc::make_mut(&mut self.items).push(item);
         self.dirty.mark_upsert(key);
     }
 
-    pub(crate) fn insert_tracked(&mut self, index: usize, item: T) {
+    pub(crate) fn insert_tracked(&mut self, index: usize, item: T)
+    where
+        T: Clone,
+    {
         let key = (self.identity)(&item);
         if self.items.iter().any(|existing| (self.identity)(existing) == key) {
             self.dirty.violation = Some(format!(
@@ -123,7 +139,7 @@ impl<T> TrackedVec<T> {
             ));
             return;
         }
-        self.items.insert(index, item);
+        Arc::make_mut(&mut self.items).insert(index, item);
         self.dirty.mark_upsert(key);
         self.mark_reorder_unsupported();
     }
@@ -135,7 +151,10 @@ impl<T> TrackedVec<T> {
         index: usize,
         key: EntityKey,
         apply: impl FnOnce(&mut T),
-    ) -> bool {
+    ) -> bool
+    where
+        T: Clone,
+    {
         if self.items.iter().enumerate().any(|(other, item)| {
             other != index && (self.identity)(item) == key
         }) {
@@ -144,7 +163,7 @@ impl<T> TrackedVec<T> {
             ));
             return false;
         }
-        let Some(item) = self.items.get_mut(index) else {
+        let Some(item) = Arc::make_mut(&mut self.items).get_mut(index) else {
             return false;
         };
         let old = (self.identity)(item);
@@ -163,23 +182,32 @@ impl<T> TrackedVec<T> {
         true
     }
 
-    pub(crate) fn pop_tracked(&mut self) -> Option<T> {
-        let item = self.items.pop()?;
+    pub(crate) fn pop_tracked(&mut self) -> Option<T>
+    where
+        T: Clone,
+    {
+        let item = Arc::make_mut(&mut self.items).pop()?;
         let key = (self.identity)(&item);
         self.dirty.mark_delete(key);
         Some(item)
     }
 
-    pub(crate) fn remove_tracked(&mut self, key: EntityKey) -> Option<T> {
+    pub(crate) fn remove_tracked(&mut self, key: EntityKey) -> Option<T>
+    where
+        T: Clone,
+    {
         let index = self.items.iter().position(|item| (self.identity)(item) == key)?;
-        let item = self.items.remove(index);
+        let item = Arc::make_mut(&mut self.items).remove(index);
         self.dirty.mark_delete(key);
         Some(item)
     }
 
-    pub(crate) fn retain_tracked(&mut self, mut keep: impl FnMut(&T) -> bool) {
+    pub(crate) fn retain_tracked(&mut self, mut keep: impl FnMut(&T) -> bool)
+    where
+        T: Clone,
+    {
         let mut removed = Vec::new();
-        self.items.retain(|item| {
+        Arc::make_mut(&mut self.items).retain(|item| {
             if keep(item) {
                 true
             } else {
@@ -193,11 +221,12 @@ impl<T> TrackedVec<T> {
     }
 
     pub(crate) fn clear_tracked(&mut self) {
-        for item in &self.items {
+        for item in self.items.iter() {
             let key = (self.identity)(item);
             self.dirty.mark_delete(key);
         }
-        self.items.clear();
+        // Replacing the Arc avoids cloning the old Vec merely to empty a clone.
+        self.items = Arc::new(Vec::new());
     }
 
     /// Explicit whole-collection setter. This is not dirty detection: the
@@ -215,7 +244,7 @@ impl<T> TrackedVec<T> {
                 return;
             }
         }
-        for item in &self.items {
+        for item in self.items.iter() {
             let key = (self.identity)(item);
             if !seen.contains(&key) {
                 self.dirty.mark_delete(key);
@@ -224,33 +253,42 @@ impl<T> TrackedVec<T> {
         for key in &seen {
             self.dirty.mark_upsert(*key);
         }
-        self.items = items;
+        self.items = Arc::new(items);
     }
 
     /// Explicit positional reorder. Persisted order is positional, so every
     /// retained entity is re-upserted at its new position.
-    pub(crate) fn swap_tracked(&mut self, first: usize, second: usize) -> bool {
+    pub(crate) fn swap_tracked(&mut self, first: usize, second: usize) -> bool
+    where
+        T: Clone,
+    {
         if first >= self.items.len() || second >= self.items.len() || first == second {
             return false;
         }
-        self.items.swap(first, second);
-        for item in &self.items {
+        Arc::make_mut(&mut self.items).swap(first, second);
+        for item in self.items.iter() {
             self.dirty.mark_upsert((self.identity)(item));
         }
         true
     }
 
-    pub(crate) fn reverse_tracked(&mut self) {
-        self.items.reverse();
-        for item in &self.items {
+    pub(crate) fn reverse_tracked(&mut self)
+    where
+        T: Clone,
+    {
+        Arc::make_mut(&mut self.items).reverse();
+        for item in self.items.iter() {
             self.dirty.mark_upsert((self.identity)(item));
         }
     }
 
     /// Replace one item without marking a change. Only for hydrating a value
     /// that is already durable (for example a lazily fetched report body).
-    pub(crate) fn set_clean(&mut self, index: usize, apply: impl FnOnce(&mut T)) -> bool {
-        let Some(item) = self.items.get_mut(index) else {
+    pub(crate) fn set_clean(&mut self, index: usize, apply: impl FnOnce(&mut T)) -> bool
+    where
+        T: Clone,
+    {
+        let Some(item) = Arc::make_mut(&mut self.items).get_mut(index) else {
             return false;
         };
         apply(item);
@@ -339,7 +377,7 @@ impl<T: Clone> Clone for TrackedVec<T> {
         // Ordinary clones preserve pending intent. Clean bootstrap uses
         // `from_vec` explicitly.
         Self {
-            items: self.items.clone(),
+            items: Arc::clone(&self.items),
             dirty: self.dirty.clone(),
             identity: self.identity,
             payload: self.payload,
@@ -349,19 +387,19 @@ impl<T: Clone> Clone for TrackedVec<T> {
 
 impl<T: PartialEq> PartialEq for TrackedVec<T> {
     fn eq(&self, other: &Self) -> bool {
-        self.items == other.items
+        self.items.as_ref() == other.items.as_ref()
     }
 }
 
 impl<T: PartialEq> PartialEq<Vec<T>> for TrackedVec<T> {
     fn eq(&self, other: &Vec<T>) -> bool {
-        &self.items == other
+        self.items.as_ref() == other
     }
 }
 
 impl<T: PartialEq> PartialEq<TrackedVec<T>> for Vec<T> {
     fn eq(&self, other: &TrackedVec<T>) -> bool {
-        self == &other.items
+        self == other.items.as_ref()
     }
 }
 
@@ -376,7 +414,7 @@ impl<T: std::fmt::Debug> std::fmt::Debug for TrackedVec<T> {
 
 impl<T: serde::Serialize> serde::Serialize for TrackedVec<T> {
     fn serialize<S: serde::Serializer>(&self, serializer: S) -> Result<S::Ok, S::Error> {
-        serializer.collect_seq(&self.items)
+        serializer.collect_seq(self.items.iter())
     }
 }
 
@@ -581,7 +619,7 @@ impl<'de, T: serde::Deserialize<'de>> serde::Deserialize<'de> for TrackedScalar<
 /// stored as one JSON array, so an edit marks the whole collection for a single
 /// typed `MetadataDelta`; membership itself is never discovered by comparison.
 pub struct TrackedList<T> {
-    items: Vec<T>,
+    items: Arc<Vec<T>>,
     dirty: bool,
     epoch: u64,
 }
@@ -589,7 +627,7 @@ pub struct TrackedList<T> {
 impl<T> TrackedList<T> {
     pub(in crate::domain) fn new() -> Self {
         Self {
-            items: Vec::new(),
+            items: Arc::new(Vec::new()),
             dirty: false,
             epoch: 0,
         }
@@ -597,7 +635,7 @@ impl<T> TrackedList<T> {
 
     pub(in crate::domain) fn from_vec(items: Vec<T>) -> Self {
         Self {
-            items,
+            items: Arc::new(items),
             dirty: false,
             epoch: 0,
         }
@@ -612,37 +650,49 @@ impl<T> TrackedList<T> {
         self.epoch = self.epoch.saturating_add(1);
     }
 
-    pub(crate) fn index_mut(&mut self, index: usize) -> Option<&mut T> {
+    pub(crate) fn index_mut(&mut self, index: usize) -> Option<&mut T>
+    where
+        T: Clone,
+    {
         self.mark();
-        self.items.get_mut(index)
+        Arc::make_mut(&mut self.items).get_mut(index)
     }
 
-    pub(crate) fn push_tracked(&mut self, item: T) {
-        self.items.push(item);
+    pub(crate) fn push_tracked(&mut self, item: T)
+    where
+        T: Clone,
+    {
+        Arc::make_mut(&mut self.items).push(item);
         self.mark();
     }
 
-    pub(crate) fn remove_tracked(&mut self, index: usize) -> Option<T> {
-        let item = self.items.remove(index);
+    pub(crate) fn remove_tracked(&mut self, index: usize) -> Option<T>
+    where
+        T: Clone,
+    {
+        let item = Arc::make_mut(&mut self.items).remove(index);
         self.mark();
         Some(item)
     }
 
-    pub(crate) fn retain_tracked(&mut self, mut keep: impl FnMut(&T) -> bool) {
+    pub(crate) fn retain_tracked(&mut self, mut keep: impl FnMut(&T) -> bool)
+    where
+        T: Clone,
+    {
         let before = self.items.len();
-        self.items.retain(|item| keep(item));
+        Arc::make_mut(&mut self.items).retain(|item| keep(item));
         if self.items.len() != before {
             self.mark();
         }
     }
 
     pub(crate) fn replace_tracked(&mut self, items: Vec<T>) {
-        self.items = items;
+        self.items = Arc::new(items);
         self.mark();
     }
 
     pub(crate) fn load(&mut self, items: Vec<T>) {
-        self.items = items;
+        self.items = Arc::new(items);
         self.dirty = false;
     }
 
@@ -684,10 +734,10 @@ impl<T> Deref for TrackedList<T> {
     }
 }
 
-impl<T> DerefMut for TrackedList<T> {
+impl<T: Clone> DerefMut for TrackedList<T> {
     fn deref_mut(&mut self) -> &mut Self::Target {
         self.mark();
-        &mut self.items
+        Arc::make_mut(&mut self.items).as_mut_slice()
     }
 }
 
@@ -712,7 +762,7 @@ impl<'a, T> IntoIterator for &'a TrackedList<T> {
 impl<T: Clone> Clone for TrackedList<T> {
     fn clone(&self) -> Self {
         Self {
-            items: self.items.clone(),
+            items: Arc::clone(&self.items),
             dirty: self.dirty,
             epoch: self.epoch,
         }
@@ -721,7 +771,7 @@ impl<T: Clone> Clone for TrackedList<T> {
 
 impl<T: PartialEq> PartialEq for TrackedList<T> {
     fn eq(&self, other: &Self) -> bool {
-        self.items == other.items
+        self.items.as_ref() == other.items.as_ref()
     }
 }
 
@@ -736,7 +786,7 @@ impl<T: std::fmt::Debug> std::fmt::Debug for TrackedList<T> {
 
 impl<T: serde::Serialize> serde::Serialize for TrackedList<T> {
     fn serialize<S: serde::Serializer>(&self, serializer: S) -> Result<S::Ok, S::Error> {
-        serializer.collect_seq(&self.items)
+        serializer.collect_seq(self.items.iter())
     }
 }
 
@@ -938,6 +988,143 @@ mod tests {
             |task| EntityKey::Task(task.id),
             |task| EntityPayload::Task(task.clone()),
         )
+    }
+
+    #[test]
+    fn clone_shares_items_until_one_side_mutates() {
+        let mut base = tasks();
+        base.push_tracked(task(1, "one"));
+        base.push_tracked(task(2, "two"));
+        base.clear_dirty();
+        let mut clone = base.clone();
+        assert!(
+            Arc::ptr_eq(&base.items, &clone.items),
+            "clone must share the immutable Vec allocation"
+        );
+        clone.tracked_mut(EntityKey::Task(1)).unwrap().title = "clone changed".into();
+        assert_eq!(base[0].title, "one", "base must remain isolated");
+        assert_eq!(clone[0].title, "clone changed");
+        assert!(
+            !Arc::ptr_eq(&base.items, &clone.items),
+            "first mutation must take a private copy"
+        );
+        // A clean clone with no mutation keeps sharing.
+        let untouched = base.clone();
+        assert!(Arc::ptr_eq(&base.items, &untouched.items));
+    }
+
+    #[test]
+    fn clone_has_owned_dirty_epochs_and_tombstones() {
+        let mut base = tasks();
+        base.push_tracked(task(1, "one"));
+        base.push_tracked(task(2, "two"));
+        base.clear_dirty();
+        let mut clone = base.clone();
+        let base_epoch = base.epoch();
+        clone.remove_tracked(EntityKey::Task(2)).unwrap();
+        assert_eq!(base.len(), 2);
+        assert_eq!(clone.len(), 1);
+        assert!(base.pending_changes().unwrap().is_empty());
+        assert_eq!(
+            clone.pending_changes().unwrap(),
+            vec![EntityChange::Delete(EntityKey::Task(2))]
+        );
+        assert!(clone.epoch() > base_epoch);
+        assert_eq!(base.epoch(), base_epoch, "clone mutation must not advance base epoch");
+    }
+
+    #[test]
+    fn identity_violation_is_clone_local() {
+        let mut base = tasks();
+        base.push_tracked(task(1, "one"));
+        base.clear_dirty();
+        let mut clone = base.clone();
+        clone.push_tracked(task(1, "duplicate"));
+        assert!(clone.pending_changes().is_err());
+        assert_eq!(base.len(), 1);
+        assert!(base.pending_changes().unwrap().is_empty());
+        assert!(base.pending_changes().is_ok());
+    }
+
+    #[test]
+    fn clone_serialization_matches_wire_format() {
+        let mut base = tasks();
+        base.push_tracked(task(1, "one"));
+        base.push_tracked(task(2, "two"));
+        base.clear_dirty();
+        let clone = base.clone();
+        assert_eq!(
+            serde_json::to_string(&base).unwrap(),
+            serde_json::to_string(&clone).unwrap()
+        );
+        let mut changed = clone;
+        changed.tracked_mut(EntityKey::Task(1)).unwrap().title = "changed".into();
+        assert_ne!(
+            serde_json::to_string(&base).unwrap(),
+            serde_json::to_string(&changed).unwrap()
+        );
+    }
+
+    #[test]
+    fn clean_hydration_and_replacement_do_not_touch_the_other_clone() {
+        let mut base = tasks();
+        base.push_tracked(task(1, "one"));
+        base.push_tracked(task(2, "two"));
+        base.clear_dirty();
+        let mut clone = base.clone();
+        assert!(clone.set_clean(0, |task| task.title = "hydrated".into()));
+        assert_eq!(clone[0].title, "hydrated");
+        assert_eq!(base[0].title, "one");
+        assert!(!clone.is_dirty(), "clean hydration must not mark dirty");
+        assert!(!base.is_dirty());
+        clone.replace_tracked(vec![task(3, "three")]);
+        assert_eq!(base.len(), 2);
+        assert_eq!(clone.len(), 1);
+        assert_eq!(
+            clone.pending_changes().unwrap(),
+            vec![
+                EntityChange::Delete(EntityKey::Task(1)),
+                EntityChange::Delete(EntityKey::Task(2)),
+                EntityChange::Upsert(EntityPayload::Task(task(3, "three"))),
+            ]
+        );
+    }
+
+    #[test]
+    fn clone_retain_reorder_and_delete_are_isolated() {
+        let mut base = tasks();
+        for id in 1..=3 {
+            base.push_tracked(task(id, &format!("task {id}")));
+        }
+        base.clear_dirty();
+        let mut clone = base.clone();
+        assert!(clone.swap_tracked(0, 2));
+        clone.retain_tracked(|task| task.id != 2);
+        assert_eq!(base.iter().map(|task| task.id).collect::<Vec<_>>(), vec![1, 2, 3]);
+        assert_eq!(clone.iter().map(|task| task.id).collect::<Vec<_>>(), vec![3, 1]);
+        assert!(clone
+            .pending_changes()
+            .unwrap()
+            .contains(&EntityChange::Delete(EntityKey::Task(2))));
+        assert!(base.pending_changes().unwrap().is_empty());
+    }
+
+    #[test]
+    fn tracked_list_clone_is_copy_on_write_and_keeps_epochs() {
+        let mut base = TrackedList::from_vec(vec![10u64, 20, 30]);
+        let mut clone = base.clone();
+        assert!(Arc::ptr_eq(&base.items, &clone.items));
+        clone.push_tracked(40);
+        assert_eq!(base.as_slice(), &[10, 20, 30]);
+        assert_eq!(clone.as_slice(), &[10, 20, 30, 40]);
+        assert!(!Arc::ptr_eq(&base.items, &clone.items));
+        assert!(clone.is_dirty());
+        assert!(!base.is_dirty());
+        assert_eq!(serde_json::to_string(&clone).unwrap(), "[10,20,30,40]");
+        assert_eq!(serde_json::to_string(&base).unwrap(), "[10,20,30]");
+        base.push_tracked(50);
+        assert_eq!(base.as_slice(), &[10, 20, 30, 50]);
+        assert_eq!(clone.as_slice(), &[10, 20, 30, 40]);
     }
 
     #[test]

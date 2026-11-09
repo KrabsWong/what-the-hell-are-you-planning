@@ -75,7 +75,7 @@ All 44 offline `--qa*` entries in `src/main.rs` are listed below. Three entries 
 | `--qa-t11` | T11 interface regression fixture |
 | `--qa-task-edit` | T13 real task-editor save/confirm/retry and scoped Undo |
 
-`--qa-render-perf` does not create a workspace; it requires an isolated copy:
+`--qa-render-perf` requires a closed, frozen, isolated workspace copy. It rejects WAL or journal sidecars; checkpoint and close the disposable source before copying it. Version 4 is loaded through a private temporary copy, leaving the supplied fixture unchanged:
 
 ```bash
 PLANNING_PERF_WORKSPACE=/path/to/isolated/workspace.sqlite3 \

@@ -1,0 +1,12 @@
+{
+  "base": "50e288dea22fbac9da2ccdda02ad43018b28e1c4",
+  "render_source_sha256": "d286c480c0679069e69d84e13ae9fc4ff9bec52b49764083410f58dc63f8772b",
+  "binary_sha256": "678194e994b3fb1a1ed880e691e350d798fddd5cc70876b50ad5594892e01dd0",
+  "exit_code": 0,
+  "fixture_sha256_before": "b7ddd2b39e29209540cc701455d156c3fd9bb84b72a0ce164dffc699ffb05530",
+  "fixture_sha256_after": "b7ddd2b39e29209540cc701455d156c3fd9bb84b72a0ce164dffc699ffb05530",
+  "test_log": ".local/opencode-dispatch/r181-render-tests.log",
+  "render_log": ".local/opencode-dispatch/r181-render-perf.log",
+  "focused_tests_passed": 3,
+  "scope": "Final closed-fixture render QA only; r180 full product suite remains separate evidence."
+}

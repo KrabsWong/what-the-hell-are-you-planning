@@ -32,10 +32,10 @@ print(json.dumps({'type': 'text', 'part': {'text': text}}), flush=True)
 "#).unwrap();
     std::fs::set_permissions(&cli, std::fs::Permissions::from_mode(0o755)).unwrap();
     let mut store = Store::empty();
-    store.default_model = "fixture/model".into();
-    store.opencode_path = cli.to_string_lossy().into();
-    store.research_config.ego_path = cli.to_string_lossy().into();
-    store.projects[0].directory = root.to_string_lossy().into();
+    store.set_default_model("fixture/model".into());
+    store.set_opencode_path(cli.to_string_lossy().into());
+    store.research_config_mut().ego_path = cli.to_string_lossy().into();
+    store.project_at_mut(0).unwrap().directory = root.to_string_lossy().into();
     let id = store
         .create_task("Drag to submit · isolated task", 1, Stage::Backlog, None)
         .unwrap();
@@ -64,7 +64,7 @@ print(json.dumps({'type': 'text', 'part': {'text': text}}), flush=True)
     let app = entity.unwrap();
     cx.update_window(handle, |_, _, cx| {
         app.update(cx, |a, cx| a.start_run(id, cx));
-        assert!(app.read(cx).store.runs.is_empty(), "Legacy tasks cannot start new runs");
+        assert!(app.read(cx).store.runs().is_empty(), "Legacy tasks cannot start new runs");
     }).unwrap();
     // A single goal drop must execute the complete dependency chain in order.
     let (chain, steps) = app.update(&mut cx, |a, _| {
@@ -80,7 +80,7 @@ print(json.dumps({'type': 'text', 'part': {'text': text}}), flush=True)
             a.store.task_status(steps[1], a.todo_batch.as_ref()).group,
             Some(ExecutionGroup::Waiting)
         );
-        assert!(!a.store.runs.iter().any(|r| r.task_id == steps[1]));
+        assert!(!a.store.runs().iter().any(|r| r.task_id == steps[1]));
     })
     .unwrap();
     let deadline = Instant::now() + Duration::from_secs(15);
@@ -107,7 +107,7 @@ print(json.dumps({'type': 'text', 'part': {'text': text}}), flush=True)
         let a = app.read(cx);
         let runs: Vec<_> = a
             .store
-            .runs
+            .runs()
             .iter()
             .filter(|r| steps.contains(&r.task_id))
             .collect();
@@ -126,7 +126,7 @@ print(json.dumps({'type': 'text', 'part': {'text': text}}), flush=True)
         a.todo_batch = Some(TodoBatch { project_id: 1, items: vec![goal], completed: 0, runs_completed: 0,
             state: BatchState::Paused("QA paused queue".into()), run_ids: Default::default(), done_items: vec![], failed_items: vec![], failed_tasks: vec![] });
         a.store.set_stage(goal, Stage::InProgress).unwrap();
-        let mut run = a.store.prepare_run(ids[0]).unwrap(); run.status = "Running".into(); a.store.runs.push(run);
+        let mut run = a.store.prepare_run(ids[0]).unwrap(); run.status = "Running".into(); a.store.push_run(run);
         a.expanded_sidebar_projects.push(1);
         cx.notify(); goal
     });
@@ -199,9 +199,12 @@ pub fn display_order() {
     let b = store.create_task_in_topic("New topic old task", 1, Stage::Planned, None, Some(new)).unwrap();
     let c = store.create_task_in_topic("New topic latest task", 1, Stage::Planned, None, Some(new)).unwrap();
     let d = store.create_task_in_topic("Old topic latest task", 1, Stage::Planned, None, Some(old)).unwrap();
-    for task in &mut store.tasks { task.created_at = "2026-11-01 10:00:00 +08:00".into(); }
+    let task_ids: Vec<u64> = store.tasks().iter().map(|task| task.id).collect();
+    for id in task_ids {
+        store.task_mut(id).unwrap().created_at = "2026-11-01 10:00:00 +08:00".into();
+    }
     store.task_mut(a).unwrap().priority = crate::domain::Priority::Urgent;
-    store.tasks.swap(0, 2); // Rendering must not depend on serialization order.
+    store.swap_tasks(0, 2); // Rendering must not depend on serialization order.
     let expected = [c, b, d, a];
     let mut cx = HeadlessAppContext::with_platform(platform::current_platform(true).text_system(),
         Arc::new(crate::ui_assets::AppAssets), platform::current_headless_renderer);
@@ -239,7 +242,7 @@ pub fn display_order() {
         for pair in expected.windows(2) {
             assert!(w.find(format!("card-{}", pair[0])).bounds().top() < w.find(format!("card-{}", pair[1])).bounds().top());
         }
-        assert!(app.read(cx).store.runs.is_empty());
+        assert!(app.read(cx).store.runs().is_empty());
         assert!(app.read(cx).todo_batch.is_none());
     }).unwrap();
     cx.update_window(handle, |_, w, cx| {
@@ -247,11 +250,11 @@ pub fn display_order() {
             let goal = a.store.create_research_goal("Workflow order".into(), "Scope".into(), 1).unwrap();
             let steps = a.store.apply_research_plan(goal, r#"{"tasks":[{"title":"Evidence","instructions":"Collect","kind":"collect","depends_on":[]},{"title":"Analysis","instructions":"Analyze","kind":"analyze","depends_on":[0]},{"title":"Report","instructions":"Report","kind":"advise","depends_on":[1]}]}"#).unwrap();
             for (i, id) in steps.iter().enumerate() { a.store.task_mut(*id).unwrap().created_at = format!("2026-11-0{}T10:00:00Z", i + 1); }
-            a.store.tasks.reverse();
+            a.store.reverse_tasks();
             a.collapsed_sidebar_goals.retain(|id| *id != goal);
             a.open_task(goal, w, cx);
-            a.goal_steps_tab = Some(goal);
-            a.steps_layout = Layout::List;
+            a.set_goal_steps_tab(Some(goal));
+            a.set_steps_layout(Layout::List);
             cx.notify();
             (goal, steps)
         });
@@ -263,7 +266,7 @@ pub fn display_order() {
         assert_eq!(app.read(cx).store.detail_task_neighbors(goal).1, steps[0]);
         assert_eq!(app.read(cx).store.detail_task_neighbors(steps[0]).1, steps[1]);
         assert_eq!(app.read(cx).store.detail_task_neighbors(steps[1]).1, steps[2]);
-        assert!(app.read(cx).store.runs.is_empty());
+        assert!(app.read(cx).store.runs().is_empty());
     }).unwrap();
     println!("Newest-first sidebar, List, Board and execution-group positions verified.");
     cx.update(|cx| cx.quit());
@@ -272,8 +275,8 @@ pub fn display_order() {
 /// Repeatable horizontal-scroll workload with validated research results, no real agents.
 pub fn scroll_benchmark() {
     let mut store = Store::empty();
-    store.projects[0].directory = std::env::temp_dir().to_string_lossy().into();
-    store.default_model = "fixture/model".into();
+    store.project_at_mut(0).unwrap().directory = std::env::temp_dir().to_string_lossy().into();
+    store.set_default_model("fixture/model".into());
     for n in 0..24 {
         let goal = store.create_research_goal(format!("Scroll benchmark {n}"), "Research scope".into(), 1).unwrap();
         let steps = store.apply_research_plan(goal, r#"{"tasks":[{"title":"Evidence","instructions":"Collect","kind":"collect","depends_on":[]},{"title":"Analysis","instructions":"Analyze","kind":"analyze","depends_on":[0]},{"title":"Report","instructions":"Report","kind":"advise","depends_on":[1]}]}"#).unwrap();
@@ -281,29 +284,54 @@ pub fn scroll_benchmark() {
             let mut run = store.prepare_run(id).unwrap();
             run.status = "Succeeded".into();
             run.output = "Completed benchmark result".into();
-            store.runs.push(run);
+            store.push_run(run);
             store.task_mut(id).unwrap().stage = Stage::Done;
         }
         store.sync_goal_progress(goal);
     }
     let mut cx = HeadlessAppContext::with_platform(platform::current_platform(true).text_system(), Arc::new(crate::ui_assets::AppAssets), platform::current_headless_renderer);
     cx.update(init);
-    let benchmark_goal = store.tasks.first().unwrap().id;
+    let benchmark_goal = store.tasks().first().unwrap().id;
     let mut view = None;
     let window = cx.open_window(size(px(1000.), px(720.)), |w, cx| {
         let app = cx.new(|cx| TaskApp::new_mock(w, cx));
-        app.update(cx, |a, cx| { a.store = store; a.navigate(Scope::All, w, cx); a.layout = Layout::Board; });
+        app.update(cx, |a, cx| { a.store = store; a.navigate(Scope::All, w, cx); a.layout = Layout::Board;
+            a.todo_batch = Some(TodoBatch { project_id: 1, items: vec![benchmark_goal], completed: 0, runs_completed: 0,
+                state: BatchState::Paused("Scroll fixture paused queue".into()), run_ids: Default::default(),
+                done_items: vec![], failed_items: vec![], failed_tasks: vec![] }); });
         view = Some(app.clone());
         cx.new(|cx| base::Root::new(app, w, cx))
     }).unwrap();
     let handle = window.into();
     cx.update_window(handle, |_, w, cx| { w.render_frame(cx); }).unwrap();
+    cx.update_window(handle, |_, _, cx| {
+        let a = view.as_ref().unwrap().read(cx);
+        for task in a.store.tasks() {
+            let expected = a.store.task_status(task.id, a.todo_batch.as_ref());
+            let actual = a.display_task_status(task.id);
+            assert_eq!(actual.label(), expected.label());
+            assert_eq!(actual.reason, expected.reason);
+        }
+    }).unwrap();
+    let computations = crate::workflow_views::STATUS_COMPUTATIONS.load(std::sync::atomic::Ordering::Relaxed);
     let initial_left = cx.update_window(handle, |_, w, _| w.find("column-in-progress").bounds().left()).unwrap();
     let mut elapsed = Vec::new();
     for n in 0..30 {
         let start = Instant::now();
         cx.update_window(handle, |_, w, cx| {
-            w.scroll("board-scroll", ScrollDelta::Pixels(point(px(if n < 15 { -12. } else { 12. }), px(0.))), cx);
+            let position = w.find("board-scroll").bounds().center();
+            w.dispatch_event(MouseMoveEvent {
+                position,
+                ..Default::default()
+            }.to_platform_input(), cx);
+            w.dispatch_event(ScrollEvent {
+                position,
+                delta: ScrollDelta::Pixels(point(px(if n < 15 { -12. } else { 12. }), px(0.))),
+                ..Default::default()
+            }.to_platform_input(), cx);
+            // The normal input path redraws dirty views. render_frame() forces
+            // a full window refresh and defeats retained scrolling entirely.
+            w.draw(cx).clear(cx);
         }).unwrap();
         elapsed.push(start.elapsed().as_secs_f64() * 1000.);
         if n == 14 {
@@ -312,6 +340,7 @@ pub fn scroll_benchmark() {
             }).unwrap();
         }
     }
+    assert_eq!(crate::workflow_views::STATUS_COMPUTATIONS.load(std::sync::atomic::Ordering::Relaxed), computations, "Wheel frames must reuse statuses even with a paused queue");
     let app = view.unwrap();
     cx.update_window(handle, |_, w, cx| {
         assert_eq!(app.read(cx).display_task_status(benchmark_goal).phase, Stage::Done);
@@ -321,4 +350,88 @@ pub fn scroll_benchmark() {
     }).unwrap();
     elapsed.sort_by(f64::total_cmp);
     println!("Board scroll workload: 24 goals / 72 completed steps; median {:.2} ms, p95 {:.2} ms per scroll+render", elapsed[15], elapsed[28]);
+    cx.update_window(handle, |_, w, cx| {
+        app.update(cx, |a, cx| {
+            a.navigate(Scope::Settings, w, cx);
+            a.set_settings_tab(crate::settings_views::SettingsTab::Models);
+            cx.notify();
+        });
+        w.render_frame(cx);
+    }).unwrap();
+    let mut elapsed = Vec::new();
+    for n in 0..60 {
+        let start = Instant::now();
+        cx.update_window(handle, |_, w, cx| {
+            let position = w.find("model-settings-scroll").bounds().center();
+            w.dispatch_event(MouseMoveEvent {
+                position,
+                ..Default::default()
+            }.to_platform_input(), cx);
+            w.dispatch_event(ScrollEvent {
+                position,
+                delta: ScrollDelta::Pixels(point(px(0.), px(if n < 30 { -12. } else { 12. }))),
+                ..Default::default()
+            }.to_platform_input(), cx);
+            w.draw(cx).clear(cx);
+            if n == 29 {
+                assert!(app.read(cx).settings_scroll.offset().y < px(-100.),
+                    "Vertical gesture must move settings");
+            }
+        }).unwrap();
+        elapsed.push(start.elapsed().as_secs_f64() * 1000.);
+    }
+    elapsed.sort_by(f64::total_cmp);
+    println!("Settings vertical scroll: median {:.2} ms, p95 {:.2} ms per scroll+render", elapsed[30], elapsed[56]);
+    cx.update_window(handle, |_, w, cx| {
+        app.update(cx, |a, cx| {
+            a.navigate(Scope::All, w, cx);
+            a.expanded_sidebar_projects = vec![1];
+            a.collapsed_sidebar_topics.clear();
+            a.collapsed_sidebar_goals.clear();
+            cx.notify();
+        });
+        w.render_frame(cx);
+    }).unwrap();
+    let brand_top = cx.update_window(handle, |_, w, _| w.find("sidebar-brand-overlay").bounds().top()).unwrap();
+    let mut elapsed = Vec::new();
+    for n in 0..120 {
+        let start = Instant::now();
+        cx.update_window(handle, |_, w, cx| {
+            let position = w.find("sidebar-scroll").bounds().center();
+            w.dispatch_event(MouseMoveEvent { position, ..Default::default() }.to_platform_input(), cx);
+            w.dispatch_event(ScrollEvent {
+                position,
+                delta: ScrollDelta::Pixels(point(px(0.), px(if n < 60 { -24. } else { 24. }))),
+                ..Default::default()
+            }.to_platform_input(), cx);
+            w.draw(cx).clear(cx);
+            assert!((w.find("sidebar-brand-overlay").bounds().top() - brand_top).abs() <= px(0.5),
+                "Logo must stay fixed during normal scroll dispatch");
+            if n == 59 {
+                assert!(app.read(cx).sidebar_scroll.offset().y < px(-500.),
+                    "Vertical gesture must move the expanded sidebar");
+            }
+        }).unwrap();
+        elapsed.push(start.elapsed().as_secs_f64() * 1000.);
+    }
+    elapsed.sort_by(f64::total_cmp);
+    println!("Expanded sidebar scroll: 24 goals / 72 steps; median {:.2} ms, p95 {:.2} ms per scroll+render", elapsed[60], elapsed[113]);
+    let pending = app.update(&mut cx, |a, cx| {
+        let goal = a.store.create_research_goal("Queue invalidation".into(), "Fixture".into(), 1).unwrap();
+        a.store.apply_research_plan(goal, r#"{"tasks":[{"title":"Evidence","instructions":"Collect","kind":"collect","depends_on":[]},{"title":"Analysis","instructions":"Analyze","kind":"analyze","depends_on":[0]},{"title":"Report","instructions":"Report","kind":"advise","depends_on":[1]}]}"#).unwrap();
+        a.todo_batch.as_mut().unwrap().items = vec![goal];
+        cx.notify();
+        goal
+    });
+    cx.update_window(handle, |_, w, cx| { w.render_frame(cx); }).unwrap();
+    assert_eq!(app.update(&mut cx, |a, _| a.display_task_status(pending).execution), crate::execution_status::ExecutionStatus::Paused);
+    app.update(&mut cx, |a, cx| {
+        a.todo_batch.as_mut().unwrap().state = BatchState::Running;
+        cx.notify();
+    });
+    cx.update_window(handle, |_, w, cx| { w.render_frame(cx); }).unwrap();
+    assert_eq!(app.update(&mut cx, |a, _| a.display_task_status(pending).execution), crate::execution_status::ExecutionStatus::Queued,
+        "Queue-only changes must invalidate retained statuses without a Store mutation");
+
+
 }

@@ -1,0 +1,8 @@
+{
+  "candidate": "r90 frozen integration",
+  "command": "cargo check --features qa --quiet",
+  "exit_code": 101,
+  "error": "unexpected closing delimiter in src/domain_command.rs:291",
+  "domain_command_sha256": "73d980671f5a513256e3e96bf3e7510904464eff670a198bdb0be2de842553be",
+  "classification": "in-progress integration compile failure; returned to OpenCode; prior frozen results remain separate"
+}

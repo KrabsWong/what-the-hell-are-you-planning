@@ -311,6 +311,33 @@ fn git(dir: Option<&Path>, args: &[&str]) -> Result<String, String> {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    /// Resolve the external Node runtime with an actionable dependency error.
+    /// `PLANNING_NODE` keeps CI and local installations independent of the
+    /// repository path; the release-tested version is Node 24.22.2.
+    fn node_command() -> Command {
+        let executable = std::env::var_os("PLANNING_NODE")
+            .unwrap_or_else(|| std::ffi::OsString::from("node"));
+        match Command::new(&executable).arg("--version").output() {
+            Ok(output) if output.status.success() => Command::new(executable),
+            Ok(output) => panic!(
+                "[dependency] Publishing tests require Node.js (release-tested with v24.22.2), \
+                 but {:?} --version exited with {}. Install Node 24 and put it on PATH, or set \
+                 PLANNING_NODE to the executable. Example: \
+                 PATH=/opt/homebrew/opt/node@24/bin:$PATH cargo test --quiet",
+                executable,
+                output.status
+            ),
+            Err(error) => panic!(
+                "[dependency] Publishing tests require Node.js (release-tested with v24.22.2), \
+                 but {:?} could not be started: {error}. Install Node 24 and put it on PATH, or \
+                 set PLANNING_NODE to the executable. Example: \
+                 PATH=/opt/homebrew/opt/node@24/bin:$PATH cargo test --quiet",
+                executable
+            ),
+        }
+    }
+
     #[test]
     fn entry_pages_upgrade_only_legacy_defaults_and_preserve_custom_content() {
         let root = std::env::temp_dir().join(format!("report-entry-test-{}", chrono::Utc::now().timestamp_nanos_opt().unwrap()));
@@ -395,7 +422,8 @@ mod tests {
         assert_eq!(config["headers"], serde_json::json!([]));
         assert_eq!(config["outputDirectory"], "report-public");
         for _ in 0..2 {
-            let output = Command::new("node").arg("build-reports.mjs").current_dir(&root).output().unwrap();
+            let output = node_command().arg("build-reports.mjs").current_dir(&root).output()
+                .expect("Node.js was present at preflight but could not be started");
             assert!(output.status.success(), "{}", String::from_utf8_lossy(&output.stderr));
             let public = root.join("report-public");
             assert!(!public.join("README.md").exists());

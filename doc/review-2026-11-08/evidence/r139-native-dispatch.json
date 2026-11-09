@@ -1,0 +1,20 @@
+{
+  "status": "failed",
+  "scope": "Isolated native ordinary research approval and execution; archive/restore completion was not reached",
+  "candidate": "r137 product with isolated workspace location and 1440x920 initial window only",
+  "signed_sha256": "0194943cccf46147f899ca7d86ed2a63c862fb899a4cea609f097fbdc551e496",
+  "fixture": "Synthetic TASK-G23 with three planned steps; local fake agent; fixture mode success",
+  "observations": [
+    "Move goal to Todo succeeded and displayed Saved, Todo and Run goal.",
+    "Run goal changed the goal to Execution / Paused with three paused steps and Resume queue.",
+    "Resume queue displayed: A dispatch is already waiting for durable admission. Its intent is retained; retry after it resolves.",
+    "After several minutes and further pointer/scroll interaction, progress remained 0/3 and the same error remained visible.",
+    "No fixture agent process was observed during the stalled interval."
+  ],
+  "limitations": [
+    "This identifies a native execution failure, not its root cause.",
+    "The offline regression matrix was running concurrently; no native performance claim is made.",
+    "Completed 3/3 archive and restore acceptance remains open."
+  ],
+  "follow_up": "OpenCode must reproduce through the production runtime wake/poll path, preserve durable admission and duplicate-launch protection, fix the cause, and supply a focused regression before root repeats native acceptance."
+}

@@ -1,0 +1,18 @@
+{
+  "round": "r171",
+  "change": "QA fake runner suppresses real dispatch_runs and excludes retained fake queue from runtime keepalive; production behavior unchanged",
+  "source_sha256": "f09fe130251e5d245115c6aa7ad435be86c48754fb111e9f4f904223294d3935",
+  "failed_first_check": {
+    "log": ".local/opencode-dispatch/r171-fake-guard-qa.log",
+    "failure": "Parked retry fake queue kept runtime pump alive after real-spawn guard",
+    "exit_code": 101
+  },
+  "corrected_check": {
+    "command": "PLANNING_NODE=/opt/homebrew/opt/node@24/bin/node .local/opencode-dispatch/r171-fake-guard-qa2 --qa-dispatch-admission",
+    "binary_sha256": "a355f9e769b6a44c58eda1e584b5a470f8f80b6b2aa0ef4822f09175c7986a17",
+    "log": ".local/opencode-dispatch/r171-fake-guard-qa2.log",
+    "exit_code": 0,
+    "status": "DISPATCH_ADMISSION_QA status=ok"
+  },
+  "scope": "Private previously reviewed restart source plus QA-only app guard, excludes unfinished planning adapter. Planning four cases require subsequent combined candidate."
+}

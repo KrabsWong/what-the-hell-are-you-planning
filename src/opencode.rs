@@ -27,7 +27,9 @@ pub enum Event {
 }
 #[derive(Clone, Debug)]
 pub struct Request {
-    /// Optional project-defined agent used to enforce tool permissions.
+    /// Optional CLI agent name. The application currently leaves this empty so
+    /// the CLI uses its configured default. This is not a read-only or
+    /// tool-permission policy.
     pub agent: Option<String>,
     pub browser_executable: Option<PathBuf>,
     pub executable: PathBuf,

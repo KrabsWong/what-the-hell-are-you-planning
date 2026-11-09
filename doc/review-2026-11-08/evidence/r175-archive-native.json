@@ -1,0 +1,59 @@
+{
+  "round": "r175",
+  "native_manifest": ".local/native-review/r174-build-manifest.json",
+  "archive": {
+    "list_and_board": "Saved result available, not missing; no execution action",
+    "detail": "E20 identifies retained run25 and archived read-only materials",
+    "reader": "Correct run25 body is readable, but incorrectly labels legacy/stale after archive; assigned narrow presentation repair",
+    "back": "Reader -> E20 -> G19 list retained correct navigation",
+    "restore": "G19 returns 3 done with disabled Completed"
+  },
+  "sqlite_after_restore": {
+    "tasks": [
+      {
+        "id": 19,
+        "stage": "Done",
+        "archived": false
+      },
+      {
+        "id": 20,
+        "stage": "Done",
+        "archived": false
+      },
+      {
+        "id": 21,
+        "stage": "Done",
+        "archived": false
+      },
+      {
+        "id": 22,
+        "stage": "Done",
+        "archived": false
+      }
+    ],
+    "runs": [
+      [
+        25,
+        20,
+        "Succeeded"
+      ],
+      [
+        26,
+        21,
+        "Succeeded"
+      ],
+      [
+        27,
+        22,
+        "Succeeded"
+      ]
+    ]
+  },
+  "scope": "Bounded archive native evidence, not final all-task acceptance",
+  "pending": [
+    "Archive-reader quality/freshness labels",
+    "Enable/pause completion and dirty baseline",
+    "<=1000 native smoothness",
+    "Final QA ledger"
+  ]
+}

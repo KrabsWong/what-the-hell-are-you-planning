@@ -1,0 +1,30 @@
+{
+  "candidate": "r120 compact isolated; see r120-native-compact.json",
+  "size_logical": [
+    1000,
+    680
+  ],
+  "checks": [
+    {
+      "case": "Quick step1 to step2 to step3",
+      "result": "Passed",
+      "observed": "Footer remains reachable; controls advance to expected step."
+    },
+    {
+      "case": "Read execution authorization",
+      "result": "Passed",
+      "observed": "Scrolling exposes full execution/catch-up explanation above fixed footer."
+    },
+    {
+      "case": "Light to Dark while editing",
+      "result": "Passed",
+      "observed": "Step3 and scroll position preserved; instruction, expected answer and schedule remain readable."
+    },
+    {
+      "case": "Save draft & finish in Dark compact",
+      "result": "Passed",
+      "observed": "Returned to corresponding Draft detail; no Enable invoked."
+    }
+  ],
+  "scope": "This fixture only; does not accept all compact routes or scrolling performance."
+}

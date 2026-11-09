@@ -225,30 +225,23 @@ impl Store {
             }.into(),
             auto_start: false,
         }).collect();
-        let mut store = Self {
-            automation_schema_version: crate::automation::AUTOMATION_SCHEMA_VERSION,
-            automations: vec![],
-            automation_occurrences: vec![],
-            tasks,
-            projects,
-            topics: vec![],
-            research_requests: vec![],
-            policies,
-            runs: vec![],
-            next_id: 23,
-            opencode_path: String::new(),
-            default_model: String::new(),
-            model_profiles: vec![],
-            active_model_profile: None,
-            report_publishing: Default::default(),
-            publications: vec![],
-            max_concurrent_runs: crate::scheduler::DEFAULT_CONCURRENT_RUNS,
-            max_concurrent_automations: crate::scheduler::DEFAULT_CONCURRENT_AUTOMATIONS,
-            research_config: Default::default(),
-            appearance: crate::appearance::Appearance::Dark,
-            last_active_project: None,
-        };
+        let mut loader = Self::begin_load();
+        loader
+            .tasks(tasks)
+            .expect("fixture tasks have unique identities");
+        loader
+            .projects(projects)
+            .expect("fixture projects have unique identities");
+        loader
+            .policies(policies)
+            .expect("fixture policies have unique identities");
+        loader.set_metadata(crate::persistence_journal::MetadataDelta::NextId(23));
+        loader.set_metadata(crate::persistence_journal::MetadataDelta::Appearance(
+            crate::appearance::Appearance::Dark,
+        ));
+        let mut store = loader.finish();
         store.normalize_topics();
+        store.clear_all_tracking();
         store
     }
     #[cfg(test)]
@@ -265,11 +258,12 @@ impl Store {
         let identifier = self.identifier(task);
         let run = AgentRun {
             automation_occurrence_id: None,
+            planning_owner: None,
             deadline_at: None,
             auto_retry_attempt: 0,
             retry_not_before: None,
             project_plan: None,
-            id: self.runs.iter().map(|r|r.id).max().unwrap_or(0)+1,
+            id: self.runs().iter().map(|r|r.id).max().unwrap_or(0)+1,
             task_title:task.title.clone(),directory:String::new(),prompt:policy.prompt.clone(),queued_at: String::new(), workspace_source: None, started_at:String::new(),ended_at:None,session_id:None,exit_code:None,
             task_id: id, agent: policy.agent.clone(), model: policy.model.clone(), stage: task.stage,
             status: "Simulated".into(), output:String::new(), attachments:vec![],research_kind:None,sources:vec![],input_signature:String::new(),
@@ -281,7 +275,7 @@ impl Store {
                 "[simulation] Preview complete. Task stage is unchanged.".into(),
             ],
         };
-        self.runs.push(run);
+        self.push_run(run);
         self.task_mut(id)
             .unwrap()
             .activity

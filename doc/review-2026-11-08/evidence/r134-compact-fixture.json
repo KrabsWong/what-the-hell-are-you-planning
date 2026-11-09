@@ -1,0 +1,14 @@
+{
+  "source_manifest": ".local/opencode-dispatch/r134-source.json",
+  "sha256": "684ee882be2fe9cea1a3ea16fa59fa956edbd58d4ec71048850294abf75caf23",
+  "guard_exit": 2,
+  "checks": [
+    {
+      "flag": "--qa-keyboard-visual",
+      "exit": 101,
+      "seconds": 16.72
+    }
+  ],
+  "failure": "New compact fixture created Quick definitions with a Research multi-step template; domain validation rejected before layout assertions.",
+  "disposition": "Preserved failure; r135 changes only fixture construction to the existing Quick template builder."
+}

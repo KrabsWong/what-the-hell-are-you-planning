@@ -1,0 +1,23 @@
+{
+  "source": "r198-compact-source",
+  "raw_sha256": "0d309a598096add70baefd8e4fdfa3d9b7133a9065d7d01cd2b94cde5357daeb",
+  "automation_views_sha256": "ed7a1368cfd7b2b3804d8d094736d28c278976a5b6da0ad0368ccd2ae6c89d92",
+  "build_log": "r200-compact-build.log",
+  "installed_sha256": "6b608fd550efb46d5061b229f5b736ccab1c10110f44143ae2a7c84b2d091370",
+  "logical_size": [
+    1000,
+    680
+  ],
+  "fixture": "r187-ordinary-valid-1000",
+  "passed": [
+    "Actual sidebar route All research Board to Automation results: first down4pages moves from header00:54 to00:44.",
+    "Further down reaches Load more with top00:42. Loading next20 preserves00:42 at same visible position.",
+    "Open00:42 shows Period988, Close restores exact00:42 position.",
+    "Light theme up8pages restores header00:54; down4pages reaches00:24 after pagination."
+  ],
+  "root_test": ".local/opencode-dispatch/r200-root-wheel-test.log",
+  "limits": [
+    "No quiet timing claim.",
+    "Remaining board defect is independent and unresolved."
+  ]
+}

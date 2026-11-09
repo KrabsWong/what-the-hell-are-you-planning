@@ -1,0 +1,121 @@
+{
+  "scope": "Actual live TaskApp via Some(LiveStartup) + ordered worker; editor save, command-level automation SaveDraft, automation Enable/Pause, settings save, scoped task Undo and indexed first-page path.",
+  "hardware": {
+    "cpu": "Apple M1 Pro",
+    "memory_bytes": "34359738368",
+    "os_build": "26B123",
+    "arch": "aarch64"
+  },
+  "profile": {
+    "qa_feature": true,
+    "debug_assertions": true,
+    "executable": "/Users/fuxingxing/workspaces/what-the-hell-are-you-planning/.local/opencode-dispatch/r194-final-gate/qa-candidate",
+    "argv": [
+      "/Users/fuxingxing/workspaces/what-the-hell-are-you-planning/.local/opencode-dispatch/r194-final-gate/qa-candidate",
+      "--qa-live-performance"
+    ],
+    "source_sha256": "54b239dec1af5c4b5f3b38d61a39975eb1eec130376f1f1d52e2436541797712"
+  },
+  "samples": 30,
+  "warmup": 3,
+  "target_p95_ui_us": 50000,
+  "gates": {
+    "small-500": {
+      "editor": {
+        "p95_us": 5587,
+        "target_us": 50000,
+        "passed": true
+      },
+      "automation_save_draft": {
+        "p95_us": 14480,
+        "target_us": 50000,
+        "passed": true
+      },
+      "automation_enable": {
+        "p95_us": 18755,
+        "target_us": 50000,
+        "passed": true
+      },
+      "automation_pause": {
+        "p95_us": 16089,
+        "target_us": 50000,
+        "passed": true
+      },
+      "settings": {
+        "p95_us": 4573,
+        "target_us": 50000,
+        "passed": true
+      },
+      "scoped_task_undo": {
+        "p95_us": 5486,
+        "target_us": 50000,
+        "passed": true
+      },
+      "history_page": {
+        "p95_us": 10553,
+        "target_us": 50000,
+        "passed": true
+      }
+    },
+    "required-1000": {
+      "editor": {
+        "p95_us": 5752,
+        "target_us": 50000,
+        "passed": true
+      },
+      "automation_save_draft": {
+        "p95_us": 10369,
+        "target_us": 50000,
+        "passed": true
+      },
+      "automation_enable": {
+        "p95_us": 11863,
+        "target_us": 50000,
+        "passed": true
+      },
+      "automation_pause": {
+        "p95_us": 9513,
+        "target_us": 50000,
+        "passed": true
+      },
+      "settings": {
+        "p95_us": 4559,
+        "target_us": 50000,
+        "passed": true
+      },
+      "scoped_task_undo": {
+        "p95_us": 5730,
+        "target_us": 50000,
+        "passed": true
+      },
+      "history_page": {
+        "p95_us": 9654,
+        "target_us": 50000,
+        "passed": true
+      }
+    }
+  },
+  "binary_sha256": "23240064da36786f2d288302776e41c9f2d283c0b49acfd46ff9fcd1e7fe0fdb",
+  "build_manifest": "r194-candidate-provenance.json",
+  "log": ".local/opencode-dispatch/r194-final-gate/qa-live-performance.log",
+  "log_sha256": "b326a19526fd80830b9b4b08112505786fb0268d86c2190ca8e5db21f3fd253a",
+  "status": "passed standalone entry; full ledger remains in progress",
+  "fixtures": [
+    {
+      "label": "small-500",
+      "occurrences": 500,
+      "materialized_runs": 500,
+      "body_bytes": 8192,
+      "db_bytes": 4296704,
+      "gating": true
+    },
+    {
+      "label": "required-1000",
+      "occurrences": 1000,
+      "materialized_runs": 1000,
+      "body_bytes": 8192,
+      "db_bytes": 8486912,
+      "gating": true
+    }
+  ]
+}

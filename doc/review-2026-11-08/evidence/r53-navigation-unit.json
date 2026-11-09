@@ -1,0 +1,9 @@
+{
+  "command": "PATH=/opt/homebrew/opt/node@24/bin:$PATH cargo test --features qa navigation::tests:: --quiet",
+  "exit_code": 0,
+  "passed": 13,
+  "failed": 0,
+  "scope": "Navigation pure unit tests, including archived task result ownership; not full typed live navigation acceptance",
+  "log": "r53-navigation-unit.log",
+  "caveat": "Concurrent implementers were active; this focused compiled checkpoint does not attest to later edits."
+}

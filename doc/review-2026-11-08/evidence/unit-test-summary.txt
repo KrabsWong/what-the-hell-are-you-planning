@@ -1,0 +1,8 @@
+Command: cargo test --quiet
+Exit: 101
+292 tests: 289 passed; 1 failed; 2 ignored.
+Failure: report_git::tests::repository_index_preserves_readme_and_is_excluded_from_build
+Location: src/report_git.rs:398:100
+Cause: Command::new("node").output().unwrap() returned OS code 2, NotFound.
+command -v node produced no path in this execution environment.
+This is a recorded summary of the tool output, not a captured full stdout log.

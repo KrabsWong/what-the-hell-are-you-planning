@@ -1,0 +1,7 @@
+{
+  "exit_code": 0,
+  "source_manifest": "r60-integrated-source.json",
+  "filter": "run_floor",
+  "log": "r60-run-floor.log",
+  "scope": "Reserved floor JSON and v4 seed/reopen/incremental metadata tests; not full live migration acceptance"
+}

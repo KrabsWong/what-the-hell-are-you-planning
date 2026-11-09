@@ -1,0 +1,21 @@
+{
+  "base_commit": "23485f3",
+  "sole_override": "test-helper snapshot_id initializer; assertions unchanged",
+  "command": "cargo test --features qa --quiet",
+  "exit_code": 0,
+  "unit": {
+    "passed": 691,
+    "failed": 0,
+    "ignored": 2,
+    "seconds": 7.58
+  },
+  "dispatch_crash": {
+    "passed": 8,
+    "seconds": 5.12
+  },
+  "sqlite_v4_crash": {
+    "passed": 3,
+    "seconds": 0.61
+  },
+  "scope": "Frozen baseline; new live TaskApp UI fixture coverage remains required"
+}

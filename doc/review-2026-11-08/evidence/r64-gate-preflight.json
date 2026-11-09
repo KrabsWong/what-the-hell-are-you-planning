@@ -1,0 +1,28 @@
+{
+  "runner": ".local/opencode-dispatch/run_release_gate.py",
+  "runner_sha256": "0aec146ec4e0935d8a13d15a6bbd6df67c8098c9476f48dac2274cdcf83fd852",
+  "python_syntax": "passed",
+  "frozen_source": ".local/r63-integrated-source",
+  "historical_entries_preserved": 33,
+  "standalone": 46,
+  "performance_modes": [
+    "inventory",
+    "small",
+    "occ43200",
+    "body-heavy",
+    "retry-heavy",
+    "xl"
+  ],
+  "separate_parent_tests": [
+    "dispatch_admission_crash",
+    "v4_crash"
+  ],
+  "suite_execution": "not run by this preflight",
+  "maintained_runner": "script/run_review_gate.py",
+  "maintained_runner_sha256": "bc37fda0462c52e0c984e52156b19d8322ee02fd6f6fb4be9ee2ef8c48d92279",
+  "hash_mismatch_preflight": {
+    "exit_code": 1,
+    "message": "Candidate hash does not match the reviewed build; no command executed",
+    "candidate_copied": false
+  }
+}

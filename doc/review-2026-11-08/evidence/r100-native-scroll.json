@@ -1,0 +1,176 @@
+{
+  "candidate": "r88 isolated optimized diagnostic",
+  "signed_sha256": "55f56309ae92f4251be952ed03c4f3284e7d8c86811e9fd9c53956c393320263",
+  "surface": "Settings / Agent & models / Light",
+  "display": "Color LCD 1728 x 1117 logical, 3456 x 2234 physical, 120 Hz",
+  "screenshot_dimensions": "2880 x 1842 pixels",
+  "trace_start": "2026-11-09T09:35:11.610+08:00",
+  "trace_duration_seconds": 12.768114,
+  "record_exit": 0,
+  "export_exit": 0,
+  "gestures_in_recording": 8,
+  "gesture_count": 8,
+  "recording_build_monitor_samples": 12,
+  "recording_busy_samples": 0,
+  "hitch_count": 18,
+  "hitches_during_input": 0,
+  "hitches_during_input_or_500ms_settle": 9,
+  "hitches": [
+    {
+      "offset_ms": 388.214916,
+      "duration_ms": 8.333208,
+      "input_overlap": false,
+      "input_and_500ms_settle_overlap": false
+    },
+    {
+      "offset_ms": 404.881458,
+      "duration_ms": 8.333333,
+      "input_overlap": false,
+      "input_and_500ms_settle_overlap": false
+    },
+    {
+      "offset_ms": 771.548125,
+      "duration_ms": 8.333333,
+      "input_overlap": false,
+      "input_and_500ms_settle_overlap": false
+    },
+    {
+      "offset_ms": 938.214333,
+      "duration_ms": 16.666625,
+      "input_overlap": false,
+      "input_and_500ms_settle_overlap": false
+    },
+    {
+      "offset_ms": 963.214291,
+      "duration_ms": 8.333291,
+      "input_overlap": false,
+      "input_and_500ms_settle_overlap": false
+    },
+    {
+      "offset_ms": 5246.543458,
+      "duration_ms": 8.333333,
+      "input_overlap": false,
+      "input_and_500ms_settle_overlap": false
+    },
+    {
+      "offset_ms": 5796.543,
+      "duration_ms": 8.333333,
+      "input_overlap": false,
+      "input_and_500ms_settle_overlap": false
+    },
+    {
+      "offset_ms": 5929.876208,
+      "duration_ms": 16.666666,
+      "input_overlap": false,
+      "input_and_500ms_settle_overlap": false
+    },
+    {
+      "offset_ms": 6929.875125,
+      "duration_ms": 8.333416,
+      "input_overlap": false,
+      "input_and_500ms_settle_overlap": true
+    },
+    {
+      "offset_ms": 7571.541333,
+      "duration_ms": 8.33325,
+      "input_overlap": false,
+      "input_and_500ms_settle_overlap": true
+    },
+    {
+      "offset_ms": 8196.540875,
+      "duration_ms": 8.33325,
+      "input_overlap": false,
+      "input_and_500ms_settle_overlap": true
+    },
+    {
+      "offset_ms": 8879.873416,
+      "duration_ms": 8.333333,
+      "input_overlap": false,
+      "input_and_500ms_settle_overlap": true
+    },
+    {
+      "offset_ms": 9954.872541,
+      "duration_ms": 8.333208,
+      "input_overlap": false,
+      "input_and_500ms_settle_overlap": true
+    },
+    {
+      "offset_ms": 10629.872041,
+      "duration_ms": 8.333208,
+      "input_overlap": false,
+      "input_and_500ms_settle_overlap": true
+    },
+    {
+      "offset_ms": 10929.871541,
+      "duration_ms": 8.3335,
+      "input_overlap": false,
+      "input_and_500ms_settle_overlap": true
+    },
+    {
+      "offset_ms": 10946.538375,
+      "duration_ms": 8.333291,
+      "input_overlap": false,
+      "input_and_500ms_settle_overlap": true
+    },
+    {
+      "offset_ms": 11313.204666,
+      "duration_ms": 8.333333,
+      "input_overlap": false,
+      "input_and_500ms_settle_overlap": true
+    },
+    {
+      "offset_ms": 11463.204416,
+      "duration_ms": 8.3335,
+      "input_overlap": false,
+      "input_and_500ms_settle_overlap": false
+    }
+  ],
+  "main_thread_sample_count": 4745,
+  "main_thread_sample_weight_ms": 4745.0,
+  "inclusive_categories_sample_weight_ms": {
+    "metal_renderer": 635.0,
+    "layout": 810.0,
+    "taffy": 1117.0,
+    "paint": 2337.0,
+    "brand": 51.0,
+    "prepaint": 832.0,
+    "flexbox": 296.0,
+    "sidebar": 11.0,
+    "settings": 5.0
+  },
+  "top_leaf_sample_weight_ms": [
+    [
+      "_RNvMs_NtCs102Aak0gGwN_4gpui11bounds_treeINtB4_10BoundsTreeNtNtB6_8geometry12ScaledPixelsE6insertB6_",
+      506.0
+    ],
+    [
+      "_platform_memmove",
+      390.0
+    ],
+    [
+      "_RNvMs_NtCs102Aak0gGwN_4gpui5sceneNtB4_5Scene6replay",
+      186.0
+    ],
+    [
+      "_xzm_xzone_malloc_tiny",
+      141.0
+    ],
+    [
+      "mach_msg2_trap",
+      131.0
+    ],
+    [
+      "__kdebug_trace64",
+      130.0
+    ],
+    [
+      "_RINvXst_Csl8xjBHPfDtk_8smallvecINtB6_8SmallVecAij6_EINtNtNtNtCs9nEiEE0E2Vj_4core4iter6traits7collect6ExtendiE6extendINtNtNtBV_8adapters6cloned6ClonedINtNtNtBX_5slice4iter4IteriEEECs102Aak0gGwN_4gpui",
+      114.0
+    ],
+    [
+      "<deduplicated_symbol>",
+      113.0
+    ]
+  ],
+  "limitations": "Short older-diagnostic light Settings run only; sample weights are not frame durations or FPS; category totals overlap. Settling window explicitly extends each input interval by 500 ms. No full native-matrix acceptance."
+}

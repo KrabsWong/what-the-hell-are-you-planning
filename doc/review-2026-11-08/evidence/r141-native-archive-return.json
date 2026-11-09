@@ -1,0 +1,23 @@
+{
+  "recorded_at": "2026-11-09T13:05:23.420645+08:00",
+  "candidate": "r139 isolated native app; unchanged r137 product",
+  "signed_sha256": "0194943cccf46147f899ca7d86ed2a63c862fb899a4cea609f097fbdc551e496",
+  "method": "Computer native pointer and keyboard; no manual focus reset between Open and Back",
+  "observations": [
+    {
+      "path": "Archive List > TASK-G1 > Steps Board > TASK-G1-A3 Open > Command-[",
+      "result": "pass",
+      "details": "Returned to TASK-G1 Steps Board; all three archived cards remain visible."
+    },
+    {
+      "path": "Archive List > TASK-G1 step-count expand control",
+      "result": "fail",
+      "details": "Two clicks toggled chevron right/down but no child rows became visible. Goal Steps page independently shows three children."
+    }
+  ],
+  "limitations": [
+    "Existing historical archived fixture; not fresh successful 3/3 archive-and-restore acceptance.",
+    "Does not close period-modal keyboard regression or ordinary dispatch stall.",
+    "Saving changes remained visible during this observation; durability not inferred from navigation."
+  ]
+}

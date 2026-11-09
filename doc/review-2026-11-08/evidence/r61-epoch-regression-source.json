@@ -1,0 +1,6 @@
+{
+  "base": "/Users/fuxingxing/workspaces/what-the-hell-are-you-planning/.local/r61-integrated-source",
+  "source": "/Users/fuxingxing/workspaces/what-the-hell-are-you-planning/.local/r61-epoch-regression-source",
+  "change": "Added independent stale scalar receipt regression only",
+  "domain_sha256": "b952424b49e3b97d0439d43c3baa8b553f4a46913c9036466fe6990982a6c583"
+}

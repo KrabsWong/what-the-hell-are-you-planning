@@ -1,0 +1,44 @@
+{
+  "scope": "Native large history, light theme, 1440x920 logical window; cold results open, list scroll, load20to40, Period43162 and report scroll. Not full matrix.",
+  "candidate_installed_sha256": "f4a5f7a49d82cd1c740b122ecccfd0aef397a5a15516677737db20c5be0a195f",
+  "source_commit": "5d56d17",
+  "window": {
+    "start_wall_ns": 1794208185008049000,
+    "candidate": "f4a5f7a49d82cd1c740b122ecccfd0aef397a5a15516677737db20c5be0a195f",
+    "fixture_periods": 43200,
+    "actions": "cold open results, list scroll/paging, open report and scroll",
+    "end_wall_ns": 1794208245363956000
+  },
+  "fixture": {
+    "periods": 43200,
+    "report_bodies": 30240,
+    "body_bytes_each": 8192
+  },
+  "trace": {
+    "present_events": 2393,
+    "late_presents": 19,
+    "missed_refreshes": 24,
+    "work_p50_ns": 3184083,
+    "work_p95_ns": 4315500,
+    "work_p99_ns": 6558084,
+    "work_max_ns": 24352292,
+    "truncated": false
+  },
+  "csv_window": {
+    "frames_drawn": 2402,
+    "frames_late": 19,
+    "missed_refreshes": 24,
+    "input_frames_on_time": 8,
+    "input_frames_late": 13
+  },
+  "sampler_overhead_p95_ns": 125500,
+  "compiler_observation": {
+    "samples": 57,
+    "interval_seconds": 1,
+    "samples_with_build_processes": 0,
+    "limit": "Process-name sampling excludes sustained compiler overlap, not all host contention."
+  },
+  "verdict": "FAILED: remaining late/input frames; indexing reduces cost but does not establish smoothness.",
+  "comparison": "Prior r158 maximum CPU work40.28ms; this bracket maximum24.35ms. Different action timings and frame counts prevent a controlled percentage claim.",
+  "next": "Private causal rendering investigation assigned from the current committed native source; keep animation and preserve original traces."
+}

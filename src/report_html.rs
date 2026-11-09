@@ -116,7 +116,7 @@ fn internal_gap_html() -> String {
 }
 fn public_gap_note() -> String {
     format!(
-        "<aside class=\"evidence-notice\" aria-label=\"研究局限\"><strong>证据说明</strong><p>{}</p></aside>",
+        "<aside class=\"evidence-notice\" aria-label=\"Evidence limitations\"><strong>Evidence gaps</strong><p>{}</p></aside>",
         crate::research::EVIDENCE_GAP_NOTICE
     )
 }
@@ -247,7 +247,10 @@ mod tests {
         assert_eq!(page.matches("<h1 ").count(), 1);
         assert_eq!(page.matches(">法律 AI 研究</h2>").count(), 1);
         assert!(!page.contains("Preserve its limitations"));
-        assert!(page.contains("证据说明"));
+        assert!(page.contains("Evidence gaps"));
+        assert!(page.contains("This report has evidence gaps."));
+        assert_eq!(page.matches("class=\"evidence-notice\"").count(), 1);
+        assert!(!page.contains(crate::research::EVIDENCE_GAP_NOTE));
         assert!(page.contains("不能确认付费需求"));
         // Both desktop and mobile TOCs link to the same unique heading.
         assert_eq!(page.matches("href=\"#section-1\">法律 AI 研究</a>").count(), 2);

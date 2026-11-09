@@ -1,0 +1,42 @@
+{
+  "candidate": {
+    "unsigned_sha256": "7a743138d436a181c4a3b6d5a64345d2e8483ca05dbf983371ec8e19a58cfc55",
+    "guard_exit": 2,
+    "source_manifest": ".local/native-review/r137-source.json",
+    "signed_sha256": "4fa38a60a8784f5f1a2cb83d9de8224ca2ebec1ac05b9b6701f2f8d8c2f42771",
+    "fixture_backup": "/Users/fuxingxing/workspaces/what-the-hell-are-you-planning/.local/native-review/r137-fixture-backup"
+  },
+  "native_pass": [
+    "Archive Board -> Open 3 steps -> goal TASK-G1 Steps Board -> Back button returns Archive Board with same goal and Restore visible; repeated twice.",
+    "Archived steps show Archived / no retained result and Restore-first explanation; no run or approve action."
+  ],
+  "unresolved": [
+    "super+bracketleft did not navigate on goal Steps.",
+    "super+k did not open Search there; footer Search click opened it and Escape closed it.",
+    "Tool rejected literal super+[ with keyNotFound; this is not application failure evidence."
+  ],
+  "interpretation": "Native Back button origin accepted. Shortcut outcome is unaccepted; app dispatch versus tool/native modifier translation must be diagnosed before a product patch.",
+  "environment": "Initial pointer input returned noWindowsAvailable twice; window became operable after Tab. Screenshots and pointer behavior then verified actual destination.",
+  "followup": {
+    "diagnostic": {
+      "base": ".local/native-review/r137-source.json",
+      "source": "/Users/fuxingxing/workspaces/what-the-hell-are-you-planning/.local/native-review/r138-key-diagnostic-source",
+      "only_additional_override": "Root key capture/bubble logs key/modifier/focus for k, brackets, Escape and Tab only. No typed text or application data recorded.",
+      "views_sha256": "2c7e0bfd9efb1a548ad7ec85e6a90aaffcac6e8bc0a5c2c6c7c39245374fb5e9",
+      "signed_sha256": "5fa666949465630858f04475e98bba5bcfd8311d590eb2d2fd7bee4ec40d34f5",
+      "guard_exit": 2
+    },
+    "events": [
+      "capture key=\"k\" modifiers=Modifiers { control: false, alt: false, shift: false, platform: true, function: false } root_focus=true",
+      "bubble key=\"k\" modifiers=Modifiers { control: false, alt: false, shift: false, platform: true, function: false } root_focus=true",
+      "capture key=\"escape\" modifiers=Modifiers { control: false, alt: false, shift: false, platform: false, function: false } root_focus=false",
+      "capture key=\"[\" modifiers=Modifiers { control: false, alt: false, shift: false, platform: true, function: false } root_focus=true",
+      "bubble key=\"[\" modifiers=Modifiers { control: false, alt: false, shift: false, platform: true, function: false } root_focus=true",
+      "capture key=\"k\" modifiers=Modifiers { control: false, alt: false, shift: false, platform: true, function: false } root_focus=true",
+      "bubble key=\"k\" modifiers=Modifiers { control: false, alt: false, shift: false, platform: true, function: false } root_focus=true",
+      "capture key=\"escape\" modifiers=Modifiers { control: false, alt: false, shift: false, platform: false, function: false } root_focus=false"
+    ],
+    "control": "Restored exact signed r137 binary 4fa38a60a8784f5f1a2cb83d9de8224ca2ebec1ac05b9b6701f2f8d8c2f42771, verified signature and hash. Reopened Archive Board, opened TASK-G1 Steps and super+bracketleft visibly returned Archive Board with card and Restore. No production logic patch.",
+    "interpretation": "Pointer and keyboard origin paths now have native success evidence on original r137. Earlier post-lock input failures remain recorded as transient/unclassified; this does not close the full keyboard matrix or prove a lock-resume fix."
+  }
+}

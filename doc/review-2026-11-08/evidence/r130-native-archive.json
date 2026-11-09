@@ -1,0 +1,24 @@
+{
+  "install": {
+    "unsigned_sha256": "f538e7616893b69b530523c69e65f9f3508d099fbb939c552ed66a9b319ac75b",
+    "guard_exit": 2,
+    "source_manifest": ".local/native-review/r130-source.json",
+    "parent_manifest": ".local/opencode-dispatch/r129-source.json",
+    "signed_sha256": "d5edd2b36bd8f1aee0d687fadf48ed0998d2e39ecc74dee45bd363701bb10d42",
+    "fixture_backup": "/Users/fuxingxing/workspaces/what-the-hell-are-you-planning/.local/native-review/r130-fixture-backup",
+    "overrides": [
+      "Isolated workspace bootstrap",
+      "Initial window 1000x680 logical pixels"
+    ]
+  },
+  "theme": "Dark",
+  "logical_window": [
+    1000,
+    680
+  ],
+  "archive_membership": "passed: List and Board both show TASK-G1 Review research goal with Archived status and Restore; Open 3 steps opens archived steps without execution/approval controls",
+  "navigation": "failed: Archive Board -> Open 3 steps -> keyboard Back lands on #Reviewed topic ordinary board with zero research goals; repeating using top Back button produces same wrong destination",
+  "expected": "Back returns Archive Board with preserved caller context; breadcrumb may navigate structural Topic",
+  "fixture_mutation": "No Restore, execution or deletion performed",
+  "scope": "Native T22 membership repair accepted narrowly; T10/T12 archived-step origin regression reopened"
+}

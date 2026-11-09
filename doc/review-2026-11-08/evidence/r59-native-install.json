@@ -1,0 +1,8 @@
+{
+  "unsigned_sha256": "075be12e873dfed96f04858c8ba99159c9f0db46798af02ff76ae1ad95a11dbe",
+  "signed_sha256": "4576ea990c467ea9f45a38fd935d5612d4fcd550e5eead65d46eeb0d097e62aa",
+  "previous_signed_sha256": "b5fe7221554988d967ad63d3060838bfc724e55e2f96dec5700c5eb9c610dd1c",
+  "guard_exit": 2,
+  "source_manifest": "r59-native-source.json",
+  "bootstrap": "/Users/fuxingxing/workspaces/what-the-hell-are-you-planning/.local/native-review/workspace-location.json"
+}

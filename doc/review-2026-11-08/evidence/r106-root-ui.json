@@ -1,0 +1,53 @@
+{
+  "commit": "402ff49",
+  "binary_sha256": "341d54a5bcef628c317e4d50ded8f28f6c8eba52c096f1edb8d1afad5bfdedd4",
+  "guard_exit": 2,
+  "results": [
+    {
+      "entry": "--qa-sidebar",
+      "exit_code": 0,
+      "seconds": 1.24,
+      "log": ".local/opencode-dispatch/r106-qa-sidebar.log"
+    },
+    {
+      "entry": "--qa-navigation-context",
+      "exit_code": 0,
+      "seconds": 15.85,
+      "log": ".local/opencode-dispatch/r106-qa-navigation-context.log"
+    },
+    {
+      "entry": "--qa-simplify",
+      "exit_code": 0,
+      "seconds": 51.76,
+      "log": ".local/opencode-dispatch/r106-qa-simplify.log"
+    },
+    {
+      "entry": "--qa-global-search",
+      "exit_code": 0,
+      "seconds": 22.45,
+      "log": ".local/opencode-dispatch/r106-qa-global-search.log"
+    },
+    {
+      "entry": "--qa-onboarding",
+      "exit_code": 0,
+      "seconds": 0.82,
+      "log": ".local/opencode-dispatch/r106-qa-onboarding.log"
+    },
+    {
+      "entry": "--qa-live-persistence",
+      "exit_code": 1,
+      "seconds": 24.85,
+      "log": ".local/opencode-dispatch/r106-qa-live-persistence.log"
+    }
+  ],
+  "live_ui_microseconds": {
+    "editor_small_submit": 4583,
+    "editor_small_through_durability": 8384,
+    "editor_43200_empty_runs_submit": 3298293,
+    "editor_43200_through_durability": 6560541,
+    "settings_submit": 1678,
+    "settings_through_durability": 4291,
+    "history_page_43200": 2542
+  },
+  "limitations": "Test-profile snapshot under concurrent developer workload; can reject multi-second blocking, cannot prove p95 or native smoothness."
+}

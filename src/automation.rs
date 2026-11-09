@@ -185,7 +185,7 @@ pub struct AutomationMaterial {
 #[derive(Clone, Copy, Debug, Default, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(rename_all = "snake_case")]
 pub enum AutomationShape {
-    /// One instruction and one read-only step, created without any planning.
+    /// One instruction and one answer step, created without any planning.
     Quick,
     /// A reviewed plan produced once by the research planning chain.
     #[default]
@@ -300,6 +300,7 @@ impl AutomationTemplate {
             if !step.depends_on.is_empty() {
                 return Err("A quick task's only step cannot depend on another step.".into());
             }
+            self.validate_instruction_text()?;
             return Ok(());
         }
         for goal in &self.goals {
@@ -307,6 +308,43 @@ impl AutomationTemplate {
                 return Err("Describe each recurring goal in 1–12,000 bytes.".into());
             }
             crate::research::parse_plan(&goal.plan_json()?)?;
+        }
+        self.validate_instruction_text()?;
+        Ok(())
+    }
+    /// Scan instruction-bearing template fields before a template can be saved
+    /// or approved. Goal and step titles are injected into the agent prompt and
+    /// are therefore scanned with goal briefs and step instructions. Only the
+    /// automation name is display metadata excluded from this scan.
+    fn validate_instruction_text(&self) -> Result<(), String> {
+        for goal in &self.goals {
+            let goal_title = goal.title.chars().take(80).collect::<String>();
+            if let Some(rejection) = crate::automation_policy::rejection(&goal.title) {
+                return Err(format!("Goal title \"{goal_title}\": {}", rejection.message()));
+            }
+            if let Some(rejection) = crate::automation_policy::rejection(&goal.brief) {
+                return Err(format!("Goal \"{goal_title}\": {}", rejection.message()));
+            }
+            for step in &goal.steps {
+                let step_title = step.title.chars().take(80).collect::<String>();
+                if let Some(rejection) = crate::automation_policy::rejection(&step.title) {
+                    return Err(format!("Step title \"{step_title}\": {}", rejection.message()));
+                }
+                if step.instructions.trim().is_empty()
+                    || step.instructions.len() > crate::automation_policy::MAX_INSTRUCTION_BYTES
+                {
+                    return Err(format!(
+                        "Step \"{step_title}\": instructions must be 1–12,000 bytes."
+                    ));
+                }
+                crate::automation_policy::validate_instruction_text(&step.instructions)
+                    .map_err(|error| {
+                        let message = error
+                            .strip_prefix("Step instructions: ")
+                            .unwrap_or(&error);
+                        format!("Step \"{step_title}\": {message}")
+                    })?;
+            }
         }
         Ok(())
     }
@@ -346,12 +384,26 @@ impl AutomationGoal {
 
 
 #[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
+pub struct AutomationPlanBinding {
+    pub request_id: u64,
+    pub revision: u32,
+    #[serde(default)]
+    pub project_id: u64,
+    /// Signature captured by the reviewed planner run.
+    pub input_signature: String,
+}
+
+#[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
 pub struct AutomationApproval {
     /// Definition version this approval authorizes. A newer version invalidates it.
     pub version: u32,
     pub approved_at: i64,
     pub template_signature: String,
     pub schedule_signature: String,
+    #[serde(default)]
+    pub plan_request_id: Option<u64>,
+    #[serde(default)]
+    pub plan_revision: Option<u32>,
     /// Exact effective model and agent for each research kind.
     pub models: [String; 4],
     pub agents: [Option<String>; 4],
@@ -362,6 +414,10 @@ pub struct AutomationApproval {
 pub struct AutomationOccurrenceSnapshot {
     pub objective: String,
     pub expected_result: String,
+    /// Shape at approval time. Missing in older workspaces; infer from the
+    /// immutable template only in that case so later edits cannot change it.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub shape: Option<AutomationShape>,
     pub template: AutomationTemplate,
     pub models: [String; 4],
     pub agents: [Option<String>; 4],
@@ -369,6 +425,22 @@ pub struct AutomationOccurrenceSnapshot {
     pub policy: AutomationPolicy,
     pub approval_version: u32,
     pub approval_signature: String,
+}
+impl AutomationOccurrenceSnapshot {
+    /// The shape frozen with this period's approved plan. A legacy snapshot that
+    /// predates the stored shape keeps the template's own single-step Quick form;
+    /// an explicitly stored shape stays authoritative.
+    pub fn approved_shape(&self) -> AutomationShape {
+        if let Some(shape) = self.shape {
+            return shape;
+        }
+        let steps: usize = self.template.goals.iter().map(|goal| goal.steps.len()).sum();
+        if steps <= 1 {
+            AutomationShape::Quick
+        } else {
+            AutomationShape::Research
+        }
+    }
 }
 
 #[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
@@ -389,6 +461,8 @@ pub struct AutomationDefinition {
     pub schedule: Schedule,
     pub status: DefinitionStatus,
     pub template: Option<AutomationTemplate>,
+    #[serde(default)]
+    pub plan_binding: Option<AutomationPlanBinding>,
     pub approval: Option<AutomationApproval>,
     pub policy: AutomationPolicy,
     /// Next unprocessed trigger (UTC seconds). None means no future trigger.
@@ -408,17 +482,24 @@ impl AutomationDefinition {
             && approval.template_signature == template.signature()
             && approval.schedule_signature == self.schedule.signature()
             && self.schedule.validate().is_ok()
+            && match approval.plan_request_id {
+                Some(request_id) => self.plan_binding.as_ref().is_some_and(|binding| {
+                    binding.request_id == request_id
+                        && Some(binding.revision) == approval.plan_revision
+                        && binding.project_id == self.project_id
+                }),
+                None => true,
+            }
     }
     pub fn validate_draft(&self) -> Result<(), String> {
         if self.name.trim().is_empty() || self.name.chars().count() > 160 {
             return Err("Automation name must be 1–160 characters.".into());
         }
-        if self.objective.trim().is_empty() || self.objective.len() > 12_000 {
-            return Err("Describe what to do in 1–12,000 bytes.".into());
-        }
-        if self.expected_result.trim().is_empty() || self.expected_result.len() > 12_000 {
-            return Err("Describe the expected result in 1–12,000 bytes.".into());
-        }
+        crate::automation_policy::validate_automation_fields(
+            &self.objective,
+            &self.expected_result,
+            true,
+        )?;
         self.schedule.validate()?;
         self.policy.validate()?;
         if let Some(template) = &self.template {
@@ -498,6 +579,10 @@ pub struct AutomationOccurrence {
     pub skipped_to: Option<i64>,
     pub created_at: i64,
     pub deadline_at: Option<i64>,
+    /// Moment an explicit user retry reopened this period. A retry is exempt from
+    /// the schedule's original catch-up delay while keeping its reference time.
+    #[serde(default)]
+    pub retry_requested_at: Option<i64>,
 }
 impl AutomationOccurrence {
     pub fn transition(
@@ -538,7 +623,9 @@ impl AutomationOccurrence {
     /// The allowed start delay applies only before the first actual start. Later
     /// steps and retries are governed by the occurrence's total deadline instead.
     pub fn first_start_expired(&self, now: i64) -> bool {
-        self.actual_started_at.is_none() && self.is_expired(now)
+        self.actual_started_at.is_none()
+            && self.retry_requested_at.is_none()
+            && self.is_expired(now)
     }
 }
 
@@ -588,37 +675,26 @@ pub fn hash_json(value: &serde_json::Value) -> String {
 /// Read helpers kept on the store so views never scan unrelated entities by hand.
 impl crate::domain::Store {
     pub fn automation(&self, id: u64) -> Option<&AutomationDefinition> {
-        self.automations.iter().find(|a| a.id == id)
-    }
-    pub fn automation_mut(&mut self, id: u64) -> Option<&mut AutomationDefinition> {
-        self.automations.iter_mut().find(|a| a.id == id)
-    }
-    pub fn occurrence(&self, id: u64) -> Option<&AutomationOccurrence> {
-        self.automation_occurrences.iter().find(|o| o.id == id)
-    }
-    pub fn occurrence_mut(&mut self, id: u64) -> Option<&mut AutomationOccurrence> {
-        self.automation_occurrences
-            .iter_mut()
-            .find(|o| o.id == id)
+        self.automations().iter().find(|a| a.id == id)
     }
     pub fn automation_occurrences(&self, automation: u64) -> Vec<&AutomationOccurrence> {
-        self.automation_occurrences
+        self.all_occurrences()
             .iter()
             .filter(|o| o.automation_id == automation)
             .collect()
     }
     pub fn automation_occurrence_by_key(&self, key: &str) -> Option<&AutomationOccurrence> {
-        self.automation_occurrences
+        self.all_occurrences()
             .iter()
             .find(|o| o.trigger_key == key)
     }
     pub fn automation_active(&self, automation: u64) -> Option<&AutomationOccurrence> {
-        self.automation_occurrences
+        self.all_occurrences()
             .iter()
             .find(|o| o.automation_id == automation && o.status.is_active())
     }
     pub fn automation_unread_count(&self, automation: u64) -> usize {
-        self.automation_occurrences
+        self.all_occurrences()
             .iter()
             .filter(|o| o.automation_id == automation && o.unread)
             .count()
@@ -635,14 +711,14 @@ impl crate::domain::Store {
     /// Reject duplicate persisted identities or trigger keys after loading a workspace.
     pub fn validate_automation_integrity(&self) -> Result<(), String> {
         let mut automation_ids = std::collections::HashSet::new();
-        for definition in &self.automations {
+        for definition in self.automations() {
             if definition.id == 0 || !automation_ids.insert(definition.id) {
                 return Err("Automation definitions contain a duplicate or zero identifier.".into());
             }
         }
         let mut occurrence_ids = std::collections::HashSet::new();
         let mut trigger_keys = std::collections::HashSet::new();
-        for occurrence in &self.automation_occurrences {
+        for occurrence in self.all_occurrences() {
             if occurrence.id == 0 || !occurrence_ids.insert(occurrence.id) {
                 return Err("Automation runs contain a duplicate or zero identifier.".into());
             }
@@ -652,7 +728,7 @@ impl crate::domain::Store {
                 return Err("Automation runs contain a duplicate or empty trigger key.".into());
             }
             if !self
-                .automations
+                .automations()
                 .iter()
                 .any(|definition| definition.id == occurrence.automation_id)
             {
@@ -666,7 +742,7 @@ impl crate::domain::Store {
     }
 
     pub fn next_automation_id(&self) -> Result<u64, String> {
-        self.automations
+        self.automations()
             .iter()
             .map(|a| a.id)
             .max()
@@ -675,7 +751,7 @@ impl crate::domain::Store {
             .ok_or_else(|| "No automation identifiers remain.".into())
     }
     pub fn next_occurrence_id(&self) -> Result<u64, String> {
-        self.automation_occurrences
+        self.all_occurrences()
             .iter()
             .map(|o| o.id)
             .max()
@@ -738,6 +814,7 @@ mod tests {
             schedule: schedule(),
             status: DefinitionStatus::Draft,
             template: Some(template()),
+            plan_binding: None,
             approval: None,
             policy: AutomationPolicy::default(),
             cursor: None,
@@ -747,6 +824,129 @@ mod tests {
             created_at: 0,
             updated_at: 0,
         }
+    }
+
+    fn queued_occurrence() -> AutomationOccurrence {
+        AutomationOccurrence {
+            id: 1,
+            automation_id: 1,
+            definition_version: 1,
+            source: TriggerSource::Scheduled,
+            trigger_key: scheduled_trigger_key(1, 100),
+            scheduled_for: Some(100),
+            requested_at: None,
+            actual_started_at: None,
+            timezone: "UTC".into(),
+            reference_time: 100,
+            data_window: TimeWindow::unresolved("test"),
+            snapshot: AutomationOccurrenceSnapshot {
+                objective: "Track".into(),
+                expected_result: "Note".into(),
+                shape: Some(AutomationShape::Research),
+                template: template(),
+                models: std::array::from_fn(|_| "test/model".to_string()),
+                agents: Default::default(),
+                materials: vec![],
+                policy: AutomationPolicy::default(),
+                approval_version: 1,
+                approval_signature: "sig".into(),
+            },
+            status: OccurrenceStatus::Queued,
+            reason: None,
+            research_goal_id: None,
+            research_goal_ids: vec![],
+            research_topic_id: None,
+            run_ids: vec![],
+            final_run_id: None,
+            unread: false,
+            skipped_count: 0,
+            skipped_from: None,
+            skipped_to: None,
+            created_at: 0,
+            deadline_at: None,
+            retry_requested_at: None,
+        }
+    }
+
+    #[test]
+    fn tracked_drain_is_atomic_across_all_three_collections() {
+        use crate::persistence_journal::{EntityChange, EntityKey, EntityPayload};
+
+        let mut store = Store::mock();
+        store.simulate_run(1).unwrap();
+        // Setup dirt from the mock/simulation is not part of this automation-only
+        // atomicity assertion.
+        store.drain_tracked_changes().unwrap();
+        store.push_automation(definition());
+        let mut second = definition();
+        second.id = 2;
+        second.name = "Second".into();
+        store.push_automation(second);
+        let mut third = definition();
+        third.id = 3;
+        third.name = "Third".into();
+        store.push_automation(third);
+        store.remove_automation(3);
+        store.push_occurrence(queued_occurrence());
+
+        store.run_at_mut(0).unwrap().status = "Running".into();
+        store.automation_mut(1).unwrap().name = "Changed".into();
+        store.automation_mut(2).unwrap().name = "Second changed".into();
+        store.occurrence_mut(1).unwrap().status = OccurrenceStatus::Running;
+
+        // Exact multi-entity outcome: two automation upserts, one automation
+        // tombstone, one occurrence upsert and one run upsert.
+        let expected = vec![
+            EntityChange::Upsert(EntityPayload::Run(store.runs()[0].clone())),
+            EntityChange::Delete(EntityKey::Automation(3)),
+            EntityChange::Upsert(EntityPayload::Automation(store.automation(1).unwrap().clone())),
+            EntityChange::Upsert(EntityPayload::Automation(store.automation(2).unwrap().clone())),
+            EntityChange::Upsert(EntityPayload::Occurrence(
+                store.occurrence(1).unwrap().clone(),
+            )),
+        ];
+        let changes = store.drain_tracked_changes().unwrap();
+        assert_eq!(changes, expected);
+        assert!(!store.has_tracked_changes());
+
+        // A later occurrence violation must leave earlier automation payloads and
+        // tombstones exactly intact instead of clearing them.
+        store.automation_mut(1).unwrap().name = "Pending".into();
+        let mut fourth = definition();
+        fourth.id = 4;
+        fourth.name = "Fourth".into();
+        store.push_automation(fourth);
+        store.remove_automation(4);
+        {
+            let mut occurrence = store.occurrence_mut(1).unwrap();
+            occurrence.id += 10;
+        }
+        let error = store
+            .drain_tracked_changes()
+            .expect_err("identity violation must fail the whole drain");
+        assert!(error.contains("identity changed"), "{error}");
+
+        let snapshot = store.pending_tracked_snapshot();
+        assert_eq!(
+            snapshot[0].as_ref().unwrap(),
+            &vec![
+                EntityChange::Delete(EntityKey::Automation(4)),
+                EntityChange::Upsert(EntityPayload::Automation(
+                    store.automation(1).unwrap().clone()
+                )),
+            ],
+            "earlier payload and tombstone must survive the failed drain"
+        );
+        assert!(snapshot[1].is_err(), "later violation stays sticky");
+        assert!(
+            snapshot[2].as_ref().unwrap().is_empty(),
+            "no phantom run changes were invented"
+        );
+        assert!(store.has_tracked_changes());
+        assert!(
+            store.drain_tracked_changes().is_err(),
+            "a failed drain must never return a partial success"
+        );
     }
 
     #[test]
@@ -768,6 +968,72 @@ mod tests {
     }
 
     #[test]
+    fn draft_validation_rejects_unsupported_fields_and_instruction_titles() {
+        let mut value = definition();
+        value.expected_result = "Send email the answer".into();
+        let error = value.validate_draft().expect_err("expected-only action");
+        assert!(error.starts_with("Expected result:"), "{error}");
+        value.expected_result = "A short sourced note".into();
+        value.objective = "Place a trade after the report".into();
+        let error = value.validate_draft().expect_err("objective action");
+        assert!(error.starts_with("Objective:"), "{error}");
+
+        // Generated goal and step titles are injected into the agent prompt, so
+        // they are instruction-bearing. Benign research vocabulary must pass.
+        value.objective = "Track the publishing industry and its order backlog".into();
+        let goal = &mut value.template.as_mut().unwrap().goals[0];
+        goal.title = "Publishing industry and order backlog".into();
+        goal.steps[0].title = "Email marketing revenue trends".into();
+        // The automation name is a display label, not prompt instruction text.
+        value.name = "Publish the report and send email".into();
+        assert!(
+            value.validate_draft().is_ok(),
+            "benign research titles and the display-only name must pass"
+        );
+
+        let goal = &mut value.template.as_mut().unwrap().goals[0];
+        goal.title = "Send email the answer".into();
+        let error = value.validate_draft().expect_err("goal title action");
+        assert!(error.starts_with("Goal title \"Send email the answer\""), "{error}");
+
+        let goal = &mut value.template.as_mut().unwrap().goals[0];
+        goal.title = "Publishing industry and order backlog".into();
+        goal.steps[0].title = "Delete the files".into();
+        let error = value.validate_draft().expect_err("step title action");
+        assert!(error.starts_with("Step title \"Delete the files\""), "{error}");
+    }
+
+    #[test]
+    fn template_instruction_scan_distinguishes_requests_from_negated_restrictions() {
+        let mut value = definition();
+        let goal = &mut value.template.as_mut().unwrap().goals[0];
+        goal.brief = "Do not publish or trade; summarize public sources.".into();
+        goal.steps[0].instructions = "Do not send email; collect public sources.".into();
+        assert!(value.validate_draft().is_ok());
+
+        let goal = &mut value.template.as_mut().unwrap().goals[0];
+        goal.steps[0].instructions = "Send email the collected sources.".into();
+        let error = value.validate_draft().expect_err("step action");
+        assert!(error.starts_with("Step \"Collect\""), "{error}");
+
+        let goal = &mut value.template.as_mut().unwrap().goals[0];
+        goal.steps[0].instructions = "Collect public sources.".into();
+        goal.brief = "Publish the report to the public site.".into();
+        let error = value.validate_draft().expect_err("goal action");
+        assert!(error.starts_with("Goal \"Daily check\""), "{error}");
+    }
+
+    #[test]
+    fn legacy_unsupported_draft_stays_readable_and_fails_validation() {
+        let mut value = definition();
+        value.expected_result = "Send email the answer".into();
+        let encoded = serde_json::to_string(&value).unwrap();
+        let restored: AutomationDefinition = serde_json::from_str(&encoded).unwrap();
+        assert_eq!(restored.expected_result, "Send email the answer");
+        assert!(restored.validate_draft().is_err());
+    }
+
+    #[test]
     fn approval_is_bound_to_version_template_and_schedule() {
         let mut value = definition();
         let signature = value.template.as_ref().unwrap().signature();
@@ -776,6 +1042,8 @@ mod tests {
             approved_at: 0,
             template_signature: signature,
             schedule_signature: value.schedule.signature(),
+            plan_request_id: None,
+            plan_revision: None,
             models: Default::default(),
             agents: Default::default(),
             materials: vec![],
@@ -808,6 +1076,7 @@ mod tests {
             snapshot: AutomationOccurrenceSnapshot {
                 objective: "Track".into(),
                 expected_result: "Note".into(),
+                shape: Some(AutomationShape::Research),
                 template: template(),
                 models: Default::default(),
                 agents: Default::default(),
@@ -829,6 +1098,7 @@ mod tests {
             skipped_to: None,
             created_at: 0,
             deadline_at: None,
+            retry_requested_at: None,
         };
         occurrence.mark_running(110).unwrap();
         assert_eq!(occurrence.status, OccurrenceStatus::Running);
@@ -897,52 +1167,16 @@ mod tests {
     #[test]
     fn loaded_occurrences_reject_duplicate_trigger_keys_and_missing_definitions() {
         let mut store = Store::empty();
-        store.automations.push(definition());
-        let mut occurrence = AutomationOccurrence {
-            id: 1,
-            automation_id: 1,
-            definition_version: 1,
-            source: TriggerSource::Scheduled,
-            trigger_key: scheduled_trigger_key(1, 100),
-            scheduled_for: Some(100),
-            requested_at: None,
-            actual_started_at: None,
-            timezone: "UTC".into(),
-            reference_time: 100,
-            data_window: TimeWindow::unresolved("test"),
-            snapshot: AutomationOccurrenceSnapshot {
-                objective: "Track".into(),
-                expected_result: "Note".into(),
-                template: template(),
-                models: std::array::from_fn(|_| "test/model".to_string()),
-                agents: Default::default(),
-                materials: vec![],
-                    policy: AutomationPolicy::default(),
-                approval_version: 1,
-                approval_signature: "sig".into(),
-            },
-            status: OccurrenceStatus::Queued,
-            reason: None,
-            research_goal_id: None,
-            research_goal_ids: vec![],
-            research_topic_id: None,
-            run_ids: vec![],
-            final_run_id: None,
-            unread: false,
-            skipped_count: 0,
-            skipped_from: None,
-            skipped_to: None,
-            created_at: 0,
-            deadline_at: None,
-        };
+        store.push_automation(definition());
+        let mut occurrence = queued_occurrence();
         assert!(store.validate_automation_integrity().is_ok());
-        store.automation_occurrences.push(occurrence.clone());
+        store.push_occurrence(occurrence.clone());
         let mut duplicate = occurrence.clone();
         duplicate.id = 2;
-        store.automation_occurrences.push(duplicate);
+        store.push_occurrence(duplicate);
         assert!(store.validate_automation_integrity().is_err());
-        store.automation_occurrences.pop();
-        store.automation_occurrences[0].automation_id = 99;
+        store.pop_occurrence();
+        store.occurrence_at_mut(0).unwrap().automation_id = 99;
         assert!(store.validate_automation_integrity().is_err());
     }
 
@@ -952,8 +1186,8 @@ mod tests {
         let json = serde_json::to_value(&store).unwrap();
         assert_eq!(json["automations"], serde_json::json!([]));
         let restored: Store = serde_json::from_value(json).unwrap();
-        assert!(restored.automations.is_empty());
-        assert!(restored.automation_occurrences.is_empty());
+        assert!(restored.automations().is_empty());
+        assert!(restored.all_occurrences().is_empty());
         let value = definition();
         let json = serde_json::to_string(&value).unwrap();
         assert_eq!(

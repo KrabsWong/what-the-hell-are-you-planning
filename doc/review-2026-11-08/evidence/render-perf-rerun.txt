@@ -1,0 +1,7 @@
+all step states: 0.18 ms/pass
+All research: 2.52 ms/frame
+Recovery: 2.22 ms/frame
+Project: 2.06 ms/frame
+Topic: 2.13 ms/frame
+Steps: 3.17 ms/frame
+Report: 2.95 ms/frame

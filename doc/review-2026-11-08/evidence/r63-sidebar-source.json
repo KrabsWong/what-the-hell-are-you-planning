@@ -1,0 +1,10 @@
+{
+  "base": ".local/r61-integrated-source",
+  "source": "/Users/fuxingxing/workspaces/what-the-hell-are-you-planning/.local/r63-sidebar-source",
+  "changes": "Current shell_surfaces/views; only sidebar field/init added to baseline app; missing col import supplied if absent",
+  "files": {
+    "src/shell_surfaces.rs": "bc4af81bc78adf449f85792b19ceeb409c824f5301527dbc416022de4624e05a",
+    "src/views.rs": "b41dd01bc2d56a3dc183d208eb7a92e661abc377edc1a67f8048a6328a9ae426",
+    "src/app.rs": "1473ab4183c0ff55d1da0365a898859258f71070c0afde1db3182107e0ba2af2"
+  }
+}

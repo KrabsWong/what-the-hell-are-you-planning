@@ -1,0 +1,31 @@
+{
+  "candidate": "r115 isolated optimized; source checkpoint aa22024",
+  "theme": "Light",
+  "window_screenshot_pixels": [
+    2880,
+    1842
+  ],
+  "checks": [
+    {
+      "case": "Quick wizard step2 width",
+      "result": "Passed",
+      "observed": "Cancel and primary action retain right anchor; schedule fields span available width."
+    },
+    {
+      "case": "Quick step3 meaning",
+      "result": "Passed",
+      "observed": "Review and authorization shows Instruction and Expected answer; no Goal 1/1, Final report or Approved plan heading."
+    },
+    {
+      "case": "Step3 Save draft & finish",
+      "result": "Passed",
+      "observed": "Returns to corresponding draft detail without enabling."
+    },
+    {
+      "case": "Enable tooltip",
+      "result": "Not accepted in this candidate",
+      "observed": "Old Approve this plan tooltip still present; known later source wording fix is not installed."
+    }
+  ],
+  "limits": "Desktop Light only; compact layout and final tooltip binary remain pending. No Enable or Run manually action."
+}

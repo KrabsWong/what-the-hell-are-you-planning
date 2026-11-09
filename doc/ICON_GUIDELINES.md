@@ -27,7 +27,7 @@ Replanned means a revised research plan, not a Git branch or an operation curren
 
 1. Reference `gpui_kit::assets::IconName::<Variant>`.
 2. Add the variant to `assets::icon_assets!(AppIcons, [...])` in `src/ui_assets.rs`. This embeds SVG bytes for both debug and release; runtime must not depend on the current directory or a remote CDN.
-3. Use `controls::tool_icon(id, icon, accessible_name)` for icon-only actions. Use `.icon(icon)` on labeled buttons. Use `component::Icon::new(icon).size_4()` for passive indicators. Keep a fixed footprint and theme-derived color.
+3. Use `controls::tool_icon(id, icon, accessible_name)` for icon-only actions. Use `.icon(icon)` on labeled buttons. Use `component::Icon::new(icon).size_4()` for passive indicators. Keep a fixed footprint and theme-derived color. Icon-only actions use the main-branch ghost appearance: the icon stays visible without a permanent button surface or border, while its full hit area, hover/focus feedback, tooltip and accessible name remain intact.
 4. Reuse `ExecutionStatus::icon()` for stage/status mappings rather than duplicating glyph mappings. Property menus accept `Option<IconName>`.
 5. Do not draw UI icons with Unicode characters, emoji, custom SVG paths, or geometric `Div` shapes. Ordinary text punctuation and shortcut symbols remain text.
 

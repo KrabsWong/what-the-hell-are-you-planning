@@ -1,0 +1,28 @@
+{
+  "source": ".local/r72-integrated-source",
+  "results": [
+    {
+      "flag": "--qa-navigation-context",
+      "exit_code": 0,
+      "seconds": 15.225,
+      "log": "r72-navigation-context.log"
+    },
+    {
+      "flag": "--qa-global-search",
+      "exit_code": 0,
+      "seconds": 22.553,
+      "log": "r72-global-search.log"
+    },
+    {
+      "flag": "--qa-sidebar",
+      "exit_code": 0,
+      "seconds": 1.206,
+      "log": "r72-sidebar.log"
+    }
+  ],
+  "test_exit": 0,
+  "test_seconds": 54.156,
+  "build_exit": 0,
+  "sha256": "bbb80446cd93638abeb3e199741b9f22e81298779c7ef0f0b3270165767c01e5",
+  "guard_exit": 2
+}

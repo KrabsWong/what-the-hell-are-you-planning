@@ -25,7 +25,7 @@ impl ArchiveTarget {
         }
     }
     fn runs(self, store: &Store) -> Vec<u64> {
-        store.runs.iter().filter(|r| {
+        store.runs().iter().filter(|r| {
             let related = if r.project_plan.is_some() {
                 matches!(self, Self::Topic(topic) if store.request_for_run(r.id).is_some_and(|q| q.topic_id == Some(topic)))
             } else { self.contains(store, r.task_id) };
@@ -35,6 +35,13 @@ impl ArchiveTarget {
     }
 }
 impl TaskApp {
+    pub(crate) fn restore_archived(&mut self, id: u64, cx: &mut Context<Self>) {
+        self.apply_domain_command_undoable(
+            crate::scoped_domain::DomainCommand::RestoreArchived { task: id },
+            "Restored · retained results are available again",
+            cx,
+        );
+    }
     pub(crate) fn request_archive(&mut self, target: ArchiveTarget, w: &mut Window, cx: &mut Context<Self>) {
         // Automation periods and their steps are owned by the automation, not by
         // Research. They are archived with their automation, never individually.
@@ -52,7 +59,7 @@ impl TaskApp {
         }
         if w.has_active_prompt() { return; }
         let name = match target {
-            ArchiveTarget::Topic(id) => self.store.topics.iter().find(|t| t.id == id).map(|t| t.display_name()),
+            ArchiveTarget::Topic(id) => self.store.topics().iter().find(|t| t.id == id).map(|t| t.display_name()),
             ArchiveTarget::Task(id) => self.store.task(id).map(|t| t.title.clone()),
         }.unwrap_or_default();
         let answer = w.prompt(PromptLevel::Warning, "Stop related work and archive?",
@@ -67,12 +74,26 @@ impl TaskApp {
     pub(crate) fn confirm_archive(&mut self, target: ArchiveTarget, cx: &mut Context<Self>) {
         // Re-evaluate after confirmation: execution may have advanced while the dialog was open.
         let runs = target.runs(&self.store);
-        self.snapshot();
-        let result = match target {
-            ArchiveTarget::Topic(id) => self.store.set_topic_archived(id, true),
-            ArchiveTarget::Task(id) => self.store.archive(id),
+        let message = "Archived · related work stopped or stopping; results retained";
+        let command = match target {
+            ArchiveTarget::Topic(topic) => crate::scoped_domain::DomainCommand::TopicArchive {
+                topic,
+                archived: true,
+            },
+            ArchiveTarget::Task(task) => crate::scoped_domain::DomainCommand::TaskArchive {
+                task,
+                archived: true,
+            },
         };
-        if let Err(error) = result { self.error = error; cx.notify(); return; }
+        let outcome = if runs.is_empty() {
+            self.apply_domain_command_undoable(command, message, cx)
+        } else {
+            // Stopping work cannot be reversed safely, so no inverse is stored.
+            self.apply_domain_command_non_undoable(command, message, cx)
+        };
+        if outcome.is_none() {
+            return;
+        }
         self.research_sequences.retain(|g| !target.contains(&self.store, *g));
         if let Some(batch) = &mut self.todo_batch {
             batch.items.retain(|g| !target.contains(&self.store, *g));
@@ -84,22 +105,34 @@ impl TaskApp {
             if batch.items.is_empty() { batch.state = crate::batch::BatchState::Finished; }
         }
         self.prune_archived_recovery_queue();
+        if let Err(error) = self.live_can_accept_auxiliary() {
+            self.storage_error = error;
+            return;
+        }
         // Remove all queued entries before callbacks can admit a dependent step.
         self.queued_runs.retain(|(id, _)| !runs.contains(id));
         let mut remote = vec![];
         for id in runs {
             let owned = self.active_runs.iter().any(|a| a.id == id);
             if owned { self.cancel_run_id(id, cx); }
-            let run = self.store.runs.iter_mut().find(|r| r.id == id).unwrap();
+            let mut run = self.store.run_mut(id).unwrap();
             if !run.started_at.is_empty() && (run.session_id.is_some() || run.agent == "Codex")
                 && !(owned && run.agent == "Codex") { remote.push(run.clone()); }
             run.status = if owned || remote.last().is_some_and(|r| r.id == id) { "Cancelling" } else { "Cancelled" }.into();
             if run.status == "Cancelled" { run.ended_at = Some(opencode::timestamp()); }
             run.logs.push("[archive] Stop requested; queued and subsequent work disabled.".into());
         }
-        self.finish(Ok(()), "Archived · related work stopped or stopping; results retained", cx);
+        // Persist the stop intents together with the durable archive decision.
+        // Stopping a live process remains a safety action even while the write
+        // is pending; it never claims that the archive decision is saved.
+        if let Err(error) = self.save_current_store_durably(
+            crate::live_save_app::LiveCompletion::None,
+            cx,
+        ) {
+            self.storage_error = error;
+        }
         if remote.is_empty() { return; }
-        let executable = std::path::PathBuf::from(&self.store.opencode_path);
+        let executable = std::path::PathBuf::from(&self.store.opencode_path());
         let work = cx.background_executor().spawn(async move {
             remote.into_iter().map(|run| {
                 let result = if run.agent == "Codex" {
@@ -119,7 +152,7 @@ impl TaskApp {
             let _ = this.update(cx, |a, cx| {
                 for (id, result) in results {
                     let owned = a.active_runs.iter().any(|r| r.id == id);
-                    if let Some(run) = a.store.runs.iter_mut().find(|r| r.id == id) {
+                    if let Some(mut run) = a.store.run_mut(id) {
                         match result {
                             Ok(()) => {
                                 if !owned { run.status = "Cancelled".into(); run.ended_at = Some(opencode::timestamp()); }

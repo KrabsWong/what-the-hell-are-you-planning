@@ -1,0 +1,3 @@
+Configured concurrency 5 passed: actual child overlap, lowering without cancellation, raising refills slots.
+Configured concurrency 10 passed: actual child overlap, lowering without cancellation, raising refills slots.
+Concurrency QA passed: 3 CLI sessions, 4 isolated dependency chains, independent cancellation, same-session retry. Artifacts: /Users/fuxingxing/workspaces/what-the-hell-are-you-planning/.local/concurrency-qa/55549

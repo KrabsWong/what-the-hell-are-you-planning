@@ -1,0 +1,6 @@
+{
+  "candidate": "r96 frozen integration",
+  "command": "cargo check --features qa --quiet",
+  "exit_code": 0,
+  "scope": "Compilation only; lifecycle and recovery correctness remain under review"
+}

@@ -1,0 +1,24 @@
+{
+  "start": [
+    35047,
+    49,
+    46,
+    47,
+    41
+  ],
+  "end": [
+    49057,
+    49,
+    46,
+    47,
+    41
+  ],
+  "delta": [
+    14010,
+    0,
+    0,
+    0,
+    0
+  ],
+  "condition": "Native Settings Agent and models, light, no CUA/input during 14 second window; static logo diagnostic only. Other builds not controlled; not frame-time acceptance."
+}

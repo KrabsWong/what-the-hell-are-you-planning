@@ -1,0 +1,38 @@
+{
+  "candidate_build_sha256": "698ae95e7ef3e1c050f8b58c7f0b1c1fdf7f09efb5031e9af41f0843673cc836",
+  "root_signed_sha256": "2b2ac7d0a512a7a0604771c644339cf101e1c3d0689000b8b5d1794889148c62",
+  "source_base": "88b35c37afd0d04844b9e157bd60d1ea475ce7b3",
+  "source_comparison": "All manifest entries match the shared tree except the separately owned live_performance_qa.rs harness. Includes committed count-navigation and SetRead corrections.",
+  "root_runs": [
+    {
+      "flag": "--qa-set-read",
+      "exit_code": 0,
+      "cases": 3
+    },
+    {
+      "flag": "--qa-navigation-context",
+      "exit_code": 0
+    },
+    {
+      "flag": "--qa-dispatch-admission",
+      "exit_code": 0
+    }
+  ],
+  "native_observation": "Old isolated frame-probe app was reachable after unlock. Result closed back to the already loaded 40-row list; old app was then closed and process absence verified. Keyboard screenshot/tree timing was inconsistent; no new keyboard pass is claimed.",
+  "review_finding": "The parked-dispatch footer used Dispatch not saved even for a durable run awaiting launch claim or cancellation retirement. A neutral Dispatch needs attention prefix was requested before native integration. These passes predate that wording correction.",
+  "remaining": [
+    "Normal isolated integrated native candidate",
+    "Native material confirm/reload and three-step completion/archive/restore",
+    "Large-history smoothness repair and rerun",
+    "Final frozen full release inventory"
+  ],
+  "combined_tests": {
+    "unit_passed": 718,
+    "unit_ignored": 2,
+    "dispatch_crash_passed": 8,
+    "additional_integration_passed": 2,
+    "v4_crash_passed": 3,
+    "exit_code": 0
+  },
+  "icons_registered": 51
+}

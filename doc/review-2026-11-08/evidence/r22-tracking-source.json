@@ -1,0 +1,5 @@
+{
+  "source": "src/domain_tracked.rs",
+  "sha256": "5ecb969f261d99d3e8282d5c078066b6e3a209aaf747dd6fd891a117077d802c",
+  "scope": "Actual container source with minimal entity stubs; not Store/app integration."
+}

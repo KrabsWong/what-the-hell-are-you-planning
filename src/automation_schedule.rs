@@ -13,6 +13,10 @@ pub const MAX_INTERVAL_MINUTES: u32 = 10 * 365 * 24 * 60;
 /// corruption rather than a realistic wake-from-sleep. This bounds the search.
 const MAX_CALENDAR_SEARCH_DAYS: i64 = 16;
 const MAX_PREVIEW: usize = 8;
+/// Calendar counting walks local days instead of expanding triggers. The walk is
+/// linear in the number of days, so clamp it to a documented exact range (100 years).
+/// Larger spans fail explicitly rather than silently reporting a capped count.
+pub const MAX_EXACT_CALENDAR_DAYS: i64 = 366 * 100;
 
 #[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(tag = "kind", rename_all = "snake_case", deny_unknown_fields)]
@@ -151,15 +155,11 @@ pub fn next_after(spec: &ScheduleSpec, tz: Tz, anchor: i64, after: i64) -> Resul
             if after < first {
                 return Ok(first);
             }
-            let steps = (after - first) / period;
-            first
-                .checked_add(
-                    steps
-                        .checked_add(1)
-                        .and_then(|steps| steps.checked_mul(period))
-                        .ok_or("The schedule is out of range.")?,
-                )
-                .ok_or_else(|| "The next trigger is out of range.".into())
+            // The difference can exceed `i64` when the anchor is near the minimum and
+            // `after` is near the maximum, so step arithmetic runs in `i128`.
+            let steps = (i128::from(after) - i128::from(first)) / i128::from(period);
+            let next = i128::from(first) + (steps + 1) * i128::from(period);
+            i64::try_from(next).map_err(|_| "The next trigger is out of range.".into())
         }
         ScheduleSpec::Daily { .. } | ScheduleSpec::Weekly { .. } => calendar_next(spec, tz, after),
     }
@@ -230,15 +230,10 @@ pub fn latest_at_or_before(spec: &ScheduleSpec, anchor: i64, now: i64) -> Result
             if now < first {
                 return Ok(None);
             }
-            let steps = (now - first) / period;
+            let steps = (i128::from(now) - i128::from(first)) / i128::from(period);
+            let value = i128::from(first) + steps * i128::from(period);
             Ok(Some(
-                first
-                    .checked_add(
-                        steps
-                            .checked_mul(period)
-                            .ok_or("The schedule is out of range.")?,
-                    )
-                    .ok_or("The schedule is out of range.")?,
+                i64::try_from(value).map_err(|_| "The schedule is out of range.".to_string())?,
             ))
         }
         ScheduleSpec::Daily { .. } | ScheduleSpec::Weekly { .. } => Ok(None),
@@ -277,41 +272,102 @@ fn calendar_latest_in(tz: Tz, spec: &ScheduleSpec, now: i64) -> Option<i64> {
     None
 }
 
-/// Number of triggers strictly after `from` and at or before `to`, by arithmetic for
-/// intervals and a bounded calendar walk (no entities created).
+/// Number of triggers strictly after `from` and at or before `to`.
+///
+/// Intervals use closed-form arithmetic and cannot overflow: an empty range such as
+/// `anchor = 0, period = 60, from = 61, to = 62` returns zero rather than one. Calendar
+/// schedules walk local days in the automation time zone, which is exact and skips
+/// nonexistent DST wall times; spans wider than [`MAX_EXACT_CALENDAR_DAYS`] return an
+/// explicit error instead of a silently capped count.
 pub fn count_between(schedule: &Schedule, anchor: i64, from: i64, to: i64) -> Result<u64, String> {
+    schedule.validate()?;
     if to <= from {
         return Ok(0);
     }
     match &schedule.spec {
         ScheduleSpec::Interval { minutes } => {
-            let period = interval_seconds(*minutes)?;
-            let first = anchor.checked_add(period).ok_or("The anchor is out of range.")?;
-            if to < first {
-                return Ok(0);
-            }
+            let period = i128::from(interval_seconds(*minutes)?);
+            let first = i128::from(
+                anchor
+                    .checked_add(interval_seconds(*minutes)?)
+                    .ok_or("The anchor is out of range.")?,
+            );
+            let from = i128::from(from);
+            let to = i128::from(to);
             let start_index = if from < first {
                 0
             } else {
-                ((from - first) / period) + 1
+                (from - first) / period + 1
             };
-            let end_index = (to - first) / period;
-            Ok(end_index.saturating_sub(start_index) as u64 + 1)
-        }
-        _ => {
-            let mut count = 0u64;
-            let mut cursor = from;
-            for _ in 0..4096 {
-                let next = next_after(&schedule.spec, schedule.timezone()?, anchor, cursor)?;
-                if next > to {
-                    break;
-                }
-                count += 1;
-                cursor = next;
+            let end_index = if to < first {
+                -1
+            } else {
+                (to - first) / period
+            };
+            let count = end_index - start_index + 1;
+            if count <= 0 {
+                return Ok(0);
             }
-            Ok(count)
+            u64::try_from(count).map_err(|_| "The trigger count is too large.".into())
+        }
+        ScheduleSpec::Daily { .. } | ScheduleSpec::Weekly { .. } => {
+            calendar_count_between(schedule.timezone()?, &schedule.spec, from, to)
         }
     }
+}
+
+fn calendar_count_between(
+    tz: Tz,
+    spec: &ScheduleSpec,
+    from: i64,
+    to: i64,
+) -> Result<u64, String> {
+    let (time, days) = calendar_parts(spec)?;
+    let start = Utc
+        .timestamp_opt(from, 0)
+        .single()
+        .ok_or("Invalid reference time.")?
+        .with_timezone(&tz)
+        .date_naive();
+    let end = Utc
+        .timestamp_opt(to, 0)
+        .single()
+        .ok_or("Invalid reference time.")?
+        .with_timezone(&tz)
+        .date_naive();
+    // Some zones have moved the local date backwards across midnight, so the local
+    // dates of `from` and `to` can appear reversed. Normalize the span and include
+    // one buffer day on each side; the `candidate > from && candidate <= to` filter
+    // keeps the count exact either way.
+    let (first_date, last_date) = if start <= end { (start, end) } else { (end, start) };
+    let span = last_date.signed_duration_since(first_date).num_days();
+    if span > MAX_EXACT_CALENDAR_DAYS {
+        return Err(format!(
+            "The range spans {span} local days; exact calendar counting is limited to {MAX_EXACT_CALENDAR_DAYS} days. Narrow the range."
+        ));
+    }
+    let mut date = first_date
+        .checked_sub_signed(Duration::days(1))
+        .ok_or("The calendar date is out of range.")?;
+    let last_date = last_date
+        .checked_add_signed(Duration::days(1))
+        .ok_or("The calendar date is out of range.")?;
+    let mut count = 0u64;
+    while date <= last_date {
+        if days
+            .as_ref()
+            .is_none_or(|days| days.contains(&weekday_index(date.weekday())))
+            && let Some(candidate) = local_trigger(tz, date, time)?
+            && candidate > from
+            && candidate <= to
+        {
+            count += 1;
+        }
+        date = date
+            .checked_add_signed(Duration::days(1))
+            .ok_or("The calendar date is out of range.")?;
+    }
+    Ok(count)
 }
 
 #[derive(Clone, Debug, PartialEq, Eq)]
@@ -398,7 +454,9 @@ fn previous_trigger(schedule: &Schedule, anchor: i64, current: i64) -> Option<i6
     match &schedule.spec {
         ScheduleSpec::Interval { minutes } => {
             let period = interval_seconds(*minutes).ok()?;
-            Some(current - period).filter(|value| *value > anchor)
+            current
+                .checked_sub(period)
+                .filter(|value| *value > anchor)
         }
         _ => {
             let tz = schedule.timezone().ok()?;
@@ -758,6 +816,232 @@ mod tests {
         assert_eq!(latest, utc("2027-06-01T02:00:00Z"));
         let next = schedule.next_after(anchor, latest).unwrap();
         assert_eq!(text(next), "2027-06-03T02:00:00Z");
+    }
+
+    #[test]
+    fn interval_count_handles_empty_ranges_and_exact_endpoints() {
+        let schedule = interval(1, "UTC"); // period 60
+        // Regression: an empty range used to report one trigger because the signed
+        // index difference saturated before the cast.
+        assert_eq!(count_between(&schedule, 0, 61, 62).unwrap(), 0);
+        assert_eq!(count_between(&schedule, 0, 61, 61).unwrap(), 0);
+        assert_eq!(count_between(&schedule, 0, 62, 61).unwrap(), 0);
+        // `from` is exclusive, `to` is inclusive.
+        assert_eq!(count_between(&schedule, 0, 60, 60).unwrap(), 0);
+        assert_eq!(count_between(&schedule, 0, 59, 60).unwrap(), 1);
+        assert_eq!(count_between(&schedule, 0, 60, 120).unwrap(), 1);
+        assert_eq!(count_between(&schedule, 0, -600, 180).unwrap(), 3);
+        assert_eq!(count_between(&schedule, 0, 60, 600).unwrap(), 9);
+        // A range entirely before the first grid point stays empty.
+        assert_eq!(count_between(&schedule, 0, -600, -120).unwrap(), 0);
+    }
+
+    #[test]
+    fn interval_arithmetic_is_overflow_safe_at_extreme_endpoints() {
+        let schedule = interval(1, "UTC");
+        let to = i64::MAX;
+        let from = to - 120;
+        assert_eq!(count_between(&schedule, 0, from, to).unwrap(), 2);
+        // An anchor near the minimum with a reference near the maximum must not
+        // overflow the intermediate difference.
+        let spec = ScheduleSpec::Interval { minutes: 1 };
+        let tz = parse_timezone("UTC").unwrap();
+        assert!(latest_at_or_before(&spec, i64::MIN + 60, to).unwrap().unwrap() <= to);
+        match next_after(&spec, tz, i64::MIN + 60, to) {
+            Ok(value) => assert!(value > to),
+            Err(message) => assert!(message.contains("out of range"), "{message}"),
+        }
+        assert_eq!(
+            count_between(&schedule, i64::MIN + 60, i64::MIN + 120, i64::MIN + 180)
+                .unwrap(),
+            1
+        );
+    }
+
+    #[test]
+    fn calendar_count_handles_exact_endpoints_and_year_boundary() {
+        let schedule = daily(9, 0, "UTC");
+        assert_eq!(
+            count_between(
+                &schedule,
+                0,
+                utc("2026-01-01T09:00:00Z"),
+                utc("2026-01-01T09:00:00Z")
+            )
+            .unwrap(),
+            0
+        );
+        assert_eq!(
+            count_between(
+                &schedule,
+                0,
+                utc("2026-01-01T08:59:59Z"),
+                utc("2026-01-01T09:00:00Z")
+            )
+            .unwrap(),
+            1
+        );
+        assert_eq!(
+            count_between(
+                &schedule,
+                0,
+                utc("2026-01-01T09:00:00Z"),
+                utc("2026-01-02T09:00:00Z")
+            )
+            .unwrap(),
+            1
+        );
+        assert_eq!(
+            count_between(
+                &schedule,
+                0,
+                utc("2026-01-01T09:00:01Z"),
+                utc("2026-01-01T23:59:59Z")
+            )
+            .unwrap(),
+            0
+        );
+        let midnight = daily(0, 0, "UTC");
+        assert_eq!(
+            count_between(
+                &midnight,
+                0,
+                utc("2026-12-31T00:00:00Z"),
+                utc("2027-01-01T00:00:00Z")
+            )
+            .unwrap(),
+            1
+        );
+        assert_eq!(
+            count_between(
+                &midnight,
+                0,
+                utc("2026-12-31T00:00:00Z"),
+                utc("2027-01-02T00:00:00Z")
+            )
+            .unwrap(),
+            2
+        );
+    }
+
+    #[test]
+    fn calendar_count_skips_dst_gap_and_counts_fold_once() {
+        // 2026-03-08 02:30 does not exist in New York.
+        let gap = daily(2, 30, "America/New_York");
+        let from = utc("2026-03-07T00:00:00Z");
+        let to = utc("2026-03-10T00:00:00Z");
+        assert_eq!(count_between(&gap, 0, from, to).unwrap(), 2);
+        // The walk agrees with repeated `next_after` resolution.
+        let mut cursor = from;
+        let mut walked = 0u64;
+        loop {
+            let next = gap.next_after(0, cursor).unwrap();
+            if next > to {
+                break;
+            }
+            walked += 1;
+            cursor = next;
+        }
+        assert_eq!(count_between(&gap, 0, from, to).unwrap(), walked);
+        // Only the gap day is inside this window.
+        assert_eq!(
+            count_between(
+                &gap,
+                0,
+                utc("2026-03-08T00:00:00Z"),
+                utc("2026-03-09T00:00:00Z")
+            )
+            .unwrap(),
+            0
+        );
+
+        // 2026-11-01 01:30 occurs twice; the first occurrence is the only trigger.
+        let fold = daily(1, 30, "America/New_York");
+        assert_eq!(
+            count_between(
+                &fold,
+                0,
+                utc("2026-11-01T00:00:00Z"),
+                utc("2026-11-02T00:00:00Z")
+            )
+            .unwrap(),
+            1
+        );
+        assert_eq!(
+            count_between(
+                &fold,
+                0,
+                utc("2026-11-01T05:30:00Z"),
+                utc("2026-11-01T06:30:00Z")
+            )
+            .unwrap(),
+            0
+        );
+    }
+
+    #[test]
+    fn calendar_count_is_exact_beyond_the_old_4096_cap() {
+        let schedule = daily(9, 0, "UTC");
+        let from = utc("2010-01-01T00:00:00Z");
+        let to = utc("2025-01-01T00:00:00Z");
+        let expected = (NaiveDate::from_ymd_opt(2024, 12, 31)
+            .unwrap()
+            .signed_duration_since(NaiveDate::from_ymd_opt(2010, 1, 1).unwrap())
+            .num_days()
+            + 1) as u64;
+        let count = count_between(&schedule, 0, from, to).unwrap();
+        assert!(count > 4096, "{count}");
+        assert_eq!(count, expected);
+        assert_eq!(count, 5479);
+
+        // The weekly path must be equally exact for a wide range.
+        let every_day = weekly(&[0, 1, 2, 3, 4, 5, 6], 9, 0, "UTC");
+        assert_eq!(count_between(&every_day, 0, from, to).unwrap(), expected);
+    }
+
+    #[test]
+    fn calendar_count_fails_explicitly_beyond_the_exact_days_bound() {
+        let schedule = daily(9, 0, "UTC");
+        let result = count_between(
+            &schedule,
+            0,
+            utc("2000-01-01T00:00:00Z"),
+            utc("2200-01-01T00:00:00Z"),
+        );
+        let message = result.unwrap_err();
+        assert!(message.contains("exact calendar counting is limited"), "{message}");
+        // Dispatch must fail explicitly rather than report a silently capped count.
+        let schedule = Schedule {
+            spec: ScheduleSpec::Daily { hour: 9, minute: 0 },
+            timezone: "UTC".into(),
+        };
+        let decision = decide(
+            &schedule,
+            0,
+            utc("2000-01-01T00:00:00Z"),
+            utc("2200-01-02T00:00:00Z"),
+            86_400,
+            CatchUp::SkipAll,
+        );
+        assert!(decision.is_err(), "{decision:?}");
+    }
+
+    #[test]
+    fn count_between_ignores_a_reversed_or_equal_range() {
+        let schedule = interval(5, "UTC");
+        assert_eq!(count_between(&schedule, 0, 1_000, 1_000).unwrap(), 0);
+        assert_eq!(count_between(&schedule, 0, 2_000, 1_000).unwrap(), 0);
+        let daily = daily(9, 0, "UTC");
+        assert_eq!(
+            count_between(
+                &daily,
+                0,
+                utc("2026-01-02T00:00:00Z"),
+                utc("2026-01-01T00:00:00Z")
+            )
+            .unwrap(),
+            0
+        );
     }
 
     #[test]

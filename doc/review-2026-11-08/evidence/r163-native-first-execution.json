@@ -1,0 +1,52 @@
+{
+  "candidate_sha256": "47af9a8cebd7e7a820b7627cc0ee43f812daf24bfb7853a3d92d80f55d1c9e8f",
+  "fixture": "isolated synthetic G19",
+  "before_runs": [],
+  "after_runs": [
+    [
+      25,
+      20,
+      "Succeeded"
+    ],
+    [
+      26,
+      21,
+      "Succeeded"
+    ],
+    [
+      27,
+      22,
+      "Succeeded"
+    ]
+  ],
+  "after_tasks": [
+    [
+      19,
+      "done"
+    ],
+    [
+      20,
+      "done"
+    ],
+    [
+      21,
+      "done"
+    ],
+    [
+      22,
+      "done"
+    ]
+  ],
+  "observed": [
+    "Move goal to Todo completed with durable Saved feedback and enabled Run goal",
+    "One Run goal click started first step from idle",
+    "All three steps completed once",
+    "User switched to All automations while final step was running",
+    "Completion remained on All automations and displayed completion feedback"
+  ],
+  "material_note": "Escape dismissed the already-recorded stale confirmation; no duplicate Add action was sent.",
+  "limitations": [
+    "Material confirmation repair still pending",
+    "This is a bounded first-execution native check, not all native or scrolling gates"
+  ]
+}

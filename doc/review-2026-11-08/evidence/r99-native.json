@@ -1,0 +1,19 @@
+{
+  "candidate": "r88 isolated optimized diagnostic",
+  "signed_sha256": "55f56309ae92f4251be952ed03c4f3284e7d8c86811e9fd9c53956c393320263",
+  "pid": 13664,
+  "native_observations": [
+    "Starting frame cleared on Raise without resizing",
+    "Result Escape closed overlay and retained results list",
+    "All research -> sidebar Automation results -> result open/Escape -> Back reached Automations",
+    "Automations -> workspace Settings showed All research breadcrumb",
+    "Settings Agent & models scrolling visibly moved content"
+  ],
+  "trace": {
+    "record_exit": -11,
+    "export_exit": 10,
+    "export_error": "Document Missing Template Error",
+    "classification": "invalid; excluded from performance acceptance"
+  },
+  "scope": "Older diagnostic; current navigation/live integration must be revalidated"
+}

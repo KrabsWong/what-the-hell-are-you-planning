@@ -1,0 +1,200 @@
+[
+  {
+    "entry": "--qa-board-topics",
+    "status": "passed",
+    "evidence": "board-topics.txt",
+    "note": ""
+  },
+  {
+    "entry": "--qa-display-order",
+    "status": "passed",
+    "evidence": "display-order.txt",
+    "note": ""
+  },
+  {
+    "entry": "--qa-board-scroll",
+    "status": "passed",
+    "evidence": "board-scroll.txt",
+    "note": ""
+  },
+  {
+    "entry": "--qa-workflow",
+    "status": "passed",
+    "evidence": "workflow.txt",
+    "note": ""
+  },
+  {
+    "entry": "--qa-rich-markdown",
+    "status": "passed",
+    "evidence": "rich-markdown.txt",
+    "note": ""
+  },
+  {
+    "entry": "--qa-brand",
+    "status": "passed",
+    "evidence": "brand.txt",
+    "note": ""
+  },
+  {
+    "entry": "--qa-attachments",
+    "status": "passed",
+    "evidence": "attachments.txt",
+    "note": ""
+  },
+  {
+    "entry": "--qa-topic-queue",
+    "status": "passed",
+    "evidence": "topic-queue.txt",
+    "note": ""
+  },
+  {
+    "entry": "--qa-retries",
+    "status": "passed",
+    "evidence": "retries.txt",
+    "note": ""
+  },
+  {
+    "entry": "--qa-render-perf",
+    "status": "passed",
+    "evidence": "render-perf-rerun.txt",
+    "note": ""
+  },
+  {
+    "entry": "--qa-result-layout",
+    "status": "passed",
+    "evidence": "result-layout.txt",
+    "note": ""
+  },
+  {
+    "entry": "--qa-recovery-scroll",
+    "status": "passed",
+    "evidence": "recovery-scroll.txt",
+    "note": ""
+  },
+  {
+    "entry": "--qa-recovery",
+    "status": "failed",
+    "evidence": "recovery.txt",
+    "note": ""
+  },
+  {
+    "entry": "--qa-intake",
+    "status": "passed",
+    "evidence": "intake.txt",
+    "note": "Alias of intake acceptance"
+  },
+  {
+    "entry": "--qa-sidebar",
+    "status": "passed",
+    "evidence": "sidebar.txt",
+    "note": ""
+  },
+  {
+    "entry": "--qa-topic-migration",
+    "status": "passed",
+    "evidence": "topic-migration.txt",
+    "note": ""
+  },
+  {
+    "entry": "--qa-topic-actions",
+    "status": "passed",
+    "evidence": "topic-actions.txt",
+    "note": ""
+  },
+  {
+    "entry": "--qa-topics",
+    "status": "failed",
+    "evidence": "topics.txt",
+    "note": ""
+  },
+  {
+    "entry": "--qa-calendar",
+    "status": "passed",
+    "evidence": "calendar.txt",
+    "note": ""
+  },
+  {
+    "entry": "--qa-onboarding",
+    "status": "passed",
+    "evidence": "onboarding.txt",
+    "note": ""
+  },
+  {
+    "entry": "--qa-concurrency",
+    "status": "passed",
+    "evidence": "concurrency.txt",
+    "note": ""
+  },
+  {
+    "entry": "--qa-simplify",
+    "status": "failed",
+    "evidence": "simplify.txt",
+    "note": ""
+  },
+  {
+    "entry": "--qa-automation",
+    "status": "passed",
+    "evidence": "automation.txt",
+    "note": ""
+  },
+  {
+    "entry": "--qa-automation-perf",
+    "status": "passed",
+    "evidence": "perf.txt",
+    "note": ""
+  },
+  {
+    "entry": "--qa-batch",
+    "status": "passed",
+    "evidence": "batch.txt",
+    "note": ""
+  },
+  {
+    "entry": "--qa-publishing",
+    "status": "failed",
+    "evidence": "publishing.txt",
+    "note": ""
+  },
+  {
+    "entry": "--qa-settings",
+    "status": "passed",
+    "evidence": "settings.txt",
+    "note": ""
+  },
+  {
+    "entry": "--qa-affordance",
+    "status": "failed",
+    "evidence": "affordance.txt",
+    "note": ""
+  },
+  {
+    "entry": "--qa-projects",
+    "status": "passed",
+    "evidence": "projects.txt",
+    "note": "Alias of intake acceptance"
+  },
+  {
+    "entry": "--qa-workspace",
+    "status": "failed",
+    "evidence": "workspace.txt",
+    "note": ""
+  },
+  {
+    "entry": "--qa-handoff-progress",
+    "status": "passed",
+    "evidence": "handoff-progress.txt",
+    "note": ""
+  },
+  {
+    "entry": "--qa-research",
+    "status": "failed",
+    "evidence": "research.txt",
+    "note": ""
+  },
+  {
+    "entry": "--qa",
+    "status": "passed",
+    "evidence": "qa-alias.txt",
+    "note": "Alias of intake acceptance"
+  }
+]

@@ -1,0 +1,23 @@
+{
+  "scope": "Private diagnostic overlay; no product behavior change or acceptance claim. Native run pending quiet gate completion.",
+  "base": ".local/native-review/r187-list-source",
+  "source": ".local/native-review/r188-instrument-build",
+  "changed_files": [
+    "src/live_save_app.rs",
+    "src/frame_probe.rs",
+    "src/automation_views.rs"
+  ],
+  "binary": ".local/native-review/r191-report-instrument-candidate",
+  "sha256": "f09cecc72875f4f7c034c60620bcc3573d34e0f092136075bd32805722051a22",
+  "review": [
+    "Route/body markers contain only IDs, byte counts and booleans.",
+    "Frame work is wall elapsed time from max(signal_at, dirty_at) to present_start.",
+    "Pre-draw, draw and post-draw timestamps permit residual attribution; no CPU-sampling claim.",
+    "Foreground journal adds input dispatch intervals and discontinuity markers.",
+    "Overlay does not disable report selection, Markdown or animations."
+  ],
+  "limitations": [
+    "Instrumentation adds overhead; compare phase attribution and recheck any eventual product repair without this overlay.",
+    "Journal present records omit associated frame fields; use frames.jsonl for complete paired draw/present boundaries."
+  ]
+}

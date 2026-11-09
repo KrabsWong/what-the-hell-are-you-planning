@@ -1,0 +1,9 @@
+{
+  "base_commit": "54db9100819bebade77dbc7ab552390ea6762264",
+  "baseline_compile_exit": 101,
+  "baseline_remaining_error": "NotifyProbe missing in src/t19_qa.rs:915",
+  "sole_override": "Four-line function-local NotifyProbe definition; startup scheduling and render assertions unchanged",
+  "derived_compile_exit": 0,
+  "command": "cargo check --features qa --quiet",
+  "scope": "Compile only; runtime, full regression, live activation and native performance remain unverified"
+}

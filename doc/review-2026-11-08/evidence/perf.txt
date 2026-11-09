@@ -1,0 +1,2 @@
+performance fixture: 43,200 occurrences (100 with full research entities) + representative reports; cold save 1964 ms; warm saves [1292, 1316, 1912] ms; load 634 ms; history page query 0 ms; db 172.4 MB; directory /Users/fuxingxing/workspaces/what-the-hell-are-you-planning/.local/automation-perf/51782
+performance fixture UI: cold open incl. attach 2087 ms; automation list frame 12 ms; detail frame 55 ms; synchronous UI-triggered save block 1350 ms

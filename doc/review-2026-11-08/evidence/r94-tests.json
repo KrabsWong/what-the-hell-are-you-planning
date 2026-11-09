@@ -1,0 +1,24 @@
+{
+  "base_commit": "54db9100819bebade77dbc7ab552390ea6762264",
+  "sole_override": "function-local NotifyProbe definition in src/t19_qa.rs",
+  "command": "cargo test --features qa --quiet",
+  "node": "v24.22.2",
+  "exit_code": 0,
+  "unit": {
+    "passed": 678,
+    "failed": 0,
+    "ignored": 2,
+    "seconds": 5.69
+  },
+  "dispatch_crash": {
+    "passed": 8,
+    "failed": 0,
+    "seconds": 3.11
+  },
+  "sqlite_v4_crash": {
+    "passed": 3,
+    "failed": 0,
+    "seconds": 0.51
+  },
+  "scope": "Frozen r94 derivation only; excludes subsequent live workspace changes and native UI/performance acceptance"
+}

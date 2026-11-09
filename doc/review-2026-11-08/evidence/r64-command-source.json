@@ -1,0 +1,9 @@
+{
+  "source": "/Users/fuxingxing/workspaces/what-the-hell-are-you-planning/.local/r64-command-source",
+  "base": ".local/r62-epoch-fixed-source",
+  "changes": "Current domain and scoped_domain modules only; unchanged remaining baseline",
+  "files": {
+    "src/domain.rs": "bca966f3ba215e841c48dc6856eb9db279a2a6dcf2ca01e2efd87eef97d9f711",
+    "src/scoped_domain.rs": "c0ef623ba9ca2337085a9c419ef2fe381b1f2e724e38cc4dcbbdf6fcbe68a982"
+  }
+}

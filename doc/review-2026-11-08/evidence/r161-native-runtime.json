@@ -1,0 +1,61 @@
+{
+  "native_candidate_sha256": "47af9a8cebd7e7a820b7627cc0ee43f812daf24bfb7853a3d92d80f55d1c9e8f",
+  "source_base": "f7c90db",
+  "fixture": "isolated synthetic T24-relocated-data",
+  "before_runs": [
+    [
+      22,
+      24,
+      "Succeeded"
+    ]
+  ],
+  "after_runs": [
+    [
+      22,
+      24,
+      "Succeeded"
+    ],
+    [
+      23,
+      25,
+      "Succeeded"
+    ],
+    [
+      24,
+      26,
+      "Succeeded"
+    ]
+  ],
+  "tasks_after_restore": [
+    [
+      23,
+      "done",
+      0
+    ],
+    [
+      24,
+      "done",
+      0
+    ],
+    [
+      25,
+      "done",
+      0
+    ],
+    [
+      26,
+      "done",
+      0
+    ]
+  ],
+  "observed": [
+    "All research completion count opened G23 Steps",
+    "One Resume goal click started A25, then R26, and reached 3/3 Done without another Run/Resume",
+    "Background completion preserved Steps route",
+    "View final report opened R26 Run 24 with synthetic report and source",
+    "Command-[ returned from report to Steps",
+    "Archive task kept Steps with Archived/result retained labels and Restore action",
+    "Restore retained 3/3 Done and original reports"
+  ],
+  "scope_limit": "Resumed an existing 1/3 goal; fresh first-dispatch from 0/3 remains a separate native check. No smoothness pass is inferred while build work is active. Material confirm/reload remains pending."
+}

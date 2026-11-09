@@ -26,12 +26,12 @@ pub fn run(live: bool) {
         .expect("Read saved configuration; open the app and complete setup first")
         .expect("No saved workspace; configure OpenCode and a model in the app first");
     let mut initial = Store::empty();
-    initial.opencode_path = saved.opencode_path;
-    initial.default_model = saved.default_model;
-    initial.research_config = saved.research_config;
-    initial.projects[0].name = "Live research acceptance".into();
-    initial.projects[0].directory = root.join("project").to_string_lossy().into();
-    std::fs::create_dir_all(&initial.projects[0].directory).unwrap();
+    initial.set_opencode_path(saved.opencode_path().clone());
+    initial.set_default_model(saved.default_model().clone());
+    initial.set_research_config(saved.research_config().clone());
+    initial.project_at_mut(0).unwrap().name = "Live research acceptance".into();
+    initial.project_at_mut(0).unwrap().directory = root.join("project").to_string_lossy().into();
+    std::fs::create_dir_all(&initial.projects()[0].directory).unwrap();
     let path = root.join("workspace.sqlite3");
     Storage::new(path.clone()).save(&initial).unwrap();
 
@@ -69,7 +69,7 @@ pub fn run(live: bool) {
         let a = app.read(cx);
         let request = a
             .store
-            .research_requests
+            .research_requests()
             .first()
             .expect("Request was not retained");
         assert!(
@@ -98,7 +98,7 @@ pub fn run(live: bool) {
             }
         }
         assert!(
-            a.store.runs.iter().all(|r| r.project_plan.is_some()),
+            a.store.runs().iter().all(|r| r.project_plan.is_some()),
             "Planning must not execute research"
         );
         request.goal_ids.clone()
@@ -107,7 +107,7 @@ pub fn run(live: bool) {
     let goal = goals[0];
     cx.update_window(handle, |_, _, cx| {
         app.update(cx, |a, cx| {
-            let runs = a.store.runs.len();
+            let runs = a.store.runs().len();
             a.change_stage(goal, Stage::Planned, cx);
             assert!(
                 a.store.goal_execution_approved(goal),
@@ -115,7 +115,7 @@ pub fn run(live: bool) {
                 a.error
             );
             assert_eq!(
-                a.store.runs.len(),
+                a.store.runs().len(),
                 runs,
                 "Approval must not launch research"
             );
@@ -135,7 +135,7 @@ pub fn run(live: bool) {
         );
         assert!(
             a.store
-                .runs
+                .runs()
                 .iter()
                 .filter(|r| r.project_plan.is_none())
                 .all(|r| a.store.owning_research_goal(r.task_id) == Some(goal)),

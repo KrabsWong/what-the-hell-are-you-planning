@@ -1,0 +1,6 @@
+{
+  "source": "/Users/fuxingxing/workspaces/what-the-hell-are-you-planning/.local/r64-command-fixture-source",
+  "base": ".local/r64-command-revised-source",
+  "change": "Fixture-only: approve complete goal after applying plan, before preparing child runs",
+  "scoped_domain_sha256": "01d095f078c2e15fe60386b7d42f5df00d8d78f16d90151dbe47907df861dfa6"
+}

@@ -1,0 +1,8 @@
+{
+  "base": ".local/r55-owner-revised-snapshot",
+  "snapshot": ".local/r57-undo-snapshot",
+  "reviewed_module_sha256": "4116bb179420f66d54d20b8f28da0a24d13aaf1a383ad36bbc228ce4f8de6f5c",
+  "test": "root_atomic_regression::rejected_settings_inverse_must_not_partially_restore",
+  "scope": "Frozen r55 base with current scoped_domain module and independent regression only",
+  "compatibility_change": "Import ResearchRequest from request_planning; module declaration inserted after crate attributes; mutable TrackedMut binding for run inverse"
+}

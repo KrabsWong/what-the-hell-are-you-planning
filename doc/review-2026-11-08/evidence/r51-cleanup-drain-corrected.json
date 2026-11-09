@@ -1,0 +1,5 @@
+{
+  "exit": 0,
+  "scope": "Single cleanup drain helper regression: retain foreign/unknown roots and all unselected obligations. Does not cover worker lifecycle or root capture at import.",
+  "source_change": "Root removed opportunistic unknown-root binding and corrected unsafe test expectation."
+}

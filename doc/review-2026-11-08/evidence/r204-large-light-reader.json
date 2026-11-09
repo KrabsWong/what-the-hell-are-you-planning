@@ -1,0 +1,24 @@
+{
+  "installed_sha256": "b2f67705c3ece1dd2cfdbb8bb8e5deedb5a06c5af4eb57c40a2d0b5a67002483",
+  "base": "r190 large-window candidate; reader code unchanged by subsequent result-list mount fix",
+  "logical_size": [
+    1440,
+    920
+  ],
+  "screenshot_size": [
+    2880,
+    1840
+  ],
+  "fixture": "r183-latest-report-1000",
+  "theme": "Light",
+  "passed": [
+    "Period1000 historical report opens with Close visible inside window.",
+    "Down6pages reaches Sources1 and three research step actions.",
+    "Up6pages restores metadata and Capacity sample start.",
+    "Close removes reader and returns to Automation results; app quits normally."
+  ],
+  "limits": [
+    "Historical/incomplete fixture, not current-complete result validation.",
+    "No frame timing claim."
+  ]
+}

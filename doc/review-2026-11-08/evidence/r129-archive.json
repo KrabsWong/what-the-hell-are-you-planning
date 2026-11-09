@@ -1,0 +1,25 @@
+{
+  "source_manifest": ".local/opencode-dispatch/r129-source.json",
+  "sha256": "744b46cbee3d2d08e38f1ac422de93fb2495bc65129211809ae632f5159a43a0",
+  "guard_exit": 2,
+  "invalid_invocation": [
+    {
+      "flag": "--qa-archive",
+      "exit": 2,
+      "seconds": 0.02
+    }
+  ],
+  "checks": [
+    {
+      "flag": "--qa-archived-research",
+      "exit": 0,
+      "seconds": 8.53
+    }
+  ],
+  "visual_review": {
+    "path": ".local/archive-qa/80012/archived-in-progress-board/archived-in-progress-board.png",
+    "observed": "Light compact archived InProgress goal card is visible with Archived 0/3 validated, Open 3 steps and Restore. No execution/approval control is shown.",
+    "native_recheck": "pending; installed native remains r120"
+  },
+  "invalid_invocation_note": "Initial --qa-archive was unsupported and exited 2 before opening any workspace; actual main.rs flag --qa-archived-research passed."
+}

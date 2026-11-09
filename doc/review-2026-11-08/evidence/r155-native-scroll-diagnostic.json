@@ -1,0 +1,35 @@
+{
+  "scope": "Small isolated G23 overview, light, native Computer scrolling; diagnostic only",
+  "candidate_sha256": "ffd7a8187b167b2988cb7fa2ca6cc3449133ad3f76fa46b90699a5dcca955850",
+  "probe_unit_tests": {
+    "passed": 7,
+    "failed": 0,
+    "root_verified": true
+  },
+  "window": {
+    "wall_ns": 1794204065320442000,
+    "surface": "G23 overview, light, small isolated fixture",
+    "action": "six alternating native scroll gestures",
+    "contention": "other QA builds may be active; diagnostic only",
+    "end_wall_ns": 1794204088482486000
+  },
+  "trace_draws": 1628,
+  "trace_presents": 1628,
+  "max_draw_ns": 6032250,
+  "max_cpu_work_ns": 6041000,
+  "late_presents": 0,
+  "missed_refreshes": 0,
+  "input_frames": 7,
+  "max_input_cpu_submit_latency_ns": 6905855,
+  "max_sampler_overhead_ns": 282959,
+  "dropped_samples": 0,
+  "displacement": "Observed overview scroll from title/objective to lower research-step list",
+  "limitations": [
+    "CPU submission, not display scan-out",
+    "Small fixture only; no large-history or concurrent-save acceptance",
+    "Other builds may have been active",
+    "Startup and navigation outside the bracket are not covered",
+    "Instrumented r143 baseline excludes pending product fixes"
+  ],
+  "material_import": "Old baseline still displayed success text with zero materials before restart; F25 remains open."
+}

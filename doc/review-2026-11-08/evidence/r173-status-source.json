@@ -1,0 +1,27 @@
+{
+  "round": "r173",
+  "source_manifest": {
+    "base": "0fa58c8f254e12dda310667a751ffd9f782f76e6",
+    "files": {
+      "src/archive_presentation.rs": "c8efee2c763c17dba9b81144b036e7a88a14468c33bcd7a5deb6acffe441c5a0",
+      "src/goal_steps.rs": "6ffb44c2c4b5b1720ca43d73edaca874fe2a764e8397bc32931496df1e24a6d1",
+      "src/research.rs": "d8df000983e15e79c62a82e7339170ddfedabfe96141193935237b3da69a658e",
+      "src/research_app.rs": "35dedb7ce87f32a0fa176ed911f7215068e3102fd0e391c4f72e22bc97af7740",
+      "src/result_presentation.rs": "e0cc0421da6504e1fb96102e165d354890134ce4de2b1e458d98db40e94478f7",
+      "src/views.rs": "b5ef49dfff0446e989874d95d7da0fe06c9a13839717f24bdd422690c907f62b"
+    }
+  },
+  "independent_tests": {
+    "log": ".local/opencode-dispatch/r173-status-tests.log",
+    "unit_passed": 724,
+    "ignored": 2,
+    "integration_passed": [
+      8,
+      2,
+      3
+    ],
+    "exit_code": 0
+  },
+  "scope": "Six-file lazy status/freshness/archive repair on committed HEAD; excludes rejected admission changes and private renderer",
+  "native": "Pending on integrated candidate; earlier r170 false Resume/stale and r171 archive labels are not accepted yet"
+}

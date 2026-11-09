@@ -1,0 +1,205 @@
+{
+  "candidate": ".local/t14-cow-slice/guard-app15",
+  "sha256": "945f10d73278dab931c1e8794cdc91c12fa1a01298d4331716660240e5494758",
+  "report": ".local/live-performance-qa/27983/report.json",
+  "report_sha256": "1f5461cbe7e9d65cce629e6a703773c21ded57bbc3d805c92969dea60d4bb112",
+  "method": "Five diagnostic samples per path; no quiet p95 claim. Exact fixture assertions remain in the harness.",
+  "cases": {
+    "43200": {
+      "direct_mark_read": {
+        "ui_us": [
+          26,
+          67,
+          21,
+          16,
+          26
+        ],
+        "minimum_us": 16,
+        "maximum_us": 67,
+        "actual_collection_lengths": [
+          43200,
+          43200,
+          43200,
+          43200,
+          43200
+        ],
+        "retained_state": "none: live store is the only owner (no explicit retained clone)"
+      },
+      "noop_form_then_direct": {
+        "ui_us": [
+          25,
+          21,
+          22,
+          27,
+          25
+        ],
+        "minimum_us": 21,
+        "maximum_us": 27,
+        "actual_collection_lengths": [
+          43200,
+          43200,
+          43200,
+          43200,
+          43200
+        ],
+        "retained_state": "after a real no-op task form save; if live last_saved was re-pinned, this mark-read copies"
+      },
+      "toggle_command": {
+        "ui_us": [
+          33423,
+          28988,
+          28843,
+          28944,
+          29150
+        ],
+        "minimum_us": 28843,
+        "maximum_us": 33423,
+        "actual_collection_lengths": [
+          43200,
+          43200,
+          43200,
+          43200,
+          43200
+        ],
+        "retained_state": "none outside the command; Command::SetRead stages one full Store during prepare"
+      },
+      "retained_snapshot_diagnostic": {
+        "ui_us": [
+          18737,
+          18707,
+          18455,
+          18656,
+          18665
+        ],
+        "minimum_us": 18455,
+        "maximum_us": 18737,
+        "actual_collection_lengths": [
+          43200,
+          43200,
+          43200,
+          43200,
+          43200
+        ],
+        "retained_state": "one full Store clone retained across the mutation"
+      },
+      "forced_last_saved_then_direct": {
+        "ui_us": [
+          18934,
+          19,
+          21,
+          24,
+          26
+        ],
+        "minimum_us": 19,
+        "maximum_us": 18934,
+        "actual_collection_lengths": [
+          43200,
+          43200,
+          43200,
+          43200,
+          43200
+        ],
+        "retained_state": "diagnostic: last_saved replaced with a full Store clone before direct mark-read"
+      }
+    },
+    "86400": {
+      "direct_mark_read": {
+        "ui_us": [
+          25,
+          27,
+          23,
+          21,
+          21
+        ],
+        "minimum_us": 21,
+        "maximum_us": 27,
+        "actual_collection_lengths": [
+          86400,
+          86400,
+          86400,
+          86400,
+          86400
+        ],
+        "retained_state": "none: live store is the only owner (no explicit retained clone)"
+      },
+      "noop_form_then_direct": {
+        "ui_us": [
+          29,
+          21,
+          21,
+          19,
+          25
+        ],
+        "minimum_us": 19,
+        "maximum_us": 29,
+        "actual_collection_lengths": [
+          86400,
+          86400,
+          86400,
+          86400,
+          86400
+        ],
+        "retained_state": "after a real no-op task form save; if live last_saved was re-pinned, this mark-read copies"
+      },
+      "toggle_command": {
+        "ui_us": [
+          66143,
+          56928,
+          57032,
+          57774,
+          57111
+        ],
+        "minimum_us": 56928,
+        "maximum_us": 66143,
+        "actual_collection_lengths": [
+          86400,
+          86400,
+          86400,
+          86400,
+          86400
+        ],
+        "retained_state": "none outside the command; Command::SetRead stages one full Store during prepare"
+      },
+      "retained_snapshot_diagnostic": {
+        "ui_us": [
+          36902,
+          37838,
+          36211,
+          36481,
+          36226
+        ],
+        "minimum_us": 36211,
+        "maximum_us": 37838,
+        "actual_collection_lengths": [
+          86400,
+          86400,
+          86400,
+          86400,
+          86400
+        ],
+        "retained_state": "one full Store clone retained across the mutation"
+      },
+      "forced_last_saved_then_direct": {
+        "ui_us": [
+          36783,
+          24,
+          21,
+          23,
+          18
+        ],
+        "minimum_us": 18,
+        "maximum_us": 36783,
+        "actual_collection_lengths": [
+          86400,
+          86400,
+          86400,
+          86400,
+          86400
+        ],
+        "retained_state": "diagnostic: last_saved replaced with a full Store clone before direct mark-read"
+      }
+    }
+  },
+  "review_correction": "No-op live task edits return before fallback adopt_saved_store; previous full-history re-pin hypothesis is withdrawn.",
+  "status": "SetRead staging bottleneck confirmed; targeted implementation and final integrated/native acceptance pending."
+}

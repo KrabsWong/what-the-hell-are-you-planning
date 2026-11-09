@@ -28,7 +28,11 @@ import json,pathlib,sys,time
 root=pathlib.Path(__file__).parent
 args=sys.argv[1:]
 if args[:2]==['api','session.active']:
- print(json.dumps({'data':{'ses_running':{'type':'running'}}}));sys.exit(0)
+ if (root/'ses_running_stopped').exists():
+  print(json.dumps({'data':{}}))
+ else:
+  print(json.dumps({'data':{'ses_running':{'type':'running'}}}))
+ sys.exit(0)
 if args[:2]==['session','export']:
  if args[2]=='ses_unknown': print('not JSON');sys.exit(0)
  print((root/(args[2]+'.json')).read_text());sys.exit(0)
@@ -44,17 +48,17 @@ print(json.dumps({'type':'text','part':{'text':json.dumps(result)}}),flush=True)
         "#!/bin/sh\nprintf '%s\n' 'QA browser guide' '[ego-browser:skill] end of guide'\n",
     );
     let mut store = Store::empty();
-    store.opencode_path = cli.to_string_lossy().into_owned();
-    store.default_model = "fixture/model".into();
-    store.research_config.ego_path = ego.to_string_lossy().into_owned();
+    store.set_opencode_path(cli.to_string_lossy().into_owned());
+    store.set_default_model("fixture/model".into());
+    store.research_config_mut().ego_path = ego.to_string_lossy().into_owned();
     for id in 1..=2 {
         let dir = root.join(format!("project-{id}"));
         std::fs::create_dir_all(&dir).unwrap();
         if id == 1 {
-            store.projects[0].directory = dir.to_string_lossy().into_owned();
-            store.projects[0].name = "财报研究 · 恢复验收".into();
+            store.project_at_mut(0).unwrap().directory = dir.to_string_lossy().into_owned();
+            store.project_at_mut(0).unwrap().name = "财报研究 · 恢复验收".into();
         } else {
-            store.projects.push(Project {
+            store.push_project(Project {
                 id,
                 name: "行业研究 · 恢复验收".into(),
                 key: "OTHER".into(),
@@ -89,15 +93,15 @@ print(json.dumps({'type':'text','part':{'text':json.dumps(result)}}),flush=True)
         let output=serde_json::json!({"status":"complete","report":"Recovered evidence","sources":[{"title":"Saved fixture","url":"https://example.com/recovery","published_at":"2026-10-30"}]}).to_string();
         let messages = serde_json::json!({"messages":[{"type":"user","text":run.prompt},{"type":"assistant","content":[{"type":"text","text":output}]},{"type":"idle","outcome":if index==0 {"succeeded"} else {"interrupted"}}]});
         std::fs::write(root.join(format!("{session}.json")), messages.to_string()).unwrap();
-        store.runs.push(run);
+        store.push_run(run);
         goals.push((goal, children));
     }
     // A superseded interrupted attempt used to hold the newer attempt's
     // session and directory forever, even after the latest check said Stopped.
-    let mut historical = store.runs[1].clone();
+    let mut historical = store.runs()[1].clone();
     historical.id = 1;
     historical.status = "Interrupted".into();
-    store.runs.insert(0, historical);
+    store.insert_run(0, historical);
     let untouched = store
         .create_research_goal("Never started Todo".into(), "Research".into(), 1)
         .unwrap();
@@ -153,8 +157,8 @@ print(json.dumps({'type':'text','part':{'text':json.dumps(result)}}),flush=True)
     cx.update_window(handle, |_, w, cx| {
         app.update(cx, |a, cx| {
             a.navigate(Scope::Runs, w, cx);
-            a.selected_run = Some(3);
-            a.task_result_context = None;
+            a.note_selected_run(Some(3));
+            a.set_result_selection(None, a.selected_run());
             a.reveal_selected_run();
             a.show_run_details = false;
         });
@@ -166,15 +170,15 @@ print(json.dumps({'type':'text','part':{'text':json.dumps(result)}}),flush=True)
     cx.capture_screenshot(handle).unwrap().save(root.join("interrupted-result-navigation.png")).unwrap();
     cx.update_window(handle, |_, w, cx| {
         w.click("run-resolve-task", cx);
-        assert_eq!(app.read(cx).selected, Some(goals[1].1[0]));
+        assert_eq!(app.read(cx).selected(), Some(goals[1].1[0]));
         app.update(cx, |a, cx| a.navigate(Scope::Recovery, w, cx));
         w.render_frame(cx);
     }).unwrap();
     cx.update_window(handle, |_, w, cx| {
         app.update(cx, |a, cx| {
             a.navigate(Scope::Runs, w, cx);
-            a.selected_run = Some(2);
-            a.task_result_context = None;
+            a.note_selected_run(Some(2));
+            a.set_result_selection(None, a.selected_run());
         });
         w.render_frame(cx);
         assert!(w.try_find("run-topic-filter").is_some());
@@ -185,7 +189,7 @@ print(json.dumps({'type':'text','part':{'text':json.dumps(result)}}),flush=True)
     cx.run_until_parked();
     cx.update_window(handle, |_, w, cx| {
         let a = app.read(cx);
-        let run = a.store.runs.iter().find(|r| Some(r.id) == a.selected_run).unwrap();
+        let run = a.store.runs().iter().find(|r| Some(r.id) == a.selected_run()).unwrap();
         assert_eq!(a.store.task(run.task_id).unwrap().project_id, 1);
         assert_ne!(a.store.task_topic(run.task_id).unwrap().id, a.store.task_topic(goals[0].0).unwrap().id);
         w.render_frame(cx);
@@ -214,7 +218,7 @@ print(json.dumps({'type':'text','part':{'text':json.dumps(result)}}),flush=True)
             crate::goal_steps::StepState::Running
         );
         assert!(matches!(a.recovery.checks[&5], SessionCheck::Unknown(_)));
-        assert_eq!(a.store.runs.len(), 5, "startup must never launch research");
+        assert_eq!(a.store.runs().len(), 5, "startup must never launch research");
         assert_eq!(a.goal_run_state(goals[1].0).0, "Resume goal");
         assert!(!a.goal_run_state(goals[1].0).1);
         assert_eq!(a.goal_run_state(goals[2].0).0, "Running…");
@@ -246,30 +250,30 @@ print(json.dumps({'type':'text','part':{'text':json.dumps(result)}}),flush=True)
         );
         app.update(cx, |a, cx| a.navigate(Scope::Recovery, w, cx));
         w.render_frame(cx);
-        let runs_before_navigation = app.read(cx).store.runs.len();
+        let runs_before_navigation = app.read(cx).store.runs().len();
         let topic = app.read(cx).store.task_topic(goals[0].0).unwrap().id;
         w.click(("recovery-project", 1u64), cx);
-        assert_eq!(app.read(cx).scope, Scope::Project(1));
+        assert_eq!(app.read(cx).scope(), Scope::Project(1));
         app.update(cx, |a, cx| a.navigate(Scope::Recovery, w, cx));
         w.render_frame(cx);
         w.click(format!("recovery-topic-{topic}"), cx);
-        assert_eq!(app.read(cx).scope, Scope::Topic(topic));
+        assert_eq!(app.read(cx).scope(), Scope::Topic(topic));
         app.update(cx, |a, cx| a.navigate(Scope::Recovery, w, cx));
         w.render_frame(cx);
         w.click(("recovery-goal", goals[0].0), cx);
-        assert_eq!(app.read(cx).selected, Some(goals[0].0));
-        assert_ne!(app.read(cx).goal_steps_tab, Some(goals[0].0));
+        assert_eq!(app.read(cx).selected(), Some(goals[0].0));
+        assert_ne!(app.read(cx).goal_steps_tab(), Some(goals[0].0));
         app.update(cx, |a, cx| a.navigate(Scope::Recovery, w, cx));
         w.render_frame(cx);
         w.click(("recovery-step", goals[0].1[0]), cx);
-        assert_eq!(app.read(cx).selected, Some(goals[0].1[0]));
-        assert_eq!(app.read(cx).store.runs.len(), runs_before_navigation);
+        assert_eq!(app.read(cx).selected(), Some(goals[0].1[0]));
+        assert_eq!(app.read(cx).store.runs().len(), runs_before_navigation);
         app.update(cx, |a, cx| a.navigate(Scope::Recovery, w, cx));
         w.render_frame(cx);
         for layout in [crate::app::Layout::List, crate::app::Layout::Board] {
             app.update(cx, |a, cx| {
                 a.open_goal_steps(goals[1].0, w, cx);
-                a.steps_layout = layout;
+                a.set_steps_layout(layout);
             });
             w.render_frame(cx);
             w.click(format!("goal-step-{}", goals[1].1[0]), cx);
@@ -281,17 +285,17 @@ print(json.dumps({'type':'text','part':{'text':json.dumps(result)}}),flush=True)
         w.render_frame(cx);
         assert!(w.try_find("step-check-session").is_some());
         w.click("step-run", cx);
-        assert_eq!(app.read(cx).store.runs.len(), runs_before_navigation);
+        assert_eq!(app.read(cx).store.runs().len(), runs_before_navigation);
         // All entry points share the same detail panel. Dependency blockers cannot launch.
         app.update(cx, |a, cx| a.open_task(goals[1].1[1], w, cx));
         w.render_frame(cx);
         assert!(w.try_find("step-execution-panel").is_some());
         assert!(w.try_find("step-execution-reason").is_some());
         w.click("step-run", cx);
-        assert_eq!(app.read(cx).store.runs.len(), runs_before_navigation);
+        assert_eq!(app.read(cx).store.runs().len(), runs_before_navigation);
         w.click(format!("step-prerequisite-{}", goals[1].1[0]), cx);
         w.render_frame(cx);
-        assert_eq!(app.read(cx).selected, Some(goals[1].1[0]));
+        assert_eq!(app.read(cx).selected(), Some(goals[1].1[0]));
         assert!(w.try_find("step-attempt-details").is_some());
         let execution = w.try_find("step-execution-panel").unwrap().bounds();
         let properties = w.try_find("task-properties-heading").unwrap().bounds();
@@ -303,12 +307,49 @@ print(json.dumps({'type':'text','part':{'text':json.dumps(result)}}),flush=True)
     cx.capture_screenshot(handle).unwrap().save(root.join("blocked-step-actions.png")).unwrap();
     cx.update_window(handle, |_, w, cx| {
         w.click("step-run", cx);
-        assert_eq!(app.read(cx).store.runs.len(), 6, "one step retry must launch exactly one attempt");
+        assert_eq!(app.read(cx).store.runs().len(), 6, "one step retry must launch exactly one attempt");
         app.update(cx, |a, cx| a.open_task(goals[1].1[0], w, cx));
         w.render_frame(cx);
         w.click("step-run", cx);
-        assert_eq!(app.read(cx).store.runs.len(), 6, "running step cannot launch twice");
+        assert_eq!(app.read(cx).store.runs().len(), 6, "running step cannot launch twice");
     }).unwrap();
+    // The fixture leaves one session permanently running in another topic.
+    // Prove that the ordinary Research queue keeps the retry queued, then
+    // explicitly stop that fake session and recheck before retrying. This is
+    // the precondition behind the old "retry did not finish" failure; no timer
+    // is extended to mask it.
+    cx.update_window(handle, |_, w, cx| {
+        app.update(cx, |a, cx| a.poll_runtime(cx));
+        w.render_frame(cx);
+        let a = app.read(cx);
+        let running = a.store.runs().iter().find(|run| run.id == 4).expect("fixture run 4");
+        assert_eq!(running.status, "Recovering");
+        let retry = a.store.runs().iter().find(|run| run.id == 6).expect("retry run 6");
+        assert_eq!(retry.status, "Queued");
+        assert!(a.queued_runs.iter().any(|(id, _)| *id == 6));
+        assert!(
+            !root.join("executed").exists(),
+            "the queued retry must not start while another topic is still running"
+        );
+    }).unwrap();
+    std::fs::write(root.join("ses_running_stopped"), "stop the fixture session").unwrap();
+    cx.update_window(handle, |_, _, cx| {
+        app.update(cx, |a, cx| a.check_interrupted_sessions(cx));
+    }).unwrap();
+    let stop_deadline = Instant::now() + Duration::from_secs(5);
+    loop {
+        let stopped = cx.update_window(handle, |_, w, cx| {
+            app.update(cx, |a, cx| a.poll_runtime(cx));
+            w.render_frame(cx);
+            let a = app.read(cx);
+            a.recovery.checks.get(&4) == Some(&SessionCheck::Stopped)
+                && a.store.runs().iter().find(|run| run.id == 4)
+                    .is_some_and(|run| run.status != "Recovering")
+        }).unwrap();
+        if stopped { break; }
+        assert!(Instant::now() < stop_deadline, "[timeout] fixture session stop did not reconcile");
+        std::thread::sleep(Duration::from_millis(20));
+    }
     let retry_deadline = Instant::now() + Duration::from_secs(15);
     loop {
         let done = cx.update_window(handle, |_, w, cx| {
@@ -317,13 +358,41 @@ print(json.dumps({'type':'text','part':{'text':json.dumps(result)}}),flush=True)
             app.read(cx).store.research_result(goals[1].1[0]).is_some()
         }).unwrap();
         if done { break; }
-        assert!(Instant::now() < retry_deadline, "step retry did not finish");
+        assert!(
+            Instant::now() < retry_deadline,
+            "[timeout] step retry did not finish after the blocking session stopped"
+        );
+        std::thread::sleep(Duration::from_millis(20));
+    }
+    // Resume all is disabled while a session check is in flight and refuses
+    // to queue work. A check launched after the stop marker can finish after
+    // the retry, so wait for the settled state instead of racing it.
+    let settle_deadline = Instant::now() + Duration::from_secs(10);
+    loop {
+        let settled = cx
+            .update_window(handle, |_, w, cx| {
+                app.update(cx, |a, cx| a.poll_runtime(cx));
+                w.render_frame(cx);
+                !app.read(cx).recovery_pending()
+            })
+            .unwrap();
+        if settled {
+            break;
+        }
+        assert!(
+            Instant::now() < settle_deadline,
+            "session checks did not settle before resume"
+        );
         std::thread::sleep(Duration::from_millis(20));
     }
     cx.update_window(handle, |_, w, cx| {
         app.update(cx, |a, cx| a.navigate(Scope::Recovery, w, cx));
         w.render_frame(cx);
         w.click("resume-all-projects", cx);
+        assert!(
+            app.read(cx).recovery_pending(),
+            "Resume all must queue recovery work after session checks settle"
+        );
     }).unwrap();
     cx.capture_screenshot(handle)
         .unwrap()
@@ -347,26 +416,47 @@ print(json.dumps({'type':'text','part':{'text':json.dumps(result)}}),flush=True)
         assert!(
             Instant::now() < deadline,
             "resume timed out: {}",
-            cx.update(|cx| app.read(cx).error.clone())
+            cx.update(|cx| {
+                let a = app.read(cx);
+                format!(
+                    "error {:?}; runs {}; checks {:?}; goal states {:?} / {:?}",
+                    a.error,
+                    a.store.runs().len(),
+                    a.recovery.checks,
+                    a.goal_run_state(goals[0].0),
+                    a.goal_run_state(goals[1].0),
+                )
+            })
         );
         std::thread::sleep(Duration::from_millis(20));
     }
     cx.update_window(handle, |_, _, cx| {
         let a = app.read(cx);
         assert_eq!(
-            a.store.runs.len(),
-            10,
-            "two projects should run only five unfinished steps"
+            a.store.runs().len(),
+            13,
+            "stopped sessions are admitted; unknown and untouched remain excluded"
         );
+        // After the fixture session is explicitly stopped, Resume all admits
+        // the three goal-2 steps in addition to the two pre-existing goals.
+        let mut admitted: Vec<u64> = a
+            .store
+            .runs()
+            .iter()
+            .filter(|run| run.id > 5)
+            .map(|run| run.task_id)
+            .collect();
+        admitted.sort_unstable();
+        assert_eq!(admitted, vec![3, 4, 6, 7, 8, 10, 11, 12]);
         assert!(
             !a.store
-                .runs
+                .runs()
                 .iter()
                 .any(|r| a.store.owning_research_goal(r.task_id) == Some(untouched))
         );
         assert_eq!(
             a.store
-                .runs
+                .runs()
                 .iter()
                 .filter(|r| r.task_id == goals[0].1[0])
                 .count(),
@@ -378,12 +468,21 @@ print(json.dumps({'type':'text','part':{'text':json.dumps(result)}}),flush=True)
 
         assert_eq!(
             a.store
-                .runs
+                .runs()
                 .iter()
-                .filter(|r| r.task_id == goals[2].1[0] || r.task_id == goals[3].1[0])
+                .filter(|r| r.task_id == goals[2].1[0])
                 .count(),
             2,
-            "busy and unknown sessions must not repeat"
+            "the stopped session has one interrupted and one admitted attempt"
+        );
+        assert_eq!(
+            a.store
+                .runs()
+                .iter()
+                .filter(|r| r.task_id == goals[3].1[0])
+                .count(),
+            1,
+            "the unknown session must not be retried automatically"
         );
     })
     .unwrap();
@@ -401,13 +500,9 @@ print(json.dumps({'type':'text','part':{'text':json.dumps(result)}}),flush=True)
                 let mut run = a.store.prepare_request_plan(request).unwrap();
                 run.status = "Interrupted".into();
                 let id = run.id;
-                a.store
-                    .research_requests
-                    .iter_mut()
-                    .find(|r| r.id == request)
-                    .unwrap()
+                a.store.request_mut(request).unwrap()
                     .planning_run_id = Some(id);
-                a.store.runs.push(run);
+                a.store.push_run(run);
                 a.navigate(Scope::Recovery, w, cx);
                 id
             })
@@ -427,13 +522,13 @@ print(json.dumps({'type':'text','part':{'text':json.dumps(result)}}),flush=True)
         .unwrap();
     cx.update_window(handle, |_, w, cx| {
         w.click(("recovery-request", planning_run), cx);
-        assert_eq!(app.read(cx).selected_run, Some(planning_run));
-        assert_eq!(app.read(cx).scope, Scope::Runs);
+        assert_eq!(app.read(cx).selected_run(), Some(planning_run));
+        assert_eq!(app.read(cx).scope(), Scope::Runs);
     })
     .unwrap();
     cx.update_window(handle, |_, w, cx| {
         app.update(cx, |a, cx| {
-            a.task_result_context = None;
+            a.set_result_selection(None, a.selected_run());
             a.show_run_details = false;
             cx.notify();
         });
@@ -444,7 +539,7 @@ print(json.dumps({'type':'text','part':{'text':json.dumps(result)}}),flush=True)
     cx.run_until_parked();
     cx.update_window(handle, |_, w, cx| {
         w.click(0usize, cx);
-        assert_eq!(app.read(cx).selected_run, Some(planning_run));
+        assert_eq!(app.read(cx).selected_run(), Some(planning_run));
     }).unwrap();
     // Archiving a finished batch item must not prematurely finish the remaining goal.
     cx.update_window(handle, |_, _, cx| {
@@ -493,14 +588,14 @@ else:
             queued.status = "Queued".into();
             queued.started_at.clear();
             let queued_id = queued.id;
-            a.store.runs.push(queued);
+            a.store.push_run(queued);
             a.queued_runs.push((queued_id, vec![]));
             let other = a.store.create_research_goal("Unrelated topic".into(), "Must retain queue".into(), 1).unwrap();
             let mut unrelated = a.store.prepare_run(other).unwrap();
             unrelated.status = "Queued".into();
             unrelated.started_at.clear();
             let other_run = unrelated.id;
-            a.store.runs.push(unrelated);
+            a.store.push_run(unrelated);
             a.queued_runs.push((other_run, vec![]));
             a.confirm_archive(crate::archive_app::ArchiveTarget::Topic(topic), cx);
             assert!(a.store.task_is_archived(step));
@@ -508,11 +603,11 @@ else:
             assert!(a.store.ready_research_tasks(goal).is_err());
             assert!(!a.queued_runs.iter().any(|(id, _)| *id == queued_id));
             assert!(a.queued_runs.iter().any(|(id, _)| *id == other_run));
-            assert_eq!(a.store.runs.iter().find(|r| r.id == queued_id).unwrap().status, "Cancelled");
-            let before = a.store.runs.len();
+            assert_eq!(a.store.runs().iter().find(|r| r.id == queued_id).unwrap().status, "Cancelled");
+            let before = a.store.runs().len();
             a.start_run(step, cx);
             a.start_goal_batch(goal, cx);
-            assert_eq!(before, a.store.runs.len());
+            assert_eq!(before, a.store.runs().len());
             // Keep the unrelated fixture queued without executing it in this acceptance test.
             a.queued_runs.retain(|(id, _)| *id != other_run);
             goal
@@ -541,8 +636,8 @@ pub fn scroll() {
     std::fs::create_dir_all(&output).unwrap();
     for (width, height) in [(1000., 680.), (1440., 920.)] {
         let mut store = Store::empty();
-        store.default_model = "fixture/model".into();
-        store.projects[0].directory = "/unused-scroll-fixture".into();
+        store.set_default_model("fixture/model".into());
+        store.project_at_mut(0).unwrap().directory = "/unused-scroll-fixture".into();
         let mut last_step = 0;
         for index in 0..12 {
             let goal = store.create_research_goal(format!("Research goal {index}"), "Research".into(), 1).unwrap();
@@ -551,7 +646,7 @@ pub fn scroll() {
             let mut run = store.prepare_run(steps[0]).unwrap();
             run.id = index + 1;
             run.status = if index % 2 == 0 { "Running" } else { "Queued" }.into();
-            store.runs.push(run);
+            store.push_run(run);
             last_step = *steps.last().unwrap();
         }
         let mut cx = HeadlessAppContext::with_platform(platform::current_platform(true).text_system(), Arc::new(assets::Assets), platform::current_headless_renderer);
@@ -559,7 +654,7 @@ pub fn scroll() {
         let mut app = None;
         let window = cx.open_window(size(px(width), px(height)), |w, cx| {
             let view = cx.new(|cx| TaskApp::new_mock(w, cx));
-            view.update(cx, |a, _| { a.store = store; a.scope = Scope::Recovery; });
+            view.update(cx, |a, _| { a.store = store; a.set_scope_identity(Scope::Recovery); });
             app = Some(view.clone());
             cx.new(|cx| base::Root::new(view, w, cx))
         }).unwrap();
@@ -579,7 +674,7 @@ pub fn scroll() {
         cx.capture_screenshot(handle).unwrap().save(output.join(format!("bottom-{width}.png"))).unwrap();
         cx.update_window(handle, |_, w, cx| {
             w.click(("recovery-step", last_step), cx);
-            assert_eq!(app.read(cx).selected, Some(last_step));
+            assert_eq!(app.read(cx).selected(), Some(last_step));
         }).unwrap();
     }
     println!("Recovery scroll passed at both window sizes; screenshots: {}", output.display());

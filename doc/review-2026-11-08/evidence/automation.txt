@@ -1,0 +1,30 @@
+warning: field `tag_success` is never read
+  --> src/appearance.rs:85:9
+   |
+82 | pub struct Palette {
+   |            ------- field in this struct
+...
+85 |     pub tag_success: u32,
+   |         ^^^^^^^^^^^
+   |
+   = note: `Palette` has a derived impl for the trait `Clone`, but this is intentionally ignored during dead code analysis
+   = note: `#[warn(dead_code)]` (part of `#[warn(unused)]`) on by default
+
+warning: function `parse_report` is never used
+   --> src/research.rs:249:8
+    |
+249 | pub fn parse_report(text: &str, kind: ResearchKind) -> Result<Report, String> {
+    |        ^^^^^^^^^^^^
+
+pure automation checks passed
+automation planning chain passed (reviewed plan frozen, no topic or replanning)
+wizard actions passed (enable and save draft both reachable)
+real queue automation chain passed (fake CLI, 3 steps, isolated sessions, regeneration gated and timed out)
+recovery automation chain passed (crash, reopen, session import, continuation, next period)
+paused recovery chain passed (user pause survives restart verification)
+regeneration recovery chain passed (late result discarded, slot released)
+archived recovery chain passed (archive survives restart verification)
+step entry routing passed (ordinary entry routes through the occurrence)
+queue chain passed (same-automation A2 waits, A1 completes, then A2)
+independent pools passed (research and automation limits do not overlap)
+Automation QA passed · /Users/fuxingxing/workspaces/what-the-hell-are-you-planning/.local/automation-qa/51390

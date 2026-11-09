@@ -1,0 +1,6 @@
+{
+  "command": "cargo test --features qa --test dispatch_admission_crash --quiet",
+  "exit_code": 0,
+  "seconds": 34.748,
+  "log": "r69-crash-tests.log"
+}

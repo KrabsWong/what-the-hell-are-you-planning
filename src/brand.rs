@@ -5,13 +5,150 @@ use std::time::Duration;
 // Matches the approved slide-flow-2x preview: each direction has 0.48s
 // lead-in, 1.52s of uninterrupted motion, and 0.48s of settled hold.
 const CYCLE_SECONDS: f32 = 4.96;
+
+#[cfg(feature = "qa")]
+mod render_probe {
+    use std::sync::atomic::{AtomicU64, Ordering};
+    static APP_RENDERS: AtomicU64 = AtomicU64::new(0);
+    static SIDEBAR_RENDERS: AtomicU64 = AtomicU64::new(0);
+    static LOGO_RENDERS: AtomicU64 = AtomicU64::new(0);
+    static SETTINGS_RENDERS: AtomicU64 = AtomicU64::new(0);
+    static GENERAL_RENDERS: AtomicU64 = AtomicU64::new(0);
+
+    pub(super) fn app() {
+        APP_RENDERS.fetch_add(1, Ordering::Relaxed);
+    }
+    pub(super) fn sidebar() {
+        SIDEBAR_RENDERS.fetch_add(1, Ordering::Relaxed);
+    }
+    pub(super) fn logo() {
+        LOGO_RENDERS.fetch_add(1, Ordering::Relaxed);
+    }
+    pub(super) fn settings() {
+        SETTINGS_RENDERS.fetch_add(1, Ordering::Relaxed);
+    }
+    pub(super) fn general() {
+        GENERAL_RENDERS.fetch_add(1, Ordering::Relaxed);
+    }
+    pub(crate) fn snapshot() -> super::ScrollRenderProbe {
+        super::ScrollRenderProbe {
+            app: APP_RENDERS.load(Ordering::Relaxed),
+            sidebar: SIDEBAR_RENDERS.load(Ordering::Relaxed),
+            logo: LOGO_RENDERS.load(Ordering::Relaxed),
+            settings: SETTINGS_RENDERS.load(Ordering::Relaxed),
+            general: GENERAL_RENDERS.load(Ordering::Relaxed),
+        }
+    }
+}
+
+#[cfg(feature = "qa")]
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub(crate) struct ScrollRenderProbe {
+    pub app: u64,
+    pub sidebar: u64,
+    pub logo: u64,
+    pub settings: u64,
+    pub general: u64,
+}
+
+#[cfg(feature = "qa")]
+pub(crate) fn scroll_render_probe() -> ScrollRenderProbe {
+    render_probe::snapshot()
+}
+
+#[cfg(feature = "qa")]
+pub(crate) fn note_app_render() {
+    render_probe::app();
+}
+
+#[cfg(feature = "qa")]
+pub(crate) fn note_sidebar_render() {
+    render_probe::sidebar();
+}
+
+#[cfg(feature = "qa")]
+pub(crate) fn note_logo_render() {
+    render_probe::logo();
+}
+
+#[cfg(feature = "qa")]
+pub(crate) fn note_settings_render() {
+    render_probe::settings();
+}
+
+#[cfg(feature = "qa")]
+pub(crate) fn note_general_render() {
+    render_probe::general();
+}
+
+#[cfg(feature = "qa")]
+pub(crate) fn start_render_probe_logging() {
+    use std::io::Write;
+    use std::sync::Once;
+    use std::time::{Duration, Instant};
+
+    static START: Once = Once::new();
+    START.call_once(|| {
+        let Ok(path) = std::env::var("PLANNING_T19_RENDER_PROBE") else {
+            return;
+        };
+        if path.trim().is_empty() {
+            return;
+        }
+        let interval_ms = std::env::var("PLANNING_T19_RENDER_PROBE_INTERVAL_MS")
+            .ok()
+            .and_then(|value| value.parse::<u64>().ok())
+            .unwrap_or(250)
+            .clamp(50, 5_000);
+        let max_samples = std::env::var("PLANNING_T19_RENDER_PROBE_MAX_SAMPLES")
+            .ok()
+            .and_then(|value| value.parse::<u64>().ok())
+            .unwrap_or(1_200)
+            .clamp(1, 100_000);
+        let Ok(mut file) = std::fs::File::create(&path) else {
+            return;
+        };
+        if writeln!(file, "monotonic_ms\tapp\tsidebar\tlogo\tsettings")
+            .and_then(|_| file.flush())
+            .is_err()
+        {
+            return;
+        }
+        let started = Instant::now();
+        let _ = std::thread::Builder::new()
+            .name("t19-render-probe".into())
+            .spawn(move || {
+                for _ in 0..max_samples {
+                    std::thread::sleep(Duration::from_millis(interval_ms));
+                    let probe = scroll_render_probe();
+                    if writeln!(
+                        file,
+                        "{}\t{}\t{}\t{}\t{}",
+                        started.elapsed().as_millis(),
+                        probe.app,
+                        probe.sidebar,
+                        probe.logo,
+                        probe.settings
+                    )
+                    .and_then(|_| file.flush())
+                    .is_err()
+                    {
+                        return;
+                    }
+                }
+            });
+    });
+}
+
 fn motion(phase: f32) -> (f32, f32) {
     let time = phase.clamp(0., 1.) * CYCLE_SECONDS;
     let reverse = time >= 2.48;
     let local = if reverse { time - 2.48 } else { time };
     let t = ((local - 0.48) / 1.52).clamp(0., 1.);
     let turn = t * t * (3. - 2. * t);
-    let spread = if t == 0. || t == 1. { 0. } else {
+    let spread = if t == 0. || t == 1. {
+        0.
+    } else {
         (std::f32::consts::PI * turn).sin() * 10.
     };
     (if reverse { 1. - turn } else { turn }, spread)
@@ -20,11 +157,23 @@ fn motion(phase: f32) -> (f32, f32) {
 pub(crate) struct SidebarLogo;
 impl Render for SidebarLogo {
     fn render(&mut self, _: &mut Window, cx: &mut Context<Self>) -> impl IntoElement {
+        #[cfg(feature = "qa")]
+        render_probe::logo();
         sidebar_logo(crate::appearance::palette(cx).accent)
     }
 }
 
 pub(crate) fn sidebar_logo(color: u32) -> AnyElement {
+    #[cfg(feature = "qa")]
+    if std::env::var("PLANNING_T19_DIAGNOSTIC_STATIC_LOGO").as_deref() == Ok("1") {
+        return div()
+            .id("sidebar-brand")
+            .relative()
+            .size(px(32.))
+            .flex_shrink_0()
+            .child(logo_frame(color, 0.0))
+            .into_any_element();
+    }
     div()
         .id("sidebar-brand")
         .relative()
@@ -33,9 +182,7 @@ pub(crate) fn sidebar_logo(color: u32) -> AnyElement {
         .with_animation(
             "assembly",
             Animation::new(Duration::from_millis(4960)).repeat(),
-            move |mark, phase| {
-                mark.child(logo_frame(color, phase))
-            },
+            move |mark, phase| mark.child(logo_frame(color, phase)),
         )
         .into_any_element()
 }
@@ -53,13 +200,20 @@ fn paint_bar(bounds: Bounds<Pixels>, color: u32, window: &mut Window) {
     let ys = [top.floor(), top.ceil(), bottom.floor(), bottom.ceil()];
     for x in xs.windows(2) {
         for y in ys.windows(2) {
-            let w = x[1] - x[0]; let h = y[1] - y[0];
-            if w <= 0. || h <= 0. { continue; }
+            let w = x[1] - x[0];
+            let h = y[1] - y[0];
+            if w <= 0. || h <= 0. {
+                continue;
+            }
             let coverage = ((right.min(x[1]) - left.max(x[0])).max(0.) / w)
                 * ((bottom.min(y[1]) - top.max(y[0])).max(0.) / h);
-            window.paint_quad(fill(Bounds::new(
-                point(px(x[0] / scale), px(y[0] / scale)), size(px(w / scale), px(h / scale)),
-            ), rgb(color).alpha(coverage)));
+            window.paint_quad(fill(
+                Bounds::new(
+                    point(px(x[0] / scale), px(y[0] / scale)),
+                    size(px(w / scale), px(h / scale)),
+                ),
+                rgb(color).alpha(coverage),
+            ));
         }
     }
 }
@@ -73,21 +227,30 @@ fn logo_frame(color: u32, phase: f32) -> impl IntoElement {
         (18., 90., 66., 20., 26., 0., 0., 1.),
         (18., 18., 20., 66., 0., 26., -1., 0.),
     ];
-    canvas(|_, _, _| (), move |bounds, _, window, _| {
-        let (turn, spread) = motion(phase);
-        for (x, y, w, h, dx, dy, nx, ny) in BARS {
-            let origin = bounds.origin + point(
-                px((x + dx * turn + nx * spread) * SCALE),
-                px((y + dy * turn + ny * spread) * SCALE),
-            );
-            paint_bar(Bounds::new(origin, size(px(w * SCALE), px(h * SCALE))), color, window);
-        }
-    }).size(px(32.))
+    canvas(
+        |_, _, _| (),
+        move |bounds, _, window, _| {
+            let (turn, spread) = motion(phase);
+            for (x, y, w, h, dx, dy, nx, ny) in BARS {
+                let origin = bounds.origin
+                    + point(
+                        px((x + dx * turn + nx * spread) * SCALE),
+                        px((y + dy * turn + ny * spread) * SCALE),
+                    );
+                paint_bar(
+                    Bounds::new(origin, size(px(w * SCALE), px(h * SCALE))),
+                    color,
+                    window,
+                );
+            }
+        },
+    )
+    .size(px(32.))
 }
 
 #[cfg(test)]
 mod tests {
-    use super::{motion, CYCLE_SECONDS};
+    use super::{CYCLE_SECONDS, motion};
     #[test]
     fn approved_timing_holds_both_alignments_and_loops_continuously() {
         for time in [0., 0.24, 0.48, 4.48, 4.72, 4.96] {
@@ -116,25 +279,114 @@ pub(crate) fn verify_frames() {
     struct Sample(f32);
     impl Render for Sample {
         fn render(&mut self, _: &mut Window, _: &mut Context<Self>) -> impl IntoElement {
-            div().size_full().bg(rgb(0xeeeeec)).child(logo_frame(0x795822, self.0))
+            div()
+                .size_full()
+                .bg(rgb(0xeeeeec))
+                .child(logo_frame(0x795822, self.0))
         }
     }
-    let mut cx = HeadlessAppContext::with_platform(platform::current_platform(true).text_system(),
-        std::sync::Arc::new(crate::ui_assets::AppAssets), platform::current_headless_renderer);
+    let mut cx = HeadlessAppContext::with_platform(
+        platform::current_platform(true).text_system(),
+        std::sync::Arc::new(crate::ui_assets::AppAssets),
+        platform::current_headless_renderer,
+    );
     let mut sample = None;
-    let window = cx.open_window(size(px(32.), px(32.)), |_, cx| {
-        let view = cx.new(|_| Sample(0.14)); sample = Some(view.clone()); view
-    }).unwrap();
+    let window = cx
+        .open_window(size(px(32.), px(32.)), |_, cx| {
+            let view = cx.new(|_| Sample(0.14));
+            sample = Some(view.clone());
+            view
+        })
+        .unwrap();
     let handle = window.into();
     let sample = sample.unwrap();
-    let root = std::env::current_dir().unwrap().join(".local/brand-motion-qa");
+    let root = std::env::current_dir()
+        .unwrap()
+        .join(".local/brand-motion-qa");
     std::fs::create_dir_all(&root).unwrap();
     for frame in 0..24 {
         cx.update_window(handle, |_, w, cx| {
-            sample.update(cx, |s, cx| { s.0 = (0.70 + frame as f32 / 60.) / CYCLE_SECONDS; cx.notify(); });
+            sample.update(cx, |s, cx| {
+                s.0 = (0.70 + frame as f32 / 60.) / CYCLE_SECONDS;
+                cx.notify();
+            });
             w.render_frame(cx);
-        }).unwrap();
-        cx.capture_screenshot(handle).unwrap().save(root.join(format!("{frame:02}.png"))).unwrap();
+        })
+        .unwrap();
+        cx.capture_screenshot(handle)
+            .unwrap()
+            .save(root.join(format!("{frame:02}.png")))
+            .unwrap();
     }
     println!("24 consecutive 60 Hz motion samples: {}", root.display());
+}
+
+/// Elapsed-time helpers for the brand overlay. The approved motion is a pure
+/// function of time, so frames can be skipped during the lead-in/hold segments
+/// where the mark is visually static without changing timing or geometry.
+pub(crate) fn brand_phase(elapsed_seconds: f32) -> f32 {
+    (elapsed_seconds.max(0.) % CYCLE_SECONDS) / CYCLE_SECONDS
+}
+
+/// Phase drawn when motion is pinned (reduce-motion or the QA static
+/// diagnostic). A stable phase keeps incidental rerenders visually identical.
+pub(crate) fn brand_render_phase(elapsed_seconds: f32, pinned: bool) -> f32 {
+    if pinned { 0.0 } else { brand_phase(elapsed_seconds) }
+}
+
+pub(crate) fn brand_frame_is_static(elapsed_seconds: f32) -> bool {
+    let time = elapsed_seconds.max(0.) % CYCLE_SECONDS;
+    let local = if time >= 2.48 { time - 2.48 } else { time };
+    !(local > 0.48 && local < 2.0)
+}
+
+/// Seconds until the next moving segment starts after a static frame.
+pub(crate) fn brand_next_motion_wait(elapsed_seconds: f32) -> f32 {
+    let time = elapsed_seconds.max(0.) % CYCLE_SECONDS;
+    for start in [0.48_f32, 2.96, CYCLE_SECONDS + 0.48] {
+        if start > time {
+            return start - time;
+        }
+    }
+    CYCLE_SECONDS + 0.48 - time
+}
+
+/// Static mark used by the retained sidebar overlay. The caller owns frame
+/// scheduling so static lead-in/hold segments do not repaint the window.
+pub(crate) fn sidebar_logo_at(color: u32, phase: f32) -> AnyElement {
+    div()
+        .id("sidebar-brand")
+        .relative()
+        .size(px(32.))
+        .flex_shrink_0()
+        .child(logo_frame(color, phase))
+        .into_any_element()
+}
+
+#[cfg(test)]
+mod overlay_animation_tests {
+    use super::{
+        brand_frame_is_static, brand_next_motion_wait, brand_phase, brand_render_phase,
+    };
+
+    #[test]
+    fn static_segments_and_motion_starts_are_exact() {
+        for static_at in [0.0, 0.2, 0.479, 2.0, 2.2, 2.48, 2.7, 2.959, 4.48, 4.9, 4.959] {
+            assert!(brand_frame_is_static(static_at), "{static_at}");
+        }
+        for moving_at in [0.481, 0.7, 1.9, 2.961, 3.5, 4.4] {
+            assert!(!brand_frame_is_static(moving_at), "{moving_at}");
+        }
+        assert!((brand_phase(0.48) - 0.48 / 4.96).abs() < 1e-5);
+        assert!((brand_phase(4.96) - 0.0).abs() < 1e-5);
+        assert!((brand_next_motion_wait(0.0) - 0.48).abs() < 1e-5);
+        assert!((brand_next_motion_wait(2.48) - 0.48).abs() < 1e-5);
+        assert!((brand_next_motion_wait(2.1) - 0.86).abs() < 1e-5);
+        assert!((brand_next_motion_wait(4.48) - 0.96).abs() < 1e-5);
+        assert_eq!(brand_render_phase(0.0, true), 0.0);
+        assert_eq!(brand_render_phase(1.3, true), 0.0);
+        assert_eq!(brand_render_phase(3.7, true), 0.0);
+        assert!((brand_render_phase(1.3, false) - brand_phase(1.3)).abs() < 1e-6);
+        assert!((brand_render_phase(3.7, false) - brand_phase(3.7)).abs() < 1e-6);
+    }
 }

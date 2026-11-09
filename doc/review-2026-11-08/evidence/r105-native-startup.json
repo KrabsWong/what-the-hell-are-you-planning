@@ -1,0 +1,33 @@
+{
+  "candidate_unsigned_sha256": "13b97c860bc2f5446fe2b5a2af0a860c7e10b3944e094aef5c01722d31076eb0",
+  "installed_signed_sha256": "9af1b8eeaa099ef8baff58dcbeed88315738818530356312b696b0edb0ca8f20",
+  "source": ".local/native-review/r101-idle-source",
+  "manifest_verified": true,
+  "signed_guard_exit": 2,
+  "fixture_backup": ".local/native-review/r105-fixture-backup",
+  "bundle_id": "com.krabswong.planning.native-review",
+  "pid": 33760,
+  "observed": [
+    "Configured existing isolated workspace opened Set up your app instead of the workspace.",
+    "Workspace error: Saving will start when persistence is ready.",
+    "Retry workspace preparation produced Cannot lock workspace.lock.",
+    "lsof showed only the same native app PID33760 holding the lock (FD3)."
+  ],
+  "status": "rejected_startup_core_regression",
+  "scope": "Native startup/retry only; navigation and scrolling not reached.",
+  "returned_to": [
+    "T14 production",
+    "T13 live QA"
+  ],
+  "read_only_database_observation": {
+    "before_user_version": 3,
+    "after_user_version": 4,
+    "before_and_after_row_counts": {
+      "tasks": 26,
+      "projects": 3,
+      "runs": 21,
+      "automation_occurrences": 5
+    },
+    "limitation": "Matching counts establish no row-count loss in these tables, not full content equivalence or complete migration acceptance."
+  }
+}

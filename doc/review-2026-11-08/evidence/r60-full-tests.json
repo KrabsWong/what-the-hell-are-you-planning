@@ -1,0 +1,13 @@
+{
+  "exit_code": 101,
+  "unit_passed": 658,
+  "unit_failed": 2,
+  "unit_ignored": 2,
+  "integration_tests": "Not reached after unit failure",
+  "source_manifest": "r60-integrated-source.json",
+  "failures": [
+    "automation::tests::tracked_drain_is_atomic_across_all_three_collections",
+    "domain::tests::every_persistent_scalar_and_collection_emits_typed_changes"
+  ],
+  "log": "r60-full-tests.log"
+}

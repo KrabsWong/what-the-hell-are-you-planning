@@ -1,0 +1,30 @@
+{
+  "binary_sha256": "42f026782efc04f497a6ea5eab628d6320741343d271b99531c874d7d5f47c05",
+  "source": ".local/native-review/r198-compact-source",
+  "logical_size": [
+    1000,
+    680
+  ],
+  "screenshot_size": [
+    2000,
+    1360
+  ],
+  "fixture": "r187-ordinary-valid-1000",
+  "passed": [
+    "Light and dark ordinary List shows Done3/3, reaches goal01 with8-page down and restores goal80 with8-page up.",
+    "Compact result header wraps and Open controls remain inside viewport."
+  ],
+  "failed": [
+    "Board right4pages andleft4pages over header(1450,400) do not move columns; Done remains offscreen.",
+    "Automation results opened from ordinary Board remains at header/00:54 after down4pages and then2pages at(1500,950)."
+  ],
+  "limits": [
+    "Root offline XL stress was running; functional outcomes only, no quiet timing claim.",
+    "Exact product cause not yet established; real rendered event diagnosis assigned."
+  ],
+  "rework": [
+    "Board viewport and wheel propagation owned by fixture/board OpenCode session.",
+    "Mixed-fixture compact results ListState reproduction owned by list OpenCode session."
+  ],
+  "trace": ".local/native-review/r198-ordinary.csv.frames.jsonl"
+}

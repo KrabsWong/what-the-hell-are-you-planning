@@ -1,0 +1,33 @@
+{
+  "source_manifest": ".local/opencode-dispatch/r137-source.json",
+  "sha256": "6ae77bd2051a3ac83a8cf78bc67093d90c944bf82d38252e2629742a97630db7",
+  "guard_exit": 2,
+  "checks": [
+    {
+      "flag": "--qa-keyboard-visual",
+      "exit": 0,
+      "seconds": 18.13
+    },
+    {
+      "flag": "--qa-archived-research",
+      "exit": 0,
+      "seconds": 8.87
+    },
+    {
+      "flag": "--qa-live-persistence",
+      "exit": 0,
+      "seconds": 9.95
+    }
+  ],
+  "unit_tests": {
+    "passed": 706,
+    "ignored": 2,
+    "dispatch_crash": 8,
+    "additional_persistence": 2,
+    "v4_crash": 3,
+    "node": "/opt/homebrew/opt/node@24/bin/node",
+    "initial_attempt": "One missing-Node environment failure; retained r137-tests.log"
+  },
+  "icons": 51,
+  "visual_review": "Root inspected compact Dark and Light screenshots; readable palette and unclipped actions. Normal-width screenshots generated; inspection pending."
+}

@@ -1,0 +1,8 @@
+{
+  "source": "r83-integrated-source",
+  "build_exit": 0,
+  "sha256": "1f28f929fa5b4594cdcd6e67d00fe139435a6902e2a9e3469ecbae2c399d1dcd",
+  "guard_exit": 2,
+  "qa_exit": 101,
+  "qa_seconds": 13.946
+}

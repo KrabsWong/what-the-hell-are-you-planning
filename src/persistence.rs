@@ -40,12 +40,12 @@ struct WorkspaceFile {
 }
 
 fn normalize_automation_schema(store: &mut Store) -> Result<(), String> {
-    if store.automation_schema_version == 0 {
-        store.automation_schema_version = crate::automation::AUTOMATION_SCHEMA_VERSION;
-    } else if store.automation_schema_version > crate::automation::AUTOMATION_SCHEMA_VERSION {
+    if store.automation_schema_version() == 0 {
+        store.set_automation_schema_version(crate::automation::AUTOMATION_SCHEMA_VERSION);
+    } else if store.automation_schema_version() > crate::automation::AUTOMATION_SCHEMA_VERSION {
         return Err(format!(
             "Unsupported automation schema version {} (expected {}). The workspace was left unchanged.",
-            store.automation_schema_version,
+            store.automation_schema_version(),
             crate::automation::AUTOMATION_SCHEMA_VERSION
         ));
     }
@@ -85,6 +85,13 @@ impl Storage {
     /// Returns the retained old-format backup, or None when no upgrade is needed.
     pub fn upgrade_paths(&self, progress: impl FnMut(&'static str)) -> Result<Option<PathBuf>, String> {
         if self.path.extension().is_some_and(|extension| extension == "sqlite3") {
+            if self.path.is_file()
+                && crate::sqlite_v4::schema_version(&self.path)? == 4
+            {
+                // Incremental v4 is migrated/validated by persistence_live after
+                // the workspace lock is held; the v1/v2 path writer must not run.
+                return Ok(None);
+            }
             crate::sqlite_storage::upgrade_paths(&self.path, &self.workspace_root, progress)
         } else {
             Ok(None)
@@ -94,6 +101,11 @@ impl Storage {
     pub fn path(&self) -> &Path {
         &self.path
     }
+
+    pub(crate) fn workspace_root(&self) -> &Path {
+        &self.workspace_root
+    }
+
 
     /// Keep the returned file alive for the application's lifetime. Never unlink the lock file:
     /// other instances must lock the same inode even after the current holder exits.
@@ -120,6 +132,7 @@ impl Storage {
 
     /// A missing file is a new workspace; invalid files are never treated as empty data.
     pub fn load(&self) -> Result<Option<Store>, String> {
+        let _span = crate::persistence_metrics::Span::start("load.total");
         let result = self.load_uncached();
         if result.is_ok() {
             *self.validated.lock().unwrap_or_else(|e| e.into_inner()) = file_stamp(&self.path);
@@ -134,11 +147,16 @@ impl Storage {
             .is_some_and(|extension| extension == "sqlite3")
         {
             if self.path.exists() {
-                let mut loaded = crate::sqlite_storage::load(&self.path, &self.workspace_root)?;
+                let mut loaded = {
+                    let _span = crate::persistence_metrics::Span::start("load.sqlite_read");
+                    crate::sqlite_storage::load(&self.path, &self.workspace_root)?
+                };
                 if let Some(store) = &mut loaded {
+                    let _span = crate::persistence_metrics::Span::start("load.normalize");
                     normalize_automation_schema(store)?;
                     store.validate_automation_integrity()?;
                     store.normalize_topics();
+                    store.normalize_planning_ownership();
                 }
                 return Ok(loaded);
             }
@@ -147,6 +165,7 @@ impl Storage {
                 return Ok(None);
             };
             normalize_automation_schema(&mut store)?;
+            store.normalize_planning_ownership();
             store.validate_automation_integrity()?;
             let parent = self.ensure_parent()?;
             let temporary = parent.join(format!(
@@ -190,21 +209,24 @@ impl Storage {
         let mut file: WorkspaceFile = serde_json::from_value(value).map_err(|error| {
             format!("Invalid workspace data in {}: {error}", self.path.display())
         })?;
-        if file.version < 4 && file.workspace.default_model.is_empty() {
-            let common = &file.workspace.research_config.models[0];
+        if file.version < 4 && file.workspace.default_model().is_empty() {
+            let common = &file.workspace.research_config().models[0];
             if crate::opencode::valid_model(common)
                 && file
                     .workspace
-                    .research_config
+                    .research_config()
                     .models
                     .iter()
                     .all(|m| m == common)
             {
                 let common = common.clone();
-                file.workspace.default_model = common.clone();
-                file.workspace.research_config.models = Default::default();
-                for policy in &mut file.workspace.policies {
-                    if policy.agent == "OpenCode" && policy.model == common {
+                file.workspace.set_default_model(common.clone());
+                file.workspace.research_config_mut().models = Default::default();
+                for stage in crate::domain::Stage::ALL {
+                    if let Some(policy) = file.workspace.policy_mut(stage)
+                        && policy.agent == "OpenCode"
+                        && policy.model == common
+                    {
                         policy.model.clear();
                     }
                 }
@@ -213,22 +235,29 @@ impl Storage {
         normalize_automation_schema(&mut file.workspace)?;
         file.workspace.validate_automation_integrity()?;
         file.workspace.normalize_topics();
+        file.workspace.normalize_planning_ownership();
         Ok(Some(file.workspace))
     }
 
     pub fn save(&self, workspace: &Store) -> Result<(), String> {
+        let _span = crate::persistence_metrics::Span::start("save.total");
         // Refuse to overwrite damaged data or a file written by a newer application.
         // A store this instance already read or wrote is revalidated only if the file
         // changed underneath us.
-        let current = file_stamp(&self.path);
-        let known = *self.validated.lock().unwrap_or_else(|e| e.into_inner());
-        let legacy_pending = current.is_none()
-            && self
-                .path
-                .extension()
-                .is_some_and(|extension| extension == "sqlite3")
-            && self.path.with_file_name("workspace.json").exists();
+        let (current, known, legacy_pending) = {
+            let _span = crate::persistence_metrics::Span::start("save.stamp_check");
+            let current = file_stamp(&self.path);
+            let known = *self.validated.lock().unwrap_or_else(|e| e.into_inner());
+            let legacy_pending = current.is_none()
+                && self
+                    .path
+                    .extension()
+                    .is_some_and(|extension| extension == "sqlite3")
+                && self.path.with_file_name("workspace.json").exists();
+            (current, known, legacy_pending)
+        };
         if known != current || legacy_pending {
+            let _span = crate::persistence_metrics::Span::start("save.reload");
             self.load()?;
         }
         if self
@@ -237,7 +266,10 @@ impl Storage {
             .is_some_and(|extension| extension == "sqlite3")
         {
             self.ensure_parent()?;
-            let result = crate::sqlite_storage::save(&self.path, &self.workspace_root, workspace);
+            let result = {
+                let _span = crate::persistence_metrics::Span::start("save.sqlite");
+                crate::sqlite_storage::save(&self.path, &self.workspace_root, workspace)
+            };
             if result.is_ok() {
                 *self.validated.lock().unwrap_or_else(|e| e.into_inner()) = file_stamp(&self.path);
             }
@@ -315,14 +347,14 @@ impl Storage {
                     || original.comments != task.comments
             }) || task.research.is_some()
                 || !task.attachments.is_empty()
-                || workspace.runs.iter().any(|run| run.task_id == *id)
+                || workspace.runs().iter().any(|run| run.task_id == *id)
             {
                 return Err(format!(
                     "Task {id} contains real or unrecognized data; it was not removed."
                 ));
             }
         }
-        if workspace.tasks.iter().any(|task| {
+        if workspace.tasks().iter().any(|task| {
             !ids.contains(&task.id)
                 && (task.parent_id.is_some_and(|parent| ids.contains(&parent))
                     || task.research.as_ref().is_some_and(|research| {
@@ -355,16 +387,14 @@ impl Storage {
             .and_then(|_| file.sync_all())
             .map_err(|e| format!("Cannot save backup: {e}"))?;
         let mut cleaned = workspace.clone();
-        cleaned.tasks.retain(|task| !ids.contains(&task.id));
-        cleaned.projects.retain(|project| {
-            !seed.projects.contains(project)
-                || cleaned
-                    .tasks
-                    .iter()
-                    .any(|task| task.project_id == project.id)
+        cleaned.retain_tasks(|task| !ids.contains(&task.id));
+        let seed_projects = seed.projects().to_vec();
+        let task_projects: Vec<u64> = cleaned.tasks().iter().map(|task| task.project_id).collect();
+        cleaned.retain_projects(|project| {
+            !seed_projects.contains(project) || task_projects.contains(&project.id)
         });
-        if cleaned.projects.is_empty() {
-            cleaned.projects = Store::empty().projects;
+        if cleaned.projects().is_empty() {
+            cleaned.replace_projects(Store::empty().projects().to_vec());
         }
         // Keep next_id monotonic and preserve configured policies, real runs and settings.
         self.save(&cleaned)?;
@@ -509,13 +539,9 @@ mod tests {
         let directory = TestDirectory::new();
         let storage = directory.storage();
         let mut workspace = Store::mock();
-        workspace.default_model = "test/global".into();
+        workspace.set_default_model("test/global".into());
         workspace.task_mut(1).unwrap().title = "持久化任务".into();
-        let policy = workspace
-            .policies
-            .iter_mut()
-            .find(|p| p.stage == Stage::Review)
-            .unwrap();
+        let policy = workspace.policy_mut(Stage::Review).unwrap();
         policy.agent = "OpenCode".into();
         policy.model = "provider/review-model".into();
         workspace.set_stage(1, Stage::Review).unwrap();
@@ -552,27 +578,28 @@ mod tests {
         let storage = directory.storage();
         let mut old = Store::mock();
         let common = "tencent-token-plan/deepseek/deepseek-flash";
-        old.research_config.models = std::array::from_fn(|_| common.into());
-        old.policies[0].agent = "OpenCode".into();
-        old.policies[0].model = common.into();
-        old.policies[1].agent = "OpenCode".into();
-        old.policies[1].model = "test/intentional-override".into();
-        old.policies[2].agent = "Manual".into();
-        old.policies[2].model = common.into();
-        old.projects[0].directory = "/tmp".into();
-        old.set_stage(1, old.policies[0].stage).unwrap();
+        old.research_config_mut().models = std::array::from_fn(|_| common.into());
+        old.policy_mut(Stage::ALL[0]).unwrap().agent = "OpenCode".into();
+        old.policy_mut(Stage::ALL[0]).unwrap().model = common.into();
+        old.policy_mut(Stage::ALL[1]).unwrap().agent = "OpenCode".into();
+        old.policy_mut(Stage::ALL[1]).unwrap().model = "test/intentional-override".into();
+        old.policy_mut(Stage::ALL[2]).unwrap().agent = "Manual".into();
+        old.policy_mut(Stage::ALL[2]).unwrap().model = common.into();
+        old.project_at_mut(0).unwrap().directory = "/tmp".into();
+        let stage0 = old.policies()[0].stage;
+        old.set_stage(1, stage0).unwrap();
         old.simulate_run(1).unwrap();
         write_legacy_workspace(&storage, &old, 3);
         let before_bytes = fs::read(storage.path()).unwrap();
         let restored = storage.load().unwrap().unwrap();
         let mut expected = old.clone();
-        expected.default_model = common.into();
-        expected.research_config.models = Default::default();
-        expected.policies[0].model.clear();
+        expected.set_default_model(common.into());
+        expected.research_config_mut().models = Default::default();
+        expected.policy_mut(Stage::ALL[0]).unwrap().model.clear();
         assert_eq!(restored, expected);
         assert!(restored.prepare_run(1).is_err());
-        assert_eq!(restored.tasks, old.tasks);
-        assert_eq!(restored.runs, old.runs);
+        assert_eq!(restored.tasks(), old.tasks());
+        assert_eq!(restored.runs(), old.runs());
         assert_eq!(fs::read(storage.path()).unwrap(), before_bytes);
         assert_eq!(storage.load().unwrap(), Some(expected.clone()));
         storage.save(&restored).unwrap();
@@ -593,12 +620,12 @@ mod tests {
             [""; 4],
         ] {
             let mut old = Store::mock();
-            old.research_config.models = models.map(String::from);
+            old.research_config_mut().models = models.map(String::from);
             write_legacy_workspace(&storage, &old, 3);
             assert_eq!(storage.load().unwrap(), Some(old));
         }
         let mut current = Store::mock();
-        current.research_config.models = std::array::from_fn(|_| "test/explicit".into());
+        current.research_config_mut().models = std::array::from_fn(|_| "test/explicit".into());
         storage.save(&current).unwrap();
         assert_eq!(storage.load().unwrap(), Some(current));
     }
@@ -617,7 +644,7 @@ mod tests {
         let storage = dir.storage();
         let _lock = storage.acquire_lock().unwrap();
         let mut store = Store::mock();
-        store.projects.push(crate::domain::Project {
+        store.push_project(crate::domain::Project {
             id: 3,
             name: "Real research".into(),
             key: "RES".into(),
@@ -628,21 +655,21 @@ mod tests {
         let real_id = store
             .create_research_goal("Research".into(), "Real goal".into(), 3)
             .unwrap();
-        store.policies[0].model = "user/configured-model".into();
+        store.policy_mut(Stage::ALL[0]).unwrap().model = "user/configured-model".into();
         storage.save(&store).unwrap();
         let original_bytes = fs::read(storage.path()).unwrap();
         let real_task = store.task(real_id).unwrap().clone();
-        let next_id = store.next_id;
+        let next_id = store.next_id();
         let backup = storage
             .remove_reviewed_demo(&mut store, &(1..=22).collect::<Vec<_>>())
             .unwrap()
             .unwrap();
         assert_eq!(fs::read(backup).unwrap(), original_bytes);
-        assert_eq!(store.tasks, vec![real_task]);
-        assert_eq!(store.projects.len(), 1);
-        assert_eq!(store.projects[0].id, 3);
-        assert_eq!(store.next_id, next_id);
-        assert_eq!(store.policies[0].model, "user/configured-model");
+        assert_eq!(store.tasks(), &[real_task][..]);
+        assert_eq!(store.projects().len(), 1);
+        assert_eq!(store.project_at_mut(0).unwrap().id, 3);
+        assert_eq!(store.next_id(), next_id);
+        assert_eq!(store.policies()[0].model, "user/configured-model");
         // Loading upgrades approval metadata, while cleanup itself preserves the real task exactly.
         let mut expected_loaded = store.clone();
         expected_loaded.normalize_topics();
@@ -693,8 +720,8 @@ mod tests {
         }
         fs::write(storage.path(), serde_json::to_vec(&data).unwrap()).unwrap();
         let loaded = storage.load().unwrap().unwrap();
-        assert!(loaded.automations.is_empty());
-        assert!(loaded.automation_occurrences.is_empty());
+        assert!(loaded.automations().is_empty());
+        assert!(loaded.all_occurrences().is_empty());
         storage.save(&loaded).unwrap();
         let saved: serde_json::Value =
             serde_json::from_slice(&fs::read(storage.path()).unwrap()).unwrap();

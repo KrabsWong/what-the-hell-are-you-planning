@@ -1,0 +1,13 @@
+{
+  "installed_sha256": "6b608fd550efb46d5061b229f5b736ccab1c10110f44143ae2a7c84b2d091370",
+  "logical_size": [
+    1000,
+    680
+  ],
+  "fixture": "r187-ordinary-valid-1000",
+  "observation": "Light Board right6pages and left6pages at physical1450,550 inside Todo empty card leaves columns unchanged.",
+  "classification": "Unresolved native acceptance discrepancy; not established product root cause.",
+  "counter_evidence": "OpenCode rendered real ScrollEvent tests at header, empty body and card pass3/3 with actual Done-column geometry moving into view.",
+  "next": "Private native event logging to distinguish delivered delta from product routing.",
+  "handoff": ".local/opencode-dispatch/r197-board-input-handoff.md"
+}

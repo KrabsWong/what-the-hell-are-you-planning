@@ -175,6 +175,14 @@ impl Store {
             .research
             .as_ref()
             .is_some_and(|r| r.kind == ResearchKind::Goal);
+        // Automation-owned steps share one eligibility source with dispatch.
+        // Definition state stays outside this result; a paused definition never
+        // turns an active period into an ordinary paused Research queue.
+        if !is_goal {
+            if let Some(eligibility) = self.automation_execution_eligibility(id) {
+                return eligibility.execution_status();
+            }
+        }
         // Goals aggregate real run records, rather than treating their workflow stage as activity.
         let ids = if is_goal {
             let mut ids = self.research_children(id);
@@ -186,7 +194,7 @@ impl Store {
         let latest: Vec<_> = ids
             .iter()
             .filter_map(|id| {
-                self.runs
+                self.runs()
                     .iter()
                     .rev()
                     .find(|r| r.task_id == *id && r.project_plan.is_none())
@@ -198,7 +206,7 @@ impl Store {
         {
             return Running;
         }
-        if (is_goal && self.goal_tasks_complete(id))
+        if (is_goal && (self.goal_tasks_complete(id) || self.goal_tasks_present(id)))
             || (!is_goal && self.step_state(id) == StepState::Done)
         {
             return Done;
@@ -311,8 +319,8 @@ mod tests {
     use super::*;
     fn fixture() -> (Store, u64, Vec<u64>, TodoBatch) {
         let mut s = Store::empty();
-        s.default_model = "fixture/model".into();
-        s.projects[0].directory = std::env::temp_dir().to_string_lossy().into();
+        s.set_default_model("fixture/model".into());
+        s.project_at_mut(0).unwrap().directory = std::env::temp_dir().to_string_lossy().into();
         let topic = s.create_topic(1, "Topic").unwrap();
         let goal = s
             .create_research_goal_in_topic("Goal".into(), "Scope".into(), 1, Some(topic))
@@ -342,26 +350,26 @@ mod tests {
         assert_eq!(s.execution_status(ids[1], Some(&batch)), Waiting);
         let mut run = s.prepare_run(ids[0]).unwrap();
         run.status = "Queued".into();
-        s.runs.push(run);
+        s.push_run(run);
         assert_eq!(s.execution_status(ids[0], None), Queued);
-        s.runs[0].status = "Running".into();
+        s.run_at_mut(0).unwrap().status = "Running".into();
         assert_eq!(s.execution_status(goal, Some(&batch)), Running);
         batch.state = BatchState::Paused("Paused".into());
         assert_eq!(s.execution_status(ids[0], Some(&batch)), Running);
         assert_eq!(s.execution_status(ids[1], Some(&batch)), Paused);
         batch.state = BatchState::Running;
-        s.runs[0].status = "Queued".into();
-        s.runs[0].auto_retry_attempt = 1;
+        s.run_at_mut(0).unwrap().status = "Queued".into();
+        s.run_at_mut(0).unwrap().auto_retry_attempt = 1;
         assert_eq!(s.execution_status(goal, Some(&batch)), Retrying);
-        s.runs[0].status = "Failed".into();
+        s.run_at_mut(0).unwrap().status = "Failed".into();
         assert_eq!(s.execution_status(goal, Some(&batch)), Blocked);
         assert_eq!(
             s.execution_status(ids[1], Some(&batch)),
             Waiting,
             "a dependent step that never ran stays Waiting, not a second failure"
         );
-        s.runs[0].status = "Succeeded".into();
-        s.runs[0].output = "Verified result".into();
+        s.run_at_mut(0).unwrap().status = "Succeeded".into();
+        s.run_at_mut(0).unwrap().output = "Verified result".into();
         s.task_mut(ids[0]).unwrap().stage = crate::domain::Stage::Done;
         assert_eq!(s.execution_status(ids[0], Some(&batch)), Done);
         assert_eq!(s.execution_status(ids[1], Some(&batch)), Queued);

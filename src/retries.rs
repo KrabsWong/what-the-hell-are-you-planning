@@ -13,7 +13,7 @@ impl AgentRun {
 
 impl Store {
     pub fn prepare_auto_retry(&self, failed_id: u64, now: i64) -> Option<AgentRun> {
-        let failed = self.runs.iter().find(|run| run.id == failed_id)?;
+        let failed = self.runs().iter().find(|run| run.id == failed_id)?;
         if failed.status != "Failed"
             || failed.project_plan.is_some()
             || failed.auto_retry_attempt >= MAX_AUTO_RETRIES
@@ -25,7 +25,7 @@ impl Store {
         let task = self.task(failed.task_id)?;
         if task.stage == Stage::Cancelled
             || self
-                .runs
+                .runs()
                 .iter()
                 .rev()
                 .find(|run| run.task_id == failed.task_id && run.project_plan.is_none())?
@@ -39,7 +39,7 @@ impl Store {
             return None;
         }
         let mut retry = failed.clone();
-        retry.id = self.runs.iter().map(|run| run.id).max()?.checked_add(1)?;
+        retry.id = self.runs().iter().map(|run| run.id).max()?.checked_add(1)?;
         retry.auto_retry_attempt += 1;
         retry.retry_not_before = Some(now + RETRY_DELAY_SECONDS);
         retry.status = "Queued".into();
@@ -67,24 +67,26 @@ mod tests {
 
     fn failed_task() -> (Store, u64) {
         let mut store = Store::empty();
-        store.projects[0].directory = std::env::temp_dir().to_string_lossy().into_owned();
-        store.default_model = "test/model".into();
+        store.project_at_mut(0).unwrap().directory = std::env::temp_dir().to_string_lossy().into_owned();
+        store.set_default_model("test/model".into());
         let goal = store.create_research_goal("Goal".into(), "Scope".into(), 1).unwrap();
-        store.runs.push(store.prepare_run(goal).unwrap());
-        let run = store.runs.last_mut().unwrap();
-        run.status = "Failed".into();
-        run.session_id = Some("existing-session".into());
-        run.output = "Partial output".into();
-        run.exit_code = Some(1);
-        let id = run.id;
+        store.push_run(store.prepare_run(goal).unwrap());
+        let id = {
+            let mut run = store.last_run_mut().unwrap();
+            run.status = "Failed".into();
+            run.session_id = Some("existing-session".into());
+            run.output = "Partial output".into();
+            run.exit_code = Some(1);
+            run.id
+        };
         (store, id)
     }
 
     #[test]
     fn validation_retry_explains_rejection_and_preserves_context() {
         let (mut store, id) = failed_task();
-        store.runs.last_mut().unwrap().logs.push("[error] [validation] Source 2 has an unsupported URL.".into());
-        let original = store.runs.last().unwrap().clone();
+        store.last_run_mut().unwrap().logs.push("[error] [validation] Source 2 has an unsupported URL.".into());
+        let original = store.runs().last().unwrap().clone();
         let retry = store.prepare_auto_retry(id, 100).unwrap();
         assert!(retry.prompt.starts_with(&original.prompt));
         assert!(retry.prompt.contains("Source 2 has an unsupported URL."));
@@ -98,7 +100,7 @@ mod tests {
     #[test]
     fn three_delayed_retries_preserve_snapshot_and_session() {
         let (mut store, mut id) = failed_task();
-        let original = store.runs.last().unwrap().clone();
+        let original = store.runs().last().unwrap().clone();
         for attempt in 1..=3 {
             let mut retry = store.prepare_auto_retry(id, 100).unwrap();
             assert_eq!(retry.auto_retry_attempt, attempt);
@@ -114,7 +116,7 @@ mod tests {
             assert!(retry.exit_code.is_none());
             retry.status = "Failed".into();
             id = retry.id;
-            store.runs.push(retry);
+            store.push_run(retry);
             // Restart/serialization must not erase the retry budget.
             store = serde_json::from_str(&serde_json::to_string(&store).unwrap()).unwrap();
         }
@@ -135,7 +137,7 @@ mod tests {
             "Running",
         ] {
             let (mut store, id) = failed_task();
-            store.runs.last_mut().unwrap().status = status.into();
+            store.last_run_mut().unwrap().status = status.into();
             assert!(store.prepare_auto_retry(id, 0).is_none(), "{status}");
         }
         let (mut store, id) = failed_task();
@@ -145,22 +147,22 @@ mod tests {
         store.task_mut(1).unwrap().stage = Stage::Cancelled;
         assert!(store.prepare_auto_retry(id, 0).is_none());
         let (mut store, id) = failed_task();
-        store.runs.last_mut().unwrap().project_plan = Some(1);
+        store.last_run_mut().unwrap().project_plan = Some(1);
         assert!(store.prepare_auto_retry(id, 0).is_none());
     }
 
     #[test]
     fn changed_research_inputs_prevent_retry() {
         let mut store = Store::empty();
-        store.projects[0].directory = "/tmp".into();
-        store.default_model = "fixture/model".into();
+        store.project_at_mut(0).unwrap().directory = "/tmp".into();
+        store.set_default_model("fixture/model".into());
         let goal = store
             .create_research_goal("Market research".into(), "Scope".into(), 1)
             .unwrap();
         let mut failed = store.prepare_run(goal).unwrap();
         failed.status = "Failed".into();
         let id = failed.id;
-        store.runs.push(failed);
+        store.push_run(failed);
         assert!(store.prepare_auto_retry(id, 0).is_some());
         store
             .task_mut(goal)
@@ -173,7 +175,7 @@ mod tests {
     #[test]
     fn legacy_runs_default_to_no_retry_metadata() {
         let (store, _) = failed_task();
-        let mut value = serde_json::to_value(&store.runs[0]).unwrap();
+        let mut value = serde_json::to_value(&store.runs()[0]).unwrap();
         value.as_object_mut().unwrap().remove("auto_retry_attempt");
         value.as_object_mut().unwrap().remove("retry_not_before");
         let run: AgentRun = serde_json::from_value(value).unwrap();

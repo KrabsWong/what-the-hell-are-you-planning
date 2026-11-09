@@ -1,0 +1,13 @@
+{
+  "source_commit": "a2c2c4d",
+  "source_root": "/Users/fuxingxing/workspaces/what-the-hell-are-you-planning/.local/opencode-dispatch/r191-frozen-source",
+  "source_tree_equal_to_current": true,
+  "forced_recompile": "Touched src/automation_views.rs before cargo build; log shows compile and 38.12 seconds, exit0",
+  "build_log": ".local/opencode-dispatch/r194-forced-qa-build.log",
+  "binary": "/Users/fuxingxing/workspaces/what-the-hell-are-you-planning/.local/opencode-dispatch/r194-qa-candidate",
+  "binary_sha256": "23240064da36786f2d288302776e41c9f2d283c0b49acfd46ff9fcd1e7fe0fdb",
+  "rejected_previous_binary_sha256": "678194e994b3fb1a1ed880e691e350d798fddd5cc70876b50ad5594892e01dd0",
+  "previous_evidence": "r193-current-live-performance.json: current-source claim withdrawn",
+  "gate_status": "New 55-entry run started; not yet accepted",
+  "gate_log": ".local/opencode-dispatch/r194-final-gate.log"
+}

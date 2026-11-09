@@ -1,0 +1,22 @@
+{
+  "binary_sha256": "42f026782efc04f497a6ea5eab628d6320741343d271b99531c874d7d5f47c05",
+  "fixture": "r183-material-fixture",
+  "logical_size": [
+    1000,
+    680
+  ],
+  "passed": [
+    "Search selects Backlog TASK-G23, distinct from Done TASK-G19.",
+    "Dark material grid scrolls to materials 21\u201324; card24 opens Preview with exact isolated attachment path.",
+    "Light material grid scrolls back to materials11\u201318 without clipping card actions.",
+    "General settings scrolls to Workspace; Agent & models scrolls to Browser controls; Publishing scrolls to complete explanatory footer.",
+    "Settings Back restores TASK-G23 and the materials11\u201318 scroll position.",
+    "Theme change displays Settings saved; isolated app quits normally."
+  ],
+  "limits": [
+    "No concurrent-save overlap proven: save completed before observation.",
+    "No quiet performance claim; offline stress and private builds overlapped.",
+    "Publishing off-state still looks like a full-width action, tracked as existing deferred usability issue.",
+    "Automation configuration modal and compact report reader remain pending."
+  ]
+}

@@ -1,0 +1,23 @@
+{
+  "command": "cargo test --features qa --test dispatch_admission_crash --quiet",
+  "results": [
+    {
+      "round": 1,
+      "exit_code": 101,
+      "seconds": 22.386,
+      "log": "r69-crash-repeat-1.log"
+    },
+    {
+      "round": 2,
+      "exit_code": 0,
+      "seconds": 3.423,
+      "log": "r69-crash-repeat-2.log"
+    },
+    {
+      "round": 3,
+      "exit_code": 0,
+      "seconds": 3.243,
+      "log": "r69-crash-repeat-3.log"
+    }
+  ]
+}

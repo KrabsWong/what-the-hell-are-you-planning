@@ -35,7 +35,7 @@ pub fn run() {
             app.update(cx, |a, cx| {
                 assert!(a.storage_error.is_empty(), "{}", a.storage_error);
                 if a.store
-                    .tasks
+                    .tasks()
                     .iter()
                     .any(|t| t.id == 1 && t.title == "Polish task details and navigation")
                 {
@@ -50,7 +50,7 @@ pub fn run() {
                 }
                 let goal = a
                     .store
-                    .tasks
+                    .tasks()
                     .iter()
                     .find(|t| {
                         t.title == "2026 年剩余时间：存储行业走势与投资机会"
@@ -75,9 +75,9 @@ pub fn run() {
                 let collection_run = a.store.research_result(collect).unwrap().id;
                 a.research_project = a.store.task(goal).unwrap().project_id;
                 a.connection_project = a.research_project;
-                a.store.appearance = Appearance::Light;
-                crate::appearance::apply(a.store.appearance, Some(w), cx);
-                a.scope = Scope::Research;
+                a.store.set_appearance(Appearance::Light);
+                crate::appearance::apply(a.store.appearance(), Some(w), cx);
+                a.set_scope_identity(Scope::Research);
                 a.persist_if_changed(true);
                 (goal, analysis, advice, collection_run)
             })
@@ -143,7 +143,7 @@ pub fn run() {
             assert_eq!(a.store.next_research_task(goal).unwrap(), None);
             assert!(
                 a.store
-                    .runs
+                    .runs()
                     .iter()
                     .any(|r| r.id == collection_run && r.status == "Succeeded")
             );
@@ -171,12 +171,12 @@ pub fn run() {
                     result.attachments.len()
                 );
             }
-            a.scope = Scope::Runs;
-            a.selected = None;
-            a.selected_run = Some(a.store.research_result(advice).unwrap().id);
+            a.set_scope_identity(Scope::Runs);
+            a.fixture_select_task(None);
+            a.note_selected_run(Some(a.store.research_result(advice).unwrap().id));
             a.show_run_result = true;
-            a.store.appearance = Appearance::Light;
-            crate::appearance::apply(a.store.appearance, Some(w), cx);
+            a.store.set_appearance(Appearance::Light);
+            crate::appearance::apply(a.store.appearance(), Some(w), cx);
             a.persist_if_changed(true);
             cx.notify();
         })
@@ -188,16 +188,16 @@ pub fn run() {
         .save(root.join("materials-result-light.png"))
         .unwrap();
     cx.update_window(handle, |_, w, cx| {
-        let next = if app.read(cx).store.appearance == Appearance::Light {
+        let next = if app.read(cx).store.appearance() == Appearance::Light {
             2usize
         } else {
             1usize
         };
         w.click("toggle-appearance", cx);
-        if next == 1 && app.read(cx).store.appearance == Appearance::System {
+        if next == 1 && app.read(cx).store.appearance() == Appearance::System {
             w.click("toggle-appearance", cx);
         }
-        assert_eq!(app.read(cx).store.appearance, Appearance::Dark);
+        assert_eq!(app.read(cx).store.appearance(), Appearance::Dark);
     })
     .unwrap();
     render(&mut cx, handle);
@@ -206,13 +206,13 @@ pub fn run() {
         .save(root.join("materials-result-dark.png"))
         .unwrap();
     cx.update_window(handle, |_, w, cx| {
-        let next = if app.read(cx).store.appearance == Appearance::Light {
+        let next = if app.read(cx).store.appearance() == Appearance::Light {
             2usize
         } else {
             1usize
         };
         w.click("toggle-appearance", cx);
-        if next == 1 && app.read(cx).store.appearance == Appearance::System {
+        if next == 1 && app.read(cx).store.appearance() == Appearance::System {
             w.click("toggle-appearance", cx);
         }
     })
@@ -248,7 +248,7 @@ fn wait(
                 let state = format!(
                     "{:?} import={} {}",
                     a.store
-                        .runs
+                        .runs()
                         .last()
                         .map(|r| (r.id, r.status.as_str(), r.logs.len())),
                     a.attachment_import.is_some(),
@@ -282,15 +282,63 @@ fn render(cx: &mut HeadlessAppContext, handle: AnyWindowHandle) {
     }
 }
 
+fn write_executable(path: &std::path::Path, source: &str) {
+    use std::os::unix::fs::PermissionsExt;
+    std::fs::write(path, source).unwrap();
+    std::fs::set_permissions(path, std::fs::Permissions::from_mode(0o700)).unwrap();
+}
+
 /// Isolated native acceptance for empty startup, non-1 projects and theme persistence.
 pub fn workspace() {
     use crate::{domain::Store, persistence::Storage};
+    const PLAN_CLI: &str = r#"#!/usr/bin/python3
+import json, sys
+if '--version' in sys.argv:
+    print('OpenCode QA fixture'); sys.exit(0)
+if 'models' in sys.argv:
+    print('fixture/research'); sys.exit(0)
+result = {
+    'topic_name': 'Workspace QA research',
+    'brief': {
+        'objective': 'Verify that a workspace request creates one reviewable research goal.',
+        'deliverable': 'One goal with a complete collection, analysis and report chain.',
+        'scope': 'Isolated workspace acceptance only.',
+        'assumptions': ['The fixture uses a local fake agent.'],
+        'facts_to_verify': ['No external evidence is required for this acceptance check.']
+    },
+    'goals': [{
+        'title': 'Workspace QA goal',
+        'brief': 'Prove that the current intake creates a reviewable goal.',
+        'tasks': [
+            {'title': 'Collect workspace evidence', 'instructions': 'Record the fixture output.', 'kind': 'collect', 'depends_on': []},
+            {'title': 'Analyze workspace evidence', 'instructions': 'Check the recorded output.', 'kind': 'analyze', 'depends_on': [0]},
+            {'title': 'Report workspace result', 'instructions': 'Summarize the acceptance result.', 'kind': 'advise', 'depends_on': [1]}
+        ]
+    }]
+}
+print(json.dumps({'type': 'text', 'part': {'text': json.dumps(result)}}))
+"#;
     let root = std::env::current_dir()
         .unwrap()
         .join(format!(".local/workspace-qa/{}", std::process::id()));
+    std::fs::create_dir_all(&root).unwrap();
+    let project = root.join("project");
+    std::fs::create_dir_all(&project).unwrap();
+    let cli = root.join("fake-opencode");
+    let ego = root.join("fake-ego-browser");
+    write_executable(&cli, PLAN_CLI);
+    write_executable(
+        &ego,
+        "#!/bin/sh\nprintf '%s\\n' 'Workspace QA browser guide' '[ego-browser:skill] end of guide'\n",
+    );
     let storage = Storage::new(root.join("workspace.json"));
     let mut empty = Store::empty();
-    empty.projects[0].id = 3;
+    empty.project_at_mut(0).unwrap().id = 3;
+    empty.project_at_mut(0).unwrap().name = "Workspace QA".into();
+    empty.project_at_mut(0).unwrap().directory = project.to_string_lossy().into_owned();
+    empty.set_opencode_path(cli.to_string_lossy().into_owned());
+    empty.set_default_model("fixture/research".into());
+    empty.research_config_mut().ego_path = ego.to_string_lossy().into_owned();
     storage.save(&empty).unwrap();
     for (width, height) in [(1440., 920.), (1000., 680.)] {
         let mut cx = HeadlessAppContext::with_platform(
@@ -314,7 +362,7 @@ pub fn workspace() {
         let handle = window.into();
         cx.update_window(handle, |_, _, cx| {
             assert!(app.read(cx).storage_error.is_empty());
-            assert_eq!(app.read(cx).store.appearance, Appearance::Light);
+            assert_eq!(app.read(cx).store.appearance(), Appearance::Light);
         })
         .unwrap();
         render(&mut cx, handle);
@@ -324,21 +372,53 @@ pub fn workspace() {
             .unwrap();
         if width == 1440. {
             cx.update_window(handle, |_, w, cx| {
-                assert!(app.read(cx).store.tasks.is_empty());
-                assert!(app.read(cx).store.runs.is_empty());
+                assert!(app.read(cx).store.tasks().is_empty());
+                assert!(app.read(cx).store.runs().is_empty());
                 w.click("new-task", cx);
-                w.input("真实工作区：补充材料与研究任务", cx);
-                w.click("save-task", cx);
+                w.render_frame(cx);
+                w.click("project-plan-brief", cx);
+                w.input("Workspace QA: materials and research task", cx);
+                w.click("generate-project-plan", cx);
+            })
+            .unwrap();
+            let deadline = Instant::now() + Duration::from_secs(15);
+            loop {
+                let done = cx
+                    .update_window(handle, |_, w, cx| {
+                        app.update(cx, |a, cx| a.poll_runtime(cx));
+                        w.render_frame(cx);
+                        app.read(cx)
+                            .store
+                            .research_requests()
+                            .iter()
+                            .any(|request| request.goal_ids.len() == 1)
+                    })
+                    .unwrap();
+                if done {
+                    break;
+                }
+                assert!(
+                    Instant::now() < deadline,
+                    "workspace intake planning did not finish"
+                );
+                std::thread::sleep(Duration::from_millis(20));
+            }
+            cx.update_window(handle, |_, w, cx| {
                 let a = app.read(cx);
                 assert!(a.error.is_empty(), "{}", a.error);
-                assert_eq!(a.store.tasks.len(), 1);
-                assert_eq!(a.store.tasks[0].project_id, 3);
+                let goal = a
+                    .store
+                    .tasks()
+                    .iter()
+                    .find(|task| task.project_id == 3 && task.parent_id.is_none())
+                    .expect("intake must create one root goal");
+                assert_eq!(a.store.research_children(goal.id).len(), 3);
                 w.click("navigation-back", cx);
             })
             .unwrap();
         }
         cx.update_window(handle, |_, w, cx| {
-            w.click("research", cx);
+            w.click("all", cx);
         })
         .unwrap();
         render(&mut cx, handle);
@@ -347,16 +427,16 @@ pub fn workspace() {
             .save(root.join(format!("research-light-{width}.png")))
             .unwrap();
         cx.update_window(handle, |_, w, cx| {
-            let next = if app.read(cx).store.appearance == Appearance::Light {
+            let next = if app.read(cx).store.appearance() == Appearance::Light {
                 2usize
             } else {
                 1usize
             };
             w.click("toggle-appearance", cx);
-            if next == 1 && app.read(cx).store.appearance == Appearance::System {
+            if next == 1 && app.read(cx).store.appearance() == Appearance::System {
                 w.click("toggle-appearance", cx);
             }
-            assert_eq!(app.read(cx).store.appearance, Appearance::Dark);
+            assert_eq!(app.read(cx).store.appearance(), Appearance::Dark);
         })
         .unwrap();
         render(&mut cx, handle);
@@ -373,16 +453,16 @@ pub fn workspace() {
                     .load()
                     .unwrap()
                     .unwrap()
-                    .appearance,
+                    .appearance(),
                 Appearance::Dark
             );
-            let next = if app.read(cx).store.appearance == Appearance::Light {
+            let next = if app.read(cx).store.appearance() == Appearance::Light {
                 2usize
             } else {
                 1usize
             };
             w.click("toggle-appearance", cx);
-            if next == 1 && app.read(cx).store.appearance == Appearance::System {
+            if next == 1 && app.read(cx).store.appearance() == Appearance::System {
                 w.click("toggle-appearance", cx);
             }
         })

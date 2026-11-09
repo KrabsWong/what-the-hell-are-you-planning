@@ -58,12 +58,12 @@ pub fn parse_plan(text: &str) -> Result<ProjectPlan, String> {
 impl Store {
     pub fn project_plan_signature(&self, project: u64) -> Result<String, String> {
         let project = self
-            .projects
+            .projects()
             .iter()
             .find(|p| p.id == project)
             .ok_or("Project not found.")?;
         let mut existing: Vec<_> = self
-            .tasks
+            .tasks()
             .iter()
             .filter(|t| t.project_id == project.id)
             .map(|t| (t.id, &t.title))
@@ -80,10 +80,10 @@ impl Store {
     }
 
     pub fn has_project_plan(&self, project: u64) -> bool {
-        self.runs
+        self.runs()
             .iter()
             .any(|r| r.project_plan == Some(project) && r.status == "Succeeded")
-            || self.tasks.iter().any(|t| {
+            || self.tasks().iter().any(|t| {
                 t.project_id == project
                     && t.research
                         .as_ref()
@@ -93,7 +93,7 @@ impl Store {
 
     pub fn prepare_project_plan(&self, project: u64) -> Result<AgentRun, String> {
         let project = self
-            .projects
+            .projects()
             .iter()
             .find(|p| p.id == project)
             .ok_or("Project not found.")?;
@@ -122,7 +122,7 @@ impl Store {
             );
         }
         let existing: Vec<_> = self
-            .tasks
+            .tasks()
             .iter()
             .filter(|t| t.project_id == project.id)
             .map(|t| &t.title)
@@ -160,10 +160,11 @@ impl Store {
         }
         Ok(AgentRun {
         automation_occurrence_id: None,
+            planning_owner: None,
             deadline_at: None,
             auto_retry_attempt: 0,
             retry_not_before: None,
-            id: self.runs.iter().map(|r| r.id).max().unwrap_or(0) + 1,
+            id: self.runs().iter().map(|r| r.id).max().unwrap_or(0) + 1,
             task_id: 0,
             project_plan: Some(project.id),
             task_title: format!("Project goals · {}", project.name),
@@ -189,14 +190,14 @@ impl Store {
     pub fn apply_project_plan(&mut self, project: u64, text: &str) -> Result<Vec<u64>, String> {
         let plan = parse_plan(text)?;
         let project = self
-            .projects
+            .projects()
             .iter()
             .find(|p| p.id == project)
             .ok_or("Project not found.")?
             .clone();
         // A successful run is already recorded by the runtime before this application step.
         // Existing proposals, including archived ones, still prevent duplicate application.
-        if self.tasks.iter().any(|t| {
+        if self.tasks().iter().any(|t| {
             t.project_id == project.id
                 && t.research
                     .as_ref()
@@ -208,7 +209,7 @@ impl Store {
             );
         }
         let existing: HashSet<_> = self
-            .tasks
+            .tasks()
             .iter()
             .filter(|t| t.project_id == project.id)
             .map(|t| title_key(&t.title))
@@ -220,7 +221,7 @@ impl Store {
         {
             return Err("A proposed title duplicates an existing task in this project. Retry with distinct goals.".into());
         }
-        self.next_id
+        self.next_id()
             .checked_add(plan.tasks.len() as u64)
             .ok_or("No task identifiers remain.")?;
         // Validate the complete response before mutating so a malformed final item cannot
@@ -258,10 +259,10 @@ mod tests {
 
     fn workspace() -> Store {
         let mut store = Store::empty();
-        store.projects[0].name = "半导体行业研究".into();
-        store.projects[0].research_brief = "覆盖全球市场，重点关注未来一年。".into();
-        store.projects[0].directory = std::env::temp_dir().to_string_lossy().into_owned();
-        store.research_config.models[0] = "test/project-planner".into();
+        store.project_at_mut(0).unwrap().name = "半导体行业研究".into();
+        store.project_at_mut(0).unwrap().research_brief = "覆盖全球市场，重点关注未来一年。".into();
+        store.project_at_mut(0).unwrap().directory = std::env::temp_dir().to_string_lossy().into_owned();
+        store.research_config_mut().models[0] = "test/project-planner".into();
         store
     }
 
@@ -306,7 +307,7 @@ mod tests {
         let mut store = workspace();
         let ids = store.apply_project_plan(1, PLAN).unwrap();
         assert_eq!(ids.len(), 2);
-        assert!(store.runs.is_empty());
+        assert!(store.runs().is_empty());
         for id in ids {
             let task = store.task(id).unwrap();
             assert_eq!(task.stage, Stage::Backlog);
@@ -315,7 +316,7 @@ mod tests {
             assert_eq!(research.kind, ResearchKind::Goal);
             assert_eq!(research.goal_id, id);
             assert!(research.requires_approval);
-            assert!(task.description.contains(&store.projects[0].research_brief));
+            assert!(task.description.contains(&store.projects()[0].research_brief));
             assert!(research.depends_on.is_empty());
         }
         let restored: Store =
@@ -330,7 +331,7 @@ mod tests {
     #[test]
     fn planner_uses_saved_model_and_name_only_scope_without_starting_work() {
         let mut store = workspace();
-        store.projects[0].research_brief.clear();
+        store.project_at_mut(0).unwrap().research_brief.clear();
         let run = store.prepare_project_plan(1).unwrap();
         assert_eq!(run.project_plan, Some(1));
         assert_eq!(run.task_id, 0);
@@ -345,49 +346,49 @@ mod tests {
             run.input_signature,
             store.project_plan_signature(1).unwrap()
         );
-        assert!(store.tasks.is_empty());
-        assert!(store.runs.is_empty());
-        store.research_config.models[0].clear();
+        assert!(store.tasks().is_empty());
+        assert!(store.runs().is_empty());
+        store.research_config_mut().models[0].clear();
         assert!(store.prepare_project_plan(1).is_err());
-        store.research_config.models[0] = "test/project-planner".into();
-        store.projects[0].directory.clear();
+        store.research_config_mut().models[0] = "test/project-planner".into();
+        store.project_at_mut(0).unwrap().directory.clear();
         assert!(store.prepare_project_plan(1).is_err());
     }
 
     #[test]
     fn planner_uses_global_fallback_without_changing_in_flight_requests() {
         let mut store = workspace();
-        store.research_config.models[0].clear();
-        store.default_model = "test/global".into();
+        store.research_config_mut().models[0].clear();
+        store.set_default_model("test/global".into());
         let run = store.prepare_project_plan(1).unwrap();
         assert_eq!(run.model, "test/global");
-        store.default_model = "test/changed".into();
+        store.set_default_model("test/changed".into());
         assert_eq!(
             store.project_plan_signature(1).unwrap(),
             run.input_signature
         );
-        store.research_config.models[0] = "test/planner-override".into();
+        store.research_config_mut().models[0] = "test/planner-override".into();
         assert_eq!(
             store.prepare_project_plan(1).unwrap().model,
             "test/planner-override"
         );
         assert_eq!(run.model, "test/global");
-        store.research_config.models[0] = "invalid".into();
+        store.research_config_mut().models[0] = "invalid".into();
         assert!(store.prepare_project_plan(1).is_err());
-        store.research_config.models[0].clear();
+        store.research_config_mut().models[0].clear();
         for invalid in ["", "invalid"] {
-            store.default_model = invalid.into();
+            store.set_default_model(invalid.into());
             assert!(store.prepare_project_plan(1).is_err());
         }
-        assert!(store.tasks.is_empty());
-        assert!(store.runs.is_empty());
+        assert!(store.tasks().is_empty());
+        assert!(store.runs().is_empty());
     }
 
     #[test]
     fn project_signature_tracks_inputs_and_existing_titles() {
         let mut store = workspace();
         let before = store.project_plan_signature(1).unwrap();
-        store.projects[0].research_brief.push_str(" 只看美股。");
+        store.project_at_mut(0).unwrap().research_brief.push_str(" 只看美股。");
         assert_ne!(before, store.project_plan_signature(1).unwrap());
         let before = store.project_plan_signature(1).unwrap();
         let id = store
@@ -404,9 +405,9 @@ mod tests {
         let mut store = workspace();
         let mut run = store.prepare_project_plan(1).unwrap();
         run.status = "Failed".into();
-        store.runs.push(run);
+        store.push_run(run);
         assert!(!store.has_project_plan(1));
-        store.runs[0].status = "Succeeded".into();
+        store.run_at_mut(0).unwrap().status = "Succeeded".into();
         assert!(store.has_project_plan(1));
         assert!(store.prepare_project_plan(1).is_err());
         // Finalization applies the successful run, so it must not reject that run itself.

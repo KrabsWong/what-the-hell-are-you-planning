@@ -1,0 +1,19 @@
+{
+  "sha256": "075be12e873dfed96f04858c8ba99159c9f0db46798af02ff76ae1ad95a11dbe",
+  "guard_exit": 2,
+  "source_manifest": "r59-native-source.json",
+  "results": [
+    {
+      "flag": "--qa-navigation-context",
+      "exit_code": 0,
+      "seconds": 14.403,
+      "log": "r59-navigation-context.log"
+    },
+    {
+      "flag": "--qa-keyboard-visual",
+      "exit_code": 0,
+      "seconds": 11.416,
+      "log": "r59-keyboard-visual.log"
+    }
+  ]
+}

@@ -1,0 +1,13 @@
+{
+  "src/automation_policy.rs": "5306854f7330c6f1e65510d493a02744c72a8af76c97cfe30336aab0ec5905af",
+  "src/automation.rs": "46ba9119a22aee764491ccf1a882b088eebe7c4e902d0c4ec1a6bbe4e0865f60",
+  "src/automation_execution.rs": "e5150ab6a47271d4c814bf285e04361de8579c168b2db739c733ccc79f0153f3",
+  "src/automation_views.rs": "03d4d77816815140a1916eb305e46e2617d18517ec9a58a5b7f6d93ef4650794",
+  "src/automation_qa.rs": "c4993587b81e93a4daf3953e00205d4c0dac5bddff24d44dbb58a028d3fce72f",
+  "src/opencode.rs": "f14f1f9a95b981682d2f7750bf2d679ea3326b002cf86b22927744dc672adc17",
+  "PRODUCT.md": "e3a64fa01116d5c82bbd53f8a661f9671dd120a779478f331a94d70a2bef4002",
+  "README.md": "51343c32ece75ac8e5f4a5e226b1b5bf0bfd25b8cb6095f0f851ba7d05effa63",
+  "USER_GUIDE.md": "b06400e3d1dcad13a28043fdafd23ac9df9f492e51b8df0fccf3fc1c5fb246a9",
+  "doc/AUTOMATION_PLAN.md": "060e0f9e12122bd59f9f60f14be173648245c1f6557298ae3bd7decfe8d25bc9",
+  "doc/RESEARCH_WORKFLOW_STRATEGY.md": "73c6d515ce9c377e42c825e0ca8a42e467c2b909508b46e666b4d0fef5394501"
+}

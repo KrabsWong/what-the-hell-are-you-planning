@@ -1,0 +1,30 @@
+{
+  "install": {
+    "parent_manifest": ".local/opencode-dispatch/r115-source.json",
+    "native_manifest": ".local/native-review/r115-source.json",
+    "unsigned_sha256": "3cdfa427ad6554080929704f53adca7e743030cec54b7d6fd08a2219d592e46f",
+    "signed_sha256": "079430d5b97a61a65466701458a423cb6d80bdcb79753e1c44ccd7726eedf6cf",
+    "guard_exit": 2,
+    "fixture_backup": ".local/native-review/r115-fixture-backup",
+    "only_source_override": "Isolated workspace bootstrap path",
+    "known_delta_to_worktree": "Later Quick tooltip wording is not in this frozen candidate; its native acceptance remains pending."
+  },
+  "launch_observation": "Computer getApp background launch showed Starting; later main-thread sample was idle. Pointer click in window exposed All research. No lock or storage error was observed. Activation versus missing redraw remains unclassified.",
+  "sample": ".local/native-review/r115-startup.sample.txt",
+  "current_state": "All research, Dark, synthetic fixture",
+  "native_save_acceptance": {
+    "direct_save": "Passed: renamed existing Draft; editor closed to its detail with Draft saved and Automation saved locally feedback.",
+    "dirty_exit": "Passed: renamed draft then selected All research; Save draft and continue dismissed editor/modal and reached All research.",
+    "disk": {
+      "id": 3,
+      "status": "Draft",
+      "name": "R115 dirty exit validation",
+      "occurrence_count": 5
+    },
+    "scope": "Native dark desktop checks only; no enable or manual run. Other themes, compact layout, keyboard and scrolling remain open."
+  },
+  "settings_navigation": {
+    "button": "Passed: actual workspace menu Settings opened from Automations; Back button returned to Automations.",
+    "keyboard": "Open: Computer super+bracketleft did not visibly leave Settings. Tool key translation versus application focus/binding requires investigation."
+  }
+}

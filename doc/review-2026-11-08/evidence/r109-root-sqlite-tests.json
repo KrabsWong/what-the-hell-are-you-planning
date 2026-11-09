@@ -1,0 +1,17 @@
+{
+  "result": "passed",
+  "command": "cargo test --locked --test sqlite_lock_regression -- --nocapture",
+  "exit_code": 0,
+  "tests": 2,
+  "runtime_sqlite_version": "3.51.3",
+  "duration_seconds": 0.1,
+  "source_manifest": ".local/opencode-dispatch/r109-dependency-source.json",
+  "base": "frozen r108 plus dependency update and initial regression test",
+  "sha256": {
+    "Cargo.toml": "57d5448a885c2a799bd1541c92e695dea82578edb3bebfaa13cc13181c43ba74",
+    "Cargo.lock": "321654e5e93759653f76ade33f4add0408e34b8aa1cae93042afb1dd4ee02528",
+    "tests/sqlite_lock_regression.rs": "2b002b660fb0f59c798385497b0ac1b74e770355c6ad515d4a5840a335f37824"
+  },
+  "scope": "Version and concurrent WAL open/write/close smoke test. Does not yet prove original application hang resolved, data integrity under fault injection or final integration acceptance.",
+  "log": ".local/opencode-dispatch/r109-dependency-root-tests.log"
+}

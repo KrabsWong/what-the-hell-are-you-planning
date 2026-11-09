@@ -1,0 +1,959 @@
+{
+  "scope": "Full expanded live performance baseline; attempted quiet run but compilation overlapped",
+  "candidate_sha256": "09a2e541c261ca106d30c5b787bfdb5684b42e84979dddbe9c1ffd8236daed47",
+  "module_sha256": "8b7a2fb2730beb30fd6a3399847a8c61ebecb44b3071137bdd2617b15c968b89",
+  "base": "r137 product plus expanded QA harness only",
+  "exit": 1,
+  "seconds": 50.78,
+  "process_sample_count": 171,
+  "busy_process_samples": 29,
+  "hardware": {
+    "cpu": "Apple M1 Pro",
+    "memory_bytes": "34359738368",
+    "os_build": "26B123",
+    "arch": "aarch64"
+  },
+  "profile": {
+    "qa_feature": true,
+    "debug_assertions": true,
+    "executable": "/Users/fuxingxing/workspaces/what-the-hell-are-you-planning/.local/t14-r137-perf-slice/guard/app7",
+    "argv": [
+      "/Users/fuxingxing/workspaces/what-the-hell-are-you-planning/.local/t14-r137-perf-slice/guard/app7",
+      "--qa-live-performance"
+    ],
+    "source_sha256": "92b1a216efe986a5452448b287ac16d4ef47ad675188de4a6692c07eddf75ca0"
+  },
+  "samples": 30,
+  "warmup": 3,
+  "gates": {
+    "editor": {
+      "p95_us": 8353,
+      "target_us": 50000,
+      "passed": true
+    },
+    "automation_save_draft": {
+      "p95_us": 49977,
+      "target_us": 50000,
+      "passed": true
+    },
+    "automation_enable": {
+      "p95_us": 50143,
+      "target_us": 50000,
+      "passed": false
+    },
+    "automation_pause": {
+      "p95_us": 49509,
+      "target_us": 50000,
+      "passed": true
+    },
+    "settings": {
+      "p95_us": 38743,
+      "target_us": 50000,
+      "passed": true
+    },
+    "scoped_task_undo": {
+      "p95_us": 40485,
+      "target_us": 50000,
+      "passed": true
+    },
+    "history_page": {
+      "p95_us": 15495,
+      "target_us": 50000,
+      "passed": true
+    }
+  },
+  "fixtures": [
+    {
+      "occurrences": 500,
+      "materialized_runs": 20,
+      "body_bytes": 8192,
+      "db_bytes": 720896,
+      "editor": {
+        "samples": 30,
+        "ui_sync": {
+          "count": 30,
+          "p50_us": 164,
+          "p95_us": 228,
+          "p99_us": 258,
+          "max_us": 258
+        },
+        "ack_pump": {
+          "count": 30,
+          "p50_us": 3308,
+          "p95_us": 3661,
+          "p99_us": 3686,
+          "max_us": 3686
+        },
+        "render": {
+          "count": 30,
+          "p50_us": 2596,
+          "p95_us": 3072,
+          "p99_us": 3086,
+          "max_us": 3086
+        },
+        "main_thread_total": {
+          "count": 30,
+          "p50_us": 5976,
+          "p95_us": 6611,
+          "p99_us": 6798,
+          "max_us": 6798
+        },
+        "durable_wall": {
+          "count": 30,
+          "p50_us": 10769,
+          "p95_us": 11646,
+          "p99_us": 12480,
+          "max_us": 12480
+        },
+        "final_title": "Live perf 32",
+        "disk_title": "Live perf 32"
+      },
+      "automation_save_draft": {
+        "samples": 30,
+        "ui_sync": {
+          "count": 30,
+          "p50_us": 462,
+          "p95_us": 601,
+          "p99_us": 627,
+          "max_us": 627
+        },
+        "ack_pump": {
+          "count": 30,
+          "p50_us": 6344,
+          "p95_us": 7061,
+          "p99_us": 7080,
+          "max_us": 7080
+        },
+        "render": {
+          "count": 30,
+          "p50_us": 5308,
+          "p95_us": 5739,
+          "p99_us": 5780,
+          "max_us": 5780
+        },
+        "main_thread_total": {
+          "count": 30,
+          "p50_us": 12149,
+          "p95_us": 13140,
+          "p99_us": 13161,
+          "max_us": 13161
+        },
+        "durable_wall": {
+          "count": 30,
+          "p50_us": 14679,
+          "p95_us": 15692,
+          "p99_us": 15694,
+          "max_us": 15694
+        },
+        "disk_name": "Live automation 32",
+        "occurrences_unchanged": 500,
+        "runs_unchanged": 16
+      },
+      "automation_lifecycle": {
+        "enable": {
+          "samples": 30,
+          "ui_sync": {
+            "count": 30,
+            "p50_us": 824,
+            "p95_us": 957,
+            "p99_us": 975,
+            "max_us": 975
+          },
+          "ack_pump": {
+            "count": 30,
+            "p50_us": 6571,
+            "p95_us": 7381,
+            "p99_us": 7396,
+            "max_us": 7396
+          },
+          "render": {
+            "count": 30,
+            "p50_us": 5357,
+            "p95_us": 6140,
+            "p99_us": 6366,
+            "max_us": 6366
+          },
+          "main_thread_total": {
+            "count": 30,
+            "p50_us": 12953,
+            "p95_us": 14070,
+            "p99_us": 14148,
+            "max_us": 14148
+          },
+          "durable_wall": {
+            "count": 30,
+            "p50_us": 15470,
+            "p95_us": 16606,
+            "p99_us": 16707,
+            "max_us": 16707
+          }
+        },
+        "pause": {
+          "samples": 30,
+          "ui_sync": {
+            "count": 30,
+            "p50_us": 446,
+            "p95_us": 538,
+            "p99_us": 569,
+            "max_us": 569
+          },
+          "ack_pump": {
+            "count": 30,
+            "p50_us": 5637,
+            "p95_us": 6579,
+            "p99_us": 6603,
+            "max_us": 6603
+          },
+          "render": {
+            "count": 30,
+            "p50_us": 5295,
+            "p95_us": 6064,
+            "p99_us": 6175,
+            "max_us": 6175
+          },
+          "main_thread_total": {
+            "count": 30,
+            "p50_us": 11413,
+            "p95_us": 12609,
+            "p99_us": 13243,
+            "max_us": 13243
+          },
+          "durable_wall": {
+            "count": 30,
+            "p50_us": 13944,
+            "p95_us": 15139,
+            "p99_us": 15792,
+            "max_us": 15792
+          }
+        },
+        "disk_status": "Some(Paused)",
+        "occurrences_unchanged": 500
+      },
+      "settings": {
+        "samples": 30,
+        "ui_sync": {
+          "count": 30,
+          "p50_us": 412,
+          "p95_us": 508,
+          "p99_us": 630,
+          "max_us": 630
+        },
+        "ack_pump": {
+          "count": 30,
+          "p50_us": 2201,
+          "p95_us": 2834,
+          "p99_us": 2878,
+          "max_us": 2878
+        },
+        "render": {
+          "count": 30,
+          "p50_us": 2046,
+          "p95_us": 2419,
+          "p99_us": 2504,
+          "max_us": 2504
+        },
+        "main_thread_total": {
+          "count": 30,
+          "p50_us": 4578,
+          "p95_us": 5377,
+          "p99_us": 5656,
+          "max_us": 5656
+        },
+        "durable_wall": {
+          "count": 30,
+          "p50_us": 6775,
+          "p95_us": 7920,
+          "p99_us": 7995,
+          "max_us": 7995
+        },
+        "disk_max_concurrent_runs": 1
+      },
+      "scoped_task_undo": {
+        "samples": 30,
+        "ui_sync": {
+          "count": 30,
+          "p50_us": 864,
+          "p95_us": 1118,
+          "p99_us": 1184,
+          "max_us": 1184
+        },
+        "ack_pump": {
+          "count": 30,
+          "p50_us": 2484,
+          "p95_us": 3253,
+          "p99_us": 3479,
+          "max_us": 3479
+        },
+        "render": {
+          "count": 30,
+          "p50_us": 2497,
+          "p95_us": 3062,
+          "p99_us": 3128,
+          "max_us": 3128
+        },
+        "main_thread_total": {
+          "count": 30,
+          "p50_us": 5972,
+          "p95_us": 7246,
+          "p99_us": 7285,
+          "max_us": 7285
+        },
+        "durable_wall": {
+          "count": 30,
+          "p50_us": 9182,
+          "p95_us": 11119,
+          "p99_us": 11155,
+          "max_us": 11155
+        },
+        "disk_title": "Live perf 32"
+      },
+      "history_page": {
+        "samples": 30,
+        "ui_sync": {
+          "count": 30,
+          "p50_us": 10,
+          "p95_us": 17,
+          "p99_us": 27,
+          "max_us": 27
+        },
+        "ack_pump": {
+          "count": 30,
+          "p50_us": 5689,
+          "p95_us": 6258,
+          "p99_us": 6430,
+          "max_us": 6430
+        },
+        "render": {
+          "count": 30,
+          "p50_us": 5284,
+          "p95_us": 6239,
+          "p99_us": 6244,
+          "max_us": 6244
+        },
+        "main_thread_total": {
+          "count": 30,
+          "p50_us": 10866,
+          "p95_us": 12122,
+          "p99_us": 12181,
+          "max_us": 12181
+        },
+        "durable_wall": {
+          "count": 30,
+          "p50_us": 16403,
+          "p95_us": 18373,
+          "p99_us": 18500,
+          "max_us": 18500
+        },
+        "first_page_rows": 20,
+        "order": "newest-first by descending occurrence id",
+        "page_metrics_source": "separate read-only HistoryReader validation request on the same database; NOT the 30 UI page queries",
+        "page_metrics_note": "body_reads is the backend handle's cumulative body-table read count for this validation request; it is not attributed to the timed UI requests.",
+        "page_metrics": {
+          "occurrence_rows": 20,
+          "run_rows": 0,
+          "fullscan_steps": 0,
+          "page_vm_steps": 331,
+          "total_count_vm_steps": 1511,
+          "unread_count_vm_steps": 359,
+          "body_reads": 0
+        }
+      },
+      "peak_rss_bytes": 73318400
+    },
+    {
+      "occurrences": 43200,
+      "materialized_runs": 240,
+      "body_bytes": 8192,
+      "db_bytes": 42323968,
+      "editor": {
+        "samples": 30,
+        "ui_sync": {
+          "count": 30,
+          "p50_us": 125,
+          "p95_us": 216,
+          "p99_us": 241,
+          "max_us": 241
+        },
+        "ack_pump": {
+          "count": 30,
+          "p50_us": 4023,
+          "p95_us": 4630,
+          "p99_us": 4663,
+          "max_us": 4663
+        },
+        "render": {
+          "count": 30,
+          "p50_us": 3485,
+          "p95_us": 4155,
+          "p99_us": 4198,
+          "max_us": 4198
+        },
+        "main_thread_total": {
+          "count": 30,
+          "p50_us": 7835,
+          "p95_us": 8353,
+          "p99_us": 8516,
+          "max_us": 8516
+        },
+        "durable_wall": {
+          "count": 30,
+          "p50_us": 14716,
+          "p95_us": 15973,
+          "p99_us": 16121,
+          "max_us": 16121
+        },
+        "final_title": "Live perf 32",
+        "disk_title": "Live perf 32"
+      },
+      "automation_save_draft": {
+        "samples": 30,
+        "ui_sync": {
+          "count": 30,
+          "p50_us": 30839,
+          "p95_us": 32579,
+          "p99_us": 32699,
+          "max_us": 32699
+        },
+        "ack_pump": {
+          "count": 30,
+          "p50_us": 8491,
+          "p95_us": 9813,
+          "p99_us": 10393,
+          "max_us": 10393
+        },
+        "render": {
+          "count": 30,
+          "p50_us": 7367,
+          "p95_us": 8387,
+          "p99_us": 8459,
+          "max_us": 8459
+        },
+        "main_thread_total": {
+          "count": 30,
+          "p50_us": 46799,
+          "p95_us": 49977,
+          "p99_us": 50142,
+          "max_us": 50142
+        },
+        "durable_wall": {
+          "count": 30,
+          "p50_us": 46807,
+          "p95_us": 49988,
+          "p99_us": 50151,
+          "max_us": 50151
+        },
+        "disk_name": "Live automation 32",
+        "occurrences_unchanged": 43200,
+        "runs_unchanged": 192
+      },
+      "automation_lifecycle": {
+        "enable": {
+          "samples": 30,
+          "ui_sync": {
+            "count": 30,
+            "p50_us": 32340,
+            "p95_us": 33003,
+            "p99_us": 33149,
+            "max_us": 33149
+          },
+          "ack_pump": {
+            "count": 30,
+            "p50_us": 8781,
+            "p95_us": 9773,
+            "p99_us": 9951,
+            "max_us": 9951
+          },
+          "render": {
+            "count": 30,
+            "p50_us": 7576,
+            "p95_us": 8109,
+            "p99_us": 8146,
+            "max_us": 8146
+          },
+          "main_thread_total": {
+            "count": 30,
+            "p50_us": 48615,
+            "p95_us": 50143,
+            "p99_us": 50335,
+            "max_us": 50335
+          },
+          "durable_wall": {
+            "count": 30,
+            "p50_us": 48625,
+            "p95_us": 50153,
+            "p99_us": 50346,
+            "max_us": 50346
+          }
+        },
+        "pause": {
+          "samples": 30,
+          "ui_sync": {
+            "count": 30,
+            "p50_us": 31954,
+            "p95_us": 32411,
+            "p99_us": 32961,
+            "max_us": 32961
+          },
+          "ack_pump": {
+            "count": 30,
+            "p50_us": 7992,
+            "p95_us": 9668,
+            "p99_us": 10072,
+            "max_us": 10072
+          },
+          "render": {
+            "count": 30,
+            "p50_us": 7553,
+            "p95_us": 8692,
+            "p99_us": 8732,
+            "max_us": 8732
+          },
+          "main_thread_total": {
+            "count": 30,
+            "p50_us": 47370,
+            "p95_us": 49509,
+            "p99_us": 49973,
+            "max_us": 49973
+          },
+          "durable_wall": {
+            "count": 30,
+            "p50_us": 47380,
+            "p95_us": 49524,
+            "p99_us": 49983,
+            "max_us": 49983
+          }
+        },
+        "disk_status": "Some(Paused)",
+        "occurrences_unchanged": 43200
+      },
+      "settings": {
+        "samples": 30,
+        "ui_sync": {
+          "count": 30,
+          "p50_us": 31225,
+          "p95_us": 31650,
+          "p99_us": 31720,
+          "max_us": 31720
+        },
+        "ack_pump": {
+          "count": 30,
+          "p50_us": 3513,
+          "p95_us": 3951,
+          "p99_us": 3977,
+          "max_us": 3977
+        },
+        "render": {
+          "count": 30,
+          "p50_us": 3125,
+          "p95_us": 3807,
+          "p99_us": 3960,
+          "max_us": 3960
+        },
+        "main_thread_total": {
+          "count": 30,
+          "p50_us": 37992,
+          "p95_us": 38743,
+          "p99_us": 38886,
+          "max_us": 38886
+        },
+        "durable_wall": {
+          "count": 30,
+          "p50_us": 41791,
+          "p95_us": 42855,
+          "p99_us": 43136,
+          "max_us": 43136
+        },
+        "disk_max_concurrent_runs": 1
+      },
+      "scoped_task_undo": {
+        "samples": 30,
+        "ui_sync": {
+          "count": 30,
+          "p50_us": 32200,
+          "p95_us": 32809,
+          "p99_us": 32991,
+          "max_us": 32991
+        },
+        "ack_pump": {
+          "count": 30,
+          "p50_us": 3859,
+          "p95_us": 4326,
+          "p99_us": 4391,
+          "max_us": 4391
+        },
+        "render": {
+          "count": 30,
+          "p50_us": 3456,
+          "p95_us": 4108,
+          "p99_us": 4193,
+          "max_us": 4193
+        },
+        "main_thread_total": {
+          "count": 30,
+          "p50_us": 39428,
+          "p95_us": 40485,
+          "p99_us": 40736,
+          "max_us": 40736
+        },
+        "durable_wall": {
+          "count": 30,
+          "p50_us": 44284,
+          "p95_us": 45542,
+          "p99_us": 46602,
+          "max_us": 46602
+        },
+        "disk_title": "Live perf 32"
+      },
+      "history_page": {
+        "samples": 30,
+        "ui_sync": {
+          "count": 30,
+          "p50_us": 10,
+          "p95_us": 17,
+          "p99_us": 20,
+          "max_us": 20
+        },
+        "ack_pump": {
+          "count": 30,
+          "p50_us": 7170,
+          "p95_us": 8068,
+          "p99_us": 8158,
+          "max_us": 8158
+        },
+        "render": {
+          "count": 30,
+          "p50_us": 6889,
+          "p95_us": 7875,
+          "p99_us": 8349,
+          "max_us": 8349
+        },
+        "main_thread_total": {
+          "count": 30,
+          "p50_us": 14375,
+          "p95_us": 15495,
+          "p99_us": 15878,
+          "max_us": 15878
+        },
+        "durable_wall": {
+          "count": 30,
+          "p50_us": 22334,
+          "p95_us": 23216,
+          "p99_us": 24034,
+          "max_us": 24034
+        },
+        "first_page_rows": 20,
+        "order": "newest-first by descending occurrence id",
+        "page_metrics_source": "separate read-only HistoryReader validation request on the same database; NOT the 30 UI page queries",
+        "page_metrics_note": "body_reads is the backend handle's cumulative body-table read count for this validation request; it is not attributed to the timed UI requests.",
+        "page_metrics": {
+          "occurrence_rows": 20,
+          "run_rows": 0,
+          "fullscan_steps": 0,
+          "page_vm_steps": 331,
+          "total_count_vm_steps": 129611,
+          "unread_count_vm_steps": 30251,
+          "body_reads": 0
+        }
+      },
+      "peak_rss_bytes": 559284224
+    },
+    {
+      "occurrences": 86400,
+      "materialized_runs": 480,
+      "body_bytes": 8192,
+      "db_bytes": 84983808,
+      "editor": {
+        "samples": 30,
+        "ui_sync": {
+          "count": 30,
+          "p50_us": 131,
+          "p95_us": 211,
+          "p99_us": 212,
+          "max_us": 212
+        },
+        "ack_pump": {
+          "count": 30,
+          "p50_us": 5534,
+          "p95_us": 6282,
+          "p99_us": 6641,
+          "max_us": 6641
+        },
+        "render": {
+          "count": 30,
+          "p50_us": 5043,
+          "p95_us": 5545,
+          "p99_us": 5974,
+          "max_us": 5974
+        },
+        "main_thread_total": {
+          "count": 30,
+          "p50_us": 10774,
+          "p95_us": 11502,
+          "p99_us": 11912,
+          "max_us": 11912
+        },
+        "durable_wall": {
+          "count": 30,
+          "p50_us": 22134,
+          "p95_us": 23124,
+          "p99_us": 23335,
+          "max_us": 23335
+        },
+        "final_title": "Live perf 32",
+        "disk_title": "Live perf 32"
+      },
+      "automation_save_draft": {
+        "samples": 30,
+        "ui_sync": {
+          "count": 30,
+          "p50_us": 62790,
+          "p95_us": 64567,
+          "p99_us": 66914,
+          "max_us": 66914
+        },
+        "ack_pump": {
+          "count": 30,
+          "p50_us": 12764,
+          "p95_us": 13824,
+          "p99_us": 13878,
+          "max_us": 13878
+        },
+        "render": {
+          "count": 30,
+          "p50_us": 11609,
+          "p95_us": 13227,
+          "p99_us": 18011,
+          "max_us": 18011
+        },
+        "main_thread_total": {
+          "count": 30,
+          "p50_us": 87197,
+          "p95_us": 89979,
+          "p99_us": 93474,
+          "max_us": 93474
+        },
+        "durable_wall": {
+          "count": 30,
+          "p50_us": 87205,
+          "p95_us": 89989,
+          "p99_us": 93484,
+          "max_us": 93484
+        },
+        "disk_name": "Live automation 32",
+        "occurrences_unchanged": 86400,
+        "runs_unchanged": 384
+      },
+      "automation_lifecycle": {
+        "enable": {
+          "samples": 30,
+          "ui_sync": {
+            "count": 30,
+            "p50_us": 64076,
+            "p95_us": 65088,
+            "p99_us": 65180,
+            "max_us": 65180
+          },
+          "ack_pump": {
+            "count": 30,
+            "p50_us": 12860,
+            "p95_us": 13760,
+            "p99_us": 14015,
+            "max_us": 14015
+          },
+          "render": {
+            "count": 30,
+            "p50_us": 11074,
+            "p95_us": 12116,
+            "p99_us": 12251,
+            "max_us": 12251
+          },
+          "main_thread_total": {
+            "count": 30,
+            "p50_us": 88202,
+            "p95_us": 89424,
+            "p99_us": 89938,
+            "max_us": 89938
+          },
+          "durable_wall": {
+            "count": 30,
+            "p50_us": 88212,
+            "p95_us": 89433,
+            "p99_us": 89947,
+            "max_us": 89947
+          }
+        },
+        "pause": {
+          "samples": 30,
+          "ui_sync": {
+            "count": 30,
+            "p50_us": 64166,
+            "p95_us": 64922,
+            "p99_us": 65068,
+            "max_us": 65068
+          },
+          "ack_pump": {
+            "count": 30,
+            "p50_us": 11775,
+            "p95_us": 12742,
+            "p99_us": 13252,
+            "max_us": 13252
+          },
+          "render": {
+            "count": 30,
+            "p50_us": 11525,
+            "p95_us": 12231,
+            "p99_us": 12371,
+            "max_us": 12371
+          },
+          "main_thread_total": {
+            "count": 30,
+            "p50_us": 87433,
+            "p95_us": 88808,
+            "p99_us": 89372,
+            "max_us": 89372
+          },
+          "durable_wall": {
+            "count": 30,
+            "p50_us": 87442,
+            "p95_us": 88818,
+            "p99_us": 89382,
+            "max_us": 89382
+          }
+        },
+        "disk_status": "Some(Paused)",
+        "occurrences_unchanged": 86400
+      },
+      "settings": {
+        "samples": 30,
+        "ui_sync": {
+          "count": 30,
+          "p50_us": 63051,
+          "p95_us": 63700,
+          "p99_us": 63895,
+          "max_us": 63895
+        },
+        "ack_pump": {
+          "count": 30,
+          "p50_us": 4832,
+          "p95_us": 5439,
+          "p99_us": 5744,
+          "max_us": 5744
+        },
+        "render": {
+          "count": 30,
+          "p50_us": 4676,
+          "p95_us": 5351,
+          "p99_us": 5440,
+          "max_us": 5440
+        },
+        "main_thread_total": {
+          "count": 30,
+          "p50_us": 72732,
+          "p95_us": 73582,
+          "p99_us": 73916,
+          "max_us": 73916
+        },
+        "durable_wall": {
+          "count": 30,
+          "p50_us": 78008,
+          "p95_us": 78944,
+          "p99_us": 79080,
+          "max_us": 79080
+        },
+        "disk_max_concurrent_runs": 1
+      },
+      "scoped_task_undo": {
+        "samples": 30,
+        "ui_sync": {
+          "count": 30,
+          "p50_us": 63752,
+          "p95_us": 64640,
+          "p99_us": 64657,
+          "max_us": 64657
+        },
+        "ack_pump": {
+          "count": 30,
+          "p50_us": 5095,
+          "p95_us": 5540,
+          "p99_us": 5796,
+          "max_us": 5796
+        },
+        "render": {
+          "count": 30,
+          "p50_us": 4906,
+          "p95_us": 5326,
+          "p99_us": 5716,
+          "max_us": 5716
+        },
+        "main_thread_total": {
+          "count": 30,
+          "p50_us": 73853,
+          "p95_us": 74869,
+          "p99_us": 75072,
+          "max_us": 75072
+        },
+        "durable_wall": {
+          "count": 30,
+          "p50_us": 80519,
+          "p95_us": 81469,
+          "p99_us": 82023,
+          "max_us": 82023
+        },
+        "disk_title": "Live perf 32"
+      },
+      "history_page": {
+        "samples": 30,
+        "ui_sync": {
+          "count": 30,
+          "p50_us": 9,
+          "p95_us": 16,
+          "p99_us": 20,
+          "max_us": 20
+        },
+        "ack_pump": {
+          "count": 30,
+          "p50_us": 10807,
+          "p95_us": 11960,
+          "p99_us": 11972,
+          "max_us": 11972
+        },
+        "render": {
+          "count": 30,
+          "p50_us": 10544,
+          "p95_us": 11399,
+          "p99_us": 11508,
+          "max_us": 11508
+        },
+        "main_thread_total": {
+          "count": 30,
+          "p50_us": 21511,
+          "p95_us": 22930,
+          "p99_us": 23328,
+          "max_us": 23328
+        },
+        "durable_wall": {
+          "count": 30,
+          "p50_us": 32914,
+          "p95_us": 34466,
+          "p99_us": 34548,
+          "max_us": 34548
+        },
+        "first_page_rows": 20,
+        "order": "newest-first by descending occurrence id",
+        "page_metrics_source": "separate read-only HistoryReader validation request on the same database; NOT the 30 UI page queries",
+        "page_metrics_note": "body_reads is the backend handle's cumulative body-table read count for this validation request; it is not attributed to the timed UI requests.",
+        "page_metrics": {
+          "occurrence_rows": 20,
+          "run_rows": 0,
+          "fullscan_steps": 0,
+          "page_vm_steps": 331,
+          "total_count_vm_steps": 259211,
+          "unread_count_vm_steps": 60491,
+          "body_reads": 0
+        }
+      },
+      "peak_rss_bytes": 1103872000
+    }
+  ],
+  "disposition": "Functional assertions completed, but automation Enable p95 failed the unchanged 50 ms gate. Compilation overlap prevents a clean quiet-performance claim. Preserve this attempt; repeat after all implementer sessions and build/QA processes are idle. Larger-fixture latency is measured, not waived by the 43,200-only gate."
+}

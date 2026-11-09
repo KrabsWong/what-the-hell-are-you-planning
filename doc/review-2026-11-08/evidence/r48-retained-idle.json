@@ -1,0 +1,24 @@
+{
+  "start": [
+    34286,
+    3587,
+    3584,
+    3584,
+    52
+  ],
+  "end": [
+    48241,
+    5250,
+    5247,
+    5248,
+    52
+  ],
+  "delta": [
+    13955,
+    1663,
+    1663,
+    1664,
+    0
+  ],
+  "condition": "Native Agent and models Light; animated retained child candidate; no CUA/input during interval; not frame-time acceptance"
+}

@@ -1,0 +1,10 @@
+{
+  "command": "cargo test --features qa --quiet",
+  "exit_code": 101,
+  "passed": 633,
+  "failed": 1,
+  "ignored": 2,
+  "failure": "dispatch_admission::tests::crash_before_acknowledgement_restores_the_same_intent_without_duplicate_run",
+  "message": "cannot read schema version: database disk image is malformed",
+  "integration_crash_tests": "not reached after unit failure"
+}

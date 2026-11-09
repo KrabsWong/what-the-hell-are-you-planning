@@ -1,0 +1,28 @@
+{
+  "candidate": "r143 isolated normal build",
+  "signed_sha256": "5cbc365e20cd4779857044bf29987e63832b20ece9159ad25be275051865594b",
+  "method": "Native Computer clicks, text entry and screenshots",
+  "fixture": "TASK-G23, Execution Paused, one completed evidence step and two pending steps",
+  "checks": [
+    {
+      "action": "Edit title and click Save changes",
+      "observed": "Impact confirmation states nothing saved yet, approval withdrawal, all three affected steps, one changed-input result, and readable previous reports.",
+      "result": "pass"
+    },
+    {
+      "action": "Cancel impact confirmation",
+      "observed": "Editor remains open with modified title retained.",
+      "result": "pass"
+    },
+    {
+      "action": "Cancel editor",
+      "observed": "Overview shows original title, unchanged Execution Paused state, and 1/3 completed progress.",
+      "result": "pass"
+    }
+  ],
+  "limits": [
+    "Light theme at 1440x920 only.",
+    "This is UI cancellation acceptance, not a disk persistence or confirmed-input-save acceptance.",
+    "Pre-existing Saving changes feedback remained visible; runtime repair remains open."
+  ]
+}

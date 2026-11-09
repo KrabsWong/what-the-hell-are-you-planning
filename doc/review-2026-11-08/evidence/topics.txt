@@ -1,0 +1,6 @@
+
+thread 'main' (7956722) panicked at src/topic_qa.rs:96:17:
+assertion `left == right` failed: Ordinary subtasks retain manual completion
+  left: Planned
+ right: Done
+note: run with `RUST_BACKTRACE=1` environment variable to display a backtrace

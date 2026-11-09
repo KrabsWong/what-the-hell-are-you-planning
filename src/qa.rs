@@ -41,11 +41,11 @@ pub fn run_research_live() {
     let handle = window.into();
     let goal=cx.update_window(handle,|_,_,cx|app.update(cx,|a,cx|{
         assert!(a.storage_error.is_empty(),"{}",a.storage_error);
-        if let Some(t)=a.store.tasks.iter().find(|t|t.title=="2026 年剩余时间：存储行业走势与投资机会"&&t.research.is_some()&&!t.archived){return t.id;}
-        let project=a.store.projects.iter().map(|p|p.id).max().unwrap_or(0)+1;
-        a.store.projects.push(crate::domain::Project{research_brief:String::new(),id:project,name:"存储行业研究".into(),key:"MEM".into(),directory:work.to_string_lossy().into(),kind:crate::domain::ProjectKind::User});
-        for (i,model) in ["deepseek/deepseek-flash","deepseek/deepseek-flash","deepseek/deepseek-v4-pro","deepseek/deepseek-v4-pro"].into_iter().enumerate(){if a.store.default_model.is_empty() && a.store.research_config.models[i].is_empty(){a.store.research_config.models[i]=model.into();}}
-        a.store.research_config.ego_path="/Users/krabswang/.local/bin/ego-browser".into();
+        if let Some(t)=a.store.tasks().iter().find(|t|t.title=="2026 年剩余时间：存储行业走势与投资机会"&&t.research.is_some()&&!t.archived){return t.id;}
+        let project=a.store.projects().iter().map(|p|p.id).max().unwrap_or(0)+1;
+        a.store.push_project(crate::domain::Project{research_brief:String::new(),id:project,name:"存储行业研究".into(),key:"MEM".into(),directory:work.to_string_lossy().into(),kind:crate::domain::ProjectKind::User});
+        for (i,model) in ["deepseek/deepseek-flash","deepseek/deepseek-flash","deepseek/deepseek-v4-pro","deepseek/deepseek-v4-pro"].into_iter().enumerate(){if a.store.default_model().is_empty() && a.store.research_config().models[i].is_empty(){a.store.research_config_mut().models[i]=model.into();}}
+        a.store.research_config_mut().ego_path="/Users/krabswang/.local/bin/ego-browser".into();
         let goal=a.store.create_research_goal("2026 年剩余时间：存储行业走势与投资机会".into(),format!("{brief}\n\n首次端到端研究请控制为 3 个子任务：一项搜集（覆盖多个来源）、一项分析、一项投资简报。搜集至少 5 个可访问原始来源；优先公开资料，不需要登录，无法获取的估值数据明确列为缺口。"),project).unwrap();
         a.persist_if_changed(true);cx.notify();goal
     })).unwrap();
@@ -75,7 +75,7 @@ pub fn run_research_live() {
                     let a = app.read(cx);
                     let summary = a
                         .store
-                        .runs
+                        .runs()
                         .last()
                         .map(|r| {
                             format!(
@@ -125,9 +125,9 @@ pub fn run_research_live() {
     }
     cx.update_window(handle, |_, w, cx| {
         app.update(cx, |a, cx| {
-            a.scope = crate::app::Scope::Runs;
-            a.selected = None;
-            a.selected_run = a.store.runs.last().map(|r| r.id);
+            a.set_scope_identity(crate::app::Scope::Runs);
+            a.fixture_select_task(None);
+            a.note_selected_run(a.store.runs().last().map(|r| r.id));
             a.show_run_result = true;
             cx.notify();
         });

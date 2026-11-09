@@ -1,0 +1,13 @@
+{
+  "candidate": "r91 frozen integration",
+  "command": "cargo check --features qa --quiet",
+  "exit_code": 101,
+  "error_count": 12,
+  "errors_by_owner": {
+    "T12": "10 stale QA field accesses after getter migration",
+    "T19": "NotifyProbe missing in t19_qa.rs:915",
+    "T14": "old save_current_store_durably signature in command_qa.rs:894"
+  },
+  "additional_runtime_defect": "ResearchTaskPage::steps_layout unconditionally recurses in navigation_route.rs:175; compiler warning; returned to T12",
+  "classification": "in-progress integration failure; all findings returned to owners"
+}

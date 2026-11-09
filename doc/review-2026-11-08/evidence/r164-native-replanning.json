@@ -1,0 +1,12 @@
+{
+  "native_candidate_sha256": "47af9a8cebd7e7a820b7627cc0ee43f812daf24bfb7853a3d92d80f55d1c9e8f",
+  "status": "failed",
+  "steps": [
+    "Automation2 Settings -> Replan",
+    "Edit expected result -> Continue",
+    "Click Generate plan once"
+  ],
+  "observed": "Draft version3 and edited expected result reached SQLite, but no planner run appeared. Step2 retained a red Saving\u2026 retry when the current change is durable message.",
+  "source": "start_automation_planning obtains the saved id synchronously and rejects an asynchronous save acceptance.",
+  "required": "Continue exactly once after the matching durable receipt with the frozen edited request revision; keep failures retryable and prevent unsolicited navigation."
+}

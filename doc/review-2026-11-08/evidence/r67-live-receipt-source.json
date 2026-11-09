@@ -1,0 +1,8 @@
+{
+  "base": ".local/r67-integrated-source",
+  "source": "/Users/fuxingxing/workspaces/what-the-hell-are-you-planning/.local/r67-live-receipt-source",
+  "change": "Independent foreign-workspace live receipt regression only",
+  "dispatch_sha256": "5cef520024acc6a33a67fd946411dc1a4612f30504a9b841a685644f613556b2",
+  "additional_compile_correction": "Wrap entire sidebar-brand-overlay element in observed(); replace invalid .map(observed), also corrected live",
+  "shell_sha256": "6430dd75e51b5b70f312bfb8ce36e7e6a8e8b1c2565d6b477ed60f358b771af5"
+}

@@ -1,0 +1,23 @@
+{
+  "sha256": "44afa43487e8537d93327c6ec07f212e7190ddf0f60af606a98d87019d2f02c8",
+  "results": [
+    {
+      "flag": "--qa-sidebar",
+      "exit_code": 0,
+      "seconds": 1.2,
+      "log": "r63-sidebar-sidebar.log"
+    },
+    {
+      "flag": "--qa-navigation-context",
+      "exit_code": 0,
+      "seconds": 14.205,
+      "log": "r63-sidebar-navigation-context.log"
+    },
+    {
+      "flag": "--qa-keyboard-visual",
+      "exit_code": 0,
+      "seconds": 16.496,
+      "log": "r63-sidebar-keyboard-visual.log"
+    }
+  ]
+}

@@ -25,13 +25,13 @@ impl TaskApp {
     pub fn model_field_agent(&self, input: &Entity<component::input::InputState>) -> &str {
         self.research_models.iter().position(|field| field == input)
             .map(|i| self.store.research_agent(ResearchKind::ALL[i]))
-            .unwrap_or(&self.store.research_config.default_agent)
+            .unwrap_or(&self.store.research_config().default_agent)
     }
 
     pub fn refresh_model_placeholders(&self, w: &mut Window, cx: &mut Context<Self>) {
         self.global_model.update(cx, |s, cx| s.set_placeholder("Choose a model", w, cx));
         for i in 0..4 {
-            let placeholder = if self.store.research_agent(ResearchKind::ALL[i]) == self.store.research_config.default_agent {
+            let placeholder = if self.store.research_agent(ResearchKind::ALL[i]) == self.store.research_config().default_agent {
                 "Global default"
             } else { "Choose a model" };
             self.research_models[i].update(cx, |s, cx| s.set_placeholder(placeholder, w, cx));
@@ -40,51 +40,52 @@ impl TaskApp {
 
     pub fn set_model_agent(&mut self, stage: Option<usize>, agent: &str, w: &mut Window, cx: &mut Context<Self>) {
         let current = stage.map(|i| self.store.research_agent(ResearchKind::ALL[i]))
-            .unwrap_or(&self.store.research_config.default_agent);
+            .unwrap_or(&self.store.research_config().default_agent);
         if current == agent { return; }
-        self.snapshot();
+        let agent = agent.to_owned();
+        if self
+            .apply_domain_command_undoable(
+                crate::scoped_domain::DomainCommand::ModelAgent { stage, agent },
+                "Model settings saved",
+                cx,
+            )
+            .is_none()
+        {
+            return;
+        }
         match stage {
-            Some(i) => {
-                self.store.research_config.agents[i] = Some(agent.to_owned());
-                self.store.research_config.models[i].clear();
-                self.research_models[i].update(cx, |s, cx| s.set_value("", w, cx));
-            }
-            None => {
-                // Preserve existing model overrides on their original agent.
-                for i in 0..4 {
-                    if !self.store.research_config.models[i].is_empty() && self.store.research_config.agents[i].is_none() {
-                        self.store.research_config.agents[i] = Some(self.store.research_config.default_agent.clone());
-                    }
-                }
-                self.store.research_config.default_agent = agent.to_owned();
-                self.store.default_model.clear();
-                self.global_model.update(cx, |s, cx| s.set_value("", w, cx));
-            }
+            Some(i) => self.research_models[i].update(cx, |s, cx| s.set_value("", w, cx)),
+            None => self.global_model.update(cx, |s, cx| s.set_value("", w, cx)),
         }
         self.research_model_picker = None;
         self.refresh_model_placeholders(w, cx);
-        self.persist_if_changed(true);
         cx.notify();
     }
 
     pub fn use_global_for_stage(&mut self, i: usize, w: &mut Window, cx: &mut Context<Self>) {
-        self.snapshot();
-        self.store.research_config.agents[i] = None;
-        self.store.research_config.models[i].clear();
+        if self
+            .apply_domain_command_undoable(
+                crate::scoped_domain::DomainCommand::UseGlobalForStage { stage: i },
+                "Model settings saved",
+                cx,
+            )
+            .is_none()
+        {
+            return;
+        }
         self.research_models[i].update(cx, |s, cx| s.set_value("", w, cx));
         self.research_model_picker = None;
         self.refresh_model_placeholders(w, cx);
-        self.persist_if_changed(true);
         cx.notify();
     }
 
     pub fn refresh_research_inputs(&mut self, w: &mut Window, cx: &mut Context<Self>) {
         self.refresh_model_placeholders(w, cx);
         for i in 0..4 {
-            let value = self.store.research_config.models[i].clone();
+            let value = self.store.research_config().models[i].clone();
             self.research_models[i].update(cx, |s, cx| s.set_value(value, w, cx));
         }
-        let path = self.store.research_config.ego_path.clone();
+        let path = self.store.research_config().ego_path.clone();
         self.ego_input.update(cx, |s, cx| s.set_value(path, w, cx));
     }
     pub fn finish_model_search(&mut self, input: &Entity<component::input::InputState>, w: &mut Window, cx: &mut Context<Self>) {
@@ -100,21 +101,22 @@ impl TaskApp {
     pub fn finish_model_edit(&mut self, input: &Entity<component::input::InputState>, accept: bool, w: &mut Window, cx: &mut Context<Self>) {
         let stage = self.research_models.iter().position(|field| field == input);
         let saved = match stage {
-            Some(i) => &self.store.research_config.models[i],
-            None => &self.store.default_model,
+            Some(i) => self.store.research_config().models[i].clone(),
+            None => self.store.default_model().clone(),
         };
         let draft = input.read(cx).value();
         let value = draft.trim();
-        if accept && value != saved && ((if self.model_field_agent(input) == "Codex" { crate::codex::valid_model(value) } else { crate::opencode::valid_model(value) }) || (stage.is_some() && value.is_empty())) {
-            self.snapshot();
-            match stage {
-                Some(i) => self.store.research_config.models[i] = value.to_owned(),
-                None => self.store.default_model = value.to_owned(),
-            }
-            self.persist_if_changed(true);
-        } else if draft.as_str() != saved {
-            let previous = saved.clone();
-            input.update(cx, |field, cx| field.set_value(previous, w, cx));
+        if accept && value != saved.as_str() && ((if self.model_field_agent(input) == "Codex" { crate::codex::valid_model(value) } else { crate::opencode::valid_model(value) }) || (stage.is_some() && value.is_empty())) {
+            self.apply_domain_command_undoable(
+                crate::scoped_domain::DomainCommand::ModelValue {
+                    stage,
+                    value: value.to_owned(),
+                },
+                "Model settings saved",
+                cx,
+            );
+        } else if draft.as_str() != saved.as_str() {
+            input.update(cx, |field, cx| field.set_value(saved, w, cx));
         }
         if self.research_model_picker == Some(input.entity_id()) {
             self.research_model_picker = None;
@@ -128,7 +130,7 @@ impl TaskApp {
         let path = self.ego_input.read(cx).value().trim().to_string();
         let directory = self
             .store
-            .projects
+            .projects()
             .iter()
             .find(|p| p.id == self.research_project)
             .map(|p| PathBuf::from(&p.directory))
@@ -173,6 +175,7 @@ impl TaskApp {
         let brief = self.research_brief.read(cx).value().trim().to_string();
         let input = if brief.is_empty() { title } else if title.is_empty() { brief } else { format!("{title}\n\n{brief}") };
         if self.submit_research_request(self.research_project, self.research_topic, input, cx) {
+            self.navigation.composer = None;
             self.research_title.update(cx, |s, cx| s.set_value("", w, cx));
             self.research_brief.update(cx, |s, cx| s.set_value("", w, cx));
         }
@@ -249,8 +252,17 @@ impl TaskApp {
             cx.notify();
             return;
         }
-        if self.store.task(id).is_none_or(|t| t.archived) {
-            self.error = "Choose an active task for these materials.".into();
+        if self.pending_material_edit.is_some()
+            || self.has_material_review()
+            || self.pending_material_job.is_some()
+        {
+            self.error =
+                "Resolve the pending material change before adding more files.".into();
+            cx.notify();
+            return;
+        }
+        if self.store.task(id).is_none() || self.store.task_is_archived(id) {
+            self.error = "Choose an active task for these materials; restore this research first.".into();
             cx.notify();
             return;
         }
@@ -278,7 +290,9 @@ impl TaskApp {
         self.attachment_import = Some(rx);
         self.attachment_started = Some(std::time::Instant::now());
         self.attachment_status = "Copying materials locally…".into();
+        let import_root = root.clone();
         std::thread::spawn(move || {
+            let root = import_root.clone();
             let total = paths.len() + images.len();
             let mut results = Vec::new();
             for (index, source) in paths.into_iter().map(Ok).chain(images.into_iter().map(Err)).enumerate() {
@@ -299,24 +313,20 @@ impl TaskApp {
                 eprintln!("Material import {}/{}: {:.2}s, success={}", index + 1, total, started.elapsed().as_secs_f64(), result.is_ok());
                 results.push(result);
             }
-            let _ = tx.send(AttachmentImport::Complete(id, results));
+            let _ = tx.send(AttachmentImport::Complete(id, import_root, results));
         });
         self.toast = "Adding materials locally; progress is shown in Materials.".into();
         self.start_pump(cx);
         cx.notify();
     }
     pub fn remove_attachment(&mut self, id: u64, index: usize, cx: &mut Context<Self>) {
-        if self
-            .store
-            .task(id)
-            .is_none_or(|t| t.archived || index >= t.attachments.len())
+        if self.store.task(id).is_none()
+            || self.store.task_is_archived(id)
+            || index >= self.store.task(id).unwrap().attachments.len()
         {
             return;
         }
-        self.snapshot();
-        self.store.task_mut(id).unwrap().attachments.remove(index);
-        self.toast = "Material removed from this task · Undo is available".into();
-        cx.notify();
+        self.request_material_remove(id, index, cx);
     }
     pub fn open_attachment(&mut self, a: &attachments::Attachment, cx: &mut Context<Self>) {
         match self
@@ -350,36 +360,100 @@ impl TaskApp {
                 }
                 _ => break,
             };
-            let (id, results) = match event {
+            let (id, bound_root, results) = match event {
                 AttachmentImport::Progress(status) => {
                     self.attachment_status = status;
                     cx.notify();
                     continue;
                 }
-                AttachmentImport::Complete(id, results) => (id, results),
+                AttachmentImport::Complete(id, root, results) => (id, root, results),
             };
             self.attachment_import = None;
             let elapsed = self.attachment_started.take().map(|t| t.elapsed().as_secs()).unwrap_or(0);
             self.attachment_status.clear();
-            self.snapshot();
+            // Copies were written under the root captured at import start. If the
+            // user switched workspaces while copying, that root stays authoritative
+            // for cleanup; never re-derive it from the current workspace.
+            let current_root = self.data_dir().ok();
+            let same_root = current_root.as_ref() == Some(&bound_root);
             let mut errors = vec![];
-            let mut count = 0;
+            let mut attachments = vec![];
+            let mut orphans = vec![];
             for result in results {
                 match result {
-                    Ok(a) => {
-                        if let Some(t) = self.store.task_mut(id).filter(|t| !t.archived) {
-                            t.attachments.push(a);
-                            count += 1;
+                    Ok(attachment) => {
+                        if !same_root
+                            || self.store.task_is_archived(id)
+                            || self.store.task(id).is_none()
+                        {
+                            orphans.push(attachment);
+                            errors.push(if same_root {
+                                "The task was archived or removed before the material import finished; the material was not attached."
+                                    .into()
+                            } else {
+                                "The workspace changed before the material import finished; the material was not attached."
+                                    .into()
+                            });
                         } else {
-                            errors.push("The task is no longer available.".into());
+                            attachments.push(attachment);
                         }
                     }
-                    Err(e) => errors.push(e),
+                    Err(error) => errors.push(error),
                 }
             }
-            self.toast = format!("{count} material(s) added in {elapsed}s · included in the next run");
+            let mut orphan_copies = vec![];
+            for attachment in &orphans {
+                if let Ok(copy) = crate::scoped_material::imported_copy(&bound_root, id, attachment) {
+                    orphan_copies.push(copy);
+                }
+            }
+            if !orphan_copies.is_empty() {
+                self.submit_material_cleanup_for_root(bound_root.clone(), orphan_copies, cx);
+            }
+            let mut imported = vec![];
+            for attachment in &attachments {
+                match crate::scoped_material::imported_copy(&bound_root, id, attachment) {
+                    Ok(copy) => imported.push(copy),
+                    Err(error) => errors.push(error),
+                }
+            }
+            if imported.len() == attachments.len() && !attachments.is_empty() {
+                if !same_root
+                    || !self.submit_material_add_verify_for_root(
+                        bound_root.clone(),
+                        id,
+                        attachments,
+                        imported.clone(),
+                        cx,
+                    )
+                {
+                    // No pending owner exists; retain ownership via a cleanup
+                    // request bound to the original root rather than leaking.
+                    // Preserve the verification/submission error so no success
+                    // toast is shown before the material is actually attached.
+                    if same_root && !self.error.is_empty() {
+                        errors.push(self.error.clone());
+                    }
+                    self.submit_material_cleanup_for_root(
+                        bound_root.clone(),
+                        imported.clone(),
+                        cx,
+                    );
+                }
+            } else if !imported.is_empty() {
+                self.submit_material_cleanup_for_root(bound_root.clone(), imported.clone(), cx);
+            }
+            if errors.is_empty() {
+                // Verification and the durable attachment receipt are still
+                // pending; do not claim the materials are included yet.
+                self.toast = format!(
+                    "{elapsed}s · materials copied · verifying before attachment"
+                );
+            }
             self.error = errors.join("\n");
-            self.persist_if_changed(true);
+            if !self.error.is_empty() {
+                self.save_feedback = Some(Err(self.error.clone()));
+            }
             cx.notify();
         }
     }
@@ -388,7 +462,7 @@ impl TaskApp {
         if !self.ready_to_run(cx) { return; }
         let source_occurrence = self
             .store
-            .runs
+            .runs()
             .iter()
             .find(|run| run.id == source_id)
             .and_then(|run| run.automation_occurrence_id);
@@ -411,7 +485,7 @@ impl TaskApp {
                         .agents
                         .get(index)
                         .and_then(|agent| agent.clone())
-                        .unwrap_or_else(|| self.store.research_config.default_agent.clone());
+                        .unwrap_or_else(|| self.store.research_config().default_agent.clone());
                     run.prompt = crate::automation_execution::with_time_context(run.prompt, occurrence);
                     run.logs.push(format!(
                         "[automation] Report regeneration for occurrence {} keeps its approved snapshot and time window",
@@ -426,7 +500,18 @@ impl TaskApp {
             });
         match result {
             Ok((run, files)) => {
-                self.launch_run(run, files, cx);
+                if let Some(dispatch) = self.launch_run_with_intent(
+                    run,
+                    files,
+                    crate::app::LaunchIntent::ReportRegeneration {
+                        source_id,
+                        style: style.to_string(),
+                        occurrence: source_occurrence,
+                    },
+                    cx,
+                ) {
+                    self.open_run_progress(dispatch);
+                }
                 if self.error.is_empty() { self.report_regeneration = None; }
             }
             Err(error) => self.error = error,
@@ -449,7 +534,7 @@ impl TaskApp {
             let r = task.research.as_ref().unwrap();
             let goal = self.store.task(r.goal_id).ok_or("Goal not found.")?;
             run.prompt.push_str(&ego::instructions(
-                &self.store.research_config.ego_path,
+                &self.store.research_config().ego_path,
                 &self.store.research_space(id).unwrap_or_else(|| r.space_name.clone()),
                 &goal.title,
             )?);
@@ -499,7 +584,7 @@ impl TaskApp {
         if !materials.is_empty() {
             run.prompt.push_str("\nMATERIAL ACCEPTANCE REQUIREMENT: Keep sources[] for HTTP(S) web references. Cite supplied attachments in the report by original filename and page/image; do not invent web URLs for local files. The final report MUST have a supplemental materials section listing EVERY exact original attachment filename, page/image reference, observations actually read from the original material, and how it confirms, changes or limits the prior conclusion. Propagate material citations into downstream reports. Do not merely reuse an older report from disk. If a material cannot support a conclusion, explicitly state that limitation alongside its filename. A complete report omitting any filename will be rejected.\n");
         }
-        if let Some(previous) = self.store.runs.iter().rev().find(|r| r.task_id == id) {
+        if let Some(previous) = self.store.runs().iter().rev().find(|r| r.task_id == id) {
             if previous.status == "Failed" {
                 if let Some(error) = previous.logs.iter().rev().find_map(|line| line.strip_prefix("[error] [validation] ")) {
                     run.prompt.push_str(&format!("\nAPPLICATION VALIDATION FEEDBACK: {error}\nCorrect the rejected report using existing evidence and return the required JSON.\n"));
@@ -514,31 +599,37 @@ impl TaskApp {
         }
         Ok(files)
     }
-    pub fn finalize_research_run(&mut self, run_id: u64) {
-        self.finalize_research_result(run_id);
+    pub fn finalize_research_run(&mut self, run_id: u64, cx: &mut Context<Self>) {
+        self.finalize_research_run_inner(run_id, Some(cx));
+    }
+    pub fn finalize_research_run_without_ui(&mut self, run_id: u64) {
+        self.finalize_research_run_inner(run_id, None);
+    }
+    fn finalize_research_run_inner(&mut self, run_id: u64, cx: Option<&mut Context<Self>>) {
+        self.finalize_research_result(run_id, cx);
         // Completed steps are already Done; unsuccessful runs and planning return
         // to their original stage, without overriding a user's manual stage change.
         self.store.restore_research_stage(run_id);
         if let Some(goal) = self.run_goal(run_id) { self.store.sync_goal_progress(goal); }
     }
-    fn finalize_research_result(&mut self, run_id: u64) {
-        let Some(index) = self.store.runs.iter().position(|r| r.id == run_id) else {
+    fn finalize_research_result(&mut self, run_id: u64, cx: Option<&mut Context<Self>>) {
+        let Some(index) = self.store.runs().iter().position(|r| r.id == run_id) else {
             return;
         };
-        if self.store.runs[index].status == "Blocked"
-            && self.store.runs[index].research_kind == Some(ResearchKind::Collect)
-            && self.store.runs[index].logs.iter().any(|line| line == research::BROWSER_HANDOFF_LOG)
+        if self.store.runs()[index].status == "Blocked"
+            && self.store.runs()[index].research_kind == Some(ResearchKind::Collect)
+            && self.store.runs()[index].logs.iter().any(|line| line == research::BROWSER_HANDOFF_LOG)
         {
-            let stored = &mut self.store.runs[index];
+            let mut stored = self.store.run_at_mut(index).unwrap();
             let materials = stored.attachments.iter().map(|a| format!("{}: not reviewed in this interrupted attempt", a.name)).collect::<Vec<_>>().join("\n");
             stored.output = serde_json::json!({"status":"partial", "blocker":"browser_handoff",
                 "report":format!("Browser access was handed to the user and remains paused. This attempt was stopped before a validated final report was available. No new verified findings are claimed. Continue with existing evidence and disclose missing data; do not resume browser access without explicit confirmation.\n{materials}"),
                 "sources":[]}).to_string();
             stored.status = "Succeeded".into();
         }
-        let run = self.store.runs[index].clone();
+        let run = self.store.runs()[index].clone();
         if run.project_plan.is_some() {
-            self.finalize_project_plan(index);
+            self.finalize_project_plan(index, cx);
             return;
         }
         let Some(kind) = run.research_kind else {
@@ -551,9 +642,11 @@ impl TaskApp {
             return;
         }
         if self.store.research_signature(run.task_id).as_ref() != Some(&run.input_signature) {
-            let stored = &mut self.store.runs[index];
-            stored.status = "Stale".into();
-            stored.logs.push("[research] Task materials, context or dependencies changed during execution. Run again with the latest inputs.".into());
+            {
+                let mut stored = self.store.run_at_mut(index).unwrap();
+                stored.status = "Stale".into();
+                stored.logs.push("[research] Task materials, context or dependencies changed during execution. Run again with the latest inputs.".into());
+            }
             self.toast = "Research inputs changed · rerun required".into();
             self.error =
                 "Research inputs changed during execution. Review the saved output and run again."
@@ -567,7 +660,8 @@ impl TaskApp {
             self.store
                 .apply_research_plan(run.task_id, &run.output)
                 .map(|ids| {
-                    self.toast = format!("Generated {} editable research tasks", ids.len());
+                    self.toast =
+                        format!("Generated {} editable research tasks · open the goal to review", ids.len());
                 })
         } else {
             self.data_dir().and_then(|dir| {
@@ -579,22 +673,27 @@ impl TaskApp {
                     Ok(report)
                 })
                 .map(|report| {
-                    let stored = &mut self.store.runs[index];
-                    if report.blocker == Some(research::Blocker::BrowserHandoff) {
-                        stored.logs.push(research::BROWSER_HANDOFF_LOG.into());
+                    {
+                        let mut stored = self.store.run_at_mut(index).unwrap();
+                        if report.blocker == Some(research::Blocker::BrowserHandoff) {
+                            stored.logs.push(research::BROWSER_HANDOFF_LOG.into());
+                        }
+                        stored.output = if report.status == "partial" { format!("{}\n\n{}", research::EVIDENCE_GAP_NOTE, report.report) } else { report.report };
+                        stored.sources = report.sources;
+                        if report.status == "blocked" {
+                            stored.status = "Blocked".into();
+                            stored.logs.push("[research] Blocked · research incomplete; dependent steps paused. See the result for the blocker.".into());
+                        } else {
+                            stored.logs.push(if report.status == "partial" { "[research] Completed with evidence gaps · downstream steps may continue; see result limitations" } else { "[research] Complete · result validated" }.into());
+                        }
                     }
-                    stored.output = if report.status == "partial" { format!("{}\n\n{}", research::EVIDENCE_GAP_NOTE, report.report) } else { report.report };
-                    stored.sources = report.sources;
                     if report.status == "blocked" {
-                        stored.status = "Blocked".into();
-                        stored.logs.push("[research] Blocked · research incomplete; dependent steps paused. See the result for the blocker.".into());
                         if let Some(goal) = self.run_goal(run_id) {
                             self.research_sequences.remove(&goal);
                         }
                         self.toast =
                             "Research paused · open the result for the required input".into();
                     } else {
-                        stored.logs.push(if report.status == "partial" { "[research] Completed with evidence gaps · downstream steps may continue; see result limitations" } else { "[research] Complete · result validated" }.into());
                         let _ = self
                             .store
                             .set_stage(run.task_id, crate::domain::Stage::Done);
@@ -602,49 +701,36 @@ impl TaskApp {
                 })
         };
         if let Err(e) = result {
-            let run = &mut self.store.runs[index];
-            run.status = "Failed".into();
-            run.logs.push(format!("[error] [validation] {e}"));
+            {
+                let mut run = self.store.run_at_mut(index).unwrap();
+                run.status = "Failed".into();
+                run.logs.push(format!("[error] [validation] {e}"));
+            }
             self.error = e;
             self.toast = "Research result rejected · review output and retry".into();
             if let Some(goal) = self.run_goal(run_id) {
                 self.research_sequences.remove(&goal);
             }
         }
-        if !self.show_run_details {
-            self.show_run_result = true;
-        }
     }
     pub fn complete_research_run(&mut self, run_id: u64, cx: &mut Context<Self>) {
+        if self.live_persistence_active() && self.live_can_accept_auxiliary().is_err() {
+            // Do not finalize yet: replaying this same id after acknowledgements
+            // free capacity performs the transition exactly once.
+            self.defer_run_completion(run_id);
+            self.start_pump(cx);
+            cx.notify();
+            return;
+        }
         self.publishing_scan_requested = true;
         let continuing_goal = self.run_goal(run_id)
             .filter(|goal| self.research_sequences.contains(goal));
-        self.finalize_research_run(run_id);
-        if self.scope == Scope::Runs
-            && self.selected.is_none()
-            && self.displayed_run_id() == Some(run_id)
-            && self
-                .todo_batch
-                .as_ref()
-                .is_none_or(|b| !b.run_ids.contains_key(&run_id))
-            && let Some(run) = self.store.runs.iter().find(|r| {
-                r.id == run_id
-                    && r.research_kind == Some(ResearchKind::Goal)
-                    && r.status == "Succeeded"
-            })
-        {
-            let id = run.task_id;
-            self.selected = Some(id);
-            self.reveal_task_project(id);
-            self.detail_scroll.set_offset(point(px(0.), px(0.)));
-            self.tabs.retain(|task| *task != id);
-            self.tabs.push(id);
-        }
+        self.finalize_research_run(run_id, cx);
         // Persist the parsed result and generated tasks before another external side effect.
         self.persist_if_changed(true);
         let automation_occurrence = self
             .store
-            .runs
+            .runs()
             .iter()
             .find(|run| run.id == run_id)
             .and_then(|run| run.automation_occurrence_id);
@@ -655,47 +741,58 @@ impl TaskApp {
             && self.storage_error.is_empty()
             && let Some(retry) = self.store.prepare_auto_retry(run_id, chrono::Utc::now().timestamp())
         {
-            let retry_id = retry.id;
-            let attempt = retry.auto_retry_attempt;
-            self.store.runs.push(retry);
-            self.persist_if_changed(true);
-            if self.storage_error.is_empty() {
-                self.queued_runs.push((retry_id, vec![]));
-                if let Some(batch) = &mut self.todo_batch
-                    && let Some(item) = batch.run_ids.remove(&run_id)
-                {
-                    batch.run_ids.insert(retry_id, item);
-                }
-                if let Some(goal) = continuing_goal {
-                    self.research_sequences.insert(goal);
-                }
-                if self.selected_run == Some(run_id) {
-                    self.selected_run = Some(retry_id);
-                }
-                if let Some(occurrence) = automation_occurrence {
-                    let _ = self.store.wait_for_retry(
-                        occurrence,
-                        "Waiting for the approved step retry; the period, inputs and time window are unchanged.",
-                    );
-                    if let Some(value) = self.store.occurrence_mut(occurrence)
-                        && !value.run_ids.contains(&retry_id)
-                    {
-                        value.run_ids.push(retry_id);
-                    }
-                    self.persist_if_changed(true);
-                }
-                self.error.clear();
-                self.toast = format!("Retry {attempt}/3 scheduled in 30 seconds · Stop task to cancel");
-                self.start_pump(cx);
+            if let Err(error) = self.live_can_accept_auxiliary() {
+                self.error = error;
                 cx.notify();
                 return;
             }
-            self.store.runs.pop();
+            let retry_id = retry.id;
+            let attempt = retry.auto_retry_attempt;
+            let rollback = (!self.live_persistence_active()).then(|| self.store.clone());
+            self.store.push_run(retry);
+            if let Some(occurrence) = automation_occurrence {
+                let _ = self.store.wait_for_retry(
+                    occurrence,
+                    "Waiting for the approved step retry; the period, inputs and time window are unchanged.",
+                );
+                if let Some(mut value) = self.store.occurrence_mut(occurrence)
+                    && !value.run_ids.contains(&retry_id)
+                {
+                    value.run_ids.push(retry_id);
+                }
+            }
+            let completion = crate::live_save_app::LiveCompletion::RetryQueued {
+                run_id: retry_id,
+                occurrence: None,
+                goal: continuing_goal,
+                notice: Some(format!(
+                    "Retry {attempt}/3 scheduled in 30 seconds · Stop task to cancel"
+                )),
+            };
+            if let Err(error) = self.save_current_store_durably(completion, cx) {
+                if let Some(rollback) = rollback {
+                    self.store = rollback;
+                }
+                self.error = format!("Retry attempt was not saved: {error}");
+                self.automation_backoff_until =
+                    Some(std::time::Instant::now() + std::time::Duration::from_secs(30));
+                cx.notify();
+                return;
+            }
+            if let Some(batch) = &mut self.todo_batch
+                && let Some(item) = batch.run_ids.remove(&run_id)
+            {
+                batch.run_ids.insert(retry_id, item);
+            }
+            self.error.clear();
+            self.start_pump(cx);
+            cx.notify();
+            return;
         }
         if self.storage_error.is_empty()
             && let Some(request) = self.store.request_plan_auto_repair(run_id)
         {
-            self.retry_research_request(request, cx);
+            self.retry_research_request_background(request, cx);
             self.toast = "Plan format incomplete · repairing once before review".into();
             cx.notify();
             return;
@@ -719,24 +816,53 @@ impl TaskApp {
         cx.notify();
     }
     pub fn view_task_result(&mut self, id: u64, cx: &mut Context<Self>) {
-        if let Some(run_id) = self
-            .store
-            .runs
-            .iter()
-            .rev()
-            .find(|r| r.task_id == id)
-            .map(|r| r.id)
-        {
+        let run_id = if self.store.task_is_archived(id) {
+            crate::archive_presentation::validated_history_result(&self.store, id)
+                .or_else(|| crate::archive_presentation::retained_or_pending_result(&self.store, id))
+                .map(|run| run.id)
+        } else {
+            self.store
+                .runs()
+                .iter()
+                .rev()
+                .find(|run| run.task_id == id)
+                .map(|run| run.id)
+        };
+        if let Some(run_id) = run_id {
             self.show_task_result(run_id, cx);
         }
     }
+    pub(crate) fn result_context_for_run(&self, run_id: u64) -> Option<u64> {
+        // Browsing the global results page keeps its project/topic history.
+        let context = self.selected().or(self.task_result_context())?;
+        let owner = self.store.runs().iter()
+            .find(|run| run.id == run_id)
+            .map(|run| run.task_id)
+            .filter(|task| self.store.task(*task).is_some());
+        // The requested run determines the destination. Keep a goal context
+        // only when it actually owns this ordinary report; a previously opened
+        // sibling task must never make the requested result disappear.
+        Some(context)
+            .filter(|context| owner.is_some_and(|task| {
+                *context == task
+                    || (self.store.task(*context).is_some_and(|task| task.automation_id.is_none())
+                        && self.store.owning_research_goal(task) == Some(*context))
+            }))
+            .or(owner)
+    }
     pub(crate) fn show_task_result(&mut self, run_id: u64, cx: &mut Context<Self>) {
+        let context = self.result_context_for_run(run_id);
+        if self.defer_result_navigation(run_id, context, false, None, cx) { return; }
+        self.park_current_comment(cx);
         self.show_run_details = false;
-        self.selected_run = Some(run_id);
         self.show_run_result = true;
-        self.task_result_context = self.selected;
-        self.selected = None;
-        self.scope = Scope::Runs;
+        let context = self.result_context_for_run(run_id);
+        if let Some(task) = context {
+            self.navigation
+                .recent_surfaces
+                .insert(task, crate::navigation_context::RecentSurface::Result);
+        }
+        self.set_result_selection(context, Some(run_id));
         self.reveal_selected_run();
         cx.notify();
     }

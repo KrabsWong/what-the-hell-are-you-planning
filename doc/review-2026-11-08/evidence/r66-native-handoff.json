@@ -1,0 +1,8 @@
+{
+  "candidate_install": "r66-native-install.json",
+  "native_status": "waiting-for-manual-Mac-unlock",
+  "computer_response": "The Mac is locked and automatic unlock could not unlock it.",
+  "native_actions_completed": 0,
+  "request_sent": true,
+  "other_work": "Source review and OpenCode implementation continue"
+}

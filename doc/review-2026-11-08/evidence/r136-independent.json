@@ -1,0 +1,31 @@
+{
+  "checks": [
+    {
+      "binary": ".local/t10-bin-b58a6fb91def",
+      "sha256": "b58a6fb91def1e0ce742793865478a69f2fc5a468026825132c16d8a64a02a8d",
+      "flag": "--qa-archived-research",
+      "exit": 0,
+      "seconds": 12.36
+    },
+    {
+      "binary": ".local/t10-bin-b58a6fb91def",
+      "sha256": "b58a6fb91def1e0ce742793865478a69f2fc5a468026825132c16d8a64a02a8d",
+      "flag": "--qa-navigation-context",
+      "exit": 0,
+      "seconds": 16.89
+    },
+    {
+      "binary": ".local/t14-r128-slice/guard/app2",
+      "sha256": "3ae392b1ea9b21207911bbfd9d9060f16c5ea3922271387f92e9c04e15b6f385",
+      "flag": "--qa-live-persistence",
+      "exit": 0,
+      "seconds": 9.85
+    }
+  ],
+  "result": "All three independent binary replays passed. Scoped regression evidence only; native and integrated release gates remain open.",
+  "lazy_wake_limitation": "Current tests explicitly call start_pump and manually poll runtime. They verify hydration/retry behavior, not idle production wake. Test revision requested before accepting that specific claim.",
+  "source_evidence": [
+    ".local/opencode-dispatch/T12-open-steps-origin-handoff.md",
+    "doc/review-2026-11-08/evidence/r129-lazy-ui-slice.json"
+  ]
+}

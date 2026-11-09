@@ -1,0 +1,22 @@
+#!/usr/bin/python3
+import json,sys,time
+from pathlib import Path
+args=sys.argv[1:]
+if '--version' in args: print('1.0.0-review-fixture'); sys.exit(0)
+if 'models' in args: print('fixture/research\nfixture/alternate'); sys.exit(0)
+prompt=args[-1]
+if prompt=='-': prompt=sys.stdin.read()
+mode=Path(__file__).with_name('fixture-mode').read_text().strip() if Path(__file__).with_name('fixture-mode').exists() else 'success'
+time.sleep(2)
+if mode=='slow': time.sleep(60)
+if mode=='fail': print('Fixture service temporarily unavailable',file=sys.stderr); sys.exit(1)
+steps=[{'title':'Collect public evidence','instructions':'Collect dated evidence with sources.','kind':'collect','depends_on':[]},{'title':'Analyze the evidence','instructions':'Compare evidence and gaps.','kind':'analyze','depends_on':[0]},{'title':'Write the final report','instructions':'Write the answer with sources.','kind':'advise','depends_on':[1]}]
+if 'expanding ONE saved research request' in prompt:
+ result={'topic_name':'Review research topic','brief':{'objective':'Explain fixture observations','deliverable':'Source-linked report','scope':'Offline review data','assumptions':['Synthetic data only'],'facts_to_verify':['Check source identity']},'goals':[{'title':'Review research goal','brief':'Evaluate the offline fixture.','tasks':steps}]}
+elif 'plan' in prompt.lower() and '"tasks"' in prompt and 'Current task:' not in prompt:
+ result={'tasks':steps}
+else:
+ if 'REVIEW_SLOW' in prompt: time.sleep(45)
+ if 'REVIEW_FAIL' in prompt: print('Fixture failure requested',file=sys.stderr); sys.exit(1)
+ result={'status':'partial' if 'REVIEW_PARTIAL' in prompt or mode=='partial' else 'complete','report':'# Review result\n\nThis is synthetic offline acceptance data. No external research was performed.\n\n| Check | Result |\n|---|---|\n| Source | Fixture |\n\n[Fixture source](https://example.com/review)','sources':[{'title':'Fixture source','url':'https://example.com/review','published_at':'unknown'}]}
+print(json.dumps({'type':'text','part':{'text':json.dumps(result)}}),flush=True)

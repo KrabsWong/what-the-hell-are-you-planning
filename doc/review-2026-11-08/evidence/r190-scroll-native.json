@@ -1,0 +1,112 @@
+{
+  "round": "r190",
+  "source_sha256": "095cc61b10e09794547a0515af12090739894659dbff9ba5aa2a1efda0666fa5",
+  "signed_binary_sha256": "b2f67705c3ece1dd2cfdbb8bb8e5deedb5a06c5af4eb57c40a2d0b5a67002483",
+  "fixture": "r178-fixture-1000",
+  "logical_window": [
+    1440,
+    920
+  ],
+  "observations": [
+    "Dark large wheel gestures move multiple rows and reach Load more.",
+    "Load more retains clipped 00:46 and full 00:45 row positions.",
+    "Light downward two-page gesture moves from header/00:54 to 00:30; upward two-page gesture restores header/00:54.",
+    "Light and dark status labels, unread dots and result controls remain visible."
+  ],
+  "scope": "Bounded functional acceptance of wheel extent and pagination anchor; T19 overall remains open.",
+  "measurement": "Frame-work elapsed interval, not CPU sampling or scan-out. Small present counts limit inference.",
+  "trace": ".local/native-review/r190-scroll.csv.frames.jsonl",
+  "windows": [
+    {
+      "name": "open",
+      "start_ms": 1794216721213,
+      "end_ms": 1794216721836,
+      "presents": 6,
+      "max_frame_work_ms": 15.995458,
+      "p95_frame_work_ms": 15.995458,
+      "missed_refreshes": 1
+    },
+    {
+      "name": "down_20",
+      "start_ms": 1794216728715,
+      "end_ms": 1794216731184,
+      "presents": 101,
+      "max_frame_work_ms": 11.245375,
+      "p95_frame_work_ms": 2.930875,
+      "missed_refreshes": 1
+    },
+    {
+      "name": "load_more",
+      "start_ms": 1794216746537,
+      "end_ms": 1794216748492,
+      "presents": 98,
+      "max_frame_work_ms": 7.987166,
+      "p95_frame_work_ms": 1.896125,
+      "missed_refreshes": 0
+    },
+    {
+      "name": "up_40",
+      "start_ms": 1794216755908,
+      "end_ms": 1794216757798,
+      "presents": 65,
+      "max_frame_work_ms": 5.316583,
+      "p95_frame_work_ms": 2.838041,
+      "missed_refreshes": 0
+    },
+    {
+      "name": "down_40",
+      "start_ms": 1794216757798,
+      "end_ms": 1794216758898,
+      "presents": 43,
+      "max_frame_work_ms": 6.106167,
+      "p95_frame_work_ms": 2.51,
+      "missed_refreshes": 0
+    },
+    {
+      "name": "up_40_observed",
+      "start_ms": 1794216766601,
+      "end_ms": 1794216767881,
+      "presents": 67,
+      "max_frame_work_ms": 5.227,
+      "p95_frame_work_ms": 2.024916,
+      "missed_refreshes": 0
+    },
+    {
+      "name": "light_down_40",
+      "start_ms": 1794216941572,
+      "end_ms": 1794216942029,
+      "presents": 11,
+      "max_frame_work_ms": 4.6895,
+      "p95_frame_work_ms": 4.6895,
+      "missed_refreshes": 0
+    },
+    {
+      "name": "light_up_40",
+      "start_ms": 1794216947243,
+      "end_ms": 1794216947679,
+      "presents": 1,
+      "max_frame_work_ms": 5.090375,
+      "p95_frame_work_ms": 5.090375,
+      "missed_refreshes": 0
+    }
+  ],
+  "missed_frame_attribution": [
+    {
+      "window": "open",
+      "frame_work_ms": 15.995458,
+      "draw_ms": 15.9405,
+      "prepaint_ms": 6.175625,
+      "paint_ms": 9.079958,
+      "note": "Draw dominates this frame; exact phase provenance is the paired previous draw for the same window."
+    },
+    {
+      "window": "down_20",
+      "frame_work_ms": 11.245375,
+      "draw_ms": 4.071125,
+      "prepaint_ms": 2.285375,
+      "paint_ms": 1.199209,
+      "non_draw_elapsed_ms": 7.17425,
+      "note": "Residual is elapsed time outside draw; original trace does not distinguish pre-draw and post-draw or establish CPU causality."
+    }
+  ]
+}

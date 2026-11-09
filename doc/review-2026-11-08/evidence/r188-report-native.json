@@ -1,0 +1,51 @@
+{
+  "build_manifest": ".local/native-review/r187-build-manifest.json",
+  "installed_sha256": "33eabb81d497db7a03ea7c93a4fbfd2d4272db1beae7f3b269abf8074d063b6a",
+  "fixture_initial_sha256": "a2935ddb80bc0c6d90f86c9b4cfa52de0affad36c18bff588e40ec19bb6327a0",
+  "trace_sha256": "b00ba3dcb61f7c51d61a35b61454316a720f4d055572e2686e729326cd2e45fc",
+  "theme": "dark",
+  "logical_size": [
+    1440,
+    920
+  ],
+  "report_bytes": 7700,
+  "observed": [
+    "Period 1000 report text visible as Historical result / Stale input / Incomplete.",
+    "Two-page down reached Sources and research-step links.",
+    "Two-page up restored top report content.",
+    "Close returned to Automation results."
+  ],
+  "scope": "Reader scroll only; no current-valid-result or complete native matrix claim.",
+  "windows": [
+    {
+      "name": "report_open",
+      "start_ms": 1794216131599,
+      "end_ms": 1794216133526,
+      "presents": 131,
+      "missed": 5,
+      "late": 3,
+      "max_ms": 19.575625,
+      "p95_ms": 3.735875
+    },
+    {
+      "name": "report_down",
+      "start_ms": 1794216139321,
+      "end_ms": 1794216141159,
+      "presents": 158,
+      "missed": 1,
+      "late": 1,
+      "max_ms": 10.816042,
+      "p95_ms": 3.791625
+    },
+    {
+      "name": "report_up",
+      "start_ms": 1794216148933,
+      "end_ms": 1794216149404,
+      "presents": 1,
+      "missed": 0,
+      "late": 0,
+      "max_ms": 7.37375,
+      "p95_ms": 7.37375
+    }
+  ]
+}

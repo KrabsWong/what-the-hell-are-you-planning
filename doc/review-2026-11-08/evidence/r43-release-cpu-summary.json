@@ -1,0 +1,65 @@
+{
+  "samples": 17919,
+  "main_sample_weight_ms": 16600.0,
+  "inclusive_sample_weight_ms": {
+    "sidebar": 763.0,
+    "task_topic": 30.0,
+    "flexbox": 3016.0,
+    "layout": 3062.0,
+    "memmove": 2818.0,
+    "model_settings": 838.0,
+    "logo": 59.0,
+    "model_profiles_panel": 12.0
+  },
+  "top_self_sample_weight_ms": [
+    [
+      "_platform_memmove",
+      2818.0
+    ],
+    [
+      "_RINvNtNtCsh9WDnuMkoHa_5taffy7compute7flexbox22compute_flexbox_layoutINtNtNtB6_4tree10taffy_tree9TaffyViewNtNtCslwCVzwmlRLT_4gpui5taffy11NodeContextNCNvMB1H_NtB1H_17TaffyLayoutEngine14compute_layouts_0EEB1J_",
+      758.0
+    ],
+    [
+      "_xzm_xzone_malloc_tiny",
+      525.0
+    ],
+    [
+      "_RNvMs_NtCslwCVzwmlRLT_4gpui11bounds_treeINtB4_10BoundsTreeNtNtB6_8geometry12ScaledPixelsE6insertB6_",
+      465.0
+    ],
+    [
+      "_xzm_free_main",
+      372.0
+    ],
+    [
+      "_platform_memcmp",
+      352.0
+    ],
+    [
+      "<deduplicated_symbol>",
+      332.0
+    ],
+    [
+      "_RNvXs0_NtNtNtCs9nEiEE0E2Vj_4core4iter8adapters3mapINtB5_3MapINtNtB7_6filter6FilterIBX_IBN_INtNtB7_9enumerate9EnumerateNtNtNtCsh9WDnuMkoHa_5taffy4tree10taffy_tree18TaffyTreeChildIterENCINvNtNtB1Y_7compute7flexbox29generate_anonymous_flex_itemsINtB1U_9TaffyViewNtNtCslwCVzwmlRLT_4gpui5taffy11NodeContextNCNvMB4b_NtB4b_17TaffyLayoutEngine14compute_layouts_0EE0ENCB2W_s_0ENCB2W_s0_0ENCB2W_s1_0ENtNtNtB9_6traits8iterator8Iterator4nextB4d_",
+      250.0
+    ],
+    [
+      "_RINvNtNtCsh9WDnuMkoHa_5taffy7compute5block13compute_innerINtNtNtB6_4tree10taffy_tree9TaffyViewNtNtCslwCVzwmlRLT_4gpui5taffy11NodeContextNCNvMB1w_NtB1w_17TaffyLayoutEngine14compute_layouts_0EEB1y_",
+      230.0
+    ],
+    [
+      "_RINvMsq_NtCs3vUkWdPtNor_5alloc4syncINtB6_3ArcSNtNtCslwCVzwmlRLT_4gpui6window9ElementIdE15from_iter_exactINtNtNtNtCs9nEiEE0E2Vj_4core4iter8adapters6cloned6ClonedINtNtNtB1N_5slice4iter4IterBI_EEEBM_",
+      222.0
+    ],
+    [
+      "__kdebug_trace64",
+      199.0
+    ],
+    [
+      "_RINvMs_NtCslwCVzwmlRLT_4gpui5sceneNtB5_5Scene16insert_primitiveNtB5_16MonochromeSpriteEB7_",
+      189.0
+    ]
+  ],
+  "limitation": "Statistical sample weights, not exact frame wall time. Raw Rust symbols retained; simple substring categories can omit inlined or differently mangled frames."
+}

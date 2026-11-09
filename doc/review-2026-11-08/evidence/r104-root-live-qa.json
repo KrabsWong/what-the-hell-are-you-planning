@@ -1,0 +1,10 @@
+{
+  "source": ".local/r104-review-source",
+  "binary_sha256": "894ab9d510be9de5d6f90c95d63482686b1028714cd20ad1cd64623655500358",
+  "guard_exit": 2,
+  "entry": "--qa-live-persistence",
+  "exit_code": 1,
+  "error": "second primary was accepted and mutated the task to Rejected B",
+  "classification": "Failed early in an in-progress QA fixture. Current QA author is distinguishing generic queued command semantics from exclusive form-primary semantics; not yet established as a production regression. Later fixture cases did not execute.",
+  "raw_log": ".local/opencode-dispatch/r104-live-qa.log"
+}

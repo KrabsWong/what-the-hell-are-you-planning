@@ -1,0 +1,31 @@
+{
+  "round": "r176",
+  "source_manifest": {
+    "head": "9f9be4b8eb5deccc82e7bdbf28ab6a501063bd49",
+    "files": {
+      "src/research.rs": "5c3bf399ac861710e737cb90445dda45acc4bfea4a3b795324e06d58c274fd63",
+      "src/result_presentation.rs": "c0692e4fa9ac14305e7688bbcea1d85b974a1633a827e7343b0a55104af16310"
+    }
+  },
+  "independent_tests": {
+    "log": ".local/opencode-dispatch/r176-status-tests.log",
+    "unit_passed": 732,
+    "ignored": 2,
+    "integration_passed": [
+      8,
+      2,
+      3
+    ],
+    "exit_code": 0
+  },
+  "scope": "Archived reader freshness only; strict validation, export and execution eligibility remain unchanged. Real changed input remains stale.",
+  "native": {
+    "candidate": "r174 integrated (before archived-reader repair)",
+    "observed": [
+      "Dark theme shows G19 Done with three completed steps.",
+      "View final report opens R22 Run 27 without stale labels.",
+      "Back returns to G19 Steps list."
+    ],
+    "pending": "Native archived-reader recheck on the next integrated build."
+  }
+}

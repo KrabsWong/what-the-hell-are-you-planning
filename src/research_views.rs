@@ -18,10 +18,12 @@ use gpui_kit::{
 impl TaskApp {
     pub fn research_view(&self, cx: &mut Context<Self>) -> AnyElement {
         let colors = palette(cx);
+        let has_composer_draft = !self.research_title.read(cx).value().trim().is_empty()
+            || !self.research_brief.read(cx).value().trim().is_empty();
         let mut goals = col().gap_1();
         for task in self
             .store
-            .tasks
+            .tasks()
             .iter()
             .filter(|t| {
                 !self.store.task_is_archived(t.id)
@@ -36,7 +38,7 @@ impl TaskApp {
             let children = self.store.research_children(id);
             let completed = children
                 .iter()
-                .filter(|id| self.store.research_result(**id).is_some())
+                .filter(|id| self.store.research_result_available_or_pending(**id))
                 .count();
             let title = format!("{} · {}", self.store.identifier(task), task.title);
             let hint = title
@@ -47,7 +49,7 @@ impl TaskApp {
                 .collect::<Vec<_>>()
                 .join("\n");
             goals = goals.child(
-                quiet_button(format!("research-goal-{id}"), "")
+                row_button(format!("research-goal-{id}"), "")
                     .w_full()
                     .h_9()
                     .px_2()
@@ -89,10 +91,21 @@ impl TaskApp {
             .child(label("EXTRA CONTEXT · OPTIONAL", cx))
             .child(div().id("research-brief").child(Textarea::new(&self.research_brief)).map(observed))
             .child(label("PROJECT", cx))
-            .child(row().flex_wrap().children(self.store.visible_projects().map(|p|{let id=p.id;select_button(format!("research-project-{id}"),p.name.clone(),self.research_project==id).on_click(cx.listener(move|this,_,_,cx|{this.research_project=id;this.research_topic=None;cx.notify();}))})))
+            .child(row().flex_wrap().children(self.store.visible_projects().map(|p|{let id=p.id;select_button(format!("research-project-{id}"),p.name.clone(),self.research_project==id,cx).on_click(cx.listener(move|this,_,_,cx|{this.research_project=id;this.research_topic=None;cx.notify();}))})))
             .child(label("TOPIC", cx))
             .child(self.topic_picker(None, self.research_project, cx))
-            .child(row().flex_wrap().child(button("research-folder","Set working folder…").on_click(cx.listener(|this,_,w,cx|this.open_directory(this.research_project,w,cx)))).child(primary_button("create-research", "Generate research plan").on_click(cx.listener(|this,_,w,cx|this.create_research(w,cx)))))
+            .child(
+                row().flex_wrap()
+                    .child(button("research-folder", "Set working folder…").on_click(cx.listener(|this, _, w, cx| this.open_directory(this.research_project, w, cx))))
+                    .child(primary_button("create-research", "Generate research plan").on_click(cx.listener(|this, _, w, cx| this.create_research(w, cx))))
+                    .when(has_composer_draft, |d| {
+                        d.child(
+                            button("discard-research-draft", "Discard draft")
+                                .tooltip("Clear the parked research request title and context")
+                                .on_click(cx.listener(|this, _, w, cx| this.discard_parked_composer(w, cx))),
+                        )
+                    }),
+            )
             .child(label("Your request is saved first. Planning does not run the research. Move selected goals to Todo, then click Run.", cx))
             .child(div().h_4()).child(row().child(div().font_weight(FontWeight::SEMIBOLD).child(selectable("Your research goals"))))
             .child(goals)
@@ -126,8 +139,8 @@ impl TaskApp {
     }
     fn model_agent_picker(&self, stage: Option<usize>, cx: &mut Context<Self>) -> AnyElement {
         let agent = stage.map(|i| self.store.research_agent(ResearchKind::ALL[i]))
-            .unwrap_or(&self.store.research_config.default_agent);
-        let inherited = stage.is_some_and(|i| self.store.research_config.agents[i].is_none());
+            .unwrap_or(&self.store.research_config().default_agent);
+        let inherited = stage.is_some_and(|i| self.store.research_config().agents[i].is_none());
         let title = agent.to_owned();
         let entity = cx.entity().downgrade();
         button(format!("model-agent-{}", stage.map(|i| i.to_string()).unwrap_or("global".into())), title)
@@ -155,8 +168,13 @@ impl TaskApp {
                 this.open_research_model_picker(&open_input, cx);
             }))
             .on_key_down(cx.listener(move |this, event: &KeyDownEvent, w, cx| {
+                // Escape only dismisses the suggestions or cancels the local
+                // draft. Letting it bubble would move focus to the window root,
+                // so Shift+Tab after dismissing suggestions would skip the
+                // preceding provider control.
                 if event.keystroke.key == "escape" {
                     this.finish_model_edit(&cancel_input, false, w, cx);
+                    cx.stop_propagation();
                 }
             }))
             .child(Input::new(input).id(id.clone())
@@ -220,13 +238,19 @@ impl TaskApp {
                 .child(row().justify_between()
                     .child(div().font_weight(FontWeight::SEMIBOLD).child(selectable("Research stage models")))
                     .child(button("global-model-all-stages", "Use global for all stages")
-                        .disabled(self.research_models.iter().all(|m| m.read(cx).value().is_empty()) && self.store.research_config.agents.iter().all(Option::is_none))
+                        .disabled(self.research_models.iter().all(|m| m.read(cx).value().is_empty()) && self.store.research_config().agents.iter().all(Option::is_none))
                         .on_click(cx.listener(|this, _, w, cx| {
-                            this.snapshot();
-                            this.store.research_config.models = Default::default();
-                            this.store.research_config.agents = Default::default();
+                            if this
+                                .apply_domain_command_undoable(
+                                    crate::scoped_domain::DomainCommand::ModelsToGlobal,
+                                    "All stages now use the global model",
+                                    cx,
+                                )
+                                .is_none()
+                            {
+                                return;
+                            }
                             this.refresh_model_placeholders(w, cx);
-                            this.persist_if_changed(true);
                             for input in &this.research_models { input.update(cx, |s, cx| s.set_value("", w, cx)); }
                             this.research_model_picker = None;
                             cx.notify();
@@ -240,9 +264,9 @@ impl TaskApp {
                 .child(div().text_sm().font_weight(FontWeight::MEDIUM).child(selectable(kind.label())))
                 .child(row().child(self.model_agent_picker(Some(i), cx)).child(field)
                     .child(button(format!("research-use-global-{i}"), "Use global")
-                        .disabled(value.is_empty() && self.store.research_config.agents[i].is_none())
+                        .disabled(value.is_empty() && self.store.research_config().agents[i].is_none())
                         .on_click(cx.listener(move |this, _, w, cx| this.use_global_for_stage(i, w, cx)))))
-                .when(value.is_empty() && self.store.research_agent(kind) != self.store.research_config.default_agent, |d| {
+                .when(value.is_empty() && self.store.research_agent(kind) != self.store.research_config().default_agent, |d| {
                     d.child(label("Choose a model for this agent before running this stage.", cx))
                 }));
         }
@@ -254,7 +278,12 @@ impl TaskApp {
             .child(div().pt_2().font_weight(FontWeight::SEMIBOLD).child(selectable("Browser · ego(lite)")))
             .child(Input::new(&self.ego_input).id("ego-path"))
             .child(row().flex_wrap().child(button("check-ego","Check runtime").disabled(self.ego_probe.is_some()).on_click(cx.listener(|this,_,_,cx|this.check_ego(cx)))).child(button("open-ego","Open browser").icon(assets::IconName::ExternalLink).on_click(cx.listener(|this,_,_,cx|this.open_ego(cx)))))
-            .child(label(self.ego_status.clone(), cx))
+            .child(
+                label(self.ego_status.clone(), cx)
+                    .id("ego-status")
+                    .aria_label(self.ego_status.clone())
+                    .map(observed),
+            )
             .when(!crate::ego::is_installed(&self.ego_input.read(cx).value()), |d| d.child(link_button("install-ego","Install ego(lite)").icon(assets::IconName::ExternalLink).on_click(|_,_,cx|cx.open_url("https://lite.ego.app"))))
             .child(label("Pages open in a local Space. Use the browser's Space menu to watch or take over. First launch must be completed in ego(lite).", cx));
         settings
@@ -263,6 +292,7 @@ impl TaskApp {
     pub fn materials_panel(&self, id: u64, cx: &mut Context<Self>) -> AnyElement {
         let colors = palette(cx);
         let task = self.store.task(id).unwrap();
+        let archived = self.store.task_is_archived(id);
         let busy = self.attachment_import.is_some();
         let mut panel = col().id("task-materials").p_3().gap_1().rounded_md()
             .border_1().border_color(rgb(colors.line))
@@ -271,26 +301,35 @@ impl TaskApp {
                 w.focus(&this.materials_focus, cx);
             }))
             .on_key_down(cx.listener(move |this, event: &KeyDownEvent, _, cx| {
-                if event.keystroke.modifiers.platform && event.keystroke.key == "v"
+                if !archived && event.keystroke.modifiers.platform && event.keystroke.key == "v"
                     && this.paste_attachments(id, cx) {
                     cx.stop_propagation();
                 }
             }))
-            .drag_over::<ExternalPaths>(move |style, _, _, _| style.border_color(rgb(colors.accent)))
-            .on_drop(cx.listener(move |this, paths: &ExternalPaths, _, cx| {
-                this.import_attachments(id, paths.paths().to_vec(), cx)
-            }))
+            .when(!archived, |d| d
+                .drag_over::<ExternalPaths>(move |style, _, _, _| style.border_color(rgb(colors.accent)))
+                .on_drop(cx.listener(move |this, paths: &ExternalPaths, _, cx| {
+                    this.import_attachments(id, paths.paths().to_vec(), cx)
+                })))
             .child(row().justify_between()
                 .child(muted(format!("Materials · {}", task.attachments.len()), cx))
                 .child(row().gap_2()
                     .child(quiet_button("add-attachments", if busy { "Adding…" } else { "Add Files" }).icon(assets::IconName::Plus)
-                        .h_7().px_1().text_sm().disabled(task.archived || busy)
-                        .on_click(cx.listener(move |this, _, _, cx| this.choose_attachments(id, cx))))))
-            .child(label(if task.attachments.is_empty() {
-                "Drop PDFs or images here, or click here and press ⌘V to paste · up to 25 MB each"
-            } else {
-                "Drop files or ⌘V to add · click a card to open"
-            }, cx).id("material-drop-hint").map(observed));
+                        .h_7().px_1().text_sm().disabled(archived || busy)
+                        .on_click(cx.listener(move |this, _, _, cx| this.choose_attachments(id, cx))))));
+        let hint = if archived {
+            "Archived materials are read-only. Existing files remain available; Restore this research to add or remove materials."
+        } else if task.attachments.is_empty() {
+            "Drop PDFs or images here, or click here and press ⌘V to paste · up to 25 MB each"
+        } else {
+            "Drop files or ⌘V to add · click a card to open"
+        };
+        panel = panel.child(
+            label(hint, cx)
+                .id("material-drop-hint")
+                .aria_label(hint)
+                .map(observed),
+        );
         if busy {
             let elapsed = self.attachment_started.map(|t| t.elapsed().as_secs()).unwrap_or(0);
             panel = panel.child(label(format!("{} · {elapsed}s elapsed", self.attachment_status), cx));
@@ -300,7 +339,7 @@ impl TaskApp {
             let open = attachment.clone();
             let menu_attachment = attachment.clone();
             let menu_entity = cx.entity().downgrade();
-            let archived = task.archived;
+            let archived = self.store.task_is_archived(id);
             let group: SharedString = format!("material-card-{index}").into();
             let is_pdf = attachment.media_type == "application/pdf";
             let format = match attachment.media_type.as_str() {
@@ -355,15 +394,24 @@ impl TaskApp {
                             menu.item(PopupMenuItem::new("Open in default app").on_click(move |_, _, cx| {
                                 let _ = open_entity.update(cx, |this, cx| this.open_attachment(&open_attachment, cx));
                             })).separator()
-                            .item(PopupMenuItem::new("Remove from goal").disabled(archived)
-                                .on_click(move |_, _, cx| {
-                                    let _ = remove_entity.update(cx, |this, cx| {
-                                        if let Some(index) = this.store.task(id).and_then(|t| t.attachments.iter()
-                                            .position(|a| a.relative_path == remove_path)) {
-                                            this.remove_attachment(id, index, cx);
-                                        }
-                                    });
-                                }))
+                            .item(PopupMenuItem::element(move |_, _| {
+                                button(
+                                    format!("material-remove-{index}"),
+                                    "Remove from goal",
+                                )
+                                .w_full()
+                                .justify_start()
+                                .into_any_element()
+                            })
+                            .disabled(archived)
+                            .on_click(move |_, _, cx| {
+                                let _ = remove_entity.update(cx, |this, cx| {
+                                    if let Some(index) = this.store.task(id).and_then(|t| t.attachments.iter()
+                                        .position(|a| a.relative_path == remove_path)) {
+                                        this.remove_attachment(id, index, cx);
+                                    }
+                                });
+                            }))
                         })));
             cards = cards.child(card.map(observed));
         }
@@ -397,40 +445,70 @@ impl TaskApp {
         let complete = !children.is_empty()
             && children
                 .iter()
-                .all(|child| self.store.research_result(*child).is_some());
+                .all(|child| self.store.research_result_available_or_pending(*child));
         let browser = quiet_button("task-open-ego", "Open ego(lite)").icon(assets::IconName::ExternalLink)
             .tooltip("Opens the browser app. Select the research Space in ego(lite).")
             .on_click(cx.listener(|this, _, _, cx| this.open_ego(cx)));
         let next_model = self.store.research_model(research.kind);
-        let mut panel = col().gap_2()
-            .child(label(
+        let archived = self.store.task_is_archived(id);
+        let history = archived.then(|| crate::archive_presentation::goal_history(&self.store, id));
+        let mut panel = col().gap_2();
+        if !archived {
+            panel = panel.child(label(
                 format!("Next run · {} · Model · {}", self.store.research_agent(research.kind), if next_model.is_empty() { "Not configured" } else { next_model }),
                 cx,
             ));
-        if let Some(run) = self.store.runs.iter().rev().find(|run| run.project_plan.is_none() && run.task_id == id) {
+        }
+        if archived {
+            panel = panel.child(
+                col().p_4().gap_2().rounded_md().bg(rgb(colors.panel))
+                    .child(chip("ARCHIVED", colors.muted, cx).id("archived-research-badge").map(observed))
+                    .child(muted(
+                        crate::archive_presentation::presentation(&self.store, id)
+                            .map(|value| value.reason)
+                            .unwrap_or_else(|| "Archived history. Restore to continue.".into()),
+                        cx,
+                    )),
+            );
+        }
+        if let Some(run) = self.store.runs().iter().rev().find(|run| run.project_plan.is_none() && run.task_id == id) {
             panel = panel.child(label(
-                format!("Latest run #{} · {} · Model · {}", run.id, run.agent,
+                format!("{} #{} · {} · Model · {}", if archived { "Latest retained run" } else { "Latest run" }, run.id, run.agent,
                     if run.model.is_empty() { "Not recorded" } else { run.model.as_str() }),
                 cx,
             ));
         }
-        if pending_approval {
+        if pending_approval && !archived {
             let goal = research.goal_id;
             panel = panel.child(col().p_4().gap_3().rounded_md().bg(rgb(colors.panel))
                 .child(chip("AWAITING GOAL APPROVAL", colors.accent, cx))
                 .child(muted("Review the complete plan and expected output. Move the goal to Todo to approve all its steps; click Run to execute.", cx))
-                .when(research.kind == ResearchKind::Goal, |d| d.child(primary_button("approve-research-topic", "Move goal to Todo").disabled(task.archived)
+                .when(research.kind == ResearchKind::Goal, |d| d.child(primary_button("approve-research-topic", "Move goal to Todo").disabled(archived)
                     .on_click(cx.listener(move |a, _, _, cx| a.approve_research_topic(goal, cx)))))
                 .when(research.kind != ResearchKind::Goal, |d| d.child(button("review-parent-goal", "Review parent goal").on_click(cx.listener(move |a, _, w, cx| a.open_task(goal, w, cx))))));
         }
 
         if research.kind == ResearchKind::Goal {
-            let completed = children
-                .iter()
-                .filter(|child| self.store.research_result(**child).is_some())
-                .count();
+            let completed = history
+                .as_ref()
+                .map(|history| history.completed_steps)
+                .unwrap_or_else(|| {
+                    children
+                        .iter()
+                        .filter(|child| self.store.research_result_available_or_pending(**child))
+                        .count()
+                });
+            let complete = history
+                .as_ref()
+                .map(|history| history.complete)
+                .unwrap_or(complete);
             let status = if children.is_empty() {
                 "Research steps not planned yet".into()
+            } else if archived {
+                format!(
+                    "Archived history · {completed}/{} steps with retained validated results",
+                    children.len()
+                )
             } else if complete {
                 format!("Research complete · {completed}/{} steps", children.len())
             } else {
@@ -443,7 +521,7 @@ impl TaskApp {
                     .gap_2()
                     .child(muted(status, cx))
                     .child(row().flex_wrap().gap_2().child(browser).when(
-                        !children.is_empty(),
+                        !archived && !children.is_empty(),
                         |d| d.child(self.goal_run_button(id, "research-all", cx)),
                     )),
             );
@@ -502,19 +580,55 @@ impl TaskApp {
     }
     pub fn run_result_panel(&self, run: &AgentRun, cx: &mut Context<Self>) -> AnyElement {
         let colors = palette(cx);
-        let evidence_gap = research::has_evidence_gap_note(&run.output);
-        let output = research::reader_markdown(&run.output).to_string();
+        let presentation = crate::result_presentation::present_run(&self.store, run);
+        let output = presentation.reader_markdown.clone();
+        let body_unavailable = self.report_body_error(run).is_some();
+        let reader_placeholder = if body_unavailable {
+            "The saved report could not be loaded. Retry loading this report."
+        } else {
+            presentation.reader_placeholder()
+        };
         let sources_open = self.expanded_run_sources == Some(run.id);
+        let archived_run = self.store.task_is_archived(run.task_id);
         let run_id = run.id;
         col()
             .flex_1()
+            .w_full()
+            .min_w_0()
             .min_h_0()
             .gap_1()
-            .when(run.research_kind.is_some_and(|kind|kind!=ResearchKind::Goal)&&run.status=="Succeeded"&&self.store.research_result(run.task_id).is_none_or(|latest|latest.id!=run.id),|d|d.child(label("Historical result · task context or dependency results have changed. Run the task again to refresh.", cx)))
+            .when(archived_run, |d| {
+                d.child(label(
+                    "Archived history · this retained result is available for reading. Restore the goal to resume work.",
+                    cx,
+                ))
+            })
+            .when(!archived_run && presentation.freshness.regenerating, |d| {
+                d.child(label(
+                    "A new version of this report is being generated from existing evidence. The current report remains available until it is replaced.",
+                    cx,
+                ))
+            })
+            .when(
+                !archived_run && presentation.freshness.stale_input,
+                |d| d.child(label(
+                    "Historical result · task context or dependency results have changed. Run the task again to refresh.",
+                    cx,
+                )),
+            )
+            .when(
+                !archived_run && presentation.freshness.historical && !presentation.freshness.stale_input && !presentation.freshness.regenerating,
+                |d| d.child(label(
+                    "Historical result · a newer result is available.",
+                    cx,
+                )),
+            )
             .child(
                 col()
                     .id("research-result-viewport")
                     .relative()
+                    .w_full()
+                    .min_w_0()
                     .flex_1()
                     .min_h_0()
                     .overflow_hidden()
@@ -522,6 +636,8 @@ impl TaskApp {
                         col()
                         .id("research-result-scroll")
                         .track_scroll(&self.result_scroll)
+                        .w_full()
+                        .min_w_0()
                         .flex_1()
                         .min_h_0()
                         .overflow_y_scroll()
@@ -529,11 +645,11 @@ impl TaskApp {
                         .p_4()
                         .bg(rgb(colors.panel))
                         .rounded_md()
-                        .when(evidence_gap, |d| {
+                        .when(presentation.notice.is_some(), |d| {
                             d.child(notice_panel(
                                 NoticeTone::Warning,
-                                "证据说明",
-                                research::EVIDENCE_GAP_NOTICE,
+                                "Evidence gaps",
+                                presentation.notice.unwrap_or(research::EVIDENCE_GAP_NOTICE),
                                 cx,
                             ))
                         })
@@ -541,13 +657,14 @@ impl TaskApp {
                             gpui_kit::base::text::TextView::markdown(
                                 format!("result-{}", run.id),
                                 if output.is_empty() {
-                                    "The result will appear here when the model responds.".into()
+                                    reader_placeholder.into()
                                 } else {
                                     output
                                 },
                             )
                             .markdown_extensions(crate::rich_markdown::extensions())
                             .w_full()
+                            .min_w_0()
                             .flex_shrink_0()
                             .on_link_click(|url, _, _, cx| {
                                 if url.starts_with("https://") || url.starts_with("http://") {
@@ -555,17 +672,25 @@ impl TaskApp {
                                 }
                             }),
                         )
-                        .when(!run.sources.is_empty(), |d| d.child(
+                        .when(body_unavailable, |d| d.child(
+                            quiet_button("retry-result-body", "Retry loading report")
+                                .self_start()
+                                .on_click(cx.listener(move |a, _, _, cx| {
+                                    a.retry_run_body(run_id);
+                                    cx.notify();
+                                })),
+                        ))
+                        .when(!presentation.sources.is_empty(), |d| d.child(
                             col().flex_shrink_0().border_t_1().border_color(rgb(colors.line)).pt_3()
-                                .child(quiet_button("toggle-result-sources", format!("Sources · {}", run.sources.len()))
-                                    .self_start().px_0().text_color(rgb(colors.muted))
+                                .child(quiet_button("toggle-result-sources", format!("Sources · {}", presentation.sources.len()))
+                                    .self_start().px_2().text_color(rgb(colors.muted))
                                     .icon(if sources_open { assets::IconName::ChevronDown } else { assets::IconName::ChevronRight })
                                     .tooltip(if sources_open { "Hide source links" } else { "Show source links and publication dates" })
                                     .on_click(cx.listener(move |a, _, _, cx| {
                                         a.expanded_run_sources = if sources_open { None } else { Some(run_id) }; cx.notify();
                                     })))
                                 .when(sources_open, |d| d.child(col().id("result-sources").gap_3().pt_2()
-                                    .children(run.sources.iter().enumerate().map(|(i, source)| {
+                                    .children(presentation.sources.iter().enumerate().map(|(i, source)| {
                                         let url = source.url.clone();
                                         col().flex_shrink_0().gap_1()
                                             .child(link_button(format!("result-source-{i}"), source.title.clone()).icon(assets::IconName::ExternalLink)

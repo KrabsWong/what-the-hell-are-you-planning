@@ -1,0 +1,8 @@
+{
+  "trace": ".local/native-review/r50-settings-retained-light.trace",
+  "target_pid": 69124,
+  "successful_scroll_gestures": 0,
+  "input_error": "Computer Use -10005 noWindowsAvailable",
+  "observations": "App process alive; AX and screenshot readable; rebind and Raise did not recover input. No cargo/rustc observed immediately before recording.",
+  "acceptance": "Invalid as scrolling workload. Do not compare against r42 scrolling result."
+}

@@ -1,0 +1,11 @@
+{
+  "command": "CARGO_TARGET_DIR=.local/r197-board-input-target cargo test --manifest-path .local/r197-board-input-source/Cargo.toml --features qa board_horizontal_wheel -- --nocapture --test-threads=1",
+  "result": "3 passed, 0 failed",
+  "assertions": [
+    "Actual rendered horizontal ScrollEvents over header, empty body and card move Done-column bounds from x1882 to x684.",
+    "No direct scroll-handle mutation is used to establish movement."
+  ],
+  "log": ".local/opencode-dispatch/r205-root-board-input.log",
+  "log_sha256": "b9b9f0bbe384f0c22b2ddcd44712b726c062490699683798427f296621c8e889",
+  "scope": "Independent headless event-path verification. Native input discrepancy remains unresolved; does not prove CUA delivered horizontal delta."
+}

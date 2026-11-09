@@ -1,0 +1,6 @@
+{
+  "command": "cargo build --features qa --quiet",
+  "exit_code": 101,
+  "seconds": 7.954,
+  "log": "r63-build.log"
+}

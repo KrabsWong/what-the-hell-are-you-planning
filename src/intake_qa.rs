@@ -55,12 +55,12 @@ pub fn run() {
         "#!/bin/sh\nprintf '%s\\n' 'QA browser instructions' '[ego-browser:skill] end of guide'\n",
     );
     let mut store = Store::empty();
-    store.projects[0].name = "投资研究".into();
-    store.projects[0].directory = root.join("project").to_string_lossy().into();
-    std::fs::create_dir_all(&store.projects[0].directory).unwrap();
-    store.opencode_path = root.join("opencode-fixture").to_string_lossy().into();
-    store.default_model = "fixture/research".into();
-    store.research_config.ego_path = root.join("ego-fixture").to_string_lossy().into();
+    store.project_at_mut(0).unwrap().name = "投资研究".into();
+    store.project_at_mut(0).unwrap().directory = root.join("project").to_string_lossy().into();
+    std::fs::create_dir_all(&store.projects()[0].directory).unwrap();
+    store.set_opencode_path(root.join("opencode-fixture").to_string_lossy().into());
+    store.set_default_model("fixture/research".into());
+    store.research_config_mut().ego_path = root.join("ego-fixture").to_string_lossy().into();
     let path = root.join("workspace.sqlite3");
     Storage::new(path.clone()).save(&store).unwrap();
     let mut cx = HeadlessAppContext::with_platform(
@@ -95,23 +95,23 @@ pub fn run() {
         w.render_frame(cx);
         w.click("project-plan-brief",cx); w.input("分析 Intel 昨天财报后大跌的原因，结合官方数据和机构观点，输出中文报告，也考虑独立做同行比较。",cx);
         w.click("generate-project-plan",cx);
-        assert_eq!(app.read(cx).store.research_requests.len(),1);
+        assert_eq!(app.read(cx).store.research_requests().len(),1);
         let state = app.read(cx);
-        let topic = state.store.research_requests[0].topic_id.unwrap();
-        assert_ne!(state.store.topics.iter().find(|t| t.id == topic).unwrap().name, "Existing unrelated research");
+        let topic = state.store.research_requests()[0].topic_id.unwrap();
+        assert_ne!(state.store.topics().iter().find(|t| t.id == topic).unwrap().name, "Existing unrelated research");
         w.render_frame(cx);
         assert!(w.find(format!("topic-{topic}")).visible());
     }).unwrap();
     wait(&mut cx, handle, &app);
-    let timestamp = snapshot(&mut cx, &app).research_requests[0]
+    let timestamp = snapshot(&mut cx, &app).research_requests()[0]
         .submitted_at
         .clone();
     assert!(
-        snapshot(&mut cx, &app).research_requests[0]
+        snapshot(&mut cx, &app).research_requests()[0]
             .goal_ids
             .is_empty()
     );
-    assert_eq!(snapshot(&mut cx, &app).runs[0].status, "Failed");
+    assert_eq!(snapshot(&mut cx, &app).runs()[0].status, "Failed");
     cx.update_window(handle, |_, w, cx| {
         app.update(cx, |a, cx| a.navigate(Scope::Research, w, cx));
         w.render_frame(cx);
@@ -121,9 +121,9 @@ pub fn run() {
     .unwrap();
     wait(&mut cx, handle, &app);
     let repaired = snapshot(&mut cx, &app);
-    assert_eq!(repaired.runs.iter().filter(|r| r.logs.iter().any(|l| l.starts_with("[plan repair]"))).count(), 1);
-    assert!(repaired.runs.iter().any(|r| r.status == "Failed" && r.logs.iter().any(|l| l.contains("missing field `kind`"))));
-    let goals = snapshot(&mut cx, &app).research_requests[0]
+    assert_eq!(repaired.runs().iter().filter(|r| r.logs.iter().any(|l| l.starts_with("[plan repair]"))).count(), 1);
+    assert!(repaired.runs().iter().any(|r| r.status == "Failed" && r.logs.iter().any(|l| l.contains("missing field `kind`"))));
+    let goals = snapshot(&mut cx, &app).research_requests()[0]
         .goal_ids
         .clone();
     assert_eq!(
@@ -133,7 +133,7 @@ pub fn run() {
         cx.update(|cx| app.read(cx).error.clone())
     );
     assert_eq!(
-        snapshot(&mut cx, &app).research_requests[0].submitted_at,
+        snapshot(&mut cx, &app).research_requests()[0].submitted_at,
         timestamp
     );
     let goal = goals[0];
@@ -154,12 +154,12 @@ pub fn run() {
             assert!(app.read(cx).store.prepare_run(*child).is_err());
         }
         assert_eq!(app.read(cx).store.task(goal).unwrap().stage, Stage::Backlog);
-        let runs_before_drag = app.read(cx).store.runs.len();
+        let runs_before_drag = app.read(cx).store.runs().len();
         w.drag_to(format!("card-{goal}"), "column-todo", cx);
         assert!(app.read(cx).store.goal_execution_approved(goal));
         assert!(app.read(cx).store.research_pending_approval(other));
         assert_eq!(
-            app.read(cx).store.runs.len(),
+            app.read(cx).store.runs().len(),
             runs_before_drag,
             "Dragging must not execute"
         );
@@ -184,21 +184,21 @@ pub fn run() {
     );
     assert!(
         snapshot(&mut cx, &app)
-            .runs
+            .runs()
             .iter()
             .filter(|r| r.project_plan.is_none())
             .all(|r| snapshot(&mut cx, &app).owning_research_goal(r.task_id) == Some(goal))
     );
     let report = *children.last().unwrap();
     assert!(snapshot(&mut cx, &app).research_result(report).is_some());
-    let before = snapshot(&mut cx, &app).runs.len();
+    let before = snapshot(&mut cx, &app).runs().len();
     cx.update_window(handle, |_, w, cx| {
         app.update(cx, |a, cx| {
             a.open_task(goal, w, cx);
         });
         w.render_frame(cx);
         w.click("research-task-result", cx);
-        assert_eq!(app.read(cx).scope, Scope::Runs);
+        assert_eq!(app.read(cx).scope(), Scope::Runs);
     })
     .unwrap();
     screenshot(&mut cx, handle, &root, "02-final-report.png");
@@ -212,7 +212,7 @@ pub fn run() {
             a.persist_if_changed(true);
             assert_eq!(a.store.task(goal).unwrap().stage, Stage::Backlog);
             assert!(a.store.prepare_run(children[2]).is_err());
-            assert_eq!(a.store.runs.len(), before);
+            assert_eq!(a.store.runs().len(), before);
             a.change_stage(goal, Stage::Planned, cx);
             a.start_goal_batch(goal, cx);
             let _ = w;
@@ -225,7 +225,7 @@ pub fn run() {
         Stage::Done
     );
     assert_eq!(
-        snapshot(&mut cx, &app).runs.len(),
+        snapshot(&mut cx, &app).runs().len(),
         before + 2,
         "Only changed analysis and its report should rerun"
     );
@@ -237,15 +237,15 @@ pub fn run() {
     })
     .unwrap();
     wait(&mut cx, handle, &app);
-    assert_eq!(snapshot(&mut cx, &app).research_requests.len(), 2);
+    assert_eq!(snapshot(&mut cx, &app).research_requests().len(), 2);
     assert!(
-        snapshot(&mut cx, &app).research_requests[1]
+        snapshot(&mut cx, &app).research_requests()[1]
             .goal_ids
             .iter()
             .all(|id| snapshot(&mut cx, &app).task_topic(*id).unwrap().id == topic)
     );
     // A blocked prerequisite must not stop a separate collection branch or release analysis.
-    let retry_goal = snapshot(&mut cx, &app).research_requests[1].goal_ids[0];
+    let retry_goal = snapshot(&mut cx, &app).research_requests()[1].goal_ids[0];
     let retry_steps = snapshot(&mut cx, &app).research_children(retry_goal);
     cx.update_window(handle, |_, _, cx| {
         app.update(cx, |a, cx| {
@@ -263,7 +263,7 @@ pub fn run() {
     let blocked = snapshot(&mut cx, &app);
     assert!(blocked.research_result(retry_steps[0]).is_none());
     assert!(blocked.research_result(retry_steps[1]).is_some());
-    assert!(!blocked.runs.iter().any(|r| r.task_id == retry_steps[2]));
+    assert!(!blocked.runs().iter().any(|r| r.task_id == retry_steps[2]));
     assert_eq!(blocked.task(retry_goal).unwrap().stage, Stage::InProgress);
     cx.update_window(handle, |_, _, cx| {
         app.update(cx, |a, cx| {
@@ -279,7 +279,7 @@ pub fn run() {
     assert_eq!(resumed.task(retry_goal).unwrap().stage, Stage::Done);
     assert_eq!(
         resumed
-            .runs
+            .runs()
             .iter()
             .filter(|r| r.task_id == retry_steps[1])
             .count(),
@@ -293,7 +293,7 @@ pub fn run() {
     })
     .unwrap();
     let loaded = Storage::new(path).load().unwrap().unwrap();
-    assert_eq!(loaded.research_requests.len(), 2);
+    assert_eq!(loaded.research_requests().len(), 2);
     assert_eq!(loaded.task(goal).unwrap().stage, Stage::Done);
     // Compact display fixture: check navigation order and disclosure interaction.
     cx.update_window(handle, |_, w, cx| {

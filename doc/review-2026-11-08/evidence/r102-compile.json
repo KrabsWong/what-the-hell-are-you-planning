@@ -1,0 +1,7 @@
+{
+  "commit": "23485f3",
+  "source": "exact git archive",
+  "command": "cargo check --features qa --quiet",
+  "exit_code": 0,
+  "scope": "Compile only; full tests running and native/current recovery acceptance remain open"
+}

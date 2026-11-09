@@ -1,0 +1,58 @@
+{
+  "checkpoint": "r114 working tree",
+  "cargo_target_dir": ".local/t14-target",
+  "source_sha256": {
+    "src/domain.rs": "e4dcf0eb25d6a7221f0026b3f1ad6c7b020559ef3ba9d380b3c3ae12f3dadb6f",
+    "src/request_planning.rs": "971aad33e6edd6fb735bf473dc24cb0e3610a9fec95411937ad04e28e7514736",
+    "src/live_save_app.rs": "e04ce0530315e4debb610ca8957cb456796d2cb5ef074fbfbe87cee861e6fddd",
+    "src/startup.rs": "7a4fd86041c57f58f0a885e3d2c609c2da1eb22ea9988a32c75afe9c390f6840",
+    "src/automation_views.rs": "c3980880154f476601cfd55a63a8a94d41b17d7ba2ef137d6a62c06c0a844197",
+    "src/task_edit_app.rs": "4cc6a9c478e2e18cba585cfd40449d704077f61d7efef4432ecae743e4fc971d",
+    "src/history_reader.rs": "f03090d177e4b7c02e97e07e2c269a443eb9ec27b87c59ccaf317db3300550bb"
+  },
+  "full_test": {
+    "command": "PATH=/opt/homebrew/opt/node@24/bin:$PATH CARGO_TARGET_DIR=.local/t14-target CARGO_INCREMENTAL=0 cargo test --quiet --features qa",
+    "unit": {
+      "passed": 701,
+      "failed": 0,
+      "ignored": 2
+    },
+    "dispatch_crash": {
+      "passed": 8,
+      "failed": 0
+    },
+    "v4_crash": {
+      "passed": 3,
+      "failed": 0
+    },
+    "additional_v4": {
+      "passed": 2,
+      "failed": 0
+    }
+  },
+  "live_persistence_qa": {
+    "command": ".local/t14-target/debug/what-the-hell-are-you-planning --qa-live-persistence",
+    "cases_passed": 20,
+    "cases_failed": 0,
+    "perf": {
+      "editor_save_43200_empty_runs_ui_us": 15102,
+      "editor_save_small_ui_us": 3839,
+      "settings_save_ui_us": 1954,
+      "history_page_43200_us": 2524
+    }
+  },
+  "core_fixes": [
+    "progress_result_task_count no longer rescans the full run history per row; request ownership uses the held run payload plus the unique legacy input-signature fallback",
+    "startup same-workspace retry reuses the owned lock and attached store instead of unlinking/reopening the database",
+    "recovery plans preserve accepted generations, intent hashes, filtered unsubmitted tail and an atomic snapshot retirement marker; whole-plan validation precedes mutation",
+    "task editor saves apply the validated write set directly to live state before submitting; no whole-store clone on the ordinary editor path",
+    "exact dirty-exit token and form identity for task, automation and planning requests",
+    "standalone automation Save draft completion runs only after the matching receipt and only for the unchanged form; dirty-exit owns the close when present",
+    "lazy body replies hydrate only the exact unchanged unloaded revision; stale replies never overwrite newer streaming/regenerated output",
+    "rejected/legacy automation save clears the temporary completion handoff so a later command cannot consume it"
+  ],
+  "remaining_limits": [
+    "Native visual/keyboard acceptance remains T19/T20.",
+    "Same-process SQLite teardown concurrency depends on the pinned SQLite upgrade; the QA matrix runs isolated child processes and does not claim to prove the lifecycle defect fixed."
+  ]
+}

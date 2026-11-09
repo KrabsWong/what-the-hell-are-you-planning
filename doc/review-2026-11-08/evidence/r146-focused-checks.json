@@ -1,0 +1,54 @@
+{
+  "native_history": {
+    "candidate": "r143 isolated normal build",
+    "signed_sha256": "5cbc365e20cd4779857044bf29987e63832b20ece9159ad25be275051865594b",
+    "fixture": "TASK-G23 / Run 22, one current evidence result",
+    "checks": [
+      "Version history opens a readable Complete report labeled Current execution result.",
+      "Escape closes history and restores the research overview.",
+      "Command-K immediately opens global Search.",
+      "Escape closes Search; Command-[ returns to All research."
+    ],
+    "limitations": [
+      "Light theme at 1440x920.",
+      "Multiple retained versions, confirmed input changes and materials are not covered by this check.",
+      "Pre-existing Saving changes state is still open under runtime repair."
+    ]
+  },
+  "cow_functional_checks": {
+    "candidate": ".local/t14-cow-slice/guard-app13",
+    "sha256": "0f336d3f236b4cd0b98dc05431a956fb7e51e06d7908e14bf2c99956c0f26b9f",
+    "base": "r137 plus tracked collection and performance harness overlays",
+    "checks": [
+      {
+        "command": "--qa-command",
+        "exit_code": 0,
+        "log": ".local/t14-cow-slice/root-r146-command.log"
+      },
+      {
+        "command": "--qa-dispatch-admission",
+        "exit_code": 0,
+        "log": ".local/t14-cow-slice/root-r146-dispatch.log"
+      },
+      {
+        "command": "LIVE_PERSISTENCE_QA_SEQUENTIAL=1 --qa-live-persistence",
+        "exit_code": 0,
+        "cases": 23,
+        "log": ".local/t14-cow-slice/root-r146-live.log"
+      }
+    ],
+    "limitations": [
+      "Independent functional validation of this immutable candidate only.",
+      "Does not include current runtime fixes or the later two strengthened T04/T15 cases.",
+      "Not quiet performance or native scrolling acceptance."
+    ]
+  },
+  "native_material_import": {
+    "candidate": "r143 isolated normal build",
+    "fixture": "TASK-G23; local synthetic 16x16 PNG, 79 bytes",
+    "observed": "After choosing Add PDF or images, toast says materials included in the next run, Materials remains 0 and no impact confirmation is displayed.",
+    "code_finding": "poll_runtime polls material jobs but keep excludes pending_material_job; material_app submissions do not wake the pump. Import can end the pump before the verification response.",
+    "disposition": "Failed acceptance; returned to the runtime implementer with an idle-executor regression requirement and truthful intermediate feedback.",
+    "limitations": "A subsequent screenshot failed because the Mac locked. No material impact confirmation or durable save was observed; do not claim cancellation or final import outcome."
+  }
+}

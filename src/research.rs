@@ -96,6 +96,8 @@ FINAL RESPONSE CONTRACT: Return ONLY a JSON object {"status":"complete" or "part
 #[derive(Default)]
 struct Validation<'a> {
     results: HashMap<u64, Option<&'a AgentRun>>,
+    /// Presentation-only results may return a run whose durable body is lazy.
+    presented: HashMap<u64, Option<&'a AgentRun>>,
     approvals: HashMap<u64, bool>,
 }
 
@@ -193,9 +195,11 @@ pub const BROWSER_HANDOFF_LOG: &str = "[browser-handoff] Browser control remains
 /// preserve the limitation; reader-facing surfaces strip it and show a
 /// localized notice instead of this agent instruction.
 pub const EVIDENCE_GAP_NOTE: &str = "> Evidence gaps: this step finished with incomplete evidence. Preserve its limitations in downstream conclusions.";
-/// Reader-facing wording for partial results, shared by the result view, export
-/// and published page so the notice cannot drift between surfaces.
-pub const EVIDENCE_GAP_NOTICE: &str = "本报告部分结论仍有证据缺口，请结合正文中的限制与待验证事项阅读。";
+/// Reader-facing wording for partial results, shared by the result view, copy,
+/// export and published page so the notice cannot drift between surfaces.
+/// App-owned text is English; user and generated report bodies keep their language.
+pub const EVIDENCE_GAP_NOTICE: &str =
+    "This report has evidence gaps. Read the limitations and unverified items in the body before relying on its conclusions.";
 
 pub fn has_evidence_gap_note(output: &str) -> bool {
     output.starts_with(EVIDENCE_GAP_NOTE)
@@ -391,10 +395,10 @@ impl Store {
     pub fn goal_plan_signature(&self, id: u64) -> Option<String> {
         let goal = self.task(id)?;
         if goal.research.as_ref()?.kind != ResearchKind::Goal { return None; }
-        let mut tasks: Vec<_> = self.tasks.iter().filter(|t| t.id != id && self.owning_research_goal(t.id) == Some(id)).collect();
+        let mut tasks: Vec<_> = self.tasks().iter().filter(|t| t.id != id && self.owning_research_goal(t.id) == Some(id)).collect();
         tasks.sort_by_key(|t| t.id);
-        let content: Vec<_> = tasks.iter().map(|t| serde_json::json!([t.id, t.title, t.description, t.comments, t.attachments, t.parent_id, t.archived, t.research.as_ref().map(|r| (r.kind, &r.depends_on))])).collect();
-        serde_json::to_string(&(&goal.title, &goal.description, &goal.comments, &goal.attachments, goal.project_id, content)).ok()
+        let content: Vec<_> = tasks.iter().map(|t| serde_json::json!([t.id, t.title, t.description, t.comments, crate::attachments::signature_payload(&t.attachments), t.parent_id, t.archived, t.research.as_ref().map(|r| (r.kind, &r.depends_on))])).collect();
+        serde_json::to_string(&(&goal.title, &goal.description, &goal.comments, crate::attachments::legacy_signature_payload(&goal.attachments), goal.project_id, content)).ok()
     }
     pub fn goal_execution_approved(&self, id: u64) -> bool {
         let Some(goal) = self.task(id) else { return false; };
@@ -403,7 +407,7 @@ impl Store {
         !research.requires_approval || goal.approved_plan.as_ref().is_some_and(|approved| Some(approved) == self.goal_plan_signature(id).as_ref())
     }
     pub fn reconcile_goal_approvals(&mut self) {
-        let changed: Vec<_> = self.tasks.iter().filter(|t| t.research.as_ref().is_some_and(|r| r.kind == ResearchKind::Goal && r.requires_approval) && !t.archived && !matches!(t.stage, Stage::Backlog | Stage::Cancelled) && t.approved_plan != self.goal_plan_signature(t.id)).map(|t| t.id).collect();
+        let changed: Vec<_> = self.tasks().iter().filter(|t| t.research.as_ref().is_some_and(|r| r.kind == ResearchKind::Goal && r.requires_approval) && !t.archived && !matches!(t.stage, Stage::Backlog | Stage::Cancelled) && t.approved_plan != self.goal_plan_signature(t.id)).map(|t| t.id).collect();
         for id in changed {
             let task = self.task_mut(id).unwrap();
             task.approved_plan = None;
@@ -511,7 +515,7 @@ impl Store {
         {
             return Err("Choose an active research goal.".into());
         }
-        if self.tasks.iter().any(|t| {
+        if self.tasks().iter().any(|t| {
             t.research
                 .as_ref()
                 .is_some_and(|r| r.goal_id == goal_id && r.kind != ResearchKind::Goal)
@@ -549,52 +553,171 @@ impl Store {
         ids.iter().all(|id| self.research_result_checked(*id, &mut vec![], &mut cache).is_some())
     }
     pub fn research_browser_handed_off(&self, goal: u64) -> bool {
-        self.runs.iter().any(|run| {
+        self.runs().iter().any(|run| {
             self.owning_research_goal(run.task_id) == Some(goal)
                 && run.logs.iter().any(|line| line == BROWSER_HANDOFF_LOG)
         })
     }
     pub fn refresh_queued_browser_control(&mut self, index: usize) {
-        let handed_off = self.owning_research_goal(self.runs[index].task_id)
+        let handed_off = self.owning_research_goal(self.runs()[index].task_id)
             .is_some_and(|goal| self.research_browser_handed_off(goal));
         const INSTRUCTION: &str = "\nBROWSER CONTROL: Browser access for this goal was handed to the user after admission. This overrides all earlier browser integration instructions. Do not use browser tools, shell browser commands, other Spaces, other browsers, or background fetching. Continue offline with existing evidence and local materials; return partial with explicit gaps rather than blocked for this handoff. Running this step does not authorize browser takeover.\n";
-        if handed_off && !self.runs[index].prompt.ends_with(INSTRUCTION) {
-            self.runs[index].prompt.push_str(INSTRUCTION);
+        if handed_off && !self.runs()[index].prompt.ends_with(INSTRUCTION) {
+            self.run_at_mut(index).unwrap().prompt.push_str(INSTRUCTION);
         }
     }
-    pub fn research_result(&self, id: u64) -> Option<&AgentRun> {
-        self.research_result_checked(id, &mut vec![], &mut Validation::default())
+    /// A successful result exists but only its body is still lazy. This is a
+    /// presentation/status distinction, never permission to read empty content
+    /// or admit dependent work. Dependency signatures are resolved with the
+    /// same lazy-aware recursion so a dependent Analyze/Advise remains pending
+    /// while its Collect ancestor body is unloaded.
+    pub(crate) fn research_result_body_pending(&self, id: u64) -> Option<u64> {
+        let result = self.research_result_present(id)?;
+        self.run_body_is_lazy(result.id).then_some(result.id)
     }
-    fn research_result_checked<'a>(&'a self, id: u64, visiting: &mut Vec<u64>, cache: &mut Validation<'a>) -> Option<&'a AgentRun> {
-        if visiting.contains(&id) { return None; }
-        if let Some(result) = cache.results.get(&id) { return *result; }
-        let result = self.runs.iter().rev()
-            .find(|r| r.task_id == id && r.status != "Simulated")
-            .filter(|r| r.status == "Succeeded" && !r.output.trim().is_empty());
-        // Pending/failed runs cannot be reused, regardless of their ancestors.
-        let Some(result) = result else {
-            cache.results.insert(id, None);
+
+    /// Presentation-only current result: strict content or a signature-matched
+    /// lazy body. Never use this for prompt construction, export or admission.
+    pub(crate) fn research_result_available_or_pending(&self, id: u64) -> bool {
+        self.research_result_present(id).is_some()
+    }
+
+    pub(crate) fn research_result_present(&self, id: u64) -> Option<&AgentRun> {
+        self.research_result_present_checked(id, &mut vec![], &mut Validation::default())
+    }
+
+    /// Presentation-only signature: dependency run IDs are resolved through the
+    /// lazy-aware current-result path. Strict prompt/export signatures remain
+    /// on `research_signature`.
+    pub(crate) fn research_signature_present(&self, id: u64) -> Option<String> {
+        self.research_present_signature_checked_mode(
+            id,
+            &mut vec![id],
+            &mut Validation::default(),
+            false,
+        )
+    }
+
+    /// Archived-history signature, including lazy dependency bodies. Used only
+    /// for presentation freshness; content validation remains strict.
+    pub(crate) fn research_signature_history_present(&self, id: u64) -> Option<String> {
+        self.research_present_signature_checked_mode(
+            id,
+            &mut vec![id],
+            &mut Validation::default(),
+            true,
+        )
+    }
+
+    /// Archived-history-only lazy result. Only a durable body still marked lazy
+    /// is returned; callers must not assert content quality until hydration.
+    pub(crate) fn research_history_result_pending(&self, id: u64) -> Option<&AgentRun> {
+        if self.research_history_result(id).is_some() {
+            return None;
+        }
+        let result = self.research_result_present_checked_mode(
+            id,
+            &mut vec![],
+            &mut Validation::default(),
+            true,
+        )?;
+        self.research_task_has_lazy_result_body(id, &mut vec![]).then_some(result)
+    }
+
+    fn research_task_has_lazy_result_body(&self, id: u64, visiting: &mut Vec<u64>) -> bool {
+        if visiting.contains(&id) {
+            return false;
+        }
+        visiting.push(id);
+        let Some(research) = self.task(id).and_then(|task| task.research.as_ref()) else {
+            visiting.pop();
+            return false;
+        };
+        let latest = self
+            .runs()
+            .iter()
+            .rev()
+            .find(|run| run.task_id == id && run.status != "Simulated");
+        let lazy = latest.is_some_and(|run| {
+            run.status == "Succeeded" && self.run_body_is_lazy(run.id)
+        });
+        let dependent = !lazy
+            && research
+                .depends_on
+                .iter()
+                .any(|dep| self.research_task_has_lazy_result_body(*dep, visiting));
+        visiting.pop();
+        lazy || dependent
+    }
+
+    fn research_result_present_checked<'a>(
+        &'a self,
+        id: u64,
+        visiting: &mut Vec<u64>,
+        cache: &mut Validation<'a>,
+    ) -> Option<&'a AgentRun> {
+        self.research_result_present_checked_mode(id, visiting, cache, false)
+    }
+
+    fn research_result_present_checked_mode<'a>(
+        &'a self,
+        id: u64,
+        visiting: &mut Vec<u64>,
+        cache: &mut Validation<'a>,
+        allow_archived: bool,
+    ) -> Option<&'a AgentRun> {
+        if visiting.contains(&id) {
+            return None;
+        }
+        if let Some(result) = cache.presented.get(&id) {
+            return *result;
+        }
+        let latest = self
+            .runs()
+            .iter()
+            .rev()
+            .find(|run| run.task_id == id && run.status != "Simulated");
+        let Some(result) = latest.filter(|run| run.status == "Succeeded") else {
+            cache.presented.insert(id, None);
             return None;
         };
+        if result.output.trim().is_empty() && !self.run_body_is_lazy(result.id) {
+            cache.presented.insert(id, None);
+            return None;
+        }
         visiting.push(id);
-        let signature = self.research_signature_checked(id, visiting, cache);
+        let signature =
+            self.research_present_signature_checked_mode(id, visiting, cache, allow_archived);
         visiting.pop();
-        let result = (signature.as_ref() == Some(&result.input_signature)).then_some(result);
-        cache.results.insert(id, result);
+        let result = (signature.as_ref() == Some(&result.input_signature)
+            && (!result.output.trim().is_empty() || self.run_body_is_lazy(result.id)))
+        .then_some(result);
+        cache.presented.insert(id, result);
         result
     }
-    pub fn research_signature(&self, id: u64) -> Option<String> {
-        self.research_signature_checked(id, &mut vec![id], &mut Validation::default())
-    }
-    fn research_signature_checked<'a>(&'a self, id: u64, visiting: &mut Vec<u64>, cache: &mut Validation<'a>) -> Option<String> {
+
+    fn research_present_signature_checked_mode<'a>(
+        &'a self,
+        id: u64,
+        visiting: &mut Vec<u64>,
+        cache: &mut Validation<'a>,
+        allow_archived: bool,
+    ) -> Option<String> {
         if let Some(goal) = self.owning_research_goal(id) {
-            let approved = *cache.approvals.entry(goal)
-                .or_insert_with(|| self.goal_execution_approved(goal));
-            if !approved { return None; }
+            let approved = *cache.approvals.entry(goal).or_insert_with(|| {
+                if allow_archived {
+                    self.historical_goal_approved(goal)
+                } else {
+                    self.goal_execution_approved(goal)
+                }
+            });
+            if !approved {
+                return None;
+            }
         }
         let task = self
             .task(id)
-            .filter(|t| !t.archived && t.stage != Stage::Cancelled)?;
+            .filter(|t| (allow_archived || !t.archived) && t.stage != Stage::Cancelled)?;
         let research = task.research.as_ref()?;
         let mut parents = vec![];
         let mut cursor = Some(id);
@@ -606,24 +729,167 @@ impl Store {
             ancestors.push(id);
             let t = self
                 .task(id)
-                .filter(|t| !t.archived && t.stage != Stage::Cancelled)?;
+                .filter(|t| (allow_archived || !t.archived) && t.stage != Stage::Cancelled)?;
             parents.push(serde_json::json!([
                 t.id,
                 t.title,
                 t.description,
                 t.comments,
-                t.attachments,
+                crate::attachments::signature_payload(&t.attachments),
                 t.project_id
             ]));
             cursor = t.parent_id;
         }
         let mut dependencies = vec![];
         for dep in &research.depends_on {
-            let r = self.research_result_checked(*dep, visiting, cache)?;
+            let r = self.research_result_present_checked_mode(
+                *dep,
+                visiting,
+                cache,
+                allow_archived,
+            )?;
             dependencies.push(r.id);
         }
         let directory = &self
-            .projects
+            .projects()
+            .iter()
+            .find(|p| p.id == task.project_id)?
+            .directory;
+        serde_json::to_string(&(
+            parents,
+            dependencies,
+            directory,
+            research.kind,
+            research.goal_id,
+        ))
+        .ok()
+    }
+
+    pub(crate) fn goal_tasks_present(&self, goal: u64) -> bool {
+        let children = self.research_children(goal);
+        !children.is_empty()
+            && self.has_research_plan(goal)
+            && children.iter().all(|id| {
+                self.task(*id)
+                    .is_some_and(|task| task.stage == Stage::Done)
+                    && self.research_result_available_or_pending(*id)
+            })
+    }
+
+    pub fn research_result(&self, id: u64) -> Option<&AgentRun> {
+        self.research_result_checked(id, &mut vec![], &mut Validation::default())
+    }
+    /// Retained, signature-matched result for archived history. This ignores the
+    /// archive admission check but still requires the current input revision and
+    /// the shared report-quality contract. It is never used for execution.
+    pub fn research_history_result(&self, id: u64) -> Option<&AgentRun> {
+        self.research_result_checked_mode(id, &mut vec![], &mut Validation::default(), true)
+    }
+    fn research_result_checked<'a>(&'a self, id: u64, visiting: &mut Vec<u64>, cache: &mut Validation<'a>) -> Option<&'a AgentRun> {
+        self.research_result_checked_mode(id, visiting, cache, false)
+    }
+    fn research_result_checked_mode<'a>(
+        &'a self,
+        id: u64,
+        visiting: &mut Vec<u64>,
+        cache: &mut Validation<'a>,
+        allow_archived: bool,
+    ) -> Option<&'a AgentRun> {
+        if visiting.contains(&id) { return None; }
+        if let Some(result) = cache.results.get(&id) { return *result; }
+        if allow_archived {
+            // Historical validation computes one signature under the shared cycle
+            // guard, then chooses the newest quality-valid success for it. Do not
+            // restart traversal per candidate: a stored dependency cycle must
+            // terminate as None, and shared dependencies must stay cached.
+            visiting.push(id);
+            let signature =
+                self.research_signature_checked_mode(id, visiting, cache, true);
+            visiting.pop();
+            let Some(signature) = signature else {
+                cache.results.insert(id, None);
+                return None;
+            };
+            let result = self.runs().iter().rev().find(|run| {
+                run.task_id == id
+                    && run.status == "Succeeded"
+                    && !run.output.trim().is_empty()
+                    && run.input_signature == signature
+                    && crate::result_presentation::historical_output_valid(self, run)
+            });
+            cache.results.insert(id, result);
+            return result;
+        }
+        let result = self.runs().iter().rev()
+            .find(|r| r.task_id == id && r.status != "Simulated")
+            .filter(|r| r.status == "Succeeded" && !r.output.trim().is_empty());
+        // Pending/failed runs cannot be reused, regardless of their ancestors.
+        let Some(result) = result else {
+            cache.results.insert(id, None);
+            return None;
+        };
+        visiting.push(id);
+        let signature = self.research_signature_checked_mode(id, visiting, cache, allow_archived);
+        visiting.pop();
+        let result = (signature.as_ref() == Some(&result.input_signature)).then_some(result);
+        cache.results.insert(id, result);
+        result
+    }
+    pub fn research_signature(&self, id: u64) -> Option<String> {
+        self.research_signature_checked(id, &mut vec![id], &mut Validation::default())
+    }
+    fn research_signature_checked<'a>(&'a self, id: u64, visiting: &mut Vec<u64>, cache: &mut Validation<'a>) -> Option<String> {
+        self.research_signature_checked_mode(id, visiting, cache, false)
+    }
+    fn research_signature_checked_mode<'a>(
+        &'a self,
+        id: u64,
+        visiting: &mut Vec<u64>,
+        cache: &mut Validation<'a>,
+        allow_archived: bool,
+    ) -> Option<String> {
+        if let Some(goal) = self.owning_research_goal(id) {
+            let approved = *cache.approvals.entry(goal).or_insert_with(|| {
+                if allow_archived {
+                    self.historical_goal_approved(goal)
+                } else {
+                    self.goal_execution_approved(goal)
+                }
+            });
+            if !approved { return None; }
+        }
+        let task = self
+            .task(id)
+            .filter(|t| (allow_archived || !t.archived) && t.stage != Stage::Cancelled)?;
+        let research = task.research.as_ref()?;
+        let mut parents = vec![];
+        let mut cursor = Some(id);
+        let mut ancestors = vec![];
+        while let Some(id) = cursor {
+            if ancestors.contains(&id) {
+                return None;
+            }
+            ancestors.push(id);
+            let t = self
+                .task(id)
+                .filter(|t| (allow_archived || !t.archived) && t.stage != Stage::Cancelled)?;
+            parents.push(serde_json::json!([
+                t.id,
+                t.title,
+                t.description,
+                t.comments,
+                crate::attachments::signature_payload(&t.attachments),
+                t.project_id
+            ]));
+            cursor = t.parent_id;
+        }
+        let mut dependencies = vec![];
+        for dep in &research.depends_on {
+            let r = self.research_result_checked_mode(*dep, visiting, cache, allow_archived)?;
+            dependencies.push(r.id);
+        }
+        let directory = &self
+            .projects()
             .iter()
             .find(|p| p.id == task.project_id)?
             .directory;
@@ -637,15 +903,29 @@ impl Store {
         ))
         .ok()
     }
+    /// Approval equality for archived history. Archive itself does not revoke
+    /// the stored approved plan; cancelled work still has no historical approval.
+    fn historical_goal_approved(&self, id: u64) -> bool {
+        let Some(goal) = self.task(id) else { return false; };
+        let Some(research) = &goal.research else { return false; };
+        if research.kind != ResearchKind::Goal || goal.stage == Stage::Cancelled {
+            return false;
+        }
+        !research.requires_approval
+            || goal
+                .approved_plan
+                .as_ref()
+                .is_some_and(|approved| Some(approved) == self.goal_plan_signature(id).as_ref())
+    }
     pub fn has_research_plan(&self, goal: u64) -> bool {
-        self.tasks.iter().any(|t| {
+        self.tasks().iter().any(|t| {
             t.research
                 .as_ref()
                 .is_some_and(|r| r.goal_id == goal && r.kind != ResearchKind::Goal)
         })
     }
     pub fn research_children(&self, goal: u64) -> Vec<u64> {
-        self.tasks
+        self.tasks()
             .iter()
             .filter(|t| {
                 !t.archived
@@ -772,7 +1052,7 @@ pub(crate) fn write_dependency_files(store: &Store, run: &AgentRun) -> Result<()
 
 /// Create only a new final-report attempt; upstream tasks and inputs stay unchanged.
 pub fn prepare_report_regeneration(store: &Store, source_id: u64, style: &str) -> Result<AgentRun, String> {
-    let source = store.runs.iter().find(|r| r.id == source_id)
+    let source = store.runs().iter().find(|r| r.id == source_id)
         .filter(|r| r.research_kind == Some(ResearchKind::Advise)
             && r.status == "Succeeded" && !r.output.trim().is_empty())
         .ok_or("Choose a completed final report to regenerate.")?;
@@ -815,7 +1095,7 @@ pub fn prepare_run(store: &Store, id: u64) -> Result<AgentRun, String> {
         ));
     }
     let project = store
-        .projects
+        .projects()
         .iter()
         .find(|p| p.id == task.project_id)
         .ok_or("Project not found.")?;
@@ -891,11 +1171,15 @@ pub fn prepare_run(store: &Store, id: u64) -> Result<AgentRun, String> {
     }
     Ok(AgentRun {
         automation_occurrence_id: None,
+        planning_owner: None,
             deadline_at: None,
             auto_retry_attempt: 0,
             retry_not_before: None,
         project_plan: None,
-        id: store.runs.iter().map(|r| r.id).max().unwrap_or(0) + 1,
+        id: std::cmp::max(
+            store.runs().iter().map(|r| r.id).max().unwrap_or(0) + 1,
+            store.run_id_floor(),
+        ),
         task_id: id,
         task_title: task.title.clone(),
         directory: project.directory.clone(),
@@ -925,8 +1209,8 @@ mod tests {
     const PLAN: &str = r#"{"tasks":[{"title":"收集公告","instructions":"原始来源","kind":"collect","depends_on":[]},{"title":"分析","instructions":"核对来源","kind":"analyze","depends_on":[0]},{"title":"投资简报","instructions":"条件建议","kind":"advise","depends_on":[1]}]}"#;
     fn workspace() -> (Store, u64) {
         let mut s = Store::mock();
-        s.projects[0].directory = "/tmp".into();
-        s.research_config.models =
+        s.project_at_mut(0).unwrap().directory = "/tmp".into();
+        s.research_config_mut().models =
             ["test/plan", "test/search", "test/analysis", "test/brief"].map(String::from);
         let id = s
             .create_research_goal("新闻研究".into(), "科技股，最近三天".into(), 1)
@@ -941,9 +1225,9 @@ mod tests {
             let mut run = store.prepare_run(*id).unwrap();
             run.status = "Succeeded".into();
             run.output = format!("Verified content for {id}");
-            store.runs.push(run);
+            store.push_run(run);
         }
-        let source = store.runs.last().unwrap().clone();
+        let source = store.runs().last().unwrap().clone();
         let before = serde_json::to_string(&store).unwrap();
         let mut rewritten = prepare_report_regeneration(&store, source.id, "写得自然一些，面向非技术读者").unwrap();
         assert_eq!(serde_json::to_string(&store).unwrap(), before);
@@ -952,16 +1236,16 @@ mod tests {
         assert_eq!(rewritten.session_id, None);
         assert!(rewritten.prompt.contains("写得自然一些，面向非技术读者"));
         assert!(rewritten.prompt.contains("Do not browse, query external data providers"));
-        for run in &store.runs[1..] { assert!(rewritten.prompt.contains(&run.output)); }
-        assert!(prepare_report_regeneration(&store, store.runs[0].id, "").is_err());
+        for run in &store.runs()[1..] { assert!(rewritten.prompt.contains(&run.output)); }
+        assert!(prepare_report_regeneration(&store, store.runs()[0].id, "").is_err());
         rewritten.status = "Failed".into();
-        store.runs.push(rewritten);
-        let retry = store.prepare_auto_retry(store.runs.last().unwrap().id, 0).unwrap();
+        store.push_run(rewritten);
+        let retry = store.prepare_auto_retry(store.runs().last().unwrap().id, 0).unwrap();
         assert!(retry.prompt.contains("写得自然一些，面向非技术读者"));
         assert!(retry.prompt.contains("REPORT REGENERATION"));
         assert!(store.research_result(steps[0]).is_some());
         assert!(store.research_result(steps[1]).is_some());
-        assert_eq!(store.runs.iter().find(|r| r.id == source.id).unwrap().output, source.output);
+        assert_eq!(store.runs().iter().find(|r| r.id == source.id).unwrap().output, source.output);
         assert!(prepare_report_regeneration(&store, source.id, "").is_ok());
         store.task_mut(steps[0]).unwrap().description.push_str(" changed scope");
         assert!(prepare_report_regeneration(&store, source.id, "").is_err());
@@ -975,12 +1259,12 @@ mod tests {
         prior.status = "Succeeded".into();
         prior.output = "短报告\n原始附件 screenshot.png".into();
         prior.sources = vec![Source { title: "Source".into(), url: "https://example.com/evidence".into(), published_at: "unknown".into() }];
-        store.runs.push(prior.clone());
+        store.push_run(prior.clone());
         let (small, files) = dependency_context(&store, steps[1]).unwrap();
         assert!(small.contains(&prior.output));
         assert!(files.is_empty());
         prior.output = format!("{}\nEND: screenshot.png 的原始证据与限制", "完整中文证据\n".repeat(12_000));
-        *store.runs.last_mut().unwrap() = prior.clone();
+        *store.last_run_mut().unwrap() = prior.clone();
         let (context, files) = dependency_context(&store, steps[1]).unwrap();
         assert!(context.len() < 4000);
         assert!(!context.contains("END:"));
@@ -1000,7 +1284,7 @@ mod tests {
         assert_eq!(std::fs::read(dir.join(&files[0].0)).unwrap(), files[0].1);
         std::fs::write(dir.join(&files[0].0), "modified").unwrap();
         assert!(write_dependency_files(&store, &run).unwrap_err().contains("modified"));
-        assert_eq!(store.runs.last().unwrap().output, prior.output);
+        assert_eq!(store.runs().last().unwrap().output, prior.output);
         std::fs::remove_file(dir.join(&files[0].0)).unwrap();
         #[cfg(unix)] {
             std::os::unix::fs::symlink(dir.join(&files[1].0), dir.join(&files[0].0)).unwrap();
@@ -1019,7 +1303,7 @@ mod tests {
             let mut run = store.prepare_run(*id).unwrap();
             run.status = "Succeeded".into();
             run.output = "Verified result".into();
-            store.runs.push(run);
+            store.push_run(run);
         }
         let mut cache = Validation::default();
         assert!(store.research_result_checked(ids[2], &mut vec![], &mut cache).is_some());
@@ -1063,7 +1347,7 @@ mod tests {
             "了解城市公共交通的发展趋势",
         ] {
             let (mut store, goal) = workspace();
-            store.tasks.iter_mut().find(|t| t.id == goal).unwrap().description = scope.into();
+            store.task_mut(goal).unwrap().description = scope.into();
             let planning = store.prepare_run(goal).unwrap();
             assert!(planning.prompt.contains(RESEARCH_TYPE_GUIDANCE));
             assert!(planning.prompt.contains(RESEARCH_PLAN_GUIDANCE));
@@ -1094,7 +1378,7 @@ mod tests {
                 run.status = "Succeeded".into();
                 run.output = result.report;
                 run.sources = result.sources;
-                store.runs.push(run);
+                store.push_run(run);
             }
         }
     }
@@ -1112,7 +1396,7 @@ mod tests {
                 url: "https://example.com/evidence".into(),
                 published_at: "unknown".into(),
             }];
-            store.runs.push(run);
+            store.push_run(run);
         }
         let run = store.prepare_run(ids[2]).unwrap();
         for rule in [
@@ -1153,7 +1437,7 @@ mod tests {
                 url: "https://example.com/report".into(),
                 published_at: "unknown".into(),
             }];
-            store.runs.push(run);
+            store.push_run(run);
         }
     }
     #[test]
@@ -1167,23 +1451,24 @@ mod tests {
         let ids = store.apply_research_plan(goal, PLAN).unwrap();
         let mut run = store.prepare_run(ids[0]).unwrap();
         let mut queued = run.clone();
+        queued.id = run.id + 1_000;
         queued.status = "Queued".into();
         queued.prompt.push_str("\nBROWSER INTEGRATION: collect sources");
-        store.runs.push(queued);
+        store.push_run(queued);
         store.refresh_queued_browser_control(0);
-        assert!(!store.runs[0].prompt.contains("BROWSER CONTROL:"));
+        assert!(!store.runs()[0].prompt.contains("BROWSER CONTROL:"));
         run.status = "Succeeded".into();
         run.output = "Browser handed off, no new evidence. Continue offline.".into();
         run.logs.push(BROWSER_HANDOFF_LOG.into());
-        store.runs.push(run);
+        store.push_run(run);
         let other = store.create_research_goal("Other goal".into(), "Independent scope".into(), 1).unwrap();
         assert!(store.research_browser_handed_off(goal));
         assert!(!store.research_browser_handed_off(other));
         store.refresh_queued_browser_control(0);
-        assert!(store.runs[0].prompt.contains("This overrides all earlier browser integration instructions"));
-        let prompt = store.runs[0].prompt.clone();
+        assert!(store.runs()[0].prompt.contains("This overrides all earlier browser integration instructions"));
+        let prompt = store.runs()[0].prompt.clone();
         store.refresh_queued_browser_control(0);
-        assert_eq!(store.runs[0].prompt, prompt);
+        assert_eq!(store.runs()[0].prompt, prompt);
         assert!(store.prepare_run(ids[1]).is_ok());
     }
     #[test]
@@ -1195,13 +1480,13 @@ mod tests {
         run.status = "Succeeded".into();
         run.output = report.report;
         run.sources = report.sources;
-        store.runs.push(run);
+        store.push_run(run);
         store.set_stage(ids[0], Stage::Done).unwrap();
         assert_eq!(store.next_research_task(goal).unwrap(), Some(ids[1]));
         let analysis = store.prepare_run(ids[1]).unwrap();
         assert!(analysis.prompt.contains("Trend remains unknown"));
         assert!(analysis.prompt.contains("carry those gaps forward"));
-        store.runs.last_mut().unwrap().status = "Blocked".into();
+        store.last_run_mut().unwrap().status = "Blocked".into();
         assert!(store.prepare_run(ids[1]).is_err());
     }
     #[test]
@@ -1219,50 +1504,50 @@ mod tests {
             url: "https://example.com/report".into(),
             published_at: "2026-10-28 UTC".into(),
         }];
-        s.runs.push(r);
+        s.push_run(r);
         let next = s.prepare_run(ids[1]).unwrap();
         assert_eq!(next.model, "test/analysis");
         assert!(next.prompt.contains("https://example.com/report"));
         assert_eq!(s.next_research_task(id).unwrap(), Some(ids[1]));
-        s.runs.last_mut().unwrap().status = "Failed".into();
+        s.last_run_mut().unwrap().status = "Failed".into();
         assert!(s.prepare_run(ids[1]).is_err());
     }
     #[test]
     fn mixed_agents_preserve_evidence_and_snapshot_selected_route() {
         let (mut store, goal) = workspace();
         let ids = store.apply_research_plan(goal, PLAN).unwrap();
-        store.research_config.agents[ResearchKind::Analyze.index()] = Some("Codex".into());
-        store.research_config.models[ResearchKind::Analyze.index()] = "fixture-codex".into();
+        store.research_config_mut().agents[ResearchKind::Analyze.index()] = Some("Codex".into());
+        store.research_config_mut().models[ResearchKind::Analyze.index()] = "fixture-codex".into();
         let mut collection = store.prepare_run(ids[0]).unwrap();
         assert_eq!(collection.agent, "OpenCode");
         collection.status = "Succeeded".into();
         collection.output = "Evidence from collection".into();
         collection.sources = vec![Source { title: "Evidence".into(), url: "https://example.com/evidence".into(), published_at: "unknown".into() }];
-        store.runs.push(collection);
+        store.push_run(collection);
         let analysis = store.prepare_run(ids[1]).unwrap();
         assert_eq!((analysis.agent.as_str(), analysis.model.as_str()), ("Codex", "fixture-codex"));
         assert!(analysis.prompt.contains("Evidence from collection"));
         assert!(analysis.prompt.contains("https://example.com/evidence"));
         assert!(analysis.prompt.contains("codex mcp list"));
         assert!(!analysis.prompt.contains("opencode mcp list"));
-        store.runs.push(analysis.clone());
-        store.research_config.models[2] = "another-model".into();
-        assert_eq!(store.runs.last().unwrap().model, analysis.model);
+        store.push_run(analysis.clone());
+        store.research_config_mut().models[2] = "another-model".into();
+        assert_eq!(store.runs().last().unwrap().model, analysis.model);
     }
 
     #[test]
     fn all_research_roles_inherit_global_model_and_keep_completed_results() {
         let (mut store, goal) = workspace();
-        store.research_config.models = Default::default();
+        store.research_config_mut().models = Default::default();
         for invalid in ["", "invalid"] {
-            store.default_model = invalid.into();
+            store.set_default_model(invalid.into());
             assert!(store.prepare_run(goal).is_err());
         }
-        store.default_model = "test/global".into();
+        store.set_default_model("test/global".into());
         let goal_run = store.prepare_run(goal).unwrap();
         assert_eq!(goal_run.model, "test/global");
         let ids = store.apply_research_plan(goal, PLAN).unwrap();
-        store.research_config.models[ResearchKind::Analyze.index()] =
+        store.research_config_mut().models[ResearchKind::Analyze.index()] =
             "test/analysis-override".into();
         for (id, expected) in
             ids.iter()
@@ -1272,15 +1557,15 @@ mod tests {
             assert_eq!(run.model, expected);
             run.status = "Succeeded".into();
             run.output = "Verified research result".into();
-            store.runs.push(run);
+            store.push_run(run);
         }
-        let previous_runs = store.runs.clone();
-        store.default_model = "test/next-global".into();
+        let previous_runs = store.runs().to_vec();
+        store.set_default_model("test/next-global".into());
         assert_eq!(store.prepare_run(ids[0]).unwrap().model, "test/next-global");
         for id in ids {
             assert!(store.research_result(id).is_some());
         }
-        assert_eq!(store.runs, previous_runs);
+        assert_eq!(store.runs(), previous_runs);
         assert_eq!(goal_run.model, "test/global");
     }
     #[test]
@@ -1292,18 +1577,18 @@ mod tests {
         let mut completed = s.prepare_run(ids[0]).unwrap();
         completed.status = "Succeeded".into();
         completed.output = "Verified report".into();
-        s.runs.push(completed);
+        s.push_run(completed);
         let mut active = s.prepare_run(ids[1]).unwrap();
         active.status = "Running".into();
-        s.runs.push(active);
+        s.push_run(active);
         let before = s.clone();
         s.rename_project(1, "New display name").unwrap();
-        assert_eq!(s.tasks, before.tasks);
-        assert_eq!(s.topics, before.topics);
-        assert_eq!(s.runs, before.runs);
+        assert_eq!(s.tasks(), before.tasks());
+        assert_eq!(s.topics(), before.topics());
+        assert_eq!(s.runs(), before.runs());
         assert!(s.goal_execution_approved(goal));
         assert!(s.research_result(ids[0]).is_some());
-        assert_eq!(s.research_signature(ids[1]).unwrap(), s.runs.last().unwrap().input_signature);
+        assert_eq!(s.research_signature(ids[1]).unwrap(), s.runs().last().unwrap().input_signature);
     }
 
     #[test]
@@ -1317,7 +1602,7 @@ mod tests {
             let mut run = s.prepare_run(*id).unwrap();
             run.status = "Succeeded".into();
             run.output = "Verified report".into();
-            s.runs.push(run);
+            s.push_run(run);
         }
         let sibling = s.create_research_goal_in_topic("Another goal".into(), "Scope".into(), 1, Some(topic)).unwrap();
         let archived = s.create_task("Archived task", 1, Stage::Backlog, Some(sibling)).unwrap();
@@ -1326,29 +1611,29 @@ mod tests {
         let mut planning = s.prepare_request_plan(request).unwrap();
         planning.status = "Succeeded".into();
         let planning_id = planning.id;
-        s.research_requests.iter_mut().find(|r| r.id == request).unwrap().planning_run_id = Some(planning_id);
-        s.runs.push(planning);
-        s.research_requests.iter_mut().find(|r| r.id == request).unwrap().goal_ids = vec![goal, sibling];
+        s.request_mut(request).unwrap().planning_run_id = Some(planning_id);
+        s.push_run(planning);
+        s.request_mut(request).unwrap().goal_ids = vec![goal, sibling];
         let unrelated = s.create_research_goal("Unrelated".into(), "Stay here".into(), 1).unwrap();
         let unrelated_before = s.task(unrelated).unwrap().clone();
-        let old_runs = s.runs.clone();
-        let old_topics = s.topics.len();
+        let old_runs = s.runs().to_vec();
+        let old_topics = s.topics().len();
         s.move_topic_project(topic, 2).unwrap();
-        assert_eq!(s.topics.len(), old_topics);
+        assert_eq!(s.topics().len(), old_topics);
         assert_eq!(s.task(unrelated).unwrap(), &unrelated_before);
-        assert_eq!(s.runs.iter().find(|r| r.id == planning_id).unwrap().project_plan, Some(2));
+        assert_eq!(s.runs().iter().find(|r| r.id == planning_id).unwrap().project_plan, Some(2));
         for id in [goal, sibling, archived].into_iter().chain(ids.iter().copied()) {
             assert_eq!(s.task(id).unwrap().project_id, 2);
             assert_eq!(s.task_topic(id).unwrap().id, topic);
         }
         assert!(s.goal_execution_approved(goal));
         for id in &ids { assert!(s.research_result(*id).is_some()); }
-        for (before, after) in old_runs.iter().zip(&s.runs) {
+        for (before, after) in old_runs.iter().zip(s.runs().iter()) {
             assert_eq!(before.directory, after.directory);
             assert_eq!(before.output, after.output);
             assert_eq!(before.session_id, after.session_id);
         }
-        assert_eq!(s.research_requests.iter().find(|r| r.id == request).unwrap().project_id, 2);
+        assert_eq!(s.research_requests().iter().find(|r| r.id == request).unwrap().project_id, 2);
         let restored: Store = serde_json::from_str(&serde_json::to_string(&s).unwrap()).unwrap();
         assert_eq!(restored, s);
         for id in ids { assert!(restored.research_result(id).is_some()); }
@@ -1362,15 +1647,15 @@ mod tests {
         s.task_mut(goal).unwrap().research.as_mut().unwrap().requires_approval = true;
         s.task_mut(goal).unwrap().approved_plan = s.goal_plan_signature(goal);
         let run = s.prepare_run(ids[0]).unwrap();
-        s.runs.push(run);
-        s.runs.last_mut().unwrap().status = "Running".into();
+        s.push_run(run);
+        s.last_run_mut().unwrap().status = "Running".into();
         let before = s.clone();
         assert!(s.move_topic_project(topic, 2).is_err());
         assert_eq!(s, before);
-        s.runs.clear();
+        s.clear_runs();
         let other = s.create_research_goal("Other topic".into(), "Other scope".into(), 1).unwrap();
         let request = s.create_research_request(1, Some(topic), "Shared request").unwrap();
-        s.research_requests.iter_mut().find(|r| r.id == request).unwrap().goal_ids = vec![goal, other];
+        s.request_mut(request).unwrap().goal_ids = vec![goal, other];
         let before = s.clone();
         assert!(s.move_topic_project(topic, 2).is_err());
         assert_eq!(s, before);
@@ -1384,10 +1669,10 @@ mod tests {
         let topic = s.task_topic(goal).unwrap().id;
         let ids = s.apply_research_plan(goal, PLAN).unwrap();
         let run = s.prepare_run(ids[0]).unwrap();
-        s.runs.push(run);
+        s.push_run(run);
         for (status, action) in [("Queued", "Stop task"), ("Running", "Stop task"),
             ("Recovering", "recovery"), ("Cancelling", "Wait"), ("Interrupted", "Paused projects")] {
-            s.runs.last_mut().unwrap().status = status.into();
+            s.last_run_mut().unwrap().status = status.into();
             let blockers = s.topic_move_blockers(topic, None);
             assert_eq!(blockers.len(), 1, "{status}");
             assert!(blockers[0].contains(&s.task(ids[0]).unwrap().title));
@@ -1397,14 +1682,14 @@ mod tests {
             assert!(s.clone().move_topic_project(topic, 2).is_err());
         }
         for status in ["Succeeded", "Failed", "Blocked", "Cancelled"] {
-            s.runs.last_mut().unwrap().status = status.into();
+            s.last_run_mut().unwrap().status = status.into();
             assert!(s.topic_move_blockers(topic, None).is_empty(), "{status}");
         }
-        s.runs.last_mut().unwrap().status = "Interrupted".into();
-        let mut newer = s.runs.last().unwrap().clone();
+        s.last_run_mut().unwrap().status = "Interrupted".into();
+        let mut newer = s.runs().last().unwrap().clone();
         newer.id += 1;
         newer.status = "Cancelled".into();
-        s.runs.push(newer);
+        s.push_run(newer);
         assert!(s.topic_move_blockers(topic, None).is_empty(), "Superseded interruptions are history");
         let mut batch = crate::batch::TodoBatch {
             project_id: 1, items: vec![goal], completed: 0, runs_completed: 0,
@@ -1431,7 +1716,7 @@ mod tests {
         let mut run = s.prepare_run(ids[0]).unwrap();
         run.status = "Succeeded".into();
         run.output = "Old report".into();
-        s.runs.push(run);
+        s.push_run(run);
         s.add_comment(ids[0], "Changed scope").unwrap();
         assert!(s.research_result(ids[0]).is_none());
         s.move_topic_project(topic, 2).unwrap();
@@ -1454,7 +1739,7 @@ mod tests {
             let mut run = s.prepare_run(*id).unwrap();
             run.status = "Succeeded".into();
             run.output = "Research result".into();
-            s.runs.push(run);
+            s.push_run(run);
         }
         assert_eq!(s.next_research_task(goal).unwrap(), None);
         s.add_comment(ids[0], "Use the newly published clarification")
@@ -1466,7 +1751,7 @@ mod tests {
         let mut run = s.prepare_run(ids[0]).unwrap();
         run.status = "Succeeded".into();
         run.output = "Updated evidence".into();
-        s.runs.push(run);
+        s.push_run(run);
         assert!(s.research_result(ids[1]).is_none());
         assert_eq!(s.next_research_task(goal).unwrap(), Some(ids[1]));
         assert!(s.set_parent(ids[0], None).is_err());
@@ -1526,14 +1811,14 @@ mod tests {
         let children = store.apply_proposed_research_plan(goal, PLAN).unwrap();
         assert_eq!(store.task(goal).unwrap().stage, Stage::Backlog);
         assert!(children.iter().all(|id| store.task(*id).unwrap().stage == Stage::Planned));
-        assert!(store.runs.is_empty());
+        assert!(store.runs().is_empty());
         store.set_stage(children[0], Stage::Planned).unwrap();
         assert!(!store.goal_execution_approved(goal));
         assert!(store.prepare_run(children[0]).is_err());
         store.set_stage(goal, Stage::Planned).unwrap();
         assert!(store.goal_execution_approved(goal));
         assert!(store.prepare_run(children[0]).is_ok());
-        assert!(store.runs.is_empty());
+        assert!(store.runs().is_empty());
     }
 
     #[test]
@@ -1543,13 +1828,13 @@ mod tests {
         store.set_stage(goal, Stage::Planned).unwrap();
         let mut run = store.prepare_run(children[0]).unwrap();
         run.status = "Succeeded".into(); run.output = "Evidence".into();
-        store.runs.push(run);
+        store.push_run(run);
         store.task_mut(children[1]).unwrap().description.push_str(" Expanded scope");
         assert!(!store.goal_execution_approved(goal));
         assert!(store.prepare_run(children[0]).is_err());
         store.reconcile_goal_approvals();
         assert_eq!(store.task(goal).unwrap().stage, Stage::Backlog);
-        assert_eq!(store.runs.len(), 1);
+        assert_eq!(store.runs().len(), 1);
         store.set_stage(goal, Stage::Planned).unwrap();
         assert!(store.goal_execution_approved(goal));
         assert!(store.research_result(children[0]).is_some());
@@ -1571,11 +1856,153 @@ mod tests {
         assert_eq!(store.task(goal).unwrap().stage, Stage::Backlog);
         store.set_stage(goal, Stage::Planned).unwrap();
         store.task_mut(goal).unwrap().attachments.push(crate::attachments::Attachment {
-            name: "Additional scope.pdf".into(), relative_path: "attachments/additional.pdf".into(), media_type: "application/pdf".into(), size: 123,
+            name: "Additional scope.pdf".into(), relative_path: "attachments/additional.pdf".into(), media_type: "application/pdf".into(), size: 123, content_sha256: String::new(),
         });
         assert!(!store.goal_execution_approved(goal));
         store.reconcile_goal_approvals();
         assert_eq!(store.task(goal).unwrap().stage, Stage::Backlog);
+    }
+
+    #[derive(serde::Serialize)]
+    struct OldAttachment<'a> {
+        name: &'a str,
+        relative_path: &'a str,
+        media_type: &'a str,
+        size: u64,
+    }
+
+    fn old_goal_signature(store: &Store, id: u64) -> String {
+        let goal = store.task(id).unwrap();
+        let mut tasks: Vec<_> = store
+            .tasks()
+            .iter()
+            .filter(|task| task.id != id && store.owning_research_goal(task.id) == Some(id))
+            .collect();
+        tasks.sort_by_key(|task| task.id);
+        let content: Vec<_> = tasks
+            .iter()
+            .map(|task| {
+                let attachments: Vec<OldAttachment<'_>> = task
+                    .attachments
+                    .iter()
+                    .map(|attachment| OldAttachment {
+                        name: &attachment.name,
+                        relative_path: &attachment.relative_path,
+                        media_type: &attachment.media_type,
+                        size: attachment.size,
+                    })
+                    .collect();
+                serde_json::json!([
+                    task.id,
+                    task.title,
+                    task.description,
+                    task.comments,
+                    attachments,
+                    task.parent_id,
+                    task.archived,
+                    task.research.as_ref().map(|r| (r.kind, &r.depends_on))
+                ])
+            })
+            .collect();
+        let goal_attachments: Vec<OldAttachment<'_>> = goal
+            .attachments
+            .iter()
+            .map(|attachment| OldAttachment {
+                name: &attachment.name,
+                relative_path: &attachment.relative_path,
+                media_type: &attachment.media_type,
+                size: attachment.size,
+            })
+            .collect();
+        serde_json::to_string(&(
+            &goal.title,
+            &goal.description,
+            &goal.comments,
+            goal_attachments,
+            goal.project_id,
+            content,
+        ))
+        .unwrap()
+    }
+
+    #[test]
+    fn content_hash_cache_does_not_change_goal_signature_or_legacy_approval() {
+        let (mut store, goal) = workspace();
+        store.task_mut(goal).unwrap().attachments.push(crate::attachments::Attachment {
+            name: "legacy.pdf".into(),
+            relative_path: "attachments/legacy.pdf".into(),
+            media_type: "application/pdf".into(),
+            size: 3,
+            content_sha256: String::new(),
+        });
+        store
+            .task_mut(goal)
+            .unwrap()
+            .research
+            .as_mut()
+            .unwrap()
+            .requires_approval = true;
+        let signature = old_goal_signature(&store, goal);
+        assert_eq!(
+            store.goal_plan_signature(goal).as_deref(),
+            Some(signature.as_str()),
+            "new signature payload must be byte-compatible with the old four-field order"
+        );
+        store.task_mut(goal).unwrap().approved_plan = Some(signature.clone());
+        let encoded = serde_json::to_string(&store).unwrap();
+        assert!(
+            !encoded.contains("content_sha256"),
+            "legacy empty hash must not change persisted shape"
+        );
+        let mut loaded: Store = serde_json::from_str(&encoded).unwrap();
+        assert_eq!(loaded.goal_plan_signature(goal), Some(signature.clone()));
+        assert!(loaded.goal_execution_approved(goal));
+        let input_signature = loaded.research_signature(goal);
+        loaded.task_mut(goal).unwrap().attachments[0].content_sha256 =
+            "cached-digest".into();
+        assert_eq!(loaded.research_signature(goal), input_signature);
+        assert_eq!(loaded.goal_plan_signature(goal), Some(signature));
+        assert!(loaded.goal_execution_approved(goal));
+    }
+
+    #[test]
+    fn content_hash_cache_does_not_invalidate_a_saved_run_signature() {
+        let (mut store, goal) = workspace();
+        let step = store.apply_research_plan(goal, PLAN).unwrap()[0];
+        store
+            .task_mut(goal)
+            .unwrap()
+            .research
+            .as_mut()
+            .unwrap()
+            .requires_approval = true;
+        store
+            .task_mut(step)
+            .unwrap()
+            .attachments
+            .push(crate::attachments::Attachment {
+                name: "run.pdf".into(),
+                relative_path: "attachments/run.pdf".into(),
+                media_type: "application/pdf".into(),
+                size: 4,
+                content_sha256: String::new(),
+            });
+        // Approval covers the final task graph, including the attachment added
+        // above; this test is about the saved-run signature cache, not approval.
+        store.task_mut(goal).unwrap().approved_plan = store.goal_plan_signature(goal);
+        let signature = store.research_signature(step).unwrap();
+        let mut run = store.prepare_run(step).unwrap();
+        run.status = "Succeeded".into();
+        run.output = "saved result".into();
+        run.input_signature = signature.clone();
+        store.push_run(run);
+        assert!(store.research_result(step).is_some());
+        store.task_mut(step).unwrap().attachments[0].content_sha256 = "cache".into();
+        assert_eq!(store.research_signature(step), Some(signature));
+        assert!(
+            store.research_result(step).is_some(),
+            "filling the cache must not invalidate the committed run"
+        );
     }
 
     #[test]
@@ -1600,12 +2027,12 @@ mod tests {
             let mut run = store.prepare_run(*id).unwrap();
             run.status = if index == 2 { "Blocked" } else { "Succeeded" }.into();
             run.output = "Evidence and analysis".into();
-            store.runs.push(run);
+            store.push_run(run);
             if index != 2 { store.set_stage(*id, Stage::Done).unwrap(); }
         }
         store.sync_goal_progress(goal);
         assert_ne!(store.task(goal).unwrap().stage, Stage::Done);
-        store.runs.last_mut().unwrap().status = "Succeeded".into();
+        store.last_run_mut().unwrap().status = "Succeeded".into();
         store.sync_goal_progress(goal);
         assert_ne!(store.task(goal).unwrap().stage, Stage::Done, "Raw subprocess success is not a validated report");
         store.set_stage(*children.last().unwrap(), Stage::Done).unwrap();
@@ -1644,7 +2071,7 @@ mod tests {
         assert!(store.set_stage(goal, Stage::Done).is_err());
         store.set_stage(goal, Stage::Planned).unwrap();
         assert!(store.prepare_run(goal).is_ok());
-        assert!(store.runs.is_empty(), "Approving never launches a model");
+        assert!(store.runs().is_empty(), "Approving never launches a model");
         let ids = store.apply_research_plan(goal, PLAN).unwrap();
         assert!(store.next_research_task(goal).is_err());
         store.set_stage(goal, Stage::Planned).unwrap();
@@ -1688,6 +2115,7 @@ mod tests {
             relative_path: format!("attachments/{name}"),
             media_type: "test".into(),
             size: 1,
+            content_sha256: String::new(),
         });
         let mut report = Report {
             status: "complete".into(),
@@ -1737,8 +2165,8 @@ mod tests {
             .unwrap()
             .join(".local/research-live-tests");
         std::fs::create_dir_all(&directory).unwrap();
-        store.projects[0].directory = directory.to_string_lossy().into();
-        store.research_config.models[0] = "deepseek/deepseek-flash".into();
+        store.project_at_mut(0).unwrap().directory = directory.to_string_lossy().into();
+        store.research_config_mut().models[0] = "deepseek/deepseek-flash".into();
         let run = store.prepare_run(goal).unwrap();
         let active = crate::opencode::start(crate::opencode::Request { agent: None, browser_executable: None,
             session_id: None,
@@ -1779,4 +2207,125 @@ mod tests {
             ids.len()
         );
     }
+    #[test]
+    fn lazy_completed_goal_remains_done_for_presentation_but_strict_admission_waits() {
+        let root = std::env::temp_dir().join(format!(
+            "planning-r164-lazy-status-{}-{}",
+            std::process::id(),
+            std::time::SystemTime::now()
+                .duration_since(std::time::UNIX_EPOCH)
+                .unwrap()
+                .as_nanos()
+        ));
+        std::fs::create_dir_all(&root).unwrap();
+        let mut store = Store::mock();
+        store.project_at_mut(0).unwrap().directory = root.to_string_lossy().into_owned();
+        store.research_config_mut().models = ["test/plan", "test/collect", "test/analyze", "test/advise"]
+            .map(String::from);
+        let goal = store
+            .create_research_goal(
+                "Completed lazy goal".into(),
+                "Verify restart presentation.".into(),
+                1,
+            )
+            .unwrap();
+        let plan = r#"{"tasks":[{"title":"Collect evidence","instructions":"Collect sources.","kind":"collect","depends_on":[]},{"title":"Analyze evidence","instructions":"Analyze sources.","kind":"analyze","depends_on":[0]},{"title":"Write report","instructions":"Write the report.","kind":"advise","depends_on":[1]}]}"#;
+        let steps = store.apply_research_plan(goal, plan).unwrap();
+        let mut run_ids = Vec::new();
+        for id in &steps {
+            let mut run = store.prepare_run(*id).unwrap();
+            run.status = "Succeeded".into();
+            run.output = format!("# Completed report {id}\n\nSynthetic body for lazy status verification.");
+            run_ids.push(run.id);
+            store.push_run(run);
+            store.set_stage(*id, Stage::Done).unwrap();
+        }
+        store.task_mut(goal).unwrap().stage = Stage::Done;
+        let path = root.join("workspace.sqlite3");
+        let database = crate::sqlite_v4::SqliteV4::create_seeded(&path, &root, 0x52_31_36_34, &store)
+            .unwrap();
+        let mut lazy = database.load_store_lazy().unwrap();
+        assert_eq!(lazy.task(goal).unwrap().stage, Stage::Done);
+        for (step, run_id) in steps.iter().zip(&run_ids) {
+            assert_eq!(lazy.task(*step).unwrap().stage, Stage::Done);
+            assert!(lazy.run_body_is_lazy(*run_id));
+            assert!(lazy.research_result(*step).is_none());
+            assert_eq!(lazy.research_result_body_pending(*step), Some(*run_id));
+            assert!(lazy.research_result_available_or_pending(*step));
+            assert_eq!(lazy.step_state(*step), crate::goal_steps::StepState::Done);
+        }
+        assert!(lazy.goal_tasks_present(goal));
+        assert!(!lazy.goal_tasks_complete(goal), "strict admission must wait for bodies");
+        assert_eq!(
+            lazy.execution_status(goal, None),
+            crate::execution_status::ExecutionStatus::Done
+        );
+        for (step, run_id) in steps.iter().zip(&run_ids) {
+            let body = database.body(*run_id).unwrap().unwrap();
+            assert!(lazy.hydrate_run_body(*run_id, body));
+            assert!(lazy.research_result(*step).is_some());
+        }
+        assert!(lazy.goal_tasks_complete(goal));
+        let _ = std::fs::remove_dir_all(root);
+    }
+
+    #[test]
+    fn lazy_partial_goal_does_not_requeue_done_or_failed_current_step() {
+        let root = std::env::temp_dir().join(format!(
+            "planning-r164-lazy-partial-{}-{}",
+            std::process::id(),
+            std::time::SystemTime::now()
+                .duration_since(std::time::UNIX_EPOCH)
+                .unwrap()
+                .as_nanos()
+        ));
+        std::fs::create_dir_all(&root).unwrap();
+        let mut store = Store::mock();
+        store.project_at_mut(0).unwrap().directory = root.to_string_lossy().into_owned();
+        store.research_config_mut().models = ["test/plan", "test/collect", "test/analyze", "test/advise"]
+            .map(String::from);
+        let goal = store
+            .create_research_goal("Partial lazy goal".into(), "Verify restart eligibility.".into(), 1)
+            .unwrap();
+        let plan = r#"{"tasks":[{"title":"Collect evidence","instructions":"Collect sources.","kind":"collect","depends_on":[]},{"title":"Analyze evidence","instructions":"Analyze sources.","kind":"analyze","depends_on":[0]},{"title":"Write report","instructions":"Write the report.","kind":"advise","depends_on":[1]}]}"#;
+        let steps = store.apply_research_plan(goal, plan).unwrap();
+        let mut first = store.prepare_run(steps[0]).unwrap();
+        first.status = "Succeeded".into();
+        first.output = "# Completed collection\n\nSynthetic body.".into();
+        let first_id = first.id;
+        store.push_run(first);
+        store.set_stage(steps[0], Stage::Done).unwrap();
+        let mut second = store.prepare_run(steps[1]).unwrap();
+        second.status = "Succeeded".into();
+        second.output = "stale success".into();
+        store.push_run(second);
+        let mut failed = store.prepare_run(steps[1]).unwrap();
+        failed.status = "Failed".into();
+        failed.output = String::new();
+        store.push_run(failed);
+        store.task_mut(steps[1]).unwrap().stage = Stage::InProgress;
+        let path = root.join("workspace.sqlite3");
+        let database = crate::sqlite_v4::SqliteV4::create_seeded(&path, &root, 0x52_31_36_35, &store)
+            .unwrap();
+        let mut lazy = database.load_store_lazy().unwrap();
+        assert!(lazy.research_result(*steps.first().unwrap()).is_none());
+        assert!(lazy.research_result_available_or_pending(steps[0]));
+        assert!(lazy.research_result_present(steps[1]).is_none());
+        assert!(lazy.research_result_body_pending(steps[1]).is_none());
+        assert!(!lazy.goal_tasks_present(goal));
+        assert_ne!(
+            lazy.execution_status(goal, None),
+            crate::execution_status::ExecutionStatus::Done
+        );
+        let ready = lazy.ready_research_tasks(goal).unwrap();
+        assert!(!ready.contains(&steps[0]), "lazy Done step must not be requeued");
+        assert!(!ready.contains(&steps[1]), "failed current step waits for its lazy dependency");
+        let body = database.body(first_id).unwrap().unwrap();
+        assert!(lazy.hydrate_run_body(first_id, body));
+        let ready = lazy.ready_research_tasks(goal).unwrap();
+        assert_eq!(ready, vec![steps[1]], "failed current step becomes the only retry candidate");
+        assert!(lazy.research_result_present(steps[1]).is_none());
+        let _ = std::fs::remove_dir_all(root);
+    }
+
 }

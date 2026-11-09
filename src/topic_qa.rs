@@ -15,11 +15,11 @@ pub fn run() {
     let root = std::env::temp_dir().join(format!("planning-topic-qa-{}", std::process::id()));
     std::fs::create_dir_all(&root).unwrap();
     let mut store = Store::empty();
-    store.projects[0].name = "投资研究".into();
+    store.project_at_mut(0).unwrap().name = "Investment research".into();
     let goal = store
         .create_research_goal(
-            "英伟达季度财报与基本面研究".into(),
-            "分析增长与风险".into(),
+            "NVIDIA quarterly results and fundamentals".into(),
+            "Analyze growth and risks".into(),
             1,
         )
         .unwrap();
@@ -54,10 +54,10 @@ pub fn run() {
         w.click("new-project", cx);
         w.render_frame(cx);
         w.click("project-name", cx);
-        w.input("财报", cx);
+        w.input("earnings", cx);
         w.click("create-project", cx);
-        let project = app.read(cx).store.projects.last().unwrap().id;
-        assert_eq!(app.read(cx).scope, Scope::Project(project));
+        let project = app.read(cx).store.projects().last().unwrap().id;
+        assert_eq!(app.read(cx).scope(), Scope::Project(project));
         assert!(
             app.read(cx).planning_project.is_none(),
             "Creating a project must not launch research intake"
@@ -65,11 +65,11 @@ pub fn run() {
         assert!(
             !app.read(cx)
                 .store
-                .tasks
+                .tasks()
                 .iter()
                 .any(|t| t.project_id == project)
         );
-        assert!(app.read(cx).store.research_requests.is_empty());
+        assert!(app.read(cx).store.research_requests().is_empty());
         app.update(cx, |a, cx| a.navigate(Scope::Project(1), w, cx));
     })
     .unwrap();
@@ -77,7 +77,7 @@ pub fn run() {
         .update_window(handle, |_, w, cx| {
             // Seed the grouping fixture; new topics are created through research intake.
             let id = app.update(cx, |a, _| {
-                a.store.create_topic(1, "英伟达 NVIDIA").unwrap()
+                a.store.create_topic(1, "NVIDIA").unwrap()
             });
             app.update(cx, |a, cx| {
                 a.open_task(goal, w, cx);
@@ -89,19 +89,19 @@ pub fn run() {
             w.click(1usize, cx);
             assert_eq!(app.read(cx).store.task(goal).unwrap().topic_id, Some(id));
             app.update(cx, |a, cx| {
-                a.store.apply_research_plan(goal, r#"{"tasks":[{"title":"收集财报","instructions":"收集原始财报","kind":"collect","depends_on":[]},{"title":"分析基本面","instructions":"分析财报","kind":"analyze","depends_on":[0]},{"title":"研究报告","instructions":"汇总判断","kind":"advise","depends_on":[1]}]}"#).unwrap();
-                let child = a.store.create_task("补充核查", 1, crate::domain::Stage::Planned, Some(goal)).unwrap();
+                a.store.apply_research_plan(goal, r#"{"tasks":[{"title":"Collect results","instructions":"Collect primary filings","kind":"collect","depends_on":[]},{"title":"Analyze fundamentals","instructions":"Analyze results","kind":"analyze","depends_on":[0]},{"title":"Research report","instructions":"Summarize findings","kind":"advise","depends_on":[1]}]}"#).unwrap();
+                let child = a.store.create_task("Follow-up verification", 1, crate::domain::Stage::Planned, Some(goal)).unwrap();
                 assert_eq!(a.store.task_topic(child).unwrap().id, id);
                 a.change_stage(child, crate::domain::Stage::Done, cx);
                 assert_eq!(a.store.task(child).unwrap().stage, crate::domain::Stage::Done, "Ordinary subtasks retain manual completion");
                 for title in [
-                    "存储芯片周期：DRAM、NAND 与 HBM 的供需、库存与价格走势",
-                    "先进制程代工与先进封装：产能扩张、资本开支与定价能力",
-                    "半导体设备、零部件与材料：资本开支周期、出口管制与国产替代",
-                    "成熟制程、模拟、功率与汽车/工业半导体：需求分化与中国产能影响",
-                    "跨 A 股、港股、美股的半导体估值、周期定位与投资机会地图",
+                    "Memory cycle: DRAM, NAND and HBM supply, inventory and pricing",
+                    "Leading-edge foundry and advanced packaging: capacity, capex and pricing",
+                    "Semiconductor equipment, components and materials: capex, export controls and localization",
+                    "Mature nodes, analog, power and automotive/industrial chips: demand and China capacity",
+                    "Semiconductor valuation and cycle map across A-shares, Hong Kong and US markets",
                 ] {
-                    let extra = a.store.create_research_goal(title.into(), "研究行业趋势".into(), 1).unwrap();
+                    let extra = a.store.create_research_goal(title.into(), "Research industry trends".into(), 1).unwrap();
                     a.store.set_goal_topic(extra, Some(id)).unwrap();
                 }
                 a.navigate(Scope::Topic(id), w, cx);
@@ -142,9 +142,9 @@ pub fn run() {
         .unwrap();
     cx.update_window(handle, |_, w, cx| {
         w.click(format!("topic-goal-{goal}"), cx);
-        assert_eq!(app.read(cx).selected, Some(goal));
+        assert_eq!(app.read(cx).selected(), Some(goal));
         let (crumbs, _) = app.read(cx).navigation_path();
-        assert!(crumbs.iter().any(|(_, name, _)| name == "#英伟达 NVIDIA"));
+        assert!(crumbs.iter().any(|(_, name, _)| name == "#NVIDIA"));
         w.render_frame(cx);
     })
     .unwrap();
@@ -156,9 +156,9 @@ pub fn run() {
         w.render_frame(cx);
         assert!(w.try_find("goal-steps-list").is_some());
         let child = app.read(cx).store.research_children(goal)[0];
-        let before = app.read(cx).store.runs.len();
+        let before = app.read(cx).store.runs().len();
         w.click(format!("goal-step-{child}"), cx);
-        assert_eq!(app.read(cx).selected, Some(child));
+        assert_eq!(app.read(cx).selected(), Some(child));
         w.render_frame(cx);
         w.click("navigation-back", cx);
         w.render_frame(cx);
@@ -170,10 +170,10 @@ pub fn run() {
         w.render_frame(cx);
         w.click(format!("goal-progress-{goal}"), cx);
         w.render_frame(cx);
-        assert_eq!(app.read(cx).selected, Some(goal));
+        assert_eq!(app.read(cx).selected(), Some(goal));
         assert!(w.try_find("goal-steps-board").is_some());
         assert_eq!(
-            app.read(cx).store.runs.len(),
+            app.read(cx).store.runs().len(),
             before,
             "Viewing steps never executes work"
         );
@@ -185,8 +185,8 @@ pub fn run() {
         .unwrap();
     // Isolated display fixtures, no scheduler or external processes are started.
     let mut fixture = cx.update(|cx| app.read(cx).store.clone());
-    fixture.default_model = "fixture/model".into();
-    fixture.projects[0].directory = root.to_string_lossy().into_owned();
+    fixture.set_default_model("fixture/model".into());
+    fixture.project_at_mut(0).unwrap().directory = root.to_string_lossy().into_owned();
     fixture
         .set_stage(goal, crate::domain::Stage::Planned)
         .unwrap();
@@ -198,12 +198,12 @@ pub fn run() {
     failed.id = 2;
     failed.task_id = children[1];
     failed.status = "Failed".into();
-    fixture.runs.extend([running, failed]);
+    fixture.extend_runs([running, failed]);
     fixture.task_mut(children[0]).unwrap().title =
-        "收集官方财报与投资者电话会：核实收入、毛利率、现金流及未来季度指引，保留完整来源".into();
+        "Collect official filings and earnings calls: verify revenue, margin, cash flow and guidance with full sources".into();
     fixture
         .create_task(
-            "等待人工补充材料",
+            "Waiting for manual material",
             1,
             crate::domain::Stage::Planned,
             Some(goal),
@@ -245,7 +245,7 @@ pub fn run() {
     cx.update_window(handle, |_, w, cx| {
         app.update(cx, |a, cx| {
             a.show_task_details = true;
-            a.store.default_model = "tencent-token-plan/deepseek/deepseek-flash".into();
+            a.store.set_default_model("tencent-token-plan/deepseek/deepseek-flash".into());
             a.detail_scroll.set_offset(point(px(0.), px(-560.)));
             cx.notify();
         });
@@ -258,9 +258,20 @@ pub fn run() {
         .unwrap();
     cx.update_window(handle, |_, w, cx| {
         w.click("navigation-back", cx);
-        assert_eq!(app.read(cx).scope, Scope::Topic(topic));
+        // Open steps was invoked from All/Board above; Back restores that
+        // initiating caller, not the structural Topic parent.
+        assert_eq!(app.read(cx).scope(), Scope::All);
+        assert_eq!(app.read(cx).layout, crate::app::Layout::Board);
         w.render_frame(cx);
-        w.click("rename-topic", cx);
+        app.update(cx, |a, cx| {
+            a.navigate(Scope::Topic(topic), w, cx);
+            a.layout = crate::app::Layout::Board;
+        });
+        w.render_frame(cx);
+        assert_eq!(app.read(cx).scope(), Scope::Topic(topic));
+        w.click("topic-actions-menu", cx);
+        w.render_frame(cx);
+        w.click(1usize, cx); // Rename topic
         w.render_frame(cx);
         app.read(cx)
             .topic_editor
@@ -268,24 +279,31 @@ pub fn run() {
             .unwrap()
             .2
             .clone()
-            .update(cx, |s, cx| s.set_value("英伟达长期研究", w, cx));
+            .update(cx, |s, cx| s.set_value("NVIDIA long-term research", w, cx));
         w.click("save-topic", cx);
         assert_eq!(
             app.read(cx)
                 .store
-                .topics
+                .topics()
                 .iter()
                 .find(|t| t.id == topic)
                 .unwrap()
                 .name,
-            "英伟达长期研究"
+            "NVIDIA long-term research"
         );
+    })
+    .unwrap();
+    cx.run_until_parked();
+    cx.update_window(handle, |_, w, cx| {
         w.render_frame(cx);
-        w.click("archive-topic", cx);
+        w.click("topic-actions-menu", cx);
+        w.render_frame(cx);
+        assert_eq!(w.find(3usize).label(), Some("Archive topic"));
+        w.click(3usize, cx); // Archive topic
         assert!(
             app.read(cx)
                 .store
-                .topics
+                .topics()
                 .iter()
                 .find(|t| t.id == topic)
                 .unwrap()
@@ -293,22 +311,29 @@ pub fn run() {
         );
         assert!(!app.read(cx).store.task(goal).unwrap().archived);
         app.update(cx, |a, cx| {
-            a.scope = Scope::All;
+            a.set_scope_identity(Scope::All);
             assert!(!a.visible_tasks().iter().any(|t| t.id == goal));
-            a.scope = Scope::Archive;
+            a.set_scope_identity(Scope::Archive);
+            a.layout = crate::app::Layout::List;
             assert!(a.visible_tasks().iter().any(|t| t.id == goal));
             cx.notify();
         });
         w.render_frame(cx);
         w.click(SharedString::from(format!("topic-link-{topic}")), cx);
-        assert_eq!(app.read(cx).scope, Scope::Topic(topic));
-
+        assert_eq!(app.read(cx).scope(), Scope::Topic(topic));
+    })
+    .unwrap();
+    cx.run_until_parked();
+    cx.update_window(handle, |_, w, cx| {
         w.render_frame(cx);
-        w.click("archive-topic", cx);
+        w.click("topic-actions-menu", cx);
+        w.render_frame(cx);
+        assert_eq!(w.find(3usize).label(), Some("Restore topic"));
+        w.click(3usize, cx); // Restore topic
         assert!(
             !app.read(cx)
                 .store
-                .topics
+                .topics()
                 .iter()
                 .find(|t| t.id == topic)
                 .unwrap()
@@ -319,14 +344,14 @@ pub fn run() {
         assert_eq!(app.read(cx).planning_topic, Some(topic));
         app.update(cx, |a, cx| {
             a.project_brief
-                .update(cx, |s, cx| s.set_value("下一季度财报，检查业绩", w, cx));
+                .update(cx, |s, cx| s.set_value("Next-quarter earnings, check results", w, cx));
         });
         w.render_frame(cx);
         w.click("save-project-context", cx);
         assert_eq!(
             app.read(cx)
                 .store
-                .research_requests
+                .research_requests()
                 .last()
                 .unwrap()
                 .topic_id,
@@ -339,7 +364,9 @@ pub fn run() {
         });
         w.render_frame(cx);
         w.press("cmd-k", cx);
-        assert_eq!(app.read(cx).scope, Scope::All);
+        // Opening Search is an overlay: it must not rewrite the caller's page.
+        assert_eq!(app.read(cx).scope(), Scope::Topic(topic));
+        assert!(app.read(cx).global_search_ui.open);
         app.update(cx, |a, cx| a.navigate(Scope::Topic(topic), w, cx));
         Theme::change(ThemeMode::Dark, Some(w), cx);
     })
@@ -355,8 +382,8 @@ pub fn run() {
         .unwrap();
     let saved = Storage::new(path).load().unwrap().unwrap();
     assert_eq!(
-        saved.topics.iter().find(|t| t.id == topic).unwrap().name,
-        "英伟达长期研究"
+        saved.topics().iter().find(|t| t.id == topic).unwrap().name,
+        "NVIDIA long-term research"
     );
     assert_eq!(saved.task(goal).unwrap().topic_id, Some(topic));
     println!("Topic QA passed; screenshots: {}", root.display());
@@ -386,7 +413,7 @@ fn steps_screenshot(
                 a.store = store.clone();
                 a.open_goal_steps(goal, w, cx);
                 if list {
-                    a.steps_layout = crate::app::Layout::List;
+                    a.set_steps_layout(crate::app::Layout::List);
                 }
                 crate::appearance::apply(
                     if dark {
@@ -413,15 +440,15 @@ fn steps_screenshot(
         for step in store.research_children(goal) {
             cx.update_window(handle, |_, w, cx| {
                 app.update(cx, |a, cx| {
-                    a.store.runs[0].task_id = step;
-                    a.store.runs[0].status = "Running".into();
+                    a.store.run_at_mut(0).unwrap().task_id = step;
+                    a.store.run_at_mut(0).unwrap().status = "Running".into();
                     a.open_task(step, w, cx);
                 });
                 w.render_frame(cx);
                 w.click("task-progress", cx);
-                assert_eq!(app.read(cx).selected, Some(goal));
-                assert_eq!(app.read(cx).goal_steps_tab, Some(goal));
-                assert!(app.read(cx).steps_layout == crate::app::Layout::List);
+                assert_eq!(app.read(cx).selected(), Some(goal));
+                assert_eq!(app.read(cx).goal_steps_tab(), Some(goal));
+                assert!(app.read(cx).steps_layout() == crate::app::Layout::List);
                 w.render_frame(cx);
                 assert!(w.try_find("goal-steps-list").is_some());
             }).unwrap();
@@ -463,17 +490,17 @@ pub fn sidebar() {
     // Navigation survives a storage reload, while expansion is reset to one project.
     cx.update_window(handle, |_, w, cx| {
         app.update(cx, |a, cx| {
-            let other = a.store.projects.last().unwrap().id;
+            let other = a.store.projects().last().unwrap().id;
             a.navigate(Scope::Project(other), w, cx);
-            assert_eq!(a.store.last_active_project, Some(other));
+            assert_eq!(a.store.last_active_project(), Some(other));
             a.navigate(Scope::Topic(topic), w, cx);
-            assert_eq!(a.store.last_active_project, Some(1));
+            assert_eq!(a.store.last_active_project(), Some(1));
             a.navigate(Scope::All, w, cx);
-            assert_eq!(a.store.last_active_project, Some(1));
+            assert_eq!(a.store.last_active_project(), Some(1));
             a.persist_if_changed(true);
             let loaded = Storage::new(path.clone()).load().unwrap().unwrap();
-            assert_eq!(loaded.last_active_project, Some(1));
-            a.expanded_sidebar_projects = a.store.projects.iter().map(|p| p.id).collect();
+            assert_eq!(loaded.last_active_project(), Some(1));
+            a.expanded_sidebar_projects = a.store.projects().iter().map(|p| p.id).collect();
             a.collapsed_sidebar_topics.clear();
             a.collapsed_sidebar_goals.clear();
             // Open a persisted copy to exercise startup without sharing the live lock.
@@ -481,21 +508,25 @@ pub fn sidebar() {
             reopened.save(&loaded).unwrap();
             a.attach_storage(reopened, w, cx);
             assert_eq!(a.expanded_sidebar_projects, vec![1]);
-            assert!(a.store.topics.iter().all(|t| a.collapsed_sidebar_topics.contains(&t.id)));
+            assert!(a.store.topics().iter().all(|t| a.collapsed_sidebar_topics.contains(&t.id)));
             assert!(a.collapsed_sidebar_goals.contains(&goal));
             a.open_task(goal, w, cx);
             assert!(!a.collapsed_sidebar_topics.contains(&topic));
-            a.store.last_active_project = Some(u64::MAX);
+            a.store.set_last_active_project(Some(u64::MAX));
             a.restore_sidebar();
             assert!(a.expanded_sidebar_projects.is_empty());
-            a.store.last_active_project = None;
+            a.store.set_last_active_project(None);
             a.restore_sidebar();
             assert!(a.expanded_sidebar_projects.is_empty());
             a.open_task(goal, w, cx);
-            assert_eq!(a.store.last_active_project, Some(1));
+            assert_eq!(a.store.last_active_project(), Some(1));
         });
     }).unwrap();
     println!("Sidebar startup QA passed");
+    drop(cx);
+    // T07: exercise real period-scoped neighbor controls while this existing
+    // sidebar entry is already selected; no separate dispatch flag is added.
+    crate::navigation_qa::run();
 }
 
 /// Isolated migration checks do not depend on unrelated workflow fixtures.
@@ -506,13 +537,20 @@ pub fn run_migration() {
     let goal = store.create_task("Semiconductor research", 1, crate::domain::Stage::Planned, None).unwrap();
     store.create_task("Review earnings sources", 1, crate::domain::Stage::Planned, Some(goal)).unwrap();
     let topic = store.task_topic(goal).unwrap().id;
+    // The rename flow now commits through the durable scoped command path, so
+    // the fixture must provide a real workspace instead of an in-memory store.
+    let workspace = root.join("workspace.sqlite3");
+    Storage::new(workspace.clone()).save(&store).unwrap();
     let mut cx = HeadlessAppContext::with_platform(
         platform::current_platform(true).text_system(), Arc::new(crate::ui_assets::AppAssets), platform::current_headless_renderer);
     cx.update(|cx| { init(cx); Theme::change(ThemeMode::Light, None, cx); });
     let mut app = None;
     let window = cx.open_window(size(px(1440.), px(900.)), |w, cx| {
         let view = cx.new(|cx| TaskApp::new_mock(w, cx));
-        view.update(cx, |a, cx| { a.store = store; a.navigate(Scope::Topic(topic), w, cx); });
+        view.update(cx, |a, cx| {
+            a.attach_storage(Storage::new(workspace.clone()), w, cx);
+            a.navigate(Scope::Topic(topic), w, cx);
+        });
         app = Some(view.clone());
         cx.new(|cx| base::Root::new(view, w, cx))
     }).unwrap();
@@ -550,7 +588,7 @@ pub fn run_migration() {
     cx.update_window(handle, |_, w, cx| {
         w.click("save-project-rename", cx);
         assert!(app.read(cx).project_rename.is_none());
-        assert_eq!(app.read(cx).store.projects[0].name, "Renamed research project");
+        assert_eq!(app.read(cx).store.projects()[0].name, "Renamed research project");
         app.update(cx, |a, cx| a.navigate(Scope::Topic(topic), w, cx));
     }).unwrap();
     // Exercise the in-app migration modal with enough projects to require search.
@@ -558,7 +596,7 @@ pub fn run_migration() {
         let before = app.read(cx).store.clone();
         app.update(cx, |a, cx| {
             for id in 100..200 {
-                a.store.projects.push(crate::domain::Project {
+                a.store.push_project(crate::domain::Project {
                     id, name: format!("Destination {id}"), key: format!("P{id}"),
                     directory: String::new(), research_brief: String::new(),
                     kind: crate::domain::ProjectKind::User,
@@ -586,7 +624,7 @@ pub fn run_migration() {
         w.render_frame(cx);
         if app.read(cx).topic_move.is_some() { w.click("cancel-topic-move", cx); }
         assert!(app.read(cx).topic_move.is_none());
-        assert_eq!(app.read(cx).store.topics, before_move.topics);
+        assert_eq!(app.read(cx).store.topics(), before_move.topics());
         app.update(cx, |a, cx| {
             a.request_topic_move(topic, w, cx);
             let select = a.topic_move.as_ref().unwrap().projects.clone();
@@ -617,9 +655,9 @@ pub fn run_migration() {
     let (moved_topic, moved_goal) = cx.update_window(handle, |_, w, cx| {
         let ids = app.update(cx, |a, cx| {
             a.todo_batch = None;
-            let mut project = a.store.projects[0].clone();
+            let mut project = a.store.projects()[0].clone();
             project.id = 2; project.name = "Source project".into();
-            a.store.projects.push(project);
+            a.store.push_project(project);
             let moved_topic = a.store.create_topic(2, "Moved market research topic with a long descriptive title").unwrap();
             let moved_goal = a.store.create_task_in_topic("Moved goal one", 2, crate::domain::Stage::Planned, None, Some(moved_topic)).unwrap();
             a.store.create_task_in_topic("Moved goal two", 2, crate::domain::Stage::Planned, None, Some(moved_topic)).unwrap();
@@ -644,10 +682,10 @@ pub fn run_migration() {
     cx.capture_screenshot(handle).unwrap().save(root.join("project-topic-groups.png")).unwrap();
     cx.update_window(handle, |_, w, cx| {
         w.click(format!("collection-topic-{moved_topic}"), cx);
-        assert_eq!(app.read(cx).scope, Scope::Topic(moved_topic));
+        assert_eq!(app.read(cx).scope(), Scope::Topic(moved_topic));
         app.update(cx, |a, cx| {
             a.navigate(Scope::Project(1), w, cx);
-            a.query = "Moved goal one".into(); cx.notify();
+            a.set_query("Moved goal one".into()); cx.notify();
         });
         w.render_frame(cx);
         assert!(w.find(format!("collection-topic-{moved_topic}")).label().unwrap().contains("1 goals"));
@@ -661,15 +699,15 @@ pub fn run_migration() {
 /// The Topic shortcut must match the report task’s View final report action.
 pub fn goal_actions() {
     let mut store = Store::empty();
-    store.projects[0].directory = std::env::temp_dir().to_string_lossy().into_owned();
-    store.default_model = "test/model".into();
+    store.project_at_mut(0).unwrap().directory = std::env::temp_dir().to_string_lossy().into_owned();
+    store.set_default_model("test/model".into());
     let goal = store.create_research_goal("Completed research".into(), "Scope".into(), 1).unwrap();
     let steps = store.apply_research_plan(goal, r#"{"tasks":[{"title":"Evidence","instructions":"Collect","kind":"collect","depends_on":[]},{"title":"Analysis","instructions":"Analyze","kind":"analyze","depends_on":[0]},{"title":"Report","instructions":"Report","kind":"advise","depends_on":[1]}]}"#).unwrap();
     for id in &steps {
         let mut run = store.prepare_run(*id).unwrap();
         run.status = "Succeeded".into();
         run.output = "# Completed result".into();
-        store.runs.push(run);
+        store.push_run(run);
         store.task_mut(*id).unwrap().stage = crate::domain::Stage::Done;
     }
     store.sync_goal_progress(goal);
@@ -696,80 +734,80 @@ pub fn goal_actions() {
         w.render_frame(cx);
         assert!(w.find(format!("topic-export-{goal}")).visible());
         w.click(format!("topic-goal-{unfinished}"), cx);
-        assert_eq!(app.read(cx).selected, Some(unfinished));
-        assert_eq!(app.read(cx).task_result_context, None);
+        assert_eq!(app.read(cx).selected(), Some(unfinished));
+        assert_eq!(app.read(cx).task_result_context(), None);
         app.update(cx, |a, cx| a.navigate(Scope::Topic(topic), w, cx));
         w.render_frame(cx);
         w.click(format!("topic-goal-{goal}"), cx);
-        assert_eq!(app.read(cx).task_result_context, Some(goal));
+        assert_eq!(app.read(cx).task_result_context(), Some(goal));
         assert!(app.read(cx).show_run_result);
         w.render_frame(cx);
         assert!(w.find("previous-task").visible());
         assert!(w.find("next-task").visible());
         w.click("next-task", cx);
-        assert_eq!(app.read(cx).task_result_context, Some(steps[0]));
+        assert_eq!(app.read(cx).task_result_context(), Some(steps[0]));
         w.render_frame(cx);
         w.click("next-task", cx);
-        assert_eq!(app.read(cx).task_result_context, Some(steps[1]));
+        assert_eq!(app.read(cx).task_result_context(), Some(steps[1]));
         w.render_frame(cx);
         w.click("previous-task", cx);
-        assert_eq!(app.read(cx).task_result_context, Some(steps[0]));
+        assert_eq!(app.read(cx).task_result_context(), Some(steps[0]));
         app.update(cx, |a, cx| a.open_sidebar_task(report, w, cx));
         w.render_frame(cx);
         w.click("next-task", cx);
-        assert_eq!(app.read(cx).selected, Some(unfinished));
-        assert_eq!(app.read(cx).task_result_context, None);
+        assert_eq!(app.read(cx).selected(), Some(unfinished));
+        assert_eq!(app.read(cx).task_result_context(), None);
         app.update(cx, |a, cx| a.open_task(report, w, cx));
         w.render_frame(cx);
         w.click("task-view-result", cx);
         let expected = {
             let a = app.read(cx);
-            (a.scope.clone(), a.selected, a.selected_run, a.task_result_context,
+            (a.scope(), a.selected(), a.selected_run(), a.task_result_context(),
                 a.show_run_result, a.show_run_details)
         };
         app.update(cx, |a, cx| a.navigate(Scope::Topic(topic), w, cx));
         w.render_frame(cx);
         w.click(format!("topic-report-{goal}"), cx);
         let a = app.read(cx);
-        assert_eq!((a.scope.clone(), a.selected, a.selected_run, a.task_result_context,
+        assert_eq!((a.scope(), a.selected(), a.selected_run(), a.task_result_context(),
             a.show_run_result, a.show_run_details), expected);
         assert!(a.show_run_result);
-        assert_eq!(a.task_result_context, Some(report));
+        assert_eq!(a.task_result_context(), Some(report));
         w.render_frame(cx);
         w.click(format!("sidebar-task-{goal}"), cx);
-        assert_eq!(app.read(cx).selected, None);
-        assert_eq!(app.read(cx).task_result_context, Some(goal));
-        assert_eq!(app.read(cx).selected_run, expected.2);
+        assert_eq!(app.read(cx).selected(), None);
+        assert_eq!(app.read(cx).task_result_context(), Some(goal));
+        assert_eq!(app.read(cx).selected_run(), expected.2);
         w.render_frame(cx);
         w.click("run-actions-menu", cx);
         w.render_frame(cx);
         w.click(1usize, cx);
-        assert_eq!(app.read(cx).selected, Some(goal));
-        assert_eq!(app.read(cx).task_result_context, None);
+        assert_eq!(app.read(cx).selected(), Some(goal));
+        assert_eq!(app.read(cx).task_result_context(), None);
         w.render_frame(cx);
         w.click(format!("sidebar-task-{report}"), cx);
-        assert_eq!(app.read(cx).task_result_context, Some(report));
+        assert_eq!(app.read(cx).task_result_context(), Some(report));
         w.render_frame(cx);
         w.click("run-actions-menu", cx);
         w.render_frame(cx);
         w.click(1usize, cx);
-        assert_eq!(app.read(cx).selected, Some(report));
+        assert_eq!(app.read(cx).selected(), Some(report));
         // An old successful report is insufficient when the latest attempt failed.
         app.update(cx, |a, cx| {
-            a.store.runs.last_mut().unwrap().status = "Failed".into();
+            { let index = a.store.runs().len() - 1; a.store.run_at_mut(index).unwrap().status = "Failed".into(); }
             cx.notify();
         });
         w.render_frame(cx);
         w.click(format!("sidebar-task-{report}"), cx);
-        assert_eq!(app.read(cx).selected, Some(report));
-        assert_eq!(app.read(cx).task_result_context, None);
+        assert_eq!(app.read(cx).selected(), Some(report));
+        assert_eq!(app.read(cx).task_result_context(), None);
         w.render_frame(cx);
         w.click(format!("sidebar-task-{goal}"), cx);
-        assert_eq!(app.read(cx).selected, Some(goal));
-        assert_eq!(app.read(cx).task_result_context, None);
+        assert_eq!(app.read(cx).selected(), Some(goal));
+        assert_eq!(app.read(cx).task_result_context(), None);
         app.update(cx, |a, cx| {
             a.navigate(Scope::Topic(topic), w, cx);
-            a.store.runs.clear();
+            a.store.clear_runs();
             cx.notify();
         });
         w.render_frame(cx);
@@ -807,7 +845,7 @@ pub fn goal_actions() {
         cx.update_window(handle, |_, w, cx| w.render_frame(cx)).unwrap();
     }
     cx.update_window(handle, |_, w, cx| {
-        assert_eq!(app.read(cx).task_result_context, Some(steps[0]));
+        assert_eq!(app.read(cx).task_result_context(), Some(steps[0]));
         let bounds = w.find(format!("sidebar-task-{}", steps[0])).bounds();
         let viewport = app.read(cx).sidebar_scroll.bounds();
         assert!(bounds.top() >= viewport.top() && bounds.bottom() <= viewport.bottom(), "row={bounds:?} viewport={viewport:?} offset={:?} pending={:?}", app.read(cx).sidebar_scroll.offset(), app.read(cx).sidebar_reveal);
@@ -819,7 +857,7 @@ pub fn goal_actions() {
     }
     let offset = cx.update(|cx| app.read(cx).sidebar_scroll.offset());
     cx.update_window(handle, |_, w, cx| {
-        assert_eq!(app.read(cx).task_result_context, Some(goal));
+        assert_eq!(app.read(cx).task_result_context(), Some(goal));
         app.update(cx, |a, cx| a.open_sidebar_task(goal, w, cx));
     }).unwrap();
     for _ in 0..4 {
@@ -844,7 +882,7 @@ pub fn goal_actions() {
             cx.update_window(handle, |_, w, cx| w.render_frame(cx)).unwrap();
         }
         cx.update_window(handle, |_, w, cx| {
-            assert_eq!(app.read(cx).selected, Some(neighbor));
+            assert_eq!(app.read(cx).selected(), Some(neighbor));
             let bounds = w.find(format!("sidebar-task-{neighbor}")).bounds();
             let viewport = app.read(cx).sidebar_scroll.bounds();
             assert!(bounds.top() >= viewport.top() && bounds.bottom() <= viewport.bottom());
@@ -871,16 +909,16 @@ pub fn board_directory() {
             app.update(cx, |a, cx| {
                 a.store = Store::empty();
                 for title in [
-                    "Anthropic IPO 与 AI 资本周期之争：经营基本面、市场分歧和未来情景分析",
-                    "债券、外汇与股票（一级/二级）市场的交易标的、交易机制与全球规模占比对比",
-                    "汇丰与腾讯港股持仓：当前全球与香港市场环境下是否继续持有",
-                    "Alphabet 与 Intel 第三季度财报不及预期原因及投行观点汇总",
-                    "美股半导体板块剧烈波动的成因与未来趋势",
+                    "Anthropic IPO and the AI capex cycle: fundamentals, debate and scenarios",
+                    "Bond, FX and equity primary/secondary market instruments, mechanics and global share",
+                    "HSBC and Tencent Hong Kong holdings: hold or exit in current markets",
+                    "Why Alphabet and Intel Q3 results missed and what banks concluded",
+                    "Causes and outlook of sharp US semiconductor volatility",
                 ] {
-                    let goal = a.store.create_research_goal(title.into(), "研究行业趋势".into(), 1).unwrap();
+                    let goal = a.store.create_research_goal(title.into(), "Research industry trends".into(), 1).unwrap();
                     topics.push(a.store.task_topic(goal).unwrap().id);
                 }
-                a.store.topics.iter_mut().find(|t| t.id == topics[4]).unwrap().replanned_from = Some(topics[0]);
+                a.store.topic_mut(topics[4]).unwrap().replanned_from = Some(topics[0]);
                 a.navigate(Scope::Project(1), w, cx);
                 a.layout = crate::app::Layout::Board;
                 crate::appearance::apply(if dark { crate::appearance::Appearance::Dark }
@@ -900,7 +938,7 @@ pub fn board_directory() {
             .save(root.join(format!("board-{width}-{dark}.png"))).unwrap();
         cx.update_window(handle, |_, w, cx| {
             w.click(format!("board-topic-todo-{}", topics[4]), cx);
-            assert_eq!(app.read(cx).scope, Scope::Topic(topics[4]));
+            assert_eq!(app.read(cx).scope(), Scope::Topic(topics[4]));
             app.update(cx, |a, cx| {
                 a.navigate(Scope::Project(1), w, cx);
                 a.layout = crate::app::Layout::List;
@@ -915,7 +953,7 @@ pub fn board_directory() {
             .save(root.join(format!("list-{width}-{dark}.png"))).unwrap();
         cx.update_window(handle, |_, w, cx| {
             w.click(format!("collection-topic-{}", topics[4]), cx);
-            assert_eq!(app.read(cx).scope, Scope::Topic(topics[4]));
+            assert_eq!(app.read(cx).scope(), Scope::Topic(topics[4]));
             app.update(cx, |a, cx| {
                 a.expanded_sidebar_projects.push(1);
                 cx.notify();
@@ -924,7 +962,7 @@ pub fn board_directory() {
         cx.run_until_parked();
         cx.update_window(handle, |_, w, cx| {
             w.render_frame(cx);
-            assert_eq!(w.find(format!("topic-{}", topics[4])).label(), Some(format!("Replanned topic · {}", app.read(cx).store.topics.iter().find(|t| t.id == topics[4]).unwrap().display_name()).as_str()));
+            assert_eq!(w.find(format!("topic-{}", topics[4])).label(), Some(format!("Replanned topic · {}", app.read(cx).store.topics().iter().find(|t| t.id == topics[4]).unwrap().display_name()).as_str()));
         }).unwrap();
         cx.update_window(handle, |_, w, cx| {
             assert!(w.try_find("replan-topic").is_none(), "Todo goals must hide Replan");
@@ -932,20 +970,29 @@ pub fn board_directory() {
             app.update(cx, |a, cx| {
                 let request = a.store.create_research_request(1, Some(topics[4]), "Review this research plan").unwrap();
                 let mut goals = Vec::new();
-                for goal in a.store.tasks.iter_mut().filter(|t| t.topic_id == Some(topics[4]) && t.parent_id.is_none()) {
+                let ids: Vec<u64> = a.store.tasks().iter()
+                    .filter(|t| t.topic_id == Some(topics[4]) && t.parent_id.is_none())
+                    .map(|t| t.id)
+                    .collect();
+                for id in ids {
+                    let goal = a.store.task_mut(id).unwrap();
                     goal.stage = crate::domain::Stage::Backlog;
                     goal.approved_plan = None;
                     goals.push(goal.id);
                 }
-                a.store.research_requests.iter_mut().find(|r| r.id == request).unwrap().goal_ids = goals;
+                a.store.request_mut(request).unwrap().goal_ids = goals;
                 cx.notify();
             });
             w.render_frame(cx);
             assert_eq!(w.find("regenerate-topic-plan").label(), Some("Regenerate"));
             assert!(w.try_find("replan-topic").is_none());
             app.update(cx, |a, cx| {
-                for goal in a.store.tasks.iter_mut().filter(|t| t.topic_id == Some(topics[4]) && t.parent_id.is_none()) {
-                    goal.stage = crate::domain::Stage::Done;
+                let ids: Vec<u64> = a.store.tasks().iter()
+                    .filter(|t| t.topic_id == Some(topics[4]) && t.parent_id.is_none())
+                    .map(|t| t.id)
+                    .collect();
+                for id in ids {
+                    a.store.task_mut(id).unwrap().stage = crate::domain::Stage::Done;
                 }
                 cx.notify();
             });

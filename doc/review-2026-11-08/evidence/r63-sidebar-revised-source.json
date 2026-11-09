@@ -1,0 +1,6 @@
+{
+  "base": ".local/r63-sidebar-source",
+  "source": "/Users/fuxingxing/workspaces/what-the-hell-are-you-planning/.local/r63-sidebar-revised-source",
+  "change": "Replace views.rs with r61 baseline plus only three sidebar edits, excluding concurrent T12 getter migration",
+  "views_sha256": "9c201a92ab8743757da5cfabc2cb8c23526e7ccae7ed62b17b7490161025ddec"
+}

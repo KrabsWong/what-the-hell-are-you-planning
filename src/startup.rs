@@ -3,7 +3,7 @@ use crate::{
     app::TaskApp,
     appearance::palette,
     controls::*,
-    views::{col, label, row, selectable},
+    views::{col, label, observed, row, selectable},
 };
 use gpui_kit::{
     component::{Disableable, button::ButtonVariants, input::Input},
@@ -17,6 +17,7 @@ pub(crate) struct PreparedWorkspace {
     lock: std::fs::File,
     store: Option<crate::domain::Store>,
     backup: Option<std::path::PathBuf>,
+    live: Option<crate::persistence_live::LiveStartup>,
 }
 pub(crate) enum WorkspaceOpenEvent {
     Progress(&'static str),
@@ -48,6 +49,131 @@ fn probe_agent(agent: &str, path: &str) -> Result<String, String> {
 impl TaskApp {
     pub(crate) fn begin_workspace_open(&mut self, storage: crate::persistence::Storage, cx: &mut Context<Self>) {
         if self.startup.workspace_pending.is_some() { return; }
+        if self.pending_workspace_switch.is_some() { return; }
+        // A clean retry of the current workspace must not unlink/reopen its
+        // database while the old worker/read threads may still be closing it.
+        // Reuse the attached store and only retry the failed worker/reader.
+        let same_open_workspace = self
+            .storage
+            .as_ref()
+            .is_some_and(|current| current.path() == storage.path());
+        if same_open_workspace
+            && self.storage.is_some()
+            && self.live_clean_for_quit()
+        {
+            self.storage_error.clear();
+            if self.live_required && !self.live_persistence_active()
+                && let Err(error) = self.retry_live_attachment(cx)
+            {
+                self.storage_error = error;
+                self.startup.silent = false;
+                cx.notify();
+                return;
+            }
+            if self.history_reader.is_none()
+                && let Some((path, root, incarnation)) = self.live_attach.clone()
+            {
+                self.start_history_reader(&path, &root, incarnation);
+            }
+            self.workspace_required = false;
+            self.startup.required = true;
+            self.startup.silent = true;
+            self.check_startup(cx);
+            cx.notify();
+            return;
+        }
+        // A workspace switch owns the old worker until every accepted write is
+        // durable. An unavailable incremental backend with dirty edits cannot
+        // be abandoned either: that would silently drop the only copy.
+        if self.live_required && !self.live_clean_for_quit() {
+            if !self.live_persistence_active() {
+                self.storage_error =
+                    "Not switched: the previous workspace still has unsaved changes and persistence is unavailable. Retry saving or reopen the same workspace."
+                        .into();
+                self.toast = "Not switched · previous changes are not saved".into();
+                cx.notify();
+                return;
+            }
+            self.pending_workspace_switch = Some(storage);
+            let _ = self.persist_live_followup();
+            if let Some(pending) = self.live_primary.as_ref()
+                && pending.generation == 0
+            {
+                let _ = self.submit_primary_group_in_persist();
+            }
+            self.start_pump(cx);
+            self.toast = "Saving before switching workspace…".into();
+            cx.notify();
+            return;
+        }
+        // One lock/worker handoff protocol. For the same path, reuse the lock
+        // this process already owns; dropping it would let a second process
+        // acquire the workspace while the old worker is still shutting down.
+        // For a different path, release it only after the clean check above.
+        let same_workspace = self
+            .storage
+            .as_ref()
+            .is_some_and(|current| current.path() == storage.path());
+        let existing_lock = if same_workspace {
+            self._storage_lock.take()
+        } else {
+            self._storage_lock = None;
+            None
+        };
+        self.reset_live_state();
+        self.storage = None;
+        self.begin_workspace_open_now(storage, existing_lock, cx);
+    }
+
+    pub(crate) fn poll_pending_workspace_switch(&mut self, cx: &mut Context<Self>) {
+        if self.startup.workspace_pending.is_some() { return; }
+        let Some(storage) = self.pending_workspace_switch.take() else { return; };
+        let same_open_workspace = self
+            .storage
+            .as_ref()
+            .is_some_and(|current| current.path() == storage.path());
+        if same_open_workspace && self.storage.is_some() && self.live_clean_for_quit() {
+            // Already attached to this exact workspace; a deferred "switch" was
+            // only waiting for the last write. Do not close/reopen the file.
+            self.pending_workspace_switch = None;
+            self.storage_error.clear();
+            self.toast = "Workspace saved".into();
+            self.workspace_required = false;
+            cx.notify();
+            return;
+        }
+        if self.live_required && !self.live_clean_for_quit() {
+            if !self.live_persistence_active() {
+                self.pending_workspace_switch = None;
+                self.storage_error =
+                    "Workspace switch cancelled: the previous workspace still has unsaved changes and persistence is unavailable."
+                        .into();
+                return;
+            }
+            self.pending_workspace_switch = Some(storage);
+            return;
+        }
+        let same_workspace = self
+            .storage
+            .as_ref()
+            .is_some_and(|current| current.path() == storage.path());
+        let existing_lock = if same_workspace {
+            self._storage_lock.take()
+        } else {
+            self._storage_lock = None;
+            None
+        };
+        self.reset_live_state();
+        self.storage = None;
+        self.begin_workspace_open_now(storage, existing_lock, cx);
+    }
+
+    fn begin_workspace_open_now(
+        &mut self,
+        storage: crate::persistence::Storage,
+        existing_lock: Option<std::fs::File>,
+        cx: &mut Context<Self>,
+    ) {
         // An old workspace's clock must never dispatch into the new store.
         self.cancel_automation_timer();
         self.workspace_required = true;
@@ -60,10 +186,21 @@ impl TaskApp {
         self.startup.workspace_pending = Some(rx);
         std::thread::spawn(move || {
             let result = (|| {
-                let lock = storage.acquire_lock()?;
+                let lock = match existing_lock {
+                    Some(lock) => lock,
+                    None => storage.acquire_lock()?,
+                };
                 let backup = storage.upgrade_paths(|phase| { let _ = tx.send(WorkspaceOpenEvent::Progress(phase)); })?;
-                let store = storage.load()?;
-                Ok(PreparedWorkspace { storage, lock, store, backup })
+                let mut live = crate::persistence_live::select_existing(&storage)?;
+                if live.is_none() {
+                    live = crate::persistence_live::create_new(&storage)?;
+                }
+                let store = if let Some(live) = &mut live {
+                    live.migrated_store.take()
+                } else {
+                    storage.load()?
+                };
+                Ok(PreparedWorkspace { storage, lock, store, backup, live })
             })();
             let _ = tx.send(WorkspaceOpenEvent::Complete(result));
         });
@@ -85,7 +222,13 @@ impl TaskApp {
                     match result {
                         Ok(prepared) => {
                             self.startup.upgrade_backup = prepared.backup;
-                            self.attach_loaded_storage(prepared.storage, Ok((prepared.lock, prepared.store)), window, cx);
+                            self.attach_loaded_storage_live(
+                                prepared.storage,
+                                Ok((prepared.lock, prepared.store)),
+                                prepared.live,
+                                window,
+                                cx,
+                            );
                             self.workspace_required = self.storage.is_none() || !self.storage_error.is_empty();
                             if !self.workspace_required {
                                 self.startup.silent = self.startup.upgrade_backup.is_none();
@@ -173,9 +316,15 @@ impl TaskApp {
                 .into_any_element();
         }
         if self.startup.silent {
-            return col().id("startup-checking").size_full()
-                .bg(rgb(colors.canvas)).items_center().justify_center()
-                .child(label("Starting…", cx)).into_any_element();
+            return observed(
+                col()
+                    .id("startup-checking")
+                    .size_full()
+                    .bg(rgb(colors.canvas))
+                    .items_center()
+                    .justify_center()
+                    .child(label("Starting…", cx)),
+            );
         }
         let dependency = |index: usize| {
             let current = match index {
@@ -354,9 +503,9 @@ impl TaskApp {
                         .child(button("startup-recheck", "Check again").disabled(self.workspace_required || self.startup.pending.is_some()).on_click(cx.listener(|this,_,_,cx| this.check_startup(cx))))
                         .child(button("startup-continue", "Continue").primary().disabled(!self.startup_ready(cx)).on_click(cx.listener(|this,_,_,cx| {
                             if !this.startup_ready(cx) { return; }
-                            this.store.opencode_path = this.executable_input.read(cx).value().trim().into();
-                            this.store.research_config.codex_path = this.codex_executable_input.read(cx).value().trim().into();
-                            this.store.research_config.ego_path = this.startup.paths[2].clone();
+                            this.store.set_opencode_path(this.executable_input.read(cx).value().trim().into());
+                            this.store.research_config_mut().codex_path = this.codex_executable_input.read(cx).value().trim().into();
+                            this.store.research_config_mut().ego_path = this.startup.paths[2].clone();
                             this.persist_if_changed(true);
                             if this.storage.is_some() && this.storage_error.is_empty() {
                                 this.startup.required = false;

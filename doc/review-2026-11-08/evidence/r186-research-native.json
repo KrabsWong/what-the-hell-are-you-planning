@@ -1,0 +1,112 @@
+{
+  "round": "r186",
+  "installed_binary_sha256": "dfd5747bd8e752a95dd725b8d70c3613998e55b3b0d32d644bc9380b586958f7",
+  "fixture": ".local/native-review/r183-ordinary-research-1000",
+  "fixture_audit": [
+    {
+      "fixture": "r183-ordinary-research-1000",
+      "sha256": "5ac460cadb077805e2205a6221a96c21a3ef064ec9d722f47413ff45532d0f0a",
+      "integrity": "ok",
+      "tasks": 320,
+      "ordinary_roots": 80,
+      "run_statuses": {
+        "Succeeded": 240
+      },
+      "automation_statuses": {
+        "Paused": 1
+      }
+    },
+    {
+      "fixture": "r183-latest-report-1000",
+      "sha256": "a2935ddb80bc0c6d90f86c9b4cfa52de0affad36c18bff588e40ec19bb6327a0",
+      "integrity": "ok",
+      "tasks": 320,
+      "ordinary_roots": 0,
+      "run_statuses": {
+        "Succeeded": 241
+      },
+      "automation_statuses": {
+        "Paused": 1
+      },
+      "report_keys": [
+        "status",
+        "report",
+        "sources"
+      ],
+      "stored_body_bytes": 7840,
+      "report_status": "complete",
+      "report_chars": 7700,
+      "sources": 1
+    },
+    {
+      "fixture": "r183-material-fixture",
+      "sha256": "ee595e4d8ad7fc8a9b347414dab6241fbef3e832a58420aad14eb392337dfc62",
+      "integrity": "ok",
+      "tasks": 26,
+      "ordinary_roots": 3,
+      "run_statuses": {
+        "Cancelled": 2,
+        "Failed": 1,
+        "Interrupted": 1,
+        "Succeeded": 26
+      },
+      "automation_statuses": {
+        "Paused": 3
+      }
+    }
+  ],
+  "observed": [
+    "All research80goals; list contains TodoReady0/3 goals.",
+    "List down gesture changes visible rows from G317 to G125 and lower; upward gesture returns.",
+    "Board shows Todo80 but no cards; downward gesture does not reveal cards."
+  ],
+  "trace": ".local/native-review/r186-research.csv.frames.jsonl",
+  "trace_sha256": "26b9dfd18fd8d7cc819b9cf4ca6d6ede7198610f80348d59ff08bbd31b1ba1a7",
+  "windows": [
+    {
+      "name": "research_list_down",
+      "start_ms": 1794215497918,
+      "end_ms": 1794215499324,
+      "presents": 65,
+      "late": 1,
+      "missed": 19,
+      "work_p95_ms": 2.910042,
+      "work_max_ms": 159.255417
+    },
+    {
+      "name": "research_list_up",
+      "start_ms": 1794215508411,
+      "end_ms": 1794215509591,
+      "presents": 75,
+      "late": 1,
+      "missed": 17,
+      "work_p95_ms": 2.90475,
+      "work_max_ms": 146.249042
+    },
+    {
+      "name": "board_open",
+      "start_ms": 1794215514008,
+      "end_ms": 1794215515236,
+      "presents": 88,
+      "late": 2,
+      "missed": 27,
+      "work_p95_ms": 1.182625,
+      "work_max_ms": 143.874833
+    },
+    {
+      "name": "research_board_down",
+      "start_ms": 1794215525930,
+      "end_ms": 1794215527502,
+      "presents": 145,
+      "late": 1,
+      "missed": 10,
+      "work_p95_ms": 1.857625,
+      "work_max_ms": 87.441458
+    }
+  ],
+  "limits": [
+    "Single dark large-window gestures only; no entire native matrix acceptance.",
+    "Board empty view timing is not performance acceptance.",
+    "Fixture declares raw Done but UI derives Todo; cause pending fixture/status/render investigation."
+  ]
+}

@@ -1,0 +1,11 @@
+{
+  "binary_sha256": "81c87c206415c67d958536116996aad70b29d775c6e3457d700ac38a163a0d9c",
+  "qa_source_sha256": "9cf438c07807e856c85e7dda34368d9b098aca95c4f607d7eca2d5b89c02d3a6",
+  "build_log": ".local/opencode-dispatch/r195-qa-repair-build.log",
+  "scope": "Only automation_qa.rs changed since r194 product candidate; focused replay of entire --qa-automation required.",
+  "entry": "--qa-automation",
+  "exit_code": 0,
+  "log": ".local/opencode-dispatch/r195-automation-replay.log",
+  "original_failure": "r194-automation-regression.json",
+  "review": "Replace obsolete ScrollHandle extent assertion with >=20px real virtual-list movement from a 40px wheel event, assert mirrored offset within1px, retain original visible goal-bearing period, exact filter and Back/Close position checks. Only QA source changed; no product repair."
+}

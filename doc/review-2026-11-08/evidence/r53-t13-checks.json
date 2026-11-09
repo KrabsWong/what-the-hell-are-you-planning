@@ -1,0 +1,19 @@
+{
+  "sha256": "8ad91b082a52aa2108c525f91620cad62499473a8011ecd215af57ab17f8a03b",
+  "guard_exit": 2,
+  "scope": "Immutable copy of T13 exclusive target; no acceptance of later source edits",
+  "results": [
+    {
+      "flag": "--qa-task-edit",
+      "exit_code": 0,
+      "seconds": 7.155,
+      "log": "r53-current-task-edit.log"
+    },
+    {
+      "flag": "--qa-attachments",
+      "exit_code": 101,
+      "seconds": 300.358,
+      "log": "r53-current-attachments.log"
+    }
+  ]
+}

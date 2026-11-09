@@ -1,0 +1,19 @@
+{
+  "candidate_signed_sha256": "0194943cccf46147f899ca7d86ed2a63c862fb899a4cea609f097fbdc551e496",
+  "window": "1440x920 Light",
+  "pointer_chain": "passed",
+  "steps": [
+    "Automation results -> filter Review recurring research -> 2 of 5 periods",
+    "Open Period 3 -> final report Complete / Original approved version, v1 versus current v2, saved body and source visible",
+    "Scroll -> Research complete 3/3; open analysis AUTO3-G11-A13",
+    "Command-[ produced no observed navigation",
+    "Back button restored Period 3 at its prior report/steps scroll position",
+    "Escape closed the dialog and retained Review recurring research filter with 2 of 5 periods"
+  ],
+  "background_observation": "While opening the historical result, previously stalled ordinary E24 began Running and then became Done; no Run/Resume was pressed and the historical result route stayed unchanged. A25/R26 remained Paused. Unrelated UI work may have woken the runtime; this is diagnostic evidence, not proof of the exact cause.",
+  "limits": [
+    "Keyboard Back remains unaccepted; prior original-binary control success does not supersede this recurrence.",
+    "No frame-time/smoothness claim: concurrent compilation was active.",
+    "No completed ordinary archive/restore claim."
+  ]
+}

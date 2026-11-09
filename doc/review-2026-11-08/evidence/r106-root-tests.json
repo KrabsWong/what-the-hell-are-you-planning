@@ -1,0 +1,20 @@
+{
+  "commit": "402ff49",
+  "source": ".local/r106-checkpoint-source",
+  "command": "cargo test --features qa --quiet",
+  "exit_code": 0,
+  "unit": {
+    "passed": 700,
+    "ignored": 2,
+    "seconds": 9.15
+  },
+  "dispatch_crash": {
+    "passed": 8,
+    "seconds": 3.47
+  },
+  "sqlite_v4_crash": {
+    "passed": 3,
+    "seconds": 0.57
+  },
+  "scope": "Exact checkpoint unit/crash tests; not native or standalone live UI approval."
+}

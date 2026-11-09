@@ -1,0 +1,38 @@
+{
+  "round": "r171",
+  "native_candidate": "r170, committed 28e9534",
+  "steps": [
+    "G19 result Back returns overview",
+    "More > Archive task saves archive without leaving detail",
+    "Sidebar Archive includes G19",
+    "G19 Open Steps opens archived steps board",
+    "Back returns Archive list",
+    "Restore removes G19 from archive and sidebar again marks all four tasks Done"
+  ],
+  "passed": "Archive/Steps/Back route and restore behavior",
+  "failed": "Lazy E20/A21 say no retained result; archived G19 says 0/3 validated while bodies are pending. Separate real content validation must remain strict.",
+  "after_restore_tasks": [
+    [
+      19,
+      "done",
+      0
+    ],
+    [
+      20,
+      "done",
+      0
+    ],
+    [
+      21,
+      "done",
+      0
+    ],
+    [
+      22,
+      "done",
+      0
+    ]
+  ],
+  "repair": "Extended same-root lazy presentation assignment to archive surfaces; no inferred data loss",
+  "production": "Untouched"
+}

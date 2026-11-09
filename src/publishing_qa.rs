@@ -22,13 +22,13 @@ pub fn run() {
             std::fs::create_dir_all(&directory).unwrap();
             let path = directory.join("workspace.sqlite3");
             let mut initial = Store::empty();
-            initial.appearance = appearance;
-            initial.projects[0].directory = directory.to_string_lossy().into();
-            let topic = initial.create_topic(1, "黄金研究与投资观察").unwrap();
+            initial.set_appearance(appearance);
+            initial.project_at_mut(0).unwrap().directory = directory.to_string_lossy().into();
+            let topic = initial.create_topic(1, "Gold research and investment observations").unwrap();
             let goal = initial
                 .create_research_goal_in_topic(
-                    "研究黄金趋势".into(),
-                    "尚未完成的隔离验收研究".into(),
+                    "Research gold trends".into(),
+                    "Incomplete isolated acceptance research".into(),
                     1,
                     Some(topic),
                 )
@@ -55,8 +55,8 @@ pub fn run() {
                 w.render_frame(cx);
                 w.within("settings-tabs").click(2usize, cx);
                 w.render_frame(cx);
-                assert_eq!(app.read(cx).scope, Scope::Settings);
-                assert!(!app.read(cx).store.report_publishing.automatic);
+                assert_eq!(app.read(cx).scope(), Scope::Settings);
+                assert!(!app.read(cx).store.report_publishing().automatic);
                 for (id, value) in [
                     (
                         "publishing-repository",
@@ -73,12 +73,12 @@ pub fn run() {
                 assert!(app.read(cx).storage_error.is_empty());
                 let saved = Storage::new(path.clone()).load().unwrap().unwrap();
                 assert_eq!(
-                    saved.report_publishing.repository,
+                    saved.report_publishing().repository,
                     "git@github.com:fixture-owner/private-reports.git"
                 );
-                assert_eq!(saved.report_publishing.branch, "reports/live");
+                assert_eq!(saved.report_publishing().branch, "reports/live");
                 assert_eq!(
-                    saved.report_publishing.base_url,
+                    saved.report_publishing().base_url,
                     "https://reports.example.com"
                 );
                 click(w, cx, "automatic-publishing");
@@ -87,7 +87,7 @@ pub fn run() {
                         .load()
                         .unwrap()
                         .unwrap()
-                        .report_publishing
+                        .report_publishing()
                         .automatic
                 );
                 assert!(
@@ -104,7 +104,7 @@ pub fn run() {
             );
             cx.update_window(handle, |_, w, cx| {
                 app.update(cx, |a, cx| {
-                    assert!(a.settings_tab == crate::settings_views::SettingsTab::Publishing);
+                    assert!(a.settings_tab() == crate::settings_views::SettingsTab::Publishing);
                     a.settings_scroll.set_offset(point(px(0.), px(0.)));
                     cx.notify();
                 });
@@ -119,7 +119,7 @@ pub fn run() {
             );
             cx.update_window(handle, |_, w, cx| {
                 click(w, cx, "automatic-publishing");
-                assert!(!Storage::new(path.clone()).load().unwrap().unwrap().report_publishing.automatic);
+                assert!(!Storage::new(path.clone()).load().unwrap().unwrap().report_publishing().automatic);
                 app.update(cx, |a, cx| a.navigate(Scope::Topic(topic), w, cx));
                 w.render_frame(cx);
                 assert_eq!(w.find("publish-topic-report").disabled(), Some(true));
@@ -132,10 +132,10 @@ pub fn run() {
                     assert!(publish_bounds.right() <= w.find("topic-new-goal").bounds().left());
                 }
                 // Exercise the real enabled click handler, but reject configuration before any IO.
-                let repository = app.read(cx).store.report_publishing.repository.clone();
+                let repository = app.read(cx).store.report_publishing().repository.clone();
                 app.update(cx, |a, cx| {
                     a.store.task_mut(goal).unwrap().stage = Stage::Done;
-                    a.store.report_publishing.repository = "invalid-fixture-repository".into();
+                    a.store.report_publishing_mut().repository = "invalid-fixture-repository".into();
                     cx.notify();
                 });
                 w.render_frame(cx);
@@ -143,10 +143,10 @@ pub fn run() {
                 w.click("publish-topic-report", cx);
                 assert!(!app.read(cx).error.is_empty(), "Enabled click must reach configuration validation");
                 assert!(app.read(cx).publishing_job.is_none());
-                assert!(app.read(cx).store.publications.is_empty());
+                assert!(app.read(cx).store.publications().is_empty());
                 app.update(cx, |a, cx| {
                     a.store.task_mut(goal).unwrap().stage = Stage::Planned;
-                    a.store.report_publishing.repository = repository;
+                    a.store.report_publishing_mut().repository = repository;
                     a.error.clear();
                     a.save_feedback = None;
                     for (id, status, message) in [
@@ -154,9 +154,9 @@ pub fn run() {
                         ("00000000000000000000000000000002", "Pushed · awaiting deployment", "GitHub received this snapshot. EdgeOne deployment is still pending."),
                         ("00000000000000000000000000000003", "Failed", "Fixture authentication failure. Configure local Git authentication and retry."),
                     ] {
-                        a.store.publications.push(Publication {
-                            id: id.into(), topic, fingerprint: id.into(), config: a.store.report_publishing.clone(),
-                            title: "黄金研究与投资观察".into(), markdown: "Fixture report".into(),
+                        a.store.push_publication(Publication {
+                            id: id.into(), topic, fingerprint: id.into(), config: a.store.report_publishing().clone(),
+                            title: "Gold research and investment observations".into(), markdown: "Fixture report".into(),
                             status: status.into(), commit: None, message: message.into(),
                         });
                     }
@@ -170,6 +170,16 @@ pub fn run() {
                 for id in ["00000000000000000000000000000001", "00000000000000000000000000000002", "00000000000000000000000000000003"] {
                     assert!(w.try_find(format!("retry-report-{id}")).is_none(), "Rows must not duplicate the header action");
                 }
+                // The product keeps one permanent publication per topic. The
+                // extra records above exist only to exercise legacy history
+                // rows; the header action and later publishing flow use the
+                // current record, so isolate that record before changing state.
+                let current_id = "00000000000000000000000000000003";
+                app.update(cx, |a, cx| {
+                    a.store.retain_publications(|p| p.topic != topic || p.id == current_id);
+                    cx.notify();
+                });
+                w.render_frame(cx);
                 for (status, commit, expected_label) in [
                     ("Online", None, "View report"),
                     ("Pushed · awaiting deployment", Some("fixture-commit-sha"), "Check status"),
@@ -177,7 +187,14 @@ pub fn run() {
                     ("Failed", None, "Retry publishing"),
                 ] {
                     app.update(cx, |a, cx| {
-                        let latest = a.store.publications.last_mut().unwrap();
+                        let index = crate::report_publish::current_publication_index(
+                            &a.store.publications(),
+                            topic,
+                        )
+                        .expect("current publication");
+                        let latest_id = a.store.publications()[index].id.clone();
+                        assert_eq!(latest_id, current_id, "The header must read the publication under test");
+                        let latest = a.store.publication_mut(&latest_id).unwrap();
                         latest.status = status.into();
                         latest.commit = commit.map(str::to_string);
                         cx.notify();
@@ -212,7 +229,7 @@ pub fn run() {
                     a.poll_runtime(cx);
                 });
                 assert_eq!(
-                    app.read(cx).store.publications.last().unwrap().status,
+                    app.read(cx).store.publications().last().unwrap().status,
                     "Generating HTML"
                 );
                 w.render_frame(cx);
@@ -233,23 +250,24 @@ pub fn run() {
                 });
                 w.render_frame(cx);
                 assert_eq!(w.find("publish-topic-report").label(), Some("Checking…"));
-                let publication = app.read(cx).store.publications.last().unwrap();
+                let publication = app.read(cx).store.publications().last().unwrap();
                 assert_eq!(publication.status, "Pushed · verifying live page");
                 assert_eq!(publication.commit.as_deref(), Some("fixture-commit-sha"));
                 assert!(publication.message.contains("GitHub has received"));
                 let saved = Storage::new(path.clone()).load().unwrap().unwrap();
                 assert_eq!(
-                    saved.publications.last().unwrap().status,
+                    saved.publications().last().unwrap().status,
                     "Pushed · verifying live page"
                 );
                 assert_eq!(
-                    saved.publications.last().unwrap().commit.as_deref(),
+                    saved.publications().last().unwrap().commit.as_deref(),
                     Some("fixture-commit-sha")
                 );
                 let description_id = format!("report-description-{publication_id}");
                 let checking_bounds = w.find(description_id.clone()).bounds();
                 app.update(cx, |a, cx| {
-                    let p = a.store.publications.last_mut().unwrap();
+                    let last_id = a.store.publications().last().unwrap().id.clone();
+                    let p = a.store.publication_mut(&last_id).unwrap();
                     p.status = "Pushed · awaiting deployment".into();
                     p.message = "Check finished; deployment pending".into();
                     cx.notify();
@@ -257,7 +275,8 @@ pub fn run() {
                 w.render_frame(cx);
                 assert_eq!(w.find(description_id.clone()).bounds().size.width, checking_bounds.size.width);
                 app.update(cx, |a, cx| {
-                    let p = a.store.publications.last_mut().unwrap();
+                    let last_id = a.store.publications().last().unwrap().id.clone();
+                    let p = a.store.publication_mut(&last_id).unwrap();
                     p.status = "Pushed · verifying live page".into();
                     p.message.clear();
                     cx.notify();
@@ -265,7 +284,8 @@ pub fn run() {
                 w.render_frame(cx);
                 assert_eq!(w.find(description_id.clone()).bounds().size.width, checking_bounds.size.width);
                 app.update(cx, |a, cx| {
-                    let p = a.store.publications.last_mut().unwrap();
+                    let last_id = a.store.publications().last().unwrap().id.clone();
+                    let p = a.store.publication_mut(&last_id).unwrap();
                     p.status = "Pushed · site access error".into();
                     p.message = "Report pushed to GitHub successfully. Public page returned HTTP 545. EdgeOne reports an edge function execution error. Check the hosting service, then use Check status; no new push is needed.".into();
                     a.publishing_job = None;
@@ -276,7 +296,7 @@ pub fn run() {
                 let description = w.find(description_id).bounds();
                 assert!(description.size.height >= checking_bounds.size.height);
                 assert_eq!(description.size.width, checking_bounds.size.width);
-                assert_eq!(app.read(cx).store.publications.last().unwrap().commit.as_deref(), Some("fixture-commit-sha"));
+                assert_eq!(app.read(cx).store.publications().last().unwrap().commit.as_deref(), Some("fixture-commit-sha"));
 
             })
             .unwrap();
@@ -316,7 +336,7 @@ pub fn run() {
                             a.publishing_inputs[2].read(cx).value().as_ref(),
                             "https://reports.example.com"
                         );
-                        assert!(!a.store.report_publishing.automatic);
+                        assert!(!a.store.report_publishing().automatic);
                         assert!(a.publishing_job.is_none());
                     });
                     cx.new(|cx| base::Root::new(view, w, cx))

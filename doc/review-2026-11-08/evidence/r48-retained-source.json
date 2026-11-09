@@ -1,0 +1,6 @@
+{
+  "base": ".local/native-review/probe-source-r44",
+  "snapshot": ".local/native-review/retained-probe-source-r48",
+  "change": "Animated baseline plus retained Settings child and parent observe subscription only. No lazy General or concurrent command changes.",
+  "settings_content_sha256": "bd85226e43d790bddde472bc726d9f74addec9b8afa95c0e01bd44183669e970"
+}

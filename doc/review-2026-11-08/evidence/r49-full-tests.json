@@ -1,0 +1,13 @@
+{
+  "command": "PATH=/opt/homebrew/opt/node@24/bin:$PATH cargo test --features qa --quiet",
+  "exit": 101,
+  "summaries": [
+    "test result: ok. 637 passed; 0 failed; 2 ignored; 0 measured; 0 filtered out; finished in 5.33s",
+    "test result: FAILED. 4 passed; 2 failed; 0 ignored; 0 measured; 0 filtered out; finished in 22.41s"
+  ],
+  "failures": [
+    "resolution_failed_intent_survives_crash_before_execution: persisted Queued, expected Blocked",
+    "resolution_rerun_intent_keeps_a_stable_replacement_identity: restart-rerun subprocess exceeded 20 seconds"
+  ],
+  "limitation": "Working tree was under concurrent implementation; later fixes require a new coherent build and rerun."
+}

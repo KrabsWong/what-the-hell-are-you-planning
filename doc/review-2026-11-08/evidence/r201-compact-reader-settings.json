@@ -1,0 +1,22 @@
+{
+  "installed_sha256": "6b608fd550efb46d5061b229f5b736ccab1c10110f44143ae2a7c84b2d091370",
+  "logical_size": [
+    1000,
+    680
+  ],
+  "fixture": "r183-latest-report-1000",
+  "passed": [
+    "Period1000 reader opens within viewport in dark and light themes.",
+    "Both themes scroll the 7700-byte report down6pages to Sources1 and all three step actions; up6pages restores metadata and Capacity sample beginning.",
+    "Close returns to the results context.",
+    "Automation Settings in both themes scrolls to Run policy and Approved execution snapshot; fixed Close and Edit controls remain visible; Close restores automation detail."
+  ],
+  "limits": [
+    "Historical stale-input fixture is intentionally incomplete; this is layout/navigation coverage, not current-complete report correctness.",
+    "Light large-window reader and concurrent native save remain pending.",
+    "No timing acceptance claim."
+  ],
+  "follow_up": [
+    "Global Automation results row says Succeeded while detail history/reader adds incomplete for this historical fixture; retain as a status-consistency follow-up pending scope review."
+  ]
+}

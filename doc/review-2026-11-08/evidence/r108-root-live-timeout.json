@@ -1,0 +1,10 @@
+{
+  "result": "timeout",
+  "timeout_seconds": 240,
+  "binary_sha256": "a5b189a6caef7809bf8899e41201fc3376283f9b4a1806474525279059d1da17",
+  "source_manifest": ".local/opencode-dispatch/r108-source.json",
+  "log": ".local/opencode-dispatch/r108-live-qa.log",
+  "sample": ".local/opencode-dispatch/r108-hang.sample.txt",
+  "observed": "Main thread creates next fixture while old writer and history reader close SQLite handles; all three blocked on SQLite Unix mutex paths. Quit fixture database was zero bytes.",
+  "classification": "Core concurrent connection lifecycle failure; SQLite 3.51.1 upstream lock-order bug is suspected, not proven. Child-process fixture isolation alone does not establish a production fix."
+}

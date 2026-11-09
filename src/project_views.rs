@@ -2,6 +2,7 @@ use crate::{app::TaskApp, appearance::palette, views::*};
 use gpui_kit::{
     base::FocusTrapElement,
     component::{
+        Disableable,
         input::{Input, InputEvent, InputState, Textarea},
         menu::{DropdownMenu, PopupMenuItem},
     },
@@ -11,7 +12,8 @@ use gpui_kit::{
 
 impl TaskApp {
     pub(crate) fn open_project_rename(&mut self, project: u64, w: &mut Window, cx: &mut Context<Self>) {
-        let Some(name) = self.store.projects.iter().find(|p| p.id == project).map(|p| p.name.clone()) else { return; };
+        self.remember_dialog_opener(w, cx);
+        let Some(name) = self.store.projects().iter().find(|p| p.id == project).map(|p| p.name.clone()) else { return; };
         self.clear_navigation_overlays();
         let input = cx.new(|cx| InputState::new(w, cx).placeholder("Project name").default_value(name));
         cx.subscribe(&input, |a, _, event: &InputEvent, cx| {
@@ -27,14 +29,17 @@ impl TaskApp {
     pub(crate) fn save_project_name(&mut self, w: &mut Window, cx: &mut Context<Self>) {
         let Some((project, input)) = &self.project_rename else { return; };
         let (project, name) = (*project, input.read(cx).value().to_string());
-        let mut staged = self.store.clone();
-        let result = staged.rename_project(project, &name);
-        if result.is_ok() {
-            if staged != self.store { self.snapshot(); self.store = staged; }
+        let saved = self
+            .apply_domain_command_undoable(
+                crate::scoped_domain::DomainCommand::ProjectRename { project, name },
+                "Project renamed",
+                cx,
+            )
+            .is_some();
+        if saved {
             self.project_rename = None;
             w.focus(&self.focus, cx);
         }
-        self.finish(result, "Project renamed", cx);
     }
 
     pub(crate) fn project_rename_view(&self, cx: &mut Context<Self>) -> AnyElement {
@@ -52,7 +57,7 @@ impl TaskApp {
                 )))
                 .child(row().justify_end()
                     .child(button("cancel-project-rename", "Cancel").on_click(cx.listener(|a, _, w, cx| {
-                        a.project_rename = None; a.error.clear(); w.focus(&a.focus, cx); cx.notify();
+                        a.project_rename = None; a.error.clear(); a.restore_dialog_opener(w, cx); cx.notify();
                     })))
                     .child(primary_button("save-project-rename", "Save name").on_click(cx.listener(|a, _, w, cx| a.save_project_name(w, cx))))))
             .focus_trap("project-rename-focus", &self.modal_focus).into_any_element()
@@ -91,37 +96,127 @@ impl TaskApp {
 
     pub fn project_plan_overlay(&self, cx: &mut Context<Self>) -> AnyElement {
         let colors = palette(cx);
-        let id = self.planning_project.unwrap();
-        let Some(project) = self.store.projects.iter().find(|p| p.id == id) else {
-            return div().into_any_element();
+        let Some(mode) = self.planning_destination else {
+            let message = self
+                .planning_destination_error
+                .clone()
+                .or_else(|| (!self.error.is_empty()).then(|| self.error.clone()))
+                .unwrap_or_else(|| {
+                    "Choose a project before describing this research request.".into()
+                });
+            return div().absolute().inset_0().occlude().bg(rgba(0x00000080)).flex().items_center().justify_center()
+                .child(col().w(px(520.)).max_w_full().p_6().gap_4().rounded_lg().bg(rgb(colors.panel))
+                    .child(div().text_lg().font_weight(FontWeight::SEMIBOLD).child(selectable("New research")))
+                    .child(crate::views::notice(crate::views::NoticeTone::Warning, message, cx))
+                    .child(row().justify_end().child(button("planning-cancel", "Cancel").on_click(cx.listener(|a, _, w, cx| a.request_cancel_planning(w, cx)))))
+                )
+                .focus_trap("project-plan-focus", &self.modal_focus)
+                .into_any_element();
         };
-        let destination = self
-            .planning_topic
-            .and_then(|id| self.store.topics.iter().find(|t| t.id == id))
-            .map(|t| format!("{} / {}", project.name, t.display_name()))
-            .unwrap_or_else(|| format!("{} · a new topic will be created from this request", project.name));
+        let project = self
+            .store
+            .projects()
+            .iter()
+            .find(|p| p.id == mode.project());
+        let project_name = project
+            .map(|p| p.name.clone())
+            .unwrap_or_else(|| "Project unavailable".into());
+        let destination = match mode {
+            crate::navigation_context::CreationMode::NewTopic { .. } => {
+                format!("{project_name} · a new topic will be created from this request")
+            }
+            crate::navigation_context::CreationMode::ExistingTopic { topic, .. } => {
+                let topic = self.store.topics().iter().find(|t| t.id == topic);
+                topic
+                    .map(|t| format!("{project_name} / {}", t.display_name()))
+                    .unwrap_or_else(|| format!("{project_name} · the selected topic is unavailable"))
+            }
+            crate::navigation_context::CreationMode::Replan { source_topic, .. } => {
+                let source = self.store.topics().iter().find(|t| t.id == source_topic);
+                source
+                    .map(|t| format!("{project_name} / {} · creates a separate replanned topic", t.display_name()))
+                    .unwrap_or_else(|| format!("{project_name} · the source topic is unavailable"))
+            }
+        };
+        let title = match mode {
+            crate::navigation_context::CreationMode::NewTopic { .. } => "Create a topic from one sentence",
+            crate::navigation_context::CreationMode::ExistingTopic { .. } => "Plan research in this topic",
+            crate::navigation_context::CreationMode::Replan { .. } => "Replan topic",
+        };
+        let entity = cx.entity().downgrade();
+        let projects: Vec<(u64, String)> = self
+            .store
+            .visible_projects()
+            .map(|p| (p.id, p.name.clone()))
+            .collect();
+        let selector = if mode.can_change_project() {
+            let entity = entity.clone();
+            quiet_button("planning-destination", project_name.clone())
+                .dropdown_caret(true)
+                .tooltip("Change the project this request will be saved in")
+                .accessibility_label(format!("Target project: {project_name}"))
+                .dropdown_menu_with_anchor(Anchor::TopRight, move |mut menu, _, _| {
+                    for (id, name) in &projects {
+                        let id = *id;
+                        let entity = entity.clone();
+                        menu = menu.item(
+                            PopupMenuItem::new(name.clone()).on_click(move |_, w, cx| {
+                                let _ = entity.update(cx, |app, cx| {
+                                    app.retarget_planning_destination(id, w, cx);
+                                });
+                            }),
+                        );
+                    }
+                    menu
+                })
+                .into_any_element()
+        } else {
+            quiet_button("planning-destination", project_name.clone())
+                .disabled(true)
+                .tooltip("Replan keeps the source topic's project. Change the source topic instead.")
+                .into_any_element()
+        };
+        let error = self
+            .planning_destination_error
+            .clone()
+            .or_else(|| (!self.error.is_empty()).then(|| self.error.clone()));
         div().absolute().inset_0().occlude().bg(rgba(0x00000080)).flex().items_center().justify_center()
             .child(col().w(px(580.)).max_h(relative(0.92)).p_6().gap_4().rounded_lg().bg(rgb(colors.panel))
                 .child(row().justify_between()
-                    .child(div().text_lg().font_weight(FontWeight::SEMIBOLD).child(if self.planning_replan_source.is_some() { "Replan topic" } else if self.planning_topic.is_some() { "Plan research in this topic" } else { "Create a topic from one sentence" }))
-                    .child(tool_icon("close-project-plan", assets::IconName::Close, "Close planning").on_click(cx.listener(|a, _, w, cx| { a.planning_project = None; a.planning_topic = None; a.planning_replan_source = None; w.focus(&a.focus, cx); cx.notify(); }))))
-                .child(label(destination, cx))
-                .when(self.planning_replan_source.is_some(), |d| d.child(muted("Creates a separate topic marked Replanned. The original topic, goals and results are preserved. Review the request below, including any dates, and add your new requirements.", cx)))
+                    .child(div().text_lg().font_weight(FontWeight::SEMIBOLD).child(selectable(title)))
+                    .child(tool_icon("close-project-plan", assets::IconName::Close, "Close planning").on_click(cx.listener(|a, _, w, cx| a.request_cancel_planning(w, cx)))))
+                .child(row().gap_2().items_center().flex_wrap()
+                    .child(label("TARGET", cx))
+                    .child(selector)
+                    .child(label(destination, cx)))
+                .when(mode.can_change_project(), |d| d.child(muted(
+                    "Choose the project before saving or generating. Changing it starts a new topic there.",
+                    cx,
+                )))
+                .when(matches!(mode, crate::navigation_context::CreationMode::Replan { .. }), |d| d.child(muted("Creates a separate topic marked Replanned. The original topic, goals and results are preserved. Review the request below, including any dates, and add your new requirements.", cx)))
                 .child(muted("Describe your research question (required). The planner will suggest the scope and output.", cx))
                 .child(div().id("project-plan-brief").child(Textarea::new(&self.project_brief)).map(observed))
                 .child(label("Example: Analyze Intel’s latest earnings and market reaction using official disclosures and accessible analyst commentary. Give me a source-linked report.", cx))
                 .child(muted("Goals and steps are saved under the topic. Goals appear in Backlog. Move a goal to Todo to approve all its steps, then click Run. Planning never starts the research.", cx))
-                .when(!self.error.is_empty(), |d| d.child(crate::views::notice(
+                .when_some(error, |d, message| d.child(crate::views::notice(
                     crate::views::NoticeTone::Danger,
-                    self.error.clone(),
+                    message,
                     cx,
                 )))
-                .child(row().justify_end()
-                    .child(button("save-project-context", "Save request for later").on_click(cx.listener(move |a, _, _, cx| {
-                        let input = a.project_brief.read(cx).value().to_string();
-                        a.capture_research_request(id, a.planning_topic, input, false, cx);
-                    })))
-                    .child(primary_button("generate-project-plan", "Generate plan").on_click(cx.listener(|a, _, _, cx| a.start_project_plan(cx))))))
+                .child(row().justify_between().gap_2()
+                    .child(button("planning-cancel", "Cancel").on_click(cx.listener(|a, _, w, cx| a.request_cancel_planning(w, cx))))
+                    .child(row().gap_2()
+                        .child(button("save-project-context", "Save request for later").on_click(cx.listener(move |a, _, _, cx| {
+                            let Some(mode) = a.planning_destination else { return; };
+                            let input = a.project_brief.read(cx).value().to_string();
+                            let topic = match mode {
+                                crate::navigation_context::CreationMode::ExistingTopic { topic, .. } => Some(topic),
+                                _ => None,
+                            };
+                            a.capture_research_request(mode.project(), topic, input, false, cx);
+                        })))
+                        .child(primary_button("generate-project-plan", "Generate plan").on_click(cx.listener(|a, _, _, cx| a.start_project_plan(cx))))))
+            )
             .focus_trap("project-plan-focus", &self.modal_focus).into_any_element()
     }
 }

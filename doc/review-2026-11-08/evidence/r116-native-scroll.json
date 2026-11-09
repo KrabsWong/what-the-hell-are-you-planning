@@ -1,0 +1,2601 @@
+{
+  "idle": {
+    "start": "2026-11-09T11:08:15.850+08:00",
+    "duration_seconds": 12.833571,
+    "hitch_count": 0,
+    "input_overlap": 0,
+    "input_or_500ms_settle": 0,
+    "recording_build_samples": 12,
+    "busy_samples": 0,
+    "gestures_in_window": 0,
+    "events": []
+  },
+  "scroll": {
+    "start": "2026-11-09T11:09:46.305+08:00",
+    "duration_seconds": 20.792986,
+    "hitch_count": 420,
+    "input_overlap": 21,
+    "input_or_500ms_settle": 76,
+    "recording_build_samples": 19,
+    "busy_samples": 0,
+    "gestures_in_window": 9,
+    "events": [
+      {
+        "offset_ms": 7023.807833,
+        "duration_ms": 8.333333,
+        "input_overlap": true,
+        "input_or_500ms_settle": true
+      },
+      {
+        "offset_ms": 7032.141291,
+        "duration_ms": 8.333333,
+        "input_overlap": true,
+        "input_or_500ms_settle": true
+      },
+      {
+        "offset_ms": 7048.808166,
+        "duration_ms": 8.333333,
+        "input_overlap": true,
+        "input_or_500ms_settle": true
+      },
+      {
+        "offset_ms": 7082.141291,
+        "duration_ms": 8.333333,
+        "input_overlap": true,
+        "input_or_500ms_settle": true
+      },
+      {
+        "offset_ms": 7098.807958,
+        "duration_ms": 8.333208,
+        "input_overlap": true,
+        "input_or_500ms_settle": true
+      },
+      {
+        "offset_ms": 7115.474583,
+        "duration_ms": 8.333333,
+        "input_overlap": true,
+        "input_or_500ms_settle": true
+      },
+      {
+        "offset_ms": 7132.141166,
+        "duration_ms": 8.333333,
+        "input_overlap": true,
+        "input_or_500ms_settle": true
+      },
+      {
+        "offset_ms": 7165.474625,
+        "duration_ms": 8.33325,
+        "input_overlap": true,
+        "input_or_500ms_settle": true
+      },
+      {
+        "offset_ms": 7182.141291,
+        "duration_ms": 8.333333,
+        "input_overlap": true,
+        "input_or_500ms_settle": true
+      },
+      {
+        "offset_ms": 7190.474625,
+        "duration_ms": 8.333333,
+        "input_overlap": true,
+        "input_or_500ms_settle": true
+      },
+      {
+        "offset_ms": 7240.474583,
+        "duration_ms": 8.333333,
+        "input_overlap": true,
+        "input_or_500ms_settle": true
+      },
+      {
+        "offset_ms": 7257.141208,
+        "duration_ms": 8.333333,
+        "input_overlap": true,
+        "input_or_500ms_settle": true
+      },
+      {
+        "offset_ms": 7290.474583,
+        "duration_ms": 8.333333,
+        "input_overlap": true,
+        "input_or_500ms_settle": true
+      },
+      {
+        "offset_ms": 7307.14125,
+        "duration_ms": 8.333333,
+        "input_overlap": true,
+        "input_or_500ms_settle": true
+      },
+      {
+        "offset_ms": 7323.808,
+        "duration_ms": 8.333333,
+        "input_overlap": true,
+        "input_or_500ms_settle": true
+      },
+      {
+        "offset_ms": 7373.807916,
+        "duration_ms": 8.333333,
+        "input_overlap": true,
+        "input_or_500ms_settle": true
+      },
+      {
+        "offset_ms": 7390.474541,
+        "duration_ms": 8.333333,
+        "input_overlap": true,
+        "input_or_500ms_settle": true
+      },
+      {
+        "offset_ms": 7415.4745,
+        "duration_ms": 8.333333,
+        "input_overlap": true,
+        "input_or_500ms_settle": true
+      },
+      {
+        "offset_ms": 7432.141291,
+        "duration_ms": 8.333333,
+        "input_overlap": true,
+        "input_or_500ms_settle": true
+      },
+      {
+        "offset_ms": 7448.807875,
+        "duration_ms": 8.333333,
+        "input_overlap": false,
+        "input_or_500ms_settle": true
+      },
+      {
+        "offset_ms": 7482.141208,
+        "duration_ms": 8.333333,
+        "input_overlap": false,
+        "input_or_500ms_settle": true
+      },
+      {
+        "offset_ms": 7498.807875,
+        "duration_ms": 8.333333,
+        "input_overlap": false,
+        "input_or_500ms_settle": true
+      },
+      {
+        "offset_ms": 7515.4745,
+        "duration_ms": 8.333333,
+        "input_overlap": false,
+        "input_or_500ms_settle": true
+      },
+      {
+        "offset_ms": 7532.141208,
+        "duration_ms": 8.333333,
+        "input_overlap": false,
+        "input_or_500ms_settle": true
+      },
+      {
+        "offset_ms": 7548.807833,
+        "duration_ms": 8.333333,
+        "input_overlap": false,
+        "input_or_500ms_settle": true
+      },
+      {
+        "offset_ms": 7565.4745,
+        "duration_ms": 8.333333,
+        "input_overlap": false,
+        "input_or_500ms_settle": true
+      },
+      {
+        "offset_ms": 7573.807916,
+        "duration_ms": 8.333333,
+        "input_overlap": false,
+        "input_or_500ms_settle": true
+      },
+      {
+        "offset_ms": 7590.474583,
+        "duration_ms": 8.333333,
+        "input_overlap": false,
+        "input_or_500ms_settle": true
+      },
+      {
+        "offset_ms": 7607.141125,
+        "duration_ms": 8.333333,
+        "input_overlap": false,
+        "input_or_500ms_settle": true
+      },
+      {
+        "offset_ms": 7623.808041,
+        "duration_ms": 8.333333,
+        "input_overlap": false,
+        "input_or_500ms_settle": true
+      },
+      {
+        "offset_ms": 7640.474666,
+        "duration_ms": 8.333333,
+        "input_overlap": false,
+        "input_or_500ms_settle": true
+      },
+      {
+        "offset_ms": 7657.141333,
+        "duration_ms": 8.333333,
+        "input_overlap": false,
+        "input_or_500ms_settle": true
+      },
+      {
+        "offset_ms": 7673.807916,
+        "duration_ms": 8.333333,
+        "input_overlap": false,
+        "input_or_500ms_settle": true
+      },
+      {
+        "offset_ms": 7690.474541,
+        "duration_ms": 8.333333,
+        "input_overlap": false,
+        "input_or_500ms_settle": true
+      },
+      {
+        "offset_ms": 7707.141333,
+        "duration_ms": 8.333333,
+        "input_overlap": false,
+        "input_or_500ms_settle": true
+      },
+      {
+        "offset_ms": 7723.807791,
+        "duration_ms": 8.333333,
+        "input_overlap": false,
+        "input_or_500ms_settle": true
+      },
+      {
+        "offset_ms": 7740.4745,
+        "duration_ms": 8.333333,
+        "input_overlap": false,
+        "input_or_500ms_settle": true
+      },
+      {
+        "offset_ms": 7757.141083,
+        "duration_ms": 8.333333,
+        "input_overlap": false,
+        "input_or_500ms_settle": true
+      },
+      {
+        "offset_ms": 7773.807875,
+        "duration_ms": 8.333333,
+        "input_overlap": false,
+        "input_or_500ms_settle": true
+      },
+      {
+        "offset_ms": 7790.474541,
+        "duration_ms": 8.333333,
+        "input_overlap": false,
+        "input_or_500ms_settle": true
+      },
+      {
+        "offset_ms": 7807.141208,
+        "duration_ms": 8.333333,
+        "input_overlap": false,
+        "input_or_500ms_settle": true
+      },
+      {
+        "offset_ms": 7840.474583,
+        "duration_ms": 8.333333,
+        "input_overlap": false,
+        "input_or_500ms_settle": true
+      },
+      {
+        "offset_ms": 7857.141208,
+        "duration_ms": 8.333333,
+        "input_overlap": false,
+        "input_or_500ms_settle": true
+      },
+      {
+        "offset_ms": 7865.474583,
+        "duration_ms": 8.333333,
+        "input_overlap": false,
+        "input_or_500ms_settle": true
+      },
+      {
+        "offset_ms": 7898.807916,
+        "duration_ms": 8.333333,
+        "input_overlap": false,
+        "input_or_500ms_settle": true
+      },
+      {
+        "offset_ms": 7915.4745,
+        "duration_ms": 8.333333,
+        "input_overlap": false,
+        "input_or_500ms_settle": true
+      },
+      {
+        "offset_ms": 7932.141375,
+        "duration_ms": 8.333333,
+        "input_overlap": false,
+        "input_or_500ms_settle": true
+      },
+      {
+        "offset_ms": 7948.807916,
+        "duration_ms": 8.333333,
+        "input_overlap": false,
+        "input_or_500ms_settle": false
+      },
+      {
+        "offset_ms": 7965.474625,
+        "duration_ms": 8.333333,
+        "input_overlap": false,
+        "input_or_500ms_settle": false
+      },
+      {
+        "offset_ms": 8123.807833,
+        "duration_ms": 8.333333,
+        "input_overlap": false,
+        "input_or_500ms_settle": false
+      },
+      {
+        "offset_ms": 8773.807791,
+        "duration_ms": 8.333333,
+        "input_overlap": false,
+        "input_or_500ms_settle": false
+      },
+      {
+        "offset_ms": 8790.474625,
+        "duration_ms": 8.333333,
+        "input_overlap": false,
+        "input_or_500ms_settle": false
+      },
+      {
+        "offset_ms": 8807.141208,
+        "duration_ms": 8.333333,
+        "input_overlap": false,
+        "input_or_500ms_settle": false
+      },
+      {
+        "offset_ms": 8965.474416,
+        "duration_ms": 8.333333,
+        "input_overlap": false,
+        "input_or_500ms_settle": false
+      },
+      {
+        "offset_ms": 8982.141125,
+        "duration_ms": 8.333333,
+        "input_overlap": false,
+        "input_or_500ms_settle": false
+      },
+      {
+        "offset_ms": 8998.807916,
+        "duration_ms": 8.333333,
+        "input_overlap": false,
+        "input_or_500ms_settle": false
+      },
+      {
+        "offset_ms": 9473.808166,
+        "duration_ms": 8.333333,
+        "input_overlap": false,
+        "input_or_500ms_settle": false
+      },
+      {
+        "offset_ms": 9490.474541,
+        "duration_ms": 8.333333,
+        "input_overlap": false,
+        "input_or_500ms_settle": false
+      },
+      {
+        "offset_ms": 9507.141208,
+        "duration_ms": 8.333333,
+        "input_overlap": false,
+        "input_or_500ms_settle": false
+      },
+      {
+        "offset_ms": 9523.807958,
+        "duration_ms": 8.333333,
+        "input_overlap": false,
+        "input_or_500ms_settle": false
+      },
+      {
+        "offset_ms": 9540.4745,
+        "duration_ms": 8.333333,
+        "input_overlap": false,
+        "input_or_500ms_settle": false
+      },
+      {
+        "offset_ms": 9557.141041,
+        "duration_ms": 8.333333,
+        "input_overlap": false,
+        "input_or_500ms_settle": false
+      },
+      {
+        "offset_ms": 9573.807833,
+        "duration_ms": 8.333333,
+        "input_overlap": false,
+        "input_or_500ms_settle": false
+      },
+      {
+        "offset_ms": 9590.474416,
+        "duration_ms": 8.333333,
+        "input_overlap": false,
+        "input_or_500ms_settle": false
+      },
+      {
+        "offset_ms": 9607.141125,
+        "duration_ms": 8.333333,
+        "input_overlap": false,
+        "input_or_500ms_settle": false
+      },
+      {
+        "offset_ms": 9615.474458,
+        "duration_ms": 8.333291,
+        "input_overlap": false,
+        "input_or_500ms_settle": false
+      },
+      {
+        "offset_ms": 9632.141166,
+        "duration_ms": 8.333333,
+        "input_overlap": false,
+        "input_or_500ms_settle": false
+      },
+      {
+        "offset_ms": 9648.80775,
+        "duration_ms": 8.333333,
+        "input_overlap": false,
+        "input_or_500ms_settle": false
+      },
+      {
+        "offset_ms": 9665.47475,
+        "duration_ms": 8.333333,
+        "input_overlap": false,
+        "input_or_500ms_settle": false
+      },
+      {
+        "offset_ms": 9682.141041,
+        "duration_ms": 8.333333,
+        "input_overlap": false,
+        "input_or_500ms_settle": false
+      },
+      {
+        "offset_ms": 9698.807833,
+        "duration_ms": 8.333333,
+        "input_overlap": false,
+        "input_or_500ms_settle": false
+      },
+      {
+        "offset_ms": 9715.474375,
+        "duration_ms": 8.333333,
+        "input_overlap": false,
+        "input_or_500ms_settle": false
+      },
+      {
+        "offset_ms": 9732.141208,
+        "duration_ms": 8.333333,
+        "input_overlap": false,
+        "input_or_500ms_settle": false
+      },
+      {
+        "offset_ms": 9748.807833,
+        "duration_ms": 8.333333,
+        "input_overlap": false,
+        "input_or_500ms_settle": false
+      },
+      {
+        "offset_ms": 9765.474458,
+        "duration_ms": 8.333333,
+        "input_overlap": false,
+        "input_or_500ms_settle": false
+      },
+      {
+        "offset_ms": 9782.141208,
+        "duration_ms": 8.333333,
+        "input_overlap": false,
+        "input_or_500ms_settle": false
+      },
+      {
+        "offset_ms": 9798.807708,
+        "duration_ms": 8.333333,
+        "input_overlap": false,
+        "input_or_500ms_settle": false
+      },
+      {
+        "offset_ms": 9815.474416,
+        "duration_ms": 8.333333,
+        "input_overlap": false,
+        "input_or_500ms_settle": false
+      },
+      {
+        "offset_ms": 9832.141041,
+        "duration_ms": 8.333333,
+        "input_overlap": false,
+        "input_or_500ms_settle": false
+      },
+      {
+        "offset_ms": 9840.4745,
+        "duration_ms": 8.333333,
+        "input_overlap": false,
+        "input_or_500ms_settle": false
+      },
+      {
+        "offset_ms": 9857.141083,
+        "duration_ms": 8.333333,
+        "input_overlap": false,
+        "input_or_500ms_settle": false
+      },
+      {
+        "offset_ms": 9873.807833,
+        "duration_ms": 8.333333,
+        "input_overlap": false,
+        "input_or_500ms_settle": false
+      },
+      {
+        "offset_ms": 9890.474416,
+        "duration_ms": 8.333333,
+        "input_overlap": false,
+        "input_or_500ms_settle": false
+      },
+      {
+        "offset_ms": 9907.141,
+        "duration_ms": 8.333333,
+        "input_overlap": false,
+        "input_or_500ms_settle": false
+      },
+      {
+        "offset_ms": 9923.807708,
+        "duration_ms": 8.333333,
+        "input_overlap": false,
+        "input_or_500ms_settle": false
+      },
+      {
+        "offset_ms": 9940.474416,
+        "duration_ms": 8.333333,
+        "input_overlap": false,
+        "input_or_500ms_settle": false
+      },
+      {
+        "offset_ms": 9957.141,
+        "duration_ms": 8.333333,
+        "input_overlap": false,
+        "input_or_500ms_settle": false
+      },
+      {
+        "offset_ms": 9973.807791,
+        "duration_ms": 8.333333,
+        "input_overlap": false,
+        "input_or_500ms_settle": false
+      },
+      {
+        "offset_ms": 9982.141125,
+        "duration_ms": 8.333333,
+        "input_overlap": false,
+        "input_or_500ms_settle": false
+      },
+      {
+        "offset_ms": 9998.807708,
+        "duration_ms": 8.333333,
+        "input_overlap": false,
+        "input_or_500ms_settle": false
+      },
+      {
+        "offset_ms": 10015.474541,
+        "duration_ms": 8.333333,
+        "input_overlap": false,
+        "input_or_500ms_settle": false
+      },
+      {
+        "offset_ms": 10032.141208,
+        "duration_ms": 8.333333,
+        "input_overlap": false,
+        "input_or_500ms_settle": false
+      },
+      {
+        "offset_ms": 10048.807875,
+        "duration_ms": 8.333333,
+        "input_overlap": false,
+        "input_or_500ms_settle": false
+      },
+      {
+        "offset_ms": 10065.474458,
+        "duration_ms": 8.333333,
+        "input_overlap": false,
+        "input_or_500ms_settle": false
+      },
+      {
+        "offset_ms": 10082.141041,
+        "duration_ms": 8.333333,
+        "input_overlap": false,
+        "input_or_500ms_settle": false
+      },
+      {
+        "offset_ms": 10098.807666,
+        "duration_ms": 8.333333,
+        "input_overlap": false,
+        "input_or_500ms_settle": false
+      },
+      {
+        "offset_ms": 10115.4745,
+        "duration_ms": 8.333333,
+        "input_overlap": false,
+        "input_or_500ms_settle": false
+      },
+      {
+        "offset_ms": 10132.14125,
+        "duration_ms": 8.333333,
+        "input_overlap": false,
+        "input_or_500ms_settle": false
+      },
+      {
+        "offset_ms": 10140.474583,
+        "duration_ms": 8.333166,
+        "input_overlap": false,
+        "input_or_500ms_settle": false
+      },
+      {
+        "offset_ms": 10157.141166,
+        "duration_ms": 8.333333,
+        "input_overlap": false,
+        "input_or_500ms_settle": false
+      },
+      {
+        "offset_ms": 10173.807791,
+        "duration_ms": 8.333333,
+        "input_overlap": false,
+        "input_or_500ms_settle": false
+      },
+      {
+        "offset_ms": 10190.4745,
+        "duration_ms": 8.333333,
+        "input_overlap": false,
+        "input_or_500ms_settle": false
+      },
+      {
+        "offset_ms": 10207.141083,
+        "duration_ms": 8.333333,
+        "input_overlap": false,
+        "input_or_500ms_settle": false
+      },
+      {
+        "offset_ms": 10223.807708,
+        "duration_ms": 8.333333,
+        "input_overlap": false,
+        "input_or_500ms_settle": false
+      },
+      {
+        "offset_ms": 10240.4745,
+        "duration_ms": 8.333333,
+        "input_overlap": false,
+        "input_or_500ms_settle": false
+      },
+      {
+        "offset_ms": 10257.141125,
+        "duration_ms": 8.333333,
+        "input_overlap": false,
+        "input_or_500ms_settle": false
+      },
+      {
+        "offset_ms": 10273.807833,
+        "duration_ms": 8.333333,
+        "input_overlap": false,
+        "input_or_500ms_settle": false
+      },
+      {
+        "offset_ms": 10290.474541,
+        "duration_ms": 8.333333,
+        "input_overlap": false,
+        "input_or_500ms_settle": false
+      },
+      {
+        "offset_ms": 10307.141166,
+        "duration_ms": 8.333333,
+        "input_overlap": false,
+        "input_or_500ms_settle": false
+      },
+      {
+        "offset_ms": 10323.80775,
+        "duration_ms": 8.333333,
+        "input_overlap": false,
+        "input_or_500ms_settle": false
+      },
+      {
+        "offset_ms": 10340.474458,
+        "duration_ms": 8.333333,
+        "input_overlap": false,
+        "input_or_500ms_settle": false
+      },
+      {
+        "offset_ms": 10357.141,
+        "duration_ms": 8.333333,
+        "input_overlap": false,
+        "input_or_500ms_settle": false
+      },
+      {
+        "offset_ms": 10373.807666,
+        "duration_ms": 8.333333,
+        "input_overlap": false,
+        "input_or_500ms_settle": false
+      },
+      {
+        "offset_ms": 10382.141125,
+        "duration_ms": 8.333333,
+        "input_overlap": false,
+        "input_or_500ms_settle": false
+      },
+      {
+        "offset_ms": 10398.807833,
+        "duration_ms": 8.333333,
+        "input_overlap": false,
+        "input_or_500ms_settle": false
+      },
+      {
+        "offset_ms": 10415.474541,
+        "duration_ms": 8.333333,
+        "input_overlap": false,
+        "input_or_500ms_settle": false
+      },
+      {
+        "offset_ms": 10432.141166,
+        "duration_ms": 8.333333,
+        "input_overlap": false,
+        "input_or_500ms_settle": false
+      },
+      {
+        "offset_ms": 10448.807833,
+        "duration_ms": 8.333333,
+        "input_overlap": false,
+        "input_or_500ms_settle": false
+      },
+      {
+        "offset_ms": 10548.807666,
+        "duration_ms": 8.333333,
+        "input_overlap": false,
+        "input_or_500ms_settle": false
+      },
+      {
+        "offset_ms": 10565.474458,
+        "duration_ms": 8.333333,
+        "input_overlap": false,
+        "input_or_500ms_settle": false
+      },
+      {
+        "offset_ms": 10582.141,
+        "duration_ms": 8.333333,
+        "input_overlap": false,
+        "input_or_500ms_settle": false
+      },
+      {
+        "offset_ms": 10640.474416,
+        "duration_ms": 8.333333,
+        "input_overlap": false,
+        "input_or_500ms_settle": false
+      },
+      {
+        "offset_ms": 10773.807791,
+        "duration_ms": 8.333333,
+        "input_overlap": false,
+        "input_or_500ms_settle": false
+      },
+      {
+        "offset_ms": 10790.4745,
+        "duration_ms": 8.333333,
+        "input_overlap": false,
+        "input_or_500ms_settle": false
+      },
+      {
+        "offset_ms": 10932.141,
+        "duration_ms": 8.333333,
+        "input_overlap": false,
+        "input_or_500ms_settle": false
+      },
+      {
+        "offset_ms": 10957.141083,
+        "duration_ms": 8.333291,
+        "input_overlap": false,
+        "input_or_500ms_settle": false
+      },
+      {
+        "offset_ms": 10973.807708,
+        "duration_ms": 8.333333,
+        "input_overlap": false,
+        "input_or_500ms_settle": false
+      },
+      {
+        "offset_ms": 11590.474375,
+        "duration_ms": 8.333333,
+        "input_overlap": false,
+        "input_or_500ms_settle": false
+      },
+      {
+        "offset_ms": 11765.474291,
+        "duration_ms": 8.333333,
+        "input_overlap": false,
+        "input_or_500ms_settle": false
+      },
+      {
+        "offset_ms": 11923.807666,
+        "duration_ms": 8.333333,
+        "input_overlap": false,
+        "input_or_500ms_settle": false
+      },
+      {
+        "offset_ms": 11940.474333,
+        "duration_ms": 8.333333,
+        "input_overlap": false,
+        "input_or_500ms_settle": false
+      },
+      {
+        "offset_ms": 11948.80775,
+        "duration_ms": 8.333333,
+        "input_overlap": false,
+        "input_or_500ms_settle": false
+      },
+      {
+        "offset_ms": 11965.474291,
+        "duration_ms": 8.333333,
+        "input_overlap": false,
+        "input_or_500ms_settle": false
+      },
+      {
+        "offset_ms": 11982.141,
+        "duration_ms": 8.333333,
+        "input_overlap": false,
+        "input_or_500ms_settle": false
+      },
+      {
+        "offset_ms": 11998.807708,
+        "duration_ms": 8.333333,
+        "input_overlap": false,
+        "input_or_500ms_settle": false
+      },
+      {
+        "offset_ms": 12015.474333,
+        "duration_ms": 8.333333,
+        "input_overlap": false,
+        "input_or_500ms_settle": false
+      },
+      {
+        "offset_ms": 12032.141458,
+        "duration_ms": 8.333333,
+        "input_overlap": false,
+        "input_or_500ms_settle": false
+      },
+      {
+        "offset_ms": 12048.807666,
+        "duration_ms": 8.333333,
+        "input_overlap": false,
+        "input_or_500ms_settle": false
+      },
+      {
+        "offset_ms": 12065.474333,
+        "duration_ms": 8.333333,
+        "input_overlap": false,
+        "input_or_500ms_settle": false
+      },
+      {
+        "offset_ms": 12082.141041,
+        "duration_ms": 8.333333,
+        "input_overlap": false,
+        "input_or_500ms_settle": false
+      },
+      {
+        "offset_ms": 12098.80775,
+        "duration_ms": 8.333333,
+        "input_overlap": false,
+        "input_or_500ms_settle": false
+      },
+      {
+        "offset_ms": 12115.474333,
+        "duration_ms": 8.333333,
+        "input_overlap": false,
+        "input_or_500ms_settle": false
+      },
+      {
+        "offset_ms": 12132.145583,
+        "duration_ms": 8.333333,
+        "input_overlap": false,
+        "input_or_500ms_settle": false
+      },
+      {
+        "offset_ms": 12148.807666,
+        "duration_ms": 8.333333,
+        "input_overlap": false,
+        "input_or_500ms_settle": false
+      },
+      {
+        "offset_ms": 12165.474291,
+        "duration_ms": 8.333333,
+        "input_overlap": false,
+        "input_or_500ms_settle": false
+      },
+      {
+        "offset_ms": 12182.140958,
+        "duration_ms": 8.333333,
+        "input_overlap": false,
+        "input_or_500ms_settle": false
+      },
+      {
+        "offset_ms": 12198.807666,
+        "duration_ms": 8.333333,
+        "input_overlap": false,
+        "input_or_500ms_settle": false
+      },
+      {
+        "offset_ms": 12215.47425,
+        "duration_ms": 8.333333,
+        "input_overlap": false,
+        "input_or_500ms_settle": false
+      },
+      {
+        "offset_ms": 12223.807708,
+        "duration_ms": 8.333333,
+        "input_overlap": false,
+        "input_or_500ms_settle": false
+      },
+      {
+        "offset_ms": 12240.474416,
+        "duration_ms": 8.333333,
+        "input_overlap": false,
+        "input_or_500ms_settle": false
+      },
+      {
+        "offset_ms": 12257.140916,
+        "duration_ms": 8.333333,
+        "input_overlap": false,
+        "input_or_500ms_settle": false
+      },
+      {
+        "offset_ms": 12273.807625,
+        "duration_ms": 8.333333,
+        "input_overlap": false,
+        "input_or_500ms_settle": false
+      },
+      {
+        "offset_ms": 12290.474416,
+        "duration_ms": 8.333333,
+        "input_overlap": false,
+        "input_or_500ms_settle": false
+      },
+      {
+        "offset_ms": 12307.141041,
+        "duration_ms": 8.333333,
+        "input_overlap": false,
+        "input_or_500ms_settle": false
+      },
+      {
+        "offset_ms": 12323.807666,
+        "duration_ms": 8.333333,
+        "input_overlap": false,
+        "input_or_500ms_settle": false
+      },
+      {
+        "offset_ms": 12340.474375,
+        "duration_ms": 8.333333,
+        "input_overlap": false,
+        "input_or_500ms_settle": false
+      },
+      {
+        "offset_ms": 12357.140958,
+        "duration_ms": 8.333333,
+        "input_overlap": false,
+        "input_or_500ms_settle": false
+      },
+      {
+        "offset_ms": 12373.807666,
+        "duration_ms": 8.333333,
+        "input_overlap": false,
+        "input_or_500ms_settle": false
+      },
+      {
+        "offset_ms": 12390.4745,
+        "duration_ms": 8.333333,
+        "input_overlap": false,
+        "input_or_500ms_settle": false
+      },
+      {
+        "offset_ms": 12407.140958,
+        "duration_ms": 8.333333,
+        "input_overlap": false,
+        "input_or_500ms_settle": false
+      },
+      {
+        "offset_ms": 12423.807708,
+        "duration_ms": 8.333333,
+        "input_overlap": false,
+        "input_or_500ms_settle": false
+      },
+      {
+        "offset_ms": 12440.474375,
+        "duration_ms": 8.333333,
+        "input_overlap": false,
+        "input_or_500ms_settle": false
+      },
+      {
+        "offset_ms": 12457.141125,
+        "duration_ms": 8.333333,
+        "input_overlap": false,
+        "input_or_500ms_settle": false
+      },
+      {
+        "offset_ms": 12465.474458,
+        "duration_ms": 8.333291,
+        "input_overlap": false,
+        "input_or_500ms_settle": false
+      },
+      {
+        "offset_ms": 12482.141166,
+        "duration_ms": 8.333333,
+        "input_overlap": false,
+        "input_or_500ms_settle": false
+      },
+      {
+        "offset_ms": 12498.807708,
+        "duration_ms": 8.333333,
+        "input_overlap": false,
+        "input_or_500ms_settle": false
+      },
+      {
+        "offset_ms": 12515.474416,
+        "duration_ms": 8.333333,
+        "input_overlap": false,
+        "input_or_500ms_settle": false
+      },
+      {
+        "offset_ms": 12532.140958,
+        "duration_ms": 8.333333,
+        "input_overlap": false,
+        "input_or_500ms_settle": false
+      },
+      {
+        "offset_ms": 12548.80775,
+        "duration_ms": 8.333333,
+        "input_overlap": false,
+        "input_or_500ms_settle": false
+      },
+      {
+        "offset_ms": 12565.474291,
+        "duration_ms": 8.333333,
+        "input_overlap": false,
+        "input_or_500ms_settle": false
+      },
+      {
+        "offset_ms": 12582.141041,
+        "duration_ms": 8.333333,
+        "input_overlap": false,
+        "input_or_500ms_settle": false
+      },
+      {
+        "offset_ms": 12598.808041,
+        "duration_ms": 8.333333,
+        "input_overlap": false,
+        "input_or_500ms_settle": false
+      },
+      {
+        "offset_ms": 12615.474291,
+        "duration_ms": 8.333333,
+        "input_overlap": false,
+        "input_or_500ms_settle": false
+      },
+      {
+        "offset_ms": 12632.140916,
+        "duration_ms": 8.333333,
+        "input_overlap": false,
+        "input_or_500ms_settle": false
+      },
+      {
+        "offset_ms": 12648.807583,
+        "duration_ms": 8.333333,
+        "input_overlap": false,
+        "input_or_500ms_settle": false
+      },
+      {
+        "offset_ms": 12665.47425,
+        "duration_ms": 8.333333,
+        "input_overlap": false,
+        "input_or_500ms_settle": false
+      },
+      {
+        "offset_ms": 12673.807708,
+        "duration_ms": 8.333333,
+        "input_overlap": false,
+        "input_or_500ms_settle": false
+      },
+      {
+        "offset_ms": 12690.47425,
+        "duration_ms": 8.333333,
+        "input_overlap": false,
+        "input_or_500ms_settle": false
+      },
+      {
+        "offset_ms": 12707.140916,
+        "duration_ms": 8.333333,
+        "input_overlap": false,
+        "input_or_500ms_settle": false
+      },
+      {
+        "offset_ms": 12723.807583,
+        "duration_ms": 8.333333,
+        "input_overlap": false,
+        "input_or_500ms_settle": false
+      },
+      {
+        "offset_ms": 12740.474291,
+        "duration_ms": 8.333333,
+        "input_overlap": false,
+        "input_or_500ms_settle": false
+      },
+      {
+        "offset_ms": 12757.140916,
+        "duration_ms": 8.333333,
+        "input_overlap": false,
+        "input_or_500ms_settle": false
+      },
+      {
+        "offset_ms": 12773.807708,
+        "duration_ms": 8.333333,
+        "input_overlap": false,
+        "input_or_500ms_settle": false
+      },
+      {
+        "offset_ms": 12790.474375,
+        "duration_ms": 8.333333,
+        "input_overlap": false,
+        "input_or_500ms_settle": false
+      },
+      {
+        "offset_ms": 12807.141041,
+        "duration_ms": 8.333333,
+        "input_overlap": false,
+        "input_or_500ms_settle": false
+      },
+      {
+        "offset_ms": 12823.807625,
+        "duration_ms": 8.333333,
+        "input_overlap": false,
+        "input_or_500ms_settle": false
+      },
+      {
+        "offset_ms": 12840.474416,
+        "duration_ms": 8.333333,
+        "input_overlap": false,
+        "input_or_500ms_settle": false
+      },
+      {
+        "offset_ms": 12857.140916,
+        "duration_ms": 8.333333,
+        "input_overlap": false,
+        "input_or_500ms_settle": false
+      },
+      {
+        "offset_ms": 12873.807625,
+        "duration_ms": 8.333333,
+        "input_overlap": false,
+        "input_or_500ms_settle": false
+      },
+      {
+        "offset_ms": 12882.140958,
+        "duration_ms": 8.333333,
+        "input_overlap": false,
+        "input_or_500ms_settle": false
+      },
+      {
+        "offset_ms": 12898.807666,
+        "duration_ms": 8.333333,
+        "input_overlap": false,
+        "input_or_500ms_settle": false
+      },
+      {
+        "offset_ms": 12915.474333,
+        "duration_ms": 8.333333,
+        "input_overlap": false,
+        "input_or_500ms_settle": false
+      },
+      {
+        "offset_ms": 12948.80775,
+        "duration_ms": 8.333333,
+        "input_overlap": false,
+        "input_or_500ms_settle": false
+      },
+      {
+        "offset_ms": 13032.141,
+        "duration_ms": 8.333333,
+        "input_overlap": false,
+        "input_or_500ms_settle": false
+      },
+      {
+        "offset_ms": 13065.474291,
+        "duration_ms": 8.333333,
+        "input_overlap": false,
+        "input_or_500ms_settle": false
+      },
+      {
+        "offset_ms": 13340.474375,
+        "duration_ms": 8.333333,
+        "input_overlap": false,
+        "input_or_500ms_settle": false
+      },
+      {
+        "offset_ms": 13382.141041,
+        "duration_ms": 8.333333,
+        "input_overlap": false,
+        "input_or_500ms_settle": false
+      },
+      {
+        "offset_ms": 13482.141125,
+        "duration_ms": 8.333333,
+        "input_overlap": false,
+        "input_or_500ms_settle": false
+      },
+      {
+        "offset_ms": 13623.807708,
+        "duration_ms": 8.333333,
+        "input_overlap": false,
+        "input_or_500ms_settle": false
+      },
+      {
+        "offset_ms": 13732.140875,
+        "duration_ms": 8.333333,
+        "input_overlap": false,
+        "input_or_500ms_settle": false
+      },
+      {
+        "offset_ms": 13748.807583,
+        "duration_ms": 8.333333,
+        "input_overlap": false,
+        "input_or_500ms_settle": false
+      },
+      {
+        "offset_ms": 13823.807625,
+        "duration_ms": 8.333333,
+        "input_overlap": false,
+        "input_or_500ms_settle": false
+      },
+      {
+        "offset_ms": 13857.14125,
+        "duration_ms": 8.333333,
+        "input_overlap": false,
+        "input_or_500ms_settle": false
+      },
+      {
+        "offset_ms": 14182.140916,
+        "duration_ms": 8.333333,
+        "input_overlap": false,
+        "input_or_500ms_settle": false
+      },
+      {
+        "offset_ms": 14307.140875,
+        "duration_ms": 8.333333,
+        "input_overlap": false,
+        "input_or_500ms_settle": false
+      },
+      {
+        "offset_ms": 14323.807541,
+        "duration_ms": 8.333333,
+        "input_overlap": false,
+        "input_or_500ms_settle": false
+      },
+      {
+        "offset_ms": 14340.474208,
+        "duration_ms": 8.333333,
+        "input_overlap": false,
+        "input_or_500ms_settle": false
+      },
+      {
+        "offset_ms": 14432.141083,
+        "duration_ms": 8.333333,
+        "input_overlap": true,
+        "input_or_500ms_settle": true
+      },
+      {
+        "offset_ms": 14448.807666,
+        "duration_ms": 8.333333,
+        "input_overlap": true,
+        "input_or_500ms_settle": true
+      },
+      {
+        "offset_ms": 14482.141,
+        "duration_ms": 8.333333,
+        "input_overlap": false,
+        "input_or_500ms_settle": true
+      },
+      {
+        "offset_ms": 14498.807708,
+        "duration_ms": 8.333333,
+        "input_overlap": false,
+        "input_or_500ms_settle": true
+      },
+      {
+        "offset_ms": 14515.474333,
+        "duration_ms": 8.333333,
+        "input_overlap": false,
+        "input_or_500ms_settle": true
+      },
+      {
+        "offset_ms": 14532.140958,
+        "duration_ms": 8.333333,
+        "input_overlap": false,
+        "input_or_500ms_settle": true
+      },
+      {
+        "offset_ms": 14548.80775,
+        "duration_ms": 8.333333,
+        "input_overlap": false,
+        "input_or_500ms_settle": true
+      },
+      {
+        "offset_ms": 14573.807708,
+        "duration_ms": 8.333333,
+        "input_overlap": false,
+        "input_or_500ms_settle": true
+      },
+      {
+        "offset_ms": 14590.474416,
+        "duration_ms": 8.333333,
+        "input_overlap": false,
+        "input_or_500ms_settle": true
+      },
+      {
+        "offset_ms": 14607.141,
+        "duration_ms": 8.333333,
+        "input_overlap": false,
+        "input_or_500ms_settle": true
+      },
+      {
+        "offset_ms": 14623.807541,
+        "duration_ms": 8.333333,
+        "input_overlap": false,
+        "input_or_500ms_settle": true
+      },
+      {
+        "offset_ms": 14640.474291,
+        "duration_ms": 8.333333,
+        "input_overlap": false,
+        "input_or_500ms_settle": true
+      },
+      {
+        "offset_ms": 14657.140875,
+        "duration_ms": 8.333333,
+        "input_overlap": false,
+        "input_or_500ms_settle": true
+      },
+      {
+        "offset_ms": 14673.807666,
+        "duration_ms": 8.333333,
+        "input_overlap": false,
+        "input_or_500ms_settle": true
+      },
+      {
+        "offset_ms": 14690.474375,
+        "duration_ms": 8.333333,
+        "input_overlap": false,
+        "input_or_500ms_settle": true
+      },
+      {
+        "offset_ms": 14707.141083,
+        "duration_ms": 8.333333,
+        "input_overlap": false,
+        "input_or_500ms_settle": true
+      },
+      {
+        "offset_ms": 14715.474416,
+        "duration_ms": 8.333125,
+        "input_overlap": false,
+        "input_or_500ms_settle": true
+      },
+      {
+        "offset_ms": 14732.140916,
+        "duration_ms": 8.333333,
+        "input_overlap": false,
+        "input_or_500ms_settle": true
+      },
+      {
+        "offset_ms": 14748.807666,
+        "duration_ms": 8.333333,
+        "input_overlap": false,
+        "input_or_500ms_settle": true
+      },
+      {
+        "offset_ms": 14765.474291,
+        "duration_ms": 8.333333,
+        "input_overlap": false,
+        "input_or_500ms_settle": true
+      },
+      {
+        "offset_ms": 14782.140916,
+        "duration_ms": 8.333333,
+        "input_overlap": false,
+        "input_or_500ms_settle": true
+      },
+      {
+        "offset_ms": 14798.8075,
+        "duration_ms": 8.333333,
+        "input_overlap": false,
+        "input_or_500ms_settle": true
+      },
+      {
+        "offset_ms": 14832.140875,
+        "duration_ms": 8.333333,
+        "input_overlap": false,
+        "input_or_500ms_settle": true
+      },
+      {
+        "offset_ms": 14857.140875,
+        "duration_ms": 8.333333,
+        "input_overlap": false,
+        "input_or_500ms_settle": true
+      },
+      {
+        "offset_ms": 14882.140875,
+        "duration_ms": 8.333333,
+        "input_overlap": false,
+        "input_or_500ms_settle": true
+      },
+      {
+        "offset_ms": 14898.807708,
+        "duration_ms": 8.333333,
+        "input_overlap": false,
+        "input_or_500ms_settle": true
+      },
+      {
+        "offset_ms": 14915.474208,
+        "duration_ms": 8.333333,
+        "input_overlap": false,
+        "input_or_500ms_settle": true
+      },
+      {
+        "offset_ms": 14932.140833,
+        "duration_ms": 8.333333,
+        "input_overlap": false,
+        "input_or_500ms_settle": true
+      },
+      {
+        "offset_ms": 14940.474333,
+        "duration_ms": 8.333333,
+        "input_overlap": false,
+        "input_or_500ms_settle": true
+      },
+      {
+        "offset_ms": 14957.140833,
+        "duration_ms": 8.333333,
+        "input_overlap": false,
+        "input_or_500ms_settle": false
+      },
+      {
+        "offset_ms": 14973.807625,
+        "duration_ms": 8.333333,
+        "input_overlap": false,
+        "input_or_500ms_settle": false
+      },
+      {
+        "offset_ms": 14990.474333,
+        "duration_ms": 8.333333,
+        "input_overlap": false,
+        "input_or_500ms_settle": false
+      },
+      {
+        "offset_ms": 15007.140958,
+        "duration_ms": 8.333333,
+        "input_overlap": false,
+        "input_or_500ms_settle": false
+      },
+      {
+        "offset_ms": 15023.807625,
+        "duration_ms": 8.333333,
+        "input_overlap": false,
+        "input_or_500ms_settle": false
+      },
+      {
+        "offset_ms": 15040.474166,
+        "duration_ms": 8.333333,
+        "input_overlap": false,
+        "input_or_500ms_settle": false
+      },
+      {
+        "offset_ms": 15057.140833,
+        "duration_ms": 8.333333,
+        "input_overlap": false,
+        "input_or_500ms_settle": false
+      },
+      {
+        "offset_ms": 15073.807541,
+        "duration_ms": 8.333333,
+        "input_overlap": false,
+        "input_or_500ms_settle": false
+      },
+      {
+        "offset_ms": 15082.140958,
+        "duration_ms": 8.333333,
+        "input_overlap": false,
+        "input_or_500ms_settle": false
+      },
+      {
+        "offset_ms": 15098.807625,
+        "duration_ms": 8.333333,
+        "input_overlap": false,
+        "input_or_500ms_settle": false
+      },
+      {
+        "offset_ms": 15115.474208,
+        "duration_ms": 8.333333,
+        "input_overlap": false,
+        "input_or_500ms_settle": false
+      },
+      {
+        "offset_ms": 15132.140958,
+        "duration_ms": 8.333333,
+        "input_overlap": false,
+        "input_or_500ms_settle": false
+      },
+      {
+        "offset_ms": 15148.807583,
+        "duration_ms": 8.333333,
+        "input_overlap": false,
+        "input_or_500ms_settle": false
+      },
+      {
+        "offset_ms": 15165.474291,
+        "duration_ms": 8.333333,
+        "input_overlap": false,
+        "input_or_500ms_settle": false
+      },
+      {
+        "offset_ms": 15182.140875,
+        "duration_ms": 8.333333,
+        "input_overlap": false,
+        "input_or_500ms_settle": false
+      },
+      {
+        "offset_ms": 15198.807541,
+        "duration_ms": 8.333333,
+        "input_overlap": false,
+        "input_or_500ms_settle": false
+      },
+      {
+        "offset_ms": 15215.47425,
+        "duration_ms": 8.333333,
+        "input_overlap": false,
+        "input_or_500ms_settle": false
+      },
+      {
+        "offset_ms": 15232.140833,
+        "duration_ms": 8.333333,
+        "input_overlap": false,
+        "input_or_500ms_settle": false
+      },
+      {
+        "offset_ms": 15240.47425,
+        "duration_ms": 8.333333,
+        "input_overlap": false,
+        "input_or_500ms_settle": false
+      },
+      {
+        "offset_ms": 15257.140916,
+        "duration_ms": 8.333333,
+        "input_overlap": false,
+        "input_or_500ms_settle": false
+      },
+      {
+        "offset_ms": 15273.807541,
+        "duration_ms": 8.333333,
+        "input_overlap": false,
+        "input_or_500ms_settle": false
+      },
+      {
+        "offset_ms": 15290.474333,
+        "duration_ms": 8.333333,
+        "input_overlap": false,
+        "input_or_500ms_settle": false
+      },
+      {
+        "offset_ms": 15307.141,
+        "duration_ms": 8.333333,
+        "input_overlap": false,
+        "input_or_500ms_settle": false
+      },
+      {
+        "offset_ms": 15323.807541,
+        "duration_ms": 8.333333,
+        "input_overlap": false,
+        "input_or_500ms_settle": false
+      },
+      {
+        "offset_ms": 15340.474208,
+        "duration_ms": 8.333333,
+        "input_overlap": false,
+        "input_or_500ms_settle": false
+      },
+      {
+        "offset_ms": 15357.140833,
+        "duration_ms": 8.333333,
+        "input_overlap": false,
+        "input_or_500ms_settle": false
+      },
+      {
+        "offset_ms": 15373.8075,
+        "duration_ms": 8.333333,
+        "input_overlap": false,
+        "input_or_500ms_settle": false
+      },
+      {
+        "offset_ms": 15390.47425,
+        "duration_ms": 8.333333,
+        "input_overlap": false,
+        "input_or_500ms_settle": false
+      },
+      {
+        "offset_ms": 15565.47425,
+        "duration_ms": 8.333333,
+        "input_overlap": false,
+        "input_or_500ms_settle": false
+      },
+      {
+        "offset_ms": 15598.8075,
+        "duration_ms": 8.333333,
+        "input_overlap": false,
+        "input_or_500ms_settle": false
+      },
+      {
+        "offset_ms": 15623.807625,
+        "duration_ms": 8.333333,
+        "input_overlap": false,
+        "input_or_500ms_settle": false
+      },
+      {
+        "offset_ms": 15690.474375,
+        "duration_ms": 8.333333,
+        "input_overlap": false,
+        "input_or_500ms_settle": false
+      },
+      {
+        "offset_ms": 15823.8075,
+        "duration_ms": 8.333333,
+        "input_overlap": false,
+        "input_or_500ms_settle": false
+      },
+      {
+        "offset_ms": 15857.140875,
+        "duration_ms": 8.333333,
+        "input_overlap": false,
+        "input_or_500ms_settle": false
+      },
+      {
+        "offset_ms": 15890.474291,
+        "duration_ms": 8.333333,
+        "input_overlap": false,
+        "input_or_500ms_settle": false
+      },
+      {
+        "offset_ms": 15923.807541,
+        "duration_ms": 8.333333,
+        "input_overlap": false,
+        "input_or_500ms_settle": false
+      },
+      {
+        "offset_ms": 15948.807583,
+        "duration_ms": 8.333416,
+        "input_overlap": false,
+        "input_or_500ms_settle": false
+      },
+      {
+        "offset_ms": 15965.474333,
+        "duration_ms": 8.333125,
+        "input_overlap": false,
+        "input_or_500ms_settle": false
+      },
+      {
+        "offset_ms": 16165.474166,
+        "duration_ms": 8.333333,
+        "input_overlap": false,
+        "input_or_500ms_settle": false
+      },
+      {
+        "offset_ms": 16340.474166,
+        "duration_ms": 8.333333,
+        "input_overlap": false,
+        "input_or_500ms_settle": false
+      },
+      {
+        "offset_ms": 16357.140833,
+        "duration_ms": 8.333333,
+        "input_overlap": false,
+        "input_or_500ms_settle": false
+      },
+      {
+        "offset_ms": 16373.807458,
+        "duration_ms": 8.333333,
+        "input_overlap": false,
+        "input_or_500ms_settle": false
+      },
+      {
+        "offset_ms": 16823.8075,
+        "duration_ms": 8.333333,
+        "input_overlap": false,
+        "input_or_500ms_settle": false
+      },
+      {
+        "offset_ms": 16857.140791,
+        "duration_ms": 8.333333,
+        "input_overlap": false,
+        "input_or_500ms_settle": false
+      },
+      {
+        "offset_ms": 16915.47425,
+        "duration_ms": 8.333333,
+        "input_overlap": false,
+        "input_or_500ms_settle": false
+      },
+      {
+        "offset_ms": 16932.140875,
+        "duration_ms": 8.333333,
+        "input_overlap": false,
+        "input_or_500ms_settle": false
+      },
+      {
+        "offset_ms": 16948.807458,
+        "duration_ms": 8.333333,
+        "input_overlap": false,
+        "input_or_500ms_settle": false
+      },
+      {
+        "offset_ms": 16965.474125,
+        "duration_ms": 8.333333,
+        "input_overlap": false,
+        "input_or_500ms_settle": false
+      },
+      {
+        "offset_ms": 16982.14075,
+        "duration_ms": 8.333333,
+        "input_overlap": false,
+        "input_or_500ms_settle": false
+      },
+      {
+        "offset_ms": 16998.807416,
+        "duration_ms": 8.333333,
+        "input_overlap": false,
+        "input_or_500ms_settle": false
+      },
+      {
+        "offset_ms": 17007.14075,
+        "duration_ms": 8.333333,
+        "input_overlap": false,
+        "input_or_500ms_settle": false
+      },
+      {
+        "offset_ms": 17023.807541,
+        "duration_ms": 8.333333,
+        "input_overlap": false,
+        "input_or_500ms_settle": false
+      },
+      {
+        "offset_ms": 17040.474125,
+        "duration_ms": 8.333333,
+        "input_overlap": false,
+        "input_or_500ms_settle": false
+      },
+      {
+        "offset_ms": 17057.140916,
+        "duration_ms": 8.333333,
+        "input_overlap": false,
+        "input_or_500ms_settle": false
+      },
+      {
+        "offset_ms": 17073.807583,
+        "duration_ms": 8.333333,
+        "input_overlap": false,
+        "input_or_500ms_settle": false
+      },
+      {
+        "offset_ms": 17090.474125,
+        "duration_ms": 8.333333,
+        "input_overlap": false,
+        "input_or_500ms_settle": false
+      },
+      {
+        "offset_ms": 17107.14075,
+        "duration_ms": 8.333333,
+        "input_overlap": false,
+        "input_or_500ms_settle": false
+      },
+      {
+        "offset_ms": 17123.807541,
+        "duration_ms": 8.333333,
+        "input_overlap": false,
+        "input_or_500ms_settle": false
+      },
+      {
+        "offset_ms": 17140.474291,
+        "duration_ms": 8.333333,
+        "input_overlap": false,
+        "input_or_500ms_settle": false
+      },
+      {
+        "offset_ms": 17157.140875,
+        "duration_ms": 8.333333,
+        "input_overlap": false,
+        "input_or_500ms_settle": false
+      },
+      {
+        "offset_ms": 17173.807583,
+        "duration_ms": 8.333333,
+        "input_overlap": false,
+        "input_or_500ms_settle": false
+      },
+      {
+        "offset_ms": 17190.474291,
+        "duration_ms": 8.333333,
+        "input_overlap": false,
+        "input_or_500ms_settle": false
+      },
+      {
+        "offset_ms": 17207.14075,
+        "duration_ms": 8.333333,
+        "input_overlap": false,
+        "input_or_500ms_settle": false
+      },
+      {
+        "offset_ms": 17223.807458,
+        "duration_ms": 8.333333,
+        "input_overlap": false,
+        "input_or_500ms_settle": false
+      },
+      {
+        "offset_ms": 17240.474083,
+        "duration_ms": 8.333333,
+        "input_overlap": false,
+        "input_or_500ms_settle": false
+      },
+      {
+        "offset_ms": 17257.140916,
+        "duration_ms": 8.333333,
+        "input_overlap": false,
+        "input_or_500ms_settle": false
+      },
+      {
+        "offset_ms": 17273.807541,
+        "duration_ms": 8.333333,
+        "input_overlap": false,
+        "input_or_500ms_settle": false
+      },
+      {
+        "offset_ms": 17282.140875,
+        "duration_ms": 8.333333,
+        "input_overlap": false,
+        "input_or_500ms_settle": false
+      },
+      {
+        "offset_ms": 17298.807541,
+        "duration_ms": 8.333333,
+        "input_overlap": false,
+        "input_or_500ms_settle": false
+      },
+      {
+        "offset_ms": 17315.474083,
+        "duration_ms": 8.333333,
+        "input_overlap": false,
+        "input_or_500ms_settle": false
+      },
+      {
+        "offset_ms": 17332.140875,
+        "duration_ms": 8.333333,
+        "input_overlap": false,
+        "input_or_500ms_settle": false
+      },
+      {
+        "offset_ms": 17348.807458,
+        "duration_ms": 8.333333,
+        "input_overlap": false,
+        "input_or_500ms_settle": false
+      },
+      {
+        "offset_ms": 17365.474125,
+        "duration_ms": 8.333333,
+        "input_overlap": false,
+        "input_or_500ms_settle": false
+      },
+      {
+        "offset_ms": 17382.140916,
+        "duration_ms": 8.333333,
+        "input_overlap": false,
+        "input_or_500ms_settle": false
+      },
+      {
+        "offset_ms": 17398.807541,
+        "duration_ms": 8.333333,
+        "input_overlap": false,
+        "input_or_500ms_settle": false
+      },
+      {
+        "offset_ms": 17415.47425,
+        "duration_ms": 8.333333,
+        "input_overlap": false,
+        "input_or_500ms_settle": false
+      },
+      {
+        "offset_ms": 17432.14075,
+        "duration_ms": 8.333333,
+        "input_overlap": false,
+        "input_or_500ms_settle": false
+      },
+      {
+        "offset_ms": 17440.474208,
+        "duration_ms": 8.333333,
+        "input_overlap": false,
+        "input_or_500ms_settle": false
+      },
+      {
+        "offset_ms": 17457.14075,
+        "duration_ms": 8.333333,
+        "input_overlap": false,
+        "input_or_500ms_settle": false
+      },
+      {
+        "offset_ms": 17473.807875,
+        "duration_ms": 8.333333,
+        "input_overlap": false,
+        "input_or_500ms_settle": false
+      },
+      {
+        "offset_ms": 17490.47425,
+        "duration_ms": 8.333333,
+        "input_overlap": false,
+        "input_or_500ms_settle": false
+      },
+      {
+        "offset_ms": 17507.140833,
+        "duration_ms": 8.333333,
+        "input_overlap": false,
+        "input_or_500ms_settle": false
+      },
+      {
+        "offset_ms": 17523.8075,
+        "duration_ms": 8.333333,
+        "input_overlap": false,
+        "input_or_500ms_settle": false
+      },
+      {
+        "offset_ms": 17540.474208,
+        "duration_ms": 8.333333,
+        "input_overlap": false,
+        "input_or_500ms_settle": false
+      },
+      {
+        "offset_ms": 17557.140875,
+        "duration_ms": 8.333333,
+        "input_overlap": false,
+        "input_or_500ms_settle": false
+      },
+      {
+        "offset_ms": 17573.807541,
+        "duration_ms": 8.333333,
+        "input_overlap": false,
+        "input_or_500ms_settle": false
+      },
+      {
+        "offset_ms": 17590.474041,
+        "duration_ms": 8.333333,
+        "input_overlap": false,
+        "input_or_500ms_settle": false
+      },
+      {
+        "offset_ms": 17607.140666,
+        "duration_ms": 8.333333,
+        "input_overlap": false,
+        "input_or_500ms_settle": false
+      },
+      {
+        "offset_ms": 17623.807458,
+        "duration_ms": 8.333333,
+        "input_overlap": false,
+        "input_or_500ms_settle": false
+      },
+      {
+        "offset_ms": 17640.474041,
+        "duration_ms": 8.333333,
+        "input_overlap": false,
+        "input_or_500ms_settle": false
+      },
+      {
+        "offset_ms": 17657.140708,
+        "duration_ms": 8.333333,
+        "input_overlap": false,
+        "input_or_500ms_settle": false
+      },
+      {
+        "offset_ms": 17673.807375,
+        "duration_ms": 8.333333,
+        "input_overlap": false,
+        "input_or_500ms_settle": false
+      },
+      {
+        "offset_ms": 17682.14075,
+        "duration_ms": 8.333333,
+        "input_overlap": false,
+        "input_or_500ms_settle": false
+      },
+      {
+        "offset_ms": 17698.807541,
+        "duration_ms": 8.333333,
+        "input_overlap": false,
+        "input_or_500ms_settle": false
+      },
+      {
+        "offset_ms": 17715.474208,
+        "duration_ms": 8.333333,
+        "input_overlap": false,
+        "input_or_500ms_settle": false
+      },
+      {
+        "offset_ms": 17732.140708,
+        "duration_ms": 8.333333,
+        "input_overlap": false,
+        "input_or_500ms_settle": false
+      },
+      {
+        "offset_ms": 17748.807416,
+        "duration_ms": 8.333333,
+        "input_overlap": false,
+        "input_or_500ms_settle": false
+      },
+      {
+        "offset_ms": 17765.474166,
+        "duration_ms": 8.333333,
+        "input_overlap": false,
+        "input_or_500ms_settle": false
+      },
+      {
+        "offset_ms": 17782.140833,
+        "duration_ms": 8.333333,
+        "input_overlap": false,
+        "input_or_500ms_settle": false
+      },
+      {
+        "offset_ms": 17798.807541,
+        "duration_ms": 8.333333,
+        "input_overlap": false,
+        "input_or_500ms_settle": false
+      },
+      {
+        "offset_ms": 17815.474041,
+        "duration_ms": 8.333333,
+        "input_overlap": false,
+        "input_or_500ms_settle": false
+      },
+      {
+        "offset_ms": 17832.140791,
+        "duration_ms": 8.333333,
+        "input_overlap": false,
+        "input_or_500ms_settle": false
+      },
+      {
+        "offset_ms": 17840.474125,
+        "duration_ms": 8.333291,
+        "input_overlap": false,
+        "input_or_500ms_settle": false
+      },
+      {
+        "offset_ms": 17857.14075,
+        "duration_ms": 8.333291,
+        "input_overlap": false,
+        "input_or_500ms_settle": false
+      },
+      {
+        "offset_ms": 17873.8075,
+        "duration_ms": 8.333333,
+        "input_overlap": false,
+        "input_or_500ms_settle": false
+      },
+      {
+        "offset_ms": 18007.140833,
+        "duration_ms": 8.333333,
+        "input_overlap": false,
+        "input_or_500ms_settle": false
+      },
+      {
+        "offset_ms": 18065.474208,
+        "duration_ms": 8.333333,
+        "input_overlap": false,
+        "input_or_500ms_settle": false
+      },
+      {
+        "offset_ms": 18132.140666,
+        "duration_ms": 8.333333,
+        "input_overlap": false,
+        "input_or_500ms_settle": false
+      },
+      {
+        "offset_ms": 18207.140666,
+        "duration_ms": 8.333333,
+        "input_overlap": false,
+        "input_or_500ms_settle": false
+      },
+      {
+        "offset_ms": 18373.807458,
+        "duration_ms": 8.333333,
+        "input_overlap": false,
+        "input_or_500ms_settle": false
+      },
+      {
+        "offset_ms": 18390.474041,
+        "duration_ms": 8.333333,
+        "input_overlap": false,
+        "input_or_500ms_settle": false
+      },
+      {
+        "offset_ms": 18532.140833,
+        "duration_ms": 8.333333,
+        "input_overlap": false,
+        "input_or_500ms_settle": false
+      },
+      {
+        "offset_ms": 18548.807333,
+        "duration_ms": 8.333333,
+        "input_overlap": false,
+        "input_or_500ms_settle": false
+      },
+      {
+        "offset_ms": 18915.474083,
+        "duration_ms": 8.333333,
+        "input_overlap": false,
+        "input_or_500ms_settle": false
+      },
+      {
+        "offset_ms": 18932.140625,
+        "duration_ms": 8.333333,
+        "input_overlap": false,
+        "input_or_500ms_settle": false
+      },
+      {
+        "offset_ms": 19040.474125,
+        "duration_ms": 8.333333,
+        "input_overlap": false,
+        "input_or_500ms_settle": false
+      },
+      {
+        "offset_ms": 19390.473958,
+        "duration_ms": 8.333333,
+        "input_overlap": false,
+        "input_or_500ms_settle": false
+      },
+      {
+        "offset_ms": 19407.140625,
+        "duration_ms": 8.333333,
+        "input_overlap": false,
+        "input_or_500ms_settle": false
+      },
+      {
+        "offset_ms": 19423.807375,
+        "duration_ms": 8.333333,
+        "input_overlap": false,
+        "input_or_500ms_settle": false
+      },
+      {
+        "offset_ms": 19440.474083,
+        "duration_ms": 8.333333,
+        "input_overlap": false,
+        "input_or_500ms_settle": false
+      },
+      {
+        "offset_ms": 19457.14075,
+        "duration_ms": 8.333333,
+        "input_overlap": false,
+        "input_or_500ms_settle": false
+      },
+      {
+        "offset_ms": 19473.807416,
+        "duration_ms": 8.333333,
+        "input_overlap": false,
+        "input_or_500ms_settle": false
+      },
+      {
+        "offset_ms": 19490.474041,
+        "duration_ms": 8.333333,
+        "input_overlap": false,
+        "input_or_500ms_settle": false
+      },
+      {
+        "offset_ms": 19507.140708,
+        "duration_ms": 8.333333,
+        "input_overlap": false,
+        "input_or_500ms_settle": false
+      },
+      {
+        "offset_ms": 19523.807416,
+        "duration_ms": 8.333333,
+        "input_overlap": false,
+        "input_or_500ms_settle": false
+      },
+      {
+        "offset_ms": 19540.473958,
+        "duration_ms": 8.333333,
+        "input_overlap": false,
+        "input_or_500ms_settle": false
+      },
+      {
+        "offset_ms": 19557.140708,
+        "duration_ms": 8.333333,
+        "input_overlap": false,
+        "input_or_500ms_settle": false
+      },
+      {
+        "offset_ms": 19573.8075,
+        "duration_ms": 8.333333,
+        "input_overlap": false,
+        "input_or_500ms_settle": false
+      },
+      {
+        "offset_ms": 19590.473958,
+        "duration_ms": 8.333333,
+        "input_overlap": false,
+        "input_or_500ms_settle": false
+      },
+      {
+        "offset_ms": 19607.14075,
+        "duration_ms": 8.333333,
+        "input_overlap": false,
+        "input_or_500ms_settle": false
+      },
+      {
+        "offset_ms": 19615.474083,
+        "duration_ms": 8.333208,
+        "input_overlap": false,
+        "input_or_500ms_settle": false
+      },
+      {
+        "offset_ms": 19632.14075,
+        "duration_ms": 8.333333,
+        "input_overlap": false,
+        "input_or_500ms_settle": false
+      },
+      {
+        "offset_ms": 19648.807416,
+        "duration_ms": 8.333333,
+        "input_overlap": false,
+        "input_or_500ms_settle": false
+      },
+      {
+        "offset_ms": 19665.473958,
+        "duration_ms": 8.333333,
+        "input_overlap": false,
+        "input_or_500ms_settle": false
+      },
+      {
+        "offset_ms": 19682.140583,
+        "duration_ms": 8.333333,
+        "input_overlap": false,
+        "input_or_500ms_settle": false
+      },
+      {
+        "offset_ms": 19698.80725,
+        "duration_ms": 8.333333,
+        "input_overlap": false,
+        "input_or_500ms_settle": false
+      },
+      {
+        "offset_ms": 19715.473916,
+        "duration_ms": 8.333333,
+        "input_overlap": false,
+        "input_or_500ms_settle": false
+      },
+      {
+        "offset_ms": 19732.140541,
+        "duration_ms": 8.333333,
+        "input_overlap": false,
+        "input_or_500ms_settle": false
+      },
+      {
+        "offset_ms": 19748.80725,
+        "duration_ms": 8.333333,
+        "input_overlap": false,
+        "input_or_500ms_settle": false
+      },
+      {
+        "offset_ms": 19765.473916,
+        "duration_ms": 8.333333,
+        "input_overlap": false,
+        "input_or_500ms_settle": false
+      },
+      {
+        "offset_ms": 19782.140583,
+        "duration_ms": 8.333333,
+        "input_overlap": false,
+        "input_or_500ms_settle": false
+      },
+      {
+        "offset_ms": 19790.474041,
+        "duration_ms": 8.333333,
+        "input_overlap": false,
+        "input_or_500ms_settle": false
+      },
+      {
+        "offset_ms": 19807.140666,
+        "duration_ms": 8.333333,
+        "input_overlap": false,
+        "input_or_500ms_settle": false
+      },
+      {
+        "offset_ms": 19823.807375,
+        "duration_ms": 8.333333,
+        "input_overlap": false,
+        "input_or_500ms_settle": false
+      },
+      {
+        "offset_ms": 19840.473916,
+        "duration_ms": 8.333333,
+        "input_overlap": false,
+        "input_or_500ms_settle": false
+      },
+      {
+        "offset_ms": 19857.140583,
+        "duration_ms": 8.333333,
+        "input_overlap": false,
+        "input_or_500ms_settle": false
+      },
+      {
+        "offset_ms": 19873.807291,
+        "duration_ms": 8.333333,
+        "input_overlap": false,
+        "input_or_500ms_settle": false
+      },
+      {
+        "offset_ms": 19890.474208,
+        "duration_ms": 8.333333,
+        "input_overlap": false,
+        "input_or_500ms_settle": false
+      },
+      {
+        "offset_ms": 19907.140708,
+        "duration_ms": 8.333333,
+        "input_overlap": false,
+        "input_or_500ms_settle": false
+      },
+      {
+        "offset_ms": 19923.807375,
+        "duration_ms": 8.333333,
+        "input_overlap": false,
+        "input_or_500ms_settle": false
+      },
+      {
+        "offset_ms": 19940.474083,
+        "duration_ms": 8.333333,
+        "input_overlap": false,
+        "input_or_500ms_settle": false
+      },
+      {
+        "offset_ms": 19957.140625,
+        "duration_ms": 8.333333,
+        "input_overlap": false,
+        "input_or_500ms_settle": false
+      },
+      {
+        "offset_ms": 19965.474041,
+        "duration_ms": 8.333333,
+        "input_overlap": false,
+        "input_or_500ms_settle": false
+      },
+      {
+        "offset_ms": 19982.140583,
+        "duration_ms": 8.333333,
+        "input_overlap": false,
+        "input_or_500ms_settle": false
+      },
+      {
+        "offset_ms": 19998.80725,
+        "duration_ms": 8.333333,
+        "input_overlap": false,
+        "input_or_500ms_settle": false
+      },
+      {
+        "offset_ms": 20015.473958,
+        "duration_ms": 8.333333,
+        "input_overlap": false,
+        "input_or_500ms_settle": false
+      },
+      {
+        "offset_ms": 20032.140708,
+        "duration_ms": 8.333333,
+        "input_overlap": false,
+        "input_or_500ms_settle": false
+      },
+      {
+        "offset_ms": 20048.80725,
+        "duration_ms": 8.333333,
+        "input_overlap": false,
+        "input_or_500ms_settle": false
+      },
+      {
+        "offset_ms": 20065.473958,
+        "duration_ms": 8.333333,
+        "input_overlap": false,
+        "input_or_500ms_settle": false
+      },
+      {
+        "offset_ms": 20082.140708,
+        "duration_ms": 8.333333,
+        "input_overlap": false,
+        "input_or_500ms_settle": false
+      },
+      {
+        "offset_ms": 20098.807291,
+        "duration_ms": 8.333333,
+        "input_overlap": false,
+        "input_or_500ms_settle": false
+      },
+      {
+        "offset_ms": 20107.14075,
+        "duration_ms": 8.333333,
+        "input_overlap": false,
+        "input_or_500ms_settle": false
+      },
+      {
+        "offset_ms": 20123.807333,
+        "duration_ms": 8.333333,
+        "input_overlap": false,
+        "input_or_500ms_settle": false
+      },
+      {
+        "offset_ms": 20140.474041,
+        "duration_ms": 8.333333,
+        "input_overlap": false,
+        "input_or_500ms_settle": false
+      },
+      {
+        "offset_ms": 20157.140625,
+        "duration_ms": 8.333333,
+        "input_overlap": false,
+        "input_or_500ms_settle": false
+      },
+      {
+        "offset_ms": 20173.807375,
+        "duration_ms": 8.333333,
+        "input_overlap": false,
+        "input_or_500ms_settle": false
+      },
+      {
+        "offset_ms": 20190.474041,
+        "duration_ms": 8.333333,
+        "input_overlap": false,
+        "input_or_500ms_settle": false
+      },
+      {
+        "offset_ms": 20207.140625,
+        "duration_ms": 8.333333,
+        "input_overlap": false,
+        "input_or_500ms_settle": false
+      },
+      {
+        "offset_ms": 20223.807291,
+        "duration_ms": 8.333333,
+        "input_overlap": false,
+        "input_or_500ms_settle": false
+      },
+      {
+        "offset_ms": 20240.474,
+        "duration_ms": 8.333333,
+        "input_overlap": false,
+        "input_or_500ms_settle": false
+      },
+      {
+        "offset_ms": 20257.140583,
+        "duration_ms": 8.333333,
+        "input_overlap": false,
+        "input_or_500ms_settle": false
+      },
+      {
+        "offset_ms": 20273.807208,
+        "duration_ms": 8.333333,
+        "input_overlap": false,
+        "input_or_500ms_settle": false
+      },
+      {
+        "offset_ms": 20290.473916,
+        "duration_ms": 8.333333,
+        "input_overlap": false,
+        "input_or_500ms_settle": false
+      },
+      {
+        "offset_ms": 20307.140625,
+        "duration_ms": 8.333333,
+        "input_overlap": false,
+        "input_or_500ms_settle": false
+      },
+      {
+        "offset_ms": 20323.807208,
+        "duration_ms": 8.333333,
+        "input_overlap": false,
+        "input_or_500ms_settle": false
+      },
+      {
+        "offset_ms": 20340.473875,
+        "duration_ms": 8.333333,
+        "input_overlap": false,
+        "input_or_500ms_settle": false
+      },
+      {
+        "offset_ms": 20390.473916,
+        "duration_ms": 8.333333,
+        "input_overlap": false,
+        "input_or_500ms_settle": false
+      },
+      {
+        "offset_ms": 20415.473875,
+        "duration_ms": 8.333333,
+        "input_overlap": false,
+        "input_or_500ms_settle": false
+      },
+      {
+        "offset_ms": 20465.473875,
+        "duration_ms": 8.333333,
+        "input_overlap": false,
+        "input_or_500ms_settle": false
+      },
+      {
+        "offset_ms": 20515.473958,
+        "duration_ms": 8.333333,
+        "input_overlap": false,
+        "input_or_500ms_settle": false
+      },
+      {
+        "offset_ms": 20548.807333,
+        "duration_ms": 8.333333,
+        "input_overlap": false,
+        "input_or_500ms_settle": false
+      },
+      {
+        "offset_ms": 20573.80725,
+        "duration_ms": 8.333333,
+        "input_overlap": false,
+        "input_or_500ms_settle": false
+      },
+      {
+        "offset_ms": 20723.807375,
+        "duration_ms": 8.333333,
+        "input_overlap": false,
+        "input_or_500ms_settle": false
+      },
+      {
+        "offset_ms": 20757.140666,
+        "duration_ms": 8.333333,
+        "input_overlap": false,
+        "input_or_500ms_settle": false
+      }
+    ]
+  },
+  "candidate": "r115 isolated optimized, signed SHA 079430d5b97a61a65466701458a423cb6d80bdcb79753e1c44ccd7726eedf6cf",
+  "surface": "Settings / Agent & models / Dark",
+  "record_and_export_exit": 0,
+  "gestures": [
+    {
+      "direction": "down",
+      "start": 1794193793186,
+      "end": 1794193793294
+    },
+    {
+      "direction": "up",
+      "start": 1794193793294,
+      "end": 1794193793352
+    },
+    {
+      "direction": "down",
+      "start": 1794193793352,
+      "end": 1794193793433
+    },
+    {
+      "direction": "up",
+      "start": 1794193793433,
+      "end": 1794193793491
+    },
+    {
+      "direction": "down",
+      "start": 1794193793491,
+      "end": 1794193793552
+    },
+    {
+      "direction": "up",
+      "start": 1794193793552,
+      "end": 1794193793616
+    },
+    {
+      "direction": "down",
+      "start": 1794193793616,
+      "end": 1794193793686
+    },
+    {
+      "direction": "up",
+      "start": 1794193793686,
+      "end": 1794193793751
+    },
+    {
+      "direction": "down",
+      "start": 1794193800692,
+      "end": 1794193800754
+    },
+    {
+      "direction": "up",
+      "start": 1794193814959,
+      "end": 1794193815177
+    }
+  ],
+  "limitations": "Eight rapid direction reversals without intermediate AX observations, followed by separate down/up checks. Only gestures inside trace count. Idle TOC export briefly overlapped initial scroll capture before gestures. AX observation after the rapid group and later screenshot may contribute overhead. Hitch intervals are not full frame durations. Native smoothness not accepted."
+}

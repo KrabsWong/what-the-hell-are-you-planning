@@ -1,0 +1,67 @@
+# First-round remaining acceptance
+
+## Current correction notice — user commits through 98b71d4
+
+[POST_DELIVERY_REVIEW.md](POST_DELIVERY_REVIEW.md) supersedes the broad UX acceptance below for ordinary completed-result navigation, asynchronous report loading, visual hierarchy/layout and sidebar scrolling. The user's corrections reveal missed common cases and incorrect review prescriptions; they are not all new requirements or rare edge cases. Current source and added QA assertions were reviewed, but this documentation update did not independently rerun tests or native acceptance. V01–V06 define the remaining targeted verification. Historical passes remain valid only for their recorded source and scope.
+
+Status: first-round checklist closed by root disposition in [DELIVERY](DELIVERY.md), with explicit nonblocking follow-ups. The sections below preserve the checks and their evidence. Authority: [TASKS](TASKS.md). Current evidence and historical corrections: [IMPLEMENTATION](IMPLEMENTATION.md). The user accepts occasional isolated hitches; sustained stalls, incorrect scrolling/navigation, data loss and false status remain blockers. Preserve raw failures and named follow-ups.
+
+## R1 — Finish current standalone regression
+
+**Current result:** complete for the frozen candidate. The 55-entry ledger finished: 53/54 required entries passed initially; the remaining automation entry passed the independent r196 replay after its obsolete QA assertion was repaired. The diagnostic also completed. See [final ledger](evidence/r199-offline-ledger.json). Subsequent product fixes still need affected checks.
+
+**Do:** complete the frozen 55-entry ledger on the provenance-verified `23240064…` executable, then independently replay any repaired entries.
+
+**How:** retain the r194 runner output and per-entry logs. The automation entry currently fails because its range assertion reads the old ScrollHandle instead of the virtual list. Review the OpenCode QA repair and run the complete automation entry; retain actual wheel displacement, visible period selection, filter, and exact Back/Close restoration assertions. QA-only repairs do not invalidate unrelated passing product paths; product repairs require the affected regressions again.
+
+**Acceptance:** all correctness entries pass, all fourteen required 500/1,000 live p95 gates pass, diagnostics remain explicitly diagnostic, and each original failure has a named verified replacement. Current unit/integration evidence stays separately identified. Reject stale executable provenance.
+
+**Dependencies:** none. Already running. Failure: [automation regression](evidence/r194-automation-regression.json).
+
+## R2 — Verify ordinary List and Board
+
+**Current result:** ordinary List passed both sizes/themes in r197/r198. The Board discrepancy is now classified: r207 captured zero dx/dy for native right/left CUA actions inside the Board, while a vertical control delivered dy=-1362. Root independently passed three rendered horizontal ScrollEvent cases in r205. Native physical horizontal verification remains tool-blocked and is a named first-round verification deferral, not a product failure or a native pass. See [input evidence](evidence/r207-native-board-input.json).
+
+**Do:** natively inspect the corrected 80-goal / 240-step ordinary fixture with unrelated 1,000-period automation history.
+
+**How:** use the isolated r190 app and `.local/native-review/r187-ordinary-valid-1000`. Confirm Done/3-of-3 rows and a populated Done board. Scroll in both directions, checking item identity and position, in light/dark at 1440×920 and 1000×680. Check horizontal board movement when columns overflow. Do not reuse the invalid r183 hybrid fixture.
+
+**Acceptance:** correct visible status and counts; board cards exist and remain reachable; wheel movement is useful and reading position is stable. No sustained freeze. Record observed boundaries without claiming every offscreen card was inspected.
+
+**Dependencies:** R1 measurement activity must be finished before timed native capture. Structural fixture checks already [passed](evidence/r191-ordinary-fixture-verification.json).
+
+## R3 — Complete missing compact/theme surfaces
+
+**Current result:** r199 passed compact materials and all settings tabs, including exact task/scroll restoration. Compact results failed r198; the zero-target restore fix passed root tests and r200 native both-theme scrolling, pagination-anchor and reader Close checks. r201 passed compact reader and automation Settings dialog in both themes. r204 passed the large Light reader check; R3 is complete for the first round. See [compact evidence](evidence/r199-compact-material-settings.json).
+
+**Do:** fill the missing Automation results, long reader, settings and material-page coverage.
+
+**How:** use the existing isolated 1,000-period, long-report and 24-material fixtures. At 1000×680 in both themes, exercise results down/up, Load more, row Open and Close; scroll the long report to Sources and back; exercise settings-page/dialog and material-grid scrolling. Add the light 1440×920 reader check. Use observed window geometry, not assumed dimensions.
+
+**Acceptance:** controls remain inside the viewport and clickable, statuses identify their scope, long content remains reachable, pagination retains the reading anchor, and Close/Back returns to the expected context. Retain occasional outliers under T19-F1/F2; repeated disruptive stalls still fail.
+
+**Dependencies:** R1 quiet measurement completion. Existing large-window results, dark reader and material/settings evidence are retained; do not repeat their entire workflows.
+
+## R4 — Save while scrolling
+
+**Current result:** passed r203. A held isolated SQLite write transaction kept the theme save pending while native List scrolling moved goal27 to goal63. Saving changed to Saved after release with the same visible anchor, and a read-only reopened database confirms appearance=system and integrity=ok. See [concurrent evidence](evidence/r203-concurrent-save-scroll.json).
+
+**Do:** verify one representative harmless save overlapping native scrolling.
+
+**How:** use the isolated workspace and change a harmless preference or metadata field. Capture the action, persistence timing and subsequent scroll/visible position. Verify the eventual durable value. A save that finishes before scrolling does not establish overlap; use the existing bounded test mechanism if a deterministic pending save is necessary, without changing production data.
+
+**Acceptance:** wheel movement and reading position remain correct while a save is pending; no sustained block; Saving/Saved reflects the actual durable acknowledgement. One representative overlap is enough for this first round.
+
+**Dependencies:** R2 or R3 provides the scrollable surface. No real schedule execution is needed.
+
+## R5 — Publish the full disposition
+
+**Current result:** complete in [DELIVERY](DELIVERY.md). All T01–T25 and feature families are accounted for; F1–F9 identify remaining nonblocking verification and optimization work. The r210 affected suite and r208 native result-state transition pass.
+
+**Do:** reconcile all T01–T25 and all feature families into the final delivery decision.
+
+**How:** preserve the existing accepted keyboard/focus, lifecycle, ownership, archive, materials, schedule and capability evidence. Combine R1–R4 with those records. List each deferred remainder with trigger, impact and follow-up acceptance, including T19-F1/F2, publishing-toggle affordance and archived waiting wording. External-service and rare environment boundaries must remain visible.
+
+**Acceptance:** no unresolved core failure or unexplained test failure; no blocked/not-run case is called passed; exact source/build, test logs and native expected/actual outcomes are linked. State whether the branch is deliverable under the user's first-round policy.
+
+**Dependencies:** R1–R4. Screenshots and runtime traces remain local, not committed.

@@ -1,0 +1,7 @@
+{
+  "command": "cargo test --features qa --quiet",
+  "snapshot": ".local/r61-integrated-source",
+  "exit_code": 0,
+  "elapsed_seconds": 64.162,
+  "log": "r61-full-tests.log"
+}

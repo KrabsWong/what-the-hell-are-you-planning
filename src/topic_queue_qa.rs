@@ -17,11 +17,7 @@ fn goal(store: &mut Store, topic: u64, title: &str) -> u64 {
     let request = store
         .create_research_request(1, Some(topic), title)
         .unwrap();
-    store
-        .research_requests
-        .iter_mut()
-        .find(|r| r.id == request)
-        .unwrap()
+    store.request_mut(request).unwrap()
         .goal_ids
         .push(id);
     id
@@ -47,10 +43,10 @@ print(json.dumps({'type':'text','part':{'text':json.dumps({'status':'complete','
     .unwrap();
     std::fs::set_permissions(&ego, std::fs::Permissions::from_mode(0o700)).unwrap();
     let mut store = Store::empty();
-    store.projects[0].directory = root.to_string_lossy().into();
-    store.opencode_path = cli.to_string_lossy().into();
-    store.research_config.ego_path = ego.to_string_lossy().into();
-    store.default_model = "fixture/model".into();
+    store.project_at_mut(0).unwrap().directory = root.to_string_lossy().into();
+    store.set_opencode_path(cli.to_string_lossy().into());
+    store.research_config_mut().ego_path = ego.to_string_lossy().into();
+    store.set_default_model("fixture/model".into());
     let a = store.create_topic(1, "A").unwrap();
     let b = store.create_topic(1, "B").unwrap();
     let c = store.create_topic(1, "C").unwrap();
@@ -81,7 +77,7 @@ print(json.dumps({'type':'text','part':{'text':json.dumps({'status':'complete','
     let handle: AnyWindowHandle = window.into();
     cx.update_window(handle, |_, _, cx| {
         app.update(cx, |state, cx| {
-            state.store.research_config.models[2] = "invalid-model".into();
+            state.store.research_config_mut().models[2] = "invalid-model".into();
             state.start_goal_batch(a1, cx);
             state.poll_runtime(cx);
             assert_eq!(state.active_runs.len(), 3);
@@ -105,8 +101,15 @@ print(json.dumps({'type':'text','part':{'text':json.dumps({'status':'complete','
             .update_window(handle, |_, _, cx| {
                 app.update(cx, |state, cx| {
                     // Keep the production 30-second policy; advance its clock only in this fixture.
-                    for run in &mut state.store.runs {
-                        if run.status == "Queued" && run.auto_retry_attempt > 0 {
+                    let ids: Vec<u64> = state
+                        .store
+                        .runs()
+                        .iter()
+                        .filter(|run| run.status == "Queued" && run.auto_retry_attempt > 0)
+                        .map(|run| run.id)
+                        .collect();
+                    for id in ids {
+                        if let Some(mut run) = state.store.run_mut(id) {
                             run.retry_not_before = Some(0);
                         }
                     }
@@ -114,11 +117,11 @@ print(json.dumps({'type':'text','part':{'text':json.dumps({'status':'complete','
                     if matches!(state.todo_batch.as_ref().unwrap().state, BatchState::Paused(_)) {
                         assert!(!admission_pause_seen);
                         admission_pause_seen = true;
-                        assert!(state.store.runs.iter().all(|r| ![b1, c1].contains(&state.store.owning_research_goal(r.task_id).unwrap())));
+                        assert!(state.store.runs().iter().all(|r| ![b1, c1].contains(&state.store.owning_research_goal(r.task_id).unwrap())));
                         assert!(state.todo_batch.as_ref().unwrap().failed_items.is_empty());
                         assert!(state.task_start_feedback.as_ref().is_some_and(|(_, error)| error.contains("model")));
                         assert!(state.store.task(a1).unwrap().activity.iter().any(|event| event.contains("queue paused")));
-                        state.store.research_config.models[2].clear();
+                        state.store.research_config_mut().models[2].clear();
                         state.resume_todo_batch(cx);
                     }
                     assert!(state.active_runs.len() <= 3);
@@ -126,7 +129,7 @@ print(json.dumps({'type':'text','part':{'text':json.dumps({'status':'complete','
                         .active_runs
                         .iter()
                         .map(|active| {
-                            let run = state.store.runs.iter().find(|r| r.id == active.id).unwrap();
+                            let run = state.store.runs().iter().find(|r| r.id == active.id).unwrap();
                             state.store.execution_topic(run.task_id)
                         })
                         .collect::<Vec<_>>();
@@ -136,7 +139,7 @@ print(json.dumps({'type':'text','part':{'text':json.dumps({'status':'complete','
                     );
                     if state
                         .store
-                        .runs
+                        .runs()
                         .iter()
                         .any(|r| state.store.owning_research_goal(r.task_id) == Some(b1))
                     {
@@ -147,7 +150,7 @@ print(json.dumps({'type':'text','part':{'text':json.dumps({'status':'complete','
                     }
                     if state
                         .store
-                        .runs
+                        .runs()
                         .iter()
                         .any(|r| state.store.owning_research_goal(r.task_id) == Some(c1))
                     {
@@ -180,7 +183,7 @@ print(json.dumps({'type':'text','part':{'text':json.dumps({'status':'complete','
                 assert_eq!(
                     state
                         .store
-                        .runs
+                        .runs()
                         .iter()
                         .filter(|r| r.task_id == step)
                         .count(),
@@ -200,7 +203,7 @@ print(json.dumps({'type':'text','part':{'text':json.dumps({'status':'complete','
             assert!(
                 !state
                     .store
-                    .runs
+                    .runs()
                     .iter()
                     .any(|r| state.store.owning_research_goal(r.task_id) == Some(d1))
             );

@@ -1,0 +1,42 @@
+{
+  "base_commit": "54db9100819bebade77dbc7ab552390ea6762264",
+  "derivation": "r94 probe type only",
+  "steps": [
+    {
+      "label": "build",
+      "exit_code": 0,
+      "seconds": 16.433
+    },
+    {
+      "label": "guard",
+      "exit_code": 2,
+      "seconds": 1.857
+    },
+    {
+      "label": "navigation-context",
+      "exit_code": 0,
+      "seconds": 16.474
+    },
+    {
+      "label": "keyboard-visual",
+      "exit_code": 0,
+      "seconds": 17.314
+    },
+    {
+      "label": "global-search",
+      "exit_code": 0,
+      "seconds": 27.498
+    },
+    {
+      "label": "topics",
+      "exit_code": 0,
+      "seconds": 2.926
+    },
+    {
+      "label": "automation",
+      "exit_code": 0,
+      "seconds": 48.286
+    }
+  ],
+  "binary_sha256": "4441be00ec932c85d6fe03db6d082af37516b75f17273e21f92835bb858e8a77"
+}

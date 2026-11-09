@@ -1,0 +1,222 @@
+{
+  "source_report": ".local/live-performance-qa/83810/report.json",
+  "candidate_sha256": "9d4c23410e0406fdb621f822c4b48a3391ad6a2f2af7fd5cb2b820144437c3d1",
+  "profile": {
+    "qa_feature": true,
+    "debug_assertions": true,
+    "executable": "/Users/fuxingxing/workspaces/what-the-hell-are-you-planning/.local/t20-r117/live-performance/qa-bin",
+    "argv": [
+      ".local/t20-r117/live-performance/qa-bin",
+      "--qa-live-performance"
+    ],
+    "source_sha256": "844764b3059e31d8d67236f8e5772cca70fa49526e26c5c06def5f4970ec3518"
+  },
+  "hardware": {
+    "cpu": "Apple M1 Pro",
+    "memory_bytes": "34359738368",
+    "os_build": "26B123",
+    "arch": "aarch64"
+  },
+  "samples": 30,
+  "fixtures": [
+    {
+      "occurrences": 500,
+      "materialized_runs": 20,
+      "body_bytes": 8192,
+      "db_bytes": 720896,
+      "editor": {
+        "samples": 30,
+        "ui_sync": {
+          "count": 30,
+          "p50_us": 160,
+          "p95_us": 6348,
+          "p99_us": 7679,
+          "max_us": 7679
+        },
+        "ack_pump": {
+          "count": 30,
+          "p50_us": 8623,
+          "p95_us": 56198,
+          "p99_us": 98363,
+          "max_us": 98363
+        },
+        "render": {
+          "count": 30,
+          "p50_us": 9003,
+          "p95_us": 62709,
+          "p99_us": 66472,
+          "max_us": 66472
+        },
+        "main_thread_total": {
+          "count": 30,
+          "p50_us": 22840,
+          "p95_us": 115279,
+          "p99_us": 126350,
+          "max_us": 126350
+        },
+        "durable_wall": {
+          "count": 30,
+          "p50_us": 47779,
+          "p95_us": 134791,
+          "p99_us": 137683,
+          "max_us": 137683
+        },
+        "final_title": "Live perf 32",
+        "disk_title": "Live perf 32"
+      },
+      "history_page": {
+        "samples": 30,
+        "ui_sync": {
+          "count": 30,
+          "p50_us": 10,
+          "p95_us": 735,
+          "p99_us": 1724,
+          "max_us": 1724
+        },
+        "ack_pump": {
+          "count": 30,
+          "p50_us": 2498,
+          "p95_us": 38377,
+          "p99_us": 82451,
+          "max_us": 82451
+        },
+        "render": {
+          "count": 30,
+          "p50_us": 2611,
+          "p95_us": 49166,
+          "p99_us": 76425,
+          "max_us": 76425
+        },
+        "main_thread_total": {
+          "count": 30,
+          "p50_us": 5603,
+          "p95_us": 79080,
+          "p99_us": 85237,
+          "max_us": 85237
+        },
+        "durable_wall": {
+          "count": 30,
+          "p50_us": 19199,
+          "p95_us": 96289,
+          "p99_us": 114607,
+          "max_us": 114607
+        },
+        "first_page_rows": 20,
+        "order": "newest-first by descending occurrence id",
+        "page_metrics": {
+          "occurrence_rows": 20,
+          "run_rows": 0,
+          "fullscan_steps": 0,
+          "page_vm_steps": 331,
+          "total_count_vm_steps": 1511,
+          "unread_count_vm_steps": 359,
+          "body_reads": 0
+        }
+      },
+      "peak_rss_bytes": 69206016
+    },
+    {
+      "occurrences": 43200,
+      "materialized_runs": 240,
+      "body_bytes": 8192,
+      "db_bytes": 42323968,
+      "editor": {
+        "samples": 30,
+        "ui_sync": {
+          "count": 30,
+          "p50_us": 150,
+          "p95_us": 5352,
+          "p99_us": 9377,
+          "max_us": 9377
+        },
+        "ack_pump": {
+          "count": 30,
+          "p50_us": 5691,
+          "p95_us": 85591,
+          "p99_us": 105497,
+          "max_us": 105497
+        },
+        "render": {
+          "count": 30,
+          "p50_us": 3895,
+          "p95_us": 80147,
+          "p99_us": 94946,
+          "max_us": 94946
+        },
+        "main_thread_total": {
+          "count": 30,
+          "p50_us": 15422,
+          "p95_us": 149467,
+          "p99_us": 149807,
+          "max_us": 149807
+        },
+        "durable_wall": {
+          "count": 30,
+          "p50_us": 73068,
+          "p95_us": 159333,
+          "p99_us": 187745,
+          "max_us": 187745
+        },
+        "final_title": "Live perf 32",
+        "disk_title": "Live perf 32"
+      },
+      "history_page": {
+        "samples": 30,
+        "ui_sync": {
+          "count": 30,
+          "p50_us": 11,
+          "p95_us": 15,
+          "p99_us": 15,
+          "max_us": 15
+        },
+        "ack_pump": {
+          "count": 30,
+          "p50_us": 18884,
+          "p95_us": 79979,
+          "p99_us": 159383,
+          "max_us": 159383
+        },
+        "render": {
+          "count": 30,
+          "p50_us": 4329,
+          "p95_us": 51003,
+          "p99_us": 66532,
+          "max_us": 66532
+        },
+        "main_thread_total": {
+          "count": 30,
+          "p50_us": 37726,
+          "p95_us": 108852,
+          "p99_us": 184638,
+          "max_us": 184638
+        },
+        "durable_wall": {
+          "count": 30,
+          "p50_us": 63631,
+          "p95_us": 177319,
+          "p99_us": 188217,
+          "max_us": 188217
+        },
+        "first_page_rows": 20,
+        "order": "newest-first by descending occurrence id",
+        "page_metrics": {
+          "occurrence_rows": 20,
+          "run_rows": 0,
+          "fullscan_steps": 0,
+          "page_vm_steps": 331,
+          "total_count_vm_steps": 129611,
+          "unread_count_vm_steps": 30251,
+          "body_reads": 0
+        }
+      },
+      "peak_rss_bytes": 404668416
+    }
+  ],
+  "result": "failed: large live editor main-thread-total p95 149467us exceeds 50000us",
+  "review_limits": [
+    "Concurrent compilation was active during this run; retain the failure but do not assign its cause without a controlled comparison.",
+    "Main-thread total aggregates command, completion-pump and render work; durable wall remains separate.",
+    "Page metrics need provenance review to distinguish same app-query instrumentation from separate read-only validation.",
+    "Native scrolling remains an independent unmet gate."
+  ]
+}

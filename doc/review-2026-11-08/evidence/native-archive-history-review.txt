@@ -1,0 +1,16 @@
+Independent Computer native review
+Application: Planning Native Review (com.krabswong.planning.native-review)
+Executable SHA-256: c4757e63adf9c8c896958c26689147bfff12dabe33a469ed2476f543eaee73af
+Data: .local/native-review/T24-relocated-data only. Production app was not restarted.
+Source: isolated refreshed clone; package identity and bootstrap config path differ from product. No product behavior overrides.
+
+Observed via Computer UI, not direct action-method calls:
+1. All research -> TASK-G1 Review research goal -> More task actions -> Archive task.
+2. Native sheet: Stop related work and archive? One running, queued or interrupted attempt; pending steps will not start; saved results retained. Cancel returned to the unchanged active goal.
+3. Reopened the menu and prompt, chose Stop and archive. Goal now shows Archived 0/3 validated (this existing fixture has stale input versions, not current completed results). Restore and retained report/history actions visible; Add Files and execution-changing properties disabled.
+4. Fixture interruption was not acknowledged. UI truthfully reported that the background session could not be stopped; it did not claim confirmed cancellation. This tests the failure presentation, not successful remote cancellation.
+5. Opened Version history. Three retained reports display task title, kind, run ID, recorded time and Previous input revision. Archived read-only context and source/report content visible. No run or approval action in the dialog.
+6. Pressed Escape: dialog remained unchanged, focus remained main window. Defect returned to T21 for modal focus/dismissal/keyboard tests.
+7. Close button closed history. Sidebar Archive showed the archived goal and Restore. Review app remains on this isolated Archive page.
+
+Limits: current native window was wide; this does not replace the required actual narrow-window, both-theme, full keyboard and final integration matrix. No successful remote interruption or restore-after-unknown-interruption is claimed. Screenshots and AX observations are in the Computer tool transcript.

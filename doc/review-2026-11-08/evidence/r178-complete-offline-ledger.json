@@ -1,0 +1,483 @@
+{
+  "round": "r178",
+  "gate": "r174 frozen standalone gate",
+  "index_sha256": "37c77e079db230b80b43dcf89595ed789c127431e118ecc7c3b51661d21f50f7",
+  "binary_sha256": "518c6a14115b530fcd915e2b1c48423666580f5af6482bd00e78ea416f1d39d8",
+  "exit_code": 1,
+  "entries": 55,
+  "passed": 52,
+  "nonpasses": [
+    {
+      "entry": "--qa-automation-perf",
+      "status": "performance_rejected",
+      "exit_code": 0,
+      "elapsed_seconds": 24.24,
+      "log": "qa-automation-perf.log",
+      "alias_note": "",
+      "ui_save_block_ms": 1342,
+      "acceptance_note": "One sample can reject a blocking save; it cannot prove p95 responsiveness or native scrolling smoothness."
+    },
+    {
+      "entry": "--qa-recovery",
+      "status": "failed",
+      "exit_code": 101,
+      "elapsed_seconds": 30.36,
+      "log": "qa-recovery.log",
+      "alias_note": ""
+    },
+    {
+      "entry": "--qa-render-perf",
+      "status": "failed",
+      "exit_code": 101,
+      "elapsed_seconds": 0.02,
+      "log": "qa-render-perf.log",
+      "alias_note": ""
+    }
+  ],
+  "all_results": [
+    {
+      "entry": "--qa",
+      "status": "passed",
+      "exit_code": 0,
+      "elapsed_seconds": 8.94,
+      "log": "qa.log",
+      "alias_note": ""
+    },
+    {
+      "entry": "--qa-affordance",
+      "status": "passed",
+      "exit_code": 0,
+      "elapsed_seconds": 18.51,
+      "log": "qa-affordance.log",
+      "alias_note": ""
+    },
+    {
+      "entry": "--qa-archived-research",
+      "status": "passed",
+      "exit_code": 0,
+      "elapsed_seconds": 9.01,
+      "log": "qa-archived-research.log",
+      "alias_note": ""
+    },
+    {
+      "entry": "--qa-attachments",
+      "status": "passed",
+      "exit_code": 0,
+      "elapsed_seconds": 2.21,
+      "log": "qa-attachments.log",
+      "alias_note": ""
+    },
+    {
+      "entry": "--qa-automation",
+      "status": "passed",
+      "exit_code": 0,
+      "elapsed_seconds": 39.71,
+      "log": "qa-automation.log",
+      "alias_note": ""
+    },
+    {
+      "entry": "--qa-automation-perf",
+      "status": "performance_rejected",
+      "exit_code": 0,
+      "elapsed_seconds": 24.24,
+      "log": "qa-automation-perf.log",
+      "alias_note": "",
+      "ui_save_block_ms": 1342,
+      "acceptance_note": "One sample can reject a blocking save; it cannot prove p95 responsiveness or native scrolling smoothness."
+    },
+    {
+      "entry": "--qa-batch",
+      "status": "passed",
+      "exit_code": 0,
+      "elapsed_seconds": 12.74,
+      "log": "qa-batch.log",
+      "alias_note": ""
+    },
+    {
+      "entry": "--qa-board-scroll",
+      "status": "passed",
+      "exit_code": 0,
+      "elapsed_seconds": 1.89,
+      "log": "qa-board-scroll.log",
+      "alias_note": ""
+    },
+    {
+      "entry": "--qa-board-topics",
+      "status": "passed",
+      "exit_code": 0,
+      "elapsed_seconds": 0.93,
+      "log": "qa-board-topics.log",
+      "alias_note": ""
+    },
+    {
+      "entry": "--qa-brand",
+      "status": "passed",
+      "exit_code": 0,
+      "elapsed_seconds": 0.13,
+      "log": "qa-brand.log",
+      "alias_note": ""
+    },
+    {
+      "entry": "--qa-calendar",
+      "status": "passed",
+      "exit_code": 0,
+      "elapsed_seconds": 0.56,
+      "log": "qa-calendar.log",
+      "alias_note": ""
+    },
+    {
+      "entry": "--qa-command",
+      "status": "passed",
+      "exit_code": 0,
+      "elapsed_seconds": 2.2,
+      "log": "qa-command.log",
+      "alias_note": ""
+    },
+    {
+      "entry": "--qa-concurrency",
+      "status": "passed",
+      "exit_code": 0,
+      "elapsed_seconds": 17.6,
+      "log": "qa-concurrency.log",
+      "alias_note": ""
+    },
+    {
+      "entry": "--qa-dispatch-admission",
+      "status": "passed",
+      "exit_code": 0,
+      "elapsed_seconds": 2.93,
+      "log": "qa-dispatch-admission.log",
+      "alias_note": ""
+    },
+    {
+      "entry": "--qa-display-order",
+      "status": "passed",
+      "exit_code": 0,
+      "elapsed_seconds": 0.28,
+      "log": "qa-display-order.log",
+      "alias_note": ""
+    },
+    {
+      "entry": "--qa-execution-eligibility",
+      "status": "passed",
+      "exit_code": 0,
+      "elapsed_seconds": 5.31,
+      "log": "qa-execution-eligibility.log",
+      "alias_note": ""
+    },
+    {
+      "entry": "--qa-global-search",
+      "status": "passed",
+      "exit_code": 0,
+      "elapsed_seconds": 22.86,
+      "log": "qa-global-search.log",
+      "alias_note": ""
+    },
+    {
+      "entry": "--qa-handoff-progress",
+      "status": "passed",
+      "exit_code": 0,
+      "elapsed_seconds": 3.59,
+      "log": "qa-handoff-progress.log",
+      "alias_note": ""
+    },
+    {
+      "entry": "--qa-header-layout",
+      "status": "passed",
+      "exit_code": 0,
+      "elapsed_seconds": 4.15,
+      "log": "qa-header-layout.log",
+      "alias_note": ""
+    },
+    {
+      "entry": "--qa-intake",
+      "status": "passed",
+      "exit_code": 0,
+      "elapsed_seconds": 8.76,
+      "log": "qa-intake.log",
+      "alias_note": ""
+    },
+    {
+      "entry": "--qa-keyboard-visual",
+      "status": "passed",
+      "exit_code": 0,
+      "elapsed_seconds": 18.34,
+      "log": "qa-keyboard-visual.log",
+      "alias_note": ""
+    },
+    {
+      "entry": "--qa-live-performance",
+      "status": "passed",
+      "exit_code": 0,
+      "elapsed_seconds": 107.04,
+      "log": "qa-live-performance.log",
+      "alias_note": ""
+    },
+    {
+      "entry": "--qa-live-persistence",
+      "status": "passed",
+      "exit_code": 0,
+      "elapsed_seconds": 12.45,
+      "log": "qa-live-persistence.log",
+      "alias_note": ""
+    },
+    {
+      "entry": "--qa-navigation-context",
+      "status": "passed",
+      "exit_code": 0,
+      "elapsed_seconds": 26.27,
+      "log": "qa-navigation-context.log",
+      "alias_note": ""
+    },
+    {
+      "entry": "--qa-onboarding",
+      "status": "passed",
+      "exit_code": 0,
+      "elapsed_seconds": 2.19,
+      "log": "qa-onboarding.log",
+      "alias_note": ""
+    },
+    {
+      "entry": "--qa-planning",
+      "status": "passed",
+      "exit_code": 0,
+      "elapsed_seconds": 10.94,
+      "log": "qa-planning.log",
+      "alias_note": ""
+    },
+    {
+      "entry": "--qa-projects",
+      "status": "passed",
+      "exit_code": 0,
+      "elapsed_seconds": 13.62,
+      "log": "qa-projects.log",
+      "alias_note": ""
+    },
+    {
+      "entry": "--qa-publishing",
+      "status": "passed",
+      "exit_code": 0,
+      "elapsed_seconds": 10.62,
+      "log": "qa-publishing.log",
+      "alias_note": ""
+    },
+    {
+      "entry": "--qa-recovery",
+      "status": "failed",
+      "exit_code": 101,
+      "elapsed_seconds": 30.36,
+      "log": "qa-recovery.log",
+      "alias_note": ""
+    },
+    {
+      "entry": "--qa-recovery-scroll",
+      "status": "passed",
+      "exit_code": 0,
+      "elapsed_seconds": 0.62,
+      "log": "qa-recovery-scroll.log",
+      "alias_note": ""
+    },
+    {
+      "entry": "--qa-render-perf",
+      "status": "failed",
+      "exit_code": 101,
+      "elapsed_seconds": 0.02,
+      "log": "qa-render-perf.log",
+      "alias_note": ""
+    },
+    {
+      "entry": "--qa-research",
+      "status": "passed",
+      "exit_code": 0,
+      "elapsed_seconds": 10.61,
+      "log": "qa-research.log",
+      "alias_note": ""
+    },
+    {
+      "entry": "--qa-research-inputs",
+      "status": "passed",
+      "exit_code": 0,
+      "elapsed_seconds": 25.09,
+      "log": "qa-research-inputs.log",
+      "alias_note": ""
+    },
+    {
+      "entry": "--qa-result-layout",
+      "status": "passed",
+      "exit_code": 0,
+      "elapsed_seconds": 8.15,
+      "log": "qa-result-layout.log",
+      "alias_note": ""
+    },
+    {
+      "entry": "--qa-result-presentation",
+      "status": "passed",
+      "exit_code": 0,
+      "elapsed_seconds": 41.49,
+      "log": "qa-result-presentation.log",
+      "alias_note": ""
+    },
+    {
+      "entry": "--qa-retries",
+      "status": "passed",
+      "exit_code": 0,
+      "elapsed_seconds": 0.94,
+      "log": "qa-retries.log",
+      "alias_note": ""
+    },
+    {
+      "entry": "--qa-rich-markdown",
+      "status": "passed",
+      "exit_code": 0,
+      "elapsed_seconds": 7.31,
+      "log": "qa-rich-markdown.log",
+      "alias_note": ""
+    },
+    {
+      "entry": "--qa-set-read",
+      "status": "passed",
+      "exit_code": 0,
+      "elapsed_seconds": 0.68,
+      "log": "qa-set-read.log",
+      "alias_note": ""
+    },
+    {
+      "entry": "--qa-settings",
+      "status": "passed",
+      "exit_code": 0,
+      "elapsed_seconds": 21.17,
+      "log": "qa-settings.log",
+      "alias_note": ""
+    },
+    {
+      "entry": "--qa-sidebar",
+      "status": "passed",
+      "exit_code": 0,
+      "elapsed_seconds": 2.72,
+      "log": "qa-sidebar.log",
+      "alias_note": ""
+    },
+    {
+      "entry": "--qa-simplify",
+      "status": "passed",
+      "exit_code": 0,
+      "elapsed_seconds": 67.7,
+      "log": "qa-simplify.log",
+      "alias_note": ""
+    },
+    {
+      "entry": "--qa-t11",
+      "status": "passed",
+      "exit_code": 0,
+      "elapsed_seconds": 10.63,
+      "log": "qa-t11.log",
+      "alias_note": ""
+    },
+    {
+      "entry": "--qa-task-edit",
+      "status": "passed",
+      "exit_code": 0,
+      "elapsed_seconds": 9.65,
+      "log": "qa-task-edit.log",
+      "alias_note": ""
+    },
+    {
+      "entry": "--qa-topic-actions",
+      "status": "passed",
+      "exit_code": 0,
+      "elapsed_seconds": 0.88,
+      "log": "qa-topic-actions.log",
+      "alias_note": ""
+    },
+    {
+      "entry": "--qa-topic-migration",
+      "status": "passed",
+      "exit_code": 0,
+      "elapsed_seconds": 3.77,
+      "log": "qa-topic-migration.log",
+      "alias_note": ""
+    },
+    {
+      "entry": "--qa-topic-queue",
+      "status": "passed",
+      "exit_code": 0,
+      "elapsed_seconds": 8.52,
+      "log": "qa-topic-queue.log",
+      "alias_note": ""
+    },
+    {
+      "entry": "--qa-topics",
+      "status": "passed",
+      "exit_code": 0,
+      "elapsed_seconds": 2.22,
+      "log": "qa-topics.log",
+      "alias_note": ""
+    },
+    {
+      "entry": "--qa-workflow",
+      "status": "passed",
+      "exit_code": 0,
+      "elapsed_seconds": 2.56,
+      "log": "qa-workflow.log",
+      "alias_note": ""
+    },
+    {
+      "entry": "--qa-workspace",
+      "status": "passed",
+      "exit_code": 0,
+      "elapsed_seconds": 8.3,
+      "log": "qa-workspace.log",
+      "alias_note": ""
+    },
+    {
+      "entry": "--qa-persistence-perf inventory",
+      "status": "passed",
+      "exit_code": 0,
+      "elapsed_seconds": 1.84,
+      "log": "qa-persistence-perf inventory.log",
+      "alias_note": ""
+    },
+    {
+      "entry": "--qa-persistence-perf small",
+      "status": "passed",
+      "exit_code": 0,
+      "elapsed_seconds": 2.82,
+      "log": "qa-persistence-perf small.log",
+      "alias_note": ""
+    },
+    {
+      "entry": "--qa-persistence-perf occ43200",
+      "status": "passed",
+      "exit_code": 0,
+      "elapsed_seconds": 108.98,
+      "log": "qa-persistence-perf occ43200.log",
+      "alias_note": ""
+    },
+    {
+      "entry": "--qa-persistence-perf body-heavy",
+      "status": "passed",
+      "exit_code": 0,
+      "elapsed_seconds": 45.09,
+      "log": "qa-persistence-perf body-heavy.log",
+      "alias_note": ""
+    },
+    {
+      "entry": "--qa-persistence-perf retry-heavy",
+      "status": "passed",
+      "exit_code": 0,
+      "elapsed_seconds": 105.48,
+      "log": "qa-persistence-perf retry-heavy.log",
+      "alias_note": ""
+    },
+    {
+      "entry": "--qa-persistence-perf xl",
+      "status": "passed",
+      "exit_code": 0,
+      "elapsed_seconds": 606.95,
+      "log": "qa-persistence-perf xl.log",
+      "alias_note": ""
+    }
+  ],
+  "classification": "Original results unchanged. automation-perf used 43200 periods and legacy QA-only Storage.save: out-of-scope latency diagnostic, not a passed check. recovery and render-perf remain unresolved failures; replacement evidence required.",
+  "separate_tests": "r176 full unit and 13 integration/crash tests passed; native and required-size performance acceptance remain open."
+}

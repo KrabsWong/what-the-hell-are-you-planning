@@ -1,0 +1,25 @@
+{
+  "source_manifest": ".local/native-review/r120-compact-source.json",
+  "parent_manifest": ".local/opencode-dispatch/r119-source.json",
+  "unsigned_sha256": "43bf76c2491fb5b289433a7d4f97fcb95bc15ff529f2d68c5b9a89c0548b455d",
+  "signed_sha256": "828f1bc37664829d4e3339771fb3a61d5714b8d181076795acac42e1837a732d",
+  "guard_exit": 2,
+  "fixture_backup": "/Users/fuxingxing/workspaces/what-the-hell-are-you-planning/.local/native-review/r120-fixture-backup",
+  "overrides": [
+    "Isolated workspace bootstrap",
+    "Initial window 1000x680 logical pixels"
+  ],
+  "window_logical": [
+    1000,
+    680
+  ],
+  "screenshot_pixels": [
+    2000,
+    1362
+  ],
+  "theme": "Light",
+  "startup": "Workspace rendered on first observation; no Starting stall observed.",
+  "keyboard_back": "Passed: Automations -> actual workspace menu -> Settings -> super+bracketleft returned Automations.",
+  "readability": "All research list and three Automation cards fit; labels and status text readable in this fixture.",
+  "limits": "Does not accept the failing captured-scroll regression, full compact route matrix, Dark compact or native smoothness."
+}

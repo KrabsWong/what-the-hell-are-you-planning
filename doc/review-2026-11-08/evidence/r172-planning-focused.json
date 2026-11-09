@@ -1,0 +1,35 @@
+{
+  "round": "r172",
+  "qa_candidate_sha256": "ed2fc71004becfd147f6db0628fbef0bfcbaef67d3d932ccc72465567bccec95",
+  "source_manifest": ".local/t12-handoff/planning-admission-final-manifest.json",
+  "source_verified": "All adapter and root planning source hashes matched manifest before root run",
+  "independent_planning_cases": {
+    "automation-generate-plan-async": {
+      "exit_code": 0,
+      "log": ".local/opencode-dispatch/r172-automation-generate-plan-async.log"
+    },
+    "automation-generate-plan-unchanged": {
+      "exit_code": 0,
+      "log": ".local/opencode-dispatch/r172-automation-generate-plan-unchanged.log"
+    },
+    "automation-generate-plan-retry": {
+      "exit_code": 0,
+      "log": ".local/opencode-dispatch/r172-automation-generate-plan-retry.log"
+    },
+    "automation-generate-plan-cancel": {
+      "exit_code": 0,
+      "log": ".local/opencode-dispatch/r172-automation-generate-plan-cancel.log"
+    }
+  },
+  "scope": "One fake launch after matching durable admission, preserved wizard, retry and cancellation; no native planning acceptance yet",
+  "combined_source": ".local/opencode-dispatch/r172-combined-source",
+  "combined_tests": {
+    "verdict": "FAIL",
+    "unit_passed": 712,
+    "unit_failed": 19,
+    "ignored": 2,
+    "log": ".local/opencode-dispatch/r172-combined-tests.log",
+    "pattern": "19 SQLite tests fail create_seeded because saved store does not round-trip",
+    "review": "New unconditional planning-link projection is suspected to rewrite existing request mappings; rework must preserve old state and scope new projections to admission evidence. Do not weaken equality or old fixtures."
+  }
+}

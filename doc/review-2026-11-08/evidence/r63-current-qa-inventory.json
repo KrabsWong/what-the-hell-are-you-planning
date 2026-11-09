@@ -1,0 +1,380 @@
+{
+  "source_sha256": "e4252f6887130e13a5edc9364fce9a5d439757c78ce3151f065d41c02d85e96d",
+  "historical_33_preserved": true,
+  "direct_flags": 48,
+  "standalone_flags": 46,
+  "entries": [
+    {
+      "entry": "--qa",
+      "execution": "standalone",
+      "coverage_command": "--qa",
+      "historical_33": true,
+      "acceptance": "pending-current-integrated-gate"
+    },
+    {
+      "entry": "--qa-affordance",
+      "execution": "standalone",
+      "coverage_command": "--qa-affordance",
+      "historical_33": true,
+      "acceptance": "pending-current-integrated-gate"
+    },
+    {
+      "entry": "--qa-archived-research",
+      "execution": "standalone",
+      "coverage_command": "--qa-archived-research",
+      "historical_33": false,
+      "acceptance": "pending-current-integrated-gate"
+    },
+    {
+      "entry": "--qa-attachments",
+      "execution": "standalone",
+      "coverage_command": "--qa-attachments",
+      "historical_33": true,
+      "acceptance": "pending-current-integrated-gate"
+    },
+    {
+      "entry": "--qa-automation",
+      "execution": "standalone",
+      "coverage_command": "--qa-automation",
+      "historical_33": true,
+      "acceptance": "pending-current-integrated-gate"
+    },
+    {
+      "entry": "--qa-automation-perf",
+      "execution": "standalone",
+      "coverage_command": "--qa-automation-perf",
+      "historical_33": true,
+      "acceptance": "pending-current-integrated-gate"
+    },
+    {
+      "entry": "--qa-batch",
+      "execution": "standalone",
+      "coverage_command": "--qa-batch",
+      "historical_33": true,
+      "acceptance": "pending-current-integrated-gate"
+    },
+    {
+      "entry": "--qa-board-scroll",
+      "execution": "standalone",
+      "coverage_command": "--qa-board-scroll",
+      "historical_33": true,
+      "acceptance": "pending-current-integrated-gate"
+    },
+    {
+      "entry": "--qa-board-topics",
+      "execution": "standalone",
+      "coverage_command": "--qa-board-topics",
+      "historical_33": true,
+      "acceptance": "pending-current-integrated-gate"
+    },
+    {
+      "entry": "--qa-brand",
+      "execution": "standalone",
+      "coverage_command": "--qa-brand",
+      "historical_33": true,
+      "acceptance": "pending-current-integrated-gate"
+    },
+    {
+      "entry": "--qa-calendar",
+      "execution": "standalone",
+      "coverage_command": "--qa-calendar",
+      "historical_33": true,
+      "acceptance": "pending-current-integrated-gate"
+    },
+    {
+      "entry": "--qa-command",
+      "execution": "standalone",
+      "coverage_command": "--qa-command",
+      "historical_33": false,
+      "acceptance": "pending-current-integrated-gate"
+    },
+    {
+      "entry": "--qa-concurrency",
+      "execution": "standalone",
+      "coverage_command": "--qa-concurrency",
+      "historical_33": true,
+      "acceptance": "pending-current-integrated-gate"
+    },
+    {
+      "entry": "--qa-dispatch-admission",
+      "execution": "standalone",
+      "coverage_command": "--qa-dispatch-admission",
+      "historical_33": false,
+      "acceptance": "pending-current-integrated-gate"
+    },
+    {
+      "entry": "--qa-dispatch-crash",
+      "execution": "subprocess-child",
+      "coverage_command": "cargo test --features qa --test dispatch_admission_crash",
+      "historical_33": false,
+      "acceptance": "pending-current-integrated-gate"
+    },
+    {
+      "entry": "--qa-display-order",
+      "execution": "standalone",
+      "coverage_command": "--qa-display-order",
+      "historical_33": true,
+      "acceptance": "pending-current-integrated-gate"
+    },
+    {
+      "entry": "--qa-execution-eligibility",
+      "execution": "standalone",
+      "coverage_command": "--qa-execution-eligibility",
+      "historical_33": false,
+      "acceptance": "pending-current-integrated-gate"
+    },
+    {
+      "entry": "--qa-global-search",
+      "execution": "standalone",
+      "coverage_command": "--qa-global-search",
+      "historical_33": false,
+      "acceptance": "pending-current-integrated-gate"
+    },
+    {
+      "entry": "--qa-handoff-progress",
+      "execution": "standalone",
+      "coverage_command": "--qa-handoff-progress",
+      "historical_33": true,
+      "acceptance": "pending-current-integrated-gate"
+    },
+    {
+      "entry": "--qa-header-layout",
+      "execution": "standalone",
+      "coverage_command": "--qa-header-layout",
+      "historical_33": false,
+      "acceptance": "pending-current-integrated-gate"
+    },
+    {
+      "entry": "--qa-intake",
+      "execution": "standalone",
+      "coverage_command": "--qa-intake",
+      "historical_33": true,
+      "acceptance": "pending-current-integrated-gate"
+    },
+    {
+      "entry": "--qa-keyboard-visual",
+      "execution": "standalone",
+      "coverage_command": "--qa-keyboard-visual",
+      "historical_33": false,
+      "acceptance": "pending-current-integrated-gate"
+    },
+    {
+      "entry": "--qa-navigation-context",
+      "execution": "standalone",
+      "coverage_command": "--qa-navigation-context",
+      "historical_33": false,
+      "acceptance": "pending-current-integrated-gate"
+    },
+    {
+      "entry": "--qa-onboarding",
+      "execution": "standalone",
+      "coverage_command": "--qa-onboarding",
+      "historical_33": true,
+      "acceptance": "pending-current-integrated-gate"
+    },
+    {
+      "entry": "--qa-planning",
+      "execution": "standalone",
+      "coverage_command": "--qa-planning",
+      "historical_33": false,
+      "acceptance": "pending-current-integrated-gate"
+    },
+    {
+      "entry": "--qa-projects",
+      "execution": "standalone",
+      "coverage_command": "--qa-projects",
+      "historical_33": true,
+      "acceptance": "pending-current-integrated-gate"
+    },
+    {
+      "entry": "--qa-publishing",
+      "execution": "standalone",
+      "coverage_command": "--qa-publishing",
+      "historical_33": true,
+      "acceptance": "pending-current-integrated-gate"
+    },
+    {
+      "entry": "--qa-recovery",
+      "execution": "standalone",
+      "coverage_command": "--qa-recovery",
+      "historical_33": true,
+      "acceptance": "pending-current-integrated-gate"
+    },
+    {
+      "entry": "--qa-recovery-scroll",
+      "execution": "standalone",
+      "coverage_command": "--qa-recovery-scroll",
+      "historical_33": true,
+      "acceptance": "pending-current-integrated-gate"
+    },
+    {
+      "entry": "--qa-render-perf",
+      "execution": "standalone",
+      "coverage_command": "--qa-render-perf",
+      "historical_33": true,
+      "acceptance": "pending-current-integrated-gate"
+    },
+    {
+      "entry": "--qa-research",
+      "execution": "standalone",
+      "coverage_command": "--qa-research",
+      "historical_33": true,
+      "acceptance": "pending-current-integrated-gate"
+    },
+    {
+      "entry": "--qa-research-inputs",
+      "execution": "standalone",
+      "coverage_command": "--qa-research-inputs",
+      "historical_33": false,
+      "acceptance": "pending-current-integrated-gate"
+    },
+    {
+      "entry": "--qa-result-layout",
+      "execution": "standalone",
+      "coverage_command": "--qa-result-layout",
+      "historical_33": true,
+      "acceptance": "pending-current-integrated-gate"
+    },
+    {
+      "entry": "--qa-result-presentation",
+      "execution": "standalone",
+      "coverage_command": "--qa-result-presentation",
+      "historical_33": false,
+      "acceptance": "pending-current-integrated-gate"
+    },
+    {
+      "entry": "--qa-retries",
+      "execution": "standalone",
+      "coverage_command": "--qa-retries",
+      "historical_33": true,
+      "acceptance": "pending-current-integrated-gate"
+    },
+    {
+      "entry": "--qa-rich-markdown",
+      "execution": "standalone",
+      "coverage_command": "--qa-rich-markdown",
+      "historical_33": true,
+      "acceptance": "pending-current-integrated-gate"
+    },
+    {
+      "entry": "--qa-settings",
+      "execution": "standalone",
+      "coverage_command": "--qa-settings",
+      "historical_33": true,
+      "acceptance": "pending-current-integrated-gate"
+    },
+    {
+      "entry": "--qa-sidebar",
+      "execution": "standalone",
+      "coverage_command": "--qa-sidebar",
+      "historical_33": true,
+      "acceptance": "pending-current-integrated-gate"
+    },
+    {
+      "entry": "--qa-simplify",
+      "execution": "standalone",
+      "coverage_command": "--qa-simplify",
+      "historical_33": true,
+      "acceptance": "pending-current-integrated-gate"
+    },
+    {
+      "entry": "--qa-t11",
+      "execution": "standalone",
+      "coverage_command": "--qa-t11",
+      "historical_33": false,
+      "acceptance": "pending-current-integrated-gate"
+    },
+    {
+      "entry": "--qa-task-edit",
+      "execution": "standalone",
+      "coverage_command": "--qa-task-edit",
+      "historical_33": false,
+      "acceptance": "pending-current-integrated-gate"
+    },
+    {
+      "entry": "--qa-topic-actions",
+      "execution": "standalone",
+      "coverage_command": "--qa-topic-actions",
+      "historical_33": true,
+      "acceptance": "pending-current-integrated-gate"
+    },
+    {
+      "entry": "--qa-topic-migration",
+      "execution": "standalone",
+      "coverage_command": "--qa-topic-migration",
+      "historical_33": true,
+      "acceptance": "pending-current-integrated-gate"
+    },
+    {
+      "entry": "--qa-topic-queue",
+      "execution": "standalone",
+      "coverage_command": "--qa-topic-queue",
+      "historical_33": true,
+      "acceptance": "pending-current-integrated-gate"
+    },
+    {
+      "entry": "--qa-topics",
+      "execution": "standalone",
+      "coverage_command": "--qa-topics",
+      "historical_33": true,
+      "acceptance": "pending-current-integrated-gate"
+    },
+    {
+      "entry": "--qa-v4-crash",
+      "execution": "subprocess-child",
+      "coverage_command": "cargo test --features qa --test v4_crash",
+      "historical_33": false,
+      "acceptance": "pending-current-integrated-gate"
+    },
+    {
+      "entry": "--qa-workflow",
+      "execution": "standalone",
+      "coverage_command": "--qa-workflow",
+      "historical_33": true,
+      "acceptance": "pending-current-integrated-gate"
+    },
+    {
+      "entry": "--qa-workspace",
+      "execution": "standalone",
+      "coverage_command": "--qa-workspace",
+      "historical_33": true,
+      "acceptance": "pending-current-integrated-gate"
+    },
+    {
+      "entry": "--qa-persistence-perf inventory",
+      "execution": "performance-fixture",
+      "acceptance": "pending-current-integrated-gate"
+    },
+    {
+      "entry": "--qa-persistence-perf small",
+      "execution": "performance-fixture",
+      "acceptance": "pending-current-integrated-gate"
+    },
+    {
+      "entry": "--qa-persistence-perf occ43200",
+      "execution": "performance-fixture",
+      "acceptance": "pending-current-integrated-gate"
+    },
+    {
+      "entry": "--qa-persistence-perf body-heavy",
+      "execution": "performance-fixture",
+      "acceptance": "pending-current-integrated-gate"
+    },
+    {
+      "entry": "--qa-persistence-perf retry-heavy",
+      "execution": "performance-fixture",
+      "acceptance": "pending-current-integrated-gate"
+    },
+    {
+      "entry": "--qa-persistence-perf xl",
+      "execution": "performance-fixture",
+      "acceptance": "pending-current-integrated-gate"
+    }
+  ],
+  "excluded_live_modes": [
+    "--projects-live",
+    "--materials-live",
+    "--research-live"
+  ],
+  "note": "Crash child modes require parent test fixture/environment and must not be invoked bare. Native scrolling matrix remains additional to this offline inventory."
+}

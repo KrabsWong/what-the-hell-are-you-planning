@@ -1,0 +1,22 @@
+{
+  "counts": {
+    "automation_occurrences": 43200,
+    "runs": 30240,
+    "run_bodies": 30240
+  },
+  "missing_or_invalid_succeeded_report_links": 0,
+  "nonterminal_runs": 0,
+  "nonterminal_periods": 0,
+  "automation_status": [
+    [
+      "Paused",
+      1
+    ]
+  ],
+  "sha256": "68eea944128fceb509518ee67cce824d25df0063cb28bc3d09289b551f643574",
+  "quick_check": "ok",
+  "schema": 4,
+  "source": "isolated synthetic r156-large-history-data",
+  "root_verified": true,
+  "native_acceptance": "pending"
+}

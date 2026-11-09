@@ -20,9 +20,9 @@ pub fn run() {
             std::fs::create_dir_all(&directory).unwrap();
             let path = directory.join("workspace.json");
             let mut initial = Store::empty();
-            initial.appearance = mode;
-            initial.projects[0].directory = directory.to_string_lossy().into();
-            initial.research_config.models[0] = "qa/planner".into();
+            initial.set_appearance(mode);
+            initial.project_at_mut(0).unwrap().directory = directory.to_string_lossy().into();
+            initial.research_config_mut().models[0] = "qa/planner".into();
             Storage::new(path.clone()).save(&initial).unwrap();
             let mut cx = context();
             let mut app = None;
@@ -50,17 +50,17 @@ pub fn run() {
                 for _ in 0..3 {
                     expected = expected.next();
                     w.click("toggle-appearance", cx);
-                    assert_eq!(app.read(cx).store.appearance, expected);
+                    assert_eq!(app.read(cx).store.appearance(), expected);
                     assert_eq!(
                         Storage::new(path.clone())
                             .load()
                             .unwrap()
                             .unwrap()
-                            .appearance,
+                            .appearance(),
                         expected
                     );
                 }
-                assert_eq!(app.read(cx).store.appearance, mode);
+                assert_eq!(app.read(cx).store.appearance(), mode);
             })
             .unwrap();
             screenshot(&mut cx, handle, &directory, "00-appearance-cycle.png");
@@ -69,21 +69,21 @@ pub fn run() {
                 w.click("workspace-menu", cx);
                 w.render_frame(cx);
                 w.within("popup-menu").click(3usize, cx);
-                assert_eq!(app.read(cx).scope, Scope::Settings);
+                assert_eq!(app.read(cx).scope(), Scope::Settings);
                 for _ in 0..2 {
-                    if app.read(cx).store.appearance == Appearance::System {
+                    if app.read(cx).store.appearance() == Appearance::System {
                         break;
                     }
                     w.click("toggle-appearance", cx);
                 }
-                assert_eq!(app.read(cx).store.appearance, Appearance::System);
+                assert_eq!(app.read(cx).store.appearance(), Appearance::System);
                 assert_eq!(w.find("appearance-system").label(), Some("Follow system"));
                 assert_eq!(
                     Storage::new(path.clone())
                         .load()
                         .unwrap()
                         .unwrap()
-                        .appearance,
+                        .appearance(),
                     Appearance::System
                 );
                 let expected: gpui_kit::component::ThemeMode = w.appearance().into();
@@ -99,7 +99,7 @@ pub fn run() {
                     },
                     cx,
                 );
-                assert_eq!(app.read(cx).store.appearance, mode);
+                assert_eq!(app.read(cx).store.appearance(), mode);
                 assert_eq!(
                     w.find(if mode == Appearance::Light {
                         "appearance-light"
@@ -189,14 +189,14 @@ pub fn run() {
                 w.press("escape", cx);
                 assert!(w.try_find("save-research-settings").is_none());
                 assert!(w.try_find("reset-model-settings").is_none());
-                assert!(app.read(cx).store.default_model.is_empty());
+                assert!(app.read(cx).store.default_model().is_empty());
                 click(w, cx, "model-settings-scroll", "research-global-model");
                 w.press("cmd-a", cx);
                 w.input("qa/original", cx);
                 w.press("enter", cx);
             }).unwrap();
             cx.update_window(handle, |_, w, cx| {
-                assert_eq!(Storage::new(path.clone()).load().unwrap().unwrap().default_model, "qa/original");
+                assert_eq!(Storage::new(path.clone()).load().unwrap().unwrap().default_model(), "qa/original");
                 app.update(cx, |a, _| {
                     a.available_models
                         .extend((0..30).map(|i| format!("qa/scroll-{i:02}")));
@@ -249,7 +249,7 @@ pub fn run() {
                     &format!("research-model-option-{MODEL}"),
                 );
                 assert_eq!(app.read(cx).global_model.read(cx).value().as_ref(), MODEL);
-                assert_eq!(app.read(cx).store.default_model, MODEL);
+                assert_eq!(app.read(cx).store.default_model(), MODEL);
                 assert_eq!(
                     app.read(cx).store.prepare_project_plan(1).unwrap().model,
                     "qa/planner"
@@ -261,7 +261,7 @@ pub fn run() {
                 w.within("settings-tabs").click(1usize, cx);
                 w.render_frame(cx);
                 assert!(w.try_find("research-global-model").is_some());
-                assert_eq!(app.read(cx).scope, Scope::Settings);
+                assert_eq!(app.read(cx).scope(), Scope::Settings);
                 assert!(w.try_find("ego-path").is_some());
                 assert!(w.try_find("research-model-0").is_some());
             }).unwrap();
@@ -278,8 +278,8 @@ pub fn run() {
                 assert!(w.try_find("research-model-option-qa-codex-model").is_some());
                 w.click("research-model-option-qa-codex-model", cx);
                 let persisted = Storage::new(path.clone()).load().unwrap().unwrap();
-                assert_eq!(persisted.research_config.agents[0].as_deref(), Some("Codex"));
-                assert_eq!(persisted.research_config.models[0], "qa-codex-model");
+                assert_eq!(persisted.research_config().agents[0].as_deref(), Some("Codex"));
+                assert_eq!(persisted.research_config().models[0], "qa-codex-model");
                 assert_eq!(persisted.prepare_project_plan(1).unwrap().agent, "Codex");
                 assert_eq!(persisted.prepare_project_plan(1).unwrap().model, "qa-codex-model");
                 assert!(app.read(cx).codex_discovery.is_none(), "Fixture choices never start live discovery");
@@ -288,8 +288,8 @@ pub fn run() {
             cx.update_window(handle, |_, w, cx| {
                 click(w, cx, "model-settings-scroll", "research-use-global-0");
                 let persisted = Storage::new(path.clone()).load().unwrap().unwrap();
-                assert!(persisted.research_config.agents[0].is_none());
-                assert!(persisted.research_config.models[0].is_empty());
+                assert!(persisted.research_config().agents[0].is_none());
+                assert!(persisted.research_config().models[0].is_empty());
                 assert_eq!(persisted.research_agent(crate::research::ResearchKind::Goal), "OpenCode");
                 assert_eq!(persisted.research_model(crate::research::ResearchKind::Goal), MODEL);
                 w.render_frame(cx);
@@ -299,10 +299,10 @@ pub fn run() {
                 click(w, cx, "model-settings-scroll", "research-global-model");
                 w.press("cmd-a", cx);
                 w.input("OTH", cx);
-                assert_eq!(app.read(cx).store.default_model, MODEL);
+                assert_eq!(app.read(cx).store.default_model(), MODEL);
                 w.click("research-model-option-qa/other", cx);
                 assert_eq!(app.read(cx).global_model.read(cx).value().as_ref(), "qa/other");
-                assert_eq!(app.read(cx).store.default_model, "qa/other");
+                assert_eq!(app.read(cx).store.default_model(), "qa/other");
                 click(w, cx, "model-settings-scroll", "research-model-0");
                 assert!(w.try_find("research-model-option-qa/other").is_some());
                 w.press("cmd-a", cx);
@@ -318,8 +318,8 @@ pub fn run() {
                 w.input("/tmp/qa-ego", cx);
             }).unwrap();
             cx.update_window(handle, |_, w, cx| {
-                assert_eq!(app.read(cx).store.research_config.ego_path, "/tmp/qa-ego");
-                assert!(app.read(cx).store.research_config.models[0].is_empty());
+                assert_eq!(app.read(cx).store.research_config().ego_path, "/tmp/qa-ego");
+                assert!(app.read(cx).store.research_config().models[0].is_empty());
                 assert_eq!(
                     app.read(cx).store.prepare_project_plan(1).unwrap().model,
                     "qa/other"
@@ -327,8 +327,8 @@ pub fn run() {
 
                 // Set an override to exercise the bulk reset.
                 app.update(cx, |a, cx| {
-                    a.store.research_config.models[1] = "qa/collector".into();
-                    a.store.research_config.agents[1] = Some("Codex".into());
+                    a.store.research_config_mut().models[1] = "qa/collector".into();
+                    a.store.research_config_mut().agents[1] = Some("Codex".into());
                     a.research_models[1].update(cx, |s, cx| s.set_value("qa/collector", w, cx));
                     a.ego_input
                         .update(cx, |s, cx| s.set_value("/tmp/preserve-ego", w, cx));
@@ -351,7 +351,7 @@ pub fn run() {
                 w.within("settings-tabs").click(1usize, cx);
                 assert!(app.read(cx).research_models.iter().all(|m| m.read(cx).value().is_empty()));
                 assert_eq!(
-                    app.read(cx).store.research_config.models[1],
+                    app.read(cx).store.research_config().models[1],
                     "",
                     "Bulk reset saves immediately"
                 );
@@ -360,12 +360,12 @@ pub fn run() {
                     "/tmp/preserve-ego"
                 );
                 let store = app.read(cx).store.clone();
-                assert!(store.research_config.models.iter().all(String::is_empty));
-                assert!(store.research_config.agents.iter().all(Option::is_none));
+                assert!(store.research_config().models.iter().all(String::is_empty));
+                assert!(store.research_config().agents.iter().all(Option::is_none));
                 w.render_frame(cx);
                 assert_eq!(w.find("global-model-all-stages").disabled(), Some(true));
-                assert_eq!(store.tasks, initial.tasks);
-                assert_eq!(store.runs, initial.runs, "Saving never starts a run");
+                assert_eq!(store.tasks(), initial.tasks());
+                assert_eq!(store.runs(), initial.runs(), "Saving never starts a run");
                 app.update(cx, |a, cx| a.open_project_plan(1, w, cx));
                 w.render_frame(cx);
                 assert_ne!(w.find("generate-project-plan").disabled(), Some(true));
@@ -394,12 +394,12 @@ pub fn run() {
             }).unwrap();
             cx.update_window(handle, |_, w, cx| {
                 click(w, cx, "model-settings-scroll", "model-profile-create");
-                assert!(app.read(cx).store.model_profiles.is_empty());
+                assert!(app.read(cx).store.model_profiles().is_empty());
                 app.update(cx, |a, cx| {
                     a.model_profile_name.update(cx, |s, cx| s.set_value("Common Research", w, cx));
                 });
                 click(w, cx, "model-settings-scroll", "model-profile-create");
-                assert_eq!(app.read(cx).store.model_profiles.len(), 1);
+                assert_eq!(app.read(cx).store.model_profiles().len(), 1);
                 w.render_frame(cx);
                 assert!(w.try_find("model-profile-name").is_none());
                 assert_eq!(w.find("model-profile-update").disabled(), Some(true));
@@ -423,14 +423,14 @@ pub fn run() {
             cx.run_until_parked();
             profile_menu(&mut cx, handle, "model-profile-picker", 0);
             cx.update_window(handle, |_, _, cx| {
-                assert!(app.read(cx).store.research_config.agents.iter().all(Option::is_none));
+                assert!(app.read(cx).store.research_config().agents.iter().all(Option::is_none));
                 assert!(app.read(cx).research_models[1].read(cx).value().is_empty());
             }).unwrap();
             cx.run_until_parked();
             profile_menu(&mut cx, handle, "model-profile-picker", 1);
             cx.update_window(handle, |_, w, cx| {
                 assert_eq!(app.read(cx).research_models[1].read(cx).value().as_ref(), "qa-codex-model");
-                assert_eq!(app.read(cx).store.research_config.agents[1].as_deref(), Some("Codex"));
+                assert_eq!(app.read(cx).store.research_config().agents[1].as_deref(), Some("Codex"));
                 w.render_frame(cx);
                 let save_bounds = w.find("model-profile-update").bounds();
                 assert_eq!(w.find("model-profile-update").disabled(), Some(true));
@@ -449,7 +449,7 @@ pub fn run() {
             screenshot(&mut cx, handle, &directory, "06-modified-profile.png");
             profile_menu(&mut cx, handle, "model-profile-menu", 0);
             cx.update_window(handle, |_, w, cx| {
-                assert_eq!(app.read(cx).store.research_config.models[1], "qa-codex-model");
+                assert_eq!(app.read(cx).store.research_config().models[1], "qa-codex-model");
                 assert_eq!(app.read(cx).research_models[1].read(cx).value().as_ref(), "qa-codex-model");
                 w.render_frame(cx);
                 assert_eq!(w.find("model-profile-update").disabled(), Some(true));
@@ -457,15 +457,15 @@ pub fn run() {
             }).unwrap();
             cx.update_window(handle, |_, w, cx| {
                 click(w, cx, "model-settings-scroll", "model-profile-update");
-                assert!(app.read(cx).store.model_profiles[1].models[1].is_empty());
+                assert!(app.read(cx).store.model_profiles()[1].models[1].is_empty());
             }).unwrap();
             cx.run_until_parked();
             profile_menu(&mut cx, handle, "model-profile-menu", 2);
             cx.update_window(handle, |_, w, cx| {
-                assert_eq!(app.read(cx).store.model_profiles.len(), 1);
-                assert_eq!(app.read(cx).store.default_model, "qa/other");
+                assert_eq!(app.read(cx).store.model_profiles().len(), 1);
+                assert_eq!(app.read(cx).store.default_model(), "qa/other");
                 app.update(cx, |a, cx| a.undo_change(w, cx));
-                assert_eq!(app.read(cx).store.model_profiles.len(), 2);
+                assert_eq!(app.read(cx).store.model_profiles().len(), 2);
             }).unwrap();
             cx.run_until_parked();
             profile_menu(&mut cx, handle, "model-profile-picker", 0);

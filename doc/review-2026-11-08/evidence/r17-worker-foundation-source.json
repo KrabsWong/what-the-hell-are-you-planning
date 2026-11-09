@@ -1,0 +1,6 @@
+{
+  "src/persistence_worker.rs": "cb30a3885865632956afb6f65ffe70e94c9d2a5972f11db00e95ec6a7e3ee7c2",
+  "src/persistence_journal.rs": "bc2cd724ecff7ca99082a25007da562b29936d04e6905c8fc52e6e305418118b",
+  "src/sqlite_v4.rs": "0e4e6ab5c95e5b4c6926878f6d8855dd809bc72c3fec206d19f0c8e51787ab71",
+  "tests/v4_crash.rs": "715f173ae0cf9785db9f323a19ef2289a5d2371ae0a3ea1e0338bbe484e4d218"
+}

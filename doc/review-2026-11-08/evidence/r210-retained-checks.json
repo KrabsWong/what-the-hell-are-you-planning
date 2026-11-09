@@ -1,0 +1,169 @@
+{
+  "scope": "Previously reviewed retained test evidence. Local logs are not newly rerun; hashes and concise outcome lines preserve portable audit references. Native screenshots remain local.",
+  "checks": [
+    {
+      "local_log": "doc/review-2026-11-08/evidence/T05-independent-full-automation-fixed.log",
+      "sha256": "a209d90adab10979f4a25944fe6a3afd017cf79cdf199f642d3e17af1ea27d65",
+      "outcome_lines": [
+        "activity order passed (older-ID retry is latest in list, history and results walls)",
+        "ordinary background dispatch passed (batch continuation and failure retry stay passive)",
+        "completion boundary passed (goal-plan from progress)",
+        "completion boundary passed (goal-plan from other)",
+        "completion boundary passed (project-plan from progress)",
+        "completion boundary passed (project-plan from other)",
+        "queue chain passed (same-automation A2 waits, A1 completes, then A2)",
+        "independent pools passed (research and automation limits do not overlap)",
+        "late planning completion passed",
+        "planning revision completion passed (same-revision order, dirty draft, expected-only rebind)",
+        "planning CLI flow passed (wizard A/B, expected-only, unchanged, failure retry, restart attempts)",
+        "Automation QA passed \u00b7 /Users/fuxingxing/workspaces/what-the-hell-are-you-planning/.local/automation-qa/59794"
+      ]
+    },
+    {
+      "local_log": "doc/review-2026-11-08/evidence/T05-independent-visible-qa-fixed.log",
+      "sha256": "cf6ac29dc8eedbaeaef94891366afbaa599820d680fcb9d29b62d8125379bf37",
+      "outcome_lines": [
+        "T05 execution-eligibility QA passed: visible period/task/goal-step barrier labels and ordinary progress labels at 1440x920 and 1000x680, light and dark. Evidence: /Users/fuxingxing/workspaces/what-the-hell-are-you-planning/.local/execution-eligibility-qa/58844"
+      ]
+    },
+    {
+      "local_log": "doc/review-2026-11-08/evidence/T06-independent-full-result-matrix.log",
+      "sha256": "45676ca8efbc84946e11c83a8cc184758cff9b7b76910f4eaa26579f50fafe3a",
+      "outcome_lines": [
+        "Result presentation QA passed \u00b7 /Users/fuxingxing/workspaces/what-the-hell-are-you-planning/.local/result-presentation-qa/103"
+      ]
+    },
+    {
+      "local_log": "doc/review-2026-11-08/evidence/T07-final-independent-sidebar.log",
+      "sha256": "ca9421190735d9733bdb84b8df07e636c1bfd3eedfd7fad3aeb44a4dda2e0145",
+      "outcome_lines": [
+        "Sidebar startup QA passed",
+        "Sidebar navigation QA passed \u00b7 /var/folders/2b/5rzlcbd94xd5dp2b2rjsqbb00000gn/T/planning-navigation-qa-11889"
+      ]
+    },
+    {
+      "local_log": "doc/review-2026-11-08/evidence/T08-independent-global-search-checkpoint.log",
+      "sha256": "ccd0b0f503963a5029cc85c209cbba223eacbdfe4ace57774a1e49997ce29a6a",
+      "outcome_lines": [
+        "Global search QA passed \u00b7 /Users/fuxingxing/workspaces/what-the-hell-are-you-planning/.local/global-search-qa/86721"
+      ]
+    },
+    {
+      "local_log": "doc/review-2026-11-08/evidence/T08-independent-project-topic-search-pass.log",
+      "sha256": "eef832dfe05d36041d16f00dc7a586aab241a14baf7bf39640e0ea76f23c7e83",
+      "outcome_lines": [
+        "Global search QA passed \u00b7 /Users/fuxingxing/workspaces/what-the-hell-are-you-planning/.local/global-search-qa/20816"
+      ]
+    },
+    {
+      "local_log": "doc/review-2026-11-08/evidence/T09-final-independent-unit.log",
+      "sha256": "93c76dd630ad909018bbf7b25e0b78c8fe6596c1c805e1e83c01b6fc4a23883b",
+      "outcome_lines": [
+        "test result: ok. 328 passed; 0 failed; 2 ignored; 0 measured; 0 filtered out; finished in 4.84s"
+      ]
+    },
+    {
+      "local_log": "doc/review-2026-11-08/evidence/T10-r12-navigation-pass.log",
+      "sha256": "e8f4e6193f04cf4dc69f80a507a50ffa67e1e08071dd74dd1e64cc292b63a740",
+      "outcome_lines": [
+        "Navigation context QA passed \u00b7 /var/folders/2b/5rzlcbd94xd5dp2b2rjsqbb00000gn/T/planning-navigation-context-qa-94570"
+      ]
+    },
+    {
+      "local_log": "doc/review-2026-11-08/evidence/T11-independent-final-state-matrix.log",
+      "sha256": "47f1cbd497d048935a17a96e50ea2593a996d9ec439ee513ff420d0388b75213",
+      "outcome_lines": [
+        "T11 QA PASSED: 1440/1000 \u00d7 light/dark. Verified enabled-idle (Run manually primary, no Resume/Stop), draft (disabled Run manually), recovery (Needs attention, Resume primary, Stop danger), failed retry primary, destructive Cancel period, wrapped recent-menu values, passive status chip and selection vs primary. Screenshots: /Users/fuxingxing/workspaces/what-the-hell-are-you-planning/.local/t11-qa/99915"
+      ]
+    },
+    {
+      "local_log": "doc/review-2026-11-08/evidence/T12-independent-S1-28-unit-pass.log",
+      "sha256": "8c6c74c93e9717d3051477840b434297259718faf72ac20c60b4d84fcaa06aa5",
+      "outcome_lines": [
+        "test result: ok. 28 passed; 0 failed; 0 ignored; 0 measured; 496 filtered out; finished in 0.00s"
+      ]
+    },
+    {
+      "local_log": "doc/review-2026-11-08/evidence/T13-independent-pure-scoped-edit-pass.log",
+      "sha256": "a96600050370f2f3721a5419e1b67168255842bf18a7a60715e8a36fe08b351a",
+      "outcome_lines": [
+        "test result: ok. 26 passed; 0 failed; 0 ignored; 0 measured; 540 filtered out; finished in 0.00s"
+      ]
+    },
+    {
+      "local_log": "doc/review-2026-11-08/evidence/T13-r12-task-edit-pass.log",
+      "sha256": "99e1a1a249deceeaf48e556d41367ddcfca0be35a9ebeda3895ee8df544df427",
+      "outcome_lines": [
+        "Task edit QA passed \u00b7 /Users/fuxingxing/workspaces/what-the-hell-are-you-planning/.local/task-edit-qa/93707"
+      ]
+    },
+    {
+      "local_log": "doc/review-2026-11-08/evidence/T16-arithmetic-tests.log",
+      "sha256": "4afa7525eaa8ec9838f2cc3cc4ae22c6fccbe118d9fed91d0f5d0949fbc88bd7",
+      "outcome_lines": [
+        "test result: ok. 20 passed; 0 failed; 0 ignored; 0 measured; 295 filtered out; finished in 0.00s"
+      ]
+    },
+    {
+      "local_log": "doc/review-2026-11-08/evidence/T16-independent-schedule-current.log",
+      "sha256": "f57b47d4d56aa726e977f48f6461d951a326f225888ad7d4eb568bf195226122",
+      "outcome_lines": [
+        "test result: ok. 20 passed; 0 failed; 0 ignored; 0 measured; 388 filtered out; finished in 0.00s"
+      ]
+    },
+    {
+      "local_log": "doc/review-2026-11-08/evidence/T18-policy-independent.log",
+      "sha256": "7fd1e34ce8248fff5f0f156e761438bac062b9fee7b77ff2ade4da04f4e3534a",
+      "outcome_lines": [
+        "test result: ok. 14 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.00s"
+      ]
+    },
+    {
+      "local_log": "doc/review-2026-11-08/evidence/T21-independent-long-history-pass.log",
+      "sha256": "7568f00a04809eb573fe957f848f35822910589bb8a6b246d281b4dfaf957981",
+      "outcome_lines": [
+        "Research input QA passed \u00b7 /Users/fuxingxing/workspaces/what-the-hell-are-you-planning/.local/research-input-qa/49918"
+      ]
+    },
+    {
+      "local_log": "doc/review-2026-11-08/evidence/T22-independent-final-archive-pass.log",
+      "sha256": "d4df6b5be11ccebfb1f900199fb357744064c8165f6fe7039ce71083638234b0",
+      "outcome_lines": [
+        "Archive QA passed \u00b7 /Users/fuxingxing/workspaces/what-the-hell-are-you-planning/.local/archive-qa/49919"
+      ]
+    },
+    {
+      "local_log": "doc/review-2026-11-08/evidence/T23-T25-independent-final-planning.log",
+      "sha256": "1899d99911de083030728e844acf8fcb95463fa082854578bcfa03d715b61772",
+      "outcome_lines": [
+        "instruction validation passed (form, domain, storage, no dispatch)",
+        "automation planning chain passed (reviewed plan frozen, no topic or replanning)",
+        "late planning completion passed",
+        "planning revision completion passed (same-revision order, dirty draft, expected-only rebind)",
+        "planning CLI flow passed (wizard A/B, expected-only, unchanged, failure retry, restart attempts)",
+        "Planning QA passed \u00b7 /Users/fuxingxing/workspaces/what-the-hell-are-you-planning/.local/planning-qa/80494"
+      ]
+    },
+    {
+      "local_log": "doc/review-2026-11-08/evidence/T23-T25-independent-final-request-tests.log",
+      "sha256": "3bdb080cb350e990a78a2f32b8ba157af047e4c18bbcba50dfc798efb7424849",
+      "outcome_lines": [
+        "test result: ok. 25 passed; 0 failed; 0 ignored; 0 measured; 400 filtered out; finished in 0.00s"
+      ]
+    },
+    {
+      "local_log": "doc/review-2026-11-08/evidence/T24-onboarding.log",
+      "sha256": "fa1da03665eb7ee82969bcaaa4a9d48ee5772233e9d9a97c4269b005a93338d0",
+      "outcome_lines": [
+        "Workspace reconnect/relocation with real Quick and Research automations passed"
+      ]
+    },
+    {
+      "local_log": "doc/review-2026-11-08/evidence/T25-independent-expected-only-negative.log",
+      "sha256": "b68bbbb8a27dd013fb02c65ebf217376e6d2fe48206284b8e9087d9cd41c38d4",
+      "outcome_lines": [
+        "test result: ok. 1 passed; 0 failed; 0 ignored; 0 measured; 424 filtered out; finished in 0.00s"
+      ]
+    }
+  ]
+}

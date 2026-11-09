@@ -82,17 +82,14 @@ struct RunProject<'a> {
     id: Option<u64>,
     topics: Vec<RunTopic<'a>>,
 }
-/// Automation periods own their steps and stay out of the ordinary results tree.
+/// Automation periods and planning attempts stay out of the ordinary results tree.
 fn run_is_automation(store: &Store, run: &AgentRun) -> bool {
-    run.automation_occurrence_id.is_some()
-        || store
-            .request_for_run(run.id)
-            .is_some_and(|request| request.automation_id.is_some())
+    store.run_is_automation_owned(run)
 }
 
 fn run_projects(store: &Store) -> Vec<RunProject<'_>> {
     let mut groups: Vec<RunProject<'_>> = vec![];
-    for run in store.runs.iter().rev().filter(|r| {
+    for run in store.runs().iter().rev().filter(|r| {
         !run_is_automation(store, r) && !store.run_is_archived(r)
     }) {
         let task = store.task(run.task_id);
@@ -128,7 +125,7 @@ fn run_projects(store: &Store) -> Vec<RunProject<'_>> {
     }
     groups.sort_by_key(|group| {
         store
-            .projects
+            .projects()
             .iter()
             .position(|p| Some(p.id) == group.id)
             .unwrap_or(usize::MAX)
@@ -137,7 +134,7 @@ fn run_projects(store: &Store) -> Vec<RunProject<'_>> {
         group.topics.sort_by_key(|topic| {
             topic
                 .id
-                .and_then(|id| store.tasks.iter().position(|t| t.id == id))
+                .and_then(|id| store.tasks().iter().position(|t| t.id == id))
                 .unwrap_or(usize::MAX)
         });
     }
@@ -162,7 +159,7 @@ fn run_location(store: &Store, run: &AgentRun) -> (Option<u64>, Option<u64>) {
 impl TaskApp {
     pub fn reveal_selected_run(&mut self) {
         if let Some(project) = self.displayed_run_id()
-            .and_then(|id| self.store.runs.iter().find(|r| r.id == id))
+            .and_then(|id| self.store.runs().iter().find(|r| r.id == id))
             .and_then(|run| run_location(&self.store, run).0)
         {
             self.remember_active_project(project);
@@ -170,16 +167,21 @@ impl TaskApp {
         self.result_scroll.set_offset(point(px(0.), px(0.)));
         self.expanded_run_sources = None;
         self.show_planning_activity = self
-            .selected_run
-            .and_then(|id| self.store.runs.iter().find(|r| r.id == id))
-            .or_else(|| self.store.runs.last())
+            .displayed_run_id()
+            .and_then(|id| self.store.runs().iter().find(|r| r.id == id))
             .is_some_and(|r| {
                 r.project_plan.is_some() || r.research_kind == Some(ResearchKind::Goal)
             });
     }
 
     fn select_run(&mut self, id: u64, cx: &mut Context<Self>) {
-        self.selected_run = Some(id);
+        let context = if self.task_result_context().is_some() {
+            self.result_context_for_run(id)
+        } else {
+            None
+        };
+        if self.defer_result_navigation(id, context, false, None, cx) { return; }
+        self.set_result_selection(context, Some(id));
         self.reveal_selected_run();
         self.show_run_details = false;
         self.show_run_result = true;
@@ -192,21 +194,9 @@ impl TaskApp {
         // Automation steps are reachable only from their period. Without an
         // explicit task-result context, Research results never selects one.
         let selected = self
-            .selected_run
-            .and_then(|id| self.store.runs.iter().find(|r| r.id == id))
-            .filter(|r| {
-                self.task_result_context.is_some()
-                    || (!self.store.run_is_archived(r)
-                        && !run_is_automation(&self.store, r))
-            })
-            .or_else(|| {
-                self.store
-                    .runs
-                    .iter()
-                    .rev()
-                    .find(|r| !self.store.run_is_archived(r) && !run_is_automation(&self.store, r))
-            });
-        if self.task_result_context.is_some()
+            .displayed_run_id()
+            .and_then(|id| self.store.runs().iter().find(|run| run.id == id));
+        if self.task_result_context().is_some()
             && let Some(run) = selected
         {
             return self.run_content(run, cx);
@@ -234,7 +224,7 @@ impl TaskApp {
         if let (Some(project), Some(topic)) = (project, topic) {
             let name = project
                 .id
-                .and_then(|id| self.store.projects.iter().find(|p| p.id == id))
+                .and_then(|id| self.store.projects().iter().find(|p| p.id == id))
                 .map(|p| p.name.clone())
                 .unwrap_or_else(|| "Unlinked history".into());
             let topic_task = topic.id.and_then(|id| self.store.task(id));
@@ -250,7 +240,7 @@ impl TaskApp {
                 .iter()
                 .map(|p| {
                     let name =
-                        p.id.and_then(|id| self.store.projects.iter().find(|p| p.id == id))
+                        p.id.and_then(|id| self.store.projects().iter().find(|p| p.id == id))
                             .map(|p| p.name.clone())
                             .unwrap_or_else(|| "Unlinked history".into());
                     let run = p
@@ -366,13 +356,13 @@ impl TaskApp {
                     .child(row().flex_wrap().gap_3()
                         .when_some(topic_task, |d, task| {
                             let id = task.id;
-                            d.child(quiet_button("open-run-goal", "Goal details").icon(assets::IconName::ArrowRight)
+                            d.child(link_button("open-run-goal", "Goal details").icon(assets::IconName::ArrowRight)
                                 .h_6().px_0().text_xs().text_color(rgb(colors.accent))
                                 .on_click(cx.listener(move |a, _, w, cx| a.open_task(id, w, cx))))
                         })
                         .when(!planning_options.is_empty(), |d| d.child(
                             quiet_button("run-project-planning", "Planning history")
-                                .h_6().px_0().text_xs().text_color(rgb(colors.accent)).dropdown_caret(true)
+                                .h_6().px_1().text_xs().text_color(rgb(colors.accent)).dropdown_caret(true)
                                 .tooltip("Project and current goal planning records")
                                 .dropdown_menu_with_anchor(Anchor::TopLeft, move |mut menu, _, _| {
                                     for (rid, title) in &planning_options {
@@ -394,7 +384,7 @@ impl TaskApp {
             }
             latest.sort_by_key(|r| {
                 self.store
-                    .tasks
+                    .tasks()
                     .iter()
                     .position(|t| t.id == r.task_id)
                     .unwrap_or(usize::MAX)
@@ -530,7 +520,7 @@ impl TaskApp {
                 .map(|t| format!("{} · {kind}", self.store.identifier(t)))
                 .unwrap_or_else(|| format!("Task {} · saved activity", run.task_id))
         };
-        quiet_button(format!("run-{rid}"), "")
+        row_button(format!("run-{rid}"), "")
             .custom(
                 gpui_kit::component::button::ButtonCustomVariant::new(cx)
                     .foreground(rgb(colors.text).into())
@@ -590,7 +580,7 @@ impl TaskApp {
     fn run_version_picker(&self, run: &AgentRun, cx: &mut Context<Self>) -> AnyElement {
         let attempts: Vec<_> = self
             .store
-            .runs
+            .runs()
             .iter()
             .rev()
             .filter(|r| r.task_id == run.task_id && r.project_plan == run.project_plan)
@@ -631,7 +621,7 @@ impl TaskApp {
             .collect();
         let entity = cx.entity().downgrade();
         quiet_button("run-version-picker", caption)
-            .px_0()
+            .px_1()
             .text_xs()
             .text_color(rgb(palette(cx).muted))
             .dropdown_caret(true)
@@ -655,6 +645,7 @@ impl TaskApp {
 
     fn run_content(&self, run: &AgentRun, cx: &mut Context<Self>) -> AnyElement {
         let colors = palette(cx);
+        let result_presentation = crate::result_presentation::present_run(&self.store, run);
         let automation_owned = run.automation_occurrence_id.is_some();
         let active = self.active_runs.iter().any(|a| a.id == run.id)
             || self.queued_runs.iter().any(|(id, _)| *id == run.id);
@@ -663,6 +654,7 @@ impl TaskApp {
         let ongoing = active || matches!(run.status.as_str(), "Running" | "Queued" | "Recovering" | "Cancelling");
         let run_goal = self.run_goal(run.id);
         let id = run.task_id;
+        let attempt_id = run.id;
         let project_plan = run.project_plan;
         let project_id = project_plan.or_else(|| self.store.task(id).map(|t| t.project_id));
         let can_open =
@@ -684,6 +676,10 @@ impl TaskApp {
             "Recovering" => (
                 "Previous session is still running",
                 "OpenCode is continuing this task in the background. The app checks its status and imports the result when it finishes; no duplicate run is started.",
+            ),
+            "Checking" => (
+                "Launch outcome needs checking",
+                "A durable launch claim exists, but the process start was not confirmed. Review the working folder, then explicitly rerun as a new attempt or mark this attempt failed. It will not be relaunched automatically.",
             ),
             "Interrupted" => (
                 "No completed result for this attempt",
@@ -745,7 +741,7 @@ impl TaskApp {
                 .iter()
                 .filter_map(|active| {
                     self.store
-                        .runs
+                        .runs()
                         .iter()
                         .find(|r| r.id == active.id)
                         .filter(|r| self.store.run_conflicts(run, r))
@@ -801,14 +797,14 @@ impl TaskApp {
         } else {
             explanation.to_string()
         };
-        let context_task = self.task_result_context;
+        let context_task = self.task_result_context();
         let inline_task_actions = ongoing && !readable && !self.show_run_details && !planning
             && run_goal.is_some() && run.research_kind.is_some();
         let origin_label = if project_plan.is_some() { "Project details" }
             else if context_task.and_then(|id| self.store.task(id)).and_then(|t| t.research.as_ref())
                 .is_some_and(|r| r.kind == ResearchKind::Goal) { "View original goal" }
             else { "View original task" };
-        let mut actions = row().flex_wrap().gap_2();
+        let mut actions = row().flex_shrink_0().gap_2();
         if self.show_run_details {
             actions = actions.child(quiet_button("show-result", "Back to result")
                 .icon(assets::IconName::ArrowLeft)
@@ -818,26 +814,12 @@ impl TaskApp {
                     cx.notify();
                 })));
         }
-        if readable && !planning && self.store.task(context_task.unwrap_or(id)).is_some() {
-            let (previous, next) = self.store.detail_task_neighbors(context_task.unwrap_or(id));
-            actions = actions
-                .child(crate::controls::tool_icon("previous-task", assets::IconName::ArrowUp, "Previous task")
-                    .h(px(28.)).w(px(28.))
-                    .on_click(cx.listener(move |a, _, w, cx| a.open_sidebar_task(previous, w, cx))))
-                .child(crate::controls::tool_icon("next-task", assets::IconName::ArrowDown, "Next task")
-                    .h(px(28.)).w(px(28.))
-                    .on_click(cx.listener(move |a, _, w, cx| a.open_sidebar_task(next, w, cx))));
-        }
-        if browser_blocked || (active && run.research_kind == Some(ResearchKind::Collect)) {
-            actions = actions.child(
-                quiet_button("run-open-browser", "Open browser")
-                    .icon(assets::IconName::ExternalLink)
-                    .on_click(cx.listener(|this, _, _, cx| this.open_ego(cx))),
-            );
-        }
-        if run.research_kind == Some(ResearchKind::Advise) && run.status == "Succeeded" {
+        if run.research_kind == Some(ResearchKind::Advise)
+            && run.status == "Succeeded"
+            && !self.store.task_is_archived(run.task_id)
+        {
             let source_id = run.id;
-            actions = actions.child(quiet_button("regenerate-report", "Regenerate")
+            actions = actions.child(primary_button("regenerate-report", "Regenerate")
                 .disabled(self.task_running(id))
                 .tooltip("Rewrite this report using existing evidence and analysis")
                 .on_click(cx.listener(move |a, _, w, cx| {
@@ -847,6 +829,46 @@ impl TaskApp {
                             .rows(3))));
                     cx.notify();
                 })));
+        }
+        if readable && !planning && self.store.task(context_task.unwrap_or(id)).is_some() {
+            let navigation = self.store.task_navigation(context_task.unwrap_or(id));
+            let previous_enabled = navigation.previous.resolved(&self.store).is_some();
+            let next_enabled = navigation.next.resolved(&self.store).is_some();
+            let previous = navigation.previous.clone();
+            let next = navigation.next.clone();
+            let overview = navigation.overview.clone();
+            if let Some(overview) = overview {
+                actions = actions.child(
+                    quiet_button("period-overview", "Overview")
+                        .h(px(32.))
+                        .tooltip(overview.tooltip.clone())
+                        .on_click(cx.listener(move |a, _, w, cx| {
+                            a.open_task_neighbor(&overview, true, w, cx);
+                        })),
+                );
+            }
+            actions = actions
+                .child(crate::controls::tool_icon("previous-task", assets::IconName::ArrowUp, "Previous task")
+                    .h(px(32.)).w(px(32.))
+                    .disabled(!previous_enabled)
+                    .tooltip(previous.tooltip.clone())
+                    .on_click(cx.listener(move |a, _, w, cx| {
+                        a.open_task_neighbor(&previous, true, w, cx);
+                    })))
+                .child(crate::controls::tool_icon("next-task", assets::IconName::ArrowDown, "Next task")
+                    .h(px(32.)).w(px(32.))
+                    .disabled(!next_enabled)
+                    .tooltip(next.tooltip.clone())
+                    .on_click(cx.listener(move |a, _, w, cx| {
+                        a.open_task_neighbor(&next, true, w, cx);
+                    })));
+        }
+        if browser_blocked || (active && run.research_kind == Some(ResearchKind::Collect)) {
+            actions = actions.child(
+                quiet_button("run-open-browser", "Open browser")
+                    .icon(assets::IconName::ExternalLink)
+                    .on_click(cx.listener(|this, _, _, cx| this.open_ego(cx))),
+            );
         }
         if active {
             if run_goal.is_some_and(|goal| self.research_sequences.contains(&goal)) {
@@ -863,18 +885,17 @@ impl TaskApp {
                 );
             }
             actions = actions.child(
-                quiet_button("cancel-run", "Stop task")
-                    .text_color(rgb(colors.danger))
+                danger_button("cancel-run", "Stop task")
                     .disabled(run.status == "Cancelling")
                     .on_click(cx.listener(|this, _, _, cx| this.cancel_run(cx))),
             );
         }
         if !inline_task_actions {
             let entity = cx.entity().downgrade();
-            let copy = run.output.clone();
+            let copy = result_presentation.reader_text();
             let details = self.show_run_details;
             actions = actions.child(crate::controls::tool_icon("run-actions-menu", assets::IconName::Ellipsis, "More result actions")
-                .h(px(28.)).w(px(28.))
+                .h(px(32.)).w(px(32.))
                 .dropdown_menu_with_anchor(Anchor::TopRight, move |mut menu, _, _| {
                     if !details {
                         let entity = entity.clone();
@@ -890,14 +911,16 @@ impl TaskApp {
                     menu = menu.item(gpui_kit::component::menu::PopupMenuItem::new(origin_label).disabled(!can_open).on_click(move |_, w, cx| {
                         let _ = entity.update(cx, |a, cx| {
                             if let Some(pid) = project_plan {
+                                a.structural_navigation();
                                 a.navigate(Scope::Project(pid), w, cx);
                                 a.layout = Layout::Board;
                             } else {
+                                a.record_origin();
                                 a.open_task(context_task.unwrap_or(id), w, cx);
                             }
                         });
                     }));
-                    if readable {
+                    if readable && !copy.is_empty() {
                         let copy = copy.clone();
                         menu = menu.separator().item(gpui_kit::component::menu::PopupMenuItem::new("Copy result").on_click(move |_, _, cx| {
                             cx.write_to_clipboard(ClipboardItem::new_string(copy.clone()));
@@ -912,21 +935,58 @@ impl TaskApp {
             .flex_shrink_0()
             .child(
                 row()
-                    .flex_wrap()
-                    .justify_between()
-                    .gap_3()
+                    .id("run-title-bar")
+                    .w_full()
+                    .min_w_0()
+                    .h(px(32.))
                     .child(
-                        row()
-                            .flex_wrap()
-                            .gap_3()
-                            .child(attempt_indicator(run, cx))
-                            .child(label(format!("Run #{} · {} · {}", run.id, run.agent,
-                                if run.model.is_empty() { "Not recorded" } else { run.model.as_str() }), cx))
-                            .child(self.run_version_picker(run, cx))
-                            .when(!self.show_run_details && readable, |d| d.child(label(
-                                format!("{} sources · {} materials", run.sources.len(), run.attachments.len()), cx))),
+                        div()
+                            .id("run-title")
+                            .flex_1()
+                            .min_w_0()
+                            .truncate()
+                            .text_lg()
+                            .font_weight(FontWeight::SEMIBOLD)
+                            .tooltip({
+                                let title = run.task_title.clone();
+                                move |w, cx| gpui_kit::component::tooltip::Tooltip::new(title.clone()).build(w, cx)
+                            })
+                            .child(selectable(run.task_title.clone()))
+                            .map(observed),
                     )
-                    .child(actions),
+                    .child(actions)
+                    .map(observed),
+            )
+            .child(
+                row()
+                    .id("run-metadata")
+                    .w_full()
+                    .min_w_0()
+                    .flex_wrap()
+                    .gap_3()
+                    .child(attempt_indicator(run, cx))
+                    .when(run.research_kind.is_some() && !planning, |d| {
+                        let mut kind = if self.report_body_error(run).is_some() {
+                            "Report unavailable"
+                        } else {
+                            result_presentation.kind.label()
+                        }.to_string();
+                        if let Some(suffix) = result_presentation.status_suffix() {
+                            kind.push_str(&format!(" · {suffix}"));
+                        }
+                        let freshness = result_presentation.freshness.labels();
+                        if !freshness.is_empty() {
+                            kind.push_str(" · ");
+                            kind.push_str(&freshness.join(" · "));
+                        }
+                        d.child(label(kind.clone(), cx).id("run-result-kind").aria_label(kind).map(observed))
+                    })
+                    .child(label(format!("Run #{} · {} · {}", run.id, run.agent,
+                        if run.model.is_empty() { "Not recorded" } else { run.model.as_str() }), cx))
+                    .child(self.run_version_picker(run, cx))
+                    .when(!self.show_run_details && readable, |d| d.child(label(
+                        format!("{} sources · {} materials", run.sources.len(), run.attachments.len()), cx)))
+                    .map(observed),
             )
             .when((run.status != "Succeeded" || planning) && (readable || self.show_run_details), |d| {
                 d.child(label(queue_explanation.clone(), cx))
@@ -982,7 +1042,7 @@ impl TaskApp {
             }
             let completed = tasks
                 .iter()
-                .filter(|id| self.store.research_result(***id).is_some())
+                .filter(|id| self.store.research_result_available_or_pending(***id))
                 .count();
             stages = stages.child(
                 row()
@@ -1021,23 +1081,19 @@ impl TaskApp {
                 let task_id = *task_id;
                 let Some(task) = self.store.task(task_id) else { continue; };
                 use crate::execution_status::ExecutionStatus;
-                let status = self.store.execution_status(task_id, self.todo_batch.as_ref());
-                let status = if self.store.research_result(task_id).is_some()
-                    && !matches!(status, ExecutionStatus::Running | ExecutionStatus::Queued | ExecutionStatus::Retrying) {
-                    ExecutionStatus::Done
-                } else { status };
-                let result_run = (status == ExecutionStatus::Done)
+                let status = self.display_task_status(task_id);
+                let result_run = (status.execution == ExecutionStatus::Done)
                     .then(|| self.store.research_result(task_id).map(|r| r.id)).flatten();
                 let current = task_id == run.task_id;
                 let title = task.title.clone();
-                let latest_run = self.store.runs.iter().rev()
+                let latest_run = self.store.runs().iter().rev()
                     .find(|r| r.task_id == task_id && r.project_plan.is_none()).map(|r| r.id);
                 entries = entries.child(row().id(format!("progress-task-{task_id}"))
                     .min_w_0().gap_2().px_2().h(px(32.)).rounded_md()
                     .when(current, |d| d.bg(rgb(colors.accent_surface)))
                     .tooltip(move |w, cx| gpui_kit::component::tooltip::Tooltip::new(title.clone()).build(w, cx))
-                    .child(status.icon_view(format!("progress-task-icon-{task_id}"), cx))
-                    .child(quiet_button(format!("progress-task-title-{task_id}"), "")
+                    .child(status.execution.icon_view(format!("progress-task-icon-{task_id}"), cx))
+                    .child(row_button(format!("progress-task-title-{task_id}"), "")
                         .flex_1().min_w_0().h(px(28.)).px_1()
                         .accessibility_label(task.title.clone())
                         .tooltip(if result_run.is_some() { "Open result" } else { "Open task details" })
@@ -1060,29 +1116,21 @@ impl TaskApp {
                                     cx.notify();
                                 }))))
                     )
-                    .child(label(status.label(), cx).w(px(64.)).text_right().flex_shrink_0()
-                        .text_color(rgb(status.color(cx))))
+                    .child(label(status.label(), cx).id(format!("progress-task-status-{task_id}"))
+                        .aria_label(status.label()).w(px(64.)).text_right().flex_shrink_0()
+                        .text_color(rgb(status.execution.color(cx))).map(observed))
                     .map(observed));
             }
             stages = stages.child(entries.map(observed));
         }
         col()
             .flex_1()
+            .w_full()
             .min_w_0()
             .h_full()
             .gap_1()
             .px_4()
             .py_2()
-            .child(
-                col().flex_shrink_0().gap_2().child(
-                    div()
-                        .text_lg()
-                        .font_weight(FontWeight::SEMIBOLD)
-                        .line_height(relative(1.3))
-                        .line_clamp(2)
-                        .child(selectable(run.task_title.clone())),
-                ),
-            )
             .child(progress)
             .when(self.show_run_details, |d| {
                 d.child(self.run_technical_panel(run, cx))
@@ -1108,6 +1156,33 @@ impl TaskApp {
                                 .child(selectable(headline)),
                         )
                         .child(label(queue_explanation.clone(), cx))
+                        .when(run.status == "Checking", |d| {
+                            d.child(
+                                div()
+                                    .flex()
+                                    .gap_2()
+                                    .child(
+                                        primary_button("run-launch-rerun", "Rerun as new attempt")
+                                            .on_click(cx.listener(move |a, _, _, cx| {
+                                                let _ = a.resolve_launch_ambiguity(
+                                                    attempt_id,
+                                                    true,
+                                                    cx,
+                                                );
+                                            })),
+                                    )
+                                    .child(
+                                        danger_button("run-launch-failed", "Mark attempt failed")
+                                            .on_click(cx.listener(move |a, _, _, cx| {
+                                                let _ = a.resolve_launch_ambiguity(
+                                                    attempt_id,
+                                                    false,
+                                                    cx,
+                                                );
+                                            })),
+                                    ),
+                            )
+                        })
                         .when(!ongoing && can_open && project_plan.is_none(), |d| {
                             d.child(primary_button("run-resolve-task", "Open task & resolve").self_start()
                                 .on_click(cx.listener(move |a, _, w, cx| a.open_task(id, w, cx))))
@@ -1192,7 +1267,7 @@ impl TaskApp {
                 row()
                     .flex_wrap()
                     .child(
-                        select_button("show-logs", "Live logs", !self.show_run_result).on_click(
+                        select_button("show-logs", "Live logs", !self.show_run_result, cx).on_click(
                             cx.listener(|this, _, _, cx| {
                                 this.show_run_result = false;
                                 cx.notify();
@@ -1200,7 +1275,7 @@ impl TaskApp {
                         ),
                     )
                     .child(
-                        select_button("show-raw-output", "Saved output", self.show_run_result)
+                        select_button("show-raw-output", "Saved output", self.show_run_result, cx)
                             .on_click(cx.listener(|this, _, _, cx| {
                                 this.show_run_result = true;
                                 cx.notify();

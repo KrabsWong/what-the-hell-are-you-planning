@@ -1,0 +1,10 @@
+{
+  "command": "PATH=/opt/homebrew/opt/node@24/bin:$PATH cargo test --features qa --quiet",
+  "exit_code": 0,
+  "unit_passed": 646,
+  "ignored": 2,
+  "dispatch_crash_passed": 6,
+  "persistence_crash_passed": 3,
+  "log": "r54-full-tests.log",
+  "scope": "Independent compiled checkpoint; live T14/T15 activation and later edits remain unaccepted"
+}

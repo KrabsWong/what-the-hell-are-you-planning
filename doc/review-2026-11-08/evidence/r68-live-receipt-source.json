@@ -1,0 +1,6 @@
+{
+  "base": "/Users/fuxingxing/workspaces/what-the-hell-are-you-planning/.local/r67-live-receipt-source",
+  "source": "/Users/fuxingxing/workspaces/what-the-hell-are-you-planning/.local/r68-live-receipt-source",
+  "change": "Current dispatch admission fix; retain exact independent r67 foreign-workspace regression unchanged",
+  "dispatch_sha256": "8f4333e2a95b11eec01a16cd9ac29038ca4f3923059adab5ee683f86e6255e9f"
+}

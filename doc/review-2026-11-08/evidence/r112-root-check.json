@@ -1,0 +1,8 @@
+{
+  "command": "cargo check --locked --features qa",
+  "exit_code": 0,
+  "source_manifest": ".local/opencode-dispatch/r112-source.json",
+  "log": ".local/opencode-dispatch/r112-root-check.log",
+  "duration_seconds": 57.97,
+  "scope": "Confirms frozen QA-capable application compiles after moving the test event-loop call to HeadlessAppContext. No behavioral or native acceptance inferred."
+}

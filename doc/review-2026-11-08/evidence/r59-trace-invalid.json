@@ -1,0 +1,6 @@
+{
+  "valid": false,
+  "reason": "Build processes remained at preflight. Shell command continued to xctrace despite failed preflight; recording excluded from performance acceptance.",
+  "gestures": 0,
+  "time": 1794167296.341229
+}

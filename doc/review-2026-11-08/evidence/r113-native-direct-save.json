@@ -1,0 +1,21 @@
+{
+  "candidate": "402ff49 isolated native build",
+  "binary_sha256": "66d0bf836e930564b37698b625a4a48e206625c1a90dc4bea57daa48e4fe20ae",
+  "theme": "Dark",
+  "actions": [
+    "Draft detail Review and enable",
+    "Change name to R113 direct save validation",
+    "Click standalone Save draft",
+    "Read isolated database in read-only mode",
+    "Observe native UI again after disk confirmation"
+  ],
+  "database": {
+    "automation_id": 3,
+    "name": "R113 direct save validation",
+    "status": "Draft",
+    "occurrence_count": 5
+  },
+  "observed": "Database contains new name, but editor remains open with Saving banner after disk confirmation. No Saved feedback or completion navigation.",
+  "result": "Failed standalone save completion; separate from dirty-exit confirmation flow.",
+  "scope": "No Enable or Run manually clicked; only disposable fixture draft edited."
+}

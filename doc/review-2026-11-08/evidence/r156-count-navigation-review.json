@@ -1,0 +1,33 @@
+{
+  "scope": "F24/T19 count navigation, isolated private baseline plus reviewed patch",
+  "qa": "--qa-navigation-context",
+  "result": "passed",
+  "themes": [
+    "Light",
+    "Dark"
+  ],
+  "sizes": [
+    "1000x680",
+    "1440x920"
+  ],
+  "checks": [
+    "All/Archive count opens Steps",
+    "Back restores nonempty query, status, layout and nonzero scroll",
+    "Stay preserves draft; Discard and Save replay Steps",
+    "existing Project/Topic, period and generic dirty-exit regressions retained"
+  ],
+  "unit_results": [
+    "test result: ok. 706 passed; 0 failed; 2 ignored; 0 measured; 0 filtered out; finished in 5.99s",
+    "test result: ok. 0 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.00s",
+    "test result: ok. 2 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.13s",
+    "test result: ok. 0 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.00s"
+  ],
+  "icons": "51 registered Lucide references embedded; checker passed",
+  "visual_review": [
+    "All 1000x680 Light",
+    "Archive 1440x920 Dark"
+  ],
+  "screenshots": "local only, planning-navigation-context-qa-44579",
+  "candidate_sha256": "ee2e8842edcddf3612b2eab847e4ca39135d8ea72dbf7e3f29c514aa0df95e7f",
+  "limit": "Pending shared T12 runtime integration and native regression; focused acceptance only."
+}

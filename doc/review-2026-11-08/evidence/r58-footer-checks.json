@@ -1,0 +1,25 @@
+{
+  "sha256": "d5542205531053aeb62cf724c000db02e83e6fa82361f038621f911e19c335f4",
+  "guard_exit": 2,
+  "source_manifest": "r58-footer-source.json",
+  "results": [
+    {
+      "flag": "--qa-navigation-context",
+      "exit_code": 0,
+      "seconds": 16.356,
+      "log": "r58-navigation-context.log"
+    },
+    {
+      "flag": "--qa-keyboard-visual",
+      "exit_code": 101,
+      "seconds": 12.842,
+      "log": "r58-keyboard-visual.log"
+    },
+    {
+      "flag": "--qa-settings",
+      "exit_code": 0,
+      "seconds": 18.086,
+      "log": "r58-settings.log"
+    }
+  ]
+}

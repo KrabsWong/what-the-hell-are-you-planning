@@ -1,0 +1,23 @@
+{
+  "scope": "Independent root rerun of corrected caller-origin QA; no product behavior change",
+  "candidate_sha256": "3a3b1dc5b5a1ddd0f29721e3949740dfe79231c60db91b74dedf9cdb7ebf9271",
+  "base": "r137 frozen source plus topic_qa.rs and navigation module comment",
+  "checks": [
+    {
+      "flag": "--qa-topics",
+      "exit": 0,
+      "seconds": 2.06
+    },
+    {
+      "flag": "--qa-navigation-context",
+      "exit": 0,
+      "seconds": 16.41
+    }
+  ],
+  "files": {
+    "src/topic_qa.rs": "060d620bd3715400d304cd96610b546df2183692fbee8fd8c6b2a81c3f293347",
+    "src/navigation.rs": "0673620b793d4220deee7982a2c52feecbe7a55968ab88a23c674d0bead51ed8"
+  },
+  "reason": "Open steps was invoked from All/Board, so Back must restore All/Board. The test explicitly opens Topic afterward and retains rename/archive/restore/persistence assertions.",
+  "visual_review": "Root inspected the retained r137 automation-results 1440x920 Light and Dark renders: all five rows retain visible Open controls, readable names/type/state metadata and consistent neutral row surfaces. This is static layout evidence only."
+}

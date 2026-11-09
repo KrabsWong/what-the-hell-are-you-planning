@@ -1,0 +1,13 @@
+{
+  "candidate": ".local/t14-cow-slice/guard-app16",
+  "sha256": "2cf94df335e2f5f489b86e0078854d037993c42165b3098ea51d871dd32b31ed",
+  "root_command": "--qa-set-read",
+  "exit_code": 0,
+  "passed_cases": [
+    "guards-and-prior-dirt (including equal-value pending delta)",
+    "sync-enqueue-retry",
+    "failure-retry-restart"
+  ],
+  "review": "Previous no-op immediate Durable return removed; retained generation-zero primary preserves requested unread value for retry. Documentation corrected to match rollback boundary.",
+  "limits": "Private candidate only; pending T12 integration and native idle-save acceptance remain open."
+}

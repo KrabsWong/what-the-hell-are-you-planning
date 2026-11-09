@@ -14,7 +14,7 @@ serde_json = "1"
 libc = "0.2"
 chrono = "0.4"
 sha2 = "0.10"
-rusqlite = { version = "0.38", features = ["bundled"] }
+rusqlite = { version = "0.39", features = ["bundled"] }
 mermaid-rs-renderer = { version = "=0.3.1", default-features = false }
 latex-rust = "=3.0.1"
 usvg = "0.46"
@@ -25,7 +25,8 @@ gpui-kit = { version = "=0.8.1", features = ["test-support"] }
 
 [profile.dev]
 debug = 0
-opt-level = 1
+# The normal app launcher uses this profile; optimize UI layout and painting.
+opt-level = 3
 
 [profile.dev.package."*"]
-opt-level = 1
+opt-level = 3

@@ -1,0 +1,21 @@
+{
+  "fixture": "r183-latest-report-1000",
+  "logical_size": [
+    1000,
+    680
+  ],
+  "theme": "Light",
+  "binary_sha256": "f389bbd4db6ea5eb8cfa67d72bdf2a437d8aa95243f37a70bd1e436ef024f99f",
+  "private_automation_views_sha256": "a5efa6cffbcab8f35486960fff73722854753352f4f05583f7e6f06d9082565a",
+  "native_observations": [
+    "Automation results first row initially Succeeded \u00b7 saved report",
+    "Open shows Period 1000 \u00b7 Succeeded \u00b7 incomplete and Intermediate evidence \u00b7 Incomplete \u00b7 Stale input \u00b7 Historical result",
+    "Close returns to same first row and position, now Succeeded \u00b7 incomplete"
+  ],
+  "disposition": "Native transition passed; self-contained automated transition test and final code acceptance pending.",
+  "limits": [
+    "Saved report indicates durable availability, not evidence completeness. Before body hydration, quality is not classified.",
+    "Private build contains an inactive Board probe; environment variable was not enabled.",
+    "Test-only source may subsequently change without changing tested runtime code."
+  ]
+}

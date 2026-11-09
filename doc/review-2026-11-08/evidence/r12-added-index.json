@@ -1,0 +1,49 @@
+{
+  "binary": "/Users/fuxingxing/workspaces/what-the-hell-are-you-planning/.local/opencode-dispatch/root-s3c-r12/planning-qa",
+  "sha256": "aa7348d0d8f697d4491b3154890a6a468125d3b65570274137aa96dae120f084",
+  "purpose": "Independent diagnostic baseline sweep; performance gates deferred to controlled final run",
+  "results": [
+    {
+      "entry": "--qa-global-search",
+      "exit": 101,
+      "seconds": 4.64,
+      "log": "/Users/fuxingxing/workspaces/what-the-hell-are-you-planning/.local/opencode-dispatch/root-r12-added-gate/qa-global-search.log"
+    },
+    {
+      "entry": "--qa-result-presentation",
+      "exit": 0,
+      "seconds": 28.31,
+      "log": "/Users/fuxingxing/workspaces/what-the-hell-are-you-planning/.local/opencode-dispatch/root-r12-added-gate/qa-result-presentation.log"
+    },
+    {
+      "entry": "--qa-execution-eligibility",
+      "exit": 0,
+      "seconds": 5.11,
+      "log": "/Users/fuxingxing/workspaces/what-the-hell-are-you-planning/.local/opencode-dispatch/root-r12-added-gate/qa-execution-eligibility.log"
+    },
+    {
+      "entry": "--qa-archived-research",
+      "exit": 0,
+      "seconds": 9.23,
+      "log": "/Users/fuxingxing/workspaces/what-the-hell-are-you-planning/.local/opencode-dispatch/root-r12-added-gate/qa-archived-research.log"
+    },
+    {
+      "entry": "--qa-t11",
+      "exit": 0,
+      "seconds": 10.18,
+      "log": "/Users/fuxingxing/workspaces/what-the-hell-are-you-planning/.local/opencode-dispatch/root-r12-added-gate/qa-t11.log"
+    },
+    {
+      "entry": "--qa-header-layout",
+      "exit": 0,
+      "seconds": 4.02,
+      "log": "/Users/fuxingxing/workspaces/what-the-hell-are-you-planning/.local/opencode-dispatch/root-r12-added-gate/qa-header-layout.log"
+    },
+    {
+      "entry": "--qa-planning",
+      "exit": 0,
+      "seconds": 4.55,
+      "log": "/Users/fuxingxing/workspaces/what-the-hell-are-you-planning/.local/opencode-dispatch/root-r12-added-gate/qa-planning.log"
+    }
+  ]
+}

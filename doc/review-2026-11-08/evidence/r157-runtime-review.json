@@ -1,0 +1,20 @@
+{
+  "disposition": "T12 candidate not accepted; rework sent to existing OpenCode session",
+  "findings": [
+    {
+      "priority": "P1",
+      "problem": "Parked dispatch recovery is not reachable through production UI",
+      "evidence": "retry_dispatch_admission is referenced only by its definition and dispatch_admission_qa. footer_activity displays only storage_error; retry_pending_saves does not call dispatch recovery, and retry_live_persistence only calls adapter.retry_live. dispatch_admission_error has no visible consumer.",
+      "required_fix": "Expose truthful compact failure feedback and a real retry action wired to the exact retained dispatch; wake and notify on retirement early-return paths too.",
+      "acceptance": "Click the real retry control for a representative parked failure; exact run recovers once, no new run identity, persistence settles and pump idles."
+    },
+    {
+      "priority": "P1 verification gap",
+      "problem": "Proposed large history native fixture has only 193 runs for 43,200 periods",
+      "evidence": "r156-large-history-data/manifest.json reports 43,200 occurrences, 30,240 Succeeded but 193 run bodies.",
+      "required_fix": "Use actual large-run fixture or seed valid per-succeeded-period report links and substantive synthetic bodies. Retain disabled schedules and zero recovery/runnable work.",
+      "acceptance": "Read-only integrity, counts and report ownership checks before root changes isolated bootstrap."
+    }
+  ],
+  "production_access": false
+}

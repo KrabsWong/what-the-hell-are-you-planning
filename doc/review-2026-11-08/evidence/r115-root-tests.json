@@ -1,0 +1,11 @@
+{
+  "source_manifest": ".local/opencode-dispatch/r115-source.json",
+  "command": "PLANNING_NODE=/opt/homebrew/opt/node@24/bin/node cargo test --locked --features qa --quiet",
+  "exit_code": 0,
+  "unit_passed": 701,
+  "unit_ignored": 2,
+  "dispatch_crash_passed": 8,
+  "sqlite_regression_passed": 2,
+  "v4_crash_passed": 3,
+  "log": ".local/opencode-dispatch/r115-root-tests.log"
+}

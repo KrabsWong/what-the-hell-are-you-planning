@@ -1,0 +1,31 @@
+{
+  "binary": "/Users/fuxingxing/workspaces/what-the-hell-are-you-planning/.local/opencode-dispatch/root-r13/planning-qa",
+  "sha256": "ad6c30e36443baae17a62fab8f7684e8d4f60957e7e6170dddbde33fdd598d64",
+  "purpose": "Independent diagnostic baseline sweep; performance gates deferred to controlled final run",
+  "results": [
+    {
+      "entry": "--qa-global-search",
+      "exit": 101,
+      "seconds": 5.9,
+      "log": "/Users/fuxingxing/workspaces/what-the-hell-are-you-planning/.local/opencode-dispatch/root-r13-targeted-gate/qa-global-search.log"
+    },
+    {
+      "entry": "--qa-navigation-context",
+      "exit": 0,
+      "seconds": 13.7,
+      "log": "/Users/fuxingxing/workspaces/what-the-hell-are-you-planning/.local/opencode-dispatch/root-r13-targeted-gate/qa-navigation-context.log"
+    },
+    {
+      "entry": "--qa-keyboard-visual",
+      "exit": 0,
+      "seconds": 7.5,
+      "log": "/Users/fuxingxing/workspaces/what-the-hell-are-you-planning/.local/opencode-dispatch/root-r13-targeted-gate/qa-keyboard-visual.log"
+    },
+    {
+      "entry": "--qa-task-edit",
+      "exit": 0,
+      "seconds": 3.8,
+      "log": "/Users/fuxingxing/workspaces/what-the-hell-are-you-planning/.local/opencode-dispatch/root-r13-targeted-gate/qa-task-edit.log"
+    }
+  ]
+}

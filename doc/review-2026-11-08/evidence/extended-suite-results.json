@@ -1,0 +1,92 @@
+[
+  {
+    "suite": "board-topics",
+    "exit": "0",
+    "seconds": 1.0
+  },
+  {
+    "suite": "display-order",
+    "exit": "0",
+    "seconds": 0.3
+  },
+  {
+    "suite": "board-scroll",
+    "exit": "0",
+    "seconds": 1.6
+  },
+  {
+    "suite": "rich-markdown",
+    "exit": "0",
+    "seconds": 6.8
+  },
+  {
+    "suite": "brand",
+    "exit": "0",
+    "seconds": 0.2
+  },
+  {
+    "suite": "render-perf",
+    "exit": "101",
+    "seconds": 0.0
+  },
+  {
+    "suite": "result-layout",
+    "exit": "0",
+    "seconds": 5.1
+  },
+  {
+    "suite": "recovery-scroll",
+    "exit": "0",
+    "seconds": 0.6
+  },
+  {
+    "suite": "intake",
+    "exit": "0",
+    "seconds": 10.5
+  },
+  {
+    "suite": "sidebar",
+    "exit": "0",
+    "seconds": 0.3
+  },
+  {
+    "suite": "topic-migration",
+    "exit": "0",
+    "seconds": 1.5
+  },
+  {
+    "suite": "topic-actions",
+    "exit": "0",
+    "seconds": 0.8
+  },
+  {
+    "suite": "topics",
+    "exit": "101",
+    "seconds": 0.3
+  },
+  {
+    "suite": "calendar",
+    "exit": "0",
+    "seconds": 0.5
+  },
+  {
+    "suite": "onboarding",
+    "exit": "0",
+    "seconds": 0.8
+  },
+  {
+    "suite": "concurrency",
+    "exit": "0",
+    "seconds": 17.4
+  },
+  {
+    "suite": "simplify",
+    "exit": "101",
+    "seconds": 1.3
+  },
+  {
+    "suite": "handoff-progress",
+    "exit": "0",
+    "seconds": 3.6
+  }
+]

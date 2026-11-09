@@ -1,0 +1,11 @@
+{
+  "exit_code": 101,
+  "passed": 2,
+  "failed": 3,
+  "scope": "Same frozen r57 module, includes independent regression",
+  "failures": {
+    "rejected_settings_inverse_must_not_partially_restore": "Product partial rollback",
+    "inverse_conflicts_when_a_touched_entity_changed_again": "Missing post-capture conflicting mutation",
+    "created_topic_is_not_removed_after_work_was_added": "Fixture passes topic ID as parent task ID; create_task fails before assertion"
+  }
+}

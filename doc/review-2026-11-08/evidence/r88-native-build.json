@@ -1,0 +1,11 @@
+{
+  "base": "r87 original-pump headless candidate",
+  "purpose": "Native startup/sidebar diagnostic; not final release candidate",
+  "isolation": "Hardcoded isolated workspace bootstrap",
+  "workspace_sha256": "2225051ee7d7b458ca3dc676794c0af2c696917e81a8565812d73e46ecfc91c8",
+  "build_exit": 0,
+  "seconds": 37.36,
+  "sha256": "12b7496451846c5d150e600b1d6c37987536068f7000c4f0c8d5467751b9a7e7",
+  "guard_exit": 2,
+  "guard_passed": true
+}

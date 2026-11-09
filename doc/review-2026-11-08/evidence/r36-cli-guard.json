@@ -1,0 +1,37 @@
+{
+  "binary_sha256": "3305761976f73e6a061acb09aac1d31e884f990b805b1e1d8add8c82af3098d9",
+  "build_exit": 0,
+  "source": "isolated r35 native snapshot plus exact root main.rs QA guard",
+  "cases": [
+    {
+      "argument": "--qa-navigation-context",
+      "exit": 2,
+      "stderr": "Unsupported QA argument --qa-navigation-context. Build with --features qa and use a supported QA command. No workspace was opened.",
+      "stdout": ""
+    },
+    {
+      "argument": "--qa-unknown-regression",
+      "exit": 2,
+      "stderr": "Unsupported QA argument --qa-unknown-regression. Build with --features qa and use a supported QA command. No workspace was opened.",
+      "stdout": ""
+    },
+    {
+      "argument": "--qa",
+      "exit": 2,
+      "stderr": "Unsupported QA argument --qa. Build with --features qa and use a supported QA command. No workspace was opened.",
+      "stdout": ""
+    },
+    {
+      "argument": "--projects-live",
+      "exit": 2,
+      "stderr": "Unsupported QA argument --projects-live. Build with --features qa and use a supported QA command. No workspace was opened.",
+      "stdout": ""
+    },
+    {
+      "argument": "--research-live",
+      "exit": 2,
+      "stderr": "Unsupported QA argument --research-live. Build with --features qa and use a supported QA command. No workspace was opened.",
+      "stdout": ""
+    }
+  ]
+}

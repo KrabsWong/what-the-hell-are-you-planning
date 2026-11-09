@@ -1,0 +1,69 @@
+Before: offset changed without painted movement
+FIRST_SCROLL attempt=0 frame=0 elapsed_ms=55 offset=-8px painted_delta=-8px
+FIRST_SCROLL attempt=0 frame=10 elapsed_ms=224 offset=-88px painted_delta=-88px
+FIRST_SCROLL attempt=0 frame=20 elapsed_ms=396 offset=-168px painted_delta=-168px
+FIRST_SCROLL attempt=0 first_painted=Some(55.431792ms)
+FIRST_SCROLL attempt=1 frame=0 elapsed_ms=35 offset=-8px painted_delta=0px
+FIRST_SCROLL attempt=1 frame=10 elapsed_ms=209 offset=-88px painted_delta=0px
+FIRST_SCROLL attempt=1 frame=20 elapsed_ms=385 offset=-168px painted_delta=0px
+FIRST_SCROLL attempt=1 first_painted=None
+
+After: native first-scroll and retained-data regression
+FIRST_SCROLL period=11 stored_body_bytes=0 repeat=1
+FIRST_SCROLL attempt=0 frame=0 elapsed_ms=35 offset=-8px painted_delta=-8px
+FIRST_SCROLL attempt=0 frame=10 elapsed_ms=233 offset=-88px painted_delta=-88px
+FIRST_SCROLL attempt=0 frame=20 elapsed_ms=426 offset=-168px painted_delta=-168px
+FIRST_SCROLL attempt=0 first_painted=Some(35.978375ms)
+FIRST_SCROLL attempt=1 frame=0 elapsed_ms=49 offset=-8px painted_delta=-8px
+FIRST_SCROLL attempt=1 frame=10 elapsed_ms=217 offset=-88px painted_delta=-88px
+FIRST_SCROLL attempt=1 frame=20 elapsed_ms=392 offset=-168px painted_delta=-168px
+FIRST_SCROLL attempt=1 first_painted=Some(49.820667ms)
+FIRST_SCROLL attempt=2 frame=0 elapsed_ms=34 offset=-8px painted_delta=-8px
+FIRST_SCROLL attempt=2 frame=10 elapsed_ms=202 offset=-88px painted_delta=-88px
+FIRST_SCROLL attempt=2 frame=20 elapsed_ms=383 offset=-168px painted_delta=-168px
+FIRST_SCROLL attempt=2 first_painted=Some(34.141833ms)
+FIRST_SCROLL period=12 stored_body_bytes=510 repeat=1
+FIRST_SCROLL attempt=0 frame=0 elapsed_ms=62 offset=-8px painted_delta=-8px
+FIRST_SCROLL attempt=0 frame=10 elapsed_ms=279 offset=-88px painted_delta=-88px
+FIRST_SCROLL attempt=0 frame=20 elapsed_ms=504 offset=-153px painted_delta=-153px
+FIRST_SCROLL attempt=0 first_painted=Some(62.488666ms)
+FIRST_SCROLL attempt=1 frame=0 elapsed_ms=33 offset=-8px painted_delta=-8px
+FIRST_SCROLL attempt=1 frame=10 elapsed_ms=222 offset=-88px painted_delta=-88px
+FIRST_SCROLL attempt=1 frame=20 elapsed_ms=430 offset=-153px painted_delta=-153px
+FIRST_SCROLL attempt=1 first_painted=Some(33.816208ms)
+FIRST_SCROLL attempt=2 frame=0 elapsed_ms=34 offset=-8px painted_delta=-8px
+FIRST_SCROLL attempt=2 frame=10 elapsed_ms=256 offset=-88px painted_delta=-88px
+FIRST_SCROLL attempt=2 frame=20 elapsed_ms=448 offset=-153px painted_delta=-153px
+FIRST_SCROLL attempt=2 first_painted=Some(34.625292ms)
+FIRST_SCROLL period=9 stored_body_bytes=49913 repeat=1
+FIRST_SCROLL attempt=0 frame=0 elapsed_ms=69 offset=-8px painted_delta=-8px
+FIRST_SCROLL attempt=0 frame=10 elapsed_ms=554 offset=-88px painted_delta=-88px
+FIRST_SCROLL attempt=0 frame=20 elapsed_ms=904 offset=-168px painted_delta=-168px
+FIRST_SCROLL attempt=0 first_painted=Some(69.763208ms)
+FIRST_SCROLL attempt=1 frame=0 elapsed_ms=50 offset=-8px painted_delta=-8px
+FIRST_SCROLL attempt=1 frame=10 elapsed_ms=485 offset=-88px painted_delta=-88px
+FIRST_SCROLL attempt=1 frame=20 elapsed_ms=826 offset=-168px painted_delta=-168px
+FIRST_SCROLL attempt=1 first_painted=Some(50.027083ms)
+FIRST_SCROLL attempt=2 frame=0 elapsed_ms=54 offset=-8px painted_delta=-8px
+FIRST_SCROLL attempt=2 frame=10 elapsed_ms=515 offset=-88px painted_delta=-88px
+FIRST_SCROLL attempt=2 frame=20 elapsed_ms=848 offset=-168px painted_delta=-168px
+FIRST_SCROLL attempt=2 first_painted=Some(54.210042ms)
+FIRST_SCROLL period=9 stored_body_bytes=399304 repeat=8
+FIRST_SCROLL attempt=0 frame=0 elapsed_ms=64 offset=-8px painted_delta=-8px
+FIRST_SCROLL attempt=0 frame=10 elapsed_ms=232 offset=-88px painted_delta=-88px
+FIRST_SCROLL attempt=0 frame=20 elapsed_ms=416 offset=-168px painted_delta=-168px
+FIRST_SCROLL attempt=0 first_painted=Some(64.396458ms)
+FIRST_SCROLL attempt=1 frame=0 elapsed_ms=47 offset=-8px painted_delta=-8px
+FIRST_SCROLL attempt=1 frame=10 elapsed_ms=217 offset=-88px painted_delta=-88px
+FIRST_SCROLL attempt=1 frame=20 elapsed_ms=384 offset=-168px painted_delta=-168px
+FIRST_SCROLL attempt=1 first_painted=Some(47.866333ms)
+FIRST_SCROLL attempt=2 frame=0 elapsed_ms=50 offset=-8px painted_delta=-8px
+FIRST_SCROLL attempt=2 frame=10 elapsed_ms=233 offset=-88px painted_delta=-88px
+FIRST_SCROLL attempt=2 frame=20 elapsed_ms=416 offset=-168px painted_delta=-168px
+FIRST_SCROLL attempt=2 first_painted=Some(50.452292ms)
+DIALOG_SCROLL Light 1000x680: wheel+frame p50=2.66 p95=3.97 max=13.08 ms; presentation reuse and invalidation passed
+DIALOG_SCROLL Light 1440x920: wheel+frame p50=2.92 p95=4.61 max=7.79 ms; presentation reuse and invalidation passed
+DIALOG_SCROLL Dark 1000x680: wheel+frame p50=3.31 p95=11.70 max=15.46 ms; presentation reuse and invalidation passed
+DIALOG_SCROLL Dark 1440x920: wheel+frame p50=2.73 p95=4.23 max=8.74 ms; presentation reuse and invalidation passed
+AUTOMATION_DIALOG_SCROLL_QA passed
+

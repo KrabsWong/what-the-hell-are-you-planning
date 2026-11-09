@@ -13,13 +13,13 @@ impl TaskApp {
         group: &str,
         cx: &mut Context<Self>,
     ) -> Vec<AnyElement> {
-        if matches!(self.scope, Scope::Topic(_)) {
+        if matches!(self.scope(), Scope::Topic(_)) {
             return cards.iter().map(|t| self.goal_card(t, cx)).collect();
         }
         let mut result = Vec::new();
         let mut topics: Vec<_> = self
             .store
-            .topics
+            .topics()
             .iter()
             .filter(|topic| topic.automation_id.is_none())
             .collect();
@@ -47,7 +47,7 @@ impl TaskApp {
                     .border_1()
                     .border_color(rgb(colors.line))
                     .bg(rgb(colors.panel))
-                    .child(quiet_button(format!("board-topic-{}-{id}", group), "")
+                    .child(row_button(format!("board-topic-{}-{id}", group), "")
                         .w_full().min_w_0().px_1()
                         .tooltip(topic.display_name())
                         .accessibility_label(topic.display_name())
@@ -79,19 +79,19 @@ impl TaskApp {
         let mut list = col().gap_3();
         for request in self
             .store
-            .research_requests
+            .research_requests()
             .iter()
             .rev()
             .filter(|r| project.is_none_or(|id| r.project_id == id)
                 && r.automation_id.is_none()
                 && !self.store.request_is_archived(r)
-                && match self.scope { Scope::Topic(id) => r.topic_id == Some(id) && (r.goal_ids.is_empty() || self.store.can_regenerate_request_plan(r.id)), _ => true })
+                && match self.scope() { Scope::Topic(id) => r.topic_id == Some(id) && (r.goal_ids.is_empty() || self.store.can_regenerate_request_plan(r.id)), _ => true })
         {
             let id = request.id;
             let project = request.project_id;
             let run = request
                 .planning_run_id
-                .and_then(|id| self.store.runs.iter().find(|r| r.id == id));
+                .and_then(|id| self.store.runs().iter().find(|r| r.id == id));
             let active = run
                 .is_some_and(|r| matches!(r.status.as_str(), "Queued" | "Running" | "Cancelling"));
             let planned = !request.goal_ids.is_empty();
@@ -148,8 +148,7 @@ impl TaskApp {
                                 d.child(
                                     button(format!("request-run-{id}"), "Planning details")
                                         .on_click(cx.listener(move |a, _, w, cx| {
-                                            a.navigate(Scope::Runs, w, cx);
-                                            a.selected_run = Some(run);
+                                            a.set_result_selection(None, Some(run));
                                             a.show_run_result = true;
                                             cx.notify();
                                         })),
@@ -172,7 +171,7 @@ impl TaskApp {
     pub(crate) fn request_brief_view(&self, goal: u64, cx: &mut Context<Self>) -> AnyElement {
         let Some(request) = self
             .store
-            .research_requests
+            .research_requests()
             .iter()
             .find(|r| r.goal_ids.contains(&goal))
         else {
@@ -183,13 +182,13 @@ impl TaskApp {
         };
         let colors = palette(cx);
         let request_id = request.id;
-        let regenerating = request.planning_run_id.is_some_and(|id| self.store.runs.iter()
+        let regenerating = request.planning_run_id.is_some_and(|id| self.store.runs().iter()
             .any(|r| r.id == id && matches!(r.status.as_str(), "Queued" | "Running" | "Cancelling")));
         let expanded = self.expanded_request_brief == Some(goal);
         col()
             .gap_2()
             .child(
-                quiet_button("request-brief-toggle", "Original request & planning brief")
+                select_button("request-brief-toggle", "Original request & planning brief", expanded, cx)
                     .self_start()
                     .icon(if expanded {
                         assets::IconName::ChevronDown

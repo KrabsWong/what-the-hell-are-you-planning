@@ -1,0 +1,9 @@
+{
+  "sha256": "a174942b48adbfdf1fb9fc4d06c4437cca0afaabc3e5809d136dfae1838bc8ac",
+  "guard_exit": 2,
+  "source_manifest": "r58-footer-verified-source.json",
+  "flag": "--qa-keyboard-visual",
+  "exit_code": 0,
+  "seconds": 16.572,
+  "log": "r58-footer-verified-keyboard.log"
+}

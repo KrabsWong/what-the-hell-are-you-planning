@@ -1,0 +1,41 @@
+{
+  "binary_sha256": "97131669ff5ca99c29dbeaecca8672ded6a489753e0b75b48b8c665c61f03816",
+  "source_manifest": ".local/opencode-dispatch/r115-source.json",
+  "guard_exit": 2,
+  "exit_code": 0,
+  "result": "passed",
+  "duration_seconds": 11.228363834,
+  "cases": [
+    "core",
+    "reopen",
+    "pending-quit",
+    "startup-retry",
+    "write-failure-retry",
+    "reopened-identical-form",
+    "dirty-exit-task",
+    "dirty-exit-task-reopen-identical",
+    "dirty-exit-automation",
+    "dirty-exit-automation-reopen-identical",
+    "dirty-exit-planning",
+    "dirty-exit-planning-cancel",
+    "automation-save-step1",
+    "automation-save-finish-step3",
+    "automation-save-newer-form",
+    "automation-rejected-unrelated-command",
+    "settings-save",
+    "editor-small",
+    "editor-43200",
+    "history-43200"
+  ],
+  "log": ".local/opencode-dispatch/r115-root-live.log",
+  "scope": "All20 live cases passed. Native smoothness and final UI integration remain separate gates.",
+  "performance_us": {
+    "settings_save_ui_us": 1555,
+    "settings_save_total_us": 4090,
+    "editor_save_small_ui_us": 4316,
+    "editor_save_small_total_us": 8020,
+    "editor_save_43200_empty_runs_ui_us": 17122,
+    "editor_save_total_us": 27926,
+    "history_page_43200_us": 45
+  }
+}

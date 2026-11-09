@@ -2,7 +2,7 @@
 use crate::{
     app::TaskApp,
     domain::Store,
-    research::{self, ResearchKind},
+    research::ResearchKind,
 };
 use gpui_kit::Context;
 use std::os::unix::fs::{DirBuilderExt, OpenOptionsExt};
@@ -97,14 +97,15 @@ impl Store {
                 "- [{step_id} · {category}]({document}) — {}\n",
                 step.title.replace('\n', " ")
             ));
-            let mut markdown = research::reader_markdown(&result.output).to_string();
-            if research::has_evidence_gap_note(&result.output) {
-                markdown.insert_str(
-                    0,
-                    &format!("> 证据说明：{}\n\n", research::EVIDENCE_GAP_NOTICE),
-                );
+            let presentation = crate::result_presentation::present_run(self, result);
+            let mut markdown = presentation.reader_text();
+            if markdown.is_empty() || !presentation.quality.is_reader_body() {
+                return Err(format!(
+                    "The report for {} is not a validated reader result.",
+                    step.title
+                ));
             }
-            markdown.push_str("\n\n---\n\n## References / 引用来源\n\n");
+            markdown.push_str("\n\n---\n\n## References\n\n");
             if result.sources.is_empty() {
                 markdown.push_str(
                     "No separately recorded web sources. See citations in the document above.\n",
@@ -321,8 +322,8 @@ mod tests {
 
     fn completed_goal() -> (Store, u64, Vec<u64>) {
         let mut store = Store::empty();
-        store.projects[0].directory = "/tmp".into();
-        store.default_model = "test/model".into();
+        store.project_at_mut(0).unwrap().directory = "/tmp".into();
+        store.set_default_model("test/model".into());
         let goal = store
             .create_research_goal("完整研究/中文".into(), "Scope".into(), 1)
             .unwrap();
@@ -339,7 +340,7 @@ mod tests {
                 url: "https://example.com".into(),
                 published_at: "unknown".into(),
             }];
-            store.runs.push(run);
+            store.push_run(run);
             store.task_mut(*id).unwrap().stage = Stage::Done;
         }
         store.sync_goal_progress(goal);
@@ -367,8 +368,7 @@ mod tests {
             assert!(markdown.contains("https://example.com"));
             assert!(markdown.contains("## References"));
             assert!(!document.0.contains(".."));
-        }
-        let root = std::env::temp_dir().join(format!(
+        }        let root = std::env::temp_dir().join(format!(
             "research-export-test-{}",
             chrono::Utc::now().timestamp_nanos_opt().unwrap()
         ));
@@ -436,11 +436,13 @@ mod tests {
             .push(second.clone());
         for id in &ids {
             let signature = store.research_signature(*id).unwrap();
-            let run = store
-                .runs
-                .iter_mut()
+            let run_id = store
+                .runs()
+                .iter()
                 .find(|run| run.task_id == *id)
-                .unwrap();
+                .unwrap()
+                .id;
+            let mut run = store.run_mut(run_id).unwrap();
             run.input_signature = signature;
             run.attachments = vec![first.clone(), second.clone()];
         }
@@ -502,7 +504,7 @@ mod tests {
             .push_str(" changed");
         assert!(store.research_export(goal).is_err());
         let (mut store, goal, _) = completed_goal();
-        store.runs.last_mut().unwrap().status = "Failed".into();
+        store.last_run_mut().unwrap().status = "Failed".into();
         assert!(store.research_export(goal).is_err());
         assert!(store.research_export(999).is_err());
     }
@@ -522,5 +524,59 @@ mod tests {
             assert!(name.len() <= 80);
             assert!(!name.contains(['/', '\\', '.']));
         }
+    }
+
+    #[test]
+    fn invalid_success_envelope_cannot_be_exported() {
+        let (mut store, goal, ids) = completed_goal();
+        let report_id = ids[2];
+        let report_run = store
+            .runs()
+            .iter()
+            .find(|run| run.task_id == report_id)
+            .unwrap()
+            .id;
+        {
+            let mut report = store.run_mut(report_run).unwrap();
+            report.status = "Succeeded".into();
+            report.output = r#"{"status":"complete","report":"unvalidated"#.into();
+        }
+        let error = store.research_export(goal).map(|_| ()).unwrap_err();
+        assert!(error.contains("not a validated reader result"), "{error}");
+    }
+
+    #[test]
+    fn partial_export_uses_the_shared_reader_notice_once() {
+        let (mut store, goal, ids) = completed_goal();
+        let report_id = ids[2];
+        let report_run = store
+            .runs()
+            .iter()
+            .find(|run| run.task_id == report_id)
+            .unwrap()
+            .id;
+        {
+            let mut report = store.run_mut(report_run).unwrap();
+            report.output = format!(
+                "{}\n\nPartial exported body",
+                crate::research::EVIDENCE_GAP_NOTE
+            );
+        }
+        let export = store.research_export(goal).unwrap();
+        let (_, bytes) = export
+            .files
+            .iter()
+            .find(|(name, _)| name.starts_with("report/"))
+            .unwrap();
+        let markdown = String::from_utf8(bytes.clone()).unwrap();
+        assert!(markdown.contains("Partial exported body"));
+        assert!(markdown.contains("> **Evidence gaps:**"));
+        assert!(markdown.contains(crate::research::EVIDENCE_GAP_NOTICE));
+        assert_eq!(
+            markdown.matches(crate::research::EVIDENCE_GAP_NOTICE).count(),
+            1
+        );
+        assert!(!markdown.contains(crate::research::EVIDENCE_GAP_NOTE));
+        assert!(!markdown.contains("证据说明"));
     }
 }

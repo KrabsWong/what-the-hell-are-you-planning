@@ -1,0 +1,21 @@
+{
+  "round": "r170",
+  "head": "28e953417a74d8eec81688de22b56406ca46961e",
+  "candidate": {
+    "path": "/Users/fuxingxing/workspaces/what-the-hell-are-you-planning/.local/native-review/r170-restart-candidate",
+    "sha256": "8c988f779a6bdd663818fc74e4c980719a30ff7799d3ac2caf2c97af412629c5",
+    "installed_sha256": "fc6ee22cbdcc82f639ca79c6cd36f380c540f0bba110b3b586b37337ca014513"
+  },
+  "fixture": ".local/native-review/T24-relocated-data",
+  "backup": ".local/native-review/r170-small-before-native.sqlite3",
+  "native_results": {
+    "restart_list": "PASS: TASK-G19 Done / 3/3; G23 Backlog / 0/3 remains expected after material invalidation",
+    "goal_detail": "PASS: Done, 3 done, Research complete 3/3, View final report available",
+    "report_navigation": "PASS: opens Write the final report, Run27 and synthetic body",
+    "completion_control": "FAIL: completed goal still offers enabled Resume goal",
+    "report_freshness": "FAIL: current report falsely labeled Stale input / Historical result while dependency bodies are lazy"
+  },
+  "rework": "Assigned lazy-aware presentation signature and completion controls with real SQLite lazy fixture tests. Strict execution/export content gates must remain.",
+  "production": "Untouched",
+  "archive_case": "Not run in this round; follow after false completion controls/freshness repair"
+}

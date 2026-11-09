@@ -1,0 +1,169 @@
+{
+  "automation": {
+    "id": 1,
+    "version": 1,
+    "project_id": 3,
+    "shape": "quick",
+    "name": "Review quick check",
+    "objective": "Summarize the offline fixture evidence.",
+    "expected_result": "A short report with sources.",
+    "schedule": {
+      "spec": {
+        "kind": "interval",
+        "minutes": 120
+      },
+      "timezone": "Asia/Shanghai"
+    },
+    "status": "paused",
+    "template": {
+      "goals": [
+        {
+          "title": "Summarize the offline fixture evidence.",
+          "brief": "Recurring quick check: Summarize the offline fixture evidence.\n\nExpected result: A short report with sources.\n\nGive the smallest complete answer, not a research report. Do not send messages, publish, trade, delete files, or change external systems.",
+          "steps": [
+            {
+              "title": "Answer the recurring question",
+              "instructions": "Answer this recurring question directly with current, verifiable sources: Summarize the offline fixture evidence.\n\nFollow the occurrence time window; never substitute today for it. Give the value(s) or short result and its as-of time, 2\u20135 original links, and at most one or two material caveats. Do not add an appendix, methodology, background history, scenario analysis or next steps unless the task explicitly asks for them. If a value cannot be verified, name it and the reason in one sentence. Separate observed facts from inference. Expected result: A short report with sources.",
+              "kind": "advise",
+              "depends_on": []
+            }
+          ]
+        }
+      ],
+      "window_rule": "unresolved"
+    },
+    "approval": {
+      "version": 1,
+      "approved_at": 1794128667,
+      "template_signature": "9221085dc038d32eb733fdc15371d7374ac29578398570ffaa92be4387830ab4",
+      "schedule_signature": "{\"spec\":{\"kind\":\"interval\",\"minutes\":120},\"timezone\":\"Asia/Shanghai\"}",
+      "models": [
+        "fixture/research",
+        "fixture/research",
+        "fixture/research",
+        "fixture/research"
+      ],
+      "agents": [
+        "OpenCode",
+        "OpenCode",
+        "OpenCode",
+        "OpenCode"
+      ],
+      "materials": []
+    },
+    "policy": {
+      "allowed_delay_seconds": 7200,
+      "timeout_seconds": 1800,
+      "max_consecutive_failures": 3,
+      "catch_up": "latest_only",
+      "log_retention_days": 30
+    },
+    "cursor": null,
+    "anchor": 1794128667,
+    "consecutive_failures": 0,
+    "attention_reason": null,
+    "created_at": 1794128648,
+    "updated_at": 1794135292
+  },
+  "occurrence": {
+    "id": 5,
+    "automation_id": 1,
+    "definition_version": 1,
+    "source": "manual",
+    "trigger_key": "manual:1:ses_tm18e60c86c8ae7608148a84",
+    "scheduled_for": null,
+    "requested_at": 1794135274,
+    "actual_started_at": 1794135274,
+    "timezone": "Asia/Shanghai",
+    "reference_time": 1794135274,
+    "data_window": {
+      "state": {
+        "state": "unresolved",
+        "reason": "The requested time range is not derived by the scheduler; verify it against the reference time in the collection step."
+      }
+    },
+    "snapshot": {
+      "objective": "Summarize the offline fixture evidence.",
+      "expected_result": "A short report with sources.",
+      "shape": "quick",
+      "template": {
+        "goals": [
+          {
+            "title": "Summarize the offline fixture evidence.",
+            "brief": "Recurring quick check: Summarize the offline fixture evidence.\n\nExpected result: A short report with sources.\n\nGive the smallest complete answer, not a research report. Do not send messages, publish, trade, delete files, or change external systems.",
+            "steps": [
+              {
+                "title": "Answer the recurring question",
+                "instructions": "Answer this recurring question directly with current, verifiable sources: Summarize the offline fixture evidence.\n\nFollow the occurrence time window; never substitute today for it. Give the value(s) or short result and its as-of time, 2\u20135 original links, and at most one or two material caveats. Do not add an appendix, methodology, background history, scenario analysis or next steps unless the task explicitly asks for them. If a value cannot be verified, name it and the reason in one sentence. Separate observed facts from inference. Expected result: A short report with sources.",
+                "kind": "advise",
+                "depends_on": []
+              }
+            ]
+          }
+        ],
+        "window_rule": "unresolved"
+      },
+      "models": [
+        "fixture/research",
+        "fixture/research",
+        "fixture/research",
+        "fixture/research"
+      ],
+      "agents": [
+        "OpenCode",
+        "OpenCode",
+        "OpenCode",
+        "OpenCode"
+      ],
+      "materials": [],
+      "policy": {
+        "allowed_delay_seconds": 7200,
+        "timeout_seconds": 1800,
+        "max_consecutive_failures": 3,
+        "catch_up": "latest_only",
+        "log_retention_days": 30
+      },
+      "approval_version": 1,
+      "approval_signature": "7bc5d235517a92d7554394c58276493cce70d53820c26f0f4bdb6ebe54c9cdfd"
+    },
+    "status": "succeeded",
+    "reason": null,
+    "research_goal_id": 17,
+    "research_goal_ids": [
+      17
+    ],
+    "research_topic_id": null,
+    "run_ids": [
+      18,
+      19
+    ],
+    "final_run_id": 19,
+    "unread": true,
+    "skipped_count": 0,
+    "skipped_from": null,
+    "skipped_to": null,
+    "created_at": 1794135274,
+    "deadline_at": 1794137089,
+    "retry_requested_at": 1794135289
+  },
+  "run_states": [
+    {
+      "id": 18,
+      "status": "Cancelled",
+      "automation_occurrence_id": 5,
+      "exit_code": null
+    },
+    {
+      "id": 19,
+      "status": "Succeeded",
+      "automation_occurrence_id": 5,
+      "exit_code": 0
+    },
+    {
+      "id": 20,
+      "status": "Queued",
+      "automation_occurrence_id": null,
+      "exit_code": null
+    }
+  ]
+}

@@ -1,0 +1,8 @@
+{
+  "binary": ".local/native-review/release-target/release/planning-native-review",
+  "sha256": "c684b245dda84a65838d864cd229b49c81b94a2af0a5bc7e4db1c9e669545ccf",
+  "build": "release optimized",
+  "source_snapshot": ".local/native-review/source",
+  "installed": false,
+  "native_performance_accepted": false
+}

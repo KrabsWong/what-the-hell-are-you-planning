@@ -1,0 +1,11 @@
+{
+  "command": "PATH=/opt/homebrew/opt/node@24/bin:$PATH cargo test --features qa --quiet",
+  "exit_code": 101,
+  "phase": "compile",
+  "test_execution": "not reached",
+  "errors": [
+    "VerifyFile.expected_sha256 missing in scoped_material.rs:861",
+    "VerifyFile.expected_sha256 missing in material_verify.rs:349",
+    "VerifyFile.expected_sha256 missing in material_verify.rs:361"
+  ]
+}

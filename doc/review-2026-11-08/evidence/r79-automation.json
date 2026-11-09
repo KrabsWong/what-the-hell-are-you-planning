@@ -1,0 +1,7 @@
+{
+  "source": "ed40899 + topic fixture only",
+  "binary_sha256": "b497884fe0e0c78bb1908dff77cccdd3364301462a7832774881f8954210ae7f",
+  "guard_exit": 2,
+  "qa_exit": 0,
+  "seconds": 42.412
+}

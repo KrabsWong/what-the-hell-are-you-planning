@@ -1,0 +1,7 @@
+{
+  "src/t19_qa.rs": "98364d0b01f57ee82371314ddc5d06f3bf5145ccd56dd05db27509074b63a2ed",
+  "src/app.rs": "1b63d257dc2319b367313350b6f5d6c2b1daf47118c989a40d86fb9bfff870d5",
+  "src/views.rs": "2f27a832d34d293d23c96f056be5b636d13998a19cf17050ae5a3cbfc438215d",
+  "src/domain.rs": "974f954ad41425001337f6f811d50227dd40645ff7ab4e7ce70b6139e3f9b8ac",
+  "src/domain_tracked.rs": "0d55b921cdc4a9ca6f262e3476da851a44cb2d9b9ca8ad77680df229aec2baca"
+}

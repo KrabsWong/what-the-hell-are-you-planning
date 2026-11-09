@@ -1,0 +1,21 @@
+{
+  "binary_sha256": "b2f67705c3ece1dd2cfdbb8bb8e5deedb5a06c5af4eb57c40a2d0b5a67002483",
+  "fixture": "r187-ordinary-valid-1000",
+  "method": "Computer native pointer/wheel/screenshots",
+  "observations": [
+    "All research reports80 goals; visible rows show Done and3/3.",
+    "At1440x920 dark and light, downward5page gestures reachgoal01; upward5pages restoregoal80.",
+    "Board opens leftmost Backlog/Todo/Execution/In review columns with zero counts; Done is offscreen.",
+    "Horizontal right3pages over body at screenshot coordinates2100,900 and2100,520 did not visibly move columns. Header-target input not yet tested.",
+    "Resize changed capture from2880x1840 to2440x1600; subsequent edge drags did not establish1000x680."
+  ],
+  "accepted": "Bounded ordinary List status and bidirectional reachability at1440x920 in both themes.",
+  "pending": [
+    "Board horizontal input/Done-column reachability; diagnosis assigned without assuming cause.",
+    "1000x680 coverage; use explicitly sized isolated harness.",
+    "Concurrent-save scroll."
+  ],
+  "performance_scope": "Functional run overlaps remaining headless regression entries; not a quiet frame-performance acceptance.",
+  "trace": ".local/native-review/r197-ordinary.csv.frames.jsonl",
+  "app_closed": true
+}

@@ -1,0 +1,28 @@
+{
+  "candidate_source_sha256": "4f4c161c85c99f9a9a8ff60396d655c63e15feae79c0c79d5eeb57f2868b1ef5",
+  "root_signed_sha256": "3c48f67b6dab4ac86350dc2261ed4d6a7fa07dddb0ed225aded8a783e8aaf63f",
+  "source_manifest": ".local/t12-handoff/material-confirm-fix-manifest.json",
+  "root_runs": [
+    {
+      "flag": "--qa-dispatch-admission",
+      "exit_code": 0
+    },
+    {
+      "flag": "--qa-navigation-context",
+      "exit_code": 0
+    },
+    {
+      "flag": "--qa-task-edit",
+      "exit_code": 0
+    }
+  ],
+  "review": "Material completion dismisses only the matching reviewed change after durable ACK. Render now applies existing deferred comment and dirty-exit actions; navigation-context and task-edit were independently rerun because of that caller change.",
+  "native": "Computer access confirmed after user unlock. Installed r160 application predates this fix; no native acceptance claimed.",
+  "scroll_review": "Private indexed presentation changed ordinary research regeneration detection from matching None occurrence to always false. Returned to OpenCode with a focused regression requirement before integration.",
+  "remaining": [
+    "Native material confirmation and reopen",
+    "Planning save-to-launch continuation review",
+    "Indexed scrolling correction and native performance",
+    "Frozen integrated release gate"
+  ]
+}

@@ -1,0 +1,95 @@
+{
+  "round": "r179",
+  "candidate": {
+    "path": "/Users/fuxingxing/workspaces/what-the-hell-are-you-planning/.local/opencode-dispatch/r177-performance-9d8f076cb2c4ed366dea85e286007f33340ed1b764b2bbb02294acdd222bab51",
+    "sha256": "9d8f076cb2c4ed366dea85e286007f33340ed1b764b2bbb02294acdd222bab51",
+    "guard_exit": 2
+  },
+  "exit_code": 0,
+  "report": ".local/live-performance-qa/28762/report.json",
+  "log": ".local/opencode-dispatch/r179-live-performance-quiet.log",
+  "gates": {
+    "small-500": {
+      "editor": {
+        "p95_us": 4254,
+        "target_us": 50000,
+        "passed": true
+      },
+      "automation_save_draft": {
+        "p95_us": 8946,
+        "target_us": 50000,
+        "passed": true
+      },
+      "automation_enable": {
+        "p95_us": 8315,
+        "target_us": 50000,
+        "passed": true
+      },
+      "automation_pause": {
+        "p95_us": 7634,
+        "target_us": 50000,
+        "passed": true
+      },
+      "settings": {
+        "p95_us": 3443,
+        "target_us": 50000,
+        "passed": true
+      },
+      "scoped_task_undo": {
+        "p95_us": 4187,
+        "target_us": 50000,
+        "passed": true
+      },
+      "history_page": {
+        "p95_us": 7100,
+        "target_us": 50000,
+        "passed": true
+      }
+    },
+    "required-1000": {
+      "editor": {
+        "p95_us": 4307,
+        "target_us": 50000,
+        "passed": true
+      },
+      "automation_save_draft": {
+        "p95_us": 8613,
+        "target_us": 50000,
+        "passed": true
+      },
+      "automation_enable": {
+        "p95_us": 9247,
+        "target_us": 50000,
+        "passed": true
+      },
+      "automation_pause": {
+        "p95_us": 8393,
+        "target_us": 50000,
+        "passed": true
+      },
+      "settings": {
+        "p95_us": 3783,
+        "target_us": 50000,
+        "passed": true
+      },
+      "scoped_task_undo": {
+        "p95_us": 4925,
+        "target_us": 50000,
+        "passed": true
+      },
+      "history_page": {
+        "p95_us": 8072,
+        "target_us": 50000,
+        "passed": true
+      }
+    }
+  },
+  "conditions": {
+    "before": "No cargo, rustc, QA candidate or prior stress process in process inventory; OpenCode asked to defer builds/tests during sample.",
+    "during": [
+      "28762 28756 100.0       00:12 /Users/fuxingxing/workspaces/what-the-hell-are-you-planning/.local/opencode-dispatch/r177-performance-9d8f076cb2c4ed366dea85e286007f33340ed1b764b2bbb02294acdd222bab51"
+    ]
+  },
+  "earlier_failure": "r177-performance-search.json retains the concurrent-load 500-period failure. Quiet repetition passed; causation is not proven by this alone.",
+  "acceptance": "All fourteen required 500/1000 operation p95 gates pass on this candidate. Does not prove native scrolling or the later lifecycle integration."
+}

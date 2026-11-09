@@ -586,6 +586,59 @@ impl Store {
         self.research_result_present_checked(id, &mut vec![], &mut Validation::default())
     }
 
+    /// Presentation-only signature: dependency run IDs are resolved through the
+    /// lazy-aware current-result path. Strict prompt/export signatures remain
+    /// on `research_signature`.
+    pub(crate) fn research_signature_present(&self, id: u64) -> Option<String> {
+        self.research_present_signature_checked_mode(
+            id,
+            &mut vec![id],
+            &mut Validation::default(),
+            false,
+        )
+    }
+
+    /// Archived-history-only lazy result. Only a durable body still marked lazy
+    /// is returned; callers must not assert content quality until hydration.
+    pub(crate) fn research_history_result_pending(&self, id: u64) -> Option<&AgentRun> {
+        if self.research_history_result(id).is_some() {
+            return None;
+        }
+        let result = self.research_result_present_checked_mode(
+            id,
+            &mut vec![],
+            &mut Validation::default(),
+            true,
+        )?;
+        self.research_task_has_lazy_result_body(id, &mut vec![]).then_some(result)
+    }
+
+    fn research_task_has_lazy_result_body(&self, id: u64, visiting: &mut Vec<u64>) -> bool {
+        if visiting.contains(&id) {
+            return false;
+        }
+        visiting.push(id);
+        let Some(research) = self.task(id).and_then(|task| task.research.as_ref()) else {
+            visiting.pop();
+            return false;
+        };
+        let latest = self
+            .runs()
+            .iter()
+            .rev()
+            .find(|run| run.task_id == id && run.status != "Simulated");
+        let lazy = latest.is_some_and(|run| {
+            run.status == "Succeeded" && self.run_body_is_lazy(run.id)
+        });
+        let dependent = !lazy
+            && research
+                .depends_on
+                .iter()
+                .any(|dep| self.research_task_has_lazy_result_body(*dep, visiting));
+        visiting.pop();
+        lazy || dependent
+    }
+
     fn research_result_present_checked<'a>(
         &'a self,
         id: u64,

@@ -11,6 +11,7 @@ use crate::{
 pub struct ArchivedGoalHistory {
     pub total_steps: usize,
     pub completed_steps: usize,
+    pub pending_steps: usize,
     pub retained_steps: usize,
     pub complete: bool,
     pub retained_reports: usize,
@@ -61,6 +62,19 @@ pub fn validated_history_result<'a>(store: &'a Store, task: u64) -> Option<&'a A
     store.research_history_result(task)
 }
 
+/// Archived current result whose durable body is still lazy. This is not a
+/// validated quality claim; it only prevents "no retained result" while the
+/// saved body awaits hydration.
+pub fn pending_history_result<'a>(store: &'a Store, task: u64) -> Option<&'a AgentRun> {
+    store.research_history_result_pending(task)
+}
+
+/// Retained content (valid or invalid) plus a lazy current body. Used for
+/// history affordances, never for execution or prompt/export content.
+pub fn retained_or_pending_result<'a>(store: &'a Store, task: u64) -> Option<&'a AgentRun> {
+    retained_result(store, task).or_else(|| pending_history_result(store, task))
+}
+
 pub fn goal_history(store: &Store, goal: u64) -> ArchivedGoalHistory {
     let steps: Vec<&crate::domain::Task> = store
         .tasks()
@@ -71,9 +85,13 @@ pub fn goal_history(store: &Store, goal: u64) -> ArchivedGoalHistory {
         .iter()
         .filter(|task| validated_history_result(store, task.id).is_some())
         .count();
+    let pending_steps = steps
+        .iter()
+        .filter(|task| pending_history_result(store, task.id).is_some())
+        .count();
     let retained_steps = steps
         .iter()
-        .filter(|task| retained_result(store, task.id).is_some())
+        .filter(|task| retained_or_pending_result(store, task.id).is_some())
         .count();
     let retained_reports = steps
         .iter()
@@ -81,12 +99,13 @@ pub fn goal_history(store: &Store, goal: u64) -> ArchivedGoalHistory {
             task.research
                 .as_ref()
                 .is_some_and(|research| research.kind == ResearchKind::Advise)
-                && retained_result(store, task.id).is_some()
+                && retained_or_pending_result(store, task.id).is_some()
         })
         .count();
     ArchivedGoalHistory {
         total_steps: steps.len(),
         completed_steps,
+        pending_steps,
         retained_steps,
         complete: !steps.is_empty() && completed_steps == steps.len(),
         retained_reports,
@@ -111,6 +130,11 @@ pub fn presentation(store: &Store, id: u64) -> Option<ArchivedPresentation> {
                 "Archived · {}/{} complete",
                 history.completed_steps, history.total_steps
             )
+        } else if history.pending_steps > 0 {
+            format!(
+                "Archived · {}/{} validated · {} saved",
+                history.completed_steps, history.total_steps, history.pending_steps
+            )
         } else {
             format!(
                 "Archived · {}/{} validated",
@@ -130,6 +154,9 @@ pub fn presentation(store: &Store, id: u64) -> Option<ArchivedPresentation> {
             reason: if history.complete {
                 "Archived history. Retained results remain available. Restore to continue this goal."
                     .into()
+            } else if history.pending_steps > 0 {
+                "Archived history. Saved results are available; open them to review. Some still need validation. Restore to continue this goal."
+                    .into()
             } else if history.retained_steps > history.completed_steps {
                 "Archived history. Some retained attempts remain readable but do not count toward the original completed revision. Restore to continue this goal."
                     .into()
@@ -140,11 +167,14 @@ pub fn presentation(store: &Store, id: u64) -> Option<ArchivedPresentation> {
         });
     }
     if task.research.is_some() {
+        let pending = pending_history_result(store, id).is_some();
         let retained = retained_result(store, id).is_some();
         let validated = validated_history_result(store, id).is_some();
         return Some(ArchivedPresentation {
             label: if validated {
                 "Archived · result retained".into()
+            } else if pending {
+                "Archived · saved result available".into()
             } else if retained {
                 "Archived · retained attempt, not validated".into()
             } else {
@@ -160,6 +190,9 @@ pub fn presentation(store: &Store, id: u64) -> Option<ArchivedPresentation> {
             complete: validated,
             reason: if validated {
                 "Archived step history. The retained result remains available; restore the goal before running again."
+                    .into()
+            } else if pending {
+                "Archived step history. A saved result is available; open it to review. Restore the goal before running again."
                     .into()
             } else if retained {
                 "Archived step history. A saved attempt is readable but was not part of the validated completion; restore the goal before continuing."
@@ -210,7 +243,7 @@ pub fn result_target(store: &Store, id: u64, is_goal: bool) -> Option<u64> {
         return None;
     }
     if !is_goal {
-        return retained_result(store, id).map(|_| id);
+        return retained_or_pending_result(store, id).map(|_| id);
     }
     let steps: Vec<&crate::domain::Task> = store
         .tasks()
@@ -223,14 +256,14 @@ pub fn result_target(store: &Store, id: u64, is_goal: bool) -> Option<u64> {
             task.research
                 .as_ref()
                 .is_some_and(|research| research.kind == ResearchKind::Advise)
-                && retained_result(store, task.id).is_some()
+                && retained_or_pending_result(store, task.id).is_some()
         })
         .max_by_key(|task| task.id)
         .map(|task| task.id)
         .or_else(|| {
             steps
                 .iter()
-                .filter(|task| retained_result(store, task.id).is_some())
+                .filter(|task| retained_or_pending_result(store, task.id).is_some())
                 .max_by_key(|task| task.id)
                 .map(|task| task.id)
         })
@@ -472,4 +505,96 @@ mod tests {
         assert_eq!(history.completed_steps, 5);
         assert!(history.complete);
     }
+    #[test]
+    fn lazy_archived_bodies_report_loading_not_no_retained_result() {
+        let root = std::env::temp_dir().join(format!(
+            "planning-r170-archive-lazy-{}-{}",
+            std::process::id(),
+            std::time::SystemTime::now()
+                .duration_since(std::time::UNIX_EPOCH)
+                .unwrap()
+                .as_nanos()
+        ));
+        std::fs::create_dir_all(&root).unwrap();
+        let mut store = Store::empty();
+        store.project_at_mut(0).unwrap().directory = root.to_string_lossy().into_owned();
+        store.set_default_model("test/model".into());
+        let goal = store
+            .create_research_goal("Archived lazy goal".into(), "Scope".into(), 1)
+            .unwrap();
+        let steps = store.apply_research_plan(goal, PLAN).unwrap();
+        for task in &steps {
+            let mut run = store.prepare_run(*task).unwrap();
+            run.status = "Succeeded".into();
+            run.output = format!("Retained report for {task}");
+            store.push_run(run);
+            store.set_stage(*task, Stage::Done).unwrap();
+        }
+        store.archive(goal).unwrap();
+        let path = root.join("workspace.sqlite3");
+        let database =
+            crate::sqlite_v4::SqliteV4::create_seeded(&path, &root, 0x52_31_37_31, &store)
+                .unwrap();
+        let mut lazy = database.load_store_lazy().unwrap();
+        let history = goal_history(&lazy, goal);
+        assert_eq!(history.completed_steps, 0);
+        assert_eq!(history.pending_steps, 3);
+        assert_eq!(history.retained_steps, 3);
+        assert!(!history.complete);
+        let archived = presentation(&lazy, goal).unwrap();
+        assert!(archived.label.contains("saved"));
+        assert!(!archived.label.contains("no retained"));
+        for step in &steps {
+            let step_presentation = presentation(&lazy, *step).unwrap();
+            assert!(step_presentation.label.contains("saved result available"));
+            assert!(!step_presentation.label.contains("no retained"));
+        }
+        assert_eq!(result_target(&lazy, goal, true), Some(steps[2]));
+
+        let final_run_id = lazy
+            .runs()
+            .iter()
+            .find(|run| run.task_id == steps[2] && run.status == "Succeeded")
+            .map(|run| run.id)
+            .unwrap();
+        let body = database.body(final_run_id).unwrap().unwrap();
+        assert!(lazy.hydrate_run_body(final_run_id, body));
+        let history = goal_history(&lazy, goal);
+        assert_eq!(history.completed_steps, 0);
+        assert_eq!(history.pending_steps, 3);
+        assert!(!history.complete);
+        assert!(presentation(&lazy, steps[2])
+            .unwrap()
+            .label
+            .contains("saved result available"));
+        assert!(presentation(&lazy, steps[0])
+            .unwrap()
+            .label
+            .contains("saved result available"));
+        assert!(!lazy.goal_tasks_complete(goal), "archived work remains non-executable");
+
+        for step in &steps[..2] {
+            let run_id = lazy
+                .runs()
+                .iter()
+                .find(|run| run.task_id == *step && run.status == "Succeeded")
+                .map(|run| run.id)
+                .unwrap();
+            let body = database.body(run_id).unwrap().unwrap();
+            assert!(lazy.hydrate_run_body(run_id, body));
+        }
+        let history = goal_history(&lazy, goal);
+        assert_eq!(history.completed_steps, 3);
+        assert!(history.complete);
+        assert_eq!(presentation(&lazy, goal).unwrap().label, "Archived · 3/3 complete");
+        assert!(!lazy.goal_tasks_complete(goal));
+
+        lazy.task_mut(steps[0]).unwrap().description.push_str(" changed scope");
+        let history = goal_history(&lazy, goal);
+        assert_eq!(history.completed_steps, 0);
+        assert_eq!(history.pending_steps, 0);
+        assert!(!history.complete);
+        let _ = std::fs::remove_dir_all(root);
+    }
+
 }

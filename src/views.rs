@@ -3179,11 +3179,13 @@ impl TaskApp {
             .is_some_and(|r| r.kind != crate::research::ResearchKind::Goal)
             && if archived {
                 crate::archive_presentation::validated_history_result(&self.store, id).is_some()
+                    || crate::archive_presentation::pending_history_result(&self.store, id).is_some()
             } else {
                 self.store.research_result_available_or_pending(id)
             };
         let retained_invalid = archived
             && !has_result
+            && crate::archive_presentation::pending_history_result(&self.store, id).is_none()
             && crate::archive_presentation::retained_result(&self.store, id).is_some()
             && t.research
                 .as_ref()

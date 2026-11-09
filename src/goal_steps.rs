@@ -101,7 +101,7 @@ impl TaskApp {
         if self.goal_busy(goal) {
             return ("Running…", true, "Steps are running or queued. Open Steps to inspect progress or retry a blocked step individually.");
         }
-        if self.store.goal_tasks_complete(goal) {
+        if self.store.goal_tasks_complete(goal) || self.store.goal_tasks_present(goal) {
             return ("Completed", true, "All steps have current, completed results.");
         }
         if !self.store.goal_execution_approved(goal) {

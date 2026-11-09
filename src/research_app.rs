@@ -818,7 +818,7 @@ impl TaskApp {
     pub fn view_task_result(&mut self, id: u64, cx: &mut Context<Self>) {
         let run_id = if self.store.task_is_archived(id) {
             crate::archive_presentation::validated_history_result(&self.store, id)
-                .or_else(|| crate::archive_presentation::retained_result(&self.store, id))
+                .or_else(|| crate::archive_presentation::retained_or_pending_result(&self.store, id))
                 .map(|run| run.id)
         } else {
             self.store

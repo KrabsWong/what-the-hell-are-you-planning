@@ -1,0 +1,42 @@
+{
+  "round": "r173",
+  "candidate": "b9814d8a7bea15fd71327a730ca0da521d85e6ce0d5a7e12e95e17ca184dc0f8",
+  "installed_sha256": "60735f0a2db0e1234a2c3aa0a1a52d374ac588b2af28ba291123ef35cb3b3921",
+  "scope": "Private overdraw600 to64px experiment; not integrated",
+  "measurements": {
+    "present_frames": 4211,
+    "measured_frames": 4211,
+    "late_frames": 3,
+    "missed_refreshes": 4,
+    "work_ms": {
+      "p50": 1.296667,
+      "p95": 4.214041,
+      "p99": 4.823708,
+      "max": 20.991833
+    },
+    "input_late": 2,
+    "input_on_time": 6,
+    "dropped_samples": 0,
+    "note": "Concurrent full status tests / external work; diagnostic only. List cold open, down/up scrolling and Load more. No report open or scroll."
+  },
+  "window": {
+    "start_ns": 1794210419310514000,
+    "end_ns": 1794210507276779000
+  },
+  "longest_draw": {
+    "kind": "draw",
+    "window": 4294967297,
+    "wall_unix_ns": 1794210429593968709,
+    "mono_ns": 20040195709,
+    "invalidations": 11,
+    "refresh_ns": 8333333,
+    "draw_duration_ns": 20614666,
+    "dirty_to_draw_ns": 20985791,
+    "request_layout_ns": 671625,
+    "prepaint_ns": 12188666,
+    "paint_ns": 7446875
+  },
+  "visual": "Sampled post-gesture screenshots showed populated rows, not persistent blank areas; not proof of every intermediate frame",
+  "verdict": "Still failed smoothness; no quiet comparison or percentage improvement claim",
+  "rework": "Complete report surface; investigate actual visible row cost beyond overdraw"
+}

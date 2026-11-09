@@ -431,7 +431,7 @@ fn present_run_with(
         return present_non_research(run, attempt, step_label);
     };
 
-    let current_signature = store.research_signature(run.task_id);
+    let current_signature = store.research_signature_present(run.task_id);
     // Preserve the original equality check, including `None` for ordinary
     // research: a newer active Advise with no occurrence is also a regeneration.
     let regenerating = run.status == "Succeeded"
@@ -454,7 +454,7 @@ fn present_run_with(
             }),
         };
     let current = store
-        .research_result(run.task_id)
+        .research_result_present(run.task_id)
         .map(|result| result.id)
         == Some(run.id)
         // A regeneration temporarily owns the task's latest run. The previous
@@ -683,7 +683,7 @@ fn classify_research_output(
             // same inputs. Do not use task stage as a proxy for validation.
             let signature_matches = !run.input_signature.is_empty()
                 && store
-                    .research_signature(run.task_id)
+                    .research_signature_present(run.task_id)
                     .is_some_and(|signature| signature == run.input_signature);
             ClassifiedOutput {
                 body: research::reader_markdown(output).to_string(),
@@ -1730,4 +1730,64 @@ mod tests {
         assert_eq!(legacy.reader_markdown, indexed.reader_markdown);
         assert_eq!(legacy.primary_run_id(), indexed.primary_run_id());
     }
+    #[test]
+    fn lazy_ancestor_bodies_do_not_make_current_final_report_stale() {
+        let (mut store, goal) = workspace();
+        let root = std::env::temp_dir().join(format!(
+            "planning-r170-lazy-presentation-{}-{}",
+            std::process::id(),
+            std::time::SystemTime::now()
+                .duration_since(std::time::UNIX_EPOCH)
+                .unwrap()
+                .as_nanos()
+        ));
+        std::fs::create_dir_all(&root).unwrap();
+        store.project_at_mut(0).unwrap().directory = root.to_string_lossy().into_owned();
+        let steps = store.apply_research_plan(goal, PLAN).unwrap();
+        for step in &steps {
+            add_run(&mut store, *step, None, "Succeeded", "Synthetic evidence");
+            store.set_stage(*step, Stage::Done).unwrap();
+        }
+        let path = root.join("workspace.sqlite3");
+        let database =
+            crate::sqlite_v4::SqliteV4::create_seeded(&path, &root, 0x52_31_37_30, &store)
+                .unwrap();
+        let mut lazy = database.load_store_lazy().unwrap();
+        let final_run_id = lazy
+            .runs()
+            .iter()
+            .find(|run| run.task_id == steps[2] && run.status == "Succeeded")
+            .map(|run| run.id)
+            .unwrap();
+        let body = database.body(final_run_id).unwrap().unwrap();
+        assert!(lazy.hydrate_run_body(final_run_id, body));
+        let final_run = lazy
+            .runs()
+            .iter()
+            .find(|run| run.id == final_run_id)
+            .unwrap()
+            .clone();
+        let current = present_run(&lazy, &final_run);
+        assert!(!current.freshness.stale_input, "lazy ancestors must not mark the report stale");
+        assert!(!current.freshness.historical);
+        assert!(current.freshness.is_current());
+        assert_eq!(current.kind, ResultKind::FinalReport);
+        assert_eq!(current.quality, EvidenceQuality::Complete);
+        assert!(current.has_final_report);
+        assert!(lazy.goal_tasks_present(goal));
+        assert!(!lazy.goal_tasks_complete(goal), "strict admission still waits for bodies");
+
+        lazy.task_mut(steps[0]).unwrap().description.push_str(" changed scope");
+        let changed_run = lazy
+            .runs()
+            .iter()
+            .find(|run| run.id == final_run_id)
+            .unwrap()
+            .clone();
+        let changed = present_run(&lazy, &changed_run);
+        assert!(changed.freshness.stale_input, "changed ancestor input must invalidate");
+        assert!(!changed.freshness.is_current());
+        let _ = std::fs::remove_dir_all(root);
+    }
+
 }

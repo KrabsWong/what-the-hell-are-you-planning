@@ -2770,3 +2770,10 @@ The three measured scroll windows had zero missed refreshes and maximum CPU pres
 ### r186 fixture qualification correction
 
 OpenCode diagnosis identified residual automation ownership in the synthetic ordinary fixture: automation-owned topics and occurrence goal references survived clearing task ownership. Its runs also lack valid input signatures. The observed Todo 0/3 and blank counted board therefore cannot establish a normal ordinary-workspace defect. Preserve the measured stalls as evidence for that hybrid fixture, but re-baseline before attributing them to valid ordinary research. A replacement API-generated fixture is authorized with genuinely derived Done/3-of-3 goals and unrelated paused automation history. Product caching changes remain pending independent review of that baseline. Native dimensions were 1440 by 920 logical pixels (2880 by 1840 screenshot pixels).
+
+
+## r188 historical long-report native review
+
+On the frozen r187 binary, the 7,700-byte historical report in Period 1000 rendered, scrolled down to Sources and research-step links, scrolled back up, and closed to Automation results. This covers the dark 1440 by 920 reader only. Historical/stale/incomplete labels were visible; this fixture does not prove current-valid report publication.
+
+Performance remains unaccepted: opening recorded 19.58 ms maximum CPU present work and five missed refreshes; downward scrolling recorded 10.82 ms and one missed refresh; upward scrolling recorded 7.37 ms and zero missed refreshes (only one present in that capture window). The longest open draw spent 9.96 ms painting; the downward draw peaked at 7.14 ms, so its 10.82 ms present-work peak must not be misreported as all render/prepaint cost. A separate read-only OpenCode diagnosis is assigned before authorizing a repair. Exact windows and build identity are in `evidence/r188-report-native.json`.

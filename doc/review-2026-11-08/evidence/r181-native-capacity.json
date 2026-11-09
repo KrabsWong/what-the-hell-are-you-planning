@@ -1,0 +1,51 @@
+{
+  "round": "r181",
+  "native_binary_sha256": "76413340c4d06a0391f74a28f5474688b830ca90ec964f5d37005689a8ce2d43",
+  "archive": {
+    "status": "passed observed E20/A21 reader and restore routes",
+    "observations": [
+      "Archived A21 Run 26 and E20 Run 25 retain readable bodies, Intermediate evidence and archived-history notice without false stale, historical or legacy badges.",
+      "Restore returns G19 and its three steps to Done; closed database audit retains 28 runs."
+    ],
+    "deferred": "Archived A21 detail still says Waiting for 1 earlier step(s) before this task can start. Execution remains disabled."
+  },
+  "capacity_fixture": {
+    "periods": 1000,
+    "report_runs": 240,
+    "report_body_bytes_each": 7700,
+    "note": "Mixed synthetic fixture; not 1000 complete reports."
+  },
+  "list_observations": [
+    "Load more changes remaining count from 980 to 960 and exposes the next twenty rows.",
+    "The 00:18 Succeeded row opens Period 964 with the matching actual-start timestamp.",
+    "Closing the period preserves the underlying list context.",
+    "Dark theme and upward scrolling return a legible list header and rows."
+  ],
+  "performance": {
+    "status": "not accepted; dedicated scroll trace required",
+    "csv": ".local/native-review/r181-1000-native.csv",
+    "sha256": "3f4c2bb394fbbb7c1e54b698a08cd89912faaafd1f69196eb033cd735cad82f2",
+    "refresh_delta_totals": {
+      "frames_drawn": 15622,
+      "frames_on_time": 15608,
+      "frames_late": 13,
+      "missed_refreshes": 15,
+      "frames_unmeasured": 1,
+      "input_frames_on_time": 3,
+      "input_frames_late": 10,
+      "dropped_samples": 0
+    },
+    "max_interval_input_work_p95_ms": 16.891903,
+    "limitations": [
+      "Mixed startup, scrolling, load more, modal, and theme actions; cannot attribute every late frame to scrolling.",
+      "No per-frame JSONL trace was enabled.",
+      "CPU submission timings are not display scan-out.",
+      "An aggregate dominated by idle animation frames does not establish input smoothness."
+    ]
+  },
+  "remaining": [
+    "Dedicated required-size scroll and long-report trace",
+    "Final render QA verification",
+    "Complete task acceptance ledger"
+  ]
+}

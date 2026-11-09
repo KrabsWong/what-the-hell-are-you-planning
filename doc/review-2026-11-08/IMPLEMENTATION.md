@@ -2707,3 +2707,11 @@ Root independently passed 732 unit tests (two existing ignored tests), 13 integr
 The isolated native build now settles Resume and Pause feedback. Replan → Generate once → review → Enable once closes the wizard to the correct Enabled detail, eliminating the stuck Saving state. A repeated replan confirms the full expected-result text in both the saved definition and Run 30 prompt. Two deliberately submitted attempts produced exactly Runs 29 and 30 with immutable request/revision ownership; the original five periods remain. The fixture ends Paused/Paused/Draft. See [native and source evidence](evidence/r180-lifecycle-native.json).
 
 This checkpoint also includes required 500/1,000 performance fixture scopes verified in r179. The legacy automation-perf diagnostic still records its timing rather than being treated as production live-save acceptance. Final native scrolling, archived-reader confirmation, render QA integration and the complete task ledger remain open.
+
+## r181: archived readers pass; required-size native performance remains open
+
+The r180 isolated native candidate displays archived A21 Run 26 and E20 Run 25 with retained readable bodies and the correct intermediate-evidence/history labels, without false stale or legacy badges. Restore returns G19 and its steps to Done with no new runs. The archived detail's residual upstream-waiting sentence is deferred as a nonblocking wording issue; no execution action is exposed.
+
+On the 1,000-period synthetic fixture, Load more expands twenty rows to forty, the selected 00:18 row opens the matching Period 964, and closing preserves the list context. Light and dark views remain legible. This fixture contains 240 report runs, not 1,000 full reports.
+
+Native performance is **not accepted**: the mixed-action 120Hz sample records 13 late frames and 15 missed refreshes, with ten late input frames versus three on-time input frames. The maximum interval input-work p95 is 16.892 ms. The sample includes startup, modal and theme actions and lacks per-frame tracing, so these counts cannot all be assigned to scrolling. OpenCode has a bounded diagnosis task; a dedicated scroll/long-report trace remains required. See [native evidence](evidence/r181-native-capacity.json).

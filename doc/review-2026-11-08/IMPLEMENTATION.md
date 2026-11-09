@@ -44,11 +44,25 @@ For the step-count control, the ordinary click/Back path with real filtered, scr
 
 All work for this optimization goal uses `feature/review-2026-11-08-optimization`. The user authorized periodic checkpoint commits and pushes on 2026-11-09 to prevent code loss. Checkpoints may contain unfinished work and failing acceptance cases; they are not releases or task sign-off. Root owns Git staging, commits and pushes. Implementers continue on this same shared branch. Local `.local/` workspaces, binaries, runtime traces and credentials remain excluded by repository policy. Validation screenshots also remain local and must not be committed or pushed. The initial checkpoint predated this screenshot instruction; cleanup commit `e60ab38` removed all 60 tracked review screenshots from the branch tip and added ignore rules, preserving local copies. Earlier Git history was not rewritten.
 
-## Current full-scope status
+## Current release gate status (r184)
+
+The application is **not accepted for delivery**. All 25 tasks remain in scope. Existing focused/native evidence is retained; the following table identifies current release work without treating a changed HEAD as a reason to repeat unrelated accepted flows.
+
+| Gate | Current evidence and remaining work |
+| --- | --- |
+| T01 / T20 integrated regression | The complete r174 ledger retained 52 passes and three nonpasses. Recovery and render failures have independently verified replacements in r179/r181. The r183 runner distinguishes legacy latency diagnostics from required live performance. A final frozen integrated ledger and unit/integration checks remain required. |
+| T14 / T15 live performance | The r179 quiet 500/1,000 run passed all fourteen p95 gates. The later lifecycle integration requires a current-candidate repeat; the 50 ms threshold remains unchanged. |
+| T19 native scrolling | The r182 dedicated 40-row downward scroll, cold open and Load more missed the 120Hz budget. The r184 virtual-list candidate is rejected because the content area is blank. Repair, rendered interaction checks and native surface/size/theme acceptance remain required. |
+| Changed lifecycle and archived readers | r180 verifies durable lifecycle completion and replanning; r181 verifies retained archived E20/A21 bodies and restoration to Done. These observed fixes stand, subject to final integrated regression. |
+| First-round follow-ups | Archived upstream-waiting wording, exhaustive rare state combinations and large-history latency stress remain explicitly distinguishable from core acceptance. The final task disposition must list each deferred remainder and its follow-up criterion. |
+
+See [r180 lifecycle evidence](evidence/r180-lifecycle-native.json), [r181 archive/capacity evidence](evidence/r181-native-capacity.json), [r182 dedicated trace](evidence/r182-dedicated-scroll.json), [r183 classifier checks](evidence/r183-runner-classification.json), and [r184 rejection](evidence/r184-list-native-rejection.json). The historical table below is preserved for audit; its superseded runtime and planning blockers are not the current status.
+
+## Historical full-scope snapshot (through r151)
 
 All 25 tasks remain in scope. Accepted means the reviewed candidate met its task criteria, not that the entire application is released. Later changes must preserve accepted behavior. The chronological notes below retain earlier intermediate failures.
 
-| Task | Scope | Current disposition |
+| Task | Scope | Historical disposition |
 | --- | --- | --- |
 | T01 | Repair and classify regression coverage | r139 full 54-entry offline ledger has passing coverage after retained path-only reruns and a reviewed topics-contract correction; original failures remain recorded. New runtime changes require revalidation. |
 | T02 | Remove background navigation from run submission | Offline background-navigation coverage passes; r140 ordinary E24 completion kept the historical period route unchanged. Full final native matrix remains open. |

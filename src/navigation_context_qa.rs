@@ -9,7 +9,7 @@ use crate::automation::{
 };
 use crate::automation_schedule::{Schedule, ScheduleSpec};
 use crate::domain::{Stage, Store};
-use crate::app::{Layout, Scope, TaskApp};
+use crate::app::{AllStatus, Layout, Scope, TaskApp};
 use crate::persistence::Storage;
 use gpui_kit::{component::{Theme, ThemeMode}, prelude::*, test::TestWindowExt, *};
 use std::{path::Path, sync::Arc};
@@ -1099,19 +1099,25 @@ pub fn run() {
 fn size_theme_pass(
     cx: &mut HeadlessAppContext,
     store: &Store,
-    path: &Path,
+    _path: &Path,
     root: &Path,
     fixture: &Fixture,
     width: f32,
     height: f32,
     theme: ThemeMode,
 ) {
+    // Each live window owns a distinct workspace lock and save baseline.
+    let pass_root = root.join(format!("size-{width}x{height}-{theme:?}"));
+    std::fs::create_dir_all(&pass_root).unwrap();
+    let path = pass_root.join("workspace.sqlite3");
+    Storage::new(path.clone()).save(store).unwrap();
     let mut app = None;
     let window = cx
         .open_window(size(px(width), px(height)), |w, cx| {
             let view = cx.new(|cx| TaskApp::new_mock(w, cx));
             view.update(cx, |a, cx| {
-                a.attach_storage(Storage::new(path.to_path_buf()), w, cx);
+                a.attach_storage(Storage::new(path.clone()), w, cx);
+                assert!(a.storage_error.is_empty(), "fixture storage: {}", a.storage_error);
                 a.store = store.clone();
                 Theme::change(theme, Some(w), cx);
                 a.navigate(Scope::All, w, cx);
@@ -1203,6 +1209,158 @@ fn size_theme_pass(
         w.render_frame(cx);
         assert_eq!(app.read(cx).scope(), before);
         assert!(app.read(cx).planning_destination.is_none());
+    })
+    .unwrap();
+    // Matching goals make scroll restoration observable in every collection.
+    // Keep unrelated fixture rows so the query is a real filter.
+    let mut matching_goals = vec![fixture.goal];
+    cx.update_window(handle, |_, _, cx| {
+        app.update(cx, |a, _| {
+            for index in 0..30 {
+                let goal = a.store.create_research_goal_in_topic(
+                    format!("Research goal filler {index:02}"),
+                    "Scope".into(), 1, Some(fixture.topic),
+                ).unwrap();
+                let steps = a.store.apply_research_plan(goal, PLAN).unwrap();
+                for step in steps {
+                    let mut run = a.store.prepare_run(step).unwrap();
+                    run.status = "Succeeded".into();
+                    run.output = "Completed research report".into();
+                    a.store.push_run(run);
+                    a.store.set_stage(step, Stage::Done).unwrap();
+                }
+                matching_goals.push(goal);
+            }
+        });
+    }).unwrap();
+    // Goals-only collections: the step-count control navigates to the goal's
+    // Steps instead of pretending to disclose inline children.
+    // Project uses a topic directory and Topic uses goal cards, covered above;
+    // the shared task-row count appears in All research and Archive.
+    for scope in [Scope::All, Scope::Archive] {
+        cx.update_window(handle, |_, w, cx| {
+            if scope == Scope::Archive {
+                app.update(cx, |a, _| {
+                    for goal in &matching_goals {
+                        a.store.archive(*goal).unwrap();
+                    }
+                    a.layout = Layout::List;
+                });
+            }
+            let stage = app.read(cx).display_task_status(fixture.goal).phase;
+            app.update(cx, |a, cx| {
+                a.navigate(scope.clone(), w, cx);
+                a.layout = Layout::List;
+                a.show_done = true;
+                a.all_status = AllStatus::Stage(stage);
+                a.set_query("Research goal".into());
+                a.search
+                    .update(cx, |s, cx| s.set_value("Research goal", w, cx));
+            });
+            w.render_frame(cx);
+            let control = format!("goal-steps-{}", fixture.goal);
+            // Force a non-zero source scroll before locating the row.
+            w.scroll(
+                "collection-table-scroll",
+                ScrollDelta::Pixels(point(px(0.), px(-160.))),
+                cx,
+            );
+            w.render_frame(cx);
+            assert!(
+                scroll_into_view(w, cx, "collection-table-scroll", &control, -180.),
+                "{scope:?}: step-count control must be reachable"
+            );
+            assert!(
+                list_offset(app.read(cx)) < -10.0,
+                "{scope:?}: source list must start scrolled"
+            );
+            assert!(!app.read(cx).query().is_empty(), "source query is meaningful");
+            let before = (
+                app.read(cx).scope(),
+                app.read(cx).layout,
+                app.read(cx).query(),
+                app.read(cx).all_status,
+                list_offset(app.read(cx)),
+            );
+            let snapshot = w.find(control.clone());
+            assert!(snapshot.visible());
+            assert!(
+                snapshot.label().is_some_and(|label| label.contains("Open Steps")),
+                "step count exposes an explicit Open Steps name"
+            );
+            w.click(control, cx);
+            w.render_frame(cx);
+            assert_eq!(
+                app.read(cx).goal_steps_tab(),
+                Some(fixture.goal),
+                "{scope:?}: count opens the goal's Steps tab"
+            );
+            assert_eq!(app.read(cx).selected(), Some(fixture.goal));
+            w.click("navigation-back", cx);
+            w.render_frame(cx);
+            assert_eq!(app.read(cx).scope(), before.0, "{scope:?}: Back restores scope");
+            assert_eq!(app.read(cx).layout, before.1, "{scope:?}: Back restores layout");
+            assert_eq!(app.read(cx).query(), before.2, "{scope:?}: Back restores filter");
+            assert_eq!(app.read(cx).all_status, before.3, "{scope:?}: Back restores status filter");
+            assert_eq!(
+                list_offset(app.read(cx)),
+                before.4,
+                "{scope:?}: Back restores collection scroll"
+            );
+        })
+        .unwrap();
+        screenshot(cx, handle, root, &format!("goal-count-{scope:?}-{width}x{height}-{theme:?}.png"));
+    }
+    // Dirty editor: Stay keeps the draft and does not change the route; Discard
+    // and Save replay the typed ResearchSteps destination, not Overview.
+    cx.update_window(handle, |_, w, cx| {
+        app.update(cx, |a, cx| a.navigate(Scope::All, w, cx));
+        w.render_frame(cx);
+        let task = fixture.tasks[0];
+        let dirty = |a: &mut crate::app::TaskApp, w: &mut Window, cx: &mut Context<_>| {
+            a.open_task(task, w, cx);
+            a.begin_draft(task, w, cx);
+            let title = a.draft.as_ref().unwrap().title.clone();
+            title.update(cx, |state, cx| state.set_value("dirty steps", w, cx));
+        };
+        app.update(cx, |a, cx| dirty(a, w, cx));
+        app.update(cx, |a, cx| a.request_goal_steps(fixture.goal, w, cx));
+        w.render_frame(cx);
+        assert!(w.try_find("dirty-exit-stay").is_some());
+        w.click("dirty-exit-stay", cx);
+        w.render_frame(cx);
+        assert_ne!(app.read(cx).goal_steps_tab(), Some(fixture.goal));
+        app.update(cx, |a, _| {
+            a.draft = None;
+            a.property = None;
+        });
+
+        app.update(cx, |a, cx| dirty(a, w, cx));
+        app.update(cx, |a, cx| a.request_goal_steps(fixture.goal, w, cx));
+        w.render_frame(cx);
+        w.click("dirty-exit-discard", cx);
+        w.render_frame(cx);
+        assert_eq!(
+            app.read(cx).goal_steps_tab(),
+            Some(fixture.goal),
+            "Discard replays the typed Steps destination"
+        );
+        w.click("navigation-back", cx);
+        w.render_frame(cx);
+
+        app.update(cx, |a, cx| dirty(a, w, cx));
+        app.update(cx, |a, cx| a.request_goal_steps(fixture.goal, w, cx));
+        w.render_frame(cx);
+        w.click("dirty-exit-save", cx);
+        w.render_frame(cx);
+        assert!(app.read(cx).draft.is_none(), "Save finishes the dirty editor: error={} impact={} primary={}", app.read(cx).error, app.read(cx).research_save_impact.is_some(), app.read(cx).live_primary.is_some());
+        assert_eq!(
+            app.read(cx).goal_steps_tab(),
+            Some(fixture.goal),
+            "Save replays the typed Steps destination"
+        );
+        w.click("navigation-back", cx);
+        w.render_frame(cx);
     })
     .unwrap();
     screenshot(

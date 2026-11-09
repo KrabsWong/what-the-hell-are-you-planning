@@ -576,6 +576,7 @@ impl TaskApp {
         match target {
             NavigationTarget::Research { scope } => self.navigate(scope, w, cx),
             NavigationTarget::ResearchTask(task) => self.open_task(task, w, cx),
+            NavigationTarget::ResearchSteps(goal) => self.open_goal_steps(goal, w, cx),
             NavigationTarget::ResearchTaskResult(task) => {
                 let result = if self.task_running(task) || self.goal_busy(task) {
                     None
@@ -1342,6 +1343,14 @@ impl TaskApp {
     pub(crate) fn request_scope(&mut self, scope: Scope, w: &mut Window, cx: &mut Context<Self>) {
         self.request_exit(
             ExitTarget::Structural(NavigationTarget::Research { scope }),
+            w,
+            cx,
+        );
+    }
+
+    pub(crate) fn request_goal_steps(&mut self, goal: u64, w: &mut Window, cx: &mut Context<Self>) {
+        self.request_exit(
+            ExitTarget::Navigate(NavigationTarget::ResearchSteps(goal)),
             w,
             cx,
         );

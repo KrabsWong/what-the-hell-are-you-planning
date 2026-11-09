@@ -29,7 +29,7 @@ Action buttons are about 32 px tall with 6 px radius and 14 px system font; Undo
 
 ## Boundaries
 
-Non-interactive chips, task statuses and field labels keep low contrast and no button border. Clickable lists/cards need hover feedback and a visible open arrow or action; do not give body copy a button shape. Sidebar chevrons mean disclosure only: rows that expand on click (projects, topics, goals) keep a chevron, while plain navigation rows show only their count. Shortcut navigation keeps the sidebar structure.
+Non-interactive chips, task statuses and field labels keep low contrast and no button border. Clickable lists/cards need hover feedback and a visible open arrow or action; do not give body copy a button shape. Sidebar chevrons mean disclosure only: rows that expand on click (projects, topics, goals) keep a chevron, while plain navigation rows show only their count. Shortcut navigation keeps the sidebar structure. In All research and Archive, the goal completion count is a compact navigation control with a fixed right chevron: it opens that goal’s Steps tab. It does not expand inline children. Back restores the originating collection’s filter and scroll position.
 
 Automation history rows keep one neutral surface and express state through semantic status text and accents rather than a large row fill. Trigger source shows a compact Manual/Scheduled text label beside its icon, with skipped-period detail in the tooltip. Long automation names and step titles ellipsize but keep the complete value in the tooltip and accessibility label. Recently opened menu labels wrap to the menu width and keep the complete value in the tooltip instead of collapsing to an unexplained short prefix.
 

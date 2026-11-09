@@ -2070,7 +2070,7 @@ impl TaskApp {
             .h_full()
             .flex_1(),
         )
-        ))
+        ).map(observed))
         .into_any_element()
     }
     pub fn ordered_visible_tasks(&self) -> Vec<Task> {
@@ -2172,21 +2172,19 @@ impl TaskApp {
                             ),
                     )
                     .when(child_count > 0, |d| {
+                        let step_name = format!(
+                            "Open Steps for {} · {done} of {child_count} complete",
+                            t.title
+                        );
                         d.child(
-                            row_button(format!("expand-{id}"), format!("{done}/{child_count}"))
-                                .icon(if self.collapsed.contains(&id) {
-                                    assets::IconName::ChevronRight
-                                } else {
-                                    assets::IconName::ChevronDown
-                                })
-                                .on_click(cx.listener(move |this, _, _, cx| {
+                            row_button(format!("goal-steps-{id}"), format!("{done}/{child_count}"))
+                                .icon(assets::IconName::ChevronRight)
+                                .tooltip(step_name.clone())
+                                .accessibility_label(step_name)
+                                .on_click(cx.listener(move |this, _, w, cx| {
                                     cx.stop_propagation();
-                                    if this.collapsed.contains(&id) {
-                                        this.collapsed.retain(|v| *v != id);
-                                    } else {
-                                        this.collapsed.push(id);
-                                    }
-                                    cx.notify();
+                                    // Typed destination survives dirty-exit replay.
+                                    this.request_goal_steps(id, w, cx);
                                 })),
                         )
                     }),

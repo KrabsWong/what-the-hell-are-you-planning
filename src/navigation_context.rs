@@ -138,6 +138,8 @@ pub(crate) enum NavigationTarget {
         scope: Scope,
     },
     ResearchTask(u64),
+    /// Open a goal directly on its Steps panel; survives pending dirty-exit replay.
+    ResearchSteps(u64),
     /// A task click that opens its completed result when one exists.
     ResearchTaskResult(u64),
     ResearchResult {

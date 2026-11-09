@@ -12,31 +12,31 @@ All 25 tasks remain in scope. Accepted means the reviewed candidate met its task
 
 | Task | Scope | Current disposition |
 | --- | --- | --- |
-| T01 | Repair and classify regression coverage | r53 full 33-entry diagnostic gate: 32 pass; newer r55 attachment flow independently passes; current navigation/cache regressions and release rerun pending |
-| T02 | Remove background navigation from run submission | Code, automated checks and native completion verified; final sign-off awaits T01 |
-| T03 | Separate retrying a period from resuming its schedule | Accepted in reviewed working-tree candidate; integration/release gates remain |
-| T04 | Prevent whole-Store Undo from erasing automation changes | Correction independently passes full automation at r5 and r12; final source review and legacy snapshot removal integration remain pending |
-| T05 | Share execution eligibility with status presentation | Accepted in reviewed working-tree candidate; integration/release gates remain |
-| T06 | Introduce typed result presentation | Accepted in reviewed working-tree candidate; integration/release gates remain |
-| T07 | Keep task neighbors within the active navigation domain | Accepted in reviewed working-tree candidate; integration/release gates remain |
-| T08 | Give Search a stable global contract | Full global-search QA independently passes at r39 and r49; final integration and release gate pending |
-| T09 | Reset new forms from one explicit default model | Accepted in reviewed working-tree candidate; integration/release gates remain |
-| T10 | Preserve origin, dirty drafts and creation destination | Six navigation suites independently pass at r49; r55 retained-footer navigation regression returned; full route/theme/native integration pending |
-| T11 | Restore consistent action affordances and visual hierarchy | Accepted in reviewed working-tree candidate; integration/release gates remain |
-| T12 | Extract a typed navigation controller | Pure S1 independently accepted (28 tests); live typed-authority migration active with explicit result ownership and save-outcome policies; not accepted |
-| T13 | Extract domain commands and scoped undo | S3b/S3c and S3d material task-edit QA independently pass (r27); remaining material cases, settings/context/archive and final snapshot removal pending |
-| T14 | Move persistence off the UI thread with ordered acknowledgements | Live path implemented and passing 20/20 dedicated live cases (startup/migration, pending/durable/retry, dirty exits, standalone automation save, quit/reopen). 43,200-run editor synchronous UI work measured at 15.1 ms. Native release matrix remains T19/T20. |
-| T15 | Add incremental writes and indexed history queries | Startup hydrates without bodies; indexed page reader with watermark invalidation and 2.5 ms first 43,200 page; lazy bodies guard against stale replies. Migration/backup/WAL tests accepted; native scrolling/perf release evidence remains T19/T20. |
-| T16 | Unify temporal ordering and harden schedule arithmetic | Accepted in reviewed working-tree candidate; integration/release gates remain |
-| T17 | Reconcile current product/design/workflow documentation | Scoped documentation reconciliation dispatched; independent review and final behavior reconciliation pending |
-| T18 | Make unattended capability guarantees accurate | Accepted in reviewed working-tree candidate; integration/release gates remain |
-| T19 | Verify keyboard behavior and visual readability | Full keyboard/visual QA independently passes at r48; native retained Settings r52 still reports hitches; keyboard focus and full native/performance matrix remain pending |
-| T20 | Run the full regression matrix for release acceptance | Open; implementation and acceptance pending |
-| T21 | Explain and control research-input invalidation | Pure impact model reviewed; UI/history QA under revision; domain commands and scoped Undo pending |
-| T22 | Present archived research as archived history | Accepted in reviewed working-tree candidate; final native/integration release gates remain |
-| T23 | Persist run ownership across planning attempts | Accepted in reviewed working-tree candidate; integration/release gates remain |
-| T24 | Reconnect automation workspaces using the correct directory policy | Accepted in reviewed working-tree candidate; integration/release gates remain |
-| T25 | Bind replanning to the edited request revision | Accepted in reviewed working-tree candidate; integration/release gates remain |
+| T01 | Repair and classify regression coverage | r139 full 54-entry offline ledger has passing coverage after retained path-only reruns and a reviewed topics-contract correction; original failures remain recorded. New runtime changes require revalidation. |
+| T02 | Remove background navigation from run submission | Offline background-navigation coverage passes; r140 ordinary E24 completion kept the historical period route unchanged. Full final native matrix remains open. |
+| T03 | Separate retrying a period from resuming its schedule | Focused lifecycle acceptance retained and r137 automation matrix passes; final native/release gates remain. |
+| T04 | Prevent whole-Store Undo from erasing automation changes | Whole-Store Undo variant removed; current offline checks pass. Fresh live edit → automation save/enable/pause → Undo disk-state coverage is being strengthened. |
+| T05 | Share execution eligibility with status presentation | Shared eligibility implemented and offline checks pass. Native r139 exposes a real paused queue caused by async admission integration; runtime repair remains required. |
+| T06 | Introduce typed result presentation | Typed results and lazy-body repair pass offline; native saved Quick and Research reports show Complete and correct current/original-version labels. Full state matrix remains open. |
+| T07 | Keep task neighbors within the active navigation domain | Period-bounded neighbors pass offline; final native boundary matrix remains required. |
+| T08 | Give Search a stable global contract | Global-search and keyboard suites pass in r137 coverage. Recurrent native global-shortcut failure remains under diagnosis; pointer and Escape paths do not waive it. |
+| T09 | Reset new forms from one explicit default model | Explicit draft defaults implemented and offline creation checks pass; final native integration remains required. |
+| T10 | Preserve origin, dirty drafts and creation destination | Typed caller/filter/scroll restoration passes offline. r138 Archive and r140 filtered period pointer-return paths pass; native shortcut/focus and full dirty-save matrix remain open. |
+| T11 | Restore consistent action affordances and visual hierarchy | Action hierarchy implemented; r137 compact and normal Light/Dark result rows reviewed with visible Open controls. Full native surface matrix remains open. |
+| T12 | Extract a typed navigation controller | Typed route/overlay/return authority implemented with passing offline navigation. Further payload relocation is explicitly deferred in TASKS; behavioral and native gates remain mandatory. |
+| T13 | Extract domain commands and scoped undo | Typed commands and scoped Undo implemented; actual first-dispatch/batch async integration is under repair. Whole-history preparation costs await expanded measurement. |
+| T14 | Move persistence off the UI thread with ordered acknowledgements | Live ordered receipts and 23-case persistence suite pass in r137. Native first-dispatch wake/batch failure blocks delivery. Expanded benchmark setup failure is retained; final quiet p95 remains open. |
+| T15 | Add incremental writes and indexed history queries | Incremental v4 writes, indexed pages and lazy selected bodies implemented. Saved-body native repair verified; current row-write and larger-history evidence is being completed. Smoothness remains open. |
+| T16 | Unify temporal ordering and harden schedule arithmetic | Temporal ordering/arithmetic implementation and offline checks pass; final integrated/native boundaries remain documented. |
+| T17 | Reconcile current product/design/workflow documentation | Current status, route, pagination and save documentation is being reconciled against r139/r140 evidence; chronological earlier claims are historical. |
+| T18 | Make unattended capability guarantees accurate | Capability wording distinguishes prompt guidance from a runtime sandbox; final behavior/document consistency remains part of release review. |
+| T19 | Verify keyboard behavior and visual readability | r137 keyboard/visual QA passes and both result-row sizes/themes reviewed. Native Command-[ recurrence and scroll hitches remain blockers; no full smoothness approval. |
+| T20 | Run the full regression matrix for release acceptance | 54-entry offline coverage reconciled with original failures and supplements. Full native acceptance, repaired runtime integration and performance gates remain open. |
+| T21 | Explain and control research-input invalidation | Impact/history/scoped-Undo checks pass in the r137 matrix. Current native impact confirmation, historical-version focus and material paths remain required. |
+| T22 | Present archived research as archived history | Archived membership and pointer/shortcut control paths repaired and tested; fresh completed 3/3 archive/restore native flow remains blocked by ordinary execution. Recurrent shortcuts remain open. |
+| T23 | Persist run ownership across planning attempts | Immutable planning ownership passes offline planning/history coverage; current native repeated replan/restart/history replay remains required. |
+| T24 | Reconnect automation workspaces using the correct directory policy | Directory-policy fix and isolated reconnect/relocation acceptance retained; r137 workspace suite passes. Production workspace remains untouched. |
+| T25 | Bind replanning to the edited request revision | Immutable edited-request revision behavior passes offline planning coverage; current native repeated replan/enable/history replay remains required. |
 
 ## Batch 1: T24
 
@@ -2481,3 +2481,13 @@ The full r137 regression driver has also exposed a topics Back expectation misma
 ## r139: ordinary research dispatch blocks native acceptance
 
 At 1440×920, approving synthetic G23 succeeded. Run goal then left all three steps paused, and Resume queue reported an outstanding durable admission for several minutes without starting the local fixture agent. This is a core execution failure; completed-goal archive/restore acceptance was not reached. The running isolated fixture is retained for diagnosis. OpenCode is assigned the runtime/admission investigation and regression; root will repeat the native workflow after reviewing the fix. See [r139 native dispatch](evidence/r139-native-dispatch.json). No smoothness conclusion is drawn while the offline matrix is running.
+
+### r139 full offline matrix and independent corrections
+
+The immutable r137 candidate completed 54 inventoried entries: 48 passed, three carried exact-binary checks passed, and three original failures were retained. Inventory and 43,200-period persistence checks passed after correcting only the working directory for the unchanged retained fixture. The topics failure was a stale structural-parent assertion; a test-only overlay independently passed both topics and navigation-context after asserting the actual All/Board caller and preserving the downstream Topic checks. All inventoried entries now have passing coverage, but this is not one all-green original run and does not override the newly reproduced native dispatch failure. Crash parent tests remain separately recorded in r137 integration evidence. See [full offline ledger](evidence/r139-offline-matrix.json) and [root topics review](evidence/r139-topics-review.json).
+
+## r140: filtered period return and runtime wake evidence
+
+Native filtered Automation results → Period 3 → analysis step → pointer Back restored the same period and report scroll position; Escape restored the same filter and two of five rows. Command-[ again produced no visible navigation, so the earlier successful control does not close native keyboard acceptance. During this unrelated historical-reader flow, previously stalled ordinary E24 finally ran and completed without another Run/Resume action, while the displayed historical result remained stable. Remaining steps stayed paused. Source review identified both an admission pump wake/keep gap and a batch handler that expects a new run synchronously immediately after submission; the async acceptance/queue integration is under repair, not accepted. See [native chain evidence](evidence/r140-native-period-return.json).
+
+The first expanded performance attempt had zero observed compilation/matrix contention but failed before the large fixture: its final seeded Store had lost model configuration and Enable was correctly rejected. This is a harness setup failure, not a latency result. The failure is retained in [performance attempt evidence](evidence/r139-expanded-performance-attempt.json); a full corrected-harness run and quiet measurement remain required.

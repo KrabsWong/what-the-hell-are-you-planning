@@ -1,0 +1,421 @@
+{
+  "candidate_sha256": "6ae77bd2051a3ac83a8cf78bc67093d90c944bf82d38252e2629742a97630db7",
+  "source_manifest_sha256": "24bcd26b56fc3294f1c6bb71c31560bac21c144b5c59f32a6c395dc1c8aecea2",
+  "local_report_sha256": "3399fa3a490e350a8d36293afc2e2ffdba7d094af2ba2df91538bbc06e1e9bac",
+  "inventory_flags": [
+    "--qa",
+    "--qa-affordance",
+    "--qa-archived-research",
+    "--qa-attachments",
+    "--qa-automation",
+    "--qa-automation-perf",
+    "--qa-batch",
+    "--qa-board-scroll",
+    "--qa-board-topics",
+    "--qa-brand",
+    "--qa-calendar",
+    "--qa-command",
+    "--qa-concurrency",
+    "--qa-dispatch-admission",
+    "--qa-dispatch-crash",
+    "--qa-display-order",
+    "--qa-execution-eligibility",
+    "--qa-global-search",
+    "--qa-handoff-progress",
+    "--qa-header-layout",
+    "--qa-intake",
+    "--qa-keyboard-visual",
+    "--qa-live-performance",
+    "--qa-live-persistence",
+    "--qa-navigation-context",
+    "--qa-onboarding",
+    "--qa-planning",
+    "--qa-projects",
+    "--qa-publishing",
+    "--qa-recovery",
+    "--qa-recovery-scroll",
+    "--qa-render-perf",
+    "--qa-research",
+    "--qa-research-inputs",
+    "--qa-result-layout",
+    "--qa-result-presentation",
+    "--qa-retries",
+    "--qa-rich-markdown",
+    "--qa-settings",
+    "--qa-sidebar",
+    "--qa-simplify",
+    "--qa-t11",
+    "--qa-task-edit",
+    "--qa-topic-actions",
+    "--qa-topic-migration",
+    "--qa-topic-queue",
+    "--qa-topics",
+    "--qa-v4-crash",
+    "--qa-workflow",
+    "--qa-workspace"
+  ],
+  "coverage": {
+    "carried_r137_focused": [
+      "--qa-archived-research",
+      "--qa-keyboard-visual",
+      "--qa-live-persistence"
+    ],
+    "crash_child_flags_excluded": [
+      "--qa-dispatch-crash",
+      "--qa-v4-crash"
+    ],
+    "note": "Crash parents are separately covered by integration tests; carried flags are referenced from r137-focused, not rerun."
+  },
+  "original_results": [
+    {
+      "entry": "--qa-keyboard-visual",
+      "status": "carried",
+      "exit_code": 0,
+      "elapsed_seconds": 18.13
+    },
+    {
+      "entry": "--qa-archived-research",
+      "status": "carried",
+      "exit_code": 0,
+      "elapsed_seconds": 8.87
+    },
+    {
+      "entry": "--qa-live-persistence",
+      "status": "carried",
+      "exit_code": 0,
+      "elapsed_seconds": 9.95
+    },
+    {
+      "entry": "--qa",
+      "status": "passed",
+      "exit_code": 0,
+      "elapsed_seconds": 9.15
+    },
+    {
+      "entry": "--qa-affordance",
+      "status": "passed",
+      "exit_code": 0,
+      "elapsed_seconds": 18.6
+    },
+    {
+      "entry": "--qa-attachments",
+      "status": "passed",
+      "exit_code": 0,
+      "elapsed_seconds": 2.04
+    },
+    {
+      "entry": "--qa-automation",
+      "status": "passed",
+      "exit_code": 0,
+      "elapsed_seconds": 40.13
+    },
+    {
+      "entry": "--qa-automation-perf",
+      "status": "passed",
+      "exit_code": 0,
+      "elapsed_seconds": 19.93
+    },
+    {
+      "entry": "--qa-batch",
+      "status": "passed",
+      "exit_code": 0,
+      "elapsed_seconds": 13.53
+    },
+    {
+      "entry": "--qa-board-scroll",
+      "status": "passed",
+      "exit_code": 0,
+      "elapsed_seconds": 1.97
+    },
+    {
+      "entry": "--qa-board-topics",
+      "status": "passed",
+      "exit_code": 0,
+      "elapsed_seconds": 0.98
+    },
+    {
+      "entry": "--qa-brand",
+      "status": "passed",
+      "exit_code": 0,
+      "elapsed_seconds": 0.13
+    },
+    {
+      "entry": "--qa-calendar",
+      "status": "passed",
+      "exit_code": 0,
+      "elapsed_seconds": 0.51
+    },
+    {
+      "entry": "--qa-command",
+      "status": "passed",
+      "exit_code": 0,
+      "elapsed_seconds": 2.24
+    },
+    {
+      "entry": "--qa-concurrency",
+      "status": "passed",
+      "exit_code": 0,
+      "elapsed_seconds": 18.04
+    },
+    {
+      "entry": "--qa-dispatch-admission",
+      "status": "passed",
+      "exit_code": 0,
+      "elapsed_seconds": 0.72
+    },
+    {
+      "entry": "--qa-display-order",
+      "status": "passed",
+      "exit_code": 0,
+      "elapsed_seconds": 0.29
+    },
+    {
+      "entry": "--qa-execution-eligibility",
+      "status": "passed",
+      "exit_code": 0,
+      "elapsed_seconds": 5.41
+    },
+    {
+      "entry": "--qa-global-search",
+      "status": "passed",
+      "exit_code": 0,
+      "elapsed_seconds": 22.7
+    },
+    {
+      "entry": "--qa-handoff-progress",
+      "status": "passed",
+      "exit_code": 0,
+      "elapsed_seconds": 3.8
+    },
+    {
+      "entry": "--qa-header-layout",
+      "status": "passed",
+      "exit_code": 0,
+      "elapsed_seconds": 4.11
+    },
+    {
+      "entry": "--qa-intake",
+      "status": "passed",
+      "exit_code": 0,
+      "elapsed_seconds": 9.02
+    },
+    {
+      "entry": "--qa-live-performance",
+      "status": "passed",
+      "exit_code": 0,
+      "elapsed_seconds": 6.73
+    },
+    {
+      "entry": "--qa-navigation-context",
+      "status": "passed",
+      "exit_code": 0,
+      "elapsed_seconds": 16.01
+    },
+    {
+      "entry": "--qa-onboarding",
+      "status": "passed",
+      "exit_code": 0,
+      "elapsed_seconds": 0.77
+    },
+    {
+      "entry": "--qa-planning",
+      "status": "passed",
+      "exit_code": 0,
+      "elapsed_seconds": 4.76
+    },
+    {
+      "entry": "--qa-projects",
+      "status": "passed",
+      "exit_code": 0,
+      "elapsed_seconds": 8.87
+    },
+    {
+      "entry": "--qa-publishing",
+      "status": "passed",
+      "exit_code": 0,
+      "elapsed_seconds": 3.7
+    },
+    {
+      "entry": "--qa-recovery",
+      "status": "passed",
+      "exit_code": 0,
+      "elapsed_seconds": 3.77
+    },
+    {
+      "entry": "--qa-recovery-scroll",
+      "status": "passed",
+      "exit_code": 0,
+      "elapsed_seconds": 0.56
+    },
+    {
+      "entry": "--qa-render-perf",
+      "status": "passed",
+      "exit_code": 0,
+      "elapsed_seconds": 6.38
+    },
+    {
+      "entry": "--qa-research",
+      "status": "passed",
+      "exit_code": 0,
+      "elapsed_seconds": 10.79
+    },
+    {
+      "entry": "--qa-research-inputs",
+      "status": "passed",
+      "exit_code": 0,
+      "elapsed_seconds": 13.14
+    },
+    {
+      "entry": "--qa-result-layout",
+      "status": "passed",
+      "exit_code": 0,
+      "elapsed_seconds": 5.3
+    },
+    {
+      "entry": "--qa-result-presentation",
+      "status": "passed",
+      "exit_code": 0,
+      "elapsed_seconds": 28.49
+    },
+    {
+      "entry": "--qa-retries",
+      "status": "passed",
+      "exit_code": 0,
+      "elapsed_seconds": 0.62
+    },
+    {
+      "entry": "--qa-rich-markdown",
+      "status": "passed",
+      "exit_code": 0,
+      "elapsed_seconds": 7.0
+    },
+    {
+      "entry": "--qa-settings",
+      "status": "passed",
+      "exit_code": 0,
+      "elapsed_seconds": 14.61
+    },
+    {
+      "entry": "--qa-sidebar",
+      "status": "passed",
+      "exit_code": 0,
+      "elapsed_seconds": 1.69
+    },
+    {
+      "entry": "--qa-simplify",
+      "status": "passed",
+      "exit_code": 0,
+      "elapsed_seconds": 56.46
+    },
+    {
+      "entry": "--qa-t11",
+      "status": "passed",
+      "exit_code": 0,
+      "elapsed_seconds": 10.49
+    },
+    {
+      "entry": "--qa-task-edit",
+      "status": "passed",
+      "exit_code": 0,
+      "elapsed_seconds": 6.46
+    },
+    {
+      "entry": "--qa-topic-actions",
+      "status": "passed",
+      "exit_code": 0,
+      "elapsed_seconds": 0.68
+    },
+    {
+      "entry": "--qa-topic-migration",
+      "status": "passed",
+      "exit_code": 0,
+      "elapsed_seconds": 1.43
+    },
+    {
+      "entry": "--qa-topic-queue",
+      "status": "passed",
+      "exit_code": 0,
+      "elapsed_seconds": 6.19
+    },
+    {
+      "entry": "--qa-topics",
+      "status": "failed",
+      "exit_code": 101,
+      "elapsed_seconds": 1.8
+    },
+    {
+      "entry": "--qa-workflow",
+      "status": "passed",
+      "exit_code": 0,
+      "elapsed_seconds": 3.05
+    },
+    {
+      "entry": "--qa-workspace",
+      "status": "passed",
+      "exit_code": 0,
+      "elapsed_seconds": 9.82
+    },
+    {
+      "entry": "--qa-persistence-perf inventory",
+      "status": "failed",
+      "exit_code": 1,
+      "elapsed_seconds": 0.63
+    },
+    {
+      "entry": "--qa-persistence-perf small",
+      "status": "passed",
+      "exit_code": 0,
+      "elapsed_seconds": 6.95
+    },
+    {
+      "entry": "--qa-persistence-perf occ43200",
+      "status": "failed",
+      "exit_code": 1,
+      "elapsed_seconds": 0.63
+    },
+    {
+      "entry": "--qa-persistence-perf body-heavy",
+      "status": "passed",
+      "exit_code": 0,
+      "elapsed_seconds": 52.28
+    },
+    {
+      "entry": "--qa-persistence-perf retry-heavy",
+      "status": "passed",
+      "exit_code": 0,
+      "elapsed_seconds": 113.55
+    },
+    {
+      "entry": "--qa-persistence-perf xl",
+      "status": "passed",
+      "exit_code": 0,
+      "elapsed_seconds": 542.18
+    }
+  ],
+  "supplemental_runs": [
+    {
+      "entry": "--qa-persistence-perf inventory",
+      "status": "passed",
+      "exit_code": 0,
+      "log": ".local/t20-r137/supplemental-inventory.log",
+      "reason": "Original matrix ran with per-case cwd, so the legacy fixed relative fixture path was unavailable. Supplemental run used repo cwd and the exact unchanged retained fixture; no regeneration/substitution."
+    },
+    {
+      "entry": "--qa-persistence-perf occ43200",
+      "status": "passed",
+      "exit_code": 0,
+      "log": ".local/t20-r137/supplemental-occ43200.log",
+      "reason": "Original matrix ran with per-case cwd, so the legacy fixed relative fixture path was unavailable. Supplemental run used repo cwd and the exact unchanged retained fixture; no regeneration/substitution."
+    }
+  ],
+  "root_review": {
+    "topics": "Corrected test-only overlay independently passes topics and navigation-context; see r139-topics-review.json. The original r137 topics failure remains recorded.",
+    "offline_outcome": "All inventoried standalone/performance entries have passing coverage after the two path-only reruns and the reviewed test-contract correction. This is not one all-green original run.",
+    "limits": [
+      "Crash parent tests are recorded separately in r137-integrated.json.",
+      "No quiet-performance or native smoothness approval follows from this matrix.",
+      "Native r139 ordinary dispatch stall remains a release blocker despite the offline passes.",
+      "New runtime or benchmark changes require appropriate integrated revalidation."
+    ]
+  }
+}

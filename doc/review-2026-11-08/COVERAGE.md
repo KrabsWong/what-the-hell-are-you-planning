@@ -2,6 +2,10 @@
 
 Baseline: `611a4586eedb56600a83c8b272a3af43ba95e4a4`. Review: 2026-11-08. This ledger supersedes the first review's partial-walkthrough coverage statement. [ISSUES.md](ISSUES.md) records defects; [TASKS.md](TASKS.md) is the implementation authority. Every current feature area is accounted for below. Coverage is not release approval: a reproduced defect is covered but failed.
 
+## Current acceptance overlay: r139/r140
+
+The feature matrix below preserves the original 2026-11-08 walkthrough; its baseline passes and failures are not claims about the latest product. Current task dispositions are in [IMPLEMENTATION.md](IMPLEMENTATION.md#current-full-scope-status). The [r139 offline matrix](evidence/r139-offline-matrix.json) covers 54 entries with original failures and passing supplemental checks retained. Native [r139 ordinary execution](evidence/r139-native-dispatch.json) fails after approval; [r140 filtered period return](evidence/r140-native-period-return.json) passes the pointer return chain but reproduces a global-shortcut failure. A later unrelated report action woke one stalled ordinary step, without changing the report route; the remaining queue did not finish. Completed 3/3 ordinary archive/restore, full native keyboard and native scrolling remain open. No baseline pass overrides these newer failures.
+
 ## Evidence model
 
 - **Native verified:** Computer performed the action and observed its resulting state in the isolated app.

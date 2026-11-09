@@ -174,6 +174,8 @@ Dependencies below are mandatory merge prerequisites unless explicitly called �
 
 ## T12 — Extract a typed navigation controller
 
+**Scoped deferral:** further relocation of page/overlay payload fields (`layout`, status/filter/history limits, editor/search payloads and legacy origin diagnostics) is deferred under the user's time-boxing allowance. Typed `NavState` already owns route identity, overlays and bounded return frames; current offline navigation and caller restoration checks pass. This defers internal organization only, not wrong destinations, draft loss, modal focus or native acceptance. Risk: future direct payload writers could bypass captured state. Follow-up: move those payloads behind page/overlay APIs and prove the same filter/scroll/selection, dirty-exit and focus matrix before and after. T10/T19/T20 behavioral gates remain open.
+
 **Priority/size:** P2/L. **Findings:** F01, F07–F10 architecture. **Dependencies:** T02, T07, T08, T10.
 
 **Do:** eliminate contradictory combinations of Scope/selection/overlay booleans.
@@ -303,7 +305,7 @@ For every case record Passed/Failed/Blocked/Not run, expected destination/effect
 
 ## T23 — Persist run ownership across planning attempts
 
-**Status:** accepted in the independently reviewed working-tree candidate on 2026-11-08; not committed or released. See [independent acceptance](IMPLEMENTATION.md#t23-and-t25-independent-acceptance). Integration and release gates remain required.
+**Status:** initial focused acceptance recorded on 2026-11-08; implementation is included in checkpoint `d3ef9a0`. Subsequent integration and final native acceptance remain required. See [independent acceptance](IMPLEMENTATION.md#t23-and-t25-independent-acceptance). Integration and release gates remain required.
 
 **Priority/size:** P2/M. **Finding:** F21. **Dependencies:** none; coordinate with T12/T25.
 
@@ -315,7 +317,7 @@ For every case record Passed/Failed/Blocked/Not run, expected destination/effect
 
 ## T24 — Reconnect automation workspaces using the correct directory policy
 
-**Status:** accepted in the working tree on 2026-11-08; not committed or released. See [independent review and verification](IMPLEMENTATION.md#t24-independent-review-and-acceptance). Baseline T01 failures remain open.
+**Status:** initial focused acceptance recorded on 2026-11-08; implementation is included in checkpoint `d3ef9a0`. Final integrated acceptance remains required. See [independent review and verification](IMPLEMENTATION.md#t24-independent-review-and-acceptance). The r139 offline ledger records the original T01 failures and their passing supplemental checks; final native and runtime gates remain open.
 
 **Priority/size:** P1/S–M. **Finding:** F22. **Dependencies:** none.
 
@@ -327,7 +329,7 @@ For every case record Passed/Failed/Blocked/Not run, expected destination/effect
 
 ## T25 — Bind replanning to the edited request revision
 
-**Status:** accepted in the independently reviewed working-tree candidate on 2026-11-08; not committed or released. See [independent acceptance](IMPLEMENTATION.md#t23-and-t25-independent-acceptance). Integration and release gates remain required.
+**Status:** initial focused acceptance recorded on 2026-11-08; implementation is included in checkpoint `d3ef9a0`. Subsequent integration and final native acceptance remain required. See [independent acceptance](IMPLEMENTATION.md#t23-and-t25-independent-acceptance). Integration and release gates remain required.
 
 **Priority/size:** P1/M. **Finding:** F23. **Dependencies:** none; coordinate schema ownership with T23.
 

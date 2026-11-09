@@ -1,0 +1,10 @@
+{
+  "scope": "Expanded performance harness first independent quiet attempt",
+  "candidate_sha256": "d5479481558cf9c90ce0859ce54051bef5a250e1db3c379c414d40f3b6c169fb",
+  "exit": 1,
+  "seconds": 1.58,
+  "busy_process_samples": 0,
+  "result": "Functional failure before large-fixture measurement: automation enable sample 0 was not admitted.",
+  "disposition": "Returned to OpenCode for fixture correction and diagnostic error preservation. No latency acceptance or regression is inferred from this failed setup.",
+  "next": "Validate the full harness functionally, then repeat controlled quiet measurement on the reviewed candidate."
+}

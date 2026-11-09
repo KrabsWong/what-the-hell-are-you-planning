@@ -1,0 +1,39 @@
+{
+  "installed_sha256": "33eabb81d497db7a03ea7c93a4fbfd2d4272db1beae7f3b269abf8074d063b6a",
+  "fixture_initial_sha256": "ee595e4d8ad7fc8a9b347414dab6241fbef3e832a58420aad14eb392337dfc62",
+  "theme": "dark",
+  "logical_size": [
+    1440,
+    920
+  ],
+  "checks": [
+    {
+      "name": "material_grid",
+      "result": "passed",
+      "evidence": "Search selected Backlog Review research goal TASK-G23; Materials 24 visible; two-page scroll reached cards 21-24 and goal approval section."
+    },
+    {
+      "name": "material_open",
+      "result": "passed",
+      "evidence": "Card 24 opened Preview window r183-material-24.png with exact isolated attachments path."
+    },
+    {
+      "name": "settings_navigation",
+      "result": "passed",
+      "evidence": "Personal workspace menu contains Settings; General, Agent & models, Publishing tabs render; Back returns to All research, the origin for this settings visit."
+    }
+  ],
+  "limits": [
+    "Functional observation only; no frame-probe smoothness claim.",
+    "Settings viewed without saving or publishing.",
+    "Native AX element IDs intermittently stale during animation; coordinate fallback used."
+  ],
+  "follow_up": {
+    "id": "T11-followup-publishing-toggle",
+    "priority": "nonblocking",
+    "problem": "Automatic publishing Off control resembles an ordinary full-width action button; state is visually implicit.",
+    "implementation": "Use a standard switch or checkbox with explicit On/Off state, preserving existing publish confirmation and disclosure.",
+    "acceptance": "Off and On distinguishable without hover or color alone in both themes; no publication when merely viewing settings.",
+    "dependencies": []
+  }
+}

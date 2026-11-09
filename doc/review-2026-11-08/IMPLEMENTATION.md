@@ -44,7 +44,7 @@ For the step-count control, the ordinary click/Back path with real filtered, scr
 
 All work for this optimization goal uses `feature/review-2026-11-08-optimization`. The user authorized periodic checkpoint commits and pushes on 2026-11-09 to prevent code loss. Checkpoints may contain unfinished work and failing acceptance cases; they are not releases or task sign-off. Root owns Git staging, commits and pushes. Implementers continue on this same shared branch. Local `.local/` workspaces, binaries, runtime traces and credentials remain excluded by repository policy. Validation screenshots also remain local and must not be committed or pushed. The initial checkpoint predated this screenshot instruction; cleanup commit `e60ab38` removed all 60 tracked review screenshots from the branch tip and added ignore rules, preserving local copies. Earlier Git history was not rewritten.
 
-## Current release gate status (r184)
+## Current release gate status (r188)
 
 The application is **not accepted for delivery**. All 25 tasks remain in scope. Existing focused/native evidence is retained; the following table identifies current release work without treating a changed HEAD as a reason to repeat unrelated accepted flows.
 
@@ -52,11 +52,11 @@ The application is **not accepted for delivery**. All 25 tasks remain in scope. 
 | --- | --- |
 | T01 / T20 integrated regression | The complete r174 ledger retained 52 passes and three nonpasses. Recovery and render failures have independently verified replacements in r179/r181. The r183 runner distinguishes legacy latency diagnostics from required live performance. A final frozen integrated ledger and unit/integration checks remain required. |
 | T14 / T15 live performance | The r179 quiet 500/1,000 run passed all fourteen p95 gates. The later lifecycle integration requires a current-candidate repeat; the 50 ms threshold remains unchanged. |
-| T19 native scrolling | The r182 dedicated 40-row downward scroll, cold open and Load more missed the 120Hz budget. The r185 viewport repair displays content, but two native downward gestures leave the list at the top and Load more inaccessible. Actual scroll delivery, rendered interaction checks and native surface/size/theme acceptance remain required. |
+| T19 native scrolling | The r187 candidate restores scrolling and pagination access, but large gestures move too little and Load more shifts the visible row anchor. The r188 historical report renders and scrolls, but opening and downward scrolling still miss refresh budgets. Valid ordinary Research fixtures and the remaining surface/size/theme checks are required. |
 | Changed lifecycle and archived readers | r180 verifies durable lifecycle completion and replanning; r181 verifies retained archived E20/A21 bodies and restoration to Done. These observed fixes stand, subject to final integrated regression. |
 | First-round follow-ups | Archived upstream-waiting wording, exhaustive rare state combinations and large-history latency stress remain explicitly distinguishable from core acceptance. The final task disposition must list each deferred remainder and its follow-up criterion. |
 
-See [r180 lifecycle evidence](evidence/r180-lifecycle-native.json), [r181 archive/capacity evidence](evidence/r181-native-capacity.json), [r182 dedicated trace](evidence/r182-dedicated-scroll.json), [r183 classifier checks](evidence/r183-runner-classification.json), and [r184 rejection](evidence/r184-list-native-rejection.json). The historical table below is preserved for audit; its superseded runtime and planning blockers are not the current status.
+See [r180 lifecycle evidence](evidence/r180-lifecycle-native.json), [r181 archive/capacity evidence](evidence/r181-native-capacity.json), [r182 dedicated trace](evidence/r182-dedicated-scroll.json), [r183 classifier checks](evidence/r183-runner-classification.json), [r187 wheel/pagination evidence](evidence/r187-scroll-native.json), and [r188 report evidence](evidence/r188-report-native.json). The historical table below is preserved for audit; its superseded runtime and planning blockers are not the current status.
 
 ## Historical full-scope snapshot (through r151)
 
@@ -2777,3 +2777,10 @@ OpenCode diagnosis identified residual automation ownership in the synthetic ord
 On the frozen r187 binary, the 7,700-byte historical report in Period 1000 rendered, scrolled down to Sources and research-step links, scrolled back up, and closed to Automation results. This covers the dark 1440 by 920 reader only. Historical/stale/incomplete labels were visible; this fixture does not prove current-valid report publication.
 
 Performance remains unaccepted: opening recorded 19.58 ms maximum CPU present work and five missed refreshes; downward scrolling recorded 10.82 ms and one missed refresh; upward scrolling recorded 7.37 ms and zero missed refreshes (only one present in that capture window). The longest open draw spent 9.96 ms painting; the downward draw peaked at 7.14 ms, so its 10.82 ms present-work peak must not be misreported as all render/prepaint cost. A separate read-only OpenCode diagnosis is assigned before authorizing a repair. Exact windows and build identity are in `evidence/r188-report-native.json`.
+
+
+## r189 material and settings functional coverage
+
+Native review on the frozen r187 build verified the 24-material grid, scrolling to the last row, and opening card 24 in Preview at the exact isolated attachment path. The workspace menu opens Settings; General, Agent & models and Publishing tabs render, and Back restores All research (the settings origin in this visit). No settings were saved or reports published. This is functional coverage, not timed smoothness acceptance. [Evidence and bounded follow-up](evidence/r189-material-settings-native.json).
+
+Nonblocking T11 follow-up: replace the automatic-publishing full-width toggle button with a switch/checkbox showing explicit On/Off state. Preserve the existing publication disclosure and confirmation; acceptance requires distinguishable states in both themes without hover or color alone. No prerequisite task is required. This follows the approved first-round policy for visual refinements and does not waive scroll or execution gates.

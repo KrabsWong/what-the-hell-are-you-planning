@@ -42,7 +42,7 @@ perf_modes = ['inventory', 'small', 'occ43200', 'body-heavy', 'retry-heavy', 'xl
 assert all('\"' + mode + '\" =>' in perf_source for mode in perf_modes), 'Performance modes changed; reconcile coverage'
 entries += [{'entry': '--qa-persistence-perf ' + mode, 'argv': ['--qa-persistence-perf', mode]} for mode in perf_modes]
 
-manifest = {'binary_sha256': hashlib.sha256(binary.read_bytes()).hexdigest(), 'guard_exit': guard.returncode, 'source_hash_note': 'Frozen-source inventory; reviewed build manifest is still required to prove binary/source provenance.', 'frozen_source_sha256': {str(p.relative_to(source_root)): hashlib.sha256(p.read_bytes()).hexdigest() for p in sorted((source_root/'src').glob('*.rs'))}, 'source_root': str(source_root), 'required_separate_crash_tests': crash_children, 'scope': 'All standalone offline QA and performance modes; parent crash tests and native matrix require separate evidence.', 'results': []}
+manifest = {'binary_sha256': hashlib.sha256(binary.read_bytes()).hexdigest(), 'guard_exit': guard.returncode, 'source_hash_note': 'Frozen-source inventory; reviewed build manifest is still required to prove binary/source provenance.', 'frozen_source_sha256': {str(p.relative_to(source_root)): hashlib.sha256(p.read_bytes()).hexdigest() for p in sorted((source_root/'src').glob('*.rs'))}, 'source_root': str(source_root), 'required_separate_crash_tests': crash_children, 'scope': 'All standalone offline QA and performance modes; parent crash tests and native matrix require separate evidence.', 'automation_perf_scope': {'required_periods': 1000, 'required_env': 'PLANNING_QA_PERIODS=1000', 'gating': 'Required automation performance runs on a 1,000-period fixture only.', 'stress_modes': 'PLANNING_QA_PERIODS=43200/86400 are explicit non-gating stress diagnostics and are not run by this gate.', 'native_note': 'This entry does not measure native scrolling or p95 responsiveness; native acceptance remains separate.'}, 'results': []}
 fixture = out/'render-fixture.sqlite3'
 source = sqlite3.connect('file:'+str(pathlib.Path(args.fixture_db).resolve())+'?mode=ro', uri=True)
 with sqlite3.connect(fixture) as destination: source.backup(destination)
@@ -54,10 +54,13 @@ for entry in entries:
     flag = entry['entry']
     log = out/(flag.lstrip('-')+'.log')
     started = time.time()
+    run_env = dict(env)
+    if flag == '--qa-automation-perf':
+        run_env['PLANNING_QA_PERIODS'] = '1000'
     print('START', flag, flush=True)
     with log.open('w') as stream:
         try:
-            result = subprocess.run([str(binary), *entry['argv']], env=env, stdout=stream, stderr=subprocess.STDOUT, timeout=1200)
+            result = subprocess.run([str(binary), *entry['argv']], env=run_env, stdout=stream, stderr=subprocess.STDOUT, timeout=1200)
             code = result.returncode
             status = 'passed' if code == 0 else 'failed'
         except subprocess.TimeoutExpired:
@@ -65,18 +68,26 @@ for entry in entries:
             stream.write('\n[timeout] Independent gate exceeded 1200 seconds. Diagnose before changing bounds.\n')
     observation = {}
     if flag == '--qa-automation-perf' and code == 0:
-        measured = re.search(r'synchronous UI-triggered save block (\d+) ms', log.read_text())
-        if measured:
+        log_text = log.read_text()
+        measured = re.search(r'synchronous UI-triggered save block (\d+) ms', log_text)
+        fixture_match = re.search(r'performance fixture: ([\d,]+) occurrences', log_text)
+        measured_periods = int(fixture_match.group(1).replace(',', '')) if fixture_match else None
+        if measured and measured_periods == 1000:
             milliseconds = int(measured.group(1))
             observation = {
                 'ui_save_block_ms': milliseconds,
+                'fixture_periods': measured_periods,
+                'fixture_scope': 'Required release gate uses exactly 1,000 periods; 43,200/86,400 are explicit non-gating stress diagnostics.',
                 'acceptance_note': 'One sample can reject a blocking save; it cannot prove p95 responsiveness or native scrolling smoothness.',
             }
             if milliseconds >= 50:
                 status = 'performance_rejected'
         else:
             status = 'measurement_review_required'
-            observation = {'acceptance_note': 'Save timing output changed or is missing. Review the actual UI measurement before accepting this entry.'}
+            observation = {
+                'fixture_periods': measured_periods,
+                'acceptance_note': 'Expected the 1,000-period fixture and save timing; review the actual UI measurement before accepting this entry.',
+            }
     manifest['results'].append({'entry': flag, 'status': status, 'exit_code': code, 'elapsed_seconds': round(time.time()-started, 2), 'log': log.name, 'alias_note': entry.get('note', ''), **observation})
     (out/'index.json').write_text(json.dumps(manifest, indent=2)+'\n')
     print('END', flag, status, code, flush=True)

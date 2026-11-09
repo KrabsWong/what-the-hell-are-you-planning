@@ -41,7 +41,12 @@ pub fn run() {
         std::fs::create_dir_all(&root).map_err(|error| error.to_string())?;
         let small = Spec {
             occurrences: 500,
-            materialized: 20,
+            materialized: 500,
+            body_bytes: 8192,
+        };
+        let required = Spec {
+            occurrences: 1_000,
+            materialized: 1_000,
             body_bytes: 8192,
         };
         let large = Spec {
@@ -54,14 +59,28 @@ pub fn run() {
             materialized: 480,
             body_bytes: 8192,
         };
+        let stress = std::env::var("PLANNING_LIVE_PERF_STRESS").ok();
+        let stress_all = matches!(stress.as_deref(), Some("1" | "all"));
+        let include_large = stress_all || matches!(stress.as_deref(), Some("43200"));
+        let include_huge = stress_all || matches!(stress.as_deref(), Some("86400"));
+        let mut fixtures: Vec<(&str, Spec, bool)> = vec![
+            ("small-500", small, true),
+            ("required-1000", required, true),
+        ];
+        if include_large {
+            fixtures.push(("stress-43200", large, false));
+        }
+        if include_huge {
+            fixtures.push(("stress-86400", huge, false));
+        }
         let mut fixture_results = Vec::new();
-        for (label, spec) in [
-            ("small", small),
-            ("large-43200", large),
-            ("huge-86400", huge),
-        ] {
+        for (label, spec, gating) in fixtures {
             match run_fixture(&root.join(label), spec) {
-                Ok(value) => fixture_results.push(value),
+                Ok(mut value) => {
+                    value["label"] = serde_json::json!(label);
+                    value["gating"] = serde_json::json!(gating);
+                    fixture_results.push(value);
+                }
                 Err(error) => {
                     let partial = serde_json::json!({
                         "scope": "PARTIAL: live performance run failed before all fixtures completed.",
@@ -81,13 +100,10 @@ pub fn run() {
                 }
             }
         }
-        let small_result = fixture_results.remove(0);
-        let large_result = fixture_results.remove(0);
-        let huge_result = fixture_results.remove(0);
         let touched = measure_touched_collections(&root)?;
         let mut report = serde_json::json!({
             "scope": "Actual live TaskApp via Some(LiveStartup) + ordered worker; editor save, command-level automation SaveDraft, automation Enable/Pause, settings save, scoped task Undo and indexed first-page path.",
-            "gate_scope": "Per-operation p95 gates use the 43,200-occurrence fixture (fixtures[1]). The 86,400-occurrence fixture is measured for RSS/DB/latency but is not gated by this run.",
+            "gate_scope": "Per-operation p95 gates run on the 500- and 1,000-occurrence fixtures with 8 KiB report bodies. Large 43,200/86,400 fixtures run only with PLANNING_LIVE_PERF_STRESS=1|43200|86400|all and are non-gating diagnostics.",
             "hardware": hardware(),
             "profile": profile(),
             "samples": SAMPLES,
@@ -95,33 +111,41 @@ pub fn run() {
             "target_p95_ui_us": TARGET_P95_UI_US,
             "body_read_instrumentation": null,
             "body_read_note": "No live run-body byte counter exists; do not invent one.",
-            "fixtures": [small_result, large_result, huge_result],
+            "fixtures": fixture_results,
             "touched_collection_cases": touched,
             "peak_rss_bytes": peak_rss_bytes(),
         });
         let path = root.join("report.json");
-        let operations = [
-            ("editor", &report["fixtures"][1]["editor"]["main_thread_total"]),
-            ("automation_save_draft", &report["fixtures"][1]["automation_save_draft"]["main_thread_total"]),
-            ("automation_enable", &report["fixtures"][1]["automation_lifecycle"]["enable"]["main_thread_total"]),
-            ("automation_pause", &report["fixtures"][1]["automation_lifecycle"]["pause"]["main_thread_total"]),
-            ("settings", &report["fixtures"][1]["settings"]["main_thread_total"]),
-            ("scoped_task_undo", &report["fixtures"][1]["scoped_task_undo"]["main_thread_total"]),
-            ("history_page", &report["fixtures"][1]["history_page"]["main_thread_total"]),
-        ];
         let mut gates = serde_json::Map::new();
         let mut failures = Vec::new();
-        for (name, stats) in operations {
-            let p95 = stats["p95_us"].as_u64().unwrap_or(u64::MAX);
-            let passed = p95 < TARGET_P95_UI_US;
-            gates.insert(name.to_string(), serde_json::json!({
-                "p95_us": p95,
-                "target_us": TARGET_P95_UI_US,
-                "passed": passed,
-            }));
-            if !passed {
-                failures.push(format!("{name} p95 {p95}us"));
+        for fixture in report["fixtures"].as_array().cloned().unwrap_or_default() {
+            let label = fixture["label"].as_str().unwrap_or("fixture").to_string();
+            if fixture["gating"].as_bool() != Some(true) {
+                continue;
             }
+            let operations = [
+                ("editor", &fixture["editor"]["main_thread_total"]),
+                ("automation_save_draft", &fixture["automation_save_draft"]["main_thread_total"]),
+                ("automation_enable", &fixture["automation_lifecycle"]["enable"]["main_thread_total"]),
+                ("automation_pause", &fixture["automation_lifecycle"]["pause"]["main_thread_total"]),
+                ("settings", &fixture["settings"]["main_thread_total"]),
+                ("scoped_task_undo", &fixture["scoped_task_undo"]["main_thread_total"]),
+                ("history_page", &fixture["history_page"]["main_thread_total"]),
+            ];
+            let mut fixture_gates = serde_json::Map::new();
+            for (name, stats) in operations {
+                let p95 = stats["p95_us"].as_u64().unwrap_or(u64::MAX);
+                let passed = p95 < TARGET_P95_UI_US;
+                fixture_gates.insert(name.to_string(), serde_json::json!({
+                    "p95_us": p95,
+                    "target_us": TARGET_P95_UI_US,
+                    "passed": passed,
+                }));
+                if !passed {
+                    failures.push(format!("{label}/{name} p95 {p95}us"));
+                }
+            }
+            gates.insert(label, serde_json::Value::Object(fixture_gates));
         }
         report["gates"] = serde_json::Value::Object(gates);
         std::fs::write(&path, serde_json::to_vec_pretty(&report).unwrap()).unwrap();

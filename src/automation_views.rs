@@ -338,6 +338,35 @@ pub(crate) struct PlanningSaveIdentity {
     pub(crate) form_epoch: u64,
 }
 
+/// Exact Enable command waiting for its durable receipt. The completion closes
+/// this wizard only if the same form/form epoch is still open.
+#[derive(Clone, Debug, PartialEq)]
+pub(crate) struct AutomationEnableReceipt {
+    /// The editor id before submission; None for a new unsaved creation.
+    pub(crate) id: Option<u64>,
+    pub(crate) form_epoch: u64,
+    /// Exact form input persisted by this Enable. Same-form edits after the
+    /// click must keep the wizard open.
+    pub(crate) input: crate::domain_command::AutomationDraftInput,
+}
+
+/// Generic automation lifecycle receipt. Enable owns the wizard; pause/resume
+/// only settle the matching detail/form and never overwrite a newer surface.
+#[derive(Clone, Debug, PartialEq)]
+pub(crate) enum AutomationCommandReceipt {
+    Enable(AutomationEnableReceipt),
+    Pause {
+        id: u64,
+        form_epoch: u64,
+        creating: bool,
+    },
+    Resume {
+        id: u64,
+        form_epoch: u64,
+        creating: bool,
+    },
+}
+
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 enum AutomationPlanningStart {
     Started(u64),
@@ -366,6 +395,11 @@ pub struct AutomationUi {
     /// Planning-owned SaveDraft still in flight. Survives Back so its late
     /// receipt cannot be mistaken for an ordinary draft completion.
     pub(crate) planning_save_inflight: Option<PlanningSaveIdentity>,
+    /// Enable/pause/resume command whose durable receipt must settle the UI.
+    pub(crate) pending_command: Option<AutomationCommandReceipt>,
+    /// The same obligation while its receipt is still in flight. Kept after the
+    /// completion handoff so a repeated activation cannot be submitted.
+    pub(crate) automation_command_inflight: Option<AutomationCommandReceipt>,
     pub show_advanced: bool,
     pub kind: AutomationKind,
     pub interval_in_hours: bool,
@@ -512,6 +546,8 @@ impl AutomationUi {
             planning_run: None,
             pending_planning: None,
             planning_save_inflight: None,
+            pending_command: None,
+            automation_command_inflight: None,
             show_advanced: false,
             kind: AutomationKind::Daily,
             interval_in_hours: false,
@@ -1667,6 +1703,125 @@ impl TaskApp {
         self.automation_ui.planning_save_inflight = None;
     }
 
+    /// A lifecycle command must not overlap a planning/draft receipt. The
+    /// receipts share the ordered primary slot; allowing both would let one
+    /// completion consume the other's identity.
+    pub(crate) fn automation_command_busy(&self) -> bool {
+        self.navigation.pending_automation_save.is_some()
+            || self.automation_ui.planning_save_inflight.is_some()
+            || self.automation_ui.pending_planning.is_some()
+            || self.automation_ui.automation_command_inflight.is_some()
+    }
+
+    /// Settle the exact enable/pause/resume UI after its durable receipt.
+    pub(crate) fn finish_automation_command(
+        &mut self,
+        subject: Option<u64>,
+        receipt: AutomationCommandReceipt,
+        cx: &mut Context<Self>,
+    ) {
+        if self.automation_ui.automation_command_inflight.as_ref() == Some(&receipt) {
+            self.automation_ui.automation_command_inflight = None;
+        }
+        match receipt {
+            AutomationCommandReceipt::Enable(enable) => {
+                if self.automation_ui.form_epoch != enable.form_epoch {
+                    return;
+                }
+                match enable.id {
+                    Some(id) if self.automation_ui.editing != Some(id) => return,
+                    None if !self.automation_ui.creating => return,
+                    _ => {}
+                }
+                // Same-form edits after the click are not part of the saved
+                // input; keep the wizard and its dirty state.
+                let same_input = self
+                    .automation_draft_input(cx)
+                    .ok()
+                    .as_ref()
+                    == Some(&enable.input);
+                if !same_input {
+                    // A new Quick creation has just become durable. Keep the
+                    // same open form and adopt the created identity so the next
+                    // Save/Enable updates that definition instead of creating a
+                    // second one. Never clear newer fields or the dirty baseline.
+                    if enable.id.is_none()
+                        && self.automation_ui.creating
+                        && self.automation_ui.editing.is_none()
+                        && let Some(id) = subject
+                    {
+                        self.automation_ui.editing = Some(id);
+                        self.automation_ui.selected = Some(id);
+                    }
+                    self.automation_ui.feedback = Some(Ok(
+                        "Enabled the saved version; newer edits remain unsaved.".into(),
+                    ));
+                    self.toast = "Automation enabled · newer edits remain unsaved".into();
+                    return;
+                }
+                let Some(id) = subject.or(enable.id) else {
+                    return;
+                };
+                self.automation_ui.creating = false;
+                self.automation_ui.editing = None;
+                self.automation_ui.selected = Some(id);
+                self.automation_ui.step = 1;
+                self.navigation.automation_baseline = None;
+                self.automation_ui.pending_planning = None;
+                self.automation_ui.planning_save_inflight = None;
+                self.automation_ui.feedback = Some(Ok(
+                    "Enabled. The first run starts after this moment.".into(),
+                ));
+                self.toast = "Automation enabled".into();
+                self.start_pump(cx);
+            }
+            AutomationCommandReceipt::Pause {
+                id,
+                form_epoch,
+                creating,
+            } => {
+                let matches = self.automation_ui.form_epoch == form_epoch
+                    && self.automation_ui.creating == creating
+                    && if creating {
+                        self.automation_ui.editing == Some(id)
+                    } else {
+                        self.automation_ui.selected == Some(id)
+                    };
+                if matches {
+                    self.automation_ui.feedback = Some(Ok(
+                        "Paused. Future triggers stopped and unstarted requests were cancelled. A running period can finish."
+                            .into(),
+                    ));
+                }
+                self.toast = "Automation paused".into();
+                self.start_pump(cx);
+            }
+            AutomationCommandReceipt::Resume {
+                id,
+                form_epoch,
+                creating,
+            } => {
+                let matches = self.automation_ui.form_epoch == form_epoch
+                    && self.automation_ui.creating == creating
+                    && if creating {
+                        self.automation_ui.editing == Some(id)
+                    } else {
+                        self.automation_ui.selected == Some(id)
+                    };
+                if matches {
+                    self.automation_ui.feedback = Some(Ok(
+                        "Enabled again. The next trigger is computed from now; time spent paused is not backfilled."
+                            .into(),
+                    ));
+                }
+                self.toast = "Automation enabled".into();
+                self.start_pump(cx);
+                self.arm_automation_timer(cx);
+            }
+        }
+        cx.notify();
+    }
+
     pub(crate) fn automation_planning_pending(&self) -> bool {
         self.automation_ui.pending_planning.is_some()
     }
@@ -1877,6 +2032,14 @@ impl TaskApp {
 
     pub fn enable_automation(&mut self, cx: &mut Context<Self>) {
         self.automation_ui.feedback = None;
+        if self.automation_command_busy() {
+            self.automation_ui.feedback = Some(Err(
+                "Wait for the pending save or planning receipt before enabling this automation."
+                    .into(),
+            ));
+            cx.notify();
+            return;
+        }
         // A research plan is bound to the request it was generated from. Editing the
         // wording without replanning would silently approve a different task.
         if self.automation_ui.shape == AutomationShape::Research
@@ -1928,28 +2091,40 @@ impl TaskApp {
                 return;
             }
         };
+        let enable_input = input.clone();
         let command = crate::domain_command::Command::Enable {
             id: self.automation_ui.editing,
             input,
             materials: vec![],
             now: Self::automation_now(),
         };
+        let enable_id = self.automation_ui.editing;
+        let enable_epoch = self.automation_ui.form_epoch;
+        let receipt = AutomationCommandReceipt::Enable(AutomationEnableReceipt {
+            id: enable_id,
+            form_epoch: enable_epoch,
+            input: enable_input,
+        });
+        self.automation_ui.pending_command = Some(receipt.clone());
+        self.automation_ui.automation_command_inflight = Some(receipt.clone());
         match self.execute_command(command, cx) {
             Ok(crate::command_app::CommandRun::Saving { .. }) => {
                 self.automation_ui.feedback =
                     Some(Ok("Saving… enabling finishes after the durable receipt.".into()));
             }
-            Ok(crate::command_app::CommandRun::Durable(receipt)) => {
-                let id = receipt.subject.expect("enable returns a definition id");
-                self.automation_ui.creating = false;
-                self.automation_ui.editing = None;
-                self.automation_ui.selected = Some(id);
-                self.automation_ui.feedback =
-                    Some(Ok("Enabled. The first run starts after this moment.".into()));
-                self.toast = "Automation enabled".into();
-                self.start_pump(cx);
+            Ok(crate::command_app::CommandRun::Durable(receipt_subject)) => {
+                let id = receipt_subject.subject.expect("enable returns a definition id");
+                self.automation_ui.pending_command = None;
+                if self.automation_ui.automation_command_inflight.is_some() {
+                    self.automation_ui.automation_command_inflight = None;
+                    self.finish_automation_command(Some(id), receipt, cx);
+                }
             }
-            Err(error) => self.automation_ui.feedback = Some(Err(error)),
+            Err(error) => {
+                self.automation_ui.pending_command = None;
+                self.automation_ui.automation_command_inflight = None;
+                self.automation_ui.feedback = Some(Err(error));
+            }
         }
         cx.notify();
     }
@@ -1981,45 +2156,83 @@ impl TaskApp {
     }
 
     pub fn pause_automation_ui(&mut self, id: u64, cx: &mut Context<Self>) {
+        if self.automation_command_busy() {
+            self.automation_ui.feedback = Some(Err(
+                "Wait for the pending save or planning receipt before pausing this automation."
+                    .into(),
+            ));
+            cx.notify();
+            return;
+        }
         let command = crate::domain_command::Command::AutomationPause {
             id,
             now: Self::automation_now(),
         };
+        let receipt = AutomationCommandReceipt::Pause {
+            id,
+            form_epoch: self.automation_ui.form_epoch,
+            creating: self.automation_ui.creating,
+        };
+        self.automation_ui.pending_command = Some(receipt.clone());
+        self.automation_ui.automation_command_inflight = Some(receipt.clone());
         match self.execute_command(command, cx) {
             Ok(crate::command_app::CommandRun::Saving { .. }) => {
                 self.automation_ui.feedback =
                     Some(Ok("Saving… the pause applies after the durable receipt.".into()));
             }
             Ok(crate::command_app::CommandRun::Durable(_)) => {
-                self.automation_ui.feedback = Some(Ok(
-                    "Paused. Future triggers stopped and unstarted requests were cancelled. A running period can finish."
-                        .into(),
-                ));
+                self.automation_ui.pending_command = None;
+                if self.automation_ui.automation_command_inflight.is_some() {
+                    self.automation_ui.automation_command_inflight = None;
+                    self.finish_automation_command(Some(id), receipt, cx);
+                }
             }
-            Err(error) => self.automation_ui.feedback = Some(Err(error)),
+            Err(error) => {
+                self.automation_ui.pending_command = None;
+                self.automation_ui.automation_command_inflight = None;
+                self.automation_ui.feedback = Some(Err(error));
+            }
         }
         cx.notify();
     }
 
     pub fn resume_automation_schedule(&mut self, id: u64, cx: &mut Context<Self>) {
+        if self.automation_command_busy() {
+            self.automation_ui.feedback = Some(Err(
+                "Wait for the pending save or planning receipt before resuming this automation."
+                    .into(),
+            ));
+            cx.notify();
+            return;
+        }
         let command = crate::domain_command::Command::ResumeSchedule {
             id,
             now: Self::automation_now(),
         };
+        let receipt = AutomationCommandReceipt::Resume {
+            id,
+            form_epoch: self.automation_ui.form_epoch,
+            creating: self.automation_ui.creating,
+        };
+        self.automation_ui.pending_command = Some(receipt.clone());
+        self.automation_ui.automation_command_inflight = Some(receipt.clone());
         match self.execute_command(command, cx) {
             Ok(crate::command_app::CommandRun::Saving { .. }) => {
                 self.automation_ui.feedback =
                     Some(Ok("Saving… the schedule resumes after the durable receipt.".into()));
             }
             Ok(crate::command_app::CommandRun::Durable(_)) => {
-                self.automation_ui.feedback = Some(Ok(
-                    "Enabled again. The next trigger is computed from now; time spent paused is not backfilled."
-                        .into(),
-                ));
-                self.start_pump(cx);
-                self.arm_automation_timer(cx);
+                self.automation_ui.pending_command = None;
+                if self.automation_ui.automation_command_inflight.is_some() {
+                    self.automation_ui.automation_command_inflight = None;
+                    self.finish_automation_command(Some(id), receipt, cx);
+                }
             }
-            Err(error) => self.automation_ui.feedback = Some(Err(error)),
+            Err(error) => {
+                self.automation_ui.pending_command = None;
+                self.automation_ui.automation_command_inflight = None;
+                self.automation_ui.feedback = Some(Err(error));
+            }
         }
         cx.notify();
     }

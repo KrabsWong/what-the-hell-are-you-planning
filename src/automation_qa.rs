@@ -5701,8 +5701,14 @@ pub fn performance_fixture() {
         .unwrap();
     enable(&mut store, id);
     let start = now() - 30 * 86_400;
-    let report = "## 容量样本\n\n".to_string() + &"这是用于测量列表、详情和保存开销的代表性报告段落。".repeat(120);
-    for index in 0..43_200i64 {
+    let report = "## Capacity sample\n\n".to_string()
+        + &"Representative report paragraph for list, detail and save cost. ".repeat(120);
+    let periods = std::env::var("PLANNING_QA_PERIODS")
+        .ok()
+        .and_then(|value| value.parse::<i64>().ok())
+        .unwrap_or(43_200)
+        .clamp(1, 86_400);
+    for index in 0..periods {
         let at = start + index * 60;
         let key = crate::automation::scheduled_trigger_key(id, at);
         let status = match index % 10 {
@@ -5778,7 +5784,7 @@ pub fn performance_fixture() {
                     project_plan: None,
                     id: store.runs().iter().map(|run| run.id).max().unwrap_or(0) + 1,
                     task_id: task,
-                    task_title: "容量样本".into(),
+                    task_title: "Capacity sample".into(),
                     directory: directory.to_string_lossy().into(),
                     prompt: "QA performance fixture".into(),
                     started_at: chrono::DateTime::from_timestamp(at, 0).unwrap().to_rfc3339(),
@@ -5833,7 +5839,7 @@ pub fn performance_fixture() {
     let load_started = std::time::Instant::now();
     let loaded = Storage::new(path.clone()).load().unwrap().unwrap();
     let load_ms = load_started.elapsed().as_millis();
-    assert_eq!(loaded.all_occurrences().len(), 43_200);
+    assert_eq!(loaded.all_occurrences().len(), periods as usize);
     let list_started = std::time::Instant::now();
     let mut latest: Vec<_> = loaded.all_occurrences().iter().collect();
     latest.sort_by_key(|occurrence| std::cmp::Reverse(occurrence.id));
@@ -5841,8 +5847,13 @@ pub fn performance_fixture() {
     let list_ms = list_started.elapsed().as_millis();
     assert_eq!(first_page.len(), 20);
     let db_bytes = std::fs::metadata(&path).unwrap().len();
+    let materialized_occurrences = loaded
+        .all_occurrences()
+        .iter()
+        .filter(|occurrence| !occurrence.run_ids.is_empty())
+        .count();
     println!(
-        "performance fixture: 43,200 occurrences (100 with full research entities) + representative reports; cold save {cold_save_ms} ms; warm saves {:?} ms; load {load_ms} ms; history page query {list_ms} ms; db {:.1} MB; directory {}",
+        "performance fixture: {periods} occurrences ({materialized_occurrences} with full research entities) + representative reports; cold save {cold_save_ms} ms; warm saves {:?} ms; load {load_ms} ms; history page query {list_ms} ms; db {:.1} MB; directory {}",
         save_times,
         db_bytes as f64 / 1_048_576.0,
         root.display()

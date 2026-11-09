@@ -28,7 +28,7 @@ fn run_root() -> PathBuf {
 const CASE_ENV: &str = "LIVE_PERSISTENCE_QA_CASE";
 const ROOT_ENV: &str = "LIVE_PERSISTENCE_QA_ROOT";
 const SEQUENTIAL_ENV: &str = "LIVE_PERSISTENCE_QA_SEQUENTIAL";
-const CASES: [&str; 29] = [
+const CASES: [&str; 36] = [
     "core",
     "reopen",
     "pending-quit",
@@ -58,6 +58,13 @@ const CASES: [&str; 29] = [
     "automation-generate-plan-unchanged",
     "automation-generate-plan-retry",
     "automation-generate-plan-cancel",
+    "automation-enable-after-plan",
+    "automation-enable-new-quick",
+    "automation-pause-navigate-away",
+    "automation-enable-duplicate",
+    "automation-enable-same-form-edit",
+    "automation-enable-new-quick-edit",
+    "automation-enable-new-quick-leave",
 ];
 
 fn run_case(case: &str) -> Result<(), String> {
@@ -104,6 +111,27 @@ fn run_case(case: &str) -> Result<(), String> {
         }
         "automation-generate-plan-cancel" => {
             automation_generate_plan_cancel(&root.join("automation-generate-plan-cancel"))
+        }
+        "automation-enable-after-plan" => {
+            automation_enable_after_plan(&root.join("automation-enable-after-plan"))
+        }
+        "automation-enable-new-quick" => {
+            automation_enable_new_quick(&root.join("automation-enable-new-quick"))
+        }
+        "automation-pause-navigate-away" => {
+            automation_pause_navigate_away(&root.join("automation-pause-navigate-away"))
+        }
+        "automation-enable-duplicate" => {
+            automation_enable_duplicate(&root.join("automation-enable-duplicate"))
+        }
+        "automation-enable-same-form-edit" => {
+            automation_enable_same_form_edit(&root.join("automation-enable-same-form-edit"))
+        }
+        "automation-enable-new-quick-edit" => {
+            automation_enable_new_quick_edit(&root.join("automation-enable-new-quick-edit"))
+        }
+        "automation-enable-new-quick-leave" => {
+            automation_enable_new_quick_leave(&root.join("automation-enable-new-quick-leave"))
         }
         "automation-rejected-unrelated-command" => automation_rejected_unrelated(
             &root.join("automation-rejected-unrelated"),
@@ -1786,6 +1814,693 @@ fn automation_generate_plan_cancel(root: &Path) -> Result<(), String> {
     if requests_new != requests_before || runs_new != runs_before {
         return Err(format!(
             "new form while waiting launched planning: requests={requests_before}->{requests_new} runs={runs_before}->{runs_new}"
+        ));
+    }
+    let _ = cx.update_window(handle, |_, w, _| w.remove_window());
+    Ok(())
+}
+
+fn automation_enable_after_plan(root: &Path) -> Result<(), String> {
+    std::fs::create_dir_all(root).map_err(|error| error.to_string())?;
+    let template = crate::automation_execution::build_template(
+        "Enable plan",
+        "Expected result",
+    )?;
+    let mut store = Store::empty();
+    store.set_default_model("fixture/model".into());
+    store.project_mut(1).unwrap().directory = root.to_string_lossy().into_owned();
+    let id = store
+        .create_automation_draft(
+            1,
+            crate::automation::AutomationShape::Research,
+            "Automation 2".into(),
+            "Objective old".into(),
+            "Expected result".into(),
+            crate::automation_schedule::Schedule {
+                spec: crate::automation_schedule::ScheduleSpec::Interval { minutes: 60 },
+                timezone: "UTC".into(),
+            },
+            crate::automation::AutomationPolicy::default(),
+            Some(template),
+            1_700_000_000,
+        )
+        .map_err(|error| error.to_string())?;
+    let path = seed_store(root, &store)?;
+    let (mut cx, handle, app) = open_live(root, &path)?;
+    cx.update(|cx| {
+        app.update(cx, |a, _| {
+            a.qa_dispatch_fake =
+                Some(crate::dispatch_admission::FakeDispatchRunner::default());
+        })
+    });
+    cx.update_window(handle, |_, w, cx| {
+        app.update(cx, |a, cx| {
+            a.edit_automation(id, w, cx);
+            // This fixture represents the reviewed-plan boundary: the frozen
+            // template is already present, as after a completed Generate plan.
+            a.automation_ui.plan = a.store.automation(id).and_then(|d| d.template.clone());
+            a.automation_wizard_next(w, cx);
+            a.automation_wizard_next(w, cx);
+            assert_eq!(a.automation_ui.step, 3, "Enable fixture must reach review");
+        });
+        w.render_frame(cx);
+    })
+    .map_err(|error| format!("enable fixture review failed: {error:?}"))?;
+    cx.update_window(handle, |_, w, cx| {
+        w.click("enable-automation", cx);
+        w.render_frame(cx);
+    })
+    .map_err(|error| format!("enable click failed: {error:?}"))?;
+    // Drive only the real pump timer; no manual poll can mask a wake gap.
+    advance_until(&mut cx, &app, "enable durable receipt", |a| {
+        !a.live_has_pending_receipts()
+            && !a.automation_ui.creating
+            && a.automation_ui.selected == Some(id)
+            && a.automation_ui
+                .feedback
+                .as_ref()
+                .and_then(|value| value.as_ref().ok())
+                .is_some_and(|message| message.starts_with("Enabled"))
+    })?;
+    let clean = cx.update(|cx| {
+        let a = app.read(cx);
+        a.dirty_draft(cx).is_none()
+            && a.automation_ui.pending_command.is_none()
+            && a.navigation.automation_baseline.is_none()
+    });
+    if !clean {
+        return Err("enable ACK left a dirty wizard, baseline or pending receipt".into());
+    }
+    let disk = read_v4_store(root, &path)?;
+    if disk.automation(id).map(|definition| definition.status)
+        != Some(crate::automation::DefinitionStatus::Enabled)
+    {
+        return Err("enable was not durable after its ACK".into());
+    }
+
+    cx.update(|cx| app.update(cx, |a, cx| a.pause_automation_ui(id, cx)));
+    advance_until(&mut cx, &app, "pause durable receipt", |a| {
+        !a.live_has_pending_receipts()
+            && a.automation_ui
+                .feedback
+                .as_ref()
+                .and_then(|value| value.as_ref().ok())
+                .is_some_and(|message| message.starts_with("Paused"))
+    })?;
+    let disk = read_v4_store(root, &path)?;
+    if disk.automation(id).map(|definition| definition.status)
+        != Some(crate::automation::DefinitionStatus::Paused)
+    {
+        return Err("pause was not durable after its ACK".into());
+    }
+
+    cx.update(|cx| app.update(cx, |a, cx| a.resume_automation_schedule(id, cx)));
+    advance_until(&mut cx, &app, "resume durable receipt", |a| {
+        !a.live_has_pending_receipts()
+            && a.automation_ui
+                .feedback
+                .as_ref()
+                .and_then(|value| value.as_ref().ok())
+                .is_some_and(|message| message.starts_with("Enabled again"))
+    })?;
+    let disk = read_v4_store(root, &path)?;
+    if disk.automation(id).map(|definition| definition.status)
+        != Some(crate::automation::DefinitionStatus::Enabled)
+    {
+        return Err("resume was not durable after its ACK".into());
+    }
+    let _ = cx.update_window(handle, |_, w, _| w.remove_window());
+    Ok(())
+}
+
+fn automation_enable_new_quick(root: &Path) -> Result<(), String> {
+    std::fs::create_dir_all(root).map_err(|error| error.to_string())?;
+    let mut store = Store::empty();
+    store.set_default_model("fixture/model".into());
+    store.project_mut(1).unwrap().directory = root.to_string_lossy().into_owned();
+    let path = seed_store(root, &store)?;
+    let (mut cx, handle, app) = open_live(root, &path)?;
+    cx.update(|cx| {
+        app.update(cx, |a, _| {
+            a.qa_dispatch_fake =
+                Some(crate::dispatch_admission::FakeDispatchRunner::default());
+        })
+    });
+    cx.update_window(handle, |_, w, cx| {
+        app.update(cx, |a, cx| {
+            a.start_automation_create(w, cx);
+            a.automation_ui.name.update(cx, |state, cx| {
+                state.set_value("New quick", w, cx);
+            });
+            a.automation_ui.objective.update(cx, |state, cx| {
+                state.set_value("Check one value", w, cx);
+            });
+            a.automation_ui.expected.update(cx, |state, cx| {
+                state.set_value("One answer", w, cx);
+            });
+            a.automation_wizard_next(w, cx);
+            a.automation_wizard_next(w, cx);
+            assert_eq!(a.automation_ui.step, 3);
+            assert!(
+                a.automation_ui.editing.is_none(),
+                "new Quick creation has no saved editor id yet"
+            );
+        });
+        w.render_frame(cx);
+    })
+    .map_err(|error| format!("new Quick review failed: {error:?}"))?;
+    cx.update_window(handle, |_, w, cx| {
+        w.click("enable-automation", cx);
+        w.render_frame(cx);
+    })
+    .map_err(|error| format!("new Quick enable click failed: {error:?}"))?;
+    advance_until(&mut cx, &app, "new Quick enable ACK", |a| {
+        !a.live_has_pending_receipts()
+            && !a.automation_ui.creating
+            && a.automation_ui.selected.is_some()
+            && a.automation_ui
+                .feedback
+                .as_ref()
+                .and_then(|value| value.as_ref().ok())
+                .is_some_and(|message| message.starts_with("Enabled"))
+    })?;
+    let (clean, id) = cx.update(|cx| {
+        let a = app.read(cx);
+        (
+            a.dirty_draft(cx).is_none()
+                && a.automation_ui.automation_command_inflight.is_none()
+                && a.automation_ui.pending_command.is_none(),
+            a.automation_ui.selected,
+        )
+    });
+    let Some(id) = id else {
+        return Err("new Quick enable did not select the created automation".into());
+    };
+    if !clean {
+        return Err("new Quick enable left a dirty or pending wizard".into());
+    }
+    let disk = read_v4_store(root, &path)?;
+    if disk.automations().len() != 1
+        || disk.automation(id).map(|definition| definition.status)
+            != Some(crate::automation::DefinitionStatus::Enabled)
+    {
+        return Err("new Quick enable was not durable exactly once".into());
+    }
+    let _ = cx.update_window(handle, |_, w, _| w.remove_window());
+    Ok(())
+}
+
+fn enabled_quick_store(root: &Path) -> Result<(Store, u64), String> {
+    let template = crate::automation_execution::build_quick_template(
+        "Check one value",
+        "One answer",
+    )?;
+    let mut store = Store::empty();
+    store.set_default_model("fixture/model".into());
+    store.project_mut(1).unwrap().directory = root.to_string_lossy().into_owned();
+    let id = store
+        .create_automation_draft(
+            1,
+            crate::automation::AutomationShape::Quick,
+            "Quick detail".into(),
+            "Check one value".into(),
+            "One answer".into(),
+            crate::automation_schedule::Schedule {
+                spec: crate::automation_schedule::ScheduleSpec::Interval { minutes: 60 },
+                timezone: "UTC".into(),
+            },
+            crate::automation::AutomationPolicy::default(),
+            Some(template),
+            1_700_000_000,
+        )
+        .map_err(|error| error.to_string())?;
+    store
+        .approve_and_enable(id, vec![], 1_700_000_000)
+        .map_err(|error| error.to_string())?;
+    Ok((store, id))
+}
+
+fn automation_pause_navigate_away(root: &Path) -> Result<(), String> {
+    std::fs::create_dir_all(root).map_err(|error| error.to_string())?;
+    let (store, id) = enabled_quick_store(root)?;
+    let path = seed_store(root, &store)?;
+    let (mut cx, handle, app) = open_live(root, &path)?;
+    cx.update(|cx| {
+        app.update(cx, |a, _| {
+            a.qa_dispatch_fake =
+                Some(crate::dispatch_admission::FakeDispatchRunner::default());
+        })
+    });
+    cx.update_window(handle, |_, w, cx| {
+        app.update(cx, |a, cx| {
+            a.automation_ui.selected = Some(id);
+            a.automation_ui.creating = false;
+            a.dispatch_admission
+                .as_ref()
+                .unwrap()
+                .set_hold(true);
+            a.pause_automation_ui(id, cx);
+            assert!(
+                a.automation_ui.automation_command_inflight.is_some(),
+                "pause must keep its exact in-flight receipt"
+            );
+            // A new draft opens while the pause receipt is still pending.
+            a.start_automation_create(w, cx);
+            a.automation_ui.objective.update(cx, |state, cx| {
+                state.set_value("Newer draft", w, cx);
+            });
+            // An unrelated retained follow-up failure must not release the
+            // lifecycle in-flight guard for the still-pending pause receipt.
+            let workspace = a.live_workspace.unwrap_or(0);
+            a.live_followups.push_back(crate::live_save_app::LiveGroup {
+                generation: 9_999,
+                epoch: 1,
+                workspace,
+                completions: vec![crate::live_save_app::LiveCompletion::None],
+            });
+            a.on_live_failure(
+                9_999,
+                1,
+                "injected unrelated followup failure".into(),
+                cx,
+            );
+            assert!(
+                a.automation_ui.automation_command_inflight.is_some(),
+                "unrelated followup failure released the pause in-flight guard"
+            );
+            a.live_followups.clear();
+            a.live_failure = None;
+            a.storage_error.clear();
+            a.live_retry_at = None;
+            a.dispatch_admission
+                .as_ref()
+                .unwrap()
+                .set_hold(false);
+        });
+        w.render_frame(cx);
+    })
+    .map_err(|error| format!("pause/navigate fixture failed: {error:?}"))?;
+    advance_until(&mut cx, &app, "pause delayed ACK", |a| {
+        !a.live_has_pending_receipts()
+            && a.automation_ui.automation_command_inflight.is_none()
+    })?;
+    let (creating, objective, feedback, selected) = cx.update(|cx| {
+        let a = app.read(cx);
+        (
+            a.automation_ui.creating,
+            a.automation_ui.objective.read(cx).value().to_string(),
+            a.automation_ui.feedback.clone(),
+            a.automation_ui.selected,
+        )
+    });
+    if !creating || objective != "Newer draft" || selected == Some(id) {
+        return Err(format!(
+            "delayed pause ACK overwrote the newer draft: creating={creating} objective={objective:?} selected={selected:?}"
+        ));
+    }
+    if feedback
+        .as_ref()
+        .and_then(|value| value.as_ref().ok())
+        .is_some_and(|message| message.starts_with("Paused"))
+    {
+        return Err("delayed pause ACK wrote page feedback onto a newer draft".into());
+    }
+    let disk = read_v4_store(root, &path)?;
+    if disk.automation(id).map(|definition| definition.status)
+        != Some(crate::automation::DefinitionStatus::Paused)
+    {
+        return Err("pause was not durable after the delayed ACK".into());
+    }
+    let _ = cx.update_window(handle, |_, w, _| w.remove_window());
+    Ok(())
+}
+
+fn automation_enable_duplicate(root: &Path) -> Result<(), String> {
+    std::fs::create_dir_all(root).map_err(|error| error.to_string())?;
+    let template = crate::automation_execution::build_template(
+        "Enable plan",
+        "Expected result",
+    )?;
+    let mut store = Store::empty();
+    store.set_default_model("fixture/model".into());
+    store.project_mut(1).unwrap().directory = root.to_string_lossy().into_owned();
+    let id = store
+        .create_automation_draft(
+            1,
+            crate::automation::AutomationShape::Research,
+            "Automation 2".into(),
+            "Objective old".into(),
+            "Expected result".into(),
+            crate::automation_schedule::Schedule {
+                spec: crate::automation_schedule::ScheduleSpec::Interval { minutes: 60 },
+                timezone: "UTC".into(),
+            },
+            crate::automation::AutomationPolicy::default(),
+            Some(template),
+            1_700_000_000,
+        )
+        .map_err(|error| error.to_string())?;
+    let before = store.automation(id).map(|definition| definition.version).unwrap_or(0);
+    let path = seed_store(root, &store)?;
+    let (mut cx, handle, app) = open_live(root, &path)?;
+    cx.update(|cx| {
+        app.update(cx, |a, _| {
+            a.qa_dispatch_fake =
+                Some(crate::dispatch_admission::FakeDispatchRunner::default());
+        })
+    });
+    cx.update_window(handle, |_, w, cx| {
+        app.update(cx, |a, cx| {
+            a.edit_automation(id, w, cx);
+            a.automation_ui.plan = a.store.automation(id).and_then(|d| d.template.clone());
+            a.automation_wizard_next(w, cx);
+            a.automation_wizard_next(w, cx);
+            a.dispatch_admission
+                .as_ref()
+                .unwrap()
+                .set_hold(true);
+            a.enable_automation(cx);
+            assert!(
+                a.automation_ui.automation_command_inflight.is_some(),
+                "first enable must occupy the in-flight slot"
+            );
+            a.enable_automation(cx);
+            assert!(
+                a.automation_ui
+                    .feedback
+                    .as_ref()
+                    .and_then(|value| value.as_ref().err())
+                    .is_some_and(|message| message.contains("Wait for the pending")),
+                "duplicate enable must be rejected while the receipt is pending"
+            );
+            a.dispatch_admission
+                .as_ref()
+                .unwrap()
+                .set_hold(false);
+        });
+        w.render_frame(cx);
+    })
+    .map_err(|error| format!("duplicate enable fixture failed: {error:?}"))?;
+    advance_until(&mut cx, &app, "duplicate enable ACK", |a| {
+        !a.live_has_pending_receipts()
+            && !a.automation_ui.creating
+            && a.automation_ui.automation_command_inflight.is_none()
+            && a.automation_ui
+                .feedback
+                .as_ref()
+                .and_then(|value| value.as_ref().ok())
+                .is_some_and(|message| message.starts_with("Enabled"))
+    })?;
+    let disk = read_v4_store(root, &path)?;
+    let definition = disk.automation(id).ok_or("duplicate enable lost the automation")?;
+    if definition.version != before
+        || definition.status != crate::automation::DefinitionStatus::Enabled
+    {
+        return Err(format!(
+            "duplicate enable changed the definition more than once: before={before} after={} status={:?}",
+            definition.version, definition.status
+        ));
+    }
+    let _ = cx.update_window(handle, |_, w, _| w.remove_window());
+    Ok(())
+}
+
+fn automation_enable_same_form_edit(root: &Path) -> Result<(), String> {
+    std::fs::create_dir_all(root).map_err(|error| error.to_string())?;
+    let template = crate::automation_execution::build_template(
+        "Enable plan",
+        "Expected result",
+    )?;
+    let mut store = Store::empty();
+    store.set_default_model("fixture/model".into());
+    store.project_mut(1).unwrap().directory = root.to_string_lossy().into_owned();
+    let id = store
+        .create_automation_draft(
+            1,
+            crate::automation::AutomationShape::Research,
+            "Automation 2".into(),
+            "Objective old".into(),
+            "Expected result".into(),
+            crate::automation_schedule::Schedule {
+                spec: crate::automation_schedule::ScheduleSpec::Interval { minutes: 60 },
+                timezone: "UTC".into(),
+            },
+            crate::automation::AutomationPolicy::default(),
+            Some(template),
+            1_700_000_000,
+        )
+        .map_err(|error| error.to_string())?;
+    let path = seed_store(root, &store)?;
+    let (mut cx, handle, app) = open_live(root, &path)?;
+    cx.update(|cx| {
+        app.update(cx, |a, _| {
+            a.qa_dispatch_fake =
+                Some(crate::dispatch_admission::FakeDispatchRunner::default());
+        })
+    });
+    cx.update_window(handle, |_, w, cx| {
+        app.update(cx, |a, cx| {
+            a.edit_automation(id, w, cx);
+            a.automation_ui.plan = a.store.automation(id).and_then(|d| d.template.clone());
+            a.automation_wizard_next(w, cx);
+            a.automation_wizard_next(w, cx);
+            a.dispatch_admission
+                .as_ref()
+                .unwrap()
+                .set_hold(true);
+            a.enable_automation(cx);
+            assert!(a.automation_ui.automation_command_inflight.is_some());
+            // Same form, newer field edit while the receipt is pending.
+            a.automation_ui.objective.update(cx, |state, cx| {
+                state.set_value("Edited while pending", w, cx);
+            });
+            a.dispatch_admission
+                .as_ref()
+                .unwrap()
+                .set_hold(false);
+        });
+        w.render_frame(cx);
+    })
+    .map_err(|error| format!("same-form enable fixture failed: {error:?}"))?;
+    advance_until(&mut cx, &app, "same-form enable ACK", |a| {
+        !a.live_has_pending_receipts()
+            && a.automation_ui.automation_command_inflight.is_none()
+    })?;
+    let (creating, objective, feedback, dirty) = cx.update(|cx| {
+        let a = app.read(cx);
+        (
+            a.automation_ui.creating,
+            a.automation_ui.objective.read(cx).value().to_string(),
+            a.automation_ui
+                .feedback
+                .clone()
+                .and_then(|value| value.ok())
+                .unwrap_or_default(),
+            a.dirty_draft(cx).is_some(),
+        )
+    });
+    if !creating || objective != "Edited while pending" || !dirty {
+        return Err(format!(
+            "same-form enable ACK closed or cleaned newer edits: creating={creating} objective={objective:?} dirty={dirty}"
+        ));
+    }
+    if !feedback.contains("newer edits remain unsaved") {
+        return Err(format!(
+            "same-form enable ACK did not disclose unsaved edits: {feedback:?}"
+        ));
+    }
+    let disk = read_v4_store(root, &path)?;
+    let definition = disk.automation(id).ok_or("same-form enable lost the automation")?;
+    if definition.status != crate::automation::DefinitionStatus::Enabled
+        || definition.objective != "Objective old"
+    {
+        return Err(format!(
+            "same-form enable persisted the wrong version: status={:?} objective={:?}",
+            definition.status, definition.objective
+        ));
+    }
+    let _ = cx.update_window(handle, |_, w, _| w.remove_window());
+    Ok(())
+}
+
+fn automation_enable_new_quick_edit(root: &Path) -> Result<(), String> {
+    std::fs::create_dir_all(root).map_err(|error| error.to_string())?;
+    let mut store = Store::empty();
+    store.set_default_model("fixture/model".into());
+    store.project_mut(1).unwrap().directory = root.to_string_lossy().into_owned();
+    let path = seed_store(root, &store)?;
+    let (mut cx, handle, app) = open_live(root, &path)?;
+    cx.update(|cx| {
+        app.update(cx, |a, _| {
+            a.qa_dispatch_fake =
+                Some(crate::dispatch_admission::FakeDispatchRunner::default());
+        })
+    });
+    cx.update_window(handle, |_, w, cx| {
+        app.update(cx, |a, cx| {
+            a.start_automation_create(w, cx);
+            a.automation_ui.name.update(cx, |state, cx| {
+                state.set_value("New quick", w, cx);
+            });
+            a.automation_ui.objective.update(cx, |state, cx| {
+                state.set_value("Original quick", w, cx);
+            });
+            a.automation_ui.expected.update(cx, |state, cx| {
+                state.set_value("One answer", w, cx);
+            });
+            a.automation_wizard_next(w, cx);
+            a.automation_wizard_next(w, cx);
+            assert!(a.automation_ui.editing.is_none());
+            a.dispatch_admission
+                .as_ref()
+                .unwrap()
+                .set_hold(true);
+            a.enable_automation(cx);
+            assert!(a.automation_ui.automation_command_inflight.is_some());
+            a.automation_ui.objective.update(cx, |state, cx| {
+                state.set_value("Edited while pending", w, cx);
+            });
+            a.dispatch_admission
+                .as_ref()
+                .unwrap()
+                .set_hold(false);
+        });
+        w.render_frame(cx);
+    })
+    .map_err(|error| format!("new Quick edit fixture failed: {error:?}"))?;
+    advance_until(&mut cx, &app, "new Quick edit ACK", |a| {
+        !a.live_has_pending_receipts()
+            && a.automation_ui.automation_command_inflight.is_none()
+    })?;
+    let (creating, editing, selected, objective, dirty) = cx.update(|cx| {
+        let a = app.read(cx);
+        (
+            a.automation_ui.creating,
+            a.automation_ui.editing,
+            a.automation_ui.selected,
+            a.automation_ui.objective.read(cx).value().to_string(),
+            a.dirty_draft(cx).is_some(),
+        )
+    });
+    let Some(first_id) = editing else {
+        return Err("new Quick edit ACK did not adopt the durable definition id".into());
+    };
+    if !creating || selected != Some(first_id) || objective != "Edited while pending" || !dirty {
+        return Err(format!(
+            "new Quick edit ACK lost the form identity/dirty state: creating={creating} editing={editing:?} selected={selected:?} objective={objective:?} dirty={dirty}"
+        ));
+    }
+    // The next Enable must update the same definition, not create a second one.
+    cx.update_window(handle, |_, w, cx| {
+        w.click("enable-automation", cx);
+        w.render_frame(cx);
+    })
+    .map_err(|error| format!("new Quick second enable click failed: {error:?}"))?;
+    advance_until(&mut cx, &app, "new Quick second enable ACK", |a| {
+        !a.live_has_pending_receipts()
+            && !a.automation_ui.creating
+            && a.automation_ui
+                .feedback
+                .as_ref()
+                .and_then(|value| value.as_ref().ok())
+                .is_some_and(|message| message.starts_with("Enabled"))
+    })?;
+    let disk = read_v4_store(root, &path)?;
+    if disk.automations().len() != 1 {
+        return Err(format!(
+            "second Enable created a duplicate definition: {} automations",
+            disk.automations().len()
+        ));
+    }
+    let definition = disk
+        .automation(first_id)
+        .ok_or("second Enable lost the adopted definition")?;
+    if definition.status != crate::automation::DefinitionStatus::Enabled
+        || definition.objective != "Edited while pending"
+    {
+        return Err(format!(
+            "second Enable did not update the same definition: status={:?} objective={:?}",
+            definition.status, definition.objective
+        ));
+    }
+    let _ = cx.update_window(handle, |_, w, _| w.remove_window());
+    Ok(())
+}
+
+fn automation_enable_new_quick_leave(root: &Path) -> Result<(), String> {
+    std::fs::create_dir_all(root).map_err(|error| error.to_string())?;
+    let mut store = Store::empty();
+    store.set_default_model("fixture/model".into());
+    store.project_mut(1).unwrap().directory = root.to_string_lossy().into_owned();
+    let path = seed_store(root, &store)?;
+    let (mut cx, handle, app) = open_live(root, &path)?;
+    cx.update(|cx| {
+        app.update(cx, |a, _| {
+            a.qa_dispatch_fake =
+                Some(crate::dispatch_admission::FakeDispatchRunner::default());
+        })
+    });
+    cx.update_window(handle, |_, w, cx| {
+        app.update(cx, |a, cx| {
+            a.start_automation_create(w, cx);
+            a.automation_ui.objective.update(cx, |state, cx| {
+                state.set_value("First quick", w, cx);
+            });
+            a.automation_ui.expected.update(cx, |state, cx| {
+                state.set_value("One answer", w, cx);
+            });
+            a.automation_wizard_next(w, cx);
+            a.automation_wizard_next(w, cx);
+            a.dispatch_admission
+                .as_ref()
+                .unwrap()
+                .set_hold(true);
+            a.enable_automation(cx);
+            // Leave the originating wizard and open a different new form
+            // before the durable ACK returns.
+            a.start_automation_create(w, cx);
+            a.automation_ui.objective.update(cx, |state, cx| {
+                state.set_value("Second draft", w, cx);
+            });
+            a.dispatch_admission
+                .as_ref()
+                .unwrap()
+                .set_hold(false);
+        });
+        w.render_frame(cx);
+    })
+    .map_err(|error| format!("new Quick leave fixture failed: {error:?}"))?;
+    advance_until(&mut cx, &app, "new Quick leave ACK", |a| {
+        !a.live_has_pending_receipts()
+            && a.automation_ui.automation_command_inflight.is_none()
+    })?;
+    let (creating, editing, selected, objective, feedback) = cx.update(|cx| {
+        let a = app.read(cx);
+        (
+            a.automation_ui.creating,
+            a.automation_ui.editing,
+            a.automation_ui.selected,
+            a.automation_ui.objective.read(cx).value().to_string(),
+            a.automation_ui.feedback.clone(),
+        )
+    });
+    if !creating || editing.is_some() || selected.is_some() || objective != "Second draft" {
+        return Err(format!(
+            "late new Quick ACK stole the newer form/route: creating={creating} editing={editing:?} selected={selected:?} objective={objective:?}"
+        ));
+    }
+    if feedback
+        .as_ref()
+        .and_then(|value| value.as_ref().ok())
+        .is_some_and(|message| message.starts_with("Enabled"))
+    {
+        return Err("late new Quick ACK wrote page feedback onto the newer form".into());
+    }
+    let disk = read_v4_store(root, &path)?;
+    if disk.automations().len() != 1 {
+        return Err(format!(
+            "late new Quick ACK duplicated the definition: {} automations",
+            disk.automations().len()
         ));
     }
     let _ = cx.update_window(handle, |_, w, _| w.remove_window());

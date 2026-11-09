@@ -2833,11 +2833,11 @@ impl StoreLoader {
 
 impl Store {
     /// Resolve the request -> latest planning-run projection after a load.
-    /// Only rows with actual typed admission evidence are touched:
-    /// - a `request_plan` marker for this request/revision, or
-    /// - a valid immutable run owner when the request has no existing mapping.
-    /// Unmarked legacy `planning_run_id` values are preserved exactly, and an
-    /// invalid/orphan marker never clears an existing mapping.
+    /// Only rows with an actual `request_plan` marker are projected: the marker
+    /// is validated against the immutable run owner, and the newest matching
+    /// owner supersedes an older attempt. Unmarked legacy `planning_run_id`
+    /// values are preserved exactly; an invalid/orphan marker never clears an
+    /// existing mapping.
     pub(crate) fn resolve_loaded_planning_links(
         &mut self,
         markers: &std::collections::BTreeMap<(u64, u32), u64>,

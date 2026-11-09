@@ -167,6 +167,7 @@ impl TaskApp {
             effects: Vec::new(),
             exit_token: self.navigation.pending_exit_token.take(),
             automation_save: self.navigation.pending_automation_save.take(),
+            automation_command: None,
         };
         match self.submit_live_snapshot(completion, cx) {
             Ok(crate::live_save_app::SaveAcceptance::Pending) => {
@@ -222,12 +223,19 @@ impl TaskApp {
             let subject = prepared.outcome.subject;
             let exit_token = self.navigation.pending_exit_token.take();
             let automation_save = self.navigation.pending_automation_save.take();
+            let automation_command = match &prepared.command {
+                Command::Enable { .. }
+                | Command::AutomationPause { .. }
+                | Command::ResumeSchedule { .. } => self.automation_ui.pending_command.take(),
+                _ => None,
+            };
             let completion = crate::live_save_app::LiveCompletion::Command {
                 class,
                 subject,
                 effects: prepared.outcome.effects.clone(),
                 exit_token,
                 automation_save,
+                automation_command,
             };
             if delta.changes.is_empty() && delta.metadata.is_empty() {
                 self.complete_live_now(completion, cx);

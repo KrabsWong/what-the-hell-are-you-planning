@@ -2699,3 +2699,11 @@ Root independently passed the frozen recovery/render candidate: 734 unit tests (
 The render entry now works against the v4 synthetic fixture, but its final snapshot-reading implementation is still under review; a separate completion will record that source. No whole-release pass is claimed. See [independent evidence](evidence/r179-recovery-verification.json).
 
 The same r177 performance binary passed a quiet repeat after the xl stress gate and other builds ended: all fourteen 500/1,000-period operation p95 gates were between 3.443 and 9.247 ms, below 50 ms. The earlier concurrent-load failure is preserved. This accepts the measured operation latency on that binary only; native scrolling and the later lifecycle integration remain separate. See [quiet performance evidence](evidence/r179-quiet-performance.json).
+
+## r180: lifecycle receipt integration and native replanning pass
+
+Root independently passed 732 unit tests (two existing ignored tests), 13 integration/crash tests, and all eleven lifecycle/planning standalone cases on the integrated source. The cases include duplicate activation, same-form edits, new Quick identity retention, leaving a wizard before ACK, navigation-away on Pause, and planning save/retry/cancel.
+
+The isolated native build now settles Resume and Pause feedback. Replan → Generate once → review → Enable once closes the wizard to the correct Enabled detail, eliminating the stuck Saving state. A repeated replan confirms the full expected-result text in both the saved definition and Run 30 prompt. Two deliberately submitted attempts produced exactly Runs 29 and 30 with immutable request/revision ownership; the original five periods remain. The fixture ends Paused/Paused/Draft. See [native and source evidence](evidence/r180-lifecycle-native.json).
+
+This checkpoint also includes required 500/1,000 performance fixture scopes verified in r179. The legacy automation-perf diagnostic still records its timing rather than being treated as production live-save acceptance. Final native scrolling, archived-reader confirmation, render QA integration and the complete task ledger remain open.

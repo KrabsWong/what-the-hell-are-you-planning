@@ -121,6 +121,8 @@ pub(crate) enum LiveCompletion {
         exit_token: Option<u64>,
         /// Explicit completion for a standalone automation Save draft.
         automation_save: Option<AutomationSaveReceipt>,
+        /// Exact enable/pause/resume command waiting for this receipt.
+        automation_command: Option<crate::automation_views::AutomationCommandReceipt>,
     },
     /// Deferred post-commit effects for automation/runtime transitions. These
     /// must never run when the write failed.
@@ -768,6 +770,10 @@ impl TaskApp {
             // Never let an unrelated receipt overwrite the current error.
             return;
         }
+        // A failed lifecycle save is retained in live_primary/live_followups
+        // for the ordered retry path. Do not release automation_command_inflight
+        // here: the same receipt may still become durable, and clearing it would
+        // allow a duplicate Enable/Pause/Resume dispatch.
         let failed_token = if matches_primary {
             self.live_primary
                 .as_ref()
@@ -1841,12 +1847,16 @@ impl TaskApp {
                 effects,
                 exit_token,
                 automation_save,
+                automation_command,
             } => {
                 if let Some(token) = exit_token {
                     self.dirty_exit_durable(token);
                 }
                 if let Some(receipt) = automation_save {
                     self.finish_automation_draft_save(subject, receipt, cx);
+                }
+                if let Some(receipt) = automation_command {
+                    self.finish_automation_command(subject, receipt, cx);
                 }
                 self.storage_error.clear();
                 if class != crate::domain_command::CommandClass::OrdinaryEdit {

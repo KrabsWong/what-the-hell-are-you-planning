@@ -1,0 +1,139 @@
+{
+  "round": "r180",
+  "source_manifest": {
+    "base": "bc3b5105589e00a9fc8d38e5bb7d462c76cf82c9",
+    "files": {
+      "src/automation_views.rs": "ed9f2ee34a82b33670c8e9a327f04fd15b1acd31fcfe419576a1d6e088083632",
+      "src/live_save_app.rs": "0f715dd49f0ece00276e70cb3c7f2589ba6f521d34e1c20ef921d35ecb235234",
+      "src/live_persistence_qa.rs": "3ce45ead5603e9a9beb28651b8311501acf4701d895b353d51e8b785b64a6479",
+      "src/command_app.rs": "2dbd2b2127d4b46bb6afb8136c17a2f27e4fe98547a1c3b07bb745b53edb0f05",
+      "src/domain.rs": "d0bdfa784a3c3246977298e3a0af37bc5c537a3db43f91f0ae8dc314a94ba3d8",
+      "src/automation_qa.rs": "0e47c6beceb3224047d0f70288341334e4d395e9dbd3fcfdaf4d57261907d938",
+      "src/live_performance_qa.rs": "54b239dec1af5c4b5f3b38d61a39975eb1eec130376f1f1d52e2436541797712",
+      "script/run_review_gate.py": "78ac6122f0c47b262c56244710bfd500c3fca6b77081fb35c1e8dc4b44be47c9"
+    }
+  },
+  "tests": {
+    "unit_passed": 732,
+    "ignored": 2,
+    "integration_passed": [
+      8,
+      2,
+      3
+    ],
+    "log": ".local/opencode-dispatch/r180-integrated-tests.log",
+    "lifecycle_cases": [
+      {
+        "case": "automation-enable-after-plan",
+        "exit_code": 0,
+        "log": ".local/opencode-dispatch/r180-automation-enable-after-plan.log"
+      },
+      {
+        "case": "automation-enable-duplicate",
+        "exit_code": 0,
+        "log": ".local/opencode-dispatch/r180-automation-enable-duplicate.log"
+      },
+      {
+        "case": "automation-enable-new-quick",
+        "exit_code": 0,
+        "log": ".local/opencode-dispatch/r180-automation-enable-new-quick.log"
+      },
+      {
+        "case": "automation-enable-same-form-edit",
+        "exit_code": 0,
+        "log": ".local/opencode-dispatch/r180-automation-enable-same-form-edit.log"
+      },
+      {
+        "case": "automation-enable-new-quick-edit",
+        "exit_code": 0,
+        "log": ".local/opencode-dispatch/r180-automation-enable-new-quick-edit.log"
+      },
+      {
+        "case": "automation-enable-new-quick-leave",
+        "exit_code": 0,
+        "log": ".local/opencode-dispatch/r180-automation-enable-new-quick-leave.log"
+      },
+      {
+        "case": "automation-pause-navigate-away",
+        "exit_code": 0,
+        "log": ".local/opencode-dispatch/r180-automation-pause-navigate-away.log"
+      },
+      {
+        "case": "automation-generate-plan-async",
+        "exit_code": 0,
+        "log": ".local/opencode-dispatch/r180-automation-generate-plan-async.log"
+      },
+      {
+        "case": "automation-generate-plan-unchanged",
+        "exit_code": 0,
+        "log": ".local/opencode-dispatch/r180-automation-generate-plan-unchanged.log"
+      },
+      {
+        "case": "automation-generate-plan-retry",
+        "exit_code": 0,
+        "log": ".local/opencode-dispatch/r180-automation-generate-plan-retry.log"
+      },
+      {
+        "case": "automation-generate-plan-cancel",
+        "exit_code": 0,
+        "log": ".local/opencode-dispatch/r180-automation-generate-plan-cancel.log"
+      }
+    ]
+  },
+  "native": {
+    "installed_sha256": "76413340c4d06a0391f74a28f5474688b830ca90ec964f5d37005689a8ce2d43",
+    "candidate_sha256": "db4d51eacc749fd89c1cb1f38d4a5de2b4aa5fe10da8008d1c433d76b831579d",
+    "observed": [
+      "Resume schedule updates Enabled and completion message.",
+      "Pause updates Paused and completion message.",
+      "Generate once proceeds to review; Enable once closes wizard to the owning automation detail.",
+      "Repeated replan follows the same route and preserves exact confirmed input in Run 30."
+    ],
+    "input_observation": "First typeText attempt recorded only a; read-only DB check detected it. Repeated with paste and observed full AX field value before continuing. Run 29 is the first intentionally submitted attempt; Run 30 is the corrected-input attempt, not a duplicate dispatch.",
+    "durable": {
+      "automations": [
+        {
+          "id": 1,
+          "status": "paused",
+          "version": 1,
+          "expected_result": "A short report with sources."
+        },
+        {
+          "id": 2,
+          "status": "paused",
+          "version": 6,
+          "expected_result": "A concise synthetic report with dated sources and a comparison table for revision four."
+        },
+        {
+          "id": 3,
+          "status": "draft",
+          "version": 1,
+          "expected_result": "A concise answer with dates, sources and any evidence gaps."
+        }
+      ],
+      "new_runs": [
+        {
+          "id": 29,
+          "status": "Succeeded",
+          "planning_owner": {
+            "request_id": 6,
+            "revision": 3,
+            "automation_id": 2
+          }
+        },
+        {
+          "id": 30,
+          "status": "Succeeded",
+          "planning_owner": {
+            "request_id": 7,
+            "revision": 4,
+            "automation_id": 2
+          }
+        }
+      ],
+      "occurrences": 5,
+      "expected_result_matches_run30_prompt": true
+    }
+  },
+  "remaining": "Native archived-reader recheck, required-size scroll matrix, final render QA integration and complete task acceptance ledger."
+}

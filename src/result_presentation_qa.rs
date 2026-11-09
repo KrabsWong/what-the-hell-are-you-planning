@@ -59,6 +59,8 @@ pub fn run() {
     let _ = std::fs::remove_dir_all(&root);
     std::fs::create_dir_all(&root).unwrap();
     pure_checks();
+    lazy_reader_check(&root);
+    atomic_reader_navigation_check(&root);
     render_matrix(&root);
     copy_result_check(&root);
     export_parity_check(&root).unwrap();
@@ -1135,6 +1137,169 @@ fn screenshot(
         .unwrap()
         .save(directory.join(name))
         .unwrap();
+}
+
+fn lazy_reader_check(root: &Path) {
+    let directory = root.join("lazy-reader");
+    std::fs::create_dir_all(&directory).unwrap();
+    let (mut store, report_task, report_run) = ordinary_fixture(&directory, OrdinaryState::Complete);
+    let first = store.runs().iter().find(|run| run.research_kind == Some(ResearchKind::Collect)
+        && store.owning_research_goal(run.task_id) == store.owning_research_goal(report_task)).unwrap();
+    let (first_task, first_run, first_body) = (first.task_id, first.id, first.output.clone());
+    let report_body = store.runs().iter().find(|run| run.id == report_run).unwrap().output.clone();
+    for id in [first_run, report_run] {
+        store.run_mut(id).unwrap().output.clear();
+        store.mark_lazy_body(id);
+    }
+    let mut cx = HeadlessAppContext::with_platform(
+        platform::current_platform(true).text_system(),
+        Arc::new(crate::ui_assets::AppAssets),
+        platform::current_headless_renderer,
+    );
+    cx.update(init);
+    let mut app = None;
+    let window = cx.open_window(size(px(1000.), px(680.)), |w, cx| {
+        let view = cx.new(|cx| TaskApp::new_mock(w, cx));
+        view.update(cx, |a, cx| {
+            // No reader worker: hold each loading transition deterministically.
+            a.store = store;
+            a.open_task(first_task, w, cx);
+            a.show_task_result(first_run, cx);
+        });
+        app = Some(view.clone());
+        cx.new(|cx| base::Root::new(view, w, cx))
+    }).unwrap();
+    let app = app.unwrap();
+    let handle: AnyWindowHandle = window.into();
+    cx.update_window(handle, |_, w, cx| {
+        w.render_frame(cx);
+        assert_eq!(w.find("run-result-kind").label(), Some("Loading saved report…"));
+        assert!(w.find("research-result-scroll").visible());
+        app.update(cx, |a, cx| {
+            a.open_task(report_task, w, cx);
+            a.show_task_result(report_run, cx);
+            a.store.hydrate_run_body(first_run, first_body);
+            cx.notify();
+        });
+        w.render_frame(cx);
+        assert_eq!(app.read(cx).selected_run(), Some(report_run), "an older body's arrival must not change selection");
+        assert_eq!(w.find("run-result-kind").label(), Some("Loading saved report…"));
+        app.update(cx, |a, cx| {
+            a.run_body_state.insert(report_run, crate::history_reader::BodyLoad::Failed {
+                error: "Isolated read failure".into(),
+                retry_at: std::time::Instant::now() + Duration::from_secs(60),
+            });
+            cx.notify();
+        });
+        w.render_frame(cx);
+        assert_eq!(w.find("run-result-kind").label(), Some("Report unavailable"));
+        assert!(w.find("retry-result-body").visible());
+        app.update(cx, |a, cx| {
+            a.run_body_state.remove(&report_run);
+            cx.notify();
+        });
+        w.render_frame(cx);
+        assert_eq!(w.find("run-result-kind").label(), Some("Loading saved report…"));
+        app.update(cx, |a, cx| {
+            a.store.hydrate_run_body(report_run, report_body);
+            cx.notify();
+        });
+        w.render_frame(cx);
+        assert_eq!(w.find("run-result-kind").label(), Some("Final report"));
+        assert!(w.try_find("retry-result-body").is_none());
+        assert_eq!(app.read(cx).selected_run(), Some(report_run));
+    }).unwrap();
+    cx.capture_screenshot(handle).unwrap().save(directory.join("hydrated-report.png")).unwrap();
+    cx.update_window(handle, |_, w, _| w.remove_window()).unwrap();
+    println!("Lazy reader distinguishes loading, read failure and hydrated content without changing selection");
+}
+
+fn atomic_reader_navigation_check(root: &Path) {
+    let directory = root.join("atomic-reader-navigation");
+    std::fs::create_dir_all(&directory).unwrap();
+    let (store, report_task, report_run) = ordinary_fixture(&directory, OrdinaryState::Complete);
+    let goal = store.owning_research_goal(report_task).unwrap();
+    let steps = store.research_children(goal);
+    let first_task = steps[0];
+    let analysis_task = steps[1];
+    let run_for = |task| store.runs().iter().rev().find(|run| run.task_id == task).unwrap().id;
+    let first_run = run_for(first_task);
+    let analysis_run = run_for(analysis_task);
+    let path = directory.join("workspace.sqlite3");
+    let incarnation = 0x41_54_4f_4d;
+    let database = crate::sqlite_v4::SqliteV4::create_seeded(&path, &directory, incarnation, &store).unwrap();
+    let mut lazy = database.load_store_lazy().unwrap();
+    lazy.hydrate_run_body(first_run, database.body(first_run).unwrap().unwrap());
+    let reader = crate::history_reader::HistoryReader::start(&path, &directory, incarnation).unwrap();
+    let mut cx = HeadlessAppContext::with_platform(
+        platform::current_platform(true).text_system(), Arc::new(crate::ui_assets::AppAssets),
+        platform::current_headless_renderer,
+    );
+    cx.update(init);
+    let mut app = None;
+    let window = cx.open_window(size(px(1000.), px(680.)), |w, cx| {
+        let view = cx.new(|cx| TaskApp::new_mock(w, cx));
+        view.update(cx, |a, cx| {
+            a.store = lazy;
+            a.history_reader = Some(reader);
+            a.open_sidebar_task(first_task, w, cx);
+        });
+        app = Some(view.clone());
+        cx.new(|cx| base::Root::new(view, w, cx))
+    }).unwrap();
+    let app = app.unwrap();
+    let handle: AnyWindowHandle = window.into();
+    cx.update_window(handle, |_, w, cx| {
+        w.render_frame(cx);
+        assert_eq!(app.read(cx).selected_run(), Some(first_run));
+        app.update(cx, |a, cx| {
+            a.request_sidebar_task(1, report_task, w, cx);
+            assert_eq!(a.pending_result_navigation.as_ref().map(|pending| pending.run_id), Some(report_run));
+            assert_eq!(a.selected_run(), Some(first_run), "retain the old reader while preparing the destination");
+            a.request_sidebar_task(1, analysis_task, w, cx);
+            assert_eq!(a.pending_result_navigation.as_ref().map(|pending| pending.run_id), Some(analysis_run));
+            assert_eq!(a.selected_run(), Some(first_run), "a newer click replaces only the pending destination");
+        });
+        w.render_frame(cx);
+        assert_eq!(w.find("run-result-kind").label(), Some("Intermediate evidence"));
+    }).unwrap();
+    let deadline = std::time::Instant::now() + Duration::from_secs(5);
+    loop {
+        cx.update_window(handle, |_, w, cx| {
+            app.update(cx, |a, cx| a.poll_history_io(cx));
+            w.render_frame(cx);
+            assert_ne!(app.read(cx).selected_run(), Some(report_run), "the obsolete destination must never take over");
+            assert_eq!(w.find("run-result-kind").label(), Some("Intermediate evidence"));
+        }).unwrap();
+        if cx.update(|cx| app.read(cx).selected_run() == Some(analysis_run)) { break; }
+        assert!(std::time::Instant::now() < deadline, "prepared result did not open");
+        std::thread::sleep(Duration::from_millis(5));
+    }
+    cx.update_window(handle, |_, w, cx| {
+        app.update(cx, |a, cx| {
+            a.store.run_mut(report_run).unwrap().output.clear();
+            a.store.mark_lazy_body(report_run);
+            a.run_body_state.remove(&report_run);
+            a.request_sidebar_task(1, report_task, w, cx);
+            assert!(a.pending_result_navigation.is_some());
+            a.navigate(Scope::Settings, w, cx);
+            assert!(a.pending_result_navigation.is_none());
+        });
+        w.render_frame(cx);
+    }).unwrap();
+    let deadline = std::time::Instant::now() + Duration::from_secs(5);
+    loop {
+        cx.update_window(handle, |_, w, cx| {
+            app.update(cx, |a, cx| a.poll_history_io(cx));
+            w.render_frame(cx);
+            assert_eq!(app.read(cx).scope(), Scope::Settings, "late body replies must not reopen a cancelled destination");
+        }).unwrap();
+        if cx.update(|cx| !app.read(cx).store.run_body_is_lazy(report_run)) { break; }
+        assert!(std::time::Instant::now() < deadline, "cancelled read did not finish");
+        std::thread::sleep(Duration::from_millis(5));
+    }
+    cx.update_window(handle, |_, w, _| w.remove_window()).unwrap();
+    println!("Prepared result navigation retains the reader, chooses the latest click and cancels on navigation");
 }
 
 fn copy_result_check(root: &Path) {

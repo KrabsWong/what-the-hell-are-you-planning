@@ -10,6 +10,7 @@ use crate::research::{self, ResearchKind, Source};
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub enum ResultKind {
+    LoadingReport,
     FinalReport,
     PartialPeriod,
     IntermediateEvidence,
@@ -22,6 +23,7 @@ pub enum ResultKind {
 impl ResultKind {
     pub fn label(self) -> &'static str {
         match self {
+            Self::LoadingReport => "Loading saved report…",
             Self::FinalReport => "Final report",
             Self::PartialPeriod => "Partial period reports",
             Self::IntermediateEvidence => "Intermediate evidence",
@@ -245,6 +247,14 @@ impl ResultPresentation {
         !self.reader_markdown.trim().is_empty()
     }
 
+    pub fn reader_placeholder(&self) -> &'static str {
+        if self.kind == ResultKind::LoadingReport {
+            "Loading saved report…"
+        } else {
+            "No final report yet. This attempt did not produce a validated reader report."
+        }
+    }
+
     pub fn status_suffix(&self) -> Option<&'static str> {
         self.quality.row_suffix()
     }
@@ -423,6 +433,22 @@ fn present_run_with(
             run_id: Some(run.id),
             step_label,
             progress: active_progress(run, "Planning", store),
+            ..ResultPresentation::empty()
+        };
+    }
+
+    // An unloaded durable body is not an empty or rejected report. Keep it
+    // separate from validated reader content until the asynchronous read ends.
+    if matches!(run.status.as_str(), "Succeeded" | "Blocked")
+        && run.output.trim().is_empty()
+        && store.run_body_is_lazy(run.id)
+    {
+        return ResultPresentation {
+            kind: ResultKind::LoadingReport,
+            attempt,
+            quality: EvidenceQuality::NotValidated,
+            run_id: Some(run.id),
+            step_label,
             ..ResultPresentation::empty()
         };
     }
@@ -1774,6 +1800,22 @@ mod tests {
             .find(|run| run.task_id == steps[2] && run.status == "Succeeded")
             .map(|run| run.id)
             .unwrap();
+        let pending_run = lazy.runs().iter().find(|run| run.id == final_run_id).unwrap();
+        let pending = present_run(&lazy, pending_run);
+        assert_eq!(pending.kind, ResultKind::LoadingReport);
+        assert_eq!(pending.reader_placeholder(), "Loading saved report…");
+        assert_eq!(pending.quality, EvidenceQuality::NotValidated);
+        assert!(!pending.has_reader_body());
+        assert!(!pending.has_final_report);
+        assert!(pending.reader_text().is_empty(), "loading copy is not report content");
+        let mut absent = lazy.clone();
+        absent.clear_lazy_body(final_run_id);
+        assert_eq!(present_run(&absent, pending_run).kind, ResultKind::None);
+        let mut failed_run = pending_run.clone();
+        failed_run.status = "Failed".into();
+        assert_eq!(present_run(&lazy, &failed_run).kind, ResultKind::None);
+        let indexed = present_run_indexed(&lazy, pending_run, &RunIndex::new(&lazy));
+        assert_eq!(indexed, pending);
         let body = database.body(final_run_id).unwrap().unwrap();
         assert!(lazy.hydrate_run_body(final_run_id, body));
         let final_run = lazy

@@ -180,6 +180,7 @@ impl TaskApp {
         } else {
             None
         };
+        if self.defer_result_navigation(id, context, false, None, cx) { return; }
         self.set_result_selection(context, Some(id));
         self.reveal_selected_run();
         self.show_run_details = false;
@@ -803,7 +804,7 @@ impl TaskApp {
             else if context_task.and_then(|id| self.store.task(id)).and_then(|t| t.research.as_ref())
                 .is_some_and(|r| r.kind == ResearchKind::Goal) { "View original goal" }
             else { "View original task" };
-        let mut actions = row().flex_wrap().gap_2();
+        let mut actions = row().flex_shrink_0().gap_2();
         if self.show_run_details {
             actions = actions.child(quiet_button("show-result", "Back to result")
                 .icon(assets::IconName::ArrowLeft)
@@ -934,33 +935,58 @@ impl TaskApp {
             .flex_shrink_0()
             .child(
                 row()
-                    .flex_wrap()
-                    .justify_between()
-                    .gap_3()
+                    .id("run-title-bar")
+                    .w_full()
+                    .min_w_0()
+                    .h(px(32.))
                     .child(
-                        row()
-                            .flex_wrap()
-                            .gap_3()
-                            .child(attempt_indicator(run, cx))
-                            .when(run.research_kind.is_some() && !planning, |d| {
-                                let mut kind = result_presentation.kind.label().to_string();
-                                if let Some(suffix) = result_presentation.status_suffix() {
-                                    kind.push_str(&format!(" · {suffix}"));
-                                }
-                                let freshness = result_presentation.freshness.labels();
-                                if !freshness.is_empty() {
-                                    kind.push_str(" · ");
-                                    kind.push_str(&freshness.join(" · "));
-                                }
-                                d.child(label(kind, cx))
+                        div()
+                            .id("run-title")
+                            .flex_1()
+                            .min_w_0()
+                            .truncate()
+                            .text_lg()
+                            .font_weight(FontWeight::SEMIBOLD)
+                            .tooltip({
+                                let title = run.task_title.clone();
+                                move |w, cx| gpui_kit::component::tooltip::Tooltip::new(title.clone()).build(w, cx)
                             })
-                            .child(label(format!("Run #{} · {} · {}", run.id, run.agent,
-                                if run.model.is_empty() { "Not recorded" } else { run.model.as_str() }), cx))
-                            .child(self.run_version_picker(run, cx))
-                            .when(!self.show_run_details && readable, |d| d.child(label(
-                                format!("{} sources · {} materials", run.sources.len(), run.attachments.len()), cx))),
+                            .child(selectable(run.task_title.clone()))
+                            .map(observed),
                     )
-                    .child(actions),
+                    .child(actions)
+                    .map(observed),
+            )
+            .child(
+                row()
+                    .id("run-metadata")
+                    .w_full()
+                    .min_w_0()
+                    .flex_wrap()
+                    .gap_3()
+                    .child(attempt_indicator(run, cx))
+                    .when(run.research_kind.is_some() && !planning, |d| {
+                        let mut kind = if self.report_body_error(run).is_some() {
+                            "Report unavailable"
+                        } else {
+                            result_presentation.kind.label()
+                        }.to_string();
+                        if let Some(suffix) = result_presentation.status_suffix() {
+                            kind.push_str(&format!(" · {suffix}"));
+                        }
+                        let freshness = result_presentation.freshness.labels();
+                        if !freshness.is_empty() {
+                            kind.push_str(" · ");
+                            kind.push_str(&freshness.join(" · "));
+                        }
+                        d.child(label(kind.clone(), cx).id("run-result-kind").aria_label(kind).map(observed))
+                    })
+                    .child(label(format!("Run #{} · {} · {}", run.id, run.agent,
+                        if run.model.is_empty() { "Not recorded" } else { run.model.as_str() }), cx))
+                    .child(self.run_version_picker(run, cx))
+                    .when(!self.show_run_details && readable, |d| d.child(label(
+                        format!("{} sources · {} materials", run.sources.len(), run.attachments.len()), cx)))
+                    .map(observed),
             )
             .when((run.status != "Succeeded" || planning) && (readable || self.show_run_details), |d| {
                 d.child(label(queue_explanation.clone(), cx))
@@ -1105,16 +1131,6 @@ impl TaskApp {
             .gap_1()
             .px_4()
             .py_2()
-            .child(
-                col().flex_shrink_0().gap_2().child(
-                    div()
-                        .text_lg()
-                        .font_weight(FontWeight::SEMIBOLD)
-                        .line_height(relative(1.3))
-                        .line_clamp(2)
-                        .child(selectable(run.task_title.clone())),
-                ),
-            )
             .child(progress)
             .when(self.show_run_details, |d| {
                 d.child(self.run_technical_panel(run, cx))

@@ -23,6 +23,8 @@ Action buttons are about 32 px tall with 6 px radius and 14 px system font; Undo
 
 The sidebar brand mark and app name stay fixed above the navigation scroll area. Scrolling moves only the navigation list; the workspace switcher stays fixed below it.
 
+Result headers keep the title and actions on one line. Actions stay right-aligned without wrapping; long titles ellipsize and expose the full title on hover. Result kind, run, model, version and source metadata occupy a separate row below and may wrap independently.
+
 Report readers fill the available content width and reflow when the window or navigation sidebar changes size. Task details use a flexible body beside a fixed 240 px Task properties column, matching the main-branch layout; the properties column does not expand or stack below the body.
 
 ## Workspace identity and status bar

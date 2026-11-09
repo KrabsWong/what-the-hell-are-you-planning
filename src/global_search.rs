@@ -608,6 +608,7 @@ impl TaskApp {
     /// Footer Search and ⌘K share this entry point. It does not alter the page,
     /// selection, list filters, scroll position or any draft.
     pub(crate) fn open_global_search(&mut self, window: &mut Window, cx: &mut Context<Self>) {
+        self.pending_result_navigation = None;
         if !self.global_search_ui.open {
             self.global_search_ui.open = true;
             self.global_search_ui.domain = SearchDomain::All;

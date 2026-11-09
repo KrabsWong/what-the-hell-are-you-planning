@@ -583,12 +583,18 @@ impl TaskApp {
                 } else {
                     self.store.completed_sidebar_result(task)
                 };
+                if let Some(run) = result {
+                    if self.defer_result_navigation(run, Some(task), true, None, cx) { return; }
+                }
                 self.open_task(task, w, cx);
                 if let Some(run) = result {
                     self.show_task_result(run, cx);
                 }
             }
             NavigationTarget::ResearchResult { task, run } => {
+                if let Some(run) = run {
+                    if self.defer_result_navigation(run, Some(task), false, None, cx) { return; }
+                }
                 self.set_result_selection(Some(task), run);
             }
             NavigationTarget::SettingsPage => self.navigate(Scope::Settings, w, cx),
@@ -638,6 +644,7 @@ impl TaskApp {
                         .map(|run| run.id)
                 });
             if let Some(run) = run {
+                if self.defer_result_navigation(run, Some(task), true, None, cx) { return; }
                 self.open_task(task, w, cx);
                 self.show_task_result(run, cx);
                 return;
@@ -762,6 +769,7 @@ impl TaskApp {
         w: &mut Window,
         cx: &mut Context<Self>,
     ) -> bool {
+        self.pending_result_navigation = None;
         if self.navigation.pending_exit.is_some() {
             return false;
         }
@@ -1080,6 +1088,11 @@ impl TaskApp {
             }
             ExitTarget::NewResearch => self.open_research_intake(w, cx),
             ExitTarget::SidebarTask { project, task } => {
+                if !self.task_running(task) && !self.goal_busy(task) {
+                    if let Some(run) = self.store.completed_sidebar_result(task) {
+                        if self.defer_result_navigation(run, Some(task), true, Some(project), cx) { return; }
+                    }
+                }
                 self.structural_navigation();
                 self.navigate(Scope::Project(project), w, cx);
                 self.open_sidebar_task(task, w, cx);

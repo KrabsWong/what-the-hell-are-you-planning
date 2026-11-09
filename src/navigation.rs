@@ -360,10 +360,70 @@ pub(crate) enum CrumbTarget {
     AutomationDetail(u64),
     AutomationResult { automation: u64, occurrence: u64 },
 }
+pub(crate) struct PendingResultNavigation {
+    pub run_id: u64,
+    pub context: Option<u64>,
+    pub open_task: bool,
+    pub project: Option<u64>,
+}
+
 impl TaskApp {
+    pub(crate) fn defer_result_navigation(
+        &mut self, run_id: u64, context: Option<u64>, open_task: bool,
+        project: Option<u64>, cx: &mut Context<Self>,
+    ) -> bool {
+        self.pending_result_navigation = None;
+        if self.history_reader.is_none() || !self.store.run_body_is_lazy(run_id) {
+            return false;
+        }
+        if self.store.runs().iter().any(|run| run.id == run_id && !run.output.is_empty()) {
+            return false;
+        }
+        self.pending_result_navigation = Some(PendingResultNavigation { run_id, context, open_task, project });
+        self.request_run_body(run_id);
+        self.start_pump(cx);
+        cx.notify();
+        true
+    }
+
+    pub(crate) fn apply_pending_result_navigation(&mut self, window: &mut Window, cx: &mut Context<Self>) {
+        let Some(pending) = &self.pending_result_navigation else { return; };
+        if !self.store.runs().iter().any(|run| run.id == pending.run_id)
+            || pending.context.is_some_and(|task| self.store.task(task).is_none())
+        {
+            self.pending_result_navigation = None;
+            return;
+        }
+        let failed = matches!(self.run_body_state.get(&pending.run_id),
+            Some(crate::history_reader::BodyLoad::Failed { .. }));
+        if self.store.run_body_is_lazy(pending.run_id) && !failed { return; }
+        let pending = self.pending_result_navigation.take().unwrap();
+        if let Some(project) = pending.project {
+            self.structural_navigation();
+            self.navigate(Scope::Project(project), window, cx);
+        }
+        if pending.open_task {
+            if let Some(task) = pending.context { self.open_task(task, window, cx); }
+        }
+        // Commit the whole destination only after the read ends. Do not defer
+        // again on failure: its report-specific retry must remain reachable.
+        self.park_current_comment(cx);
+        self.show_run_details = false;
+        self.show_run_result = true;
+        if let Some(task) = pending.context {
+            self.navigation.recent_surfaces.insert(task, crate::navigation_context::RecentSurface::Result);
+        }
+        self.set_result_selection(pending.context, Some(pending.run_id));
+        self.reveal_selected_run();
+        cx.notify();
+    }
+
     pub(crate) fn open_sidebar_task(&mut self, id: u64, window: &mut Window, cx: &mut Context<Self>) {
         let result = if self.task_running(id) || self.goal_busy(id) { None }
             else { self.store.completed_sidebar_result(id) };
+        if let Some(run) = result {
+            if self.defer_result_navigation(run, Some(id), true, None, cx) { return; }
+        }
         self.open_task(id, window, cx);
         if let Some(run) = result { self.show_task_result(run, cx); }
     }

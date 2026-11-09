@@ -851,6 +851,8 @@ impl TaskApp {
             .or(owner)
     }
     pub(crate) fn show_task_result(&mut self, run_id: u64, cx: &mut Context<Self>) {
+        let context = self.result_context_for_run(run_id);
+        if self.defer_result_navigation(run_id, context, false, None, cx) { return; }
         self.park_current_comment(cx);
         self.show_run_details = false;
         self.show_run_result = true;

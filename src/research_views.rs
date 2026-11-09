@@ -582,6 +582,12 @@ impl TaskApp {
         let colors = palette(cx);
         let presentation = crate::result_presentation::present_run(&self.store, run);
         let output = presentation.reader_markdown.clone();
+        let body_unavailable = self.report_body_error(run).is_some();
+        let reader_placeholder = if body_unavailable {
+            "The saved report could not be loaded. Retry loading this report."
+        } else {
+            presentation.reader_placeholder()
+        };
         let sources_open = self.expanded_run_sources == Some(run.id);
         let archived_run = self.store.task_is_archived(run.task_id);
         let run_id = run.id;
@@ -651,7 +657,7 @@ impl TaskApp {
                             gpui_kit::base::text::TextView::markdown(
                                 format!("result-{}", run.id),
                                 if output.is_empty() {
-                                    "No final report yet. This attempt did not produce a validated reader report.".into()
+                                    reader_placeholder.into()
                                 } else {
                                     output
                                 },
@@ -666,6 +672,14 @@ impl TaskApp {
                                 }
                             }),
                         )
+                        .when(body_unavailable, |d| d.child(
+                            quiet_button("retry-result-body", "Retry loading report")
+                                .self_start()
+                                .on_click(cx.listener(move |a, _, _, cx| {
+                                    a.retry_run_body(run_id);
+                                    cx.notify();
+                                })),
+                        ))
                         .when(!presentation.sources.is_empty(), |d| d.child(
                             col().flex_shrink_0().border_t_1().border_color(rgb(colors.line)).pt_3()
                                 .child(quiet_button("toggle-result-sources", format!("Sources · {}", presentation.sources.len()))

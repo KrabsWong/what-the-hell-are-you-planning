@@ -944,6 +944,7 @@ impl TaskApp {
         if self.history_reader.is_none() {
             return false;
         }
+        if self.pending_result_navigation.is_some() { return true; }
         let state_pending = |run_id: u64| match self.run_body_state.get(&run_id) {
             None | Some(crate::history_reader::BodyLoad::NotRequested) => true,
             Some(crate::history_reader::BodyLoad::Loading { .. }) => true,
@@ -1005,6 +1006,18 @@ impl TaskApp {
         false
     }
 
+    /// A failed read belongs only to this still-unloaded report. Old request
+    /// errors must not replace content that has since been hydrated.
+    pub(crate) fn report_body_error(&self, run: &crate::domain::AgentRun) -> Option<&str> {
+        if !run.output.trim().is_empty() || !self.store.run_body_is_lazy(run.id) {
+            return None;
+        }
+        match self.run_body_state.get(&run.id) {
+            Some(crate::history_reader::BodyLoad::Failed { error, .. }) => Some(error.as_str()),
+            _ => None,
+        }
+    }
+
     /// Explicit retry for a failed body read. This is not the persistence
     /// footer retry and only re-requests the selected report body.
     pub(crate) fn retry_run_body(&mut self, run_id: u64) {
@@ -1024,7 +1037,7 @@ impl TaskApp {
         true
     }
 
-    fn request_run_body(&mut self, run_id: u64) -> bool {
+    pub(crate) fn request_run_body(&mut self, run_id: u64) -> bool {
         let has_body = self
             .store
             .runs()
@@ -1243,6 +1256,7 @@ impl TaskApp {
             }
         }
         let mut body_targets: Vec<u64> = Vec::new();
+        if let Some(pending) = &self.pending_result_navigation { body_targets.push(pending.run_id); }
         if let Some(run_id) = self.displayed_run_id() {
             body_targets.push(run_id);
         }
@@ -1626,6 +1640,7 @@ impl TaskApp {
     /// and in-flight correlation before the new worker is attached; an old
     /// adapter/ACK must never complete a form in the new workspace.
     pub(crate) fn reset_live_state(&mut self) {
+        self.pending_result_navigation = None;
         self.live_primary = None;
         self.live_followups.clear();
         self.history_reader = None;

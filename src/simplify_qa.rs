@@ -255,6 +255,9 @@ fn run_checks(layout_only: bool) {
             for task in &steps {
                 let mut run = store.prepare_run(*task).unwrap();
                 run.status = "Succeeded".into();
+                if layout_only {
+                    run.task_title = "Write the final research report with supporting evidence, scenario comparisons, observations, and clearly disclosed uncertainties".into();
+                }
                 run.output = if layout_only {
                     format!("{}\n\n| Field | Value |\n| --- | --- |\n| File | `/Users/fixture/workspace/research/attachments/2026-11-09-evidence-source-document-with-a-long-filename-and-original-metadata.pdf` |\n\n{}", REPORT, REPORT.repeat(12))
                 } else {
@@ -323,6 +326,19 @@ fn run_checks(layout_only: bool) {
                         let regenerate = w.find("regenerate-report").bounds();
                         let previous = w.find("previous-task").bounds();
                         let next = w.find("next-task").bounds();
+                        let more = w.find("run-actions-menu").bounds();
+                        let title_bar = w.find("run-title-bar").bounds();
+                        let title = w.find("run-title").bounds();
+                        let metadata = w.find("run-metadata").bounds();
+                        for control in [regenerate, previous, next, more] {
+                            assert!((control.center().y - title_bar.center().y).abs() <= px(1.),
+                                "Result controls must stay on the title row at width {width}, sidebar {sidebar_width}");
+                        }
+                        assert!(title.right() <= regenerate.left());
+                        assert!((more.right() - (w.viewport_size().width - px(16.))).abs() <= px(1.),
+                            "Result controls must remain right-aligned");
+                        assert!(metadata.top() >= title_bar.bottom(),
+                            "Run metadata must stay below the fixed action row");
                         assert!(regenerate.right() <= previous.left() && previous.right() <= next.left(),
                             "Regenerate must precede the Previous/Next arrows at window width {width}, sidebar {sidebar_width}");
                         assert!((viewport.right() - (w.viewport_size().width - px(16.))).abs() <= px(1.),

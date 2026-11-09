@@ -491,6 +491,7 @@ pub struct TaskApp {
     pub(crate) run_body_state:
         std::collections::BTreeMap<u64, crate::history_reader::BodyLoad>,
     pub(crate) history_request_seq: u64,
+    pub(crate) pending_result_navigation: Option<crate::navigation::PendingResultNavigation>,
     /// Window-dependent acknowledgements (focus/navigation/draft cleanup).
     pub(crate) deferred_ui: Vec<crate::live_save_app::DeferredUiAction>,
     pub startup: crate::startup::Startup,
@@ -870,6 +871,7 @@ impl TaskApp {
             history_cache: std::collections::BTreeMap::new(),
             run_body_state: std::collections::BTreeMap::new(),
             history_request_seq: 0,
+            pending_result_navigation: None,
             deferred_ui: Vec::new(),
             startup: Default::default(),
             workspace_required: false,
@@ -1456,6 +1458,7 @@ impl TaskApp {
     pub(crate) fn back_frame(
         &mut self,
     ) -> Result<crate::navigation_route::NavEffect, crate::navigation_route::NavReject> {
+        self.pending_result_navigation = None;
         self.nav.back(&self.store)
     }
 
@@ -1645,6 +1648,7 @@ impl TaskApp {
     /// Push the period overlay over its explicit detail/results base. A period
     /// opened from anywhere else installs the owning detail page first.
     pub(crate) fn push_period_overlay(&mut self, occurrence: u64) -> bool {
+        self.pending_result_navigation = None;
         use crate::navigation_route::{Overlay, OverlayKind, Route};
         let Some(value) = self.store.occurrence(occurrence) else {
             return false;
@@ -1701,6 +1705,7 @@ impl TaskApp {
     }
 
     pub(crate) fn push_task_editor_overlay(&mut self, task: u64) -> bool {
+        self.pending_result_navigation = None;
         self.nav
             .push_overlay(
                 &self.store,
@@ -1728,6 +1733,7 @@ impl TaskApp {
     }
 
     pub(crate) fn open_settings_overlay(&mut self) -> bool {
+        self.pending_result_navigation = None;
         use crate::navigation_route::{Overlay, Route};
         let Some(automation) = self.automation_ui.selected else {
             return false;
@@ -1767,6 +1773,7 @@ impl TaskApp {
     }
 
     pub(crate) fn push_planning_attempt_overlay(&mut self, run: u64) -> bool {
+        self.pending_result_navigation = None;
         let from_settings = self.settings_overlay();
         match self.nav.with_planning_attempt(&self.store, run, from_settings) {
             Ok(nav) => {
@@ -1860,6 +1867,7 @@ impl TaskApp {
     /// destination falls back predictably inside the same family and keeps the
     /// return history; the caller may surface the returned `false` as a notice.
     pub(crate) fn install_route(&mut self, route: crate::navigation_route::Route) -> bool {
+        self.pending_result_navigation = None;
         if self.nav.replace_route(&self.store, route.clone()).is_ok() {
             return true;
         }

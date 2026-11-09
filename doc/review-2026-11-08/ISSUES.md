@@ -1,5 +1,7 @@
 # Architecture, behavior and interaction review
 
+Current first-round delivery and follow-up disposition: [DELIVERY.md](DELIVERY.md). Original requirements and findings below remain traceable; historical defects are not automatically current blockers.
+
 Review date: 2026-11-08 (Asia/Shanghai). Source baseline: `611a4586eedb56600a83c8b272a3af43ba95e4a4`. Working tree was clean at the start. This review changes documentation only.
 
 Read [TASKS.md](TASKS.md) for the authoritative remediation backlog, target interaction contracts, dependencies and acceptance criteria. Findings describe the baseline, not completed fixes. Source links identify relevant functions; line numbers in prose refer to this baseline and may move.

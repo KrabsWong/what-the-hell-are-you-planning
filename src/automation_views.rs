@@ -3868,7 +3868,18 @@ impl TaskApp {
                 index.index(),
             )
             .status_suffix()
-        };
+        }
+        .or_else(|| {
+            // A lazy body has a durable report but no hydrated text yet, so the
+            // presentation cannot classify it. Say that the report is saved
+            // rather than implying the row has no evidence qualifier.
+            let run_id = occurrence
+                .final_run_id
+                .or_else(|| occurrence.run_ids.last().copied())?;
+            self.store
+                .run_body_is_lazy(run_id)
+                .then_some("saved report")
+        });
         let status = match suffix {
             Some(suffix) => format!("{} · {suffix}", occurrence.status.label()),
             None => occurrence.status.label().to_string(),
@@ -3989,6 +4000,7 @@ impl TaskApp {
                 .child(
                     div()
                         .id(format!("occurrence-status-{id}"))
+                        .aria_label(status.clone())
                         .min_w_0()
                         .text_sm()
                         .font_weight(FontWeight::MEDIUM)
@@ -5708,6 +5720,47 @@ mod tests {
             .unwrap()
     }
 
+    fn lazy_results_store() -> Store {
+        let mut store = results_store();
+        let run_id = 1;
+        store.push_run(crate::domain::AgentRun {
+            id: run_id,
+            task_id: 1,
+            task_title: "Capacity sample".into(),
+            directory: "/tmp".into(),
+            prompt: String::new(),
+            started_at: String::new(),
+            queued_at: String::new(),
+            workspace_source: None,
+            ended_at: None,
+            session_id: None,
+            exit_code: None,
+            agent: "test".into(),
+            model: "test".into(),
+            stage: crate::domain::Stage::Done,
+            status: "Succeeded".into(),
+            logs: Vec::new(),
+            output: String::new(),
+            attachments: Vec::new(),
+            research_kind: None,
+            sources: Vec::new(),
+            input_signature: String::new(),
+            automation_occurrence_id: Some(25),
+            planning_owner: None,
+            deadline_at: None,
+            auto_retry_attempt: 0,
+            retry_not_before: None,
+            project_plan: None,
+        });
+        {
+            let mut occurrence = store.occurrence_mut(25).unwrap();
+            occurrence.run_ids = vec![run_id];
+            occurrence.final_run_id = Some(run_id);
+        }
+        store.mark_lazy_body(run_id);
+        store
+    }
+
     struct ResultsHarness(Entity<TaskApp>);
     impl Render for ResultsHarness {
         fn render(&mut self, _: &mut Window, cx: &mut Context<Self>) -> impl IntoElement {
@@ -5715,6 +5768,32 @@ mod tests {
                 .size_full()
                 .child(self.0.update(cx, |app, cx| app.automation_results(cx)))
         }
+    }
+
+    #[gpui_kit::test]
+    fn lazy_result_row_keeps_saved_report_qualifier(cx: &mut TestAppContext) {
+        let cx = cx.add_empty_window();
+        cx.update(|_, cx| init(cx));
+        let store = lazy_results_store();
+        let (_harness, cx) = cx.add_window_view(|window, cx| {
+            let app = cx.new(|cx| {
+                let mut app = TaskApp::new_mock(window, cx);
+                app.store = store;
+                app.automation_ui.history_limit = 20;
+                app
+            });
+            ResultsHarness(app)
+        });
+        cx.run_until_parked();
+        cx.update(|window, cx| window.render_frame(cx));
+        let snapshot = cx
+            .update(|window, _| window.try_find("occurrence-status-25"))
+            .expect("lazy report row must render");
+        assert_eq!(
+            snapshot.label(),
+            Some("Succeeded · saved report"),
+            "a saved but unhydrated body must keep an evidence-availability qualifier"
+        );
     }
 
     #[gpui_kit::test]
@@ -5874,6 +5953,142 @@ mod tests {
             offset <= px(-100.),
             "400 px scroll after reset must displace the list, got {offset:?}"
         );
+    }
+
+    fn incomplete_results_store() -> Store {
+        const PLAN: &str = r#"{"tasks":[{"title":"Collect evidence","instructions":"Collect","kind":"collect","depends_on":[]},{"title":"Analyze findings","instructions":"Analyze","kind":"analyze","depends_on":[0]},{"title":"Write report","instructions":"Report","kind":"advise","depends_on":[1]}]}"#;
+        let mut store = Store::mock();
+        store.project_at_mut(0).unwrap().directory = "/tmp".into();
+        store.research_config_mut().models =
+            ["qa/model", "qa/model", "qa/model", "qa/model"].map(String::from);
+        let goal = store
+            .create_research_goal(
+                "Incomplete evidence fixture".into(),
+                "Exercise an intermediate evidence row.".into(),
+                1,
+            )
+            .unwrap();
+        let steps = store.apply_research_plan(goal, PLAN).unwrap();
+        // Build the Analyze run directly: the row must start as a saved-report
+        // placeholder even though the prerequisite collect step has no result.
+        let run_id = 1;
+        let signature = store
+            .research_signature_present(steps[1])
+            .unwrap_or_default();
+        // A cancelled task keeps the evidence out of the stale-input filter while
+        // the missing final report still makes the period incomplete.
+        store.task_mut(steps[1]).unwrap().stage = crate::domain::Stage::Cancelled;
+        store.push_run(crate::domain::AgentRun {
+            id: run_id,
+            task_id: steps[1],
+            task_title: "Analyze findings".into(),
+            directory: "/tmp".into(),
+            prompt: String::new(),
+            started_at: String::new(),
+            queued_at: String::new(),
+            workspace_source: None,
+            ended_at: None,
+            session_id: None,
+            exit_code: None,
+            agent: "test".into(),
+            model: "test".into(),
+            stage: crate::domain::Stage::Done,
+            status: "Succeeded".into(),
+            logs: Vec::new(),
+            output: String::new(),
+            attachments: Vec::new(),
+            research_kind: Some(crate::research::ResearchKind::Analyze),
+            sources: Vec::new(),
+            input_signature: signature,
+            automation_occurrence_id: Some(1),
+            planning_owner: None,
+            deadline_at: None,
+            auto_retry_attempt: 0,
+            retry_not_before: None,
+            project_plan: None,
+        });
+        let template = crate::automation_execution::build_template(
+            "Incomplete evidence fixture",
+            "Short report",
+        )
+        .unwrap();
+        store.push_occurrence(AutomationOccurrence {
+            id: 1,
+            automation_id: 99,
+            definition_version: 1,
+            source: TriggerSource::Manual,
+            trigger_key: "manual:1".into(),
+            scheduled_for: None,
+            requested_at: Some(100),
+            actual_started_at: Some(101),
+            timezone: "UTC".into(),
+            reference_time: 100,
+            data_window: TimeWindow::unresolved("fixture"),
+            snapshot: AutomationOccurrenceSnapshot {
+                objective: "Incomplete evidence fixture".into(),
+                expected_result: "Short report".into(),
+                shape: Some(AutomationShape::Research),
+                template,
+                models: ["qa/model"; 4].map(String::from),
+                agents: Default::default(),
+                materials: Vec::new(),
+                policy: AutomationPolicy::default(),
+                approval_version: 1,
+                approval_signature: "fixture".into(),
+            },
+            status: OccurrenceStatus::Succeeded,
+            reason: None,
+            research_goal_id: Some(goal),
+            research_goal_ids: vec![goal],
+            research_topic_id: None,
+            run_ids: vec![run_id],
+            final_run_id: Some(run_id),
+            unread: false,
+            skipped_count: 0,
+            skipped_from: None,
+            skipped_to: None,
+            created_at: 99,
+            deadline_at: None,
+            retry_requested_at: None,
+        });
+        store.mark_lazy_body(run_id);
+        store
+    }
+
+    #[gpui_kit::test]
+    fn lazy_row_transitions_to_incomplete_after_hydration(cx: &mut TestAppContext) {
+        let cx = cx.add_empty_window();
+        cx.update(|_, cx| init(cx));
+        let store = incomplete_results_store();
+        let (harness, cx) = cx.add_window_view(|window, cx| {
+            let app = cx.new(|cx| {
+                let mut app = TaskApp::new_mock(window, cx);
+                app.store = store;
+                app.automation_ui.history_limit = 20;
+                app
+            });
+            ResultsHarness(app)
+        });
+        let app = cx.update(|_, cx| harness.read(cx).0.clone());
+        cx.run_until_parked();
+        cx.update(|window, cx| window.render_frame(cx));
+        let lazy = cx
+            .update(|window, _| window.try_find("occurrence-status-1"))
+            .expect("lazy intermediate row renders");
+        assert_eq!(lazy.label(), Some("Succeeded · saved report"));
+
+        cx.update(|_, cx| {
+            app.update(cx, |app, cx| {
+                let body = "{\"status\":\"complete\",\"report\":\"Analyze findings with evidence.\",\"sources\":[{\"title\":\"Fixture source\",\"url\":\"https://example.com/fixture\",\"published_at\":\"unknown\"}]}";
+                assert!(app.store.hydrate_run_body(1, body.to_string()));
+                cx.notify();
+            });
+        });
+        cx.update(|window, cx| window.render_frame(cx));
+        let hydrated = cx
+            .update(|window, _| window.try_find("occurrence-status-1"))
+            .expect("hydrated intermediate row renders");
+        assert_eq!(hydrated.label(), Some("Succeeded · incomplete"));
     }
 
     #[gpui_kit::test]

@@ -44,7 +44,13 @@ For the step-count control, the ordinary click/Back path with real filtered, scr
 
 All work for this optimization goal uses `feature/review-2026-11-08-optimization`. The user authorized periodic checkpoint commits and pushes on 2026-11-09 to prevent code loss. Checkpoints may contain unfinished work and failing acceptance cases; they are not releases or task sign-off. Root owns Git staging, commits and pushes. Implementers continue on this same shared branch. Local `.local/` workspaces, binaries, runtime traces and credentials remain excluded by repository policy. Validation screenshots also remain local and must not be committed or pushed. The initial checkpoint predated this screenshot instruction; cleanup commit `e60ab38` removed all 60 tracked review screenshots from the branch tip and added ignore rules, preserving local copies. Earlier Git history was not rewritten.
 
-## Current release gate status (r204)
+## Current release gate status (r210)
+
+**Accepted for first-round development delivery with named nonblocking follow-ups.** [DELIVERY.md](DELIVERY.md) is the final T01–T25 disposition, feature-case ledger and F1–F9 follow-up authority. It supersedes earlier pending status statements below, while preserving their original failures.
+
+The effective r194/r196 required gate is covered; all fourteen ≤1,000-record live p95 gates passed. Later compact wheel restoration passed affected and native checks. The final result-row availability/quality transition passes root's 14 affected tests and native r208. Native physical Board horizontal scrolling remains explicitly tool-blocked (r207 zero deltas), with three passing independent rendered-event tests (r205); root accepts this named verification deferral under the first-round policy, not as a native pass. Real remote publishing and rare environment cross-products remain Not run.
+
+## Historical release gate status (r204)
 
 **Not yet approved for delivery.** All 25 tasks remain in scope. Earlier dated notes below are historical checkpoints, not the current disposition. The bounded remaining checklist is [FIRST_ROUND_REMAINING.md](FIRST_ROUND_REMAINING.md).
 
@@ -2887,3 +2893,10 @@ The first probe compile failed E0521 because its listener captured a borrowed Sc
 The compact Light native check passes: the lazy first result says `Succeeded · saved report`; Open identifies Period 1000 as incomplete, stale and historical; Close returns to the same position with `Succeeded · incomplete`. See [native evidence](evidence/r208-result-row-native.json). The fallback describes durable availability without eager body loading; it does not certify completeness.
 
 Code acceptance is pending. Root rejected an initial test that depended on an ignored local database and silently skipped when absent. The replacement is self-contained, but root's independent affected suite currently has 13 passes and one fixture failure: preparing an Analyze run before its prerequisite is rejected. OpenCode must repair the fixture and preserve the transition assertion. The runtime behavior passed native verification; no failing test is relabeled as passed. Final T20 disposition remains pending.
+
+
+## r210 — Final affected checks and first-round sign-off
+
+Root independently passed all 14 `automation_views::tests` after the portable fixture correction. The fixture uses a valid stored report envelope and preserves the `saved report` → `incomplete` rendered assertion; it has no private database dependency or silent skip. [Acceptance evidence](evidence/r210-result-row-acceptance.json). Product code matches the r208 native runtime change; intervening fixes only corrected test construction. DESIGN now describes the lazy availability label without promising pre-hydration quality classification.
+
+All T01–T25 and feature families have final dispositions in [DELIVERY](DELIVERY.md), with explicit F1–F9 follow-up tasks, implementation approaches, acceptance criteria and dependencies. Root accepts the bounded first-round delivery per the user’s occasional-hitch and nonblocking-deferral instructions. This does not replace the production app or certify untested external actions.

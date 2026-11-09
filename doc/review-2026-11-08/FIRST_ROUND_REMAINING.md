@@ -1,6 +1,6 @@
 # First-round remaining acceptance
 
-Status: in progress; not release approval. Authority: [TASKS](TASKS.md). Current evidence and historical corrections: [IMPLEMENTATION](IMPLEMENTATION.md). The user accepts occasional isolated hitches; sustained stalls, incorrect scrolling/navigation, data loss and false status remain blockers. Preserve raw failures and named follow-ups.
+Status: first-round checklist closed by root disposition in [DELIVERY](DELIVERY.md), with explicit nonblocking follow-ups. The sections below preserve the checks and their evidence. Authority: [TASKS](TASKS.md). Current evidence and historical corrections: [IMPLEMENTATION](IMPLEMENTATION.md). The user accepts occasional isolated hitches; sustained stalls, incorrect scrolling/navigation, data loss and false status remain blockers. Preserve raw failures and named follow-ups.
 
 ## R1 — Finish current standalone regression
 
@@ -51,6 +51,8 @@ Status: in progress; not release approval. Authority: [TASKS](TASKS.md). Current
 **Dependencies:** R2 or R3 provides the scrollable surface. No real schedule execution is needed.
 
 ## R5 — Publish the full disposition
+
+**Current result:** complete in [DELIVERY](DELIVERY.md). All T01–T25 and feature families are accounted for; F1–F9 identify remaining nonblocking verification and optimization work. The r210 affected suite and r208 native result-state transition pass.
 
 **Do:** reconcile all T01–T25 and all feature families into the final delivery decision.
 

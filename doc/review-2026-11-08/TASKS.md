@@ -1,5 +1,7 @@
 # Optimization implementation authority
 
+Current first-round delivery and follow-up disposition: [DELIVERY.md](DELIVERY.md). Original requirements and findings below remain traceable; historical defects are not automatically current blockers.
+
 Date: 2026-11-08. Baseline and evidence: [ISSUES.md](ISSUES.md), [COVERAGE.md](COVERAGE.md). Tasks remain **Open** unless explicitly marked otherwise. Implementation status and verification are recorded in [IMPLEMENTATION.md](IMPLEMENTATION.md).
 
 ## How to use this backlog

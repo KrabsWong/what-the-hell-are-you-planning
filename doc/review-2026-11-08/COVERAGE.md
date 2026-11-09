@@ -2,7 +2,7 @@
 
 Baseline: `611a4586eedb56600a83c8b272a3af43ba95e4a4`. Review: 2026-11-08. This ledger supersedes the first review's partial-walkthrough coverage statement. [ISSUES.md](ISSUES.md) records defects; [TASKS.md](TASKS.md) is the implementation authority. Every current feature area is accounted for below. Coverage is not release approval: a reproduced defect is covered but failed.
 
-## Current acceptance overlay: r208
+## Current acceptance overlay: r210
 
 This ledger preserves the original walkthrough and intermediate failures as historical evidence. Current acceptance uses [the bounded remaining checklist](FIRST_ROUND_REMAINING.md), [implementation evidence](IMPLEMENTATION.md), and [task authority](TASKS.md). Original failures below do not override verified later repairs.
 
@@ -10,7 +10,7 @@ The provenance-verified r194 ledger completed 55 entries: 53/54 required checks 
 
 The bounded native surface gaps are covered by r199–r204: compact materials/settings, results pagination/Close anchors, long readers, and save while scrolling with a reopened durable value. Board native right/left actions were [observed to deliver zero deltas](evidence/r207-native-board-input.json); a vertical control delivered a nonzero delta. Native physical horizontal scrolling remains tool-blocked, while three actual rendered horizontal-event cases independently pass [r205](evidence/r205-board-input-replay.json). This is a named verification deferral, not a native pass or established product defect.
 
-The [r208 result-row transition](evidence/r208-result-row-native.json) passes natively: saved report before hydration, incomplete after opening and closing. Its automated test review and the final T20 roll-up remain pending. Occasional isolated hitches remain named follow-ups under the user policy; sustained stalls, wrong navigation, durability and execution correctness remain required. External-service actions and rare environment cross-products are explicitly bounded.
+The [r208 result-row transition](evidence/r208-result-row-native.json) passes natively: saved report before hydration, incomplete after opening and closing. Its 14 affected tests pass [r210](evidence/r210-result-row-acceptance.json). The final T20 disposition and explicit follow-ups are in [DELIVERY](DELIVERY.md). Occasional isolated hitches remain named follow-ups under the user policy; sustained stalls, wrong navigation, durability and execution correctness remain required. External-service actions and rare environment cross-products are explicitly bounded.
 
 ## Historical acceptance overlay: r139/r140
 

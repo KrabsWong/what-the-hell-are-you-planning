@@ -1,0 +1,15 @@
+{
+  "source_sha256": "ff126d99bc901e40d380cbf5de5f762d8a6a40e06a86e76d3b89971a9d86ab27",
+  "command": "CARGO_TARGET_DIR=.local/opencode-dispatch/r205-target PLANNING_NODE=/opt/homebrew/opt/node@24/bin/node cargo test --features qa automation_views::tests -- --test-threads=1",
+  "result": "14 passed, 0 failed; integration binaries filtered by the affected-test selection",
+  "log": ".local/opencode-dispatch/r210-root-result-tests.log",
+  "log_sha256": "06e57614970ad64fd7e4759e698790e7afeea5269022a001f3954c97a3c9723d",
+  "native": "r208-result-row-native.json",
+  "review": "Only runtime change: lazy durable body gets saved report suffix; existing typed quality wins after hydration. No eager I/O added. Portable rendered tests verify initial availability and incomplete transition.",
+  "prior_failures": [
+    "r208 fixture called prepare_run before prerequisite completion",
+    "r209 fixture plain Markdown correctly classified unverified legacy; corrected to a valid report envelope"
+  ],
+  "scope": "Affected suite; existing r194/r196 full gate retained. No full-suite claim for this last suffix-only patch.",
+  "native_runtime_source_match": "Final automation_views.rs before #[cfg(test)] exactly equals r208 native source; later changes affect tests only."
+}

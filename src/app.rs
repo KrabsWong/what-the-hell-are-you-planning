@@ -2664,6 +2664,7 @@ impl TaskApp {
         cx: &mut Context<Self>,
     ) {
         self.store = store.unwrap_or_else(Store::empty);
+        self.automation_ui.clear_store_caches();
         self.restore_sidebar();
         self.store.recover_interrupted_runs();
         self.recover_publications();

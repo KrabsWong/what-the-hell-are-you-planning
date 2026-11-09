@@ -361,6 +361,8 @@ pub struct AutomationUi {
     /// keeps every automation.
     pub result_filter: Option<u64>,
     pub history_limit: usize,
+    pub(crate) result_order: std::cell::RefCell<ResultOrderCache>,
+    pub(crate) run_index: std::cell::RefCell<RunIndexCache>,
     pub show_technical: bool,
     pub show_cleanup: bool,
     pub cleanup_preview: String,
@@ -381,6 +383,85 @@ pub struct AutomationUi {
     pub timeout: Entity<InputState>,
     pub failures: Entity<InputState>,
     pub retention: Entity<InputState>,
+}
+
+/// Bounded view cache for the global results order. `dirty_epoch` covers every
+/// collection the order or the queued/waiting counts depend on.
+#[derive(Default)]
+pub(crate) struct ResultOrderCache {
+    epoch: Option<u64>,
+    filter: Option<u64>,
+    pub(crate) indices: Vec<usize>,
+    all_total: usize,
+    filtered_total: usize,
+    queued: usize,
+    waiting: usize,
+}
+
+impl ResultOrderCache {
+    pub(crate) fn clear(&mut self) {
+        self.epoch = None;
+        self.filter = None;
+        self.indices.clear();
+        self.all_total = 0;
+        self.filtered_total = 0;
+        self.queued = 0;
+        self.waiting = 0;
+    }
+
+    pub(crate) fn refresh(&mut self, epoch: u64, filter: Option<u64>, store: &crate::domain::Store) {
+        if self.epoch == Some(epoch) && self.filter == filter {
+            return;
+        }
+        let occurrences = store.all_occurrences();
+        self.all_total = occurrences.len();
+        self.indices.clear();
+        self.queued = 0;
+        self.waiting = 0;
+        for (index, occurrence) in occurrences.iter().enumerate() {
+            if filter.is_some_and(|id| occurrence.automation_id != id) {
+                continue;
+            }
+            self.queued += usize::from(occurrence.status == OccurrenceStatus::Queued);
+            self.waiting += usize::from(occurrence.status == OccurrenceStatus::WaitingRetry);
+            self.indices.push(index);
+        }
+        self.filtered_total = self.indices.len();
+        self.indices.sort_by(|a, b| {
+            compare_newest_first(&occurrences[*a], &occurrences[*b])
+        });
+        self.epoch = Some(epoch);
+        self.filter = filter;
+    }
+}
+
+/// Epoch-keyed positional run index. Hydration updates a run in place and does
+/// not move positions, so the index stays correct without an epoch bump; any
+/// real mutation that changes the run set moves the epoch and rebuilds it.
+#[derive(Default)]
+pub(crate) struct RunIndexCache {
+    epoch: Option<u64>,
+    index: Option<crate::result_presentation::RunIndex>,
+}
+
+impl RunIndexCache {
+    pub(crate) fn clear(&mut self) {
+        self.epoch = None;
+        self.index = None;
+    }
+
+    pub(crate) fn ensure(&mut self, epoch: u64, store: &crate::domain::Store) {
+        if self.epoch != Some(epoch) {
+            self.epoch = Some(epoch);
+            self.index = Some(crate::result_presentation::RunIndex::new(store));
+        }
+    }
+
+    pub(crate) fn index(&self) -> &crate::result_presentation::RunIndex {
+        self.index
+            .as_ref()
+            .expect("run index is built before use")
+    }
 }
 
 impl AutomationUi {
@@ -417,6 +498,8 @@ impl AutomationUi {
             planning_attempt_return_run: None,
             result_filter: None,
             history_limit: 20,
+            result_order: std::cell::RefCell::new(ResultOrderCache::default()),
+            run_index: std::cell::RefCell::new(RunIndexCache::default()),
             show_technical: false,
             show_cleanup: false,
             cleanup_preview: String::new(),
@@ -444,6 +527,13 @@ impl AutomationUi {
             failures: input(window, cx, "3", "3"),
             retention: input(window, cx, "30", "30"),
         }
+    }
+
+    /// A workspace attach replaces the whole Store. Per-store epoch sums are not
+    /// a workspace generation, so derived caches must not survive the swap.
+    pub(crate) fn clear_store_caches(&mut self) {
+        self.result_order.borrow_mut().clear();
+        self.run_index.borrow_mut().clear();
     }
 
     /// Stable focus handle for one attempt's Review control. Creating it lazily
@@ -2307,23 +2397,31 @@ impl TaskApp {
 
     /// All automation periods in one place, separate from project/topic results.
     pub(crate) fn automation_results(&self, cx: &mut Context<Self>) -> AnyElement {
-        let mut occurrences: Vec<_> = self.store.all_occurrences().iter().collect();
-        occurrences.sort_by(|a, b| compare_newest_first(a, b));
-        let total = occurrences.len();
         // A saved filter only applies while its automation still exists; a
         // removed automation falls back to the unfiltered list.
         let filter = self
             .automation_ui
             .result_filter
             .filter(|id| self.store.automation(*id).is_some());
-        if let Some(id) = filter {
-            occurrences.retain(|occurrence| occurrence.automation_id == id);
-        }
-        let shown = occurrences
-            .iter()
-            .take(self.automation_ui.history_limit)
-            .copied()
-            .collect::<Vec<_>>();
+        let epoch = self.store.dirty_epoch();
+        let (shown, total, all_total, queued, waiting) = {
+            let mut cache = self.automation_ui.result_order.borrow_mut();
+            cache.refresh(epoch, filter, &self.store);
+            let occurrences = self.store.all_occurrences();
+            let shown = cache
+                .indices
+                .iter()
+                .take(self.automation_ui.history_limit)
+                .filter_map(|index| occurrences.get(*index))
+                .collect::<Vec<_>>();
+            (
+                shown,
+                cache.filtered_total,
+                cache.all_total,
+                cache.queued,
+                cache.waiting,
+            )
+        };
         let mut panel = col()
             .id("automation-results-scroll")
             .w_full()
@@ -2360,7 +2458,7 @@ impl TaskApp {
             ));
         } else {
             let heading = match filter {
-                Some(_) => format!("Periods · {} of {total}", occurrences.len()),
+                Some(_) => format!("Periods · {total} of {all_total}"),
                 None => format!("Periods · {total}"),
             };
             panel = panel.child(
@@ -2391,14 +2489,6 @@ impl TaskApp {
                             .child(muted("Unread results are marked with a dot.", cx)),
                     )),
             );
-            let queued = occurrences
-                .iter()
-                .filter(|occurrence| occurrence.status == OccurrenceStatus::Queued)
-                .count();
-            let waiting = occurrences
-                .iter()
-                .filter(|occurrence| occurrence.status == OccurrenceStatus::WaitingRetry)
-                .count();
             if queued > 0 || waiting > 0 {
                 panel = panel.child(overview_note(
                     format!(
@@ -2409,7 +2499,7 @@ impl TaskApp {
                     cx,
                 ));
             }
-            if occurrences.is_empty() {
+            if total == 0 {
                 panel = panel.child(overview_note(
                     "No periods for this automation yet. Pick another automation or clear the filter.",
                     cx,
@@ -2420,8 +2510,8 @@ impl TaskApp {
                 history = history.child(self.automation_occurrence_row(occurrence, true, cx));
             }
             panel = panel.child(history);
-            if occurrences.len() > self.automation_ui.history_limit {
-                let remaining = occurrences.len() - self.automation_ui.history_limit;
+            if total > self.automation_ui.history_limit {
+                let remaining = total - self.automation_ui.history_limit;
                 panel = panel.child(
                     quiet_button(
                         "load-more-automation-results",
@@ -3067,8 +3157,21 @@ impl TaskApp {
     ) -> AnyElement {
         let colors = palette(cx);
         let id = occurrence.id;
-        let presentation = crate::result_presentation::present_occurrence(&self.store, occurrence);
-        let status = match presentation.status_suffix() {
+        let epoch = self.store.dirty_epoch();
+        self.automation_ui
+            .run_index
+            .borrow_mut()
+            .ensure(epoch, &self.store);
+        let suffix = {
+            let index = self.automation_ui.run_index.borrow();
+            crate::result_presentation::present_occurrence_indexed(
+                &self.store,
+                occurrence,
+                index.index(),
+            )
+            .status_suffix()
+        };
+        let status = match suffix {
             Some(suffix) => format!("{} · {suffix}", occurrence.status.label()),
             None => occurrence.status.label().to_string(),
         };
@@ -3243,7 +3346,19 @@ impl TaskApp {
             return div().into_any_element();
         };
         let colors = palette(cx);
-        let presentation = crate::result_presentation::present_occurrence(&self.store, occurrence);
+        let epoch = self.store.dirty_epoch();
+        self.automation_ui
+            .run_index
+            .borrow_mut()
+            .ensure(epoch, &self.store);
+        let presentation = {
+            let index = self.automation_ui.run_index.borrow();
+            crate::result_presentation::present_occurrence_indexed(
+                &self.store,
+                occurrence,
+                index.index(),
+            )
+        };
         let mut panel = col()
             .id("automation-occurrence-detail")
             .p_4()

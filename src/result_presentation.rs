@@ -3,6 +3,7 @@
 //! This module chooses what a result surface may show. It never changes execution,
 //! scheduling, navigation or stored report text. Raw output remains available only
 //! through technical diagnostics.
+use std::collections::HashMap;
 use crate::automation::{AutomationOccurrence, OccurrenceStatus};
 use crate::domain::{AgentRun, Stage, Store};
 use crate::research::{self, ResearchKind, Source};
@@ -307,7 +308,105 @@ pub(crate) fn historical_output_valid(store: &Store, run: &AgentRun) -> bool {
 }
 
 /// Ordinary Research, planning and non-research task presentation.
+
+/// Positional index over runs, independent of the store borrow so a UI cache
+/// can retain it across frames. Rebuilt only when the store's dirty epoch moves.
+pub struct RunIndex {
+    by_occurrence: HashMap<u64, Vec<usize>>,
+    by_id: HashMap<u64, usize>,
+}
+
+impl RunIndex {
+    pub fn new(store: &Store) -> Self {
+        let mut by_occurrence: HashMap<u64, Vec<usize>> = HashMap::new();
+        let mut by_id = HashMap::with_capacity(store.runs().len());
+        for (position, run) in store.runs().iter().enumerate() {
+            by_id.insert(run.id, position);
+            if let Some(occurrence) = run.automation_occurrence_id {
+                by_occurrence.entry(occurrence).or_default().push(position);
+            }
+        }
+        Self {
+            by_occurrence,
+            by_id,
+        }
+    }
+
+    pub fn occurrence_runs<'a>(
+        &self,
+        store: &'a Store,
+        occurrence: u64,
+    ) -> impl Iterator<Item = &'a AgentRun> + 'a {
+        let positions = self
+            .by_occurrence
+            .get(&occurrence)
+            .cloned()
+            .unwrap_or_default();
+        positions
+            .into_iter()
+            .filter_map(move |position| store.runs().get(position))
+    }
+
+    pub fn run<'a>(&self, store: &'a Store, id: u64) -> Option<&'a AgentRun> {
+        self.by_id
+            .get(&id)
+            .and_then(|position| store.runs().get(*position))
+    }
+
+    pub fn positions(&self, occurrence: u64) -> Vec<usize> {
+        self.by_occurrence
+            .get(&occurrence)
+            .cloned()
+            .unwrap_or_default()
+    }
+}
+
+/// Occurrence-local runs. Without a shared index this preserves the original
+/// on-demand scan so standalone header/report calls do not build a full map.
+fn runs_for<'a>(
+    store: &'a Store,
+    index: Option<&RunIndex>,
+    occurrence: u64,
+) -> impl Iterator<Item = &'a AgentRun> + 'a {
+    let positions: Vec<usize> = match index {
+        Some(index) => index.positions(occurrence),
+        None => store
+            .runs()
+            .iter()
+            .enumerate()
+            .filter(|(_, run)| run.automation_occurrence_id == Some(occurrence))
+            .map(|(position, _)| position)
+            .collect(),
+    };
+    positions
+        .into_iter()
+        .filter_map(move |position| store.runs().get(position))
+}
+
+fn run_by_id<'a>(
+    store: &'a Store,
+    index: Option<&RunIndex>,
+    id: u64,
+) -> Option<&'a AgentRun> {
+    match index {
+        Some(index) => index.run(store, id),
+        None => store.runs().iter().find(|run| run.id == id),
+    }
+}
+
 pub fn present_run(store: &Store, run: &AgentRun) -> ResultPresentation {
+    present_run_with(store, run, None)
+}
+
+pub fn present_run_indexed(store: &Store, run: &AgentRun, index: &RunIndex) -> ResultPresentation {
+    present_run_with(store, run, Some(index))
+}
+
+fn present_run_with(
+    store: &Store,
+    run: &AgentRun,
+    index: Option<&RunIndex>,
+) -> ResultPresentation {
     let planning =
         run.project_plan.is_some() || run.research_kind == Some(ResearchKind::Goal);
     let attempt = AttemptStatus::from_run_status(&run.status);
@@ -333,15 +432,27 @@ pub fn present_run(store: &Store, run: &AgentRun) -> ResultPresentation {
     };
 
     let current_signature = store.research_signature(run.task_id);
+    // Preserve the original equality check, including `None` for ordinary
+    // research: a newer active Advise with no occurrence is also a regeneration.
     let regenerating = run.status == "Succeeded"
-        && store.runs().iter().any(|other| {
-            other.id != run.id
-                && other.id > run.id
-                && other.task_id == run.task_id
-                && other.research_kind == Some(ResearchKind::Advise)
-                && other.automation_occurrence_id == run.automation_occurrence_id
-                && AttemptStatus::from_run_status(&other.status).is_active()
-        });
+        && match run.automation_occurrence_id {
+            Some(occurrence) => runs_for(store, index, occurrence).any(|other| {
+                other.id != run.id
+                    && other.id > run.id
+                    && other.task_id == run.task_id
+                    && other.research_kind == Some(ResearchKind::Advise)
+                    && other.automation_occurrence_id == Some(occurrence)
+                    && AttemptStatus::from_run_status(&other.status).is_active()
+            }),
+            None => store.runs().iter().any(|other| {
+                other.id != run.id
+                    && other.id > run.id
+                    && other.task_id == run.task_id
+                    && other.research_kind == Some(ResearchKind::Advise)
+                    && other.automation_occurrence_id.is_none()
+                    && AttemptStatus::from_run_status(&other.status).is_active()
+            }),
+        };
     let current = store
         .research_result(run.task_id)
         .map(|result| result.id)
@@ -638,15 +749,30 @@ pub fn present_occurrence(
     store: &Store,
     occurrence: &AutomationOccurrence,
 ) -> ResultPresentation {
+    present_occurrence_with(store, occurrence, None)
+}
+
+pub fn present_occurrence_indexed(
+    store: &Store,
+    occurrence: &AutomationOccurrence,
+    index: &RunIndex,
+) -> ResultPresentation {
+    present_occurrence_with(store, occurrence, Some(index))
+}
+
+fn present_occurrence_with(
+    store: &Store,
+    occurrence: &AutomationOccurrence,
+    index: Option<&RunIndex>,
+) -> ResultPresentation {
     let definition = store.automation(occurrence.automation_id);
     let previous_version = definition
         .is_some_and(|definition| definition.version != occurrence.definition_version);
     let regenerating = occurrence.status == OccurrenceStatus::Succeeded
-        && store.runs().iter().any(|run| {
-            run.automation_occurrence_id == Some(occurrence.id)
-                && run.research_kind == Some(ResearchKind::Advise)
-                && AttemptStatus::from_run_status(&run.status).is_active()
-        });
+        && runs_for(store, index, occurrence.id).any(|run| {
+                run.research_kind == Some(ResearchKind::Advise)
+                    && AttemptStatus::from_run_status(&run.status).is_active()
+            });
     let attempt = AttemptStatus::from_occurrence_status(occurrence.status);
 
     let goal_ids: Vec<u64> = if occurrence.research_goal_ids.is_empty() {
@@ -662,6 +788,7 @@ pub fn present_occurrence(
             attempt,
             previous_version,
             regenerating,
+            index,
         );
     }
 
@@ -705,7 +832,7 @@ pub fn present_occurrence(
                 .task(*task)
                 .map(|task| task.title.clone())
                 .unwrap_or_else(|| format!("Report {task}"));
-            let Some(run) = choose_goal_report_run(store, occurrence, *task) else {
+            let Some(run) = choose_goal_report_run(store, occurrence, *task, index) else {
                 goal_final = false;
                 if goal_count > 1 {
                     reports.push(OwnedReportPresentation {
@@ -715,7 +842,7 @@ pub fn present_occurrence(
                 }
                 continue;
             };
-            let mut presentation = present_run(store, run);
+            let mut presentation = present_run_with(store, run, index);
             presentation.freshness.merge(Freshness {
                 previous_version,
                 regenerating,
@@ -740,9 +867,8 @@ pub fn present_occurrence(
             });
         }
 
-        for run in store.runs().iter().filter(|run| {
-            run.automation_occurrence_id == Some(occurrence.id)
-                && store.owning_research_goal(run.task_id) == Some(goal)
+        for run in runs_for(store, index, occurrence.id).filter(|run| {
+            store.owning_research_goal(run.task_id) == Some(goal)
                 && AttemptStatus::from_run_status(&run.status).is_active()
                 && !run.output.trim().is_empty()
         }) {
@@ -760,7 +886,7 @@ pub fn present_occurrence(
         // Without a final answer, keep completed evidence steps inspectable for
         // this goal. A failed or cancelled period must not hide earlier work.
         if !goal_final {
-            for (step_label, mut presentation) in goal_evidence(store, occurrence, goal) {
+            for (step_label, mut presentation) in goal_evidence(store, occurrence, goal, index) {
                 presentation.freshness.merge(Freshness {
                     previous_version,
                     regenerating,
@@ -791,11 +917,11 @@ pub fn present_occurrence(
         && !reports
             .iter()
             .any(|report| report.presentation.run_id == Some(final_id))
-        && let Some(run) = store.runs().iter().find(|run| {
-            run.id == final_id && run.automation_occurrence_id == Some(occurrence.id)
+        && let Some(run) = run_by_id(store, index, final_id).filter(|run| {
+            run.automation_occurrence_id == Some(occurrence.id)
         })
     {
-        let mut presentation = present_run(store, run);
+        let mut presentation = present_run_with(store, run, index);
         presentation.freshness.merge(Freshness {
             previous_version,
             regenerating,
@@ -897,12 +1023,9 @@ fn present_occurrence_without_goals(
     attempt: AttemptStatus,
     previous_version: bool,
     regenerating: bool,
+    index: Option<&RunIndex>,
 ) -> ResultPresentation {
-    let candidate = store
-        .runs()
-        .iter()
-        .filter(|run| run.automation_occurrence_id == Some(occurrence.id))
-        .max_by_key(|run| run.id);
+    let candidate = runs_for(store, index, occurrence.id).max_by_key(|run| run.id);
     let Some(run) = candidate else {
         return ResultPresentation {
             attempt,
@@ -914,7 +1037,7 @@ fn present_occurrence_without_goals(
             ..ResultPresentation::empty()
         };
     };
-    let mut presentation = present_run(store, run);
+    let mut presentation = present_run_with(store, run, index);
     presentation.freshness.previous_version = previous_version;
     presentation.freshness.regenerating = regenerating;
     presentation.attempt = attempt;
@@ -925,12 +1048,11 @@ fn choose_goal_report_run<'a>(
     store: &'a Store,
     occurrence: &AutomationOccurrence,
     task: u64,
+    index: Option<&RunIndex>,
 ) -> Option<&'a AgentRun> {
     if let Some(final_id) = occurrence.final_run_id
-        && let Some(run) = store.runs().iter().find(|run| {
-            run.id == final_id
-                && run.task_id == task
-                && run.automation_occurrence_id == Some(occurrence.id)
+        && let Some(run) = run_by_id(store, index, final_id).filter(|run| {
+            run.task_id == task && run.automation_occurrence_id == Some(occurrence.id)
         })
     {
         return Some(run);
@@ -940,12 +1062,8 @@ fn choose_goal_report_run<'a>(
     {
         return Some(current);
     }
-    store
-        .runs()
-        .iter()
-        .filter(|run| {
-            run.automation_occurrence_id == Some(occurrence.id) && run.task_id == task
-        })
+    runs_for(store, index, occurrence.id)
+        .filter(|run| run.task_id == task)
         .max_by_key(|run| {
             (
                 run.status == "Succeeded" && !run.output.trim().is_empty(),
@@ -960,6 +1078,7 @@ fn goal_evidence(
     store: &Store,
     occurrence: &AutomationOccurrence,
     goal: u64,
+    index: Option<&RunIndex>,
 ) -> Vec<(String, ResultPresentation)> {
     let mut evidence = vec![];
     for task in store.research_children(goal) {
@@ -973,10 +1092,10 @@ fn goal_evidence(
         if !matches!(kind, ResearchKind::Collect | ResearchKind::Analyze) {
             continue;
         }
-        let Some(run) = choose_goal_step_run(store, occurrence, task) else {
+        let Some(run) = choose_goal_step_run(store, occurrence, task, index) else {
             continue;
         };
-        let presentation = present_run(store, run);
+        let presentation = present_run_with(store, run, index);
         if !presentation.quality.is_reader_body() || presentation.freshness.stale_input {
             continue;
         }
@@ -993,20 +1112,16 @@ fn choose_goal_step_run<'a>(
     store: &'a Store,
     occurrence: &AutomationOccurrence,
     task: u64,
+    index: Option<&RunIndex>,
 ) -> Option<&'a AgentRun> {
     if let Some(current) = store.research_result(task)
         && current.automation_occurrence_id == Some(occurrence.id)
     {
         return Some(current);
     }
-    store
-        .runs()
-        .iter()
+    runs_for(store, index, occurrence.id)
         .filter(|run| {
-            run.automation_occurrence_id == Some(occurrence.id)
-                && run.task_id == task
-                && run.status == "Succeeded"
-                && !run.output.trim().is_empty()
+            run.task_id == task && run.status == "Succeeded" && !run.output.trim().is_empty()
         })
         .max_by_key(|run| run.id)
 }
@@ -1016,10 +1131,11 @@ pub fn occurrence_report<'a>(
     store: &'a Store,
     occurrence: &AutomationOccurrence,
 ) -> Option<&'a AgentRun> {
-    let presentation = present_occurrence(store, occurrence);
-    presentation
-        .primary_run_id()
-        .and_then(|id| store.runs().iter().find(|run| run.id == id))
+    // Standalone accessor: keep the on-demand scan instead of building a full
+    // run index for one lookup.
+    let presentation = present_occurrence_with(store, occurrence, None);
+    let run_id = presentation.primary_run_id();
+    run_id.and_then(|id| store.runs().iter().find(|run| run.id == id))
 }
 
 #[cfg(test)]
@@ -1542,5 +1658,76 @@ mod tests {
         assert!(presentation.reader_markdown.contains("Partial final report body"));
         assert!(!presentation.reader_markdown.contains(research::EVIDENCE_GAP_NOTE));
         assert_eq!(presentation.progress.len(), 1);
+    }
+
+    #[test]
+    fn ordinary_research_regeneration_without_occurrence_is_preserved() {
+        let (mut store, goal) = workspace();
+        let steps = store.apply_research_plan(goal, PLAN).unwrap();
+        add_run(&mut store, steps[0], None, "Succeeded", "Collected evidence");
+        add_run(&mut store, steps[1], None, "Succeeded", "Analyzed findings");
+        let report = add_run(
+            &mut store,
+            steps[2],
+            None,
+            "Succeeded",
+            "## Final report\n\nOrdinary research body",
+        );
+        let active = add_run(
+            &mut store,
+            steps[2],
+            None,
+            "Running",
+            "Rewriting the ordinary research report",
+        );
+        assert_ne!(report, active);
+
+        let run = store.runs().iter().find(|run| run.id == report).unwrap();
+        let legacy = present_run(&store, run);
+        assert!(legacy.freshness.regenerating);
+
+        let index = RunIndex::new(&store);
+        let indexed = present_run_indexed(&store, run, &index);
+        assert_eq!(legacy.freshness.regenerating, indexed.freshness.regenerating);
+        assert_eq!(legacy.state_label(), indexed.state_label());
+        assert_eq!(legacy.reader_markdown, indexed.reader_markdown);
+    }
+
+    #[test]
+    fn indexed_occurrence_matches_legacy_regeneration_and_labels() {
+        let (mut store, goal) = workspace();
+        add_definition(&mut store, 99, 2);
+        let steps = store.apply_research_plan(goal, PLAN).unwrap();
+        add_run(&mut store, steps[0], Some(12), "Succeeded", "Collected evidence");
+        add_run(&mut store, steps[1], Some(12), "Succeeded", "Analyzed findings");
+        let report = add_run(
+            &mut store,
+            steps[2],
+            Some(12),
+            "Succeeded",
+            "## Final report\n\nPeriod body",
+        );
+        add_run(
+            &mut store,
+            steps[2],
+            Some(12),
+            "Running",
+            "Rewriting the period report",
+        );
+        let occurrence = occurrence(
+            12,
+            vec![goal],
+            OccurrenceStatus::Succeeded,
+            Some(report),
+            1,
+        );
+        let legacy = present_occurrence(&store, &occurrence);
+        let index = RunIndex::new(&store);
+        let indexed = present_occurrence_indexed(&store, &occurrence, &index);
+        assert!(legacy.freshness.regenerating);
+        assert_eq!(legacy.freshness.regenerating, indexed.freshness.regenerating);
+        assert_eq!(legacy.state_label(), indexed.state_label());
+        assert_eq!(legacy.reader_markdown, indexed.reader_markdown);
+        assert_eq!(legacy.primary_run_id(), indexed.primary_run_id());
     }
 }

@@ -2721,3 +2721,11 @@ Root also accepted the final render QA repair after three focused tests and the 
 ## r182: dedicated list trace narrows the remaining performance work
 
 With per-frame tracing and separate wall-clock brackets, the 20-row downward scroll and 40-row upward scroll have no late presents in the observed windows. The 40-row downward scroll reaches 8.678 ms work and misses one 120Hz refresh; cold open reaches 16.572 ms and Load more reaches 11.746 ms. This narrows the remaining work to measured paths rather than treating every mixed-action miss as scrolling. Single-gesture samples and animation-heavy aggregate percentiles do not establish broad smoothness. OpenCode receives the trace for a bounded list optimization; long-report acceptance remains separate. See [dedicated trace evidence](evidence/r182-dedicated-scroll.json).
+
+## r183: gate attribution and documented scope reconciled
+
+The release runner now separates the legacy QA attachment's raw latency diagnostic from its still-gating correctness exit. Production responsiveness remains mandatory through the real live-backend 500/1,000 fixtures and fourteen strict numeric p95 gates. Missing live coverage or a missing live result fails closed. Original r174 and r177 indexes are unchanged.
+
+Root independently passed thirteen classifier checks and replayed the retained real logs: r179 quiet remains passed; r177 remains failed with its original 63.838/64.160/57.809 ms gates. A synthetic legacy 108 ms sample remains explicitly diagnostic, not passed. All 49 standalone entry names are documented and match src/main.rs. This accepts classifier behavior only, not a new whole-release run. See [classification evidence](evidence/r183-runner-classification.json).
+
+TASKS now applies the previously approved 1,000-record boundary consistently in its scrolling and T14/T15 clauses; large-history diagnostics and correctness obligations remain. The list virtualization candidate remains unaccepted pending scroll-restoration and native verification.

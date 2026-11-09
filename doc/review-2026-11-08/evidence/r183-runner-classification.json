@@ -1,0 +1,12 @@
+{
+  "source_sha256": "fb2b9ac574c8b02e892d913cc49e1814b6608c41d9bc9aae48a76f8ccf75add7",
+  "retained_quiet_log_status": "passed",
+  "retained_failed_log_status": "failed",
+  "failed_reasons": "process exit 1; small-500/automation_save_draft p95_us 63838 did not beat 50000; small-500/automation_enable p95_us 64160 did not beat 50000; small-500/automation_pause p95_us 57809 did not beat 50000",
+  "legacy_108ms_status": "diagnostic",
+  "missing_live_gate_rejected": true,
+  "self_test_cases": 13,
+  "standalone_entries": 49,
+  "documented_entries": 49,
+  "scope": "Runner classification only; no new complete release run claimed."
+}

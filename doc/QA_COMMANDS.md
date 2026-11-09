@@ -26,7 +26,7 @@ Build once and invoke the dispatch binary directly. Each entry uses an isolated 
 target/debug/what-the-hell-are-you-planning --qa-<entry>
 ```
 
-All 44 offline `--qa*` entries in `src/main.rs` are listed below. Three entries share one intake-acceptance implementation: `--qa`, `--qa-intake` and `--qa-projects`. `--qa-workspace` is the empty-workspace/theme suite; the onboarding/upgrade suite is `--qa-onboarding`.
+All 49 standalone offline `--qa*` entries in `src/main.rs` are covered below: 45 in the table and 4 named after it. The two crash-child modes are excluded from this list. Three entries share one intake-acceptance implementation: `--qa`, `--qa-intake` and `--qa-projects`. `--qa-workspace` is the empty-workspace/theme suite; the onboarding/upgrade suite is `--qa-onboarding`.
 
 | Entry | Runner / purpose |
 | --- | --- |
@@ -56,7 +56,8 @@ All 44 offline `--qa*` entries in `src/main.rs` are listed below. Three entries 
 | `--qa-execution-eligibility` | Shared automation phase/queue status labels at both window sizes and themes |
 | `--qa-simplify` | Compact result-first interaction and toolbar alignment |
 | `--qa-automation` | Fake-clock automation creation, scheduling, queues and recovery |
-| `--qa-automation-perf` | 43,200-period persistence benchmark; run separately |
+| `--qa-automation-perf` | Legacy attachment-latency diagnostic at 1,000 periods; correctness exit still gates |
+| `--qa-live-performance` | Required live-backend 500/1,000 p95 gate; 50 ms per-operation threshold |
 | `--qa-batch` | Approved goal batch execution |
 | `--qa-publishing` | Offline publishing settings, status labels and verification |
 | `--qa-settings` | Agent/model profiles, inheritance, paths and restart |
@@ -75,6 +76,8 @@ All 44 offline `--qa*` entries in `src/main.rs` are listed below. Three entries 
 | `--qa-t11` | T11 interface regression fixture |
 | `--qa-task-edit` | T13 real task-editor save/confirm/retry and scoped Undo |
 
+Four standalone entries are not repeated in the table: `--qa-dispatch-admission`, `--qa-keyboard-visual`, `--qa-live-persistence` and `--qa-set-read`. They are part of the release ledger; `--qa-live-performance` is in the table as the required p95 gate.
+
 `--qa-render-perf` requires a closed, frozen, isolated workspace copy. It rejects WAL or journal sidecars; checkpoint and close the disposable source before copying it. Version 4 is loaded through a private temporary copy, leaving the supplied fixture unchanged:
 
 ```bash
@@ -82,7 +85,26 @@ PLANNING_PERF_WORKSPACE=/path/to/isolated/workspace.sqlite3 \
   target/debug/what-the-hell-are-you-planning --qa-render-perf
 ```
 
-Do not point `PLANNING_PERF_WORKSPACE` at the live workspace. `--qa-automation-perf` creates a large disposable fixture under `.local/automation-perf/<pid>`; run it separately from interaction suites.
+Do not point `PLANNING_PERF_WORKSPACE` at the live workspace. `--qa-automation-perf` creates a 1,000-period disposable fixture under `.local/automation-perf/<pid>/` and records one legacy attachment save-block sample. That sample is a non-gating diagnostic; only its nonzero process exit gates correctness. Required responsiveness is `--qa-live-performance`, which runs the 500- and 1,000-occurrence live fixtures and fails on any per-operation p95 at or above 50 ms.
+
+## Release gate runner
+
+`script/run_review_gate.py` runs the frozen-candidate standalone ledger. The runner writes only its own `--output` directory; existing index/evidence directories are read-only inputs and their raw measurements are not rewritten.
+
+```bash
+python3 script/run_review_gate.py --self-test
+python3 script/run_review_gate.py \
+  --output /path/to/new/gate \
+  --source-root /path/to/frozen/source \
+  --binary /path/to/reviewed/candidate \
+  --expected-sha256 <64-hex-digest> \
+  --fixture-db /path/to/closed-v4-fixture.sqlite3
+```
+
+- `--self-test` runs in-memory classification checks only; it launches no QA entry.
+- `--qa-automation-perf` keeps every raw `ui_save_block_ms` and fixture-period count in `index.json`, classifies the sample as `diagnostic`, and does not gate on its latency.
+- `--qa-live-performance` is required. The runner checks the explicit 50,000 µs target, actual 500/1,000 fixture occurrence counts, every required operation, and each numeric, finite, nonnegative `p95_us` strictly below 50,000. Missing coverage, nonnumeric/boolean values or any failed gate fails the ledger closed; the final result list must also contain the live entry.
+- The final `GATE_SUMMARY` distinguishes `passed`, `passed_with_non_gating_diagnostics` and `failed`; a diagnostic is never reported as a pass. Any functional failure or required live-performance failure still exits nonzero.
 
 ## Live opt-ins
 

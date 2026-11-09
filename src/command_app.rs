@@ -116,11 +116,86 @@ impl TaskApp {
                 "Automation recovery is paused until the stop-intent file is resolved.".into(),
             );
         }
+        // Read-state is a single presentation bit. In live mode, mutate exactly
+        // that occurrence on the live store and submit its typed delta instead
+        // of staging a whole Store clone. Legacy persistence keeps the normal
+        // prepare/commit path.
+        if self.live_persistence_active()
+            && let Command::SetRead { occurrence, unread } = &command
+        {
+            return self.commit_direct_set_read(class, *occurrence, *unread, cx);
+        }
         let prepared = self
             .store
             .prepare_command(id, class, command)
             .map_err(command_error_text)?;
         self.commit_prepared_command(prepared, cx)
+    }
+
+    /// Live-only narrow command path for `Command::SetRead`.
+    ///
+    /// The caller has already run the pending-command/stop guards. This path
+    /// reserves the primary slot before mutating, writes only the occurrence
+    /// read bit and submits the same ordered delta. An enqueue failure retains
+    /// the requested value for Retry; only pre-acceptance failures restore it.
+    /// It never stages or adopts a whole
+    /// Store and never pushes an Undo entry.
+    fn commit_direct_set_read(
+        &mut self,
+        class: CommandClass,
+        occurrence: u64,
+        unread: bool,
+        cx: &mut Context<Self>,
+    ) -> Result<CommandRun, String> {
+        self.live_can_accept_primary()?;
+        let previous = self
+            .store
+            .occurrence(occurrence)
+            .map(|value| value.unread)
+            .ok_or_else(|| "Automation period not found.".to_string())?;
+        let subject = Some(occurrence);
+        {
+            let mut value = self
+                .store
+                .occurrence_mut(occurrence)
+                .ok_or_else(|| "Automation period not found.".to_string())?;
+            value.unread = unread;
+        }
+        let completion = crate::live_save_app::LiveCompletion::Command {
+            class,
+            subject,
+            effects: Vec::new(),
+            exit_token: self.navigation.pending_exit_token.take(),
+            automation_save: self.navigation.pending_automation_save.take(),
+        };
+        match self.submit_live_snapshot(completion, cx) {
+            Ok(crate::live_save_app::SaveAcceptance::Pending) => {
+                Ok(CommandRun::Saving { subject })
+            }
+            Ok(crate::live_save_app::SaveAcceptance::Durable) => {
+                Ok(CommandRun::Durable(CommandReceipt {
+                    subject,
+                    effects: Vec::new(),
+                    undo: crate::domain_command::UndoDecision::NotUndoable(
+                        "Read state is runtime presentation state.",
+                    ),
+                    feedback: None,
+                }))
+            }
+            Err(error) => {
+                // submit_live_snapshot sets live_primary before enqueue. If the
+                // primary obligation was retained for Retry, keep the requested
+                // tracked value so Retry cannot persist the old read state. Roll
+                // back only when no obligation exists (a true pre-acceptance
+                // failure).
+                if self.live_primary.is_none()
+                    && let Some(mut value) = self.store.occurrence_mut(occurrence)
+                {
+                    value.unread = previous;
+                }
+                Err(error)
+            }
+        }
     }
 
     fn commit_prepared_command(

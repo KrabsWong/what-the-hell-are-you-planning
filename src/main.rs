@@ -86,6 +86,8 @@ mod live_performance_qa;
 #[cfg(feature = "qa")]
 mod live_persistence_qa;
 #[cfg(feature = "qa")]
+mod set_read_qa;
+#[cfg(feature = "qa")]
 mod persistence_qa;
 mod project_app;
 mod project_planning;
@@ -434,6 +436,11 @@ fn main() {
     #[cfg(feature = "qa")]
     if std::env::args().any(|arg| arg == "--qa-live-performance") {
         live_performance_qa::run();
+        return;
+    }
+    #[cfg(feature = "qa")]
+    if std::env::args().any(|arg| arg == "--qa-set-read") {
+        set_read_qa::run();
         return;
     }
     #[cfg(feature = "qa")]

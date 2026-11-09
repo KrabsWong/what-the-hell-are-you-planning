@@ -1,5 +1,9 @@
 # Architecture, behavior and interaction review
 
+## Current correction notice — user commits through 98b71d4
+
+[POST_DELIVERY_REVIEW.md](POST_DELIVERY_REVIEW.md) supersedes the broad UX acceptance below for ordinary completed-result navigation, asynchronous report loading, visual hierarchy/layout and sidebar scrolling. The user's corrections reveal missed common cases and incorrect review prescriptions; they are not all new requirements or rare edge cases. Current source and added QA assertions were reviewed, but this documentation update did not independently rerun tests or native acceptance. V01–V06 define the remaining targeted verification. Historical passes remain valid only for their recorded source and scope.
+
 Current first-round delivery and follow-up disposition: [DELIVERY.md](DELIVERY.md). Original requirements and findings below remain traceable; historical defects are not automatically current blockers.
 
 Review date: 2026-11-08 (Asia/Shanghai). Source baseline: `611a4586eedb56600a83c8b272a3af43ba95e4a4`. Working tree was clean at the start. This review changes documentation only.
@@ -114,11 +118,11 @@ Native reproduction: edit a Quick task to a two-hour interval, finish it, create
 
 `open_research_intake` also navigates to a chosen/default project before opening the modal; cancelling does not restore the caller. Computer observed global New research opening under Workspace, without an in-dialog destination selector. Fix: **T10**, supported by **T12**. Treat the difference between structural parent and return-to-origin as a deliberate product contract, not as two meanings of Back.
 
-### F11 — Shared control factories contradict the affordance specification (P2, UI + code)
+### F11 — Historical affordance finding; blanket-border remedy withdrawn
 
 [controls.rs](../../src/controls.rs) makes `quiet_button` and `tool_icon` ghost controls. DESIGN requires secondary/icon action boundaries visible at rest. Computer showed unbounded Cancel, Close, Open and toolbar icons. The period cancellation control also lacks the specified danger treatment in the inspected dialog. Existing icons were embedded correctly; this is semantics/discoverability, not missing assets.
 
-Use bordered secondary controls consistently, reserve link styling for navigation, and give destructive actions an explicit tone. Avoid blindly adding a border inside compound task tabs, whose documented geometry is an intentional exception. Fix: **T11**.
+**Superseded direction:** the blanket bordered-secondary recommendation was incorrect and is withdrawn by C04. Current controls use visible ghost supporting actions/icons, with separate primary/selection/danger roles. Reserve link styling for navigation and give destructive actions an explicit tone. Avoid blindly adding a border inside compound task tabs, whose documented geometry is an intentional exception. Fix: **T11**.
 
 ### F12 — Histories are bounded visually but saves block the UI (P1, measured)
 
@@ -211,6 +215,20 @@ On the r143 isolated normal build, choose Add Files on a paused research goal an
 `poll_runtime` polls material jobs, but its keep-alive predicate omits `pending_material_job`. `poll_research_io` clears the import receiver and submits verification; with no other active work the pump may stop before that response arrives. Material submissions also lack an explicit pump wake. Independently, the success toast is emitted after submitting verification, before impact approval and durable save.
 
 Repair under **T14/T21**, with **T20** acceptance: include active verification/cleanup work in the bounded runtime lifecycle and wake it from idle. Waiting for user approval must remain quiescent. Show truthful pending/review feedback and reserve saved-success feedback for the durable receipt. Add executor-driven tests that start from idle without manually polling: import → verification → impact review; Cancel → cleanup → idle; confirm → exact disk attachment → saved state. Native acceptance must repeat these flows and verify material count, approval/result impact and restart persistence. This depends on the in-progress runtime wake/receipt repair; it does not require changing the attachment file format or collection-navigation work.
+
+## Findings added after user corrections
+
+These are baseline-at-aee91f9 misses, with repairs already present at 98b71d4. Source-reviewed does not mean independently accepted. Detailed code evidence, review responsibility and V01–V06 acceptance are in [POST_DELIVERY_REVIEW](POST_DELIVERY_REVIEW.md).
+
+| Finding | Missed behavior or wrong direction | Original ownership | Current disposition |
+| --- | --- | --- | --- |
+| F26 | Ordinary completed sidebar/neighbor target opens details or misses lazy persisted results | T06/T07/T15 | C01 implemented; V01 pending |
+| F27 | Async result navigation lacks atomic commitment and latest-intent cancellation | T02/T08/T10/T12/T15 | C02 implemented; V02 pending |
+| F28 | Lazy or failed body read can be presented as no report | T06/T14/T15 | C03 implemented; V02 pending |
+| F29 | Reader width, wrapping header actions, Regenerate emphasis and stacked Status violate expected layout/hierarchy | T11/T19 | C05/C06/C07 implemented; V03/V04 pending |
+| F30 | Brand/name scroll with navigation; QA enforces that wrong invariant | T11/T19 | C08 implemented; V05 pending |
+| F31 | Wheel redraw repeats status validation and benchmark forces unrelated full-window work | T14/T15/T19 | C09 implemented; V05 pending; native smoothness not proved |
+| F32 | English-only audit misses research placeholders | T17 | C10 corrected in source; V06 string check |
 
 ## Architecture boundaries to extract
 

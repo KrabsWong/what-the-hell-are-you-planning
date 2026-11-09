@@ -1,5 +1,9 @@
 # First-round remaining acceptance
 
+## Current correction notice — user commits through 98b71d4
+
+[POST_DELIVERY_REVIEW.md](POST_DELIVERY_REVIEW.md) supersedes the broad UX acceptance below for ordinary completed-result navigation, asynchronous report loading, visual hierarchy/layout and sidebar scrolling. The user's corrections reveal missed common cases and incorrect review prescriptions; they are not all new requirements or rare edge cases. Current source and added QA assertions were reviewed, but this documentation update did not independently rerun tests or native acceptance. V01–V06 define the remaining targeted verification. Historical passes remain valid only for their recorded source and scope.
+
 Status: first-round checklist closed by root disposition in [DELIVERY](DELIVERY.md), with explicit nonblocking follow-ups. The sections below preserve the checks and their evidence. Authority: [TASKS](TASKS.md). Current evidence and historical corrections: [IMPLEMENTATION](IMPLEMENTATION.md). The user accepts occasional isolated hitches; sustained stalls, incorrect scrolling/navigation, data loss and false status remain blockers. Preserve raw failures and named follow-ups.
 
 ## R1 — Finish current standalone regression

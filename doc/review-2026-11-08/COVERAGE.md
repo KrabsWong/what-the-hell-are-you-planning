@@ -1,8 +1,24 @@
 # Full feature coverage and native review evidence
 
+## Current correction notice — user commits through 98b71d4
+
+[POST_DELIVERY_REVIEW.md](POST_DELIVERY_REVIEW.md) supersedes the broad UX acceptance below for ordinary completed-result navigation, asynchronous report loading, visual hierarchy/layout and sidebar scrolling. The user's corrections reveal missed common cases and incorrect review prescriptions; they are not all new requirements or rare edge cases. Current source and added QA assertions were reviewed, but this documentation update did not independently rerun tests or native acceptance. V01–V06 define the remaining targeted verification. Historical passes remain valid only for their recorded source and scope.
+
 Baseline: `611a4586eedb56600a83c8b272a3af43ba95e4a4`. Review: 2026-11-08. This ledger supersedes the first review's partial-walkthrough coverage statement. [ISSUES.md](ISSUES.md) records defects; [TASKS.md](TASKS.md) is the implementation authority. Every current feature area is accounted for below. Coverage is not release approval: a reproduced defect is covered but failed.
 
-## Current acceptance overlay: r210
+## Current correction coverage at 98b71d4
+
+| Surface / behavior | Current evidence reviewed | Independent runtime status |
+| --- | --- | --- |
+| Ordinary completed goal/step destinations after restart | `completed_navigation_accepts_lazy_current_results_after_restart`; `exercise_completed_research` | Not rerun; V01 |
+| Async selection and read states | `lazy_reader_check`; real-SQLite `atomic_reader_navigation_check`; cancellation call sites | Not rerun; V02. Search/overlay/workspace cancellation is source-inspected, not exhaustively asserted by the new QA |
+| Reader/header/properties layout | New result-layout 1000/1440/2672 and 260/480 sidebar geometry assertions; affordance properties checks | Not rerun; V03/V04 |
+| Fixed sidebar and cached statuses | Reversed fixed-brand assertion, revised event/draw benchmark, status invalidation code and opt-level-3 profile | Native improvement unverified; V05 |
+| English placeholders | Both changed input placeholders inspected | Source verified; no user data changed |
+
+The task count and old green suite were insufficient to establish these cases. See [review responsibility and revised acceptance](POST_DELIVERY_REVIEW.md).
+
+## Historical acceptance overlay: r210
 
 This ledger preserves the original walkthrough and intermediate failures as historical evidence. Current acceptance uses [the bounded remaining checklist](FIRST_ROUND_REMAINING.md), [implementation evidence](IMPLEMENTATION.md), and [task authority](TASKS.md). Original failures below do not override verified later repairs.
 

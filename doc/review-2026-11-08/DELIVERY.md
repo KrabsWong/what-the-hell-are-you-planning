@@ -1,8 +1,12 @@
 # First-round delivery decision
 
+## Current correction notice — user commits through 98b71d4
+
+[POST_DELIVERY_REVIEW.md](POST_DELIVERY_REVIEW.md) supersedes the broad UX acceptance below for ordinary completed-result navigation, asynchronous report loading, visual hierarchy/layout and sidebar scrolling. The user's corrections reveal missed common cases and incorrect review prescriptions; they are not all new requirements or rare edge cases. Current source and added QA assertions were reviewed, but this documentation update did not independently rerun tests or native acceptance. V01–V06 define the remaining targeted verification. Historical passes remain valid only for their recorded source and scope.
+
 Date: 2026-11-09. Branch: `feature/review-2026-11-08-optimization`.
 
-**Accepted for first-round development delivery under the user’s explicit nonblocking-deferral policy.** All T01–T25 have an implementation and reviewed disposition. No currently established core data-loss, duplicate-execution, wrong-destination, false-save or sustained-scroll defect remains open in the accepted scope. This is not a claim that every external service or environment combination was tested, and it does not deploy or replace the production app.
+**Historical decision at aee91f9; broad UX acceptance superseded after user corrections.** The r210 report recorded dispositions for T01–T25. Its broad no-wrong-destination/UX-completion claim was not justified for the common ordinary-research, loading and layout paths corrected by the user; those paths require V01–V05 in POST_DELIVERY_REVIEW. Unaffected evidence is retained without extending it to the new source. This is not a claim that every external service or environment combination was tested, and it does not deploy or replace the production app.
 
 Authority: [TASKS](TASKS.md). Original findings: [ISSUES](ISSUES.md). Historical coverage: [COVERAGE](COVERAGE.md). Detailed chronology: [IMPLEMENTATION](IMPLEMENTATION.md). This document supersedes earlier “current” pending dispositions; original failures remain historical evidence.
 
@@ -25,21 +29,21 @@ Task acceptance follows the first-round policy in TASKS. Individual checks remai
 | T03 | Passed | [T03 retry state](evidence/T03-native-retry-state.json): schedule paused while same occurrence retried; screenshot (local screenshot; excluded from Git) | Optional retry smoke deferred |
 | T04 | Passed | [r143 Undo audit](evidence/r143-live-undo-write-audit.json): exact automation/task rows only; history tables untouched | None |
 | T05 | Passed | [T05 visible QA](evidence/r210-retained-checks.json), [T05 automation](evidence/r210-retained-checks.json) | None |
-| T06 | Passed | [T06 result matrix](evidence/r210-retained-checks.json): reader/copy/export parity; typed states; [r208 native transition](evidence/r208-result-row-native.json) | Closed: [r210 portable tests](evidence/r210-result-row-acceptance.json) and r208 native transition; F3 is a future refinement |
-| T07 | Passed | [T07 sidebar](evidence/r210-retained-checks.json), T07 recent (local screenshot; excluded from Git) | Multi-goal variations deferred |
+| T06 | Historical acceptance superseded for corrected paths | [T06 result matrix](evidence/r210-retained-checks.json): reader/copy/export parity; typed states; [r208 native transition](evidence/r208-result-row-native.json) | C01/C03; V01/V02 required. The r208/r210 row transition did not prove reader loading behavior. |
+| T07 | Historical acceptance superseded for corrected paths | [T07 sidebar](evidence/r210-retained-checks.json), T07 recent (local screenshot; excluded from Git) | C01; V01 required for ordinary result-first navigation after restart. |
 | T08 | Passed | [T08 search](evidence/r210-retained-checks.json), [global search](evidence/r210-retained-checks.json) | Route×shortcut matrix deferred |
 | T09 | Passed | [T09 unit checks](evidence/r210-retained-checks.json); T09 new defaults (local screenshot; excluded from Git), minute reset (local screenshot; excluded from Git) | None |
-| T10 | Passed | [T10 navigation](evidence/r210-retained-checks.json), Back preserves (local screenshot; excluded from Git) | None |
-| T11 | Passed | [T11 state matrix](evidence/r210-retained-checks.json): 1440/1000, light/dark | Lifecycle-control visual recheck |
-| T12 | Passed | [T12 architecture audit](evidence/T12-reviewed-navigation-architecture-audit.md), [T12 unit](evidence/r210-retained-checks.json) | Payload relocation explicitly deferred |
+| T10 | Historical acceptance superseded for corrected paths | [T10 navigation](evidence/r210-retained-checks.json), Back preserves (local screenshot; excluded from Git) | C02; V02 required for atomic pending destinations and cancellation. |
+| T11 | Historical acceptance superseded for corrected paths | [T11 state matrix](evidence/r210-retained-checks.json): 1440/1000, light/dark | C04–C08; V03/V04 required. The permanent-border prescription is withdrawn. |
+| T12 | Historical acceptance superseded for corrected paths | [T12 architecture audit](evidence/T12-reviewed-navigation-architecture-audit.md), [T12 unit](evidence/r210-retained-checks.json) | C02; V02 required. Typed visible routes did not cover pending navigation intent. |
 | T13 | Passed | [T13 scoped edit](evidence/r210-retained-checks.json), [task edit](evidence/r210-retained-checks.json) | None |
 | T14 | Passed | [r199 live](evidence/r199-offline-ledger.json), [r195 live detail](evidence/r195-current-live-performance.json) | 43k/86k stress non-gating |
 | T15 | Passed | Same live entry; [r195](evidence/r195-current-live-performance.json) history p95 10.5–12.5 ms; indexed rows | 30k-body XL non-gating |
 | T16 | Passed | [T16 arithmetic](evidence/r210-retained-checks.json), [T16 schedule](evidence/r210-retained-checks.json) | None |
 | T17 | Passed | [TASKS](TASKS.md), [DESIGN](../../DESIGN.md), [ROUTE_ACTION_MATRIX](../ROUTE_ACTION_MATRIX.md) | Stale status-table wording |
 | T18 | Passed | [T18 policy](evidence/r210-retained-checks.json), Quick rejection (local screenshot; excluded from Git) | Capability is documented intent/validation, not sandbox |
-| T19 | Passed with F1 verification deferral | Passed: [r208 result-row native transition](evidence/r208-result-row-native.json), [compact results r200](evidence/r200-compact-results.json), [compact reader/settings r201](evidence/r201-compact-reader-settings.json), [material/settings r199](evidence/r199-compact-material-settings.json), [ordinary List r197](evidence/r197-ordinary-native.json), [compact List r198](evidence/r198-compact-native.json), [large Light reader r204](evidence/r204-large-light-reader.json), [concurrent save r203](evidence/r203-concurrent-save-scroll.json), [keyboard r143](evidence/r143-native-focus.json), [count nav r156](evidence/r156-count-navigation-review.json) | **F1:** native Board horizontal remains Blocked by zero-delta CUA input; named nonblocking verification deferral. No product failure established |
-| T20 | Passed with named first-round boundaries | Same evidence; feature-family rows below | Root accepts the bounded first-round disposition below; F1–F9 remain explicit |
+| T19 | Historical acceptance superseded for corrected paths | Passed: [r208 result-row native transition](evidence/r208-result-row-native.json), [compact results r200](evidence/r200-compact-results.json), [compact reader/settings r201](evidence/r201-compact-reader-settings.json), [material/settings r199](evidence/r199-compact-material-settings.json), [ordinary List r197](evidence/r197-ordinary-native.json), [compact List r198](evidence/r198-compact-native.json), [large Light reader r204](evidence/r204-large-light-reader.json), [concurrent save r203](evidence/r203-concurrent-save-scroll.json), [keyboard r143](evidence/r143-native-focus.json), [count nav r156](evidence/r156-count-navigation-review.json) | C05–C09; V03–V05 required on the new source/profile; earlier native horizontal input boundary retained. |
+| T20 | Historical acceptance superseded for corrected paths | Same evidence; feature-family rows below | V01–V06 must be recorded before a new integrated UX sign-off. |
 | T21 | Passed | [T21 long history](evidence/r210-retained-checks.json), [T21 native cancel](evidence/r145-native-impact-cancel.json) | Post-Undo wording |
 | T22 | Passed | [T22 archive](evidence/r210-retained-checks.json), T22 compact (local screenshot; excluded from Git) | Archived upstream-wait sentence |
 | T23 | Passed | [T23/T25 requests](evidence/r210-retained-checks.json), planning attempt (local screenshot; excluded from Git) | >2 replans/legacy mixes |
@@ -90,6 +94,6 @@ The feature-family table above combines native and automated evidence. It is not
 - Settings/materials inheritance/profiles, paths, paste/drop/remove and missing-config explanations: relevant settings/attachment/input checks Passed; native import/material grid/preview/settings evidence retained. Exhaustive OS clipboard/drop/error combinations Not run (F6/F7).
 - Archive/restore and local exact-version publication: automated checks Passed and archive native evidence retained. Real remote publication Not run (F8).
 
-## Sign-off
+## Historical sign-off (superseded for corrected UX paths)
 
-Root accepts the implemented first-round scope and deliberately accepts F1–F9 as the named follow-up work permitted by the user. T19 physical horizontal proof stays Blocked at case level; T20 accepts that explicit boundary rather than calling it passed. No failing affected test remains unexplained. Screenshots and raw runtime traces stay local; repository evidence consists of review summaries, hashes and test records. Future changes must rerun their affected checks and update this disposition.
+The historical r210 decision accepted the implemented first-round scope and F1–F9 as the named follow-up work permitted by the user. T19 physical horizontal proof stays Blocked at case level; T20 accepts that explicit boundary rather than calling it passed. No failing affected test remains unexplained. Screenshots and raw runtime traces stay local; repository evidence consists of review summaries, hashes and test records. Future changes must rerun their affected checks and update this disposition.

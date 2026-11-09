@@ -1,6 +1,6 @@
 # Optimization implementation authority
 
-Current first-round delivery and follow-up disposition: [DELIVERY.md](DELIVERY.md). Original requirements and findings below remain traceable; historical defects are not automatically current blockers.
+Current correction authority: [POST_DELIVERY_REVIEW.md](POST_DELIVERY_REVIEW.md), covering user commits `ce38de5` and `98b71d4`. The previous [delivery decision](DELIVERY.md) is historical and its broad UX sign-off is superseded. V01–V06 specify targeted acceptance of the implemented corrections; do not reimplement them from the older instructions below.
 
 Date: 2026-11-08. Baseline and evidence: [ISSUES.md](ISSUES.md), [COVERAGE.md](COVERAGE.md). Tasks remain **Open** unless explicitly marked otherwise. Implementation status and verification are recorded in [IMPLEMENTATION.md](IMPLEMENTATION.md).
 
@@ -124,17 +124,21 @@ Dependencies below are mandatory merge prerequisites unless explicitly called �
 
 ## T06 — Introduce typed result presentation
 
+**Post-delivery correction (98b71d4):** C01/C03 supersede broad result-state acceptance. Add durable-unloaded, read-failed, retry, absent-after-read and hydrated states; V01/V02 must verify ordinary readers as well as automation rows.
+
 **Status:** initial focused acceptance recorded on 2026-11-08; implementation is included in checkpoint `d3ef9a0`. This historical acceptance does not waive revalidation after subsequent persistence/runtime changes or the final release gates. See [independent acceptance](IMPLEMENTATION.md#t06-independent-acceptance). T21 must preserve this presentation contract; final integration/native release gates remain.
 
 **Priority/size:** P1/M. **Findings:** F05, F06. **Dependencies:** none; coordinate with T05.
 
 **Do:** distinguish final output, intermediate work and live commentary across both domains.
 
-**How:** add a presentation selector returning result kind, attempt status, freshness, evidence quality, reader Markdown and sources. Prefer the validated current final report. Without one, show an explicit “No final report yet” plus progress/step results. Use `reader_markdown` and a shared English UI notice for evidence gaps; preserve user/generated report language. Put streaming diagnostics in a clearly named progress section.
+**How:** add a presentation selector returning result kind, attempt status, freshness, evidence quality, reader Markdown and sources. Prefer the validated current final report. For a successfully loaded result without a validated final report, show “No final report yet” plus progress/step results. Durable but unloaded bodies are LoadingReport, not absent reports; read failures require report-specific Retry. Explicit navigation retains the caller until the destination read completes. Use `reader_markdown` and a shared English UI notice for evidence gaps; preserve user/generated report language. Put streaming diagnostics in a clearly named progress section.
 
 **Acceptance:** Quick, multi-goal Research automation and ordinary Research cover running/complete/partial/failed/cancelled/stale/regenerating states. Raw JSON and internal evidence-gap instructions never appear as report prose. Finished evidence remains inspectable after failure. A successful process exit without a validated report is not presented as a complete answer. Copy/export/render use the same reader transformation where applicable.
 
 ## T07 — Keep task neighbors within the active navigation domain
+
+**Post-delivery correction (98b71d4):** C01 corrects the earlier detail-preserving ordinary-neighbor policy. V01 must prove both destination domain and target report identity after restart; automation-only neighbor tests are insufficient.
 
 **Status:** initial focused acceptance recorded on 2026-11-08; implementation is included in checkpoint `d3ef9a0`. This historical acceptance does not waive revalidation after subsequent persistence/runtime changes or the final release gates. See [independent acceptance](IMPLEMENTATION.md#t07-independent-acceptance).
 
@@ -142,7 +146,7 @@ Dependencies below are mandatory merge prerequisites unless explicitly called �
 
 **Do:** constrain automation Previous/Next to the current occurrence's ordered steps.
 
-**How:** accept an explicit navigation context rather than filtering only by project. Specify whether goal overview participates; target is step-to-step within that period, with a separate Overview action. Disable at boundaries rather than silently wrapping into another period. Keep ordinary Research's documented tree behavior until separately changed.
+**How:** accept an explicit navigation context rather than filtering only by project. Specify whether goal overview participates; target is step-to-step within that period, with a separate Overview action. Disable at boundaries rather than silently wrapping into another period. Keep ordinary Research tree ordering, but choose the completed target's current result from both details and readers; completed goals open their final report. Current durable lazy bodies count as navigable, while busy/stale/failed work stays on details. This does not relax execution prerequisites.
 
 **Acceptance:** two automations with two periods each cannot be crossed through generic Previous/Next. Visible context and tooltips identify the destination. Missing/deleted target falls back safely. Back returns to the same period; recently opened entries visibly distinguish automation/period ownership.
 
@@ -170,6 +174,8 @@ Dependencies below are mandatory merge prerequisites unless explicitly called �
 
 ## T10 — Preserve origin, dirty drafts and creation destination
 
+**Post-delivery correction (98b71d4):** C02 adds atomic async destination commitment. V02 must retain the old page while reading, commit title/selection/body together and cancel obsolete destinations on newer user intent.
+
 **Priority/size:** P2/M. **Findings:** F10. **Dependencies:** T02.
 
 **Do:** make Back, breadcrumbs, Cancel and Close predictable.
@@ -180,17 +186,21 @@ Dependencies below are mandatory merge prerequisites unless explicitly called �
 
 ## T11 — Restore consistent action affordances and visual hierarchy
 
+**Post-delivery correction (98b71d4):** C04–C08 replace the old blanket border and stacked-status direction. Use current DESIGN: ghost supporting controls, reader-context Regenerate primary, stable title/actions, full-width reader, inline Status, fixed sidebar identity. Verify with V03/V04.
+
 **Status:** initial focused acceptance recorded on 2026-11-08; implementation is included in checkpoint `d3ef9a0`. This historical acceptance does not waive revalidation after subsequent persistence/runtime changes or the final release gates. See [independent acceptance](IMPLEMENTATION.md#t11-independent-acceptance). Final T19/T20 native and release gates remain.
 
 **Priority/size:** P2/M. **Findings:** F11, F17. **Dependencies:** none; T05/T06 for final state screenshots.
 
 **Do:** align shared controls with DESIGN while keeping the current visual identity.
 
-**How:** update secondary/icon factories to show boundaries at rest; reserve ghost treatment for documented compound-control exceptions. Apply danger treatment to cancel/stop; distinguish selection from advancing actions. Give trigger source a visible text label where space permits, with a tooltip in compact layouts. Use neutral row surfaces and semantic state accents rather than large competing fills. Make long step titles wrap or expose their full value predictably.
+**How:** keep auxiliary and icon controls in the user-restored ghost style with labels/icons visible at rest, full hit areas and hover/focus feedback; permanent borders are not a universal discoverability requirement. Apply danger treatment to cancel/stop; distinguish selection from advancing actions. Give trigger source a visible text label where space permits, with a tooltip in compact layouts. Use neutral row surfaces and semantic state accents rather than large competing fills. Make long step titles wrap or expose their full value predictably.
 
 **Acceptance:** inspect 1440×920 and 1000×680, light and dark, with long English/CJK user titles. Actions are recognizable without hover; passive status chips do not resemble controls; one primary advancing action per group; no clipped action labels. Run icon validation, unit tests and relevant isolated UI QA. Keep Lucide assets and the task-tab exception; do not add a new icon system.
 
 ## T12 — Extract a typed navigation controller
+
+**Post-delivery correction (98b71d4):** Typed route identity alone does not cover pending I/O. C02 separates PendingResultNavigation from the visible route; V02 verifies cancellation across navigation, overlays/search and workspace changes. Further payload refactoring remains separate.
 
 **Scoped deferral:** further relocation of page/overlay payload fields (`layout`, status/filter/history limits, editor/search payloads and legacy origin diagnostics) is deferred under the user's time-boxing allowance. Typed `NavState` already owns route identity, overlays and bounded return frames; current offline navigation and caller restoration checks pass. This defers internal organization only, not wrong destinations, draft loss, modal focus or native acceptance. Risk: future direct payload writers could bypass captured state. Follow-up: move those payloads behind page/overlay APIs and prove the same filter/scroll/selection, dirty-exit and focus matrix before and after. T10/T19/T20 behavioral gates remain open.
 
@@ -214,6 +224,8 @@ Dependencies below are mandatory merge prerequisites unless explicitly called �
 
 ## T14 — Move persistence off the UI thread with ordered acknowledgements
 
+**Post-delivery correction (98b71d4):** C03/C09 require separate body-read state and meaningful UI-work measurements; live-save p95 does not prove reader navigation or scrolling. V02/V05 verify those boundaries.
+
 **Priority/size:** P1/L. **Findings:** F12. **Dependencies:** T13.
 
 **Do:** remove the measured synchronous save stall without weakening durability.
@@ -223,6 +235,8 @@ Dependencies below are mandatory merge prerequisites unless explicitly called �
 **Acceptance:** on representative fixtures up to 1,000 occurrences, UI interactions remain responsive during save; target p95 main-thread save-related work under 50 ms, with hardware and sample count recorded. Restart/crash injection verifies cursor+occurrence atomicity and no duplicate dispatch. Saving/failed/retry status accurately reflects durability. No “Saved” is shown before acknowledgement.
 
 ## T15 — Add incremental writes and indexed history queries
+
+**Post-delivery correction (98b71d4):** C01/C03 preserve navigability of current lazy results without eager loading or relaxed execution checks. C09 avoids semantic status revalidation on wheel-only redraws; V01/V02/V05 cover these effects.
 
 **Priority/size:** P2/L. **Findings:** F12. **Dependencies:** T14.
 
@@ -246,6 +260,8 @@ Dependencies below are mandatory merge prerequisites unless explicitly called �
 
 ## T17 — Reconcile current product/design/workflow documentation
 
+**Post-delivery correction (98b71d4):** Current PRODUCT, DESIGN, ICON_GUIDELINES and RESEARCH_WORKFLOW_STRATEGY from the user commits take precedence over old review prescriptions. Route/action and review documents must not retain conflicting border, reader or sign-off rules; see V06.
+
 **Priority/size:** P2/S. **Findings:** F14. **Dependencies:** T03, T05, T06; coordinate with all behavior tasks.
 
 **Do:** remove contradictory current guarantees and outdated comments.
@@ -268,6 +284,8 @@ Dependencies below are mandatory merge prerequisites unless explicitly called �
 
 ## T19 — Verify keyboard behavior and visual readability
 
+**Post-delivery correction (98b71d4):** Old fixed-size visibility checks and the brand-following assertion were insufficient. V03–V05 add sidebar-resize geometry, fixed identity, current build-profile provenance and actual native scrolling; author-reported benchmark results do not close native verification.
+
 **Priority/size:** P2/M. **Findings:** F17. **Dependencies:** T05, T06, T07, T08, T10, T11.
 
 **Do:** make ordinary keyboard navigation predictable and keep task context readable in compact layouts.
@@ -277,6 +295,8 @@ Dependencies below are mandatory merge prerequisites unless explicitly called �
 **Acceptance:** keyboard opens/closes dialogs without moving focus into the background or losing the opener. Visible context identifies the target of repeated actions. Long titles, statuses, empty states, failures and disabled reasons remain readable at minimum window size.
 
 ## T20 — Run the full regression matrix for release acceptance
+
+**Post-delivery correction (98b71d4):** The aee91f9 blanket UX sign-off is superseded for the corrected paths. V01–V06 must distinguish author-reported results, source assertions, independent replay and native observation. Common restart/navigation/resize cases are required, not rare-combination deferrals.
 
 **Priority/size:** P1/M gate. **Findings:** all; closes review coverage gaps. **Dependencies:** T01–T19 and T21–T25 for full program sign-off; can also be run on each delivered wave.
 
@@ -291,11 +311,11 @@ Dependencies below are mandatory merge prerequisites unless explicitly called �
 | Workspace | New/open, invalid folder, lock conflict, save failure/retry, backup/restore |
 | Research | Global/project/topic creation, saved request, planning failure/retry, approval, List/Board, drag, queue, stop/resume, selective rerun |
 | Automation | Quick/Research, all schedule kinds, timezone/preview, draft/edit/replan/enable, pause/resume schedule, manual run, retry period, queued/failed/skipped/recovering |
-| Navigation | Every sidebar item, breadcrumbs vs Back, period→step→return, Previous/Next, recently opened, global search and shortcuts |
-| Results | Final/intermediate/live/partial/stale, history/filter/unread, sources, copy/export, regeneration, technical details |
+| Navigation | Every sidebar item, breadcrumbs vs Back, period→step→return, ordinary completed goal/step result-first Previous/Next from details and readers, lazy restart, latest-intent async cancellation, recently opened, global search and shortcuts |
+| Results | Final/intermediate/live/partial/stale; loading versus failed read versus confirmed absence; report-specific retry; atomic reader commitment; history/filter/unread, sources, copy/export, regeneration, technical details |
 | Settings/materials | Agent/models/inheritance/profiles, paths, attachments paste/drop/remove, disabled and missing-config explanations |
 | Archive/publication | Archive/restore semantics; offline publish states and exact-version verification; real remote publish only in a separately authorized test destination |
-| Visual/keyboard | 1440×920 and 1000×680; both themes; long titles; keyboard/focus; readable status text |
+| Visual/keyboard | 1440×920, 1000×680 and 2672px layout probe; both themes; 260/480px sidebar and live resize; fixed identity/title actions, full-width readers, inline Status; long titles; keyboard/focus |
 
 For every case record Passed/Failed/Blocked/Not run, expected destination/effect, actual result and evidence. Release sign-off must not describe a blocked/not-run case as passed. No unresolved P1, no unexplained test failure, and no accidental change to the user's real scheduled work is allowed.
 

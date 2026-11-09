@@ -157,19 +157,75 @@ fn verify_structural_paths(
     // Real workspace-menu Settings action captures the caller page.
     cx.update_window(handle, |_, w, cx| {
         app.update(cx, |a, cx| {
+            // Make the Automations list genuinely scrollable so the Settings
+            // return frame proves scroll restoration rather than a clamped 0.
+            for index in 0..40u64 {
+                let _ = a.store.create_automation_draft(
+                    1,
+                    AutomationShape::Research,
+                    format!("Scroll fixture {index}"),
+                    "Track the scroll fixture".into(),
+                    "A short note".into(),
+                    Schedule {
+                        spec: ScheduleSpec::Daily {
+                            hour: 8,
+                            minute: 30,
+                        },
+                        timezone: "Asia/Shanghai".into(),
+                    },
+                    AutomationPolicy::default(),
+                    Some(template()),
+                    2_000 + index as i64,
+                );
+            }
             a.structural_navigation();
             a.navigate(crate::app::Scope::Automations, w, cx);
-            a.automation_ui
-                .scroll
-                .set_offset(point(px(0.), px(-80.)));
             cx.notify();
         });
     })
     .unwrap();
+    let mut captured_settings_scroll = 0.0f32;
     cx.update_window(handle, |_, w, cx| {
         w.render_frame(cx);
+        w.render_frame(cx);
+        assert!(
+            app.read(cx).store.automations().len() >= 40,
+            "scroll fixture must be visible"
+        );
+        let max = app.read(cx).automation_ui.scroll.max_offset();
+        assert!(
+            max.y > px(70.),
+            "automation list rows must overflow the viewport; max_offset={max:?}"
+        );
+        app.update(cx, |a, _| {
+            a.automation_ui.scroll.scroll_to_item(40);
+        });
+        w.render_frame(cx);
+        assert!(
+            app.read(cx).automation_ui.scroll.offset().y <= px(-70.),
+            "automation list scroll offset must be set before Settings"
+        );
+        assert!(
+            app.read(cx).automation_ui.scroll.top_item() >= 30,
+            "last automation rows are reachable with real scrolling"
+        );
+        println!(
+            "automation scroll fixture: max_offset={:?} top_item={}",
+            max,
+            app.read(cx).automation_ui.scroll.top_item()
+        );
+    })
+    .unwrap();
+    cx.update_window(handle, |_, w, cx| {
         w.click("workspace-menu", cx);
         w.render_frame(cx);
+        assert!(
+            app.read(cx).automation_ui.scroll.offset().y <= px(-70.),
+            "opening the workspace menu must not reset caller scroll"
+        );
+    })
+    .unwrap();
+    cx.update_window(handle, |_, w, cx| {
         w.within("popup-menu").click(3usize, cx);
         w.render_frame(cx);
     })
@@ -183,6 +239,11 @@ fn verify_structural_paths(
         assert!(
             w.try_find("navigation-back").is_some(),
             "workspace-menu Settings captures its caller"
+        );
+        assert_eq!(
+            w.focused(cx),
+            Some(app.read(cx).focus.clone()),
+            "closing the workspace menu restores page focus for keyboard Back"
         );
         let captured_scroll = a
             .return_frames()
@@ -198,16 +259,22 @@ fn verify_structural_paths(
             captured_scroll <= -70.0,
             "Settings return frame captures the caller scroll"
         );
+        captured_settings_scroll = captured_scroll;
     })
     .unwrap();
     cx.update_window(handle, |_, w, cx| {
-        w.click("navigation-back", cx);
+        w.press("cmd-[", cx);
         w.render_frame(cx);
     })
     .unwrap();
     cx.update_window(handle, |_, _, cx| {
         let a = app.read(cx);
         assert_eq!(a.scope(), crate::app::Scope::Automations);
+        let restored = a.automation_ui.scroll.offset().y.as_f32();
+        assert!(
+            (restored - captured_settings_scroll).abs() <= 1.0,
+            "Cmd+[ restores the exact captured caller scroll: captured={captured_settings_scroll} restored={restored}"
+        );
     })
     .unwrap();
 

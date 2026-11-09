@@ -467,6 +467,10 @@ impl TaskApp {
                                 let _ = entity.update(cx, |app, cx| {
                                     app.record_origin();
                                     app.navigate(Scope::Settings, w, cx);
+                                    // The popup item that triggered this action is
+                                    // removed with the menu. Focus the page root so
+                                    // Cmd+[ keeps reaching the app shortcut handler.
+                                    w.focus(&app.focus, cx);
                                 });
                             }
                         }),

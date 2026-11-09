@@ -1,0 +1,30 @@
+{
+  "candidate": "r117 working tree",
+  "guard_binary": ".local/t20-r117/fix/app2",
+  "guard_sha256": "4afdc9e595543ac565e1d3e72b0bc39db2cc29717a3da9d6a47cd8c4565b34ef",
+  "root_failure": "src/task_edit_qa.rs:350 pending_saved_exit remained Some after synchronous impact-confirm task save",
+  "diagnosis": "The impact-confirm path saved synchronously but only scheduled pending_saved_exit completion for a later render frame. The fixture asserts immediately after one rendered click.",
+  "fix": "After an exact synchronous task save, complete only the pending exit whose task/editor-instance/values match the save that just completed, then run the captured exit immediately. Unrelated/newer pending exits are untouched.",
+  "commands": {
+    "task_edit": {
+      "exit": 0,
+      "result": "Task edit QA passed"
+    },
+    "live_persistence": {
+      "exit": 0,
+      "cases_passed": 20,
+      "cases_failed": 0,
+      "editor_43200_ui_us": 17613,
+      "history_43200_us": 2526
+    },
+    "full_qa_tests": {
+      "unit_passed": 701,
+      "unit_ignored": 2,
+      "dispatch_crash": 8,
+      "v4_crash": 3,
+      "additional_v4": 2,
+      "failed": 0
+    }
+  },
+  "not_weakened": "No task-edit assertion was removed, skipped or given a sleep."
+}

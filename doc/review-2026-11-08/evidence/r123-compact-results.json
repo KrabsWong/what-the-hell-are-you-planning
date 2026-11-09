@@ -1,0 +1,26 @@
+{
+  "candidate": "r120 compact isolated",
+  "theme": "Dark",
+  "window_logical": [
+    1000,
+    680
+  ],
+  "screenshot_pixels": [
+    2000,
+    1362
+  ],
+  "route": "Automation results",
+  "result": "Failed",
+  "observations": [
+    "Header subtitle and unread toolbar hint extend beyond right viewport edge.",
+    "All five result rows place the right-side action outside the viewport; only its left border is visible.",
+    "Timestamp, shape, name, Manual and Succeeded consume fixed horizontal space."
+  ],
+  "required_fix": "Reflow/wrap content responsively, preserve result identity and status, ensure every row action is inside viewport and clickable in both themes/sizes.",
+  "owner": "T19 render-only; separate from T12 automation-list scroll and T14 completion",
+  "additional_checks": {
+    "row_click": "Passed: row body opens Period5 result despite clipped explicit action.",
+    "escape": "Passed: dismisses result to Automation results.",
+    "status_investigation": "Unresolved: period Succeeded but No report/Current and step18 Todo/Waiting0/1. Read-only DB occurrence5 final_run19 Succeeded with has_body1/body_bytes192; tasks17/18 Done. T14 must distinguish stale fixture signatures from lazy read/selection defect."
+  }
+}

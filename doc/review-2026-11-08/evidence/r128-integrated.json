@@ -1,0 +1,38 @@
+{
+  "source_manifest": ".local/opencode-dispatch/r128-source.json",
+  "sha256": "587928443cd40d13283287191d33f8be99d97f81c2c7eae2915e6c2360621d7e",
+  "guard_exit": 2,
+  "checks": [
+    {
+      "flag": "--qa-sidebar",
+      "exit": 0,
+      "seconds": 3.12
+    },
+    {
+      "flag": "--qa-navigation-context",
+      "exit": 0,
+      "seconds": 28.92
+    },
+    {
+      "flag": "--qa-task-edit",
+      "exit": 0,
+      "seconds": 21.29
+    },
+    {
+      "flag": "--qa-live-persistence",
+      "exit": 0,
+      "seconds": 21.08
+    }
+  ],
+  "tests": {
+    "unit_passed": 701,
+    "unit_ignored": 2,
+    "dispatch_crash_passed": 8,
+    "sqlite_passed": 2,
+    "v4_crash_passed": 3,
+    "exit": 0
+  },
+  "scope": "Integrated frozen navigation and exact task/form saved-exit checkpoint. Excludes later lazy-body, compact-results and archived-card repairs.",
+  "source_manifest_sha256": "573a57155135bbeed46db2b1d69a16ad4abba9849fa6a854054c7d39d75aff31",
+  "build_note": "Frozen copied sources were touched and recompiled to avoid shared-target reuse based on preserved source mtimes."
+}

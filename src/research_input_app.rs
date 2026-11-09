@@ -298,12 +298,24 @@ impl TaskApp {
                 cx.notify();
                 return false;
             }
+            let exit_task = prepared.plan.id();
+            let exit_instance = self.task_editor_instance();
+            let exit_values = self.draft_editor_values(cx);
             let outcome = self.commit_prepared_task_edit(prepared, window, cx);
             match outcome {
                 crate::task_edit_app::TaskSaveOutcome::Saved
                 | crate::task_edit_app::TaskSaveOutcome::NoChanges => {
                     self.research_save_impact = None;
                     self.pending_task_edit = None;
+                    if let Some(values) = exit_values.as_ref() {
+                        let _ = self.complete_task_saved_exit(
+                            exit_task,
+                            exit_instance,
+                            values,
+                            window,
+                            cx,
+                        );
+                    }
                     true
                 }
                 crate::task_edit_app::TaskSaveOutcome::Saving

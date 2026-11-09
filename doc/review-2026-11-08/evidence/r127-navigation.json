@@ -1,0 +1,20 @@
+{
+  "source_manifest": ".local/opencode-dispatch/r127-source.json",
+  "sha256": "a1958b36519e243d65f712844c3fa92e123e39b4ec4960be7a3fa2672ad46b77",
+  "guard_exit": 2,
+  "checks": [
+    {
+      "flag": "--qa-sidebar",
+      "exit": 0,
+      "seconds": 1.79
+    },
+    {
+      "flag": "--qa-navigation-context",
+      "exit": 0,
+      "seconds": 21.21
+    }
+  ],
+  "scope": "Frozen r119 base plus views.rs, navigation_qa.rs, and automation_list function only. Excludes in-progress compact results, lazy-body and Archive changes.",
+  "source_manifest_sha256": "7e59fd23229a1189c9f59635f8e4e0d0a1bd690cdc464da258b27ccbb4fb4f5e",
+  "acceptance": "Focused sidebar and navigation-context regressions passed. Native compact focus repair was separately accepted in r120. Full integrated and native scrolling gates remain open."
+}

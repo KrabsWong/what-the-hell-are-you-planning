@@ -1,0 +1,90 @@
+{
+  "source": "r116-native-scroll.json",
+  "median_hitch_start_interval_ms": 16.666667000000416,
+  "duration_min_ms": 8.333125,
+  "duration_max_ms": 8.333416,
+  "rounded_interval_frequency": {
+    "8.3": 27,
+    "16.7": 322,
+    "33.3": 18,
+    "50.0": 5,
+    "25.0": 9,
+    "158.3": 3,
+    "650.0": 1,
+    "475.0": 1,
+    "100.0": 2,
+    "58.3": 3,
+    "133.3": 3,
+    "141.7": 3,
+    "616.7": 1,
+    "175.0": 3,
+    "83.3": 1,
+    "275.0": 1,
+    "41.7": 1,
+    "108.3": 2,
+    "75.0": 2,
+    "325.0": 1,
+    "125.0": 1,
+    "91.7": 1,
+    "66.7": 2,
+    "200.0": 1,
+    "450.0": 1,
+    "166.7": 1,
+    "366.7": 1,
+    "350.0": 1,
+    "150.0": 1
+  },
+  "input_offsets_ms": [
+    {
+      "direction": "down",
+      "start": 6881.0,
+      "end": 6989.0
+    },
+    {
+      "direction": "up",
+      "start": 6989.0,
+      "end": 7047.0
+    },
+    {
+      "direction": "down",
+      "start": 7047.0,
+      "end": 7128.0
+    },
+    {
+      "direction": "up",
+      "start": 7128.0,
+      "end": 7186.0
+    },
+    {
+      "direction": "down",
+      "start": 7186.0,
+      "end": 7247.0
+    },
+    {
+      "direction": "up",
+      "start": 7247.0,
+      "end": 7311.0
+    },
+    {
+      "direction": "down",
+      "start": 7311.0,
+      "end": 7381.0
+    },
+    {
+      "direction": "up",
+      "start": 7381.0,
+      "end": 7446.0
+    },
+    {
+      "direction": "down",
+      "start": 14387.0,
+      "end": 14449.0
+    },
+    {
+      "direction": "up",
+      "start": 28654.0,
+      "end": 28872.0
+    }
+  ],
+  "interpretation": "Hitch start intervals are not presented frame intervals. Input calls can enqueue native scrolling/inertia. No one-to-one cluster attribution or tool-cadence conclusion is established."
+}

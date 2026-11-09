@@ -1165,6 +1165,44 @@ impl TaskApp {
         cx.notify();
     }
 
+    /// A synchronous task save has already completed the captured exit. Only
+    /// the exact task/form identity that produced this save may be marked;
+    /// an unrelated or newer pending exit is left untouched.
+    pub(crate) fn complete_task_saved_exit(
+        &mut self,
+        task: u64,
+        instance: Option<crate::live_save_app::TaskEditorInstance>,
+        values: &crate::draft_exit::TaskEditValues,
+        w: &mut Window,
+        cx: &mut Context<Self>,
+    ) -> bool {
+        let matches = self
+            .navigation
+            .pending_saved_exit
+            .as_ref()
+            .is_some_and(|ack| {
+                matches!(
+                    &ack.form,
+                    PendingSavedExitForm::Task {
+                        task: expected_task,
+                        instance: expected_instance,
+                        values: expected_values,
+                    } if *expected_task == task
+                        && *expected_instance == instance
+                        && expected_values == values
+                )
+            });
+        if !matches {
+            return false;
+        }
+        if let Some(ack) = &mut self.navigation.pending_saved_exit {
+            ack.durable = true;
+            ack.closed_by_completion = true;
+        }
+        self.poll_pending_saved_exit(w, cx);
+        true
+    }
+
     pub(crate) fn dirty_exit_durable(&mut self, token: u64) {
         if let Some(ack) = &mut self.navigation.pending_saved_exit
             && ack.token == token

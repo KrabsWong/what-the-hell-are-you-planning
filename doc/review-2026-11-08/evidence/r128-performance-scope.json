@@ -1,0 +1,226 @@
+{
+  "scope": "Read-only extraction from completed r115 T20 logs; no build, edit or rerun.",
+  "candidate_sha256": "97131669ff5ca99c29dbeaecca8672ded6a489753e0b75b48b8c665c61f03816",
+  "profile": "debug_assertions=true (dev profile); Apple M1 Pro, 32 GiB, macOS 27.2 (26B123)",
+  "thresholds": [
+    {
+      "id": "T14-save-p95",
+      "source": "doc/review-2026-11-08/TASKS.md:203",
+      "requirement": "p95 main-thread save-related work < 50 ms on same 43,200-occurrence fixture; hardware and sample count recorded",
+      "unit": "us",
+      "limit": 50000
+    },
+    {
+      "id": "T15-first-page",
+      "source": "doc/review-2026-11-08/evidence/T14-T15-reviewed-architecture-audit.md:844 (proposed gate, not TASKS wording)",
+      "requirement": "first history page p95 < 30 ms via real query path",
+      "unit": "us",
+      "limit": 30000,
+      "authority": "audit-proposed"
+    },
+    {
+      "id": "T15-lazy-body",
+      "source": "doc/review-2026-11-08/TASKS.md:213",
+      "requirement": "opening first history page does not deserialize every report; benchmark memory/latency/db-size",
+      "unit": "binary",
+      "limit": null
+    },
+    {
+      "id": "automation-ui-save-block",
+      "source": "script/run_review_gate.py classification / IMPLEMENTATION.md:1993",
+      "requirement": "reproducible synchronous UI save block < 50 ms",
+      "unit": "us",
+      "limit": 50000
+    },
+    {
+      "id": "render-frame",
+      "source": "TASKS.md:37 smoothness release requirement (native acceptance not offline frame benchmark)",
+      "requirement": "smooth scrolling; 60 Hz frame budget is indicative only, not an offline gate",
+      "unit": "ms",
+      "limit": 16.7,
+      "authority": "indicative-only"
+    }
+  ],
+  "verdicts": {
+    "automation-ui-save-block": {
+      "status": "FAIL_LEGACY_PATH_ONLY",
+      "evidence": {
+        "synchronous_ui_save_block_ms": 1888.0,
+        "cold_save_ms": 1744.0,
+        "warm_saves_ms": [
+          1303,
+          1309,
+          1321
+        ],
+        "warm_samples": 3
+      },
+      "note": "1888 ms synchronous block is a legacy automation-perf failure. Fresh live standalone save cases pass but are single samples; live p95 is unmeasured."
+    },
+    "render-frame": {
+      "status": "OFFLINE_MOCK_INDICATIVE_ONLY",
+      "evidence": {
+        "all step states": {
+          "ms": 0.05,
+          "unit": "pass"
+        },
+        "All research": {
+          "ms": 8.99,
+          "unit": "frame"
+        },
+        "Recovery": {
+          "ms": 12.94,
+          "unit": "frame"
+        },
+        "Project": {
+          "ms": 23.35,
+          "unit": "frame"
+        },
+        "Topic": {
+          "ms": 17.98,
+          "unit": "frame"
+        },
+        "Steps": {
+          "ms": 289.5,
+          "unit": "frame"
+        },
+        "Report": {
+          "ms": 8.62,
+          "unit": "frame"
+        }
+      },
+      "note": "Offline in-memory debug frames, not native or live. Steps/Project/Topic exceed 16.7 ms indicative budget; this cannot reject or accept current live/native smoothness by itself."
+    },
+    "legacy-path-save-p95": {
+      "status": "FAIL_LEGACY_PATH_ONLY",
+      "evidence": {
+        "occ43200_persist_total_p95_us": 1430194,
+        "occ43200_save_warm_p95_us": 1388281,
+        "occ43200_interaction_p95_us": 1436518,
+        "warm_save_samples": 10,
+        "persist_total_samples": 93
+      },
+      "note": "These are legacy attach_storage full-load/save numbers, not the current live worker path. They remain a real failure of the benchmarked legacy path. Applying them as current live T14 failure would be wrong."
+    },
+    "legacy-path-first-page": {
+      "status": "LEGACY_ONLY (occ render indicative pass; larger fixtures over audit-proposed 30 ms; strict query gate unmeasured)",
+      "evidence": {
+        "occ43200_history_render_p95_us": 14082,
+        "occ43200_first_page_rows": 20,
+        "body-heavy_p95_us": 90815,
+        "retry-heavy_p95_us": 36213,
+        "xl_p95_us": 2835360
+      },
+      "note": "Legacy harness/UI render wall only. It does not measure the live indexed query path or live p95."
+    },
+    "legacy-path-lazy-body": {
+      "status": "LEGACY_ONLY_FAIL_OR_UNKNOWN",
+      "evidence": {
+        "inventory": {
+          "load_run_body_bytes": null,
+          "logical_run_body_bytes": null,
+          "presentation_bytes_synthetic": null
+        },
+        "small": {
+          "load_run_body_bytes": 395952,
+          "logical_run_body_bytes": 395952,
+          "presentation_bytes_synthetic": "true"
+        },
+        "occ43200": {
+          "load_run_body_bytes": 2164080,
+          "logical_run_body_bytes": 2164080,
+          "presentation_bytes_synthetic": "true"
+        },
+        "body-heavy": {
+          "load_run_body_bytes": 49196160,
+          "logical_run_body_bytes": 49196160,
+          "presentation_bytes_synthetic": "true"
+        },
+        "retry-heavy": {
+          "load_run_body_bytes": 3959520,
+          "logical_run_body_bytes": 3959520,
+          "presentation_bytes_synthetic": "true"
+        },
+        "xl": {
+          "load_run_body_bytes": 49231200,
+          "logical_run_body_bytes": 49231200,
+          "presentation_bytes_synthetic": "true"
+        }
+      },
+      "note": "Legacy load read every report body in this harness and presentation bytes are synthetic. This is a coverage gap for live lazy-body acceptance, not proof the current live path deserializes every report."
+    }
+  },
+  "benchmark_backends": {
+    "persistence-perf (all six modes)": {
+      "constructor": "TaskApp::new_mock + attach_storage",
+      "attach_chain": "app.rs attach_storage -> attach_loaded_storage -> attach_loaded_storage_live(..., None)",
+      "backend": "legacy full load/save; no ordered live worker",
+      "source_refs": [
+        "src/persistence_qa.rs:755",
+        "src/persistence_qa.rs:757",
+        "src/app.rs:2456 attach_storage",
+        "src/app.rs:2471 attach_loaded_storage",
+        "src/app.rs:2485 attach_loaded_storage_live"
+      ]
+    },
+    "automation-perf": {
+      "constructor": "TaskApp::new_mock + attach_storage (performance_fixture)",
+      "backend": "legacy full load/save; no LiveStartup",
+      "source_refs": [
+        "src/automation_qa.rs:5862",
+        "src/automation_qa.rs:5864"
+      ]
+    },
+    "render-perf": {
+      "constructor": "TaskApp::new_mock only",
+      "backend": "offline in-memory mock render; no storage/live worker",
+      "source_refs": [
+        "src/render_qa.rs:30"
+      ]
+    },
+    "live-persistence-qa": {
+      "constructor": "TaskApp::new_mock + attach_loaded_storage_live(..., Some(live))",
+      "backend": "real v4 LiveStartup + ordered worker",
+      "source_refs": [
+        "src/live_persistence_qa.rs:231"
+      ]
+    }
+  },
+  "live_gate_status": {
+    "T14-live-p95-save": "UNKNOWN",
+    "evidence": {
+      "r111": {
+        "editor_43200_ui_us": 16086,
+        "history_page_43200_us": 2518,
+        "source": "doc/review-2026-11-08/evidence/r111-root-live.json",
+        "samples": 1
+      },
+      "r114": {
+        "editor_43200_ui_us": 15102,
+        "history_page_43200_us": 2524,
+        "source": "doc/review-2026-11-08/evidence/r114-t14-t15-final-live.json",
+        "samples": 1
+      },
+      "r115": {
+        "editor_43200_ui_us": 17122,
+        "history_page_43200_us": 45,
+        "source": "doc/review-2026-11-08/evidence/r115-root-live.json",
+        "samples": 1
+      }
+    },
+    "reason": "Each live run reports one headless sample per case. Single samples cannot establish p95 under the TASK target; none of these is a live p95 measurement."
+  },
+  "live_coverage_gap": [
+    "No live benchmark currently repeats save/history interactions >=30 times through LiveStartup to report p95 on the 43,200 fixture.",
+    "Existing --qa-persistence-perf and --qa-automation-perf use attach_storage (legacy) and cannot stand in for live T14/T15.",
+    "No live product counter proves bodies are not read on first history page; presentation bytes in the legacy harness are synthetic.",
+    "A live harness should report p50/p95/p99/max, sample count, hardware/profile, DB size, peak RSS, body bytes read, and exact constructor (Some(LiveStartup))."
+  ],
+  "limitations": [
+    "Persistence benchmark logs are dev profile and use the benchmark fixture harness; they do not by themselves prove the live worker main-thread path.",
+    "Warm save sample counts are 5-20; a stable p95 requires >=30 as the logs state.",
+    "Presentation bytes are synthetic; no product body-read counter exists.",
+    "History render wall is not a query-only span.",
+    "Offline render-frame numbers are not native scrolling acceptance.",
+    "Inventory mode has fixture metadata but no save/history timing run."
+  ]
+}

@@ -291,7 +291,7 @@ For every case record Passed/Failed/Blocked/Not run, expected destination/effect
 
 ## T22 — Present archived research as archived history
 
-**Status:** accepted in the independently reviewed working-tree candidate; not committed or released. See [independent acceptance](IMPLEMENTATION.md#t22-independent-acceptance). Final native and integration release gates remain.
+**Status:** reopened by native r125 acceptance. Archive List shows an archived goal that disappears from Board while the count remains one. Earlier isolated acceptance is insufficient; see [native evidence](evidence/r125-archive-board.json). Repair archived-card grouping and verify identical goal membership and Restore availability in both views before accepting T22 again.
 
 **Priority/size:** P2/M. **Finding:** F20. **Dependencies:** T05; coordinate with T06.
 

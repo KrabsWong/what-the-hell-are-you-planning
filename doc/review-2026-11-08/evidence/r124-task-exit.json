@@ -1,0 +1,20 @@
+{
+  "sha256": "3cc8b4aa1d989e1d2f0e2260ab4af4dae7a21caee2f21369e80b5e647fe8456d",
+  "guard_exit": 2,
+  "checks": [
+    {
+      "flag": "--qa-task-edit",
+      "exit": 0,
+      "seconds": 7.08
+    },
+    {
+      "flag": "--qa-live-persistence",
+      "exit": 0,
+      "seconds": 14.38
+    }
+  ],
+  "source_manifest": ".local/opencode-dispatch/r124-source.json",
+  "scope": "Independent root verification of exact task/form synchronous saved-exit completion. Frozen r119 base plus navigation_context_app.rs and research_input_app.rs only. Excludes later lazy-body and compact results changes.",
+  "source_manifest_sha256": "1674d8285b4bcbd082373e0cd29907df212ccba781301a95b3686f87902efd50",
+  "acceptance": "Task-edit and live-persistence targeted regressions passed; full final-source and native acceptance remain open."
+}

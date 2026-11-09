@@ -2027,6 +2027,7 @@ impl TaskApp {
             row()
                 .justify_between()
                 .gap_4()
+                .flex_shrink_0()
                 .child(
                     col().flex_1().min_w_0().gap_1()
                         .child(div().text_xl().font_weight(FontWeight::SEMIBOLD).child(selectable("Automations")))
@@ -2115,6 +2116,7 @@ impl TaskApp {
                     .p_3()
                     .gap_3()
                     .items_center()
+                    .flex_shrink_0()
                     .rounded_lg()
                     .border_1()
                     .border_color(rgb(colors.line))
@@ -2231,6 +2233,7 @@ impl TaskApp {
             content = content.child(section);
         }
         col()
+            .size_full()
             .flex_1()
             .min_h_0()
             .child(div().px_6().pt_3().child(self.automation_feedback(cx)))
@@ -4406,6 +4409,7 @@ impl TaskApp {
             })),
         );
         if step < 3 {
+            let quick = self.automation_ui.shape.is_quick();
             let planning_now = step == 2
                 && self.automation_ui.shape == AutomationShape::Research
                 && self.automation_ui.plan.is_none();
@@ -4417,18 +4421,33 @@ impl TaskApp {
                     .icon(assets::IconName::ArrowRight)
                     .tooltip(if planning_now {
                         "Saves a draft and plans the research once. You review it before anything is enabled."
+                    } else if quick {
+                        if step == 1 {
+                            "Continue to the schedule"
+                        } else {
+                            "Continue to review and authorize this task"
+                        }
+                    } else if step == 1 {
+                        "Continue to the schedule"
                     } else {
-                        "Continue to the schedule or the plan review"
+                        "Continue to review the generated plan"
                     })
                     .on_click(cx.listener(|app, _, window, cx| app.automation_wizard_next(window, cx))),
             );
         } else {
+            let quick = self.automation_ui.shape.is_quick();
             actions = actions.child(
                 primary_button("enable-automation", "Enable automation")
                     .icon(assets::IconName::Play)
                     .disabled(!plan_ready)
                     .tooltip(if plan_ready {
-                        "Approve this plan and start future periods"
+                        if quick {
+                            "Approve this instruction and start future periods"
+                        } else {
+                            "Approve this plan and start future periods"
+                        }
+                    } else if quick {
+                        "Return to the schedule and continue to authorize this task"
                     } else {
                         "Review the generated plan before enabling"
                     })

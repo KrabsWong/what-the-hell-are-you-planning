@@ -1,0 +1,28 @@
+{
+  "manifest": ".local/opencode-dispatch/r119-source.json",
+  "binary_sha256": "09861328653cf4b3e2b9db38a195e0a0b4b6eab3abf7331113bb86e15cbc57c2",
+  "build_exit": 0,
+  "guard_exit": 2,
+  "results_path": ".local/opencode-dispatch/r119-focused/results.json",
+  "sidebar": "Failed: Settings return frame captures the caller scroll",
+  "navigation_context": "Passed",
+  "keyboard_visual": "Passed",
+  "native_compact": "Not run: edge drag did not visibly resize the existing native window; next isolated candidate should launch at explicit compact size.",
+  "results": [
+    {
+      "entry": "--qa-sidebar",
+      "exit": 101,
+      "elapsed": 0.713
+    },
+    {
+      "entry": "--qa-navigation-context",
+      "exit": 0,
+      "elapsed": 18.375
+    },
+    {
+      "entry": "--qa-keyboard-visual",
+      "exit": 0,
+      "elapsed": 17.707
+    }
+  ]
+}

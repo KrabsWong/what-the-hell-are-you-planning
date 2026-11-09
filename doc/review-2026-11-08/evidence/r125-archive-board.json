@@ -1,0 +1,19 @@
+{
+  "candidate": "r120 compact native candidate",
+  "theme": "Dark",
+  "logical_window": [
+    1000,
+    680
+  ],
+  "journey": [
+    "Click Archive sidebar",
+    "Observe 1 goal Review research goal, TASK-G1, Archived, Restore action in List",
+    "Click Board",
+    "Observe header 1 goals grouped by topic, Execution 1, but No tasks match this status and no goal card",
+    "Click List",
+    "Observe original archived goal and Restore action again"
+  ],
+  "result": "failed",
+  "scope": "List/Board data consistency; no restore or destructive action performed",
+  "additional_observation": "Research results sidebar opens selected Project planning record; requires product-contract review before classifying as defect."
+}

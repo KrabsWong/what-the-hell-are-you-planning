@@ -2297,3 +2297,94 @@ This does not pass native smoothness. Rapid reversals were grouped without inter
 ## r117 verified-source checkpoint
 
 The development checkpoint stages the exact r115 source manifest, including its independently passed save and crash regressions. Later Quick tooltip wording and the workspace-menu focus repair remain unstaged for separate acceptance. This checkpoint preserves tested work; it is not release approval. Native scrolling remains rejected by r116 evidence.
+
+
+### r117 checkpoint publication and review follow-up
+
+Checkpoint `aa22024` was pushed to `feature/review-2026-11-08-optimization`. Only the frozen r115 implementation and compact review evidence were committed; raw captures and screenshots remain local. The independent full offline matrix now targets that immutable binary.
+
+Root rejected a proposed keyboard regression change that replaced the exact captured-scroll assertion with a mere return-frame presence assertion. The focus repair must retain scroll/filter restoration coverage, using a genuinely overflowing fixture if required. T12 must report failures without weakening the contract. T19 is analyzing the r116 idle/scroll contrast before proposing the next performance change.
+
+
+## r118 native Light Quick wizard verification
+
+On the isolated r115 candidate, root verified full-width schedule/review steps, stable Cancel/primary anchors, and truthful Quick instruction/expected-answer review. Step3 Save draft & finish returns to the matching draft detail without enabling. The old Enable tooltip still says plan in this installed candidate; the known later wording fix remains outside this native acceptance. [Evidence](evidence/r118-native-quick-light.json). Compact layout and full native-matrix completion remain open.
+
+
+### r118 performance analysis review
+
+Root rejected the first T19 causal interpretation: the first eight input calls occupied only 565 ms, so nine multi-second hitch clusters cannot be asserted to match nine calls one-to-one. Its stated median interval also contradicted its frequency counts. The report must distinguish call timing, potentially queued native events/inertia, and observations, and provide reproducible statistics. A negative static-logo control would exclude one cause only; it would not prove tool cadence or rule out application/framework pacing. Native smoothness remains unaccepted.
+
+
+## r119 independent keyboard candidate and statistics correction
+
+Root froze the keyboard-focus/tooltip candidate, built it successfully and verified the unknown-QA guard before use. The sidebar suite failed its retained caller-scroll assertion; navigation-context QA passed. T12 received the exact failure and must preserve the assertion while diagnosing the fixture or behavior. [Candidate evidence](evidence/r119-focused.json). The later render-before-offset fixture change was not included in this freeze.
+
+Root independently calculated a 16.666667 ms median hitch-start interval and a duration range of 8.333125–8.333416 ms. The first eight calls occupy offsets 6.881–7.446 seconds; the ninth begins at 14.387 seconds. These are not presented-frame intervals and do not establish a tool-cadence cause. [Corrected statistics](evidence/r119-scroll-statistics.json).
+
+Dragging the native window edge did not visibly resize it; compact acceptance was not performed. A subsequent isolated candidate can start at the exact compact dimensions, recorded as a test-only window-bounds override.
+
+
+## r120 compact native keyboard repair verification
+
+Root built and installed an optimized isolated r119-source candidate with two explicit test-only overrides: isolated workspace bootstrap and initial 1000×680 logical window bounds. Signed/unsigned guards passed; the prior isolated process exited before replacement, and the fixture was backed up. [Install and native evidence](evidence/r120-native-compact.json).
+
+The actual workspace-menu Settings path now responds to Computer `super+bracketleft` and returns to Automations. The same input had failed before the page-focus repair. This narrowly accepts the native keyboard fix without speculative key aliases. Captured-scroll QA remains a separate unresolved gate. Light compact research and automation lists were readable in the fixture; the rest of the compact matrix remains open.
+
+
+## r121 compact wizard and full-matrix follow-up
+
+Root verified the compact Quick wizard across steps, reachable fixed footer controls, fully readable scrolled authorization, and preservation of step/scroll during Light-to-Dark switching. Save draft & finish returned to the matching Draft detail. [Evidence](evidence/r121-compact-wizard.json).
+
+The offline r115 matrix also exposed `--qa-task-edit` failing after impact confirmation because `pending_saved_exit` was still present. T14 owns diagnosis and must distinguish a production completion defect from a QA settling gap without removing route/durability assertions. T19 corrected its r116 statistics and withdrew the unsupported gesture-cluster/tool-cadence claims. Exported display-scoped frame tables lack sufficient app-surface attribution, so cause and native smoothness remain unresolved.
+
+
+## r122 review constraints for remaining regressions
+
+Root rejected setting the automation scroll offset after opening the workspace menu: that bypasses the real journey and can hide a menu-triggered reset. The test must scroll an overflowing list, verify the offset after rendering and menu opening, then verify captured and restored offsets. T12 is also checking whether shrinkable list rows prevent genuine overflow; any layout change needs measured bounds and last-row reachability.
+
+Root also rejected a synchronous completion helper that marked any pending saved exit durable/closed without matching the specific task operation. T14 must preserve token/form ownership, protect unrelated pending exits, and cover the synchronous/no-change paths without weakening the existing impact-confirmation regression. These reviews do not change native keyboard acceptance or waive native smoothness.
+
+
+## r123 compact Automation results failure
+
+Root observed horizontal overflow on Automation results at 1000×680 logical pixels in Dark. The subtitle and toolbar hint extend offscreen, and each of five result rows places its right-side action outside the viewport. This is an actionable compact-layout failure, not a tool issue. T19 owns responsive results rendering and must assert action visibility/clickability with realistic metadata in both themes/sizes. [Evidence](evidence/r123-compact-results.json).
+
+
+## r124 independent task-exit verification
+
+Root built a frozen r119 base with only the exact task/form synchronous completion fix. The unknown-QA guard passed; task-edit QA and live-persistence QA both passed independently. This accepts the targeted saved-exit regression, not the subsequent lazy-body or compact-results work. [Evidence](evidence/r124-task-exit.json). Computer access also succeeded again; the installed r120 compact candidate still reproduces the known clipped results actions.
+
+
+## r125 native Archive view inconsistency
+
+At 1000×680 in Dark, Archive List shows one archived goal and its Restore action. Switching to Board keeps the count at one (Execution 1) but renders “No tasks match this status.” Switching back to List restores the visible row. This is an unresolved view-consistency defect; no restore or deletion was performed. [Evidence](evidence/r125-archive-board.json).
+
+
+## r126 full frozen-source offline matrix
+
+The r115 candidate completed all 53 inventoried offline entries: 51 passed, two failed, and none timed out. Root cross-checked the terminal ledger. The failures are sidebar caller-scroll capture and task-edit pending exit; the latter has separate passing r124 evidence. All six persistence benchmark modes exited successfully, including the 607.60-second XL case. Exit status alone does not accept latency targets. [Full compact ledger](evidence/r126-offline-matrix.json). Native compact defects and scrolling remain open, and later source changes still require their own verification.
+
+
+## r127 review boundaries for lazy results and archived cards
+
+Root rejected treating an unloaded body as a content-bearing `research_result`: dependent prompts, report validation and export must never consume an empty placeholder as a valid report. The proposed repair separates pending-body presentation from executable content. Root also rejected rebuilding two full run-ID sets on every history poll; cleanup must follow bounded cache/entity changes rather than add history-sized UI work. These changes remain under review.
+
+For the r125 Archive defect, code inspection identifies the active Execution-group renderer being reused for archived InProgress cards. Archived status intentionally has no execution group, so all such cards disappear. The requested repair preserves archived topic-grouped cards without restoring execution admission or approval controls.
+
+
+### r127 independent navigation acceptance
+
+The frozen navigation candidate built successfully and passed its unknown-QA guard. Sidebar QA passed in 1.79 seconds and navigation-context QA passed in 21.21 seconds. The sidebar regression now exercises genuine overflow, last-row reachability, the real workspace menu, restored page focus, and exact captured/restored scroll (within one pixel). This separately resolves the remaining r115 offline sidebar failure; it does not accept the unrelated in-progress result/body/Archive changes or native smoothness. [Evidence](evidence/r127-navigation.json).
+
+
+## r128 performance evidence scope correction
+
+Root rejected interpreting legacy benchmark timings as direct measurements of the current live backend. The persistence harness constructs `new_mock` and calls `attach_storage`, which reaches `attach_loaded_storage_live` with `None`; it measures legacy full load/save. Native startup and live-persistence QA attach the incremental live backend. Legacy stalls remain valid evidence for that path, and offline render risks remain relevant, but the required live-backend p95 is not established by either those legacy numbers or the existing single-sample live timings. T13 must report constructor/backend provenance and the missing live percentile coverage explicitly.
+
+
+### r128 integrated checkpoint verification
+
+Root combined only the verified navigation and exact task/form saved-exit changes in a frozen candidate, forced recompilation, and passed sidebar, navigation-context, task-edit and all live-persistence cases. The unit/crash suites passed: 701 unit (two ignored), eight dispatch-crash, two SQLite and three v4-crash tests. [Integrated evidence](evidence/r128-integrated.json). This is a development checkpoint, not release approval; later result-loading, compact-results and Archive fixes are excluded.
+
+The corrected [performance scope report](evidence/r128-performance-scope.json) preserves legacy stalls and explicitly leaves the current live p95 unknown. T13 now owns a separate live performance harness using actual LiveStartup, repeated UI actions and ordered durable acknowledgements. Native scrolling remains an independent failed gate.

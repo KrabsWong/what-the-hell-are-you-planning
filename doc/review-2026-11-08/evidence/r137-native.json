@@ -1,0 +1,24 @@
+{
+  "candidate": {
+    "unsigned_sha256": "7a743138d436a181c4a3b6d5a64345d2e8483ca05dbf983371ec8e19a58cfc55",
+    "guard_exit": 2,
+    "source_manifest": ".local/native-review/r137-source.json",
+    "signed_sha256": "4fa38a60a8784f5f1a2cb83d9de8224ca2ebec1ac05b9b6701f2f8d8c2f42771",
+    "fixture_backup": "/Users/fuxingxing/workspaces/what-the-hell-are-you-planning/.local/native-review/r137-fixture-backup"
+  },
+  "geometry": "1000x680 logical window, 2000x1362 captured native surface",
+  "passed": [
+    "Dark results: all five rows retain type, name, time, trigger, status and fully visible Open action.",
+    "Opening top result shows Period 5, Final report / Complete / Current and the durable Review result body.",
+    "Scrolling result reveals Research complete / 1/1 steps and Done for AUTO3-G17-R18.",
+    "Escape closes the result and returns to Automation results.",
+    "Switch through System to Light retains results and readable names with all actions visible.",
+    "Archive List and Board both show one archived goal, Restore action and consistent 0/3 validated status."
+  ],
+  "not_verified": [
+    "Archive Open 3 steps -> Back. Computer returned Mac locked during the action batch, before any destination observation; do not infer which action executed.",
+    "Native scroll smoothness/performance.",
+    "Normal-window native layout."
+  ],
+  "scope": "Synthetic isolated workspace; no external research or production app changes. Native visual acceptance is limited to the recorded states."
+}

@@ -82,6 +82,8 @@ mod persistence_live;
 mod persistence_metrics;
 mod persistence_worker;
 #[cfg(feature = "qa")]
+mod live_performance_qa;
+#[cfg(feature = "qa")]
 mod live_persistence_qa;
 #[cfg(feature = "qa")]
 mod persistence_qa;
@@ -378,6 +380,11 @@ fn main() {
     #[cfg(feature = "qa")]
     if std::env::args().any(|arg| arg == "--qa-live-persistence") {
         live_persistence_qa::run();
+        return;
+    }
+    #[cfg(feature = "qa")]
+    if std::env::args().any(|arg| arg == "--qa-live-performance") {
+        live_performance_qa::run();
         return;
     }
     #[cfg(feature = "qa")]

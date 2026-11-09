@@ -1,0 +1,24 @@
+{
+  "install": {
+    "unsigned_sha256": "6ee14aa2c005afa355a002a6fc58249500f13f2eded761f697dbe5971c622c38",
+    "guard_exit": 2,
+    "source_manifest": ".local/native-review/r132-source.json",
+    "parent_manifest": ".local/native-review/r130-source.json",
+    "signed_sha256": "9b9bb786046b14d790a18ae5947c5ad3462d8452ce69d2771f35fb1efa603b52",
+    "fixture_backup": "/Users/fuxingxing/workspaces/what-the-hell-are-you-planning/.local/native-review/r132-fixture-backup"
+  },
+  "theme": "Dark",
+  "logical_window": [
+    1000,
+    680
+  ],
+  "result": "failed",
+  "observations": [
+    "Subtitle wraps within the visible page.",
+    "Unread hint is readable on its own line.",
+    "All five occurrence rows still extend beyond right viewport edge.",
+    "Open buttons remain clipped, with only their left border visible near physical x=1972 of width2000."
+  ],
+  "scope": "Frozen automation_results and automation_occurrence_row layout only on r130; excludes T14 hydration and T12 new origin changes",
+  "acceptance": "Header improvement observed; compact result actions not accepted."
+}

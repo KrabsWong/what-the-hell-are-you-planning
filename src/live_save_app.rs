@@ -931,29 +931,52 @@ impl TaskApp {
         if self.history_reader.is_none() {
             return false;
         }
-        if let Some(run_id) = self.displayed_run_id()
-            && self
+        let state_pending = |run_id: u64| match self.run_body_state.get(&run_id) {
+            None | Some(crate::history_reader::BodyLoad::NotRequested) => true,
+            Some(crate::history_reader::BodyLoad::Loading { .. }) => true,
+            Some(crate::history_reader::BodyLoad::Failed { .. }) => true,
+            Some(
+                crate::history_reader::BodyLoad::Loaded
+                | crate::history_reader::BodyLoad::Absent,
+            ) => false,
+        };
+        if let Some(run_id) = self.displayed_run_id() {
+            let has_output = self
                 .store
                 .runs()
                 .iter()
                 .find(|run| run.id == run_id)
-                .is_some_and(|run| run.output.is_empty())
-            && !self.run_body_state.contains_key(&run_id)
-        {
-            return true;
+                .is_some_and(|run| !run.output.is_empty());
+            if !has_output && state_pending(run_id) {
+                return true;
+            }
         }
-        if self.run_body_state.values().any(|state| {
-            matches!(
-                state,
-                crate::history_reader::BodyLoad::Loading { .. }
-                    | crate::history_reader::BodyLoad::NotRequested
-            ) || matches!(
-                state,
-                crate::history_reader::BodyLoad::Failed { retry_at, .. }
-                    if *retry_at <= std::time::Instant::now()
-            )
-        }) {
-            return true;
+        if let Some(occurrence) = self
+            .period_overlay()
+            .and_then(|id| self.store.occurrence(id))
+        {
+            if let Some(run_id) = occurrence
+                .final_run_id
+                .or_else(|| occurrence.run_ids.last().copied())
+                && self.store.run_body_is_lazy(run_id)
+                && state_pending(run_id)
+            {
+                return true;
+            }
+            let goals: Vec<u64> = if occurrence.research_goal_ids.is_empty() {
+                occurrence.research_goal_id.into_iter().collect()
+            } else {
+                occurrence.research_goal_ids.clone()
+            };
+            for goal in goals {
+                for task in self.store.research_children(goal) {
+                    if let Some(run_id) = self.store.research_result_body_pending(task)
+                        && state_pending(run_id)
+                    {
+                        return true;
+                    }
+                }
+            }
         }
         if let Some(automation) = self.current_history_automation() {
             return match self.history_cache.get(&automation) {
@@ -962,14 +985,91 @@ impl TaskApp {
                     &cache.state,
                     crate::history_reader::HistoryLoad::NotRequested
                         | crate::history_reader::HistoryLoad::Loading { .. }
-                ) || matches!(
-                    &cache.state,
-                    crate::history_reader::HistoryLoad::Failed { retry_at, .. }
-                        if *retry_at <= std::time::Instant::now()
+                        | crate::history_reader::HistoryLoad::Failed { .. }
                 ),
             };
         }
         false
+    }
+
+    /// Explicit retry for a failed body read. This is not the persistence
+    /// footer retry and only re-requests the selected report body.
+    pub(crate) fn retry_run_body(&mut self, run_id: u64) {
+        self.run_body_state.remove(&run_id);
+        let _ = self.request_run_body(run_id);
+    }
+
+    pub(crate) fn retry_occurrence_body(&mut self, occurrence: u64) -> bool {
+        let Some(run_id) = self.store.occurrence(occurrence).and_then(|value| {
+            value
+                .final_run_id
+                .or_else(|| value.run_ids.last().copied())
+        }) else {
+            return false;
+        };
+        self.retry_run_body(run_id);
+        true
+    }
+
+    fn request_run_body(&mut self, run_id: u64) -> bool {
+        let has_body = self
+            .store
+            .runs()
+            .iter()
+            .find(|run| run.id == run_id)
+            .is_some_and(|run| !run.output.is_empty());
+        if has_body {
+            return false;
+        }
+        let request = match self.run_body_state.get(&run_id) {
+            None => true,
+            Some(crate::history_reader::BodyLoad::NotRequested) => true,
+            Some(crate::history_reader::BodyLoad::Failed { retry_at, .. }) => {
+                retry_at <= &std::time::Instant::now()
+            }
+            Some(
+                crate::history_reader::BodyLoad::Loading { .. }
+                | crate::history_reader::BodyLoad::Loaded
+                | crate::history_reader::BodyLoad::Absent,
+            ) => false,
+        };
+        if !request {
+            return false;
+        }
+        let request_id = self.next_history_request();
+        let expected = self
+            .store
+            .runs()
+            .iter()
+            .find(|run| run.id == run_id)
+            .map(crate::history_reader::RunBodyRevision::capture);
+        let sent = self
+            .history_reader
+            .as_ref()
+            .is_some_and(|reader| reader.request_body(request_id, run_id).is_ok());
+        self.run_body_state.insert(
+            run_id,
+            if sent {
+                crate::history_reader::BodyLoad::Loading {
+                    request_id,
+                    expected: expected.unwrap_or(crate::history_reader::RunBodyRevision {
+                        status: String::new(),
+                        ended_at: None,
+                        session_id: None,
+                        exit_code: None,
+                        output_len: 0,
+                        sources: 0,
+                        logs: 0,
+                    }),
+                }
+            } else {
+                crate::history_reader::BodyLoad::Failed {
+                    error: "history reader is busy".into(),
+                    retry_at: std::time::Instant::now() + std::time::Duration::from_secs(2),
+                }
+            },
+        );
+        sent
     }
 
     /// Bounded poll of indexed pages and lazy report bodies. Never blocks.
@@ -1058,6 +1158,10 @@ impl TaskApp {
                         run_id,
                         result,
                     } => {
+                        if !self.store.runs().iter().any(|run| run.id == run_id) {
+                            self.run_body_state.remove(&run_id);
+                            continue;
+                        }
                         let expected = match self.run_body_state.get(&run_id) {
                             Some(crate::history_reader::BodyLoad::Loading {
                                 request_id: active,
@@ -1086,6 +1190,9 @@ impl TaskApp {
                                     .insert(run_id, crate::history_reader::BodyLoad::Loaded);
                             }
                             Ok(_) => {
+                                // No durable body exists. Stop presenting the
+                                // run as a pending report forever.
+                                self.store.clear_lazy_body(run_id);
                                 self.run_body_state
                                     .insert(run_id, crate::history_reader::BodyLoad::Absent);
                             }
@@ -1122,64 +1229,46 @@ impl TaskApp {
                 self.request_history_page(automation, cx);
             }
         }
+        let mut body_targets: Vec<u64> = Vec::new();
         if let Some(run_id) = self.displayed_run_id() {
-            let has_body = self
-                .store
-                .runs()
-                .iter()
-                .find(|run| run.id == run_id)
-                .is_some_and(|run| !run.output.is_empty());
-            if !has_body {
-                let request = match self.run_body_state.get(&run_id) {
-                    None => true,
-                    Some(crate::history_reader::BodyLoad::NotRequested) => true,
-                    Some(crate::history_reader::BodyLoad::Failed { retry_at, .. }) => {
-                        retry_at <= &std::time::Instant::now()
+            body_targets.push(run_id);
+        }
+        if let Some(occurrence) = self
+            .period_overlay()
+            .and_then(|id| self.store.occurrence(id))
+        {
+            if let Some(run_id) = occurrence
+                .final_run_id
+                .or_else(|| occurrence.run_ids.last().copied())
+            {
+                body_targets.push(run_id);
+            }
+            // A reopened multi-step period needs every step's lazy result body,
+            // bounded by the approved step count, not the whole history.
+            let goals: Vec<u64> = if occurrence.research_goal_ids.is_empty() {
+                occurrence.research_goal_id.into_iter().collect()
+            } else {
+                occurrence.research_goal_ids.clone()
+            };
+            for goal in goals {
+                for task in self.store.research_children(goal) {
+                    if let Some(run_id) = self.store.research_result_body_pending(task) {
+                        body_targets.push(run_id);
                     }
-                    Some(
-                        crate::history_reader::BodyLoad::Loading { .. }
-                        | crate::history_reader::BodyLoad::Loaded
-                        | crate::history_reader::BodyLoad::Absent,
-                    ) => false,
-                };
-                if request {
-                    let request_id = self.next_history_request();
-                    let expected = self
-                        .store
-                        .runs()
-                        .iter()
-                        .find(|run| run.id == run_id)
-                        .map(crate::history_reader::RunBodyRevision::capture);
-                    let sent = self
-                        .history_reader
-                        .as_ref()
-                        .is_some_and(|reader| reader.request_body(request_id, run_id).is_ok());
-                    self.run_body_state.insert(
-                        run_id,
-                        if sent {
-                            crate::history_reader::BodyLoad::Loading {
-                                request_id,
-                                expected: expected.unwrap_or(
-                                    crate::history_reader::RunBodyRevision {
-                                        status: String::new(),
-                                        ended_at: None,
-                                        session_id: None,
-                                        exit_code: None,
-                                        output_len: 0,
-                                        sources: 0,
-                                        logs: 0,
-                                    },
-                                ),
-                            }
-                        } else {
-                            crate::history_reader::BodyLoad::Failed {
-                                error: "history reader is busy".into(),
-                                retry_at: std::time::Instant::now()
-                                    + std::time::Duration::from_secs(2),
-                            }
-                        },
-                    );
                 }
+            }
+        }
+        body_targets.sort_unstable();
+        body_targets.dedup();
+        // Loaded/loading/absent targets do not consume the per-poll budget, so
+        // an occurrence with more than 32 steps still makes progress.
+        let mut sent = 0usize;
+        for run_id in body_targets {
+            if sent >= 32 {
+                break;
+            }
+            if self.request_run_body(run_id) {
+                sent += 1;
             }
         }
         if changed {

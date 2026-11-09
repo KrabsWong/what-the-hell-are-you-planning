@@ -1,0 +1,53 @@
+{
+  "fixture": ".local/native-review/T24-relocated-data/workspace/workspace.sqlite3",
+  "access": "read-only sqlite3 immutable URI; no fixture writes, no native launch",
+  "observed_rows": {
+    "occurrence_5": {
+      "status": "succeeded",
+      "final_run_id": 19,
+      "run_ids": [
+        18,
+        19
+      ],
+      "research_goal_id": 17
+    },
+    "run_18": {
+      "status": "Cancelled",
+      "has_body": 0
+    },
+    "run_19": {
+      "task_id": 18,
+      "status": "Succeeded",
+      "has_body": 1,
+      "body_bytes": 192
+    },
+    "task_17": {
+      "stage": "Done"
+    },
+    "task_18": {
+      "stage": "Done"
+    },
+    "run_body_19_prefix": "# Review result"
+  },
+  "cause": "Startup deliberately skips reading historical report bodies. Before this fix, research_result() required non-empty output, so the correctly persisted run 19 was treated as having no result: presentation reported no final report and step completion counted 0/1. The database was not missing or stale.",
+  "fix": [
+    "Store records which runs have a known durable body without loading it.",
+    "research_result() still returns None for an unloaded body, so prompts, exports and validation cannot consume empty content.",
+    "A separate pending-body predicate drives presentation/completed-step counts only.",
+    "Opening a period requests its final body and all lazy step bodies, bounded per poll; loaded/loading targets do not consume the batch budget.",
+    "Absent or failed body reads show an explicit unavailable notice instead of perpetual loading or a current-report claim.",
+    "Lazy markers are cleared on hydration, run removal and incarnation reset; a later non-Simulated failed/retry attempt invalidates an older lazy body."
+  ],
+  "verification": {
+    "default_tests": {
+      "passed": 703,
+      "failed": 0,
+      "ignored": 2
+    },
+    "new_tests": [
+      "sqlite_v4::tests::lazy_load_keeps_body_presence_without_reading_history_bodies",
+      "sqlite_v4::tests::reopened_multistep_lazy_bodies_keep_status_and_avoid_empty_content"
+    ],
+    "live_qa": "blocked by unrelated concurrent feature-QA compile errors in automation T19/T12 files; not claimed passed for this change"
+  }
+}

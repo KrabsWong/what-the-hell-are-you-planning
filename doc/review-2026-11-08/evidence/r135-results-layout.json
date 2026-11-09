@@ -1,0 +1,27 @@
+{
+  "source_manifest": ".local/opencode-dispatch/r135-source.json",
+  "sha256": "513962ccd260286b0ef4da907cf1fce497a0d9fbb548724994bdb1ce111b3cd1",
+  "guard_exit": 2,
+  "checks": [
+    {
+      "flag": "--qa-keyboard-visual",
+      "exit": 0,
+      "seconds": 21.32
+    }
+  ],
+  "scope": "Root-owned result row layout and corrected mixed Quick/Research QA fixture, before palette correction.",
+  "offline_review": {
+    "sizes": [
+      1000,
+      1440
+    ],
+    "themes": [
+      "Dark",
+      "Light"
+    ],
+    "result": "Geometry passed: name truncation, visible timestamp/trigger/status and fixed right action; correct period open and Escape return checked by QA. Root inspected all four screenshots.",
+    "remaining": "Light-theme randomized name palette can produce bright lime or yellow with weak contrast. Separate palette correction requested; native layout acceptance remains pending."
+  },
+  "screenshots_local_only": ".local/t19-qa/91006",
+  "computer_access": "Native review app successfully observed after user retry on 2026-11-09. This proves restored access, not current-layout acceptance."
+}

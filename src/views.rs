@@ -2361,7 +2361,7 @@ impl TaskApp {
                             .flex_1()
                             .min_h_0()
                             .gap_3()
-                            .children(if stage == Stage::InProgress {
+                            .children(if stage == Stage::InProgress && !archive {
                                 self.execution_board_cards(&cards, cx)
                             } else { self.topic_grouped_cards(&cards, stage.key(), cx) })
                             .when(cards.is_empty() && !archive, |d| {

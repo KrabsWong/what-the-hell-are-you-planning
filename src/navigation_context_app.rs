@@ -172,30 +172,15 @@ impl TaskApp {
         self.record_return_frame(frame);
     }
 
-    /// A card's "Open steps" belongs to the goal; its Back target is the goal's
-    /// topic when it has one, not the unrelated board currently on screen.
-    pub(crate) fn record_goal_origin(&mut self, task: u64) {
-        if let Some(topic) = self.store.task_topic(task) {
-            let mut frame = self.capture_return_frame();
-            frame.route = crate::navigation_route::Route::research_list(
-                crate::navigation_route::ResearchScope::Topic(topic.id),
-                frame.page.all_status,
-                frame.page.layout,
-            )
-            .with_research_query(String::new());
-            frame.overlays.clear();
-            let mut scroll = crate::navigation_route::ScrollBookmark::default();
-            scroll.set(
-                crate::navigation_route::ScrollKey::Topic,
-                self.navigation.topic_scroll.offset().x.as_f32(),
-                self.navigation.topic_scroll.offset().y.as_f32(),
-            );
-            frame.scroll = scroll;
-            frame.page.query.clear();
-            self.record_return_frame(frame);
-        } else {
-            self.record_origin();
-        }
+    /// A card's Open steps is a user drill-down. Back restores the page that
+    /// actually showed the card, including All/Project/Topic/Archive, layout,
+    /// filter and scroll; breadcrumbs remain structural.
+    pub(crate) fn record_goal_origin(&mut self, _task: u64) {
+        // A card's Open steps is a drill-down from the page that actually shows
+        // the card. Capture that initiating context (All/Project/Topic/Archive,
+        // including layout, filter and scroll) rather than rewriting it to the
+        // goal's Topic. Breadcrumbs remain structural parents.
+        self.record_origin();
     }
 
     pub(crate) fn remember_recent_surface(&mut self, task: u64, surface: RecentSurface) {

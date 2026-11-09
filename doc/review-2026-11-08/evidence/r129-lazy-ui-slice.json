@@ -1,0 +1,38 @@
+{
+  "src/domain.rs": "d8aeca6117f6872a35285090b6fa1953daa802dd0a19d62d9803f7734dd2cf4f",
+  "src/research.rs": "94de3c6c05087e46d97f92170ae3f33266e2de430ec4bb87d2cdca23c06bc7b8",
+  "src/sqlite_v4.rs": "e5d957885faafe893c8926684dcf9c1eee9e00a43e28e154739d62f17445846f",
+  "src/live_save_app.rs": "08fb66574e7410e212895910c38a4a282ea0c121b0677452d531e92784bf5c3e",
+  "src/history_reader.rs": "f03090d177e4b7c02e97e07e2c269a443eb9ec27b87c59ccaf317db3300550bb",
+  "src/live_persistence_qa.rs": "347363deaa962e11284aa15c32688deed8734496b8daf93d37de185bf4210b1c",
+  "src/automation_views.rs": "f7cbd0027cab1ab7eefb5d21663d2285daf6427c275a3df75a1fe680f825a148",
+  "guard_binary": ".local/t14-r128-slice/guard/app2",
+  "guard_sha256": "3ae392b1ea9b21207911bbfd9d9060f16c5ea3922271387f92e9c04e15b6f385",
+  "base": ".local/r128-review-source",
+  "overlays": [
+    "domain.rs",
+    "research.rs",
+    "sqlite_v4.rs",
+    "live_save_app.rs",
+    "history_reader.rs",
+    "live_persistence_qa.rs"
+  ],
+  "automation_views_splice": [
+    "automation_occurrence_detail",
+    "automation_occurrence_steps"
+  ],
+  "results": {
+    "live_qa_cases": 23,
+    "live_qa_failed": 0,
+    "lazy_cases": [
+      "lazy-period-hydration",
+      "lazy-body-missing-retry",
+      "lazy-latest-failed"
+    ],
+    "unit_passed": 703,
+    "unit_ignored": 2,
+    "dispatch_crash": 8,
+    "v4_crash": 3,
+    "additional_v4": 2
+  }
+}

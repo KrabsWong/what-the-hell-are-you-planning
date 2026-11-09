@@ -1,0 +1,223 @@
+{
+  "candidate_sha256": "9d4c23410e0406fdb621f822c4b48a3391ad6a2f2af7fd5cb2b820144437c3d1",
+  "condition": "All OpenCode sessions inactive; no cargo/rustc for five seconds before run. Same immutable candidate as noisy r131.",
+  "guard_exit": 2,
+  "exit": 0,
+  "seconds": 5.88,
+  "monitor_samples": 11,
+  "busy_samples": 0,
+  "hardware": {
+    "cpu": "Apple M1 Pro",
+    "memory_bytes": "34359738368",
+    "os_build": "26B123",
+    "arch": "aarch64"
+  },
+  "profile": {
+    "qa_feature": true,
+    "debug_assertions": true,
+    "executable": "/Users/fuxingxing/workspaces/what-the-hell-are-you-planning/.local/t20-r117/live-performance/qa-bin",
+    "argv": [
+      "/Users/fuxingxing/workspaces/what-the-hell-are-you-planning/.local/t20-r117/live-performance/qa-bin",
+      "--qa-live-performance"
+    ],
+    "source_sha256": "844764b3059e31d8d67236f8e5772cca70fa49526e26c5c06def5f4970ec3518"
+  },
+  "samples": 30,
+  "fixtures": [
+    {
+      "occurrences": 500,
+      "materialized_runs": 20,
+      "body_bytes": 8192,
+      "db_bytes": 720896,
+      "editor": {
+        "samples": 30,
+        "ui_sync": {
+          "count": 30,
+          "p50_us": 128,
+          "p95_us": 184,
+          "p99_us": 239,
+          "max_us": 239
+        },
+        "ack_pump": {
+          "count": 30,
+          "p50_us": 2338,
+          "p95_us": 2837,
+          "p99_us": 2874,
+          "max_us": 2874
+        },
+        "render": {
+          "count": 30,
+          "p50_us": 2006,
+          "p95_us": 2617,
+          "p99_us": 2724,
+          "max_us": 2724
+        },
+        "main_thread_total": {
+          "count": 30,
+          "p50_us": 4493,
+          "p95_us": 5178,
+          "p99_us": 5221,
+          "max_us": 5221
+        },
+        "durable_wall": {
+          "count": 30,
+          "p50_us": 7880,
+          "p95_us": 8797,
+          "p99_us": 8891,
+          "max_us": 8891
+        },
+        "final_title": "Live perf 32",
+        "disk_title": "Live perf 32"
+      },
+      "history_page": {
+        "samples": 30,
+        "ui_sync": {
+          "count": 30,
+          "p50_us": 5,
+          "p95_us": 8,
+          "p99_us": 14,
+          "max_us": 14
+        },
+        "ack_pump": {
+          "count": 30,
+          "p50_us": 1975,
+          "p95_us": 2384,
+          "p99_us": 2397,
+          "max_us": 2397
+        },
+        "render": {
+          "count": 30,
+          "p50_us": 1973,
+          "p95_us": 2327,
+          "p99_us": 2345,
+          "max_us": 2345
+        },
+        "main_thread_total": {
+          "count": 30,
+          "p50_us": 3966,
+          "p95_us": 4627,
+          "p99_us": 4716,
+          "max_us": 4716
+        },
+        "durable_wall": {
+          "count": 30,
+          "p50_us": 5980,
+          "p95_us": 6962,
+          "p99_us": 7101,
+          "max_us": 7101
+        },
+        "first_page_rows": 20,
+        "order": "newest-first by descending occurrence id",
+        "page_metrics": {
+          "occurrence_rows": 20,
+          "run_rows": 0,
+          "fullscan_steps": 0,
+          "page_vm_steps": 331,
+          "total_count_vm_steps": 1511,
+          "unread_count_vm_steps": 359,
+          "body_reads": 0
+        }
+      },
+      "peak_rss_bytes": 68435968
+    },
+    {
+      "occurrences": 43200,
+      "materialized_runs": 240,
+      "body_bytes": 8192,
+      "db_bytes": 42323968,
+      "editor": {
+        "samples": 30,
+        "ui_sync": {
+          "count": 30,
+          "p50_us": 131,
+          "p95_us": 216,
+          "p99_us": 236,
+          "max_us": 236
+        },
+        "ack_pump": {
+          "count": 30,
+          "p50_us": 3426,
+          "p95_us": 3891,
+          "p99_us": 4141,
+          "max_us": 4141
+        },
+        "render": {
+          "count": 30,
+          "p50_us": 2941,
+          "p95_us": 3278,
+          "p99_us": 3459,
+          "max_us": 3459
+        },
+        "main_thread_total": {
+          "count": 30,
+          "p50_us": 6527,
+          "p95_us": 7234,
+          "p99_us": 7342,
+          "max_us": 7342
+        },
+        "durable_wall": {
+          "count": 30,
+          "p50_us": 12212,
+          "p95_us": 13237,
+          "p99_us": 13518,
+          "max_us": 13518
+        },
+        "final_title": "Live perf 32",
+        "disk_title": "Live perf 32"
+      },
+      "history_page": {
+        "samples": 30,
+        "ui_sync": {
+          "count": 30,
+          "p50_us": 7,
+          "p95_us": 13,
+          "p99_us": 15,
+          "max_us": 15
+        },
+        "ack_pump": {
+          "count": 30,
+          "p50_us": 3081,
+          "p95_us": 3524,
+          "p99_us": 3546,
+          "max_us": 3546
+        },
+        "render": {
+          "count": 30,
+          "p50_us": 2917,
+          "p95_us": 3373,
+          "p99_us": 3421,
+          "max_us": 3421
+        },
+        "main_thread_total": {
+          "count": 30,
+          "p50_us": 6037,
+          "p95_us": 6766,
+          "p99_us": 6913,
+          "max_us": 6913
+        },
+        "durable_wall": {
+          "count": 30,
+          "p50_us": 9224,
+          "p95_us": 9896,
+          "p99_us": 10186,
+          "max_us": 10186
+        },
+        "first_page_rows": 20,
+        "order": "newest-first by descending occurrence id",
+        "page_metrics": {
+          "occurrence_rows": 20,
+          "run_rows": 0,
+          "fullscan_steps": 0,
+          "page_vm_steps": 331,
+          "total_count_vm_steps": 129611,
+          "unread_count_vm_steps": 30251,
+          "body_reads": 0
+        }
+      },
+      "peak_rss_bytes": 404029440
+    }
+  ],
+  "acceptance": "The measured live save main-thread p95 gate passes for small and 43,200-occurrence fixtures in this quiet run. This does not accept native scrolling or later source changes.",
+  "comparison": "Same immutable candidate as r131 noisy failure; both results retained.",
+  "measurement_limit": "Page metrics from the harness require distinction between the application request and separate read-only validation; do not claim direct runtime body-read instrumentation."
+}

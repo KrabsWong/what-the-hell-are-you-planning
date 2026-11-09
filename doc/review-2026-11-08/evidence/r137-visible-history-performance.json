@@ -1,0 +1,291 @@
+{
+  "run": {
+    "binary_sha256": "8638f476e991cbe78a953138a1d73d3935e9327edaba9e2ee778040cd8e76b7a",
+    "exit": 0,
+    "seconds": 7.22,
+    "monitor_samples": [
+      {
+        "at": 1794197861.80613,
+        "build_processes": []
+      },
+      {
+        "at": 1794197862.354917,
+        "build_processes": []
+      },
+      {
+        "at": 1794197862.9041972,
+        "build_processes": []
+      },
+      {
+        "at": 1794197863.4541922,
+        "build_processes": []
+      },
+      {
+        "at": 1794197864.004205,
+        "build_processes": []
+      },
+      {
+        "at": 1794197864.555596,
+        "build_processes": []
+      },
+      {
+        "at": 1794197865.104185,
+        "build_processes": []
+      },
+      {
+        "at": 1794197865.651341,
+        "build_processes": []
+      },
+      {
+        "at": 1794197866.202181,
+        "build_processes": []
+      },
+      {
+        "at": 1794197866.7527308,
+        "build_processes": []
+      },
+      {
+        "at": 1794197867.30419,
+        "build_processes": []
+      },
+      {
+        "at": 1794197867.8556259,
+        "build_processes": []
+      },
+      {
+        "at": 1794197868.4042099,
+        "build_processes": []
+      }
+    ]
+  },
+  "report": {
+    "scope": "Actual live TaskApp via Some(LiveStartup) + ordered worker; editor Save command and indexed first-page path.",
+    "hardware": {
+      "cpu": "Apple M1 Pro",
+      "memory_bytes": "34359738368",
+      "os_build": "26B123",
+      "arch": "aarch64"
+    },
+    "profile": {
+      "qa_feature": true,
+      "debug_assertions": true,
+      "executable": "/Users/fuxingxing/workspaces/what-the-hell-are-you-planning/.local/t20-r117/live-performance/candidate/qa-candidate",
+      "argv": [
+        "/Users/fuxingxing/workspaces/what-the-hell-are-you-planning/.local/t20-r117/live-performance/candidate/qa-candidate",
+        "--qa-live-performance"
+      ],
+      "source_sha256": "c6c5d8015d474350235a1a37c6d9ea5f0526058999daaabb1eabbf503078c676"
+    },
+    "samples": 30,
+    "warmup": 3,
+    "target_p95_ui_us": 50000,
+    "body_read_instrumentation": null,
+    "body_read_note": "No live run-body byte counter exists; do not invent one.",
+    "fixtures": [
+      {
+        "occurrences": 500,
+        "materialized_runs": 20,
+        "body_bytes": 8192,
+        "db_bytes": 720896,
+        "editor": {
+          "samples": 30,
+          "ui_sync": {
+            "count": 30,
+            "p50_us": 136,
+            "p95_us": 163,
+            "p99_us": 167,
+            "max_us": 167
+          },
+          "ack_pump": {
+            "count": 30,
+            "p50_us": 2619,
+            "p95_us": 2956,
+            "p99_us": 3307,
+            "max_us": 3307
+          },
+          "render": {
+            "count": 30,
+            "p50_us": 2118,
+            "p95_us": 2303,
+            "p99_us": 2397,
+            "max_us": 2397
+          },
+          "main_thread_total": {
+            "count": 30,
+            "p50_us": 4870,
+            "p95_us": 5345,
+            "p99_us": 5718,
+            "max_us": 5718
+          },
+          "durable_wall": {
+            "count": 30,
+            "p50_us": 8458,
+            "p95_us": 9323,
+            "p99_us": 9362,
+            "max_us": 9362
+          },
+          "final_title": "Live perf 32",
+          "disk_title": "Live perf 32"
+        },
+        "history_page": {
+          "samples": 30,
+          "ui_sync": {
+            "count": 30,
+            "p50_us": 6,
+            "p95_us": 11,
+            "p99_us": 13,
+            "max_us": 13
+          },
+          "ack_pump": {
+            "count": 30,
+            "p50_us": 4164,
+            "p95_us": 4874,
+            "p99_us": 4921,
+            "max_us": 4921
+          },
+          "render": {
+            "count": 30,
+            "p50_us": 4049,
+            "p95_us": 4759,
+            "p99_us": 4797,
+            "max_us": 4797
+          },
+          "main_thread_total": {
+            "count": 30,
+            "p50_us": 8193,
+            "p95_us": 9474,
+            "p99_us": 9676,
+            "max_us": 9676
+          },
+          "durable_wall": {
+            "count": 30,
+            "p50_us": 12703,
+            "p95_us": 14006,
+            "p99_us": 14085,
+            "max_us": 14085
+          },
+          "first_page_rows": 20,
+          "order": "newest-first by descending occurrence id",
+          "page_metrics_source": "separate read-only HistoryReader validation request on the same database; NOT the 30 UI page queries",
+          "page_metrics_note": "body_reads is the backend handle's cumulative body-table read count for this validation request; it is not attributed to the timed UI requests.",
+          "page_metrics": {
+            "occurrence_rows": 20,
+            "run_rows": 0,
+            "fullscan_steps": 0,
+            "page_vm_steps": 331,
+            "total_count_vm_steps": 1511,
+            "unread_count_vm_steps": 359,
+            "body_reads": 0
+          }
+        },
+        "peak_rss_bytes": 71712768
+      },
+      {
+        "occurrences": 43200,
+        "materialized_runs": 240,
+        "body_bytes": 8192,
+        "db_bytes": 42323968,
+        "editor": {
+          "samples": 30,
+          "ui_sync": {
+            "count": 30,
+            "p50_us": 130,
+            "p95_us": 140,
+            "p99_us": 151,
+            "max_us": 151
+          },
+          "ack_pump": {
+            "count": 30,
+            "p50_us": 3405,
+            "p95_us": 3836,
+            "p99_us": 3846,
+            "max_us": 3846
+          },
+          "render": {
+            "count": 30,
+            "p50_us": 3009,
+            "p95_us": 3319,
+            "p99_us": 3411,
+            "max_us": 3411
+          },
+          "main_thread_total": {
+            "count": 30,
+            "p50_us": 6589,
+            "p95_us": 7073,
+            "p99_us": 7173,
+            "max_us": 7173
+          },
+          "durable_wall": {
+            "count": 30,
+            "p50_us": 12415,
+            "p95_us": 13159,
+            "p99_us": 13521,
+            "max_us": 13521
+          },
+          "final_title": "Live perf 32",
+          "disk_title": "Live perf 32"
+        },
+        "history_page": {
+          "samples": 30,
+          "ui_sync": {
+            "count": 30,
+            "p50_us": 7,
+            "p95_us": 11,
+            "p99_us": 18,
+            "max_us": 18
+          },
+          "ack_pump": {
+            "count": 30,
+            "p50_us": 6196,
+            "p95_us": 7076,
+            "p99_us": 7196,
+            "max_us": 7196
+          },
+          "render": {
+            "count": 30,
+            "p50_us": 6045,
+            "p95_us": 6773,
+            "p99_us": 6804,
+            "max_us": 6804
+          },
+          "main_thread_total": {
+            "count": 30,
+            "p50_us": 12349,
+            "p95_us": 13529,
+            "p99_us": 13638,
+            "max_us": 13638
+          },
+          "durable_wall": {
+            "count": 30,
+            "p50_us": 18872,
+            "p95_us": 20527,
+            "p99_us": 20891,
+            "max_us": 20891
+          },
+          "first_page_rows": 20,
+          "order": "newest-first by descending occurrence id",
+          "page_metrics_source": "separate read-only HistoryReader validation request on the same database; NOT the 30 UI page queries",
+          "page_metrics_note": "body_reads is the backend handle's cumulative body-table read count for this validation request; it is not attributed to the timed UI requests.",
+          "page_metrics": {
+            "occurrence_rows": 20,
+            "run_rows": 0,
+            "fullscan_steps": 0,
+            "page_vm_steps": 331,
+            "total_count_vm_steps": 129611,
+            "unread_count_vm_steps": 30251,
+            "body_reads": 0
+          }
+        },
+        "peak_rss_bytes": 407207936
+      }
+    ],
+    "peak_rss_bytes": 407207936
+  },
+  "scope": "Corrected visible automation-history benchmark, immutable r128 baseline plus current live performance harness. No active OpenCode sessions at start; five-second cargo/rustc-free preflight and process monitoring throughout.",
+  "limitations": [
+    "Not the integrated r137 product candidate.",
+    "Does not establish native scrolling smoothness.",
+    "Separate HistoryReader validation query metrics are not counters of the timed UI requests.",
+    "Earlier noisy r131 failure and r133 limited-history-render scope are retained."
+  ]
+}

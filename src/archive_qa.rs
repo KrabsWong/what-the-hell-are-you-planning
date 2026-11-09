@@ -24,9 +24,167 @@ pub fn run() {
     std::fs::create_dir_all(&root).unwrap();
     pure_checks();
     render_matrix(&root);
+    archived_in_progress_board(&root);
+    ordinary_goal_steps_back(&root);
     ancestor_archive_material_check(&root);
     active_archive_confirmation(&root);
     println!("Archive QA passed · {}", root.display());
+}
+
+fn archived_in_progress_board(root: &Path) {
+    let directory = root.join("archived-in-progress-board");
+    std::fs::create_dir_all(&directory).unwrap();
+    let mut store = Store::empty();
+    store.project_at_mut(0).unwrap().directory = directory.to_string_lossy().into();
+    store.set_default_model("qa/archive".into());
+    let topic = store.create_topic(1, "Archived board topic").unwrap();
+    let goal = store
+        .create_research_goal_in_topic(
+            "TASK-G1 Review research goal".into(),
+            "Archived incomplete goal must remain visible on the board.".into(),
+            1,
+            Some(topic),
+        )
+        .unwrap();
+    let _steps = store.apply_research_plan(goal, PLAN).unwrap();
+    store.set_stage(goal, Stage::InProgress).unwrap();
+    store.archive(goal).unwrap();
+    let path = directory.join("workspace.sqlite3");
+    Storage::new(path.clone()).save(&store).unwrap();
+    let (mut cx, handle, app) = with_app(store, &path, 1000., 680., |a, _, _| {
+        a.set_scope_identity(Scope::All);
+        a.layout = Layout::Board;
+    });
+    cx.update_window(handle, |_, w, cx| {
+        w.render_frame(cx);
+        w.click("archive", cx);
+        w.render_frame(cx);
+        assert_eq!(app.read(cx).visible_tasks().len(), 1);
+        assert!(
+            w.find(format!("card-{goal}")).visible(),
+            "archived InProgress goal must keep its board card"
+        );
+        assert!(w.find(format!("restore-archived-{goal}")).visible());
+        assert!(
+            w.try_find("execution-status-filter").is_none(),
+            "archive must not show execution filtering"
+        );
+        let status = w
+            .find(format!("card-status-{goal}"))
+            .label()
+            .map(str::to_string)
+            .unwrap_or_default();
+        assert!(status.contains("Archived"), "{status}");
+
+        // Open steps from the Archive board must return to the same Archive
+        // board, not the goal's ordinary Topic board.
+        w.click(format!("goal-progress-{goal}"), cx);
+        w.render_frame(cx);
+        assert_eq!(app.read(cx).selected(), Some(goal));
+        w.click("navigation-back", cx);
+        w.render_frame(cx);
+        assert_eq!(app.read(cx).scope(), Scope::Archive);
+        assert_eq!(app.read(cx).layout, Layout::Board);
+        assert!(w.find(format!("card-{goal}")).visible());
+
+        // The same entry with the keyboard shortcut.
+        w.click(format!("goal-progress-{goal}"), cx);
+        w.render_frame(cx);
+        w.press("cmd-[", cx);
+        w.render_frame(cx);
+        assert_eq!(app.read(cx).scope(), Scope::Archive);
+        assert_eq!(app.read(cx).layout, Layout::Board);
+        assert!(w.find(format!("restore-archived-{goal}")).visible());
+    })
+    .unwrap();
+    screenshot(
+        &mut cx,
+        handle,
+        &directory,
+        "archived-in-progress-board.png",
+    );
+}
+
+fn ordinary_goal_steps_back(root: &Path) {
+    let directory = root.join("ordinary-goal-steps-back");
+    std::fs::create_dir_all(&directory).unwrap();
+    let mut store = Store::empty();
+    store.project_at_mut(0).unwrap().directory = directory.to_string_lossy().into();
+    store.set_default_model("qa/archive".into());
+    let topic = store.create_topic(1, "Ordinary steps topic").unwrap();
+    let goal = store
+        .create_research_goal_in_topic(
+            "Ordinary Open steps goal".into(),
+            "Board caller must survive Open steps Back.".into(),
+            1,
+            Some(topic),
+        )
+        .unwrap();
+    let _steps = store.apply_research_plan(goal, PLAN).unwrap();
+    let path = directory.join("workspace.sqlite3");
+    Storage::new(path.clone()).save(&store).unwrap();
+    for scope in [Scope::All, Scope::Project(1)] {
+        let (mut cx, handle, app) = with_app(store.clone(), &path, 1200., 800., |a, _, _| {
+            a.set_scope_identity(scope.clone());
+            a.layout = Layout::Board;
+        });
+        cx.update_window(handle, |_, w, cx| {
+            w.render_frame(cx);
+            assert_eq!(app.read(cx).visible_tasks().len(), 1);
+            let caller = app.read(cx).scope();
+            w.click(format!("goal-progress-{goal}"), cx);
+            w.render_frame(cx);
+            assert_eq!(app.read(cx).selected(), Some(goal));
+            w.click("navigation-back", cx);
+            w.render_frame(cx);
+            assert_eq!(app.read(cx).scope(), caller, "Open steps returns its board caller");
+            assert_eq!(app.read(cx).layout, Layout::Board);
+            assert!(w.find(format!("card-{goal}")).visible());
+        })
+        .unwrap();
+    }
+
+    // List caller: row -> goal detail -> Steps -> Back restores All/List and its
+    // non-empty filter.
+    {
+        let (mut cx, handle, app) = with_app(store.clone(), &path, 1200., 800., |a, _, _| {
+            a.set_scope_identity(Scope::All);
+            a.layout = Layout::List;
+            a.set_query("Ordinary".into());
+        });
+        cx.update_window(handle, |_, w, cx| {
+            w.render_frame(cx);
+            app.update(cx, |a, cx| a.request_task(goal, false, w, cx));
+            w.render_frame(cx);
+            assert_eq!(app.read(cx).selected(), Some(goal));
+            w.click("navigation-back", cx);
+            w.render_frame(cx);
+            assert_eq!(app.read(cx).scope(), Scope::All);
+            assert_eq!(app.read(cx).layout, Layout::List);
+            assert_eq!(app.read(cx).query(), "Ordinary");
+        })
+        .unwrap();
+    }
+
+    // Topic caller: topic goal row -> Steps -> Back restores the Topic board.
+    {
+        let topic = store.task_topic(goal).unwrap().id;
+        let (mut cx, handle, app) = with_app(store.clone(), &path, 1200., 800., |a, _, _| {
+            a.set_scope_identity(Scope::Topic(topic));
+            a.layout = Layout::Board;
+        });
+        cx.update_window(handle, |_, w, cx| {
+            w.render_frame(cx);
+            app.update(cx, |a, cx| a.request_task(goal, false, w, cx));
+            w.render_frame(cx);
+            assert_eq!(app.read(cx).selected(), Some(goal));
+            w.click("navigation-back", cx);
+            w.render_frame(cx);
+            assert_eq!(app.read(cx).scope(), Scope::Topic(topic));
+            assert_eq!(app.read(cx).layout, Layout::Board);
+        })
+        .unwrap();
+    }
 }
 
 fn completed_goal(directory: &Path) -> (Store, u64, Vec<u64>) {

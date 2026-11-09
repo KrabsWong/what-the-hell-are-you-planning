@@ -192,6 +192,73 @@ fn hsl_to_rgb(hue: f32, saturation: f32, lightness: f32) -> (u32, u32, u32) {
     (channel(red), channel(green), channel(blue))
 }
 
+/// Supported result-row surfaces used by the session name tints.
+/// Stored as 24-bit RGB; `contrast_against` converts them to opaque RGBA.
+pub(crate) const LIGHT_RESULT_PANEL_RGB: u32 = 0xffffff;
+pub(crate) const DARK_RESULT_PANEL_RGB: u32 = 0x202124;
+/// WCAG AA contrast for ordinary text.
+const RESULT_NAME_MIN_CONTRAST: f32 = 4.5;
+
+fn srgb_channel_luminance(channel: u32) -> f32 {
+    let value = channel as f32 / 255.0;
+    if value <= 0.04045 {
+        value / 12.92
+    } else {
+        ((value + 0.055) / 1.055).powf(2.4)
+    }
+}
+
+/// Relative luminance of an **opaque RGBA** color (`0xRRGGBBAA`).
+pub(crate) fn relative_luminance(rgba: u32) -> f32 {
+    0.2126 * srgb_channel_luminance((rgba >> 24) & 0xff)
+        + 0.7152 * srgb_channel_luminance((rgba >> 16) & 0xff)
+        + 0.0722 * srgb_channel_luminance((rgba >> 8) & 0xff)
+}
+
+/// Contrast between an opaque **RGBA** text color and a 24-bit **RGB**
+/// background. The background is widened to opaque RGBA internally.
+pub(crate) fn contrast_against(text_rgba: u32, background_rgb: u32) -> f32 {
+    let text = relative_luminance(text_rgba);
+    let background = relative_luminance((background_rgb << 8) | 0xff);
+    let (lighter, darker) = if text >= background {
+        (text, background)
+    } else {
+        (background, text)
+    };
+    (lighter + 0.05) / (darker + 0.05)
+}
+
+/// Build one session name colour. Hue and saturation are preserved; when the
+/// preferred lightness cannot reach AA contrast against the supported row
+/// surface, lightness moves only as far as needed (darker on light panels,
+/// lighter on dark panels).
+fn result_tint_color(hue: f32, saturation: f32, preferred_lightness: f32, dark: bool) -> ResultTint {
+    let background = if dark {
+        DARK_RESULT_PANEL_RGB
+    } else {
+        LIGHT_RESULT_PANEL_RGB
+    };
+    let mut lightness = preferred_lightness.clamp(0.08, 0.94);
+    let mut color = {
+        let (red, green, blue) = hsl_to_rgb(hue, saturation, lightness);
+        (red << 24) | (green << 16) | (blue << 8) | 0xff
+    };
+    if dark {
+        while contrast_against(color, background) < RESULT_NAME_MIN_CONTRAST && lightness < 0.94 {
+            lightness = (lightness + 0.01).min(0.94);
+            let (red, green, blue) = hsl_to_rgb(hue, saturation, lightness);
+            color = (red << 24) | (green << 16) | (blue << 8) | 0xff;
+        }
+    } else {
+        while contrast_against(color, background) < RESULT_NAME_MIN_CONTRAST && lightness > 0.08 {
+            lightness = (lightness - 0.01).max(0.08);
+            let (red, green, blue) = hsl_to_rgb(hue, saturation, lightness);
+            color = (red << 24) | (green << 16) | (blue << 8) | 0xff;
+        }
+    }
+    ResultTint { text: color }
+}
+
 #[derive(Clone, Copy)]
 pub(crate) struct ResultTint {
     /// Solid text colour for the automation name.
@@ -242,10 +309,7 @@ impl ResultTints {
         } else {
             [0.38, 0.30, 0.44][(index / 3) % 3]
         };
-        let (red, green, blue) = hsl_to_rgb(hue, saturation, lightness);
-        ResultTint {
-            text: (red << 24) | (green << 16) | (blue << 8) | 0xff,
-        }
+        result_tint_color(hue, saturation, lightness, dark)
     }
 }
 
@@ -2262,6 +2326,7 @@ impl TaskApp {
             .collect::<Vec<_>>();
         let mut panel = col()
             .id("automation-results-scroll")
+            .w_full()
             .track_scroll(&self.automation_ui.scroll)
             .flex_1()
             .h_full()
@@ -2271,11 +2336,21 @@ impl TaskApp {
             .p_6()
             .gap_4()
             .child(
-                col().gap_1()
+                col()
+                    .w_full()
+                    .min_w_0()
+                    .gap_1()
                     .child(div().text_lg().font_weight(FontWeight::SEMIBOLD).child(selectable("Automation results")))
-                    .child(muted(
-                        "Every automation period, newest activity first. Each row names the timestamp it shows; open it for its answer and sources.",
-                        cx,
+                    .child(crate::views::observed(
+                        div()
+                            .id("automation-results-subtitle")
+                            .aria_label("Every automation period, newest activity first. Each row names the timestamp it shows; open it for its answer and sources.")
+                            .w_full()
+                            .min_w_0()
+                            .child(muted(
+                                "Every automation period, newest activity first. Each row names the timestamp it shows; open it for its answer and sources.",
+                                cx,
+                            )),
                     )),
             );
         if total == 0 {
@@ -2289,23 +2364,32 @@ impl TaskApp {
                 None => format!("Periods · {total}"),
             };
             panel = panel.child(
-                row()
-                    .justify_between()
-                    .flex_wrap()
-                    .gap_3()
-                    .child(
-                        div()
-                            .font_weight(FontWeight::SEMIBOLD)
-                            .child(selectable(heading)),
-                    )
+                col()
+                    .w_full()
+                    .min_w_0()
+                    .gap_2()
                     .child(
                         row()
-                            .flex_shrink_0()
+                            .w_full()
+                            .min_w_0()
+                            .justify_between()
+                            .flex_wrap()
                             .gap_3()
-                            .items_center()
-                            .child(self.automation_results_filter_control(cx))
-                            .child(overview_note("Unread results are marked with a dot.", cx)),
-                    ),
+                            .child(
+                                div()
+                                    .font_weight(FontWeight::SEMIBOLD)
+                                    .child(selectable(heading)),
+                            )
+                            .child(self.automation_results_filter_control(cx)),
+                    )
+                    .child(crate::views::observed(
+                        div()
+                            .id("automation-results-unread-hint")
+                            .aria_label("Unread results are marked with a dot.")
+                            .w_full()
+                            .min_w_0()
+                            .child(muted("Unread results are marked with a dot.", cx)),
+                    )),
             );
             let queued = occurrences
                 .iter()
@@ -2331,7 +2415,7 @@ impl TaskApp {
                     cx,
                 ));
             }
-            let mut history = col().gap_1().flex_shrink_0();
+            let mut history = col().w_full().min_w_0().gap_1().flex_shrink_0();
             for occurrence in shown {
                 history = history.child(self.automation_occurrence_row(occurrence, true, cx));
             }
@@ -3015,6 +3099,10 @@ impl TaskApp {
                 "Scheduled",
             ),
         };
+        let definition_name = definition
+            .map(|definition| definition.name.clone())
+            .unwrap_or_else(|| "Automation period".into());
+        let row_label = format!("{activity_text} · {status} · {definition_name}");
         let trigger_hint = if occurrence.skipped_count > 0 {
             format!(
                 "{trigger_name} · {} earlier periods were summarized",
@@ -3023,119 +3111,130 @@ impl TaskApp {
         } else {
             trigger_name.into()
         };
-        let mut line = row()
+        // Keep the action outside the flexible text column. Metadata can wrap
+        // independently instead of pushing the only explicit action offscreen.
+        let mut body = col().flex_1().min_w_0().gap_1();
+        if let (Some(definition), Some(tint)) = (definition, tint) {
+            body = body.child(
+                row()
+                    .w_full()
+                    .min_w_0()
+                    .gap_2()
+                    .items_center()
+                    .child(
+                        div()
+                            .flex_shrink_0()
+                            .px(px(5.))
+                            .py(px(1.))
+                            .rounded(px(4.))
+                            .bg(rgb(colors.side))
+                            .text_size(px(11.))
+                            .font_weight(FontWeight::MEDIUM)
+                            .text_color(rgb(colors.secondary))
+                            .child(selectable(definition.shape.label())),
+                    )
+                    .child(
+                        div()
+                            .id(format!("occurrence-name-{id}"))
+                            .flex_1()
+                            .min_w_0()
+                            .text_sm()
+                            .font_weight(FontWeight::MEDIUM)
+                            .text_color(rgba(tint.text))
+                            .truncate()
+                            .tooltip({
+                                let name = definition.name.clone();
+                                move |window, cx| {
+                                    gpui_kit::component::tooltip::Tooltip::new(name.clone())
+                                        .build(window, cx)
+                                }
+                            })
+                            .child(selectable(definition.name.clone()))
+                            .map(observed),
+                    ),
+            );
+        }
+        body = body.child(
+            row()
+                .w_full()
+                .min_w_0()
+                .flex_wrap()
+                .gap_2()
+                .items_center()
+                .child(
+                    div()
+                        .id(format!("occurrence-activity-{id}"))
+                        .min_w_0()
+                        .text_sm()
+                        .child(selectable(activity_text))
+                        .map(observed),
+                )
+                .child(
+                    div()
+                        .id(format!("occurrence-trigger-{id}"))
+                        .flex_shrink_0()
+                        .flex()
+                        .items_center()
+                        .gap_1()
+                        .text_color(rgb(colors.muted))
+                        .tooltip(move |window, cx| {
+                            gpui_kit::component::tooltip::Tooltip::new(trigger_hint.clone())
+                                .build(window, cx)
+                        })
+                        .child(gpui_kit::component::Icon::new(trigger_icon).size(px(14.)))
+                        .child(div().text_size(px(11.)).child(selectable(trigger_label)))
+                        .map(observed),
+                )
+                .child(
+                    div()
+                        .id(format!("occurrence-status-{id}"))
+                        .min_w_0()
+                        .text_sm()
+                        .font_weight(FontWeight::MEDIUM)
+                        .text_color(rgb(color))
+                        .child(selectable(status))
+                        .map(observed),
+                ),
+        );
+        row()
             .id(format!("automation-occurrence-{id}"))
+            .aria_label(row_label)
+            .w_full()
+            .min_w_0()
             .px_2()
             .py_2()
             .gap_2()
             .items_center()
             .rounded_md()
-            // One neutral surface for every period; the automation name carries
-            // the session colour instead of tinting the whole row.
             .bg(rgb(colors.panel))
             .cursor_pointer()
             .hover(|d| d.bg(rgb(colors.hover)))
             .child(
                 div()
+                    .flex_shrink_0()
                     .w(px(8.))
                     .h(px(8.))
                     .rounded_full()
                     .when(!occurrence.unread, |d| d.opacity(0.0))
                     .bg(rgb(colors.accent)),
             )
+            .child(body)
             .child(
-                div()
-                    .id(format!("occurrence-activity-{id}"))
-                    .flex_shrink_0()
-                    .text_sm()
-                    .child(selectable(activity_text))
-                    .map(observed),
-            );
-        if let (Some(definition), Some(tint)) = (definition, tint) {
-            line = line
-                .child(label("·", cx).flex_shrink_0())
-                // Names are user-authored, so the fixed category leads: it tells
-                // the reader what kind of period this is before the name.
-                .child(
-                    div()
-                        .flex_shrink_0()
-                        .px(px(5.))
-                        .py(px(1.))
-                        .rounded(px(4.))
-                        .bg(rgb(colors.side))
-                        .text_size(px(11.))
-                        .font_weight(FontWeight::MEDIUM)
-                        .text_color(rgb(colors.secondary))
-                        .child(selectable(definition.shape.label())),
-                )
-                .child(
-                    div()
-                        .id(format!("occurrence-name-{id}"))
-                        .min_w_0()
-                        .max_w(px(420.))
-                        .text_sm()
-                        .font_weight(FontWeight::MEDIUM)
-                        .text_color(rgba(tint.text))
-                        .truncate()
-                        .tooltip({
-                            let name = definition.name.clone();
-                            move |window, cx| {
-                                gpui_kit::component::tooltip::Tooltip::new(name.clone())
-                                    .build(window, cx)
-                            }
-                        })
-                        .child(selectable(definition.name.clone())),
-                );
-        }
-        line.child(div().flex_1().min_w(px(12.)))
-            .child(
-                div()
-                    .id(format!("occurrence-trigger-{id}"))
-                    .flex_shrink_0()
-                    .flex()
-                    .items_center()
-                    .gap_1()
-                    .text_color(rgb(colors.muted))
-                    .tooltip(move |window, cx| {
-                        gpui_kit::component::tooltip::Tooltip::new(trigger_hint.clone())
-                            .build(window, cx)
-                    })
-                    .child(gpui_kit::component::Icon::new(trigger_icon).size(px(14.)))
-                    // The source stays readable as text where the row has room;
-                    // the tooltip above also carries it in compact layouts.
-                    .child(div().text_size(px(11.)).child(selectable(trigger_label))),
-            )
-            .child(
-                div()
-                    .id(format!("occurrence-status-{id}"))
-                    .flex_shrink_0()
-                    .text_sm()
-                    .font_weight(FontWeight::MEDIUM)
-                    .text_color(rgb(color))
-                    .tooltip({
-                        let status = status.clone();
-                        move |window, cx| {
-                            gpui_kit::component::tooltip::Tooltip::new(status.clone())
-                                .build(window, cx)
-                        }
-                    })
-                    .child(selectable(status)),
-            )
-            .child(
-                tool_icon(
-                    format!("open-occurrence-{id}"),
-                    assets::IconName::ChevronRight,
-                    "Open this period's result",
-                )
-                .on_click(
-                    cx.listener(move |app, _, window, cx| {
+                div().flex_shrink_0().child(
+                    tool_icon(
+                        format!("open-occurrence-{id}"),
+                        assets::IconName::ChevronRight,
+                        "Open this period's result",
+                    )
+                    .on_click(cx.listener(move |app, _, window, cx| {
                         app.open_occurrence_result(id, window, cx)
-                    }),
+                    })),
                 ),
             )
-            .on_click(
-                cx.listener(move |app, _, window, cx| app.open_occurrence_result(id, window, cx)),
-            )
+            .on_click(cx.listener(move |app, _, window, cx| {
+                app.open_occurrence_result(id, window, cx)
+            }))
+            .map(observed)
             .into_any_element()
     }
 
@@ -3202,7 +3301,74 @@ impl TaskApp {
                 cx,
             ));
         }
-        if !presentation.has_final_report {
+        let final_run = occurrence
+            .final_run_id
+            .or_else(|| occurrence.run_ids.last().copied());
+        let body_state = final_run.and_then(|run_id| self.run_body_state.get(&run_id));
+        let lazy_final_run = final_run
+            .filter(|run_id| self.store.run_body_is_lazy(*run_id))
+            .filter(|_| {
+                !matches!(
+                    body_state,
+                    Some(crate::history_reader::BodyLoad::Absent)
+                        | Some(crate::history_reader::BodyLoad::Failed { .. })
+                )
+            });
+        if lazy_final_run.is_some() {
+            let message = if occurrence.status == OccurrenceStatus::Succeeded {
+                "Loading the saved report body… The period is complete; only its saved result text is being fetched."
+            } else {
+                "Loading a saved step result… This period is still in progress; completed steps keep their saved results."
+            };
+            panel = panel.child(
+                crate::views::notice(crate::views::NoticeTone::Info, message, cx)
+                    .id("automation-report-loading")
+                    .aria_label("Loading saved report")
+                    .map(observed),
+            );
+        } else if matches!(
+            body_state,
+            Some(crate::history_reader::BodyLoad::Failed { .. })
+        ) {
+            let occurrence_id = occurrence.id;
+            panel = panel.child(
+                col().gap_2()
+                    .child(
+                        crate::views::notice(
+                            crate::views::NoticeTone::Warning,
+                            "The saved report body could not be loaded. Dependent work will not use an empty body; retry just this report read.",
+                            cx,
+                        )
+                        .id("automation-report-unavailable")
+                        .aria_label("Saved report body unavailable")
+                        .map(observed),
+                    )
+                    .child(
+                        quiet_button("automation-report-retry", "Retry loading report")
+                            .icon(assets::IconName::RefreshCw)
+                            .tooltip("Retry reading this saved report body only; persistence and the period are unchanged.")
+                            .on_click(cx.listener(move |app, _, _, cx| {
+                                if app.retry_occurrence_body(occurrence_id) {
+                                    cx.notify();
+                                }
+                            })),
+                    ),
+            );
+        } else if matches!(
+            body_state,
+            Some(crate::history_reader::BodyLoad::Absent)
+        ) {
+            panel = panel.child(
+                crate::views::notice(
+                    crate::views::NoticeTone::Warning,
+                    "No saved report body exists for this run. Existing step results remain available; this run is not presented as complete.",
+                    cx,
+                )
+                .id("automation-report-missing")
+                .aria_label("Saved report body missing")
+                .map(observed),
+            );
+        } else if !presentation.has_final_report {
             panel = panel.child(
                 crate::views::notice(
                     crate::views::NoticeTone::Info,
@@ -3487,7 +3653,7 @@ impl TaskApp {
         let total = task_ids.len();
         let completed = task_ids
             .iter()
-            .filter(|task| self.store.research_result(**task).is_some())
+            .filter(|task| self.store.research_result_available_or_pending(**task))
             .count();
         let busy = occurrence.status.is_active() || goals.iter().any(|goal| self.goal_busy(*goal));
         let retry_blocker = self.store.occurrence_retry_blocker(occurrence);
@@ -4533,7 +4699,10 @@ impl ResearchKinds {
 
 #[cfg(test)]
 mod tests {
-    use super::{ResultTints, format_in_zone_precise};
+    use super::{
+        contrast_against, format_in_zone_precise, result_tint_color, ResultTints,
+        DARK_RESULT_PANEL_RGB, LIGHT_RESULT_PANEL_RGB, RESULT_NAME_MIN_CONTRAST,
+    };
 
     #[test]
     fn occurrence_times_keep_second_precision() {
@@ -4567,6 +4736,68 @@ mod tests {
         let light = tints.tint(1, false).text;
         let dark = tints.tint(1, true).text;
         assert_ne!(light, dark);
+    }
+
+    #[test]
+    fn every_supported_hue_keeps_body_text_contrast() {
+        for hue in 0..360 {
+            for saturation in [0.62, 0.74, 0.86] {
+                for preferred in [0.30, 0.38, 0.44] {
+                    let light = result_tint_color(hue as f32, saturation, preferred, false);
+                    let ratio = contrast_against(light.text, LIGHT_RESULT_PANEL_RGB);
+                    assert!(
+                        ratio >= RESULT_NAME_MIN_CONTRAST,
+                        "light hue {hue} sat {saturation} L {preferred}: contrast {ratio:.2}"
+                    );
+                }
+                for preferred in [0.64, 0.72, 0.78] {
+                    let dark = result_tint_color(hue as f32, saturation, preferred, true);
+                    let ratio = contrast_against(dark.text, DARK_RESULT_PANEL_RGB);
+                    assert!(
+                        ratio >= RESULT_NAME_MIN_CONTRAST,
+                        "dark hue {hue} sat {saturation} L {preferred}: contrast {ratio:.2}"
+                    );
+                }
+            }
+        }
+    }
+
+    #[test]
+    fn luminance_and_contrast_match_known_srgb_values() {
+        // independent oracle values for opaque RGBA inputs and RGB backgrounds
+        assert_eq!(super::relative_luminance(0x000000ff), 0.0);
+        assert!((super::relative_luminance(0xffffffff) - 1.0).abs() < 1e-6);
+        assert!((super::relative_luminance(0xff0000ff) - 0.2126).abs() < 1e-4);
+        assert!((super::relative_luminance(0x00ff00ff) - 0.7152).abs() < 1e-4);
+        assert!((super::relative_luminance(0x0000ffff) - 0.0722).abs() < 1e-4);
+        assert!((super::relative_luminance(0x808080ff) - 0.2158605).abs() < 1e-4);
+        // white text on black background is 21:1; equal colors are 1:1
+        assert!((super::contrast_against(0xffffffff, 0x000000) - 21.0).abs() < 1e-4);
+        assert!((super::contrast_against(0x000000ff, 0xffffff) - 21.0).abs() < 1e-4);
+        assert!((super::contrast_against(0x123456ff, 0x123456) - 1.0).abs() < 1e-6);
+        // the supported light panel must decode as white, not cyan
+        assert_eq!(super::relative_luminance((LIGHT_RESULT_PANEL_RGB << 8) | 0xff), 1.0);
+        assert!((super::relative_luminance((DARK_RESULT_PANEL_RGB << 8) | 0xff) - 0.0152).abs() < 0.002);
+    }
+
+    #[test]
+    fn assigned_light_tints_stay_legible_distinct_and_opaque() {
+        let tints = ResultTints::seeded(42);
+        let mut assigned = Vec::new();
+        for automation in 1..=30 {
+            let light = tints.tint(automation, false);
+            let ratio = contrast_against(light.text, LIGHT_RESULT_PANEL_RGB);
+            assert!(ratio >= RESULT_NAME_MIN_CONTRAST, "assignment {automation}: {ratio:.2}");
+            assert_eq!(light.text & 0xff, 0xff);
+            assert_eq!(light.text, tints.tint(automation, false).text);
+            assert!(
+                !assigned.contains(&light.text),
+                "first thirty assignments must stay distinguishable"
+            );
+            assigned.push(light.text);
+            let dark = tints.tint(automation, true);
+            assert!(contrast_against(dark.text, DARK_RESULT_PANEL_RGB) >= RESULT_NAME_MIN_CONTRAST);
+        }
     }
 
     #[test]

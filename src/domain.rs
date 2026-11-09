@@ -416,6 +416,10 @@ pub struct Store {
     report_publishing: TrackedScalar<crate::report_publish::PublishingConfig>,
     #[serde(default)]
     recovery_snapshot: TrackedScalar<String>,
+    /// Runs whose report body exists on disk but was not hydrated at startup.
+    /// This is process-local read state, never a persisted domain change.
+    #[serde(skip)]
+    lazy_bodies: std::collections::BTreeSet<u64>,
     #[serde(default = "publication_tracked", deserialize_with = "deserialize_publications")]
     publications: TrackedList<crate::report_publish::Publication>,
     #[serde(default = "task_tracked", deserialize_with = "deserialize_tasks")]
@@ -609,6 +613,7 @@ impl Store {
             automation_occurrences: occurrence_tracked(),
             report_publishing: TrackedScalar::new(Default::default()),
             recovery_snapshot: TrackedScalar::new(String::new()),
+            lazy_bodies: std::collections::BTreeSet::new(),
             publications: publication_tracked(),
             tasks: task_tracked(),
             projects: project_tracked(),
@@ -1260,6 +1265,7 @@ impl Store {
     }
 
     pub fn remove_run(&mut self, id: u64) -> Option<AgentRun> {
+        self.lazy_bodies.remove(&id);
         self.runs
             .remove_tracked(crate::persistence_journal::EntityKey::Run(id))
     }
@@ -1628,10 +1634,25 @@ impl Store {
 
     /// Install a report body fetched from durable storage without creating a
     /// dirty write. The body already exists on disk; only the UI copy was lazy.
+    pub(crate) fn mark_lazy_body(&mut self, run_id: u64) {
+        self.lazy_bodies.insert(run_id);
+    }
+
+    /// True while a Succeeded run is known to have a durable body that has not
+    /// been fetched into this UI copy yet.
+    pub(crate) fn run_body_is_lazy(&self, run_id: u64) -> bool {
+        self.lazy_bodies.contains(&run_id)
+    }
+
+    pub(crate) fn clear_lazy_body(&mut self, run_id: u64) {
+        self.lazy_bodies.remove(&run_id);
+    }
+
     pub(crate) fn hydrate_run_body(&mut self, run_id: u64, body: String) -> bool {
         let Some(index) = self.runs().iter().position(|run| run.id == run_id) else {
             return false;
         };
+        self.lazy_bodies.remove(&run_id);
         self.runs.set_clean(index, |run| run.output = body)
     }
 

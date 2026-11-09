@@ -21,6 +21,7 @@ pub fn run() {
     sidebar_retained_surface(&root);
     startup_completion_scheduled(&root);
     automation_wizard_quick_review(&root);
+    automation_results_compact(&root);
     settings_scroll_probe(&root);
     keyboard_matrix(&root);
     automation_result_keyboard(&root);
@@ -46,6 +47,122 @@ fn search_fixture(directory: &Path) -> Store {
         )
         .unwrap();
     store
+}
+
+fn automation_results_fixture(
+    directory: &Path,
+) -> (Store, Vec<u64>, Vec<String>) {
+    use crate::automation::{
+        AutomationOccurrence, AutomationOccurrenceSnapshot, AutomationShape, OccurrenceStatus,
+        TimeWindow, TriggerSource,
+    };
+    use crate::automation_schedule::{Schedule, ScheduleSpec};
+    let mut store = fixture(directory);
+    let schedule = Schedule {
+        spec: ScheduleSpec::Daily { hour: 10, minute: 0 },
+        timezone: "Asia/Shanghai".into(),
+    };
+    let shapes = [
+        AutomationShape::Quick,
+        AutomationShape::Research,
+        AutomationShape::Quick,
+        AutomationShape::Research,
+        AutomationShape::Quick,
+    ];
+    let statuses = [
+        OccurrenceStatus::Succeeded,
+        OccurrenceStatus::Failed,
+        OccurrenceStatus::Queued,
+        OccurrenceStatus::Succeeded,
+        OccurrenceStatus::WaitingRetry,
+    ];
+    let mut ids = Vec::new();
+    let mut names = Vec::new();
+    for (index, (shape, status)) in shapes.into_iter().zip(statuses).enumerate() {
+        let name = if index % 2 == 0 {
+            format!("Shenzhen fuel price and refinery outage watch number {index}")
+        } else {
+            format!("Long research automation for regional refinery maintenance and price impact {index}")
+        };
+        let objective = "Check today's fuel prices and summarize the change with sources.";
+        let expected = "Current price, change and source.";
+        let template = if shape == AutomationShape::Quick {
+            crate::automation_execution::build_quick_template(objective, expected)
+        } else {
+            crate::automation_execution::build_template(objective, expected)
+        }
+        .unwrap();
+        let automation = store
+            .create_automation_draft(
+                1,
+                shape,
+                name.clone(),
+                objective.into(),
+                expected.into(),
+                schedule.clone(),
+                Default::default(),
+                Some(template),
+                1_764_500_000 + index as i64 * 600,
+            )
+            .unwrap();
+        let definition = store.automation(automation).unwrap().clone();
+        let start = 1_764_600_000 + index as i64 * 3_600;
+        let occurrence_id = store.next_occurrence_id().unwrap();
+        let occurrence = AutomationOccurrence {
+            id: occurrence_id,
+            automation_id: automation,
+            definition_version: definition.version,
+            source: if index % 2 == 0 {
+                TriggerSource::Scheduled
+            } else {
+                TriggerSource::Manual
+            },
+            trigger_key: crate::automation::scheduled_trigger_key(automation, start),
+            scheduled_for: Some(start),
+            requested_at: None,
+            actual_started_at: Some(start + 60),
+            timezone: definition.schedule.timezone.clone(),
+            reference_time: start,
+            data_window: TimeWindow::unresolved("T19 compact results"),
+            snapshot: AutomationOccurrenceSnapshot {
+                objective: definition.objective.clone(),
+                expected_result: definition.expected_result.clone(),
+                shape: Some(definition.shape),
+                template: definition.template.clone().unwrap(),
+                models: ["fixture/plan", "fixture/collect", "fixture/analyze", "fixture/advise"]
+                    .map(String::from),
+                agents: Default::default(),
+                materials: vec![],
+                policy: definition.policy.clone(),
+                approval_version: definition.version,
+                approval_signature: "T19 compact results".into(),
+            },
+            status,
+            reason: (status == OccurrenceStatus::Failed)
+                .then(|| {
+                    crate::automation::OccurrenceReason::new(
+                        crate::automation::SkipCode::ExecutionFailed,
+                        "T19 fixture failure",
+                    )
+                }),
+            research_goal_id: None,
+            research_goal_ids: vec![],
+            research_topic_id: None,
+            run_ids: vec![],
+            final_run_id: None,
+            unread: index % 2 == 0,
+            skipped_count: 0,
+            skipped_from: None,
+            skipped_to: None,
+            created_at: start,
+            deadline_at: None,
+            retry_requested_at: None,
+        };
+        store.materialize_occurrence(occurrence).unwrap();
+        ids.push(occurrence_id);
+        names.push(name);
+    }
+    (store, ids, names)
 }
 
 fn visual_matrix(root: &Path) {
@@ -1060,6 +1177,98 @@ fn automation_wizard_quick_review(root: &Path) {
     screenshot(&mut cx, handle, &directory, "wizard-step3.png");
     cx.update_window(handle, |_, w, _| w.remove_window())
         .unwrap();
+}
+
+fn automation_results_compact(root: &Path) {
+    let (store, ids, names) = automation_results_fixture(root);
+    for (width, height, mode) in [
+        (1000., 680., Appearance::Dark),
+        (1000., 680., Appearance::Light),
+        (1440., 920., Appearance::Dark),
+        (1440., 920., Appearance::Light),
+    ] {
+        let directory = root.join(format!("automation-results-{width}-{mode:?}"));
+        std::fs::create_dir_all(&directory).unwrap();
+        let mut scenario_store = store.clone();
+        scenario_store.set_appearance(mode);
+        let path = directory.join("workspace.sqlite3");
+        Storage::new(path.clone()).save(&scenario_store).unwrap();
+        let (mut cx, handle, app) = with_app(scenario_store, &path, width, height, |app, w, cx| {
+            app.set_scope_identity(Scope::AutomationRuns);
+            cx.notify();
+            let _ = w;
+        });
+        cx.update_window(handle, |_, w, cx| {
+            w.render_frame(cx);
+            w.find("automation-results-subtitle");
+            let viewport = w.viewport_size();
+            let subtitle = w.find("automation-results-subtitle").bounds();
+            assert!(
+                subtitle.right() <= px(width) + px(1.),
+                "{width}x{height} {mode:?}: subtitle must stay inside the viewport"
+            );
+            let hint_snapshot = w.find("automation-results-unread-hint");
+            let hint = hint_snapshot.bounds();
+            assert!(
+                hint_snapshot.visible() && hint.right() <= px(width) + px(1.),
+                "{width}x{height} {mode:?}: unread hint must be visible and bounded"
+            );
+            for (id, name) in ids.iter().zip(names.iter()) {
+                let row = w.find(format!("automation-occurrence-{id}"));
+                assert!(
+                    row.visible() && row.bounds().right() <= viewport.width + px(1.),
+                    "{width}x{height} {mode:?}: result row must be inside the viewport"
+                );
+                let label = row.label().unwrap_or_default();
+                assert!(label.contains(name), "row keeps the automation identity");
+                assert!(
+                    label.contains("Succeeded")
+                        || label.contains("Failed")
+                        || label.contains("Queued")
+                        || label.contains("Waiting to retry"),
+                    "row keeps its status"
+                );
+                let action = w.find(format!("open-occurrence-{id}"));
+                assert!(
+                    action.visible() && action.bounds().right() <= viewport.width + px(1.),
+                    "{width}x{height} {mode:?}: Open action must be reachable"
+                );
+                let name_bounds = w.find(format!("occurrence-name-{id}")).bounds();
+                assert!(
+                    name_bounds.size.width > px(60.)
+                        && name_bounds.right() <= action.bounds().left(),
+                    "{width}x{height} {mode:?}: visible name retains space before Open"
+                );
+                for field in ["activity", "trigger", "status"] {
+                    let field = w.find(format!("occurrence-{field}-{id}"));
+                    assert!(
+                        field.visible() && field.bounds().right() <= action.bounds().left(),
+                        "{width}x{height} {mode:?}: metadata stays inside the text column"
+                    );
+                }
+            }
+        })
+        .unwrap();
+        screenshot(
+            &mut cx,
+            handle,
+            &directory,
+            &format!("automation-results-{width}-{mode:?}.png"),
+        );
+        cx.update_window(handle, |_, w, cx| {
+            let first = ids[0];
+            w.click(format!("open-occurrence-{first}"), cx);
+            w.render_frame(cx);
+            assert_eq!(app.read(cx).period_overlay(), Some(first));
+            w.press("escape", cx);
+            w.render_frame(cx);
+            assert!(app.read(cx).period_overlay().is_none());
+            assert_eq!(app.read(cx).scope(), Scope::AutomationRuns);
+        })
+        .unwrap();
+        cx.update_window(handle, |_, w, _| w.remove_window())
+            .unwrap();
+    }
 }
 
 fn click_in_settings(w: &mut Window, cx: &mut App, id: &str) {

@@ -28,7 +28,7 @@ fn run_root() -> PathBuf {
 const CASE_ENV: &str = "LIVE_PERSISTENCE_QA_CASE";
 const ROOT_ENV: &str = "LIVE_PERSISTENCE_QA_ROOT";
 const SEQUENTIAL_ENV: &str = "LIVE_PERSISTENCE_QA_SEQUENTIAL";
-const CASES: [&str; 20] = [
+const CASES: [&str; 23] = [
     "core",
     "reopen",
     "pending-quit",
@@ -49,6 +49,9 @@ const CASES: [&str; 20] = [
     "editor-small",
     "editor-43200",
     "history-43200",
+    "lazy-period-hydration",
+    "lazy-body-missing-retry",
+    "lazy-latest-failed",
 ];
 
 fn run_case(case: &str) -> Result<(), String> {
@@ -109,6 +112,9 @@ fn run_case(case: &str) -> Result<(), String> {
             }
             Ok(())
         }
+        "lazy-period-hydration" => lazy_period_hydrates_on_open(&root.join("lazy-period")),
+        "lazy-body-missing-retry" => lazy_body_missing_and_retry(&root.join("lazy-missing")),
+        "lazy-latest-failed" => lazy_latest_attempt_invalidates(&root.join("lazy-failed")),
         "history-43200" => {
             let elapsed = measure_history(&root, "history-43200", 43_200)?;
             println!("LIVE_PERF history_page_43200_us={elapsed}");
@@ -280,6 +286,24 @@ fn pump_until(
     }
 }
 
+
+fn advance_until(
+    cx: &mut HeadlessAppContext,
+    app: &Entity<TaskApp>,
+    label: &str,
+    predicate: impl Fn(&TaskApp) -> bool,
+) -> Result<(), String> {
+    let started = Instant::now();
+    loop {
+        if cx.update(|cx| predicate(app.read(cx))) {
+            return Ok(());
+        }
+        if started.elapsed() > Duration::from_secs(30) {
+            return Err(format!("timed out advancing async pump for {label}"));
+        }
+        cx.advance_clock(Duration::from_millis(100));
+    }
+}
 
 fn startup_gate_clear(app: &TaskApp) -> bool {
     app.startup.workspace_pending.is_none()
@@ -1626,4 +1650,313 @@ fn measure_history(root: &Path, label: &str, count: usize) -> Result<u128, Strin
 
 fn temp_automation_now() -> i64 {
     chrono::Utc::now().timestamp()
+}
+
+fn lazy_period_store(root: &Path) -> Result<(Store, u64, u64, Vec<u64>), String> {
+    let template = crate::automation_execution::build_template(
+        "Collect evidence and write a short report",
+        "A short report with sources",
+    )
+    .map_err(|error| error.to_string())?;
+    let mut store = Store::empty();
+    store.project_mut(1).unwrap().directory = root.to_string_lossy().into_owned();
+    store.set_default_model("qa/model".into());
+    store.research_config_mut().models = std::array::from_fn(|_| "qa/model".into());
+    let automation = store
+        .create_automation_draft(
+            1,
+            crate::automation::AutomationShape::Research,
+            "Lazy period".into(),
+            "Summarize the offline fixture evidence.".into(),
+            "A short report with sources.".into(),
+            crate::automation_schedule::Schedule {
+                spec: crate::automation_schedule::ScheduleSpec::Interval { minutes: 60 },
+                timezone: "UTC".into(),
+            },
+            crate::automation::AutomationPolicy::default(),
+            Some(template),
+            temp_automation_now(),
+        )
+        .map_err(|error| error.to_string())?;
+    store.approve_and_enable(automation, Vec::new(), temp_automation_now()).map_err(|error| error.to_string())?;
+    let mut occurrence = store
+        .request_manual_occurrence(automation, "lazy-period", temp_automation_now())
+        .map_err(|error| error.to_string())?;
+    let goal = occurrence.research_goal_id.ok_or("lazy fixture goal")?;
+    let steps = store.research_children(goal);
+    if steps.len() < 2 {
+        return Err("lazy fixture must have multiple steps".into());
+    }
+    let mut next_id = store.runs().iter().map(|run| run.id).max().unwrap_or(0) + 1;
+    let mut run_ids = Vec::new();
+    for task in &steps {
+        store.set_stage(*task, Stage::Done).map_err(|error| error.to_string())?;
+        let signature = store
+            .research_signature(*task)
+            .ok_or_else(|| format!("lazy fixture signature missing for task {task}"))?;
+        let kind = store
+            .task(*task)
+            .and_then(|task| task.research.as_ref())
+            .map(|research| research.kind)
+            .ok_or("lazy fixture research kind")?;
+        let body = format!(
+            "{{\"status\":\"complete\",\"report\":\"Saved report for task {task}\",\"blocker\":null,\"sources\":[{{\"title\":\"Fixture\",\"url\":\"https://example.com/{task}\",\"published_at\":\"unknown\"}}]}}"
+        );
+        let run = AgentRun {
+            automation_occurrence_id: Some(occurrence.id),
+            planning_owner: None,
+            deadline_at: None,
+            auto_retry_attempt: 0,
+            retry_not_before: None,
+            project_plan: None,
+            id: next_id,
+            task_title: format!("Step {task}"),
+            directory: String::new(),
+            prompt: "fixture".into(),
+            started_at: "2026-11-08T00:00:00Z".into(),
+            queued_at: "2026-11-08T00:00:00Z".into(),
+            workspace_source: None,
+            ended_at: Some("2026-11-08T00:01:00Z".into()),
+            session_id: None,
+            exit_code: Some(0),
+            task_id: *task,
+            agent: "OpenCode".into(),
+            model: "qa/model".into(),
+            stage: Stage::Done,
+            status: "Succeeded".into(),
+            logs: vec!["[research] Complete · result validated".into()],
+            output: body,
+            attachments: Vec::new(),
+            research_kind: Some(kind),
+            sources: vec![crate::research::Source {
+                title: "Fixture".into(),
+                url: format!("https://example.com/{task}"),
+                published_at: "unknown".into(),
+            }],
+            input_signature: signature,
+        };
+        run_ids.push(next_id);
+        store.push_run(run);
+        next_id += 1;
+    }
+    if let Some(mut value) = store.occurrence_mut(occurrence.id) {
+        value.run_ids = run_ids.clone();
+        value.final_run_id = run_ids.last().copied();
+        value.status = crate::automation::OccurrenceStatus::Succeeded;
+        occurrence = value.clone();
+    }
+    Ok((store, automation, occurrence.id, steps))
+}
+
+fn lazy_period_hydrates_on_open(root: &Path) -> Result<(), String> {
+    std::fs::create_dir_all(root).map_err(|error| error.to_string())?;
+    let (store, _automation, occurrence, steps) = lazy_period_store(root)?;
+    let final_task = *steps.last().ok_or("lazy final task")?;
+    let final_run = store
+        .runs()
+        .iter()
+        .rev()
+        .find(|run| run.task_id == final_task)
+        .map(|run| run.id)
+        .ok_or("lazy final run")?;
+    let path = seed_store(root, &store)?;
+    let (mut cx, handle, app) = open_live(root, &path)?;
+    let before = cx.update(|cx| {
+        let a = app.read(cx);
+        (
+            a.store.runs().iter().find(|run| run.id == final_run).is_some_and(|run| run.output.is_empty()),
+            a.store.run_body_is_lazy(final_run),
+            a.history_needs_pump(),
+        )
+    });
+    if !before.0 || !before.1 {
+        return Err(format!("fixture did not open lazy: {:?}", before));
+    }
+    if before.2 {
+        return Err("fixture was not idle before opening the period".into());
+    }
+    // No manual pump: production render must schedule the pending body work.
+    cx.update_window(handle, |_, w, cx| {
+        app.update(cx, |a, cx| {
+            a.open_occurrence_result(occurrence, w, cx);
+        });
+        w.render_frame(cx);
+    })
+    .map_err(|error| format!("open lazy period: {error:?}"))?;
+    advance_until(&mut cx, &app, "lazy period bodies", |a| {
+        steps.iter().all(|task| {
+            a.store
+                .runs()
+                .iter()
+                .find(|run| run.task_id == *task && run.status == "Succeeded")
+                .is_some_and(|run| !run.output.is_empty())
+        }) && !a.store.run_body_is_lazy(final_run)
+    })?;
+    let (final_report, results) = cx.update(|cx| {
+        let a = app.read(cx);
+        let occurrence = a.store.occurrence(occurrence).unwrap();
+        let presentation = crate::result_presentation::present_occurrence(&a.store, occurrence);
+        (
+            presentation.has_final_report,
+            steps
+                .iter()
+                .filter(|task| a.store.research_result(**task).is_some())
+                .count(),
+        )
+    });
+    if !final_report || results != steps.len() {
+        return Err(format!(
+            "lazy period did not become truthful: final={final_report} results={results}/{}",
+            steps.len()
+        ));
+    }
+    let _ = cx.update_window(handle, |_, w, _| w.remove_window());
+    Ok(())
+}
+
+fn lazy_body_missing_and_retry(root: &Path) -> Result<(), String> {
+    std::fs::create_dir_all(root).map_err(|error| error.to_string())?;
+    let (store, _automation, occurrence, steps) = lazy_period_store(root)?;
+    let final_task = *steps.last().ok_or("lazy final task")?;
+    let final_run = store
+        .runs()
+        .iter()
+        .rev()
+        .find(|run| run.task_id == final_task)
+        .map(|run| run.id)
+        .ok_or("lazy final run")?;
+    let path = seed_store(root, &store)?;
+    // A known-body run whose body row is gone must show missing, not complete.
+    let connection = rusqlite::Connection::open(&path).map_err(|error| error.to_string())?;
+    connection
+        .execute(
+            "DELETE FROM run_bodies WHERE run_id=?1",
+            rusqlite::params![final_run as i64],
+        )
+        .map_err(|error| error.to_string())?;
+    drop(connection);
+    let (mut cx, handle, app) = open_live(root, &path)?;
+    let idle = cx.update(|cx| !app.read(cx).history_needs_pump());
+    if !idle {
+        return Err("missing-body fixture was not idle before opening the period".into());
+    }
+    cx.update_window(handle, |_, w, cx| {
+        app.update(cx, |a, cx| {
+            a.open_occurrence_result(occurrence, w, cx);
+        });
+        w.render_frame(cx);
+    })
+    .map_err(|error| format!("open missing body period: {error:?}"))?;
+    advance_until(&mut cx, &app, "missing body state", |a| {
+        matches!(
+            a.run_body_state.get(&final_run),
+            Some(crate::history_reader::BodyLoad::Absent)
+        )
+    })?;
+    let (report, result) = cx.update(|cx| {
+        let a = app.read(cx);
+        (
+            crate::result_presentation::present_occurrence(
+                &a.store,
+                a.store.occurrence(occurrence).unwrap(),
+            )
+            .has_final_report,
+            a.store.research_result(final_task).is_some(),
+        )
+    });
+    if report || result {
+        return Err("missing lazy body was presented as a current report".into());
+    }
+    // Explicit body retry must re-request this run, not use the persistence footer.
+    cx.update_window(handle, |_, w, cx| {
+        app.update(cx, |a, cx| {
+            a.run_body_state.insert(
+                final_run,
+                crate::history_reader::BodyLoad::Failed {
+                    error: "fixture failure".into(),
+                    retry_at: std::time::Instant::now(),
+                },
+            );
+        });
+        w.render_frame(cx);
+        assert!(
+            w.try_find("automation-report-retry").is_some(),
+            "failed body read must expose an explicit retry action"
+        );
+        w.click("automation-report-retry", cx);
+        w.render_frame(cx);
+        app.update(cx, |a, _| {
+            assert!(
+                !matches!(
+                    a.run_body_state.get(&final_run),
+                    Some(crate::history_reader::BodyLoad::Failed { .. })
+                ),
+                "body retry must re-request the selected body"
+            );
+        });
+    })
+    .map_err(|error| format!("body retry: {error:?}"))?;
+    let _ = cx.update_window(handle, |_, w, _| w.remove_window());
+    Ok(())
+}
+
+fn lazy_latest_attempt_invalidates(root: &Path) -> Result<(), String> {
+    std::fs::create_dir_all(root).map_err(|error| error.to_string())?;
+    let (store, _automation, _occurrence, steps) = lazy_period_store(root)?;
+    let path = seed_store(root, &store)?;
+    let (mut cx, handle, app) = open_live(root, &path)?;
+    let task = steps[0];
+    let (pending_before, result_before) = cx.update(|cx| {
+        let a = app.read(cx);
+        (
+            a.store.research_result_body_pending(task).is_some(),
+            a.store.research_result(task).is_some(),
+        )
+    });
+    if !pending_before || result_before {
+        return Err(format!(
+            "lazy pending before retry was wrong: pending={pending_before} result={result_before}"
+        ));
+    }
+    cx.update(|cx| {
+        let a = app.read(cx);
+        let mut store = a.store.clone();
+        let next_id = store.runs().iter().map(|run| run.id).max().unwrap_or(0) + 1;
+        let mut failed = crate::domain::AgentRun {
+            automation_occurrence_id: None,
+            planning_owner: None,
+            deadline_at: None,
+            auto_retry_attempt: 0,
+            retry_not_before: None,
+            project_plan: None,
+            id: next_id,
+            task_title: "Retry".into(),
+            directory: String::new(),
+            prompt: String::new(),
+            started_at: String::new(),
+            queued_at: String::new(),
+            workspace_source: None,
+            ended_at: None,
+            session_id: None,
+            exit_code: None,
+            task_id: task,
+            agent: "OpenCode".into(),
+            model: "qa/model".into(),
+            stage: Stage::Done,
+            status: "Failed".into(),
+            logs: Vec::new(),
+            output: String::new(),
+            attachments: Vec::new(),
+            research_kind: None,
+            sources: Vec::new(),
+            input_signature: String::new(),
+        };
+        store.push_run(failed);
+        if store.research_result_body_pending(task).is_some() || store.research_result(task).is_some() {
+            return Err("latest failed attempt did not invalidate older lazy result".to_string());
+        }
+        Ok::<(), String>(())
+    })?;
+    let _ = cx.update_window(handle, |_, w, _| w.remove_window());
+    Ok(())
 }

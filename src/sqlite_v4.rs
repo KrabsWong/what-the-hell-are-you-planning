@@ -722,7 +722,7 @@ impl SqliteV4 {
             &self.root,
             WorkTable::Projects,
         )?)?;
-        let runs = load_runs(&transaction, &self.root, include_bodies)?;
+        let (runs, lazy_bodies) = load_runs(&transaction, &self.root, include_bodies)?;
         store.policies(load_policies(&transaction)?)?;
         let automations = load_rows(
             &transaction,
@@ -732,7 +732,10 @@ impl SqliteV4 {
         )?;
         let occurrences = load_occurrences(&transaction)?;
         store.runs(runs, automations, occurrences)?;
-        let store = store.finish();
+        let mut store = store.finish();
+        for run_id in lazy_bodies {
+            store.mark_lazy_body(run_id);
+        }
         transaction
             .commit()
             .map_err(|error| format!("cannot finish read transaction: {error}"))?;
@@ -1560,28 +1563,37 @@ fn load_runs(
     connection: &Connection,
     root: &Path,
     include_bodies: bool,
-) -> Result<Vec<AgentRun>, String> {
+) -> Result<(Vec<AgentRun>, Vec<u64>), String> {
     let mut statement = connection
         .prepare(if include_bodies {
-            "SELECT r.payload,b.body FROM runs r LEFT JOIN run_bodies b ON b.run_id=r.id ORDER BY r.position"
+            "SELECT r.payload,r.has_body,b.body FROM runs r LEFT JOIN run_bodies b ON b.run_id=r.id ORDER BY r.position"
         } else {
-            "SELECT r.payload,NULL FROM runs r ORDER BY r.position"
+            "SELECT r.payload,r.has_body,NULL FROM runs r ORDER BY r.position"
         })
         .map_err(|error| error.to_string())?;
     let rows = statement
         .query_map([], |row| {
-            Ok((row.get::<_, String>(0)?, row.get::<_, Option<String>>(1)?))
+            Ok((
+                row.get::<_, String>(0)?,
+                row.get::<_, i64>(1)? != 0,
+                row.get::<_, Option<String>>(2)?,
+            ))
         })
         .map_err(|error| error.to_string())?;
     let mut values = Vec::new();
+    let mut lazy_bodies = Vec::new();
     for row in rows {
-        let (payload, body) = row.map_err(|error| error.to_string())?;
+        let (payload, has_body, body) = row.map_err(|error| error.to_string())?;
         let mut value: Value = serde_json::from_str(&payload).map_err(|error| error.to_string())?;
+        let id = value.get("id").and_then(Value::as_u64).unwrap_or(0);
         value["output"] = Value::String(body.unwrap_or_default());
         transform_entity_paths(&mut value, WorkTable::Runs, root, false)?;
         values.push(serde_json::from_value(value).map_err(|error| error.to_string())?);
+        if !include_bodies && has_body {
+            lazy_bodies.push(id);
+        }
     }
-    Ok(values)
+    Ok((values, lazy_bodies))
 }
 
 fn load_occurrences(connection: &Connection) -> Result<Vec<AutomationOccurrence>, String> {
@@ -2607,6 +2619,89 @@ mod tests {
             .clone();
         assert!(database.body(run.id).unwrap().unwrap().contains("Representative"));
         assert_eq!(database.body_reads.get(), 1);
+    }
+
+    #[test]
+    fn lazy_load_keeps_body_presence_without_reading_history_bodies() {
+        let root = temp_root("lazy-presence");
+        let store = fixture_store(&root);
+        let path = root.join("workspace.sqlite3");
+        let database = SqliteV4::create_seeded(&path, &root, INCARNATION, &store).unwrap();
+        let run = store
+            .runs()
+            .iter()
+            .find(|run| {
+                !run.output.is_empty()
+                    && store
+                        .task(run.task_id)
+                        .is_some_and(|task| task.research.is_some())
+            })
+            .expect("fixture research run with body")
+            .clone();
+        let lazy = database.load_store_lazy().unwrap();
+        assert_eq!(database.body_reads.get(), 0, "startup must not read bodies");
+        assert!(lazy.run_body_is_lazy(run.id));
+        assert!(
+            lazy.runs().iter().find(|value| value.id == run.id).is_some_and(|value| value.output.is_empty())
+        );
+        assert!(
+            lazy.research_result(run.task_id).is_none(),
+            "empty unloaded content must not be returned as a report"
+        );
+        assert!(database.body(run.id).unwrap().unwrap().contains("Representative"));
+    }
+
+    #[test]
+    fn reopened_multistep_lazy_bodies_keep_status_and_avoid_empty_content() {
+        let root = temp_root("lazy-multistep");
+        let store = fixture_store(&root);
+        let path = root.join("workspace.sqlite3");
+        let database = SqliteV4::create_seeded(&path, &root, INCARNATION, &store).unwrap();
+        let mut lazy = database.load_store_lazy().unwrap();
+        let occurrence = lazy
+            .all_occurrences()
+            .iter()
+            .find(|occurrence| occurrence.run_ids.len() > 1 && !occurrence.research_goal_ids.is_empty())
+            .cloned()
+            .expect("multi-step fixture occurrence");
+        let goal = occurrence.research_goal_ids[0];
+        let steps = lazy.research_children(goal);
+        assert!(steps.len() > 1);
+        let mut lazy_steps = 0;
+        for step in &steps {
+            for run in lazy.runs().iter().filter(|run| run.task_id == *step) {
+                if lazy.run_body_is_lazy(run.id) {
+                    lazy_steps += 1;
+                    assert!(
+                        lazy.research_result(*step).is_none(),
+                        "lazy body must never be returned as empty report content"
+                    );
+                }
+            }
+        }
+        assert!(lazy_steps >= steps.len(), "every step body remains lazy");
+        let body_run = lazy
+            .runs()
+            .iter()
+            .find(|run| lazy.run_body_is_lazy(run.id))
+            .map(|run| (run.id, run.task_id))
+            .expect("lazy run");
+        let body = database.body(body_run.0).unwrap().unwrap();
+        assert!(lazy.hydrate_run_body(body_run.0, body));
+        assert!(!lazy.run_body_is_lazy(body_run.0));
+        assert!(!lazy
+            .runs()
+            .iter()
+            .find(|run| run.id == body_run.0)
+            .unwrap()
+            .output
+            .is_empty());
+        // A later non-Simulated attempt is authoritative even before its body.
+        let next_id = lazy.runs().iter().map(|run| run.id).max().unwrap_or(0) + 1;
+        let mut failed = make_run(next_id, body_run.1, Some(occurrence.id), "later");
+        failed.status = "Failed".into();
+        lazy.push_run(failed);
+        assert!(lazy.research_result(body_run.1).is_none());
     }
 
     #[test]

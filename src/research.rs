@@ -564,6 +564,28 @@ impl Store {
             self.run_at_mut(index).unwrap().prompt.push_str(INSTRUCTION);
         }
     }
+    /// A successful result exists but only its body is still lazy. This is a
+    /// presentation/status distinction, never permission to read empty content
+    /// or admit dependent work.
+    pub(crate) fn research_result_body_pending(&self, id: u64) -> Option<u64> {
+        let signature = self.research_signature(id)?;
+        // Only the newest non-Simulated attempt can represent the current
+        // result. A later failure/retry makes an older lazy body historical.
+        let latest = self
+            .runs()
+            .iter()
+            .rev()
+            .find(|run| run.task_id == id && run.status != "Simulated")?;
+        (latest.status == "Succeeded"
+            && self.run_body_is_lazy(latest.id)
+            && latest.input_signature == signature)
+            .then_some(latest.id)
+    }
+
+    pub(crate) fn research_result_available_or_pending(&self, id: u64) -> bool {
+        self.research_result(id).is_some() || self.research_result_body_pending(id).is_some()
+    }
+
     pub fn research_result(&self, id: u64) -> Option<&AgentRun> {
         self.research_result_checked(id, &mut vec![], &mut Validation::default())
     }

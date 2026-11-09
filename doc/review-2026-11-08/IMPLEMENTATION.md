@@ -2388,3 +2388,80 @@ Root rejected interpreting legacy benchmark timings as direct measurements of th
 Root combined only the verified navigation and exact task/form saved-exit changes in a frozen candidate, forced recompilation, and passed sidebar, navigation-context, task-edit and all live-persistence cases. The unit/crash suites passed: 701 unit (two ignored), eight dispatch-crash, two SQLite and three v4-crash tests. [Integrated evidence](evidence/r128-integrated.json). This is a development checkpoint, not release approval; later result-loading, compact-results and Archive fixes are excluded.
 
 The corrected [performance scope report](evidence/r128-performance-scope.json) preserves legacy stalls and explicitly leaves the current live p95 unknown. T13 now owns a separate live performance harness using actual LiveStartup, repeated UI actions and ordered durable acknowledgements. Native scrolling remains an independent failed gate.
+
+
+## r129 lazy-body and compact-evidence review
+
+Root returned the lazy-body candidate for additional work. Its new multi-step test did not actually establish selected-period completion/status after asynchronous hydration. The unavailable-body notice pointed to a footer retry without demonstrating a matching body-retry action, and the loading copy claimed period completion even for active/failed periods with intermediate results. Root also requested coverage of opening a period when the history pump is idle and of scheduled retry wake-up. No native result-state acceptance is claimed.
+
+Root requested that compact-results QA capture the list before opening a result dialog; dialog-only screenshots cannot validate list typography. Container bounds and accessibility labels alone do not prove visible text wraps or remains readable. Archive membership is being tested separately on a frozen r128-based candidate.
+
+
+### r129 independent Archive regression result
+
+The frozen archived-card repair built and passed the unknown-QA guard. The actual `--qa-archived-research` suite passed in 8.53 seconds. Root inspected its compact Light screenshot: the archived InProgress goal is present with Archived status, step access and Restore, with no execution/approval control. [Evidence](evidence/r129-archive.json). Native Dark reproduction must still be rerun; T22 remains open until then. An initial unsupported `--qa-archive` invocation was safely rejected and is retained as an invocation error, not a product regression.
+
+
+## r130 native Archive membership and return-path regression
+
+Root installed the guarded optimized r129-based candidate into the isolated test bundle, with the workspace fixture backed up and compact window override recorded. Dark native List and Board both show the archived goal with Restore. Opening its steps preserves archived status and suppresses execution/approval controls. This narrowly verifies the missing-card repair.
+
+A subsequent native journey failed: Archive Board → Open 3 steps → Back navigates to the ordinary Topic board with zero active goals instead of returning to Archive. Both the keyboard shortcut and the top Back button reproduce the wrong destination. T12 owns the origin capture/return repair; T22 remains conditional on this cross-task navigation gate. [Evidence](evidence/r130-native-archive.json).
+
+
+## r132 native compact-results repair rejected
+
+Root built and installed only the proposed results/header and occurrence-row layout changes over r130. At 1000×680 Dark, subtitle and unread hint now fit, but all five result rows still place Open beyond the right viewport edge. Container-width declarations have not fixed the actual action reachability. T19 must repair the bounded parent/row layout and prove full action bounds before another candidate. [Evidence](evidence/r132-native-results.json).
+
+
+## r131 repeated live-performance gate failure
+
+The new actual-LiveStartup harness completed 30 measured saves per fixture with exact final disk-title validation. For 43,200 periods, command p95 was 5.352 ms, completion-pump p95 85.591 ms, render p95 80.147 ms and aggregate main-thread-work p95 149.467 ms; the 50 ms target failed. These component percentiles are not additive. Concurrent compilation was active, so root requires a confirmed quiet comparison before assigning cause. [Evidence](evidence/r131-live-performance.json). The failure is retained; it is not waived, and the native scrolling gate remains separate.
+
+
+## r133 controlled-performance preparation and root layout takeover
+
+Root requested compute holds from all external sessions. The first quiet preflight aborted before running the benchmark because a new Cargo build appeared despite a ready acknowledgement; no quiet result is claimed. Root continues to check actual process state rather than trusting the marker alone.
+
+After repeated feature-QA compile failures and the r132 native rejection, root interrupted T19 and took ownership of its compact-results layout and test slice. The new draft keeps the action outside a flexible text column, separates automation identity from wrapping activity/status metadata, and captures the list before testing Open/Escape. This draft is not yet built or accepted; builds wait until the controlled performance run is complete.
+
+
+### r133 quiet live-performance comparison
+
+With every OpenCode session inactive and no Cargo/rustc for five seconds before the run, root independently reran the same immutable live benchmark binary. The complete monitor observed zero build-process samples. On 43,200 periods, 30 measured saves gave main-thread-work p95 7.234 ms and durable-wall p95 13.237 ms; the measured 50 ms save gate passes in this condition. First-page main-thread-work p95 was 6.766 ms. Both exact final titles matched disk. [Evidence](evidence/r133-quiet-performance.json). The r131 noisy failure remains recorded; this contrast does not waive native scrolling or establish performance for later source changes.
+
+
+## r134 root compact-layout QA fixture correction
+
+The root-owned layout candidate compiled and passed its unknown-QA guard. Keyboard/visual QA then rejected the new compact-results fixture before layout checks: a Quick definition incorrectly used the multi-step Research template. Root corrected the fixture to use the existing Quick builder and froze r135 for a new run. No layout acceptance is claimed from this failed invocation. [Evidence](evidence/r134-compact-fixture.json).
+
+
+## Lazy report-body status and UI regression (r129 private r128 slice)
+
+Read-only inspection of the relocated T24 fixture showed occurrence 5 Succeeded with final run 19, a 192-byte durable body, and tasks 17/18 Done. The UI treated the intentionally unloaded body as missing because result selection required non-empty output. The fix keeps `research_result()` content-strict, records body presence separately for status/presentation, requests the opened period's final and step bodies, and exposes explicit missing/failed/retry feedback. `automation-report-retry` re-requests only the report body; it is not the persistence footer retry.
+
+A private r128 frozen slice overlaid domain/research/sqlite/live-save/history/QA files and spliced only `automation_occurrence_detail` and `automation_occurrence_steps`. Guard binary `3ae392b1ea9b21207911bbfd9d9060f16c5ea3922271387f92e9c04e15b6f385` passed all 23 live cases, including actual result-dialog opening with an idle pump, multi-step body hydration and final/step status, missing-body truthfulness and retry click, and latest-failed-attempt invalidation. [Manifest](evidence/r129-lazy-ui-slice.json).
+
+## r135: root result-row geometry review
+
+The root-owned two-line result layout passes the isolated keyboard/visual suite in the frozen r135 candidate. Root inspected 1000- and 1440-wide screenshots in both themes: names truncate, metadata remains visible, and the separate quiet open action stays inside the row. The fixture now uses the correct Quick template for Quick tasks. Evidence: [r135 results layout](evidence/r135-results-layout.json).
+
+This is scoped offline acceptance of geometry and tested routing, not native or full visual acceptance. Light-theme name colors can still be too bright against white; a separate palette-only correction is dispatched. Computer access has recovered and the isolated native app can be observed again. T12 caller-origin and T14 lazy-body candidates are undergoing independent replay; implementer reports alone do not close these gates.
+
+## r136: independent origin and lazy-body regression replay
+
+Root replayed the immutable T12 candidate: archived-research and navigation-context suites both passed. Root also replayed the immutable T14 candidate: all 23 live persistence cases passed, including selected-period hydration, missing-body/retry and latest-failed invalidation. See [r136 independent evidence](evidence/r136-independent.json) for binary hashes and timings.
+
+The lazy-body tests explicitly start the pump and then manually poll runtime. They establish hydration/retry behavior but do not establish the claimed production wake from idle. That specific test claim was returned for revision: open the real dialog without a test-side start and verify that production rendering wakes the pump. Native and combined-candidate release checks remain open.
+
+## r137: corrected visible-history benchmark and integration candidate
+
+The revised benchmark opens the Automation detail and verifies that the first history row is actually rendered. Root ran its guarded immutable candidate after a five-second quiet preflight; no Cargo/rustc process was sampled throughout the run. At 43,200 history rows, 30 measured saves had aggregate main-thread p95 7,073 us and durable-wall p95 13,159 us. Visible history requests had aggregate main-thread p95 13,529 us and wall p95 20,527 us. Evidence: [r137 visible history performance](evidence/r137-visible-history-performance.json). The prior noisy failure remains retained; this baseline-plus-harness benchmark is not combined-product or native-scrolling acceptance.
+
+Root rejected the first palette revision because it mixed RGB backgrounds with RGBA channel extraction. The revised helper explicitly converts the background and adds independent black/white and primary-channel reference tests. The integrated r137 source is frozen for full Rust tests and native review; neither pending verification is implied by the benchmark result.
+
+## r137: combined tests and native result loading
+
+The frozen combined source passes 706 Rust unit tests (2 ignored), 8 dispatch crash tests, 2 additional persistence tests and 3 v4 crash tests after setting `PLANNING_NODE` to the existing Node 24 executable. The first attempt is retained: its sole failure was Node missing from PATH, not a product assertion. Icon verification passes with 51 registered assets.
+
+The isolated signed native candidate visibly repairs the previously reproduced Period 5 failure: the result opens with its saved final report, Complete/Current status and Done / 1 of 1 steps. Escape returns to the results list. Dark and Light compact result rows retain their Open controls. Archive membership remains visible in List and Board. During the subsequent Open steps/Back batch, Computer reported that the Mac was locked, so no return-path outcome is inferred. Evidence and remaining native scope: [r137 native](evidence/r137-native.json). Native smoothness and the full release matrix remain open.

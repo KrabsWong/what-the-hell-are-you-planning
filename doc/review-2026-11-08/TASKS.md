@@ -291,7 +291,7 @@ For every case record Passed/Failed/Blocked/Not run, expected destination/effect
 
 ## T22 — Present archived research as archived history
 
-**Status:** reopened by native r125 acceptance. Archive List shows an archived goal that disappears from Board while the count remains one. Earlier isolated acceptance is insufficient; see [native evidence](evidence/r125-archive-board.json). Repair archived-card grouping and verify identical goal membership and Restore availability in both views before accepting T22 again.
+**Status:** the r125 missing-card defect passed isolated r129 QA and native Dark r130 membership/Restore checks. T22 remains conditional on T10/T12: opening archived steps and using Back still navigates to the ordinary Topic instead of the Archive caller. See [native membership and return-path evidence](evidence/r130-native-archive.json). Do not close this task until that return journey and final integration pass.
 
 **Priority/size:** P2/M. **Finding:** F20. **Dependencies:** T05; coordinate with T06.
 

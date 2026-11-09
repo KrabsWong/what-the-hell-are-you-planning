@@ -271,8 +271,6 @@ pub struct AutomationUi {
     pub plan: Option<AutomationTemplate>,
     pub preview: Vec<i64>,
     pub preview_error: String,
-    /// Planning attempt run open in a read-only history dialog.
-    pub planning_attempt_dialog: Option<u64>,
     /// Whether closing that attempt should restore the Settings dialog that
     /// opened it. The automation list is the other valid origin.
     pub planning_attempt_origin_settings: bool,
@@ -286,9 +284,6 @@ pub struct AutomationUi {
     /// keeps every automation.
     pub result_filter: Option<u64>,
     pub history_limit: usize,
-    /// Task definition, schedule and run limits are secondary once periods exist,
-    /// so they open in a dialog only when the user asks to review or change them.
-    pub settings_dialog: bool,
     pub show_technical: bool,
     pub show_cleanup: bool,
     pub cleanup_preview: String,
@@ -338,14 +333,12 @@ impl AutomationUi {
             plan: None,
             preview: vec![],
             preview_error: String::new(),
-            planning_attempt_dialog: None,
             planning_attempt_origin_settings: false,
             settings_scroll: ScrollHandle::new(),
             planning_opener_focus: std::cell::RefCell::new(std::collections::HashMap::new()),
             planning_attempt_return_run: None,
             result_filter: None,
             history_limit: 20,
-            settings_dialog: false,
             show_technical: false,
             show_cleanup: false,
             cleanup_preview: String::new(),
@@ -839,7 +832,7 @@ impl TaskApp {
         self.install_route(crate::navigation_route::Route::automation_detail(id));
         self.automation_ui.selected = Some(id);
         self.automation_ui.creating = false;
-        self.automation_ui.settings_dialog = false;
+        let _ = self.close_settings_overlay();
         // Results stay closed by default; the newest period is still first in
         // the history, and a row opens its result in a dialog.
         let _ = self.close_period_overlay();
@@ -854,7 +847,7 @@ impl TaskApp {
             return;
         }
         self.remember_dialog_opener(window, cx);
-        self.automation_ui.settings_dialog = true;
+        let _ = self.open_settings_overlay();
         let _ = self.close_period_overlay();
         self.automation_ui.feedback = None;
         window.focus(&self.modal_focus, cx);
@@ -862,7 +855,7 @@ impl TaskApp {
     }
 
     pub fn close_automation_settings(&mut self, window: &mut Window, cx: &mut Context<Self>) {
-        self.automation_ui.settings_dialog = false;
+        let _ = self.close_settings_overlay();
         self.restore_dialog_opener(window, cx);
         cx.notify();
     }
@@ -873,7 +866,7 @@ impl TaskApp {
         }
         self.remember_dialog_opener(window, cx);
         let _ = self.push_period_overlay(id);
-        self.automation_ui.settings_dialog = false;
+        let _ = self.close_settings_overlay();
         self.automation_ui.show_technical = false;
         self.automation_ui.feedback = None;
         if self
@@ -932,18 +925,20 @@ impl TaskApp {
         if !self.store.runs().iter().any(|run| run.id == run_id) {
             return;
         }
-        self.automation_ui.planning_attempt_origin_settings = self.automation_ui.settings_dialog;
         self.automation_ui.planning_attempt_return_run = Some(run_id);
-        self.automation_ui.planning_attempt_dialog = Some(run_id);
-        self.automation_ui.settings_dialog = false;
-        let _ = self.close_period_overlay();
+        if !self.push_planning_attempt_overlay(run_id) {
+            self.automation_ui.planning_attempt_return_run = None;
+            return;
+        }
         window.focus(&self.modal_focus, cx);
         cx.notify();
     }
 
     pub fn close_planning_attempt(&mut self, window: &mut Window, cx: &mut Context<Self>) {
-        self.automation_ui.planning_attempt_dialog = None;
-        self.automation_ui.settings_dialog = self.automation_ui.planning_attempt_origin_settings;
+        let _ = self.close_planning_attempt_overlay();
+        if self.automation_ui.planning_attempt_origin_settings {
+            let _ = self.open_settings_overlay();
+        }
         self.automation_ui.planning_attempt_origin_settings = false;
         let opener = self
             .automation_ui
@@ -952,7 +947,7 @@ impl TaskApp {
             .and_then(|run_id| self.automation_ui.planning_opener_focus_for(run_id));
         if let Some(opener) = opener {
             window.focus(&opener, cx);
-        } else if self.automation_ui.settings_dialog {
+        } else if self.settings_overlay() {
             window.focus(&self.modal_focus, cx);
         } else {
             window.focus(&self.focus, cx);
@@ -2771,7 +2766,7 @@ impl TaskApp {
                         .tooltip("Plan the research again once. The new plan starts a new version you must approve.")
                         .on_click(cx.listener(move |app, _, window, cx| {
                             app.record_origin();
-                            app.automation_ui.settings_dialog = false;
+                            let _ = app.close_settings_overlay();
                             app.replan_automation(id, window, cx);
                         }))
                         .into_any_element()
@@ -2792,7 +2787,7 @@ impl TaskApp {
                                 .tooltip("Create a new version. You must review and enable it again.")
                                 .on_click(cx.listener(move |app, _, window, cx| {
                                     app.record_origin();
-                                    app.automation_ui.settings_dialog = false;
+                                    let _ = app.close_settings_overlay();
                                     app.edit_automation(id, window, cx);
                                 })),
                         )
@@ -3654,7 +3649,7 @@ impl TaskApp {
     /// Read-only planning history. Raw planner output is labeled as a plan
     /// attempt, never as a validated research report.
     pub(crate) fn planning_attempt_dialog(&self, cx: &mut Context<Self>) -> AnyElement {
-        let Some(run_id) = self.automation_ui.planning_attempt_dialog else {
+        let Some(run_id) = self.planning_attempt_overlay() else {
             return div().into_any_element();
         };
         let Some(run) = self.store.runs().iter().find(|run| run.id == run_id) else {

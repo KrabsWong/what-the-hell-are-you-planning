@@ -681,7 +681,12 @@ impl TaskApp {
                     .min_h(px(60.))
                     .px_2()
                     .gap_3()
-                    .child(div().size(px(32.)).flex_shrink_0())
+                    .child(observed(
+                        div()
+                            .id("sidebar-brand-slot")
+                            .size(px(32.))
+                            .flex_shrink_0(),
+                    ))
                     .child(
                         div()
                             .flex_1()
@@ -4254,7 +4259,7 @@ impl Render for TaskApp {
                     && this.planning_destination.is_none()
                     && this.planning_destination_error.is_none()
                     && this.directory_project.is_none()
-                    && !this.automation_ui.settings_dialog
+                    && !this.settings_overlay()
                     && this.period_overlay().is_none()
                 {
                     this.request_back(w, cx);
@@ -4281,8 +4286,7 @@ impl Render for TaskApp {
                     this.planning_destination = None;
                     this.planning_destination_error = None;
                     this.directory_project = None;
-                    this.automation_ui.settings_dialog = false;
-                    this.close_period_overlay();
+                    this.clear_typed_overlays();
                     this.error.clear();
                     if let Some(opener) = planning_opener {
                         w.focus(&opener, cx);
@@ -4424,13 +4428,13 @@ impl Render for TaskApp {
                     .focus_trap("project-focus", &self.modal_focus),
             );
         }
-        if self.automation_ui.settings_dialog {
+        if self.settings_overlay() {
             root = root.child(self.automation_settings_dialog(cx));
         }
         if self.period_overlay().is_some() {
             root = root.child(self.automation_result_dialog(cx));
         }
-        if self.automation_ui.planning_attempt_dialog.is_some() {
+        if self.planning_attempt_overlay().is_some() {
             root = root.child(self.planning_attempt_dialog(cx));
         }
         // Global search is the topmost surface. Opening it from a dialog must not

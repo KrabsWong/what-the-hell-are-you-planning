@@ -238,6 +238,20 @@ pub struct Draft {
     pub labels: Entity<InputState>,
     pub due: Entity<InputState>,
 }
+#[derive(Clone, Debug)]
+pub(crate) struct DispatchStatusRetirement {
+    pub key: String,
+    pub run_id: u64,
+    pub rerun: bool,
+    pub replacement: Option<u64>,
+    pub had_claim: bool,
+    /// No claim remains (never existed or its removal was acknowledged).
+    pub claim_done: bool,
+    pub claim_enqueued: bool,
+    pub decision_enqueued: bool,
+    pub decision_started: bool,
+}
+
 pub struct TaskApp {
     pub store: Store,
     /// T12 S2: typed route identity. `scope()` is a read-only projection; no
@@ -330,8 +344,9 @@ pub struct TaskApp {
     pub(crate) dispatch_resolution_pending: Option<(String, u64, bool, Option<u64>)>,
     pub(crate) dispatch_resolution_new: Option<(String, u64)>,
     /// Status receipt is durable; claim/marker retirement is retried until the
-    /// enqueue succeeds. `had_claim` selects the exact retirement path.
-    pub(crate) dispatch_status_durable: Option<(String, bool)>,
+    /// matching `LaunchClaimReleased`/`ResolutionReleased` event, never merely
+    /// on enqueue success.
+    pub(crate) dispatch_status_durable: Option<DispatchStatusRetirement>,
     pub(crate) dispatch_resolution_launch_pending: Option<String>,
     pub(crate) dispatch_claim_pending: Option<(
         crate::dispatch_admission::AdmissionId,
@@ -1145,6 +1160,13 @@ impl TaskApp {
         self.navigation.selected_attempt = run;
     }
 
+    /// Automation detail identity carried by the typed route.
+    pub(crate) fn automation_detail_id(&self) -> Option<u64> {
+        match self.nav.route() {
+            crate::navigation_route::Route::AutomationDetail(page) => Some(page.automation()),
+            _ => None,
+        }
+    }
     /// Occurrence currently open in the period overlay, if any.
     pub(crate) fn period_overlay(&self) -> Option<u64> {
         match self
@@ -1200,6 +1222,75 @@ impl TaskApp {
 
     pub(crate) fn clear_typed_overlays(&mut self) {
         self.nav.clear_overlays();
+    }
+
+    /// Settings over the currently selected automation detail.
+    pub(crate) fn settings_overlay(&self) -> bool {
+        matches!(
+            self.nav
+                .overlay(crate::navigation_route::OverlayKind::AutomationSettings),
+            Some(crate::navigation_route::Overlay::AutomationSettings { .. })
+        )
+    }
+
+    pub(crate) fn open_settings_overlay(&mut self) -> bool {
+        use crate::navigation_route::{Overlay, Route};
+        let Some(automation) = self.automation_ui.selected else {
+            return false;
+        };
+        if !matches!(self.nav.route(), Route::AutomationDetail(page) if page.automation() == automation)
+        {
+            if !self.install_route(Route::automation_detail(automation)) {
+                return false;
+            }
+        }
+        let _ = self.close_period_overlay();
+        self.nav
+            .push_overlay(
+                &self.store,
+                Overlay::AutomationSettings { automation },
+            )
+            .is_ok()
+    }
+
+    pub(crate) fn close_settings_overlay(&mut self) -> bool {
+        self.nav
+            .remove_overlay(
+                &self.store,
+                crate::navigation_route::OverlayKind::AutomationSettings,
+            )
+            .is_ok()
+    }
+
+    pub(crate) fn planning_attempt_overlay(&self) -> Option<u64> {
+        match self
+            .nav
+            .overlay(crate::navigation_route::OverlayKind::PlanningAttempt)
+        {
+            Some(crate::navigation_route::Overlay::PlanningAttempt { run, .. }) => Some(run),
+            _ => None,
+        }
+    }
+
+    pub(crate) fn push_planning_attempt_overlay(&mut self, run: u64) -> bool {
+        let from_settings = self.settings_overlay();
+        match self.nav.with_planning_attempt(&self.store, run, from_settings) {
+            Ok(nav) => {
+                self.nav = nav;
+                self.automation_ui.planning_attempt_origin_settings = from_settings;
+                true
+            }
+            Err(_) => false,
+        }
+    }
+
+    pub(crate) fn close_planning_attempt_overlay(&mut self) -> bool {
+        self.nav
+            .remove_overlay(
+                &self.store,
+                crate::navigation_route::OverlayKind::PlanningAttempt,
+            )
+            .is_ok()
     }
     /// Production code uses `open_task`; tests that used to assign `selected`
     /// directly now open or close the typed task page through the same mutator.

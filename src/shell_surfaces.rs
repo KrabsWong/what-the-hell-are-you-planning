@@ -85,14 +85,11 @@ impl Render for BrandOverlay {
         let (offset, accent) = parent.read_with(cx, |app, cx| {
             (app.sidebar_scroll.offset().y, crate::appearance::palette(cx).accent)
         });
-        // The sidebar reserves a 32px macOS title bar before the scroll area;
-        // the mark is centered in the 60px identity row below it.
-        let brand_top = if cfg!(target_os = "macos") { 46. } else { 14. };
         observed(
             div()
                 .id("sidebar-brand-overlay")
                 .absolute()
-                .top(px(brand_top) + offset)
+                .top(px(14.) + offset)
                 .left(px(8.))
                 .size(px(32.))
                 .child(crate::brand::sidebar_logo(accent)),
@@ -159,7 +156,7 @@ impl TaskApp {
                 div()
                     .id("sidebar-logo-clip")
                     .absolute()
-                    .top(px(12.))
+                    .top(px(if cfg!(target_os = "macos") { 44. } else { 12. }))
                     .left(px(12.))
                     .right(px(12.))
                     .bottom(px(12.))

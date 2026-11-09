@@ -1926,3 +1926,43 @@ Root read the retained r69 timeout fixture without changing it: run 4000 is dura
 The live retry addition introduces `dispatch_status_durable`, but source review found remaining obligation gaps: the launch-release handler clears that obligation before `finish_resolution`, which can ignore a failed decision-marker removal enqueue; the no-claim branch clears it after enqueue success rather than durable removal. Root returned explicit retirement phases and in-flight deduplication requirements, with injected enqueue-rejection and asynchronous-removal-failure tests through `ResolutionReleased`. No acceptance was added.
 
 The crash parent and child both use a 20-second bound, allowing the parent to kill the child before its terminal diagnostic is emitted. Root requested one early bounded diagnostic snapshot of the pending resolution/receipt phase and adapter state, preserving the existing timeout and assertions. All four OpenCode sessions remain running; `git diff --check` passed. Native unlock and the eligible but unused reset remain pending.
+
+
+## r71 integrated navigation gate stopped before launch
+
+Root froze 416 current files for independent navigation-context, global-search and sidebar QA. Compilation failed before any candidate was copied or launched: the new retirement struct was missing an import, the retirement retry method held a mutable adapter borrow across `finish_resolution`, and the new sidebar fixture still accessed `scope` as a field rather than calling `scope()`. These were returned to T14/T19 with precise locations. No stale candidate was substituted and no QA pass is claimed. [Source](evidence/r71-integrated-source.json), [gate result](evidence/r71-navigation-checks.json).
+
+OpenCode's sidebar fixture caught brand/scroll alignment drift. Root required geometry checks against the actual identity row, including titlebar clipping and nonzero scroll offsets, rather than merely sharing duplicated position constants between implementation and tests. The installed r65 native diagnostic predates this newer overlay entity/alignment change and is not a final candidate. All four implementation sessions remain running; native unlock and the authorized unused reset remain pending.
+
+
+## r72 integrated recovery and navigation verification
+
+Root independently tested the frozen 418-file r72 source: 673 unit tests passed, 2 ignored, all 8 dispatch crash tests and all 3 v4 crash tests passed. The build succeeded; the immutable candidate SHA-256 is `bbb80446cd93638abeb3e199741b9f22e81298779c7ef0f0b3270165767c01e5`. Invalid QA guard exited 2 before navigation-context, global-search and sidebar checks each passed. [Results](evidence/r72-checks.json), [source](evidence/r72-integrated-source.json). These checks do not prove the full native or release matrix.
+
+Root returned an additional rerun recovery concern: `retry_status_completion` marks `decision_started` before `finish_resolution`, although preparation, material preparation or admission can fail. Existing-replacement marker removal also ignores enqueue errors. T14 was verified terminal before resuming the same OpenCode session with retry-phase and injected-failure requirements, plus the still-required full live persistence/startup integration. The full standalone QA and persistence performance ledger is now running against the immutable r72 candidate in an isolated copied fixture. Native interaction remains unverified pending the manual-unlock handoff.
+
+
+## r74 full-gate progress and command scaling review
+
+The independent r72 candidate passed the base, affordance, archived-research and attachment QA entries; the full ledger remains running. [Progress only](evidence/r74-gate-progress.json). T13 reported completion with scoped field inverses and nine agent-run QA checks; root has not promoted this report to full acceptance. Root found repeated full-run-vector lookups in `capture_runs` and `changed_runs`, giving O(K*N) work for K affected runs among N historical runs. T13 was verified terminal, then resumed with single-pass lookup and actual large-history move/Undo measurement requirements, preserving approved result validity and runtime history.
+
+Computer again confirmed that the Mac is locked. The existing manual-unlock handoff remains pending; native scrolling acceptance and reset consumption have not occurred. No blocked or completed goal status is inferred while implementation and offline verification continue.
+
+
+## r75 independent live-save latency rejection
+
+The frozen r72 candidate passed the automation functional QA, but its 43,200-occurrence performance fixture measured a **1,336 ms synchronous UI-triggered save block**, with 3,559 ms cold opening, 1,582 ms cold save, 1,243/1,249/1,281 ms warm saves, 657 ms load and 172.4 MB database. The process exits zero without enforcing a responsiveness threshold. Root explicitly rejects performance acceptance; a single measurement is not a p95 distribution. [Measured evidence](evidence/r75-live-save-performance.json). T14 received the actual application-path evidence and requirements for bounded asynchronous saves, durability/error acknowledgement and main-thread distribution checks.
+
+Root also found that the benchmark selects a legacy automation ID instead of entering the typed detail route; its claimed detail frame is not adequate detail-page evidence. T12 received this correction together with an overlay atomicity concern: planning-attempt opening removes existing overlays before validating the new run, while current ownership validation only checks run existence. Required regressions cover missing/foreign runs preserving prior route, overlay and drafts. All four OpenCode implementation sessions were observed running; full offline QA remains in progress.
+
+
+The full r72 offline ledger finished: 51 of 52 process invocations exited zero; `--qa-topic-migration` exited 101 at `topic_qa.rs:574`, where valid project rename failed to close its modal. The failure was returned to T13. [Full ledger](evidence/r75-full-gate.json). Zero process exits remain insufficient for performance acceptance as documented above.
+
+After the user manually unlocked the Mac, Computer accessed the isolated r65 native candidate. It remained visibly on `Starting…` for over 20 seconds; a two-second sample showed the main thread idle in its event loop. A native window zoom immediately exposed All research, suggesting a repaint/invalidation problem. This is evidence against installed r65, not a claim about the newer source. T19 received the observation and current-candidate regression requirement. Native interaction access is restored; the full native matrix remains outstanding. The updated user goal removes the earlier reset clause; no reset was consumed and no reset action is being pursued.
+
+
+## r76 continuation beyond partial implementation checkpoints
+
+Root verified T12 and T14 sessions terminal before resuming those same sessions. T12 reports S2/S3 and automation-overlay S4 completed, including atomic planning-attempt ownership checks; editor/search/composer S4, page-state S5 and live return-frame S6 remain required. T14 explicitly confirms that ordinary synchronous saves, startup activation, durable command continuations, full snapshot retirement and indexed/lazy UI reads remain incomplete. Both sessions were resumed with the full remaining scope, rather than accepting the partial checkpoint as task completion.
+
+The current icon embedding checker passed with 51 registered icons, and `git diff --check` passed. A same-branch WIP backup preserves current source and evidence; it is not release acceptance. Screenshots, raw traces and logs remain local.

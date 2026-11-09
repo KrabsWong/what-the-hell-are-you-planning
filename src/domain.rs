@@ -1121,6 +1121,15 @@ impl Store {
         self.runs.tracked_mut(crate::persistence_journal::EntityKey::Run(id))
     }
 
+    /// O(1) run mutation when the caller already holds an id→index map built in
+    /// a single history pass. Used by bounded topic/project commands so the
+    /// main thread does not rescan a large run history per affected run.
+    pub(crate) fn run_at_index_mut(&mut self, index: usize) -> Option<&mut AgentRun> {
+        let id = self.runs.get(index)?.id;
+        self.runs
+            .tracked_mut_index(index, crate::persistence_journal::EntityKey::Run(id))
+    }
+
     pub fn automation_at_mut(
         &mut self,
         index: usize,
@@ -1936,13 +1945,19 @@ impl Store {
     /// Shared preflight for the confirmation dialog and the final mutation guard.
     pub fn topic_move_blockers(&self, topic: u64, batch: Option<&crate::batch::TodoBatch>) -> Vec<String> {
         let ids: Vec<_> = self.tasks.iter().filter(|t| self.task_topic(t.id).is_some_and(|t| t.id == topic)).map(|t| t.id).collect();
+        let id_set: std::collections::HashSet<u64> = ids.iter().copied().collect();
         let requests: Vec<_> = self.research_requests.iter().filter(|r|
-            r.topic_id == Some(topic) || r.goal_ids.iter().any(|id| ids.contains(id))).collect();
+            r.topic_id == Some(topic) || r.goal_ids.iter().any(|id| id_set.contains(id))).collect();
+        let requests_by_run: std::collections::HashMap<u64, &crate::request_planning::ResearchRequest> =
+            requests
+                .iter()
+                .filter_map(|request| request.planning_run_id.map(|run| (run, *request)))
+                .collect();
         let task_name = |id| self.task(id).map(|t| format!("{} · {}", self.identifier(t), t.title)).unwrap_or_else(|| format!("Task #{id}"));
         let mut blockers = vec![];
         for run in &self.runs {
-            let request = requests.iter().find(|r| r.planning_run_id == Some(run.id));
-            if !(run.project_plan.is_none() && ids.contains(&run.task_id) || request.is_some()) { continue; }
+            let request = requests_by_run.get(&run.id).copied();
+            if !(run.project_plan.is_none() && id_set.contains(&run.task_id) || request.is_some()) { continue; }
             let action = match run.status.as_str() {
                 "Queued" => "Open Progress and use Stop task to cancel this queued attempt or retry. If its goal is in the batch queue, also use Stop all, or wait for the queue to finish.",
                 "Running" => "Wait for completion, or open Progress and use Stop task. Wait until stopping finishes before moving.",
@@ -1957,7 +1972,7 @@ impl Store {
         }
         if let Some(batch) = batch.filter(|b| b.state != crate::batch::BatchState::Finished) {
             for id in &batch.items {
-                if !ids.contains(id) || !batch.contains_pending(*id) { continue; }
+                if !id_set.contains(id) || !batch.contains_pending(*id) { continue; }
                 let state = if matches!(batch.state, crate::batch::BatchState::Paused(_)) { "Paused batch queue" } else { "Pending batch queue" };
                 let children: Vec<_> = self.tasks.iter().filter(|t| t.parent_id == Some(*id) && !t.stage.is_closed() && self.research_result(t.id).is_none()).map(|t| task_name(t.id)).collect();
                 let children = if children.is_empty() { String::new() } else { format!("\n  Pending child tasks: {}", children.join("; ")) };
@@ -1965,17 +1980,17 @@ impl Store {
             }
         }
         for request in requests {
-            if request.goal_ids.iter().any(|id| !ids.contains(id)) || request.topic_id.is_some_and(|id| id != topic) {
+            if request.goal_ids.iter().any(|id| !id_set.contains(id)) || request.topic_id.is_some_and(|id| id != topic) {
                 let goals: Vec<_> = request.goal_ids.iter().map(|id| task_name(*id)).collect();
                 blockers.push(format!("Research request #{} · {} — links multiple topics\n  Linked goals: {}. Reconcile the request's topic and goal membership before moving; stopping tasks does not repair this relationship.", request.id, request.input, goals.join("; ")));
             }
         }
         for task in &self.tasks {
-            let inside = ids.contains(&task.id);
+            let inside = id_set.contains(&task.id);
             let links = task.parent_id.into_iter().chain(task.research.iter().flat_map(|r|
                 std::iter::once(r.goal_id).chain(r.depends_on.iter().copied())));
             let mut seen = std::collections::HashSet::new();
-            for id in links.filter(|id| inside != ids.contains(id)) {
+            for id in links.filter(|id| inside != id_set.contains(id)) {
                 if seen.insert(id) {
                     blockers.push(format!("{} → {} — cross-topic relationship\n  Reconcile the parent, goal or dependency relationship so it stays inside the topic. Stopping tasks does not repair this relationship.", task_name(task.id), task_name(id)));
                 }
@@ -2042,6 +2057,7 @@ impl Store {
         moved: &std::collections::HashSet<u64>,
         new_project: u64,
         approved: &mut std::collections::HashMap<u64, Option<String>>,
+        latest_results: &std::collections::HashMap<u64, (u64, String)>,
         memo: &mut std::collections::HashMap<u64, Option<String>>,
         visiting: &mut Vec<u64>,
     ) -> Option<String> {
@@ -2120,23 +2136,19 @@ impl Store {
                     moved,
                     new_project,
                     approved,
+                    latest_results,
                     memo,
                     visiting,
                 );
                 visiting.pop();
                 value?
             };
-            let result = self
-                .runs()
-                .iter()
-                .rev()
-                .find(|run| run.task_id == *dependency && run.status != "Simulated")
-                .filter(|run| run.status == "Succeeded" && !run.output.trim().is_empty())?;
-            if !moved.contains(dependency) && result.input_signature != signature {
+            let (run_id, run_signature) = latest_results.get(dependency)?;
+            if !moved.contains(dependency) && run_signature != &signature {
                 memo.insert(id, None);
                 return None;
             }
-            dependencies.push(result.id);
+            dependencies.push(*run_id);
         }
         let project = if moved.contains(&task.id) {
             new_project
@@ -2196,13 +2208,34 @@ impl Store {
         if !self.projects.iter().any(|p| p.id == project) { return Err("Project not found.".into()); }
         if source == project { return Ok(()); }
         let ids: Vec<_> = self.tasks.iter().filter(|t| self.task_topic(t.id).is_some_and(|t| t.id == topic)).map(|t| t.id).collect();
+        let id_set: std::collections::HashSet<u64> = ids.iter().copied().collect();
         let requests: Vec<_> = self.research_requests.iter().filter(|r|
-            r.topic_id == Some(topic) || r.goal_ids.iter().any(|id| ids.contains(id))).map(|r| r.id).collect();
+            r.topic_id == Some(topic) || r.goal_ids.iter().any(|id| id_set.contains(id))).map(|r| r.id).collect();
+        let request_set: std::collections::HashSet<u64> = requests.iter().copied().collect();
         let blockers = self.topic_move_blockers(topic, None);
         if !blockers.is_empty() { return Err(blockers.join("\n\n")); }
-        let planning_runs: Vec<_> = self.research_requests.iter().filter(|r| requests.contains(&r.id)).filter_map(|r| r.planning_run_id).collect();
+        let planning_runs: std::collections::HashSet<u64> = self.research_requests.iter()
+            .filter(|r| request_set.contains(&r.id))
+            .filter_map(|r| r.planning_run_id)
+            .collect();
         let approved: Vec<_> = ids.iter().copied().filter(|id| self.goal_execution_approved(*id)).collect();
         let valid: Vec<_> = ids.iter().filter_map(|id| self.research_result(*id).map(|r| (*id, r.id))).collect();
+        // One pass over run history builds both the id→index map used for O(1)
+        // writes and the latest reusable result per task used by the prospective
+        // signature walk. No per-id rescans.
+        let mut run_index = std::collections::HashMap::with_capacity(self.runs.len());
+        let mut latest_results: std::collections::HashMap<u64, (u64, String)> =
+            std::collections::HashMap::new();
+        let mut seen_tasks = std::collections::HashSet::new();
+        for (index, run) in self.runs.iter().enumerate().rev() {
+            run_index.insert(run.id, index);
+            if run.status == "Simulated" || !seen_tasks.insert(run.task_id) {
+                continue;
+            }
+            if run.status == "Succeeded" && !run.output.trim().is_empty() {
+                latest_results.insert(run.task_id, (run.id, run.input_signature.clone()));
+            }
+        }
         // Compute every refreshed signature before writing. A malformed graph
         // is rejected while the store and tracking state are still untouched.
         let moved: std::collections::HashSet<u64> = ids.iter().copied().collect();
@@ -2223,11 +2256,15 @@ impl Store {
                     &moved,
                     project,
                     &mut approved_signatures,
+                    &latest_results,
                     &mut memo,
                     &mut Vec::new(),
                 )
                 .ok_or("Could not preserve research dependencies during migration.")?;
-            signatures.insert(*run, signature);
+            let index = *run_index
+                .get(run)
+                .ok_or("A result run is missing from the run index.")?;
+            signatures.insert(*run, (index, signature));
         }
         if self.dependency_cycle(&ids) {
             return Err("Could not preserve research dependencies during migration.".into());
@@ -2248,22 +2285,18 @@ impl Store {
             request.project_id = project;
             request.topic_id = Some(topic);
         }
-        let planning_ids: Vec<u64> = self
-            .runs
-            .iter()
-            .filter(|run| planning_runs.contains(&run.id))
-            .map(|run| run.id)
-            .collect();
-        for run_id in planning_ids {
-            if let Some(mut run) = self.run_mut(run_id) {
+        for run_id in &planning_runs {
+            if let Some(index) = run_index.get(run_id)
+                && let Some(mut run) = self.run_at_index_mut(*index)
+            {
                 run.project_plan = Some(project);
             }
         }
         // Refresh only results that were reusable before the move. Historical
         // directories, sessions, reports and attachment paths remain intact.
-        for (_, run) in valid {
-            if let Some(signature) = signatures.remove(&run) {
-                self.run_mut(run).unwrap().input_signature = signature;
+        for (_, (index, signature)) in signatures {
+            if let Some(mut run) = self.run_at_index_mut(index) {
+                run.input_signature = signature;
             }
         }
         Ok(())

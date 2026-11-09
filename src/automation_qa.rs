@@ -301,7 +301,7 @@ fn planning_chain(root: &Path) {
     // The attempt stays under its automation, never in ordinary Research results.
     cx.update_window(handle, |_, w, cx| {
         app.update(cx, |a, cx| {
-            a.automation_ui.settings_dialog = true;
+            a.open_settings_overlay();
             cx.notify();
         });
         w.render_frame(cx);
@@ -315,12 +315,12 @@ fn planning_chain(root: &Path) {
     })
     .unwrap();
     assert_eq!(
-        read_state(&mut cx, &app, |a| a.automation_ui.planning_attempt_dialog),
+        read_state(&mut cx, &app, |a| a.planning_attempt_overlay()),
         Some(run_id)
     );
     cx.update_window(handle, |_, w, cx| {
         app.update(cx, |a, cx| {
-            a.automation_ui.planning_attempt_dialog = None;
+            a.close_planning_attempt_overlay();
             a.navigate(Scope::Runs, w, cx);
         });
         w.render_frame(cx);
@@ -1635,7 +1635,7 @@ fn dispatch_ui_state(
             creating: a.automation_ui.creating,
             step: a.automation_ui.step,
             result_dialog: a.period_overlay(),
-            settings_dialog: a.automation_ui.settings_dialog,
+            settings_dialog: a.settings_overlay(),
             objective: a.automation_ui.objective.read(cx).value().to_string(),
             follow_logs: a.follow_logs,
             show_run_result: a.show_run_result,
@@ -4162,7 +4162,7 @@ print(json.dumps({'type':'text','part':{'text':json.dumps(plan)}}), flush=True)
         })
         .unwrap();
         assert_eq!(
-            read_state(&mut cx, &app, |a| a.automation_ui.planning_attempt_dialog),
+            read_state(&mut cx, &app, |a| a.planning_attempt_overlay()),
             Some(*run_id)
         );
         let (actual, status, revision) = read_state(&mut cx, &app, |a| {
@@ -4232,7 +4232,7 @@ print(json.dumps({'type':'text','part':{'text':json.dumps(plan)}}), flush=True)
         })
         .unwrap();
         assert_eq!(
-            read_state(&mut cx, &app, |a| a.automation_ui.planning_attempt_dialog),
+            read_state(&mut cx, &app, |a| a.planning_attempt_overlay()),
             None
         );
         assert_eq!(
@@ -4258,7 +4258,7 @@ print(json.dumps({'type':'text','part':{'text':json.dumps(plan)}}), flush=True)
     cx.update_window(handle, |_, w, cx| {
         app.update(cx, |a, cx| {
             a.automation_ui.selected = None;
-            a.automation_ui.settings_dialog = false;
+            a.close_settings_overlay();
             a.close_planning_attempt(w, cx);
             a.navigate(Scope::Automations, w, cx);
         });
@@ -4275,7 +4275,7 @@ print(json.dumps({'type':'text','part':{'text':json.dumps(plan)}}), flush=True)
     })
     .unwrap();
     assert_eq!(
-        read_state(&mut cx, &app, |a| a.automation_ui.planning_attempt_dialog),
+        read_state(&mut cx, &app, |a| a.planning_attempt_overlay()),
         Some(legacy_id)
     );
     cx.update(|cx| Theme::change(ThemeMode::Dark, None, cx));
@@ -4296,7 +4296,7 @@ print(json.dumps({'type':'text','part':{'text':json.dumps(plan)}}), flush=True)
     })
     .unwrap();
     assert_eq!(
-        read_state(&mut cx, &app, |a| a.automation_ui.planning_attempt_dialog),
+        read_state(&mut cx, &app, |a| a.planning_attempt_overlay()),
         None
     );
     cx.update_window(handle, |_, w, _| {
@@ -4353,11 +4353,11 @@ print(json.dumps({'type':'text','part':{'text':json.dumps(plan)}}), flush=True)
     })
     .unwrap();
     assert_eq!(
-        read_state(&mut cx, &app, |a| a.automation_ui.planning_attempt_dialog),
+        read_state(&mut cx, &app, |a| a.planning_attempt_overlay()),
         None
     );
     assert!(
-        read_state(&mut cx, &app, |a| a.automation_ui.settings_dialog),
+        read_state(&mut cx, &app, |a| a.settings_overlay()),
         "Escape restores the initiating settings dialog"
     );
     cx.update_window(handle, |_, w, _| {
@@ -5069,7 +5069,7 @@ fn ui_interaction(root: &Path) -> PathBuf {
         Scope::Automations
     );
     assert!(!read_state(&mut cx, &app, |a| a.automation_ui.creating));
-    assert!(read_state(&mut cx, &app, |a| a.automation_ui.settings_dialog));
+    assert!(read_state(&mut cx, &app, |a| a.settings_overlay()));
     assert_eq!(
         read_state(&mut cx, &app, |a| a.automation_ui.selected),
         Some(id)
@@ -5576,9 +5576,10 @@ fn render_matrix(root: &Path, source: &Path) {
             let handle: AnyWindowHandle = window.into();
             screenshot(&mut cx, handle, &directory, "list.png");
             let id = read_state(&mut cx, &app, |a| a.store.automations()[0].id);
-            cx.update_window(handle, |_, _, cx| {
+            cx.update_window(handle, |_, w, cx| {
                 app.update(cx, |a, cx| {
-                    a.automation_ui.selected = Some(id);
+                    a.open_automation(id, w, cx);
+                    assert_eq!(a.automation_detail_id(), Some(id));
                     cx.notify();
                 });
             })
@@ -5803,9 +5804,10 @@ pub fn performance_fixture() {
         .unwrap();
     let list_render_ms = render_started.elapsed().as_millis();
     let detail_started = std::time::Instant::now();
-    cx.update_window(handle, |_, _, cx| {
+    cx.update_window(handle, |_, w, cx| {
         app.update(cx, |a, cx| {
-            a.automation_ui.selected = Some(id);
+            a.open_automation(id, w, cx);
+            assert_eq!(a.automation_detail_id(), Some(id));
             cx.notify();
         });
     })

@@ -92,6 +92,17 @@ impl<T> TrackedVec<T> {
         Some(&mut self.items[index])
     }
 
+    /// O(1) indexed mutation for callers that already hold a verified index
+    /// (for example an id→index map built in one history pass). The identity is
+    /// rechecked so a stale index cannot write the wrong entity.
+    pub(crate) fn tracked_mut_index(&mut self, index: usize, key: EntityKey) -> Option<&mut T> {
+        if index >= self.items.len() || (self.identity)(&self.items[index]) != key {
+            return None;
+        }
+        self.dirty.mark_upsert(key);
+        self.items.get_mut(index)
+    }
+
     pub(crate) fn push_tracked(&mut self, item: T) {
         let key = (self.identity)(&item);
         if self.items.iter().any(|existing| (self.identity)(existing) == key) {

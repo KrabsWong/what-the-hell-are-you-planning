@@ -1,0 +1,551 @@
+{
+  "binary_sha256": "bbb80446cd93638abeb3e199741b9f22e81298779c7ef0f0b3270165767c01e5",
+  "guard_exit": 2,
+  "source_hash_note": "Frozen-source inventory; reviewed build manifest is still required to prove binary/source provenance.",
+  "frozen_source_sha256": {
+    "src/affordance_qa.rs": "aebc3400fff1cfcf30fb00a8be03078fab7ad8859b26a041611e06f51e42f2f4",
+    "src/app.rs": "0f06c1a636e2cc27bc60a1174bf8c918ab7192a2a55acb0084ce980b8e49f654",
+    "src/appearance.rs": "2494bb0c4cd0d164cac44ed9d9ccf7fa4a5d7fdecf6889715fec106eea067a77",
+    "src/archive_app.rs": "b2d074b8d783de1b37eb40dbe3aec8103736f2aa7b9b9f4d6b2374e52aec5a35",
+    "src/archive_presentation.rs": "09112e1d3b20b4a6d680bd78e6f531efe079ee9cabcf9b77fa2aabc5d1ab3fe6",
+    "src/archive_qa.rs": "00acc3f291a5fcabab13f742a3691f4ae4be665fcf6206189d15d82482370026",
+    "src/attachments.rs": "473c5d112affeea8be16254b038f397b36e5d3e1c992bceff17f9a30b4e548ff",
+    "src/automation.rs": "32cb8ce1c156896e135d97e32bfcd3fd515917755998ea87af880d5b3749a063",
+    "src/automation_activity.rs": "b56fcf0bfe20ba118225ef17c8da3ba7e7127db4d88ef737998e79a5c850fe4b",
+    "src/automation_execution.rs": "bb4fe1cdeda63d7d032e749b203ce763e4de6f345eba3cc1da038e559ea39c7c",
+    "src/automation_planning_state.rs": "b56f87efe737405cebdc5e6a2dbea35be3d81179454014c7f650b98165d29956",
+    "src/automation_policy.rs": "5306854f7330c6f1e65510d493a02744c72a8af76c97cfe30336aab0ec5905af",
+    "src/automation_qa.rs": "f1fd0d1f5370a765fe23dadcf34f4665ce5aaf44037c32a303da0545df43fee2",
+    "src/automation_runtime.rs": "d41c1e6d5124aa9b58ddc8e2c320771b5db52608bca1633bde94982977564c53",
+    "src/automation_schedule.rs": "86a78b01f802b898979823d427bae140ece0a6a395e935b6f5c46e56dbab5d9d",
+    "src/automation_views.rs": "6eb1ca69b04752db7ea3ffa941fd964665ebe749e408ff45613de3a203b7f3e6",
+    "src/batch.rs": "cac2ea626697e02c719bff7bfc1d5c784db06f5c681806eeb8d58ea1aafa3bbb",
+    "src/batch_app.rs": "161c60b658b7da4856ce62c2bdf659cfe0ba855524793c16965594370038562f",
+    "src/batch_qa.rs": "86ca405045ea32de7c7beac086e544155fdd178f075e7e9bf6c0462e41818df4",
+    "src/brand.rs": "3bc704e0b2c5aa34a068f8043516ed2e3a56a2d8695535530d32142353969acd",
+    "src/codex.rs": "e8138cc4b086d907c12fc58731a1fe83425e14ffad6f4459ad865a70ad979296",
+    "src/command_app.rs": "6c719fe55bf3c9af4a0c276de3210ce057211d5165edd5e4182b707d1d8508e6",
+    "src/command_qa.rs": "f576be27c0d4d19a890793045b44288436eda2f5641333f512f73f5ba7d1e40a",
+    "src/concurrency_qa.rs": "967e72e6e98ae51235044b4221846892a1e3c4485472eb60670bb69004f68234",
+    "src/controls.rs": "dcc00aea0bc4707d33a3c0bf989da0c404eb829c3a7e3a2af6f5a52aa8c42b82",
+    "src/dispatch_admission.rs": "7ed0e7ed4711caa74e7ea2f9d9dd58e7d9d25a8b3f343f8b078ab42b317938f1",
+    "src/dispatch_admission_qa.rs": "91aef7ef3e5833f6723e855211f9bc1a8ce472c76d196c6a2ca985779a1b1c31",
+    "src/dispatch_intent.rs": "421ebbc6b04f59afece52a1e273a0a5950115a64de2265312d16ca2ed26f38bf",
+    "src/display_order.rs": "e5a78cf22aae109c28276204d0279146a00b7c915ba772244a3b22213a2f79d9",
+    "src/domain.rs": "c9b52eb9a03f8dd318b40b65e54ec5d3054302de3a67e20eb87032416189c8ea",
+    "src/domain_command.rs": "7ea17b74f4bfa3bd439c5644bcd480a54b2858bd7bdc6905b2d7f73012ea6cab",
+    "src/domain_tracked.rs": "67ad558c0584881ef13dc3cc51b12a8722c45c72452cf401e905268cc46a844b",
+    "src/draft_exit.rs": "2976da50e91878e5e4fa821033053a7729289176ddfe379420effb00c0b6567d",
+    "src/ego.rs": "6a1197160395a3d6f4162ed4ec46a43ab70e50f0bd8700cfa42c84617566c8f0",
+    "src/ego_mcp.rs": "4deb390aa1f3d5c5bcdcc0148136d86226e9eb383f1998e8c725b8da178e4c9f",
+    "src/execution_eligibility.rs": "b60d0745535a7227ad489ccede2f502890a66b9dcde8173c6e94ab4bbdd9949d",
+    "src/execution_eligibility_qa.rs": "f1df71c72d9812b8c067c26be3e938650fc94045059b35737e4e32de1836d151",
+    "src/execution_status.rs": "77e79126a7f724ec38cf323e124ae599ae4cd71fd5df24da519e2f6804f222c6",
+    "src/fixtures.rs": "85f7f0abf1a07bfb812601d6d81334cce3bb1745d437087655cf2657dd70b579",
+    "src/global_search.rs": "7c34fa5d7d57aecf277c363af727833fecd116851e4f60e52d68fe05cf9ae754",
+    "src/global_search_qa.rs": "5313cd545bede9839e443c3c6f1e22560a490e45dba3d3ccc3bde0070c626957",
+    "src/goal_steps.rs": "b709793bfd2a972bf3cbf2f94146701e65b16f19605129b5198012e063d6eeab",
+    "src/intake_qa.rs": "b793a0bec14a35facf493c71c6a69cda014d0b4ecacec88723c2f0cfbf01fa4a",
+    "src/intake_views.rs": "0d2e897b1354cc1032b6dfbc7cbd969812543c4aa01fdf42ae9f86bb897d37f4",
+    "src/main.rs": "17fcc31bfb01802178653717411a1eaf05b8a1b8d23da812ea0d01e251f3f860",
+    "src/material_app.rs": "ce588e63712d57852af3239e09f2bfba2328539277157d29d07c153990420b95",
+    "src/material_qa.rs": "33d8730f1f3ac2219c236cf6568407fdb292cb9d6a1c2ff184b8d25a5b0729a3",
+    "src/material_verify.rs": "191390011d6f513c97c9ce30e67aad81133b3fb35fa7528ed3f0a3ea762d4310",
+    "src/model_profiles.rs": "18aae99ab710e39c939fd77b626840c91d11a4ebc50947d4d10f0428547175b0",
+    "src/navigation.rs": "f1c20e880d4b21a9024b09afc63f5a331162a401b77da8e0be51466a8303c2ea",
+    "src/navigation_context.rs": "8d819d70d42503c0096c18eeffab284c93612af095684899b98938697615e932",
+    "src/navigation_context_app.rs": "a325a46e016a174a6a84b3857bee6cacbb81dc1584e6027c0e8d3c916d4fd73e",
+    "src/navigation_context_qa.rs": "7cbc954fe24aba24d4fa86c70762328255e6a717e2889ce813484cdc05fb1d9b",
+    "src/navigation_qa.rs": "c57c09f0cd1f881d79604817c941f411e76a2047ef8671bb22eb73ecff67516e",
+    "src/navigation_route.rs": "dedc488940bd175cf939ce9795c627824d94e98b96995a5719a9c530371520a1",
+    "src/opencode.rs": "f14f1f9a95b981682d2f7750bf2d679ea3326b002cf86b22927744dc672adc17",
+    "src/persistence.rs": "2c0bfa434672211ab7b96ea983828f210b3c21c6db772a01cb0e2c28f15590f8",
+    "src/persistence_journal.rs": "a070540b3ac395bcd56801c53eccaf119ded01b30778815fce96195245074ad8",
+    "src/persistence_live.rs": "19fb1632dc8b1f977a8925234ddb89bf56cc14c7222e5e3d244bbeedd762f2f5",
+    "src/persistence_metrics.rs": "abc5095922f9f0dab8804ae7e3ece54597213bed18f10d528e28565a5e3aeac7",
+    "src/persistence_qa.rs": "89f2f98a80e1561feb51e43bd56ac403dc8c551735b368b2fef3460eb819359b",
+    "src/persistence_worker.rs": "b3b8786f16fc3481b4afa15fbe3b648778309a2e27cdac446c4857d1c093d1f1",
+    "src/project_app.rs": "03b4f484540145552fbbcc6c3a8bc42a083083a1b07e55d38d0cecd07e6e58cc",
+    "src/project_planning.rs": "b3dc553363be8145c1cd146f1349ddb3e0e2a8699deeeb8f313901508fb9b2b2",
+    "src/project_qa.rs": "c2153a2a5c782da38ae34184a5a27c1c0a85ce4032a74695b4811cd0a8d647c2",
+    "src/project_views.rs": "be7a50b438f12aa8fe3dc352a2c3848f569639d4c28304f99eb0efb189dd434f",
+    "src/publishing_qa.rs": "9f8edbc9d6caeecea15222db7e8e225701359862fff83b0b5d9fd605bd515fea",
+    "src/qa.rs": "56971ab43846825a81fe5c499356c16bdaa300661efd5a1a4d6125713dde9519",
+    "src/recovery.rs": "680a8fc0964c2dcd9db8fceeddab28d7ebff97767f9b54da454b7475e7a8f7cd",
+    "src/recovery_qa.rs": "b9979330420d23ba8c0389975c973ca91ca479fb71c30d4a7e2999e846de6989",
+    "src/render_qa.rs": "940ec21729e659ef1f714c6a342343220d039c3a75846ec46b0bd9224726f186",
+    "src/report_git.rs": "dbc8804ef197adfd7e1cc40dd56980aa03da88ab091b10926a4316c5e38d1d31",
+    "src/report_html.rs": "0dc9d0e3c1980fed5a13537e7577d2ef204214e777df64a79d3f417fbd37847c",
+    "src/report_publish.rs": "079f8eab35dbf36143c39fbad25627f840e1f25f2bb76f52e50a68006d88d287",
+    "src/request_planning.rs": "41c6ee647ff659d5533e1978f47291bc353fee57dcbdd060ada8e6c46f15c893",
+    "src/research.rs": "5f73ea31d632d2b544c305ecb7f0f17ff74ca7dfd6fca8277bd9b0fb9e9bfa7c",
+    "src/research_app.rs": "8746f1166553a75f5f58ecff862ce1c7326c285b5d71b5fa5aaf1c5c42afe453",
+    "src/research_export.rs": "eb5a47814cc7aac1fda078b9969e586b2cd719c3800fda7c7f072b2ac8b0e630",
+    "src/research_input.rs": "8e1647d644bcca185bce74f615a97a5136e40be5998bfd03d2f2b637f6694b32",
+    "src/research_input_app.rs": "a30e376390da4e9337ff82bdbeba5d690eb992b3bc13286be3634ecb75fbf29d",
+    "src/research_input_qa.rs": "10b272bf5b98343108d0440de761ccda5fd24369a8a62dedfa00b8eac86a63fc",
+    "src/research_input_views.rs": "4d51246f2e73f4bb2bb8505b2c37744689bacdbcd36bd746f7b3802da2ee8154",
+    "src/research_qa.rs": "a4f1d3cbcfa290a9b76381ed16d4b57f1130f92330a4376eb268c594167240e4",
+    "src/research_views.rs": "693a4e5fe54e74183f90b39f814a6490cfbd135c91b22427b57711f045580714",
+    "src/result_presentation.rs": "5954a1c0074308001dc4cf5ab6ed7a48d4fd51428d7d8b017d025bbff8415933",
+    "src/result_presentation_qa.rs": "57cde401428f23c6c8fb1b93528c9ead3e2ad82b318fe2a487963ce8b9f0cbc6",
+    "src/retries.rs": "4b98da1d6b49c9d02fc898560394fba4ca26a41c052cbbb6d395b251a9987410",
+    "src/retry_qa.rs": "45aa90022e883024deb3f7939cda7c26b0cdc164ec2264be32c88307cd3bc999",
+    "src/rich_markdown.rs": "01f10de8895b9e8d40805fd0b2cbef9d605bb4fdb3c5c2c1303d63ace5dc460c",
+    "src/run_errors.rs": "bc84acba9d30775ed1c0b99b385ad82c32cbcc682edcb7ade7317cfe1084e874",
+    "src/run_views.rs": "e6693eb39b7c3676c8d86b05e30868431b178e7f092b9b261da8cbf0fba35141",
+    "src/scheduler.rs": "502d4c0ec059a05c5c029962001b8f27f84d8bbdbad6495d3a1ced61d8f98b19",
+    "src/scoped_domain.rs": "e54ce56f7fbe44835bb45957e1f71f326b7e816f22754f2d9a70d809b308cac0",
+    "src/scoped_edit.rs": "73c61275d0fa84657f0bc1f5019bcd73154a76c37ebd9b29585fbb876b8c104e",
+    "src/scoped_material.rs": "f45ac1a0c6e21276fa3d0638c927b56206c746d50873409d99bd874bf420b4cd",
+    "src/scoped_settings.rs": "b3b54f31f3a69df8e4d4866170d7b5bf65445b6886b493b9f7e788513189c453",
+    "src/settings_qa.rs": "d3c9e5ec53e60661016c012387b50b0b147de230c0f6e15b540dc7dc2848da92",
+    "src/settings_views.rs": "26fbf6f1196e3eeb5e3af5d9eec5f515cc5c925639df0f6cc6f0de14143bfd51",
+    "src/shell_surfaces.rs": "a95a494588e588f99dbc438f2ea318e396ea829b0bf063f048bf6e9dcc737f7d",
+    "src/simplify_qa.rs": "4bb9ead50e98050f0260006bc5592d1f5aae3b688fa6f19a693e09564e4ae455",
+    "src/sqlite_storage.rs": "5701d2322d644f5ee6646cbdca14ffe933845fd2424dfe4a7e74833fb9c925ef",
+    "src/sqlite_v4.rs": "8578b1ca7aedf8098393a6f59d6fff03ee1299ec41d2f24186940b66d3d74e42",
+    "src/startup.rs": "c3de81a64c817294d1a16fab89b06eaff0a1960fcc4df00fa6f50172914497ad",
+    "src/stop_intent.rs": "cf9d504824a72b7622d6e865b40990058d1f39a041f07eafa271a063f994550e",
+    "src/t11_qa.rs": "442a6a4cfebad57298b1d741fb44ba8d21d7fec4625b926636aff6804a38521e",
+    "src/t19_qa.rs": "c464f7179c3bd965659165a5772bb7df6778372491ed0d23d54bb5b5b3c548c3",
+    "src/task_edit_app.rs": "13f2b0f4bad3cec77bb4755840b5e58a12a5d37f2ed83314ee92dd68aa0f6edb",
+    "src/task_edit_qa.rs": "d55a5edea97f1161e28c28e2406f4eb62be72c15808684117e1d24e685815d89",
+    "src/topic_qa.rs": "b9f6b569f08c90743ef7e654e3653357e5e109473ec37b6ecf68d107bad2ae24",
+    "src/topic_queue_qa.rs": "fe25c7f6eb31eaca05ab36f0ebb3e509a2c7e0047638546231d13e8d266ab7dc",
+    "src/topic_views.rs": "2c2730838bb75e88eadb632edf02c417460ab5128457982ee84bc3a18ac38f4d",
+    "src/ui_assets.rs": "bdf2802c17cf0ac3585678ee55a5250aec9321f4e9b98cf28f4b632e21cfd354",
+    "src/views.rs": "5f65e5c9158ced89f3fbd1c5498c50c2ee609129d385eaf1d459b80d4126caf1",
+    "src/workflow.rs": "03b1c024e72e305ae71c00c5601a742c35ea19d115bee0254456e18db71b71ff",
+    "src/workflow_qa.rs": "e1f2e81ec20c6d58c107e533df295cb911ba3fc717ff8f68ce2a60a6b68b67c1",
+    "src/workflow_views.rs": "6dd60213f7c868c7c4ef2bd7221a2317c6bf1f89c67cc4fb04ca1c0eda0dd07d",
+    "src/workspace.rs": "9e311c966220f8bb5fccf7a08ef82be842176fd7791406ab1b83f61882875b0b",
+    "src/workspace_qa.rs": "c90efff6205baf1465dd762c3f26735f060f81d7c632742fafd40eae88e95308"
+  },
+  "source_root": "/Users/fuxingxing/workspaces/what-the-hell-are-you-planning/.local/r72-integrated-source",
+  "required_separate_crash_tests": {
+    "--qa-dispatch-crash": "dispatch_admission_crash",
+    "--qa-v4-crash": "v4_crash"
+  },
+  "scope": "All standalone offline QA and performance modes; parent crash tests and native matrix require separate evidence.",
+  "results": [
+    {
+      "entry": "--qa",
+      "status": "passed",
+      "exit_code": 0,
+      "elapsed_seconds": 10.14,
+      "log": "qa.log",
+      "alias_note": ""
+    },
+    {
+      "entry": "--qa-affordance",
+      "status": "passed",
+      "exit_code": 0,
+      "elapsed_seconds": 19.48,
+      "log": "qa-affordance.log",
+      "alias_note": ""
+    },
+    {
+      "entry": "--qa-archived-research",
+      "status": "passed",
+      "exit_code": 0,
+      "elapsed_seconds": 9.46,
+      "log": "qa-archived-research.log",
+      "alias_note": ""
+    },
+    {
+      "entry": "--qa-attachments",
+      "status": "passed",
+      "exit_code": 0,
+      "elapsed_seconds": 2.44,
+      "log": "qa-attachments.log",
+      "alias_note": ""
+    },
+    {
+      "entry": "--qa-automation",
+      "status": "passed",
+      "exit_code": 0,
+      "elapsed_seconds": 40.92,
+      "log": "qa-automation.log",
+      "alias_note": ""
+    },
+    {
+      "entry": "--qa-automation-perf",
+      "status": "passed",
+      "exit_code": 0,
+      "elapsed_seconds": 22.22,
+      "log": "qa-automation-perf.log",
+      "alias_note": ""
+    },
+    {
+      "entry": "--qa-batch",
+      "status": "passed",
+      "exit_code": 0,
+      "elapsed_seconds": 12.67,
+      "log": "qa-batch.log",
+      "alias_note": ""
+    },
+    {
+      "entry": "--qa-board-scroll",
+      "status": "passed",
+      "exit_code": 0,
+      "elapsed_seconds": 1.89,
+      "log": "qa-board-scroll.log",
+      "alias_note": ""
+    },
+    {
+      "entry": "--qa-board-topics",
+      "status": "passed",
+      "exit_code": 0,
+      "elapsed_seconds": 1.05,
+      "log": "qa-board-topics.log",
+      "alias_note": ""
+    },
+    {
+      "entry": "--qa-brand",
+      "status": "passed",
+      "exit_code": 0,
+      "elapsed_seconds": 0.14,
+      "log": "qa-brand.log",
+      "alias_note": ""
+    },
+    {
+      "entry": "--qa-calendar",
+      "status": "passed",
+      "exit_code": 0,
+      "elapsed_seconds": 0.73,
+      "log": "qa-calendar.log",
+      "alias_note": ""
+    },
+    {
+      "entry": "--qa-command",
+      "status": "passed",
+      "exit_code": 0,
+      "elapsed_seconds": 2.19,
+      "log": "qa-command.log",
+      "alias_note": ""
+    },
+    {
+      "entry": "--qa-concurrency",
+      "status": "passed",
+      "exit_code": 0,
+      "elapsed_seconds": 19.04,
+      "log": "qa-concurrency.log",
+      "alias_note": ""
+    },
+    {
+      "entry": "--qa-dispatch-admission",
+      "status": "passed",
+      "exit_code": 0,
+      "elapsed_seconds": 0.79,
+      "log": "qa-dispatch-admission.log",
+      "alias_note": ""
+    },
+    {
+      "entry": "--qa-display-order",
+      "status": "passed",
+      "exit_code": 0,
+      "elapsed_seconds": 0.51,
+      "log": "qa-display-order.log",
+      "alias_note": ""
+    },
+    {
+      "entry": "--qa-execution-eligibility",
+      "status": "passed",
+      "exit_code": 0,
+      "elapsed_seconds": 6.35,
+      "log": "qa-execution-eligibility.log",
+      "alias_note": ""
+    },
+    {
+      "entry": "--qa-global-search",
+      "status": "passed",
+      "exit_code": 0,
+      "elapsed_seconds": 23.17,
+      "log": "qa-global-search.log",
+      "alias_note": ""
+    },
+    {
+      "entry": "--qa-handoff-progress",
+      "status": "passed",
+      "exit_code": 0,
+      "elapsed_seconds": 3.56,
+      "log": "qa-handoff-progress.log",
+      "alias_note": ""
+    },
+    {
+      "entry": "--qa-header-layout",
+      "status": "passed",
+      "exit_code": 0,
+      "elapsed_seconds": 4.07,
+      "log": "qa-header-layout.log",
+      "alias_note": ""
+    },
+    {
+      "entry": "--qa-intake",
+      "status": "passed",
+      "exit_code": 0,
+      "elapsed_seconds": 8.83,
+      "log": "qa-intake.log",
+      "alias_note": ""
+    },
+    {
+      "entry": "--qa-keyboard-visual",
+      "status": "passed",
+      "exit_code": 0,
+      "elapsed_seconds": 16.32,
+      "log": "qa-keyboard-visual.log",
+      "alias_note": ""
+    },
+    {
+      "entry": "--qa-navigation-context",
+      "status": "passed",
+      "exit_code": 0,
+      "elapsed_seconds": 14.99,
+      "log": "qa-navigation-context.log",
+      "alias_note": ""
+    },
+    {
+      "entry": "--qa-onboarding",
+      "status": "passed",
+      "exit_code": 0,
+      "elapsed_seconds": 0.73,
+      "log": "qa-onboarding.log",
+      "alias_note": ""
+    },
+    {
+      "entry": "--qa-planning",
+      "status": "passed",
+      "exit_code": 0,
+      "elapsed_seconds": 4.54,
+      "log": "qa-planning.log",
+      "alias_note": ""
+    },
+    {
+      "entry": "--qa-projects",
+      "status": "passed",
+      "exit_code": 0,
+      "elapsed_seconds": 8.69,
+      "log": "qa-projects.log",
+      "alias_note": ""
+    },
+    {
+      "entry": "--qa-publishing",
+      "status": "passed",
+      "exit_code": 0,
+      "elapsed_seconds": 3.41,
+      "log": "qa-publishing.log",
+      "alias_note": ""
+    },
+    {
+      "entry": "--qa-recovery",
+      "status": "passed",
+      "exit_code": 0,
+      "elapsed_seconds": 3.63,
+      "log": "qa-recovery.log",
+      "alias_note": ""
+    },
+    {
+      "entry": "--qa-recovery-scroll",
+      "status": "passed",
+      "exit_code": 0,
+      "elapsed_seconds": 0.52,
+      "log": "qa-recovery-scroll.log",
+      "alias_note": ""
+    },
+    {
+      "entry": "--qa-render-perf",
+      "status": "passed",
+      "exit_code": 0,
+      "elapsed_seconds": 0.84,
+      "log": "qa-render-perf.log",
+      "alias_note": ""
+    },
+    {
+      "entry": "--qa-research",
+      "status": "passed",
+      "exit_code": 0,
+      "elapsed_seconds": 9.89,
+      "log": "qa-research.log",
+      "alias_note": ""
+    },
+    {
+      "entry": "--qa-research-inputs",
+      "status": "passed",
+      "exit_code": 0,
+      "elapsed_seconds": 11.71,
+      "log": "qa-research-inputs.log",
+      "alias_note": ""
+    },
+    {
+      "entry": "--qa-result-layout",
+      "status": "passed",
+      "exit_code": 0,
+      "elapsed_seconds": 5.18,
+      "log": "qa-result-layout.log",
+      "alias_note": ""
+    },
+    {
+      "entry": "--qa-result-presentation",
+      "status": "passed",
+      "exit_code": 0,
+      "elapsed_seconds": 27.99,
+      "log": "qa-result-presentation.log",
+      "alias_note": ""
+    },
+    {
+      "entry": "--qa-retries",
+      "status": "passed",
+      "exit_code": 0,
+      "elapsed_seconds": 0.84,
+      "log": "qa-retries.log",
+      "alias_note": ""
+    },
+    {
+      "entry": "--qa-rich-markdown",
+      "status": "passed",
+      "exit_code": 0,
+      "elapsed_seconds": 6.91,
+      "log": "qa-rich-markdown.log",
+      "alias_note": ""
+    },
+    {
+      "entry": "--qa-settings",
+      "status": "passed",
+      "exit_code": 0,
+      "elapsed_seconds": 17.04,
+      "log": "qa-settings.log",
+      "alias_note": ""
+    },
+    {
+      "entry": "--qa-sidebar",
+      "status": "passed",
+      "exit_code": 0,
+      "elapsed_seconds": 1.41,
+      "log": "qa-sidebar.log",
+      "alias_note": ""
+    },
+    {
+      "entry": "--qa-simplify",
+      "status": "passed",
+      "exit_code": 0,
+      "elapsed_seconds": 52.13,
+      "log": "qa-simplify.log",
+      "alias_note": ""
+    },
+    {
+      "entry": "--qa-t11",
+      "status": "passed",
+      "exit_code": 0,
+      "elapsed_seconds": 11.39,
+      "log": "qa-t11.log",
+      "alias_note": ""
+    },
+    {
+      "entry": "--qa-task-edit",
+      "status": "passed",
+      "exit_code": 0,
+      "elapsed_seconds": 6.56,
+      "log": "qa-task-edit.log",
+      "alias_note": ""
+    },
+    {
+      "entry": "--qa-topic-actions",
+      "status": "passed",
+      "exit_code": 0,
+      "elapsed_seconds": 0.61,
+      "log": "qa-topic-actions.log",
+      "alias_note": ""
+    },
+    {
+      "entry": "--qa-topic-migration",
+      "status": "failed",
+      "exit_code": 101,
+      "elapsed_seconds": 0.33,
+      "log": "qa-topic-migration.log",
+      "alias_note": ""
+    },
+    {
+      "entry": "--qa-topic-queue",
+      "status": "passed",
+      "exit_code": 0,
+      "elapsed_seconds": 6.16,
+      "log": "qa-topic-queue.log",
+      "alias_note": ""
+    },
+    {
+      "entry": "--qa-topics",
+      "status": "passed",
+      "exit_code": 0,
+      "elapsed_seconds": 1.94,
+      "log": "qa-topics.log",
+      "alias_note": ""
+    },
+    {
+      "entry": "--qa-workflow",
+      "status": "passed",
+      "exit_code": 0,
+      "elapsed_seconds": 2.42,
+      "log": "qa-workflow.log",
+      "alias_note": ""
+    },
+    {
+      "entry": "--qa-workspace",
+      "status": "passed",
+      "exit_code": 0,
+      "elapsed_seconds": 8.74,
+      "log": "qa-workspace.log",
+      "alias_note": ""
+    },
+    {
+      "entry": "--qa-persistence-perf inventory",
+      "status": "passed",
+      "exit_code": 0,
+      "elapsed_seconds": 1.68,
+      "log": "qa-persistence-perf inventory.log",
+      "alias_note": ""
+    },
+    {
+      "entry": "--qa-persistence-perf small",
+      "status": "passed",
+      "exit_code": 0,
+      "elapsed_seconds": 2.29,
+      "log": "qa-persistence-perf small.log",
+      "alias_note": ""
+    },
+    {
+      "entry": "--qa-persistence-perf occ43200",
+      "status": "passed",
+      "exit_code": 0,
+      "elapsed_seconds": 88.45,
+      "log": "qa-persistence-perf occ43200.log",
+      "alias_note": ""
+    },
+    {
+      "entry": "--qa-persistence-perf body-heavy",
+      "status": "passed",
+      "exit_code": 0,
+      "elapsed_seconds": 36.05,
+      "log": "qa-persistence-perf body-heavy.log",
+      "alias_note": ""
+    },
+    {
+      "entry": "--qa-persistence-perf retry-heavy",
+      "status": "passed",
+      "exit_code": 0,
+      "elapsed_seconds": 88.22,
+      "log": "qa-persistence-perf retry-heavy.log",
+      "alias_note": ""
+    },
+    {
+      "entry": "--qa-persistence-perf xl",
+      "status": "passed",
+      "exit_code": 0,
+      "elapsed_seconds": 474.74,
+      "log": "qa-persistence-perf xl.log",
+      "alias_note": ""
+    }
+  ],
+  "overall_exit": 1,
+  "acceptance": "rejected: topic migration assertion and separately measured UI save stall; native matrix incomplete"
+}

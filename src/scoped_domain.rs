@@ -637,36 +637,46 @@ struct RunPreimage {
     project_plan: Option<u64>,
 }
 
+/// One pass over run history. Order follows `ids` so deltas stay deterministic.
 fn capture_runs(store: &Store, ids: &[u64]) -> Vec<RunPreimage> {
-    ids.iter()
-        .filter_map(|id| {
-            store.runs().iter().find(|run| run.id == *id).map(|run| RunPreimage {
-                id: run.id,
-                input_signature: run.input_signature.clone(),
-                project_plan: run.project_plan,
-            })
-        })
-        .collect()
+    let wanted: std::collections::HashSet<u64> = ids.iter().copied().collect();
+    let mut found = std::collections::HashMap::with_capacity(wanted.len());
+    for run in store.runs() {
+        if wanted.contains(&run.id) {
+            found.insert(
+                run.id,
+                RunPreimage {
+                    id: run.id,
+                    input_signature: run.input_signature.clone(),
+                    project_plan: run.project_plan,
+                },
+            );
+        }
+    }
+    ids.iter().filter_map(|id| found.remove(id)).collect()
 }
 
+/// One pass over run history for the preimage ids, then a deterministic apply.
 fn changed_runs(store: &Store, before: Vec<RunPreimage>) -> Vec<RunDelta> {
+    let wanted: std::collections::HashSet<u64> = before.iter().map(|run| run.id).collect();
+    let mut after_by_id = std::collections::HashMap::with_capacity(wanted.len());
+    for run in store.runs() {
+        if wanted.contains(&run.id) {
+            after_by_id.insert(run.id, (run.input_signature.clone(), run.project_plan));
+        }
+    }
     before
         .into_iter()
         .filter_map(|before| {
-            store
-                .runs()
-                .iter()
-                .find(|run| run.id == before.id)
-                .filter(|after| {
-                    after.input_signature != before.input_signature
-                        || after.project_plan != before.project_plan
-                })
-                .map(|after| RunDelta {
+            let (after_signature, after_plan) = after_by_id.remove(&before.id)?;
+            (after_signature != before.input_signature
+                || after_plan != before.project_plan)
+                .then(|| RunDelta {
                     id: before.id,
                     before_input_signature: before.input_signature,
-                    after_input_signature: after.input_signature.clone(),
+                    after_input_signature: after_signature,
                     before_project_plan: before.project_plan,
-                    after_project_plan: after.project_plan,
+                    after_project_plan: after_plan,
                 })
         })
         .collect()
@@ -692,21 +702,23 @@ fn move_topic(
         })
         .map(|task| task.id)
         .collect();
+    let task_set: std::collections::HashSet<u64> = task_ids.iter().copied().collect();
     let request_ids: Vec<u64> = store
         .research_requests()
         .iter()
         .filter(|request| {
             request.topic_id == Some(topic)
-                || request.goal_ids.iter().any(|id| task_ids.contains(id))
+                || request.goal_ids.iter().any(|id| task_set.contains(id))
         })
         .map(|request| request.id)
         .collect();
+    let request_set: std::collections::HashSet<u64> = request_ids.iter().copied().collect();
     let run_ids: Vec<u64> = {
         let mut ids = Vec::new();
         for request in store
             .research_requests()
             .iter()
-            .filter(|request| request_ids.contains(&request.id))
+            .filter(|request| request_set.contains(&request.id))
         {
             if let Some(run) = request.planning_run_id {
                 ids.push(run);
@@ -721,18 +733,24 @@ fn move_topic(
         ids.dedup();
         ids
     };
+    // Targeted ownership indexes: one pass each, then O(1) lookups.
+    let task_index: std::collections::HashMap<u64, &Task> =
+        store.tasks().iter().map(|task| (task.id, task)).collect();
+    let request_index: std::collections::HashMap<u64, &ResearchRequest> = store
+        .research_requests()
+        .iter()
+        .map(|request| (request.id, request))
+        .collect();
     let tasks_before: Vec<Task> = task_ids
         .iter()
-        .filter_map(|id| store.task(*id).cloned())
+        .filter_map(|id| task_index.get(id).map(|task| (*task).clone()))
         .collect();
     let requests_before: Vec<ResearchRequest> = request_ids
         .iter()
         .filter_map(|id| {
-            store
-                .research_requests()
-                .iter()
-                .find(|request| request.id == *id)
-                .cloned()
+            request_index
+                .get(id)
+                .map(|request| (*request).clone())
         })
         .collect();
     let runs_before = capture_runs(store, &run_ids);
@@ -747,8 +765,15 @@ fn move_topic(
             after: topic_after.project_id,
         });
     }
+    let task_after_index: std::collections::HashMap<u64, &Task> =
+        store.tasks().iter().map(|task| (task.id, task)).collect();
+    let request_after_index: std::collections::HashMap<u64, &ResearchRequest> = store
+        .research_requests()
+        .iter()
+        .map(|request| (request.id, request))
+        .collect();
     for before in tasks_before {
-        if let Some(after) = store.task(before.id).cloned() {
+        if let Some(after) = task_after_index.get(&before.id) {
             if before.project_id != after.project_id {
                 undo.tasks.push(TaskDelta::Project {
                     id: before.id,
@@ -760,18 +785,13 @@ fn move_topic(
                 undo.tasks.push(TaskDelta::ApprovedPlan {
                     id: before.id,
                     before: before.approved_plan,
-                    after: after.approved_plan,
+                    after: after.approved_plan.clone(),
                 });
             }
         }
     }
     for before in requests_before {
-        if let Some(after) = store
-            .research_requests()
-            .iter()
-            .find(|request| request.id == before.id)
-            .cloned()
-        {
+        if let Some(after) = request_after_index.get(&before.id) {
             if before.project_id != after.project_id {
                 undo.requests.push(RequestDelta::Project {
                     id: before.id,
@@ -1797,6 +1817,144 @@ mod tests {
         assert_eq!(store, before);
         assert_eq!(pending(&store), before_pending);
         assert_eq!(store.topic(topic).unwrap().project_id, 1);
+    }
+
+    fn history_run(id: u64, task: u64) -> AgentRun {
+        AgentRun {
+            id,
+            task_id: task,
+            task_title: "History".into(),
+            directory: String::new(),
+            prompt: String::new(),
+            started_at: String::new(),
+            queued_at: String::new(),
+            workspace_source: None,
+            ended_at: None,
+            session_id: None,
+            exit_code: None,
+            agent: "test".into(),
+            model: "test".into(),
+            stage: Stage::Done,
+            status: "Succeeded".into(),
+            logs: Vec::new(),
+            output: String::new(),
+            attachments: Vec::new(),
+            research_kind: None,
+            sources: Vec::new(),
+            input_signature: String::new(),
+            automation_occurrence_id: None,
+            planning_owner: None,
+            deadline_at: None,
+            auto_retry_attempt: 0,
+            retry_not_before: None,
+            project_plan: None,
+        }
+    }
+
+    #[test]
+    fn large_history_move_and_undo_stay_bounded_and_preserve_runtime() {
+        let (mut store, topic, goal, steps) = research_fixture();
+        let history_task = store
+            .create_task("History task", 1, Stage::Done, None)
+            .unwrap();
+        let mut runs = store.runs().to_vec();
+        for index in 0..43_200u64 {
+            runs.push(history_run(100_000 + index, history_task));
+        }
+        let mut live = history_run(999_999, history_task);
+        live.status = "Running".into();
+        live.output = "Kept runtime body".into();
+        live.logs = vec!["[run] live log that Undo must not touch".into()];
+        let live_snapshot = live.clone();
+        runs.push(live);
+        // Build a fresh store with a clean bulk-loaded history, then copy the
+        // small task/project/topic request graph needed by the move.
+        let mut fresh = Store::empty();
+        for project in store.projects() {
+            if let Some(existing) = fresh.project_mut(project.id) {
+                *existing = project.clone();
+            } else {
+                fresh.push_project(project.clone());
+            }
+        }
+        for topic_value in store.topics() {
+            fresh.push_topic(topic_value.clone());
+        }
+        for task in store.tasks() {
+            fresh.push_task(task.clone());
+        }
+        for request in store.research_requests() {
+            fresh.push_request(request.clone());
+        }
+        fresh.research_config_mut().models = store.research_config().models.clone();
+        fresh.set_default_model(store.default_model().clone());
+        store = match fresh.with_loaded_tracked(runs, Vec::new(), Vec::new()) {
+            Ok(restored) => restored,
+            Err((_, error)) => panic!("large history fixture failed: {error}"),
+        };
+        assert_eq!(store.runs().len(), 43_204);
+        for step in &steps {
+            assert!(
+                store.research_result(*step).is_some(),
+                "fixture result must be valid before the move"
+            );
+        }
+
+        let started = std::time::Instant::now();
+        let outcome = DomainCommand::TopicMove { topic, project: 2 }
+            .execute(&mut store)
+            .unwrap_or_else(|error| panic!("large-history move failed: {error}"));
+        let move_elapsed = started.elapsed();
+        for step in &steps {
+            if store.research_result(*step).is_none() {
+                let signature = store.research_signature(*step);
+                let run = store
+                    .runs()
+                    .iter()
+                    .rev()
+                    .find(|run| run.task_id == *step && run.status != "Simulated");
+                panic!("step {step} invalid after move: signature={signature:?} run={:?}", run.map(|run| (&run.input_signature, &run.status, run.output.len())));
+            }
+        }
+        let live_after = store
+            .runs()
+            .iter()
+            .find(|run| run.id == 999_999)
+            .unwrap();
+        assert_eq!(live_after.status, live_snapshot.status);
+        assert_eq!(live_after.output, live_snapshot.output);
+        assert_eq!(live_after.logs, live_snapshot.logs);
+
+        let started = std::time::Instant::now();
+        apply_undo(&mut store, &outcome.undo).unwrap();
+        let undo_elapsed = started.elapsed();
+        assert_eq!(store.topic(topic).unwrap().project_id, 1);
+        assert_eq!(store.task(goal).unwrap().approved_plan, store.goal_plan_signature(goal));
+        for step in &steps {
+            assert!(
+                store.research_result(*step).is_some(),
+                "Undo restores reusable results with 43,200 history records"
+            );
+        }
+        let live_after = store
+            .runs()
+            .iter()
+            .find(|run| run.id == 999_999)
+            .unwrap();
+        assert_eq!(live_after.status, live_snapshot.status);
+        assert_eq!(live_after.output, live_snapshot.output);
+        assert_eq!(live_after.logs, live_snapshot.logs);
+        eprintln!(
+            "scoped_domain large-history: move={move_elapsed:?} undo={undo_elapsed:?} history=43200"
+        );
+        assert!(
+            move_elapsed < std::time::Duration::from_secs(2),
+            "move took {move_elapsed:?}"
+        );
+        assert!(
+            undo_elapsed < std::time::Duration::from_secs(2),
+            "undo took {undo_elapsed:?}"
+        );
     }
 
     #[test]

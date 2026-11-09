@@ -236,7 +236,7 @@ fn visual_automation_settings(root: &Path, mode: Appearance, width: f32, height:
     cx.update_window(handle, |_, w, cx| {
         w.press("escape", cx);
         w.render_frame(cx);
-        assert!(!app.read(cx).automation_ui.settings_dialog);
+        assert!(!app.read(cx).settings_overlay());
     })
     .unwrap();
     cx.update_window(handle, |_, w, _| w.remove_window())
@@ -836,14 +836,17 @@ fn sidebar_retained_surface(root: &Path) {
         let after_scroll = app.read(cx).sidebar_scroll.offset().y;
         assert!(after_scroll < before_scroll - px(10.));
         let clip = w.find("sidebar-logo-clip").bounds();
+        let slot = w.find("sidebar-brand-slot").bounds();
         let moved = w.find("sidebar-brand-overlay").bounds();
         assert!(
             moved.top() < brand.top(),
             "brand must follow sidebar scroll"
         );
         assert!(
-            (moved.top() - clip.top() - px(46.) - after_scroll).abs() <= px(0.5),
-            "brand offset must match the sidebar scroll offset"
+            (moved.top() - slot.top()).abs() <= px(0.5)
+                && (moved.left() - slot.left()).abs() <= px(0.5)
+                && (moved.size.width - slot.size.width).abs() <= px(0.5),
+            "brand overlay must match the identity-row slot at nonzero scroll"
         );
         // Scroll to the content end; the mark either remains inside the clip
         // rectangle or is clipped once its anchor leaves the viewport.
@@ -861,10 +864,11 @@ fn sidebar_retained_surface(root: &Path) {
         }
         let end = app.read(cx).sidebar_scroll.offset().y;
         let clipped = w.find("sidebar-brand-overlay");
-        if px(46.) + end + px(32.) <= px(0.) {
+        let end_slot = w.find("sidebar-brand-slot").bounds();
+        if end_slot.bottom() <= clip.top() {
             assert!(
                 clipped.bounds().bottom() <= clip.top(),
-                "brand must be clipped above the viewport edge"
+                "brand must be clipped at the title-bar edge"
             );
         } else {
             assert!(clipped.visible(), "brand must remain inside the clip");
@@ -884,6 +888,10 @@ fn sidebar_retained_surface(root: &Path) {
         app.update(cx, |app, cx| app.set_appearance(Appearance::Dark, w, cx));
         w.render_frame(cx);
         assert!(w.find("sidebar-brand-overlay").visible());
+        // The overlay stays pointer-transparent in the dark theme as well.
+        w.click("project-2", cx);
+        w.render_frame(cx);
+        assert_eq!(app.read(cx).scope(), Scope::Project(2));
     })
     .unwrap();
     cx.update_window(handle, |_, w, _| w.remove_window())

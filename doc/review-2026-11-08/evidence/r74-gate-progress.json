@@ -1,0 +1,39 @@
+{
+  "status": "running",
+  "candidate_sha256": "bbb80446cd93638abeb3e199741b9f22e81298779c7ef0f0b3270165767c01e5",
+  "completed": [
+    {
+      "entry": "--qa",
+      "status": "passed",
+      "exit_code": 0,
+      "elapsed_seconds": 10.14,
+      "log": "qa.log",
+      "alias_note": ""
+    },
+    {
+      "entry": "--qa-affordance",
+      "status": "passed",
+      "exit_code": 0,
+      "elapsed_seconds": 19.48,
+      "log": "qa-affordance.log",
+      "alias_note": ""
+    },
+    {
+      "entry": "--qa-archived-research",
+      "status": "passed",
+      "exit_code": 0,
+      "elapsed_seconds": 9.46,
+      "log": "qa-archived-research.log",
+      "alias_note": ""
+    },
+    {
+      "entry": "--qa-attachments",
+      "status": "passed",
+      "exit_code": 0,
+      "elapsed_seconds": 2.44,
+      "log": "qa-attachments.log",
+      "alias_note": ""
+    }
+  ],
+  "not_release_acceptance": true
+}

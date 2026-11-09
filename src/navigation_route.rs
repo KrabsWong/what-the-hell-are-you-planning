@@ -943,16 +943,75 @@ impl NavState {
         let mut next = self.overlays.clone();
         next.push(overlay);
         validate_overlay_stack(&self.route, &next)?;
-        validate_overlay_owners(&next, store)?;
+        validate_overlay_owners(&self.route, &next, store)?;
         self.overlays = next;
         Ok(())
+    }
+
+    /// Atomically close any settings/period overlay and open one planning
+    /// attempt over the attempt's owning automation detail. A stale or foreign
+    /// run is rejected without changing the current route, overlays or draft.
+    pub(crate) fn with_planning_attempt(
+        &self,
+        store: &Store,
+        run: RunId,
+        from_settings: bool,
+    ) -> Result<Self, NavReject> {
+        let value = store
+            .runs()
+            .iter()
+            .find(|value| value.id == run)
+            .ok_or_else(|| NavReject::missing("run", run))?;
+        let mut candidate = self.clone();
+        match value.planning_owner.as_ref().and_then(|owner| owner.automation_id) {
+            None => {
+                // Legacy/ambiguous automation-project history is readable only
+                // from the Automations list, never over a concrete automation.
+                let legacy = store
+                    .unassigned_legacy_planning_runs()
+                    .iter()
+                    .any(|value| value.id == run);
+                if !legacy || !matches!(candidate.route, Route::AutomationList) {
+                    return Err(NavReject::InvalidOwnership {
+                        reason: "ambiguous planning attempt belongs to the Automations list",
+                    });
+                }
+            }
+            Some(automation) => {
+                if store.automation(automation).is_none() {
+                    return Err(NavReject::missing("automation", automation));
+                }
+                match &candidate.route {
+                    Route::AutomationDetail(page) if page.automation() != automation => {
+                        return Err(NavReject::InvalidOwnership {
+                            reason: "planning attempt belongs to another automation",
+                        });
+                    }
+                    Route::AutomationResults(page)
+                        if page.filter().is_some_and(|filter| filter != automation) =>
+                    {
+                        return Err(NavReject::InvalidOwnership {
+                            reason: "planning attempt belongs to another automation",
+                        });
+                    }
+                    Route::AutomationDetail(_) | Route::AutomationResults(_) => {}
+                    _ => candidate.route = Route::automation_detail(automation),
+                }
+            }
+        }
+        candidate.remove_overlay(store, OverlayKind::AutomationSettings)?;
+        candidate.remove_overlay(store, OverlayKind::AutomationPeriod)?;
+        candidate.push_overlay_internal(
+            store,
+            Overlay::PlanningAttempt { run, from_settings },
+        )?;
+        Ok(candidate)
     }
 
     pub(crate) fn close_top(
         &mut self,
         store: &Store,
-    ) -> Result<NavEffect, NavReject> {
-        let mut candidate = self.clone();
+    ) -> Result<NavEffect, NavReject> {        let mut candidate = self.clone();
         let overlay = candidate
             .overlays
             .pop()
@@ -1205,7 +1264,7 @@ impl NavState {
     fn validate(&self, store: &Store) -> Result<(), NavReject> {
         validate_route(&self.route, store)?;
         validate_overlay_stack(&self.route, &self.overlays)?;
-        validate_overlay_owners(&self.overlays, store)
+        validate_overlay_owners(&self.route, &self.overlays, store)
     }
 }
 
@@ -1726,7 +1785,7 @@ fn validate_overlay_base(base: &Route, overlay: Overlay) -> Result<(), NavReject
     }
 }
 
-fn validate_overlay_owners(overlays: &[Overlay], store: &Store) -> Result<(), NavReject> {
+fn validate_overlay_owners(base: &Route, overlays: &[Overlay], store: &Store) -> Result<(), NavReject> {
     for overlay in overlays {
         match overlay {
             Overlay::TaskEditor { task } | Overlay::ResearchImpactReview { task } => {
@@ -1756,9 +1815,38 @@ fn validate_overlay_owners(overlays: &[Overlay], store: &Store) -> Result<(), Na
                 }
             }
             Overlay::PlanningAttempt { run, .. } => {
-                if !store.runs().iter().any(|value| value.id == *run) {
-                    return Err(NavReject::missing("run", *run));
-                }
+                let value = store
+                    .runs()
+                    .iter()
+                    .find(|value| value.id == *run)
+                    .ok_or_else(|| NavReject::missing("run", *run))?;
+                match value.planning_owner.as_ref().and_then(|owner| owner.automation_id) {
+                    None => {
+                        let legacy = store
+                            .unassigned_legacy_planning_runs()
+                            .iter()
+                            .any(|value| value.id == *run);
+                        if legacy && matches!(base, Route::AutomationList) {
+                            Ok(())
+                        } else {
+                            Err(NavReject::InvalidOwnership {
+                                reason: "ambiguous planning attempt belongs to the Automations list",
+                            })
+                        }
+                    }
+                    Some(automation) => match base {
+                        Route::AutomationDetail(page) if page.automation() == automation => Ok(()),
+                        Route::AutomationResults(page)
+                            if page.filter().is_none_or(|filter| filter == automation) =>
+                        {
+                            Ok(())
+                        }
+                        Route::AutomationList => Ok(()),
+                        _ => Err(NavReject::InvalidOwnership {
+                            reason: "planning attempt belongs to another automation",
+                        }),
+                    },
+                }?
             }
             Overlay::PreviousVersions { task, run } => {
                 if store.task(*task).is_none() {
@@ -1954,7 +2042,7 @@ fn validate_frame(mut frame: ReturnFrame, store: &Store) -> Restored {
 
     while !frame.overlays.is_empty()
         && (validate_overlay_stack(&frame.route, &frame.overlays).is_err()
-            || validate_overlay_owners(&frame.overlays, store).is_err())
+            || validate_overlay_owners(&frame.route, &frame.overlays, store).is_err())
     {
         frame.overlays.pop();
         notice = Some("Part of the previous page is no longer available.".into());
@@ -2060,6 +2148,17 @@ mod tests {
                 1_000,
             )
             .expect("automation")
+    }
+
+    fn planning_run(store: &mut Store, automation: Option<AutomationId>) -> RunId {
+        let task = task(store, "Planning task");
+        let id = push_run(store, task, None, "Running", "");
+        store.run_mut(id).unwrap().planning_owner = Some(crate::domain::PlanningOwner {
+            request_id: 1,
+            revision: 1,
+            automation_id: automation,
+        });
+        id
     }
 
     fn period(store: &mut Store, automation: AutomationId, scheduled: i64) -> OccurrenceId {
@@ -3169,6 +3268,49 @@ mod tests {
         assert_eq!(
             state.route(),
             &Route::research_list(ResearchScope::Project(1), AllStatus::All, Layout::Board)
+        );
+    }
+
+    #[test]
+    fn planning_attempt_transition_is_atomic_and_owner_checked() {
+        let mut store = base_store();
+        let first = automation(&mut store, "First automation");
+        let second = automation(&mut store, "Second automation");
+        let occurrence = period(&mut store, first, 1_000);
+        let own_run = planning_run(&mut store, Some(first));
+        let foreign_run = planning_run(&mut store, Some(second));
+        let ordinary_run = planning_run(&mut store, None);
+
+        let mut state = NavState::new(&store, Route::automation_detail(first)).unwrap();
+        state
+            .push_overlay(
+                &store,
+                Overlay::AutomationPeriod {
+                    automation: first,
+                    occurrence,
+                },
+            )
+            .unwrap();
+        let before = state.clone();
+
+        for rejected in [999_999, foreign_run, ordinary_run] {
+            assert!(state.with_planning_attempt(&store, rejected, false).is_err());
+            assert_eq!(
+                state, before,
+                "a stale/foreign/ordinary run leaves route, overlay and draft context unchanged"
+            );
+        }
+
+        let next = state
+            .with_planning_attempt(&store, own_run, true)
+            .expect("own automation planning attempt");
+        assert_eq!(next.route(), &Route::automation_detail(first));
+        assert_eq!(
+            next.overlays(),
+            &[Overlay::PlanningAttempt {
+                run: own_run,
+                from_settings: true
+            }]
         );
     }
 }

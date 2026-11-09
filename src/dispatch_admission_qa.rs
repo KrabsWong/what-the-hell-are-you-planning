@@ -862,7 +862,32 @@ fn restart_execute(root: &Path, rerun: bool) {
     let mut harness = AppHarness::existing(root, store);
     let old_key = "dispatch:None:run:4000";
     let new_id = 5_000;
+    let mut last_diagnostic = std::time::Instant::now();
     let done = harness.poll_until(Duration::from_secs(20), |a| {
+        if last_diagnostic.elapsed() >= Duration::from_secs(5) {
+            last_diagnostic = std::time::Instant::now();
+            let (pending, durable, worker_error) = a
+                .dispatch_admission
+                .as_ref()
+                .map(|adapter| {
+                    (
+                        adapter.pending_len(),
+                        adapter.durable_count(),
+                        adapter.last_error().unwrap_or("").to_string(),
+                    )
+                })
+                .unwrap_or((0, 0, "no-adapter".into()));
+            eprintln!(
+                "DIAG retirement={:?} pending={pending} durable={durable} worker_error={worker_error} claim={} resolution={:?}",
+                a.dispatch_status_durable,
+                a.dispatch_admission
+                    .as_ref()
+                    .is_some_and(|adapter| adapter.launch_claim_exists(old_key)),
+                a.dispatch_admission
+                    .as_ref()
+                    .and_then(|adapter| adapter.resolution(old_key)),
+            );
+        }
         let old = a.store.runs().iter().find(|run| run.id == 4_000);
         let old_blocked = old.is_some_and(|run| run.status == "Blocked");
         let claim_gone = !a

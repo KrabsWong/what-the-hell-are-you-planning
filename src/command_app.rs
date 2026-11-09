@@ -5,7 +5,7 @@
 //! the single storage commit, pending/reprepare UX, and post-commit effects.
 //! Dispatch commits the run and occurrence link once before the queue effect.
 
-use crate::app::{LaunchIntent, PendingDispatch, RunDispatch, TaskApp};
+use crate::app::{DispatchStatusRetirement, LaunchIntent, PendingDispatch, RunDispatch, TaskApp};
 use crate::domain::Store;
 use crate::domain_command::{
     Command, CommandClass, CommandEffect, CommandError, CommandReceipt, CommitError, CommitSink,
@@ -537,18 +537,17 @@ impl TaskApp {
                 crate::dispatch_admission::AdmissionUpdate::LaunchClaimReleased { operation_key } => {
                     #[cfg(feature = "qa")]
                     Self::qa_crash_at("claim");
-                    if self
-                        .dispatch_status_durable
-                        .as_ref()
-                        .is_some_and(|(key, _)| key == &operation_key)
+                    if let Some(mut retirement) = self.dispatch_status_durable.clone()
+                        && retirement.key == operation_key
                     {
-                        self.dispatch_status_durable = None;
-                    }
-                    if let Some((key, run_id, rerun, replacement)) =
+                        retirement.claim_done = true;
+                        retirement.claim_enqueued = false;
+                        self.dispatch_status_durable = Some(retirement);
+                    } else if let Some((key, run_id, rerun, replacement)) =
                         self.dispatch_resolution_pending.clone()
                         && key == operation_key
                     {
-                        self.finish_resolution(&key, run_id, rerun, replacement, cx);
+                        let _ = self.finish_resolution(&key, run_id, rerun, replacement, cx);
                     }
                     changed = true;
                 }
@@ -573,6 +572,12 @@ impl TaskApp {
                     {
                         self.dispatch_resolution_pending = None;
                         self.dispatch_resolution_new = None;
+                    }
+                    if self
+                        .dispatch_status_durable
+                        .as_ref()
+                        .is_some_and(|retirement| retirement.key == operation_key)
+                    {
                         self.dispatch_status_durable = None;
                     }
                     #[cfg(feature = "qa")]
@@ -617,7 +622,30 @@ impl TaskApp {
                         .dispatch_admission
                         .as_ref()
                         .is_some_and(|adapter| adapter.launch_claim_exists(&key));
-                    self.dispatch_status_durable = Some((key, claimed));
+                    let pending = self.dispatch_resolution_pending.clone();
+                    let (run_id, rerun, replacement) = pending
+                        .map(|(_, run_id, rerun, replacement)| (run_id, rerun, replacement))
+                        .unwrap_or_else(|| {
+                            (
+                                key.rsplit(":run:")
+                                    .next()
+                                    .and_then(|value| value.parse::<u64>().ok())
+                                    .unwrap_or(0),
+                                false,
+                                None,
+                            )
+                        });
+                    self.dispatch_status_durable = Some(DispatchStatusRetirement {
+                        key,
+                        run_id,
+                        rerun,
+                        replacement,
+                        had_claim: claimed,
+                        claim_done: !claimed,
+                        claim_enqueued: false,
+                        decision_enqueued: false,
+                        decision_started: false,
+                    });
                     changed = true;
                 }
                 crate::dispatch_admission::AdmissionUpdate::Acknowledged { operation_key } => {
@@ -633,7 +661,25 @@ impl TaskApp {
                     }
                     changed = true;
                 }
-                crate::dispatch_admission::AdmissionUpdate::AckFailed { reason, .. } => {
+                crate::dispatch_admission::AdmissionUpdate::AckFailed { operation_key, reason } => {
+                    if let Some(mut retirement) = self.dispatch_status_durable.clone() {
+                        if operation_key == format!("launch:{}", retirement.key) {
+                            retirement.claim_enqueued = false;
+                            self.dispatch_status_durable = Some(retirement);
+                        } else if operation_key
+                            .strip_prefix("resolve:")
+                            .is_some_and(|rest| rest.starts_with(&retirement.key))
+                        {
+                            retirement.decision_enqueued = false;
+                            // A failed marker-removal request for an already
+                            // created replacement is retried via the same
+                            // decision path.
+                            if retirement.rerun {
+                                retirement.decision_started = false;
+                            }
+                            self.dispatch_status_durable = Some(retirement);
+                        }
+                    }
                     self.dispatch_admission_error = Some(reason);
                     self.dispatch_ack_pending = None;
                     changed = true;
@@ -875,6 +921,9 @@ impl TaskApp {
         // Claim/marker retirement happens only in ResolutionStatusDurable.
     }
 
+    /// Returns true when an asynchronous replacement/durability continuation is
+    /// in flight or already proven. False means nothing was started and the
+    /// status-retirement obligation must retry (never set `decision_started`).
     fn finish_resolution(
         &mut self,
         key: &str,
@@ -882,12 +931,12 @@ impl TaskApp {
         rerun: bool,
         replacement: Option<u64>,
         cx: &mut Context<Self>,
-    ) {
+    ) -> bool {
         if !rerun {
             if let Some(adapter) = self.dispatch_admission.as_mut() {
-                let _ = adapter.release_resolution(key);
+                return adapter.release_resolution(key).is_ok();
             }
-            return;
+            return false;
         }
         let Some(new_id) = replacement else {
             // Retain the decision marker: a malformed replacement invariant must
@@ -896,7 +945,7 @@ impl TaskApp {
                 "The rerun decision has no stable replacement identity; the decision was retained and no new attempt was started."
                     .into(),
             );
-            return;
+            return false;
         };
         let owner = self
             .store
@@ -908,7 +957,7 @@ impl TaskApp {
             let Some((task_id, occurrence)) = owner else {
                 self.dispatch_admission_error =
                     Some("The rerun source task is no longer available.".into());
-                return;
+                return false;
             };
             if existing.task_id != task_id
                 || existing.automation_occurrence_id != occurrence
@@ -916,7 +965,7 @@ impl TaskApp {
                 self.dispatch_admission_error = Some(format!(
                     "Run {new_id} already belongs to unrelated work; the rerun decision was retained."
                 ));
-                return;
+                return false;
             }
             let persisted = self
                 .last_saved
@@ -934,25 +983,25 @@ impl TaskApp {
                 self.dispatch_admission_error = Some(format!(
                     "Run {new_id} exists with matching ownership but has no durable admission/claim proof; the rerun decision was retained."
                 ));
-                return;
+                return false;
             }
             if let Some(adapter) = self.dispatch_admission.as_mut() {
-                let _ = adapter.release_resolution(key);
+                return adapter.release_resolution(key).is_ok();
             }
-            return;
+            return false;
         }
         let task = owner.map(|(task, _)| task);
         let Some(task) = task else {
             self.dispatch_admission_error =
                 Some("The rerun source task is no longer available.".into());
-            return;
+            return false;
         };
         let mut run = match self.store.prepare_run(task) {
             Ok(run) => run,
             Err(error) => {
                 self.dispatch_admission_error =
                     Some(format!("The rerun attempt could not be prepared: {error}"));
-                return;
+                return false;
             }
         };
         run.id = new_id;
@@ -961,12 +1010,16 @@ impl TaskApp {
             Err(error) => {
                 self.dispatch_admission_error =
                     Some(format!("The rerun materials are unavailable: {error}"));
-                return;
+                return false;
             }
         };
         self.dispatch_resolution_new = Some((key.to_string(), new_id));
         let intent = self.launch_intent_for(&run);
-        self.launch_run_with_intent(run, files, intent, cx);
+        let dispatch = self.launch_run_with_intent(run, files, intent, cx);
+        dispatch.is_some()
+            || self.pending_dispatch.is_some()
+            || self.dispatch_awaiting.is_some()
+            || self.dispatch_resolution_launch_pending.is_some()
     }
 
     fn launch_claimed(&mut self, operation_key: &str, cx: &mut Context<Self>) {
@@ -1012,40 +1065,84 @@ impl TaskApp {
     /// A failed enqueue leaves this obligation in place; it never rewrites the
     /// status group or loses the resolution marker.
     fn retry_status_completion(&mut self, cx: &mut Context<Self>) -> bool {
-        let Some((key, had_claim)) = self.dispatch_status_durable.clone() else {
+        let Some(mut retirement) = self.dispatch_status_durable.clone() else {
             return false;
         };
+        let previous = retirement.clone();
         let Some(adapter) = self.dispatch_admission.as_mut() else {
             return false;
         };
-        let _ = adapter.release_dispatch_intent(&key);
-        if had_claim {
-            if adapter.release_launch_claim(&key).is_err() {
-                return false;
-            }
-            // `LaunchClaimReleased` finishes the resolution after the removal is
-            // actually durable; the obligation stays until that update arrives.
-            return false;
-        }
-        if let Some((run_id, rerun, replacement)) = self
-            .dispatch_resolution_pending
-            .as_ref()
-            .map(|(_, run_id, rerun, replacement)| (*run_id, *rerun, *replacement))
-        {
-            if rerun {
-                self.finish_resolution(&key, run_id, rerun, replacement, cx);
-                self.dispatch_status_durable = None;
-                return true;
+        let _ = adapter.release_dispatch_intent(&retirement.key);
+        let mut error = None;
+        if !retirement.claim_done {
+            if !adapter.launch_claim_exists(&retirement.key) {
+                retirement.claim_done = true;
+                retirement.claim_enqueued = false;
+            } else if !retirement.claim_enqueued {
+                match adapter.release_launch_claim(&retirement.key) {
+                    Ok(()) => retirement.claim_enqueued = true,
+                    Err(reason) => {
+                        error = Some(format!(
+                            "Launch claim retirement was not queued; it will retry: {reason}"
+                        ));
+                    }
+                }
             }
         }
-        let Some(adapter) = self.dispatch_admission.as_mut() else {
-            return false;
-        };
-        if adapter.release_resolution(&key).is_err() {
-            return false;
+        let mut marker_gone = false;
+        if retirement.claim_done && !retirement.rerun && !retirement.decision_enqueued {
+            if adapter.resolution(&retirement.key).is_none() {
+                marker_gone = true;
+            } else {
+                match adapter.release_resolution(&retirement.key) {
+                    Ok(()) => retirement.decision_enqueued = true,
+                    Err(reason) => {
+                        error = Some(format!(
+                            "Resolution marker retirement was not queued; it will retry: {reason}"
+                        ));
+                    }
+                }
+            }
         }
-        self.dispatch_status_durable = None;
-        true
+        let rerun_now =
+            retirement.rerun && retirement.claim_done && !retirement.decision_started;
+        let mut rerun_started = false;
+        if rerun_now {
+            rerun_started = false;
+        }
+        marker_gone |= retirement.rerun
+            && retirement.claim_done
+            && adapter.resolution(&retirement.key).is_none();
+        drop(adapter);
+        if let Some(error) = error {
+            self.dispatch_admission_error = Some(error);
+        }
+        if rerun_now {
+            rerun_started = self.finish_resolution(
+                &retirement.key,
+                retirement.run_id,
+                retirement.rerun,
+                retirement.replacement,
+                cx,
+            );
+            retirement.decision_started = rerun_started;
+            if !rerun_started {
+                error = Some(
+                    "The rerun replacement could not be prepared or admitted; retirement will retry."
+                        .into(),
+                );
+            }
+        }
+        if marker_gone {
+            self.dispatch_status_durable = None;
+            return true;
+        }
+        let changed = previous.claim_done != retirement.claim_done
+            || previous.claim_enqueued != retirement.claim_enqueued
+            || previous.decision_enqueued != retirement.decision_enqueued
+            || previous.decision_started != retirement.decision_started;
+        self.dispatch_status_durable = Some(retirement);
+        changed
     }
 
     /// Claims are removed once the run reaches a confirmed state so they cannot

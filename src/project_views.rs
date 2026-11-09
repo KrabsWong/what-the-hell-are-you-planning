@@ -29,13 +29,15 @@ impl TaskApp {
     pub(crate) fn save_project_name(&mut self, w: &mut Window, cx: &mut Context<Self>) {
         let Some((project, input)) = &self.project_rename else { return; };
         let (project, name) = (*project, input.read(cx).value().to_string());
-        let saved = self
-            .apply_domain_command_undoable(
-                crate::scoped_domain::DomainCommand::ProjectRename { project, name },
-                "Project renamed",
-                cx,
-            )
-            .is_some();
+        let outcome = self.apply_domain_command_undoable(
+            crate::scoped_domain::DomainCommand::ProjectRename { project, name },
+            "Project renamed",
+            cx,
+        );
+        if outcome.is_none() {
+            eprintln!("project rename did not save: {}", self.error);
+        }
+        let saved = outcome.is_some();
         if saved {
             self.project_rename = None;
             w.focus(&self.focus, cx);

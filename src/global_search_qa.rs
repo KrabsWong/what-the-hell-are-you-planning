@@ -758,17 +758,17 @@ fn automation_modal_and_period(
     });
     cx.update_window(handle, |_, w, cx| {
         w.render_frame(cx);
-        assert!(app.read(cx).automation_ui.settings_dialog);
+        assert!(app.read(cx).settings_overlay());
         let opener = w.focused(cx);
         w.press("cmd-k", cx);
         w.render_frame(cx);
         focus_search_input(w, cx);
         assert!(app.read(cx).global_search_ui.open);
-        assert!(app.read(cx).automation_ui.settings_dialog);
+        assert!(app.read(cx).settings_overlay());
         w.press("escape", cx);
         w.render_frame(cx);
         assert!(!app.read(cx).global_search_ui.open);
-        assert!(app.read(cx).automation_ui.settings_dialog);
+        assert!(app.read(cx).settings_overlay());
         assert_eq!(w.focused(cx), opener);
         w.press("cmd-k", cx);
         w.render_frame(cx);
@@ -793,7 +793,7 @@ fn automation_modal_and_period(
     cx.update_window(handle, |_, w, cx| {
         w.render_frame(cx);
         assert!(!app.read(cx).global_search_ui.open);
-        assert!(!app.read(cx).automation_ui.settings_dialog);
+        assert!(!app.read(cx).settings_overlay());
         assert_eq!(app.read(cx).scope(), Scope::Automations);
         assert_eq!(app.read(cx).automation_ui.selected, Some(fixture.automation));
         assert_eq!(app.read(cx).period_overlay(), Some(fixture.period));

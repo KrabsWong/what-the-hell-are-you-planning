@@ -450,9 +450,7 @@ impl TaskApp {
         self.planning_destination_error = None;
         self.planning_opener_focus = None;
         self.directory_project = None;
-        self.automation_ui.settings_dialog = false;
         self.clear_typed_overlays();
-        self.automation_ui.planning_attempt_dialog = None;
         self.error.clear();
     }
 

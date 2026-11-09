@@ -1,0 +1,19 @@
+{
+  "candidate": "r72",
+  "fixture_occurrences": 43200,
+  "ui_save_block_ms": 1336,
+  "cold_open_ms": 3559,
+  "cold_save_ms": 1582,
+  "warm_save_ms": [
+    1243,
+    1249,
+    1281
+  ],
+  "load_ms": 657,
+  "database_mb": 172.4,
+  "process_exit": 0,
+  "acceptance": "failed",
+  "reason": "Synchronous UI save block exceeds responsiveness requirement; QA exit does not enforce latency. Single measurement is not p95 proof.",
+  "source_log": ".local/r73-full-gate/qa-automation-perf.log",
+  "detail_measurement_caveat": "QA sets legacy selected automation rather than entering typed detail route; detail frame scope unproven."
+}

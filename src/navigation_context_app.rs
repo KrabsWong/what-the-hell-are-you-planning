@@ -201,7 +201,7 @@ impl TaskApp {
             return self.results_origin(Some(run));
         }
         if self.scope() == Scope::Automations
-            && self.automation_ui.settings_dialog
+            && self.settings_overlay()
             && let Some(id) = self.automation_ui.selected
         {
             return Origin::AutomationSettings {
@@ -1122,11 +1122,11 @@ impl TaskApp {
             ExitTarget::Dismiss(D::PlanningComposer)
         } else if self.draft.is_some() {
             ExitTarget::Dismiss(D::TaskEditor)
-        } else if self.automation_ui.planning_attempt_dialog.is_some() {
+        } else if self.planning_attempt_overlay().is_some() {
             ExitTarget::Dismiss(D::PlanningAttempt)
         } else if self.period_overlay().is_some() {
             ExitTarget::Dismiss(D::TaskResult)
-        } else if self.automation_ui.settings_dialog {
+        } else if self.settings_overlay() {
             ExitTarget::Dismiss(D::AutomationSettings)
         } else if self.project_rename.is_some() {
             ExitTarget::Dismiss(D::ProjectRename)

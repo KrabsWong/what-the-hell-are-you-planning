@@ -2880,3 +2880,10 @@ Native 1440×920 Light reader passed opening, six-page scrolling to Sources/step
 The corrected private paint-phase observer captured CUA right6 and left6 at physical (1450,550), inside the compact Board. Both delivered ScrollEvent dx=0/dy=0. A down2 control at the same point delivered dy=-1362. The Board had 1198px horizontal extent. Therefore the unchanged columns do not establish a product handling defect. Root independently passed all three real rendered horizontal-event cases in r205. Native physical horizontal scrolling remains **Blocked by tooling**, not Passed; carry it as a named first-round verification deferral. See [capture evidence](evidence/r207-native-board-input.json).
 
 The first probe compile failed E0521 because its listener captured a borrowed ScrollHandle; OpenCode corrected ownership before the successful build and capture. The observer exists only in the private isolated source. No product Board change or production workspace access occurred. The isolated app was quit after capture. Final result-row qualifier acceptance and T20 disposition remain pending.
+
+
+## r208 — Result-row native transition and test review
+
+The compact Light native check passes: the lazy first result says `Succeeded · saved report`; Open identifies Period 1000 as incomplete, stale and historical; Close returns to the same position with `Succeeded · incomplete`. See [native evidence](evidence/r208-result-row-native.json). The fallback describes durable availability without eager body loading; it does not certify completeness.
+
+Code acceptance is pending. Root rejected an initial test that depended on an ignored local database and silently skipped when absent. The replacement is self-contained, but root's independent affected suite currently has 13 passes and one fixture failure: preparing an Analyze run before its prerequisite is rejected. OpenCode must repair the fixture and preserve the transition assertion. The runtime behavior passed native verification; no failing test is relabeled as passed. Final T20 disposition remains pending.

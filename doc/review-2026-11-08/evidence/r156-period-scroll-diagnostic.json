@@ -1,0 +1,18 @@
+{
+  "scope": {
+    "start_wall_ns": 1794204356847110000,
+    "surface": "Period 3 modal with Markdown table and sources, small fixture, light",
+    "contention": "QA compilation may be active; diagnostic only",
+    "end_wall_ns": 1794204378476490000
+  },
+  "candidate_sha256": "ffd7a8187b167b2988cb7fa2ca6cc3449133ad3f76fa46b90699a5dcca955850",
+  "observed_displacement": "Period report scrolled from metadata to sources and completed step rows",
+  "presents": 1173,
+  "late_presents": 2,
+  "max_cpu_work_ns": 9189167,
+  "max_draw_ns": 9182625,
+  "input_samples": 5,
+  "input_late": 0,
+  "max_sampler_overhead_ns": 160750,
+  "disposition": "Not passed. Two late frames require attribution and quiet reproduction; OpenCode analysis assigned. CPU timing is not scan-out. Full scrolling matrix remains open."
+}

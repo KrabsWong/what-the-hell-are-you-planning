@@ -2,6 +2,12 @@
 
 The authoritative scope and acceptance criteria remain in [TASKS.md](TASKS.md). Implementation is delegated to local OpenCode in bounded batches. A task is accepted only after independent diff review and verification; an agent's completion message alone is not acceptance.
 
+## r143 focused acceptance update
+
+Root independently passed the reviewed modal-focus candidate's navigation-context and keyboard-visual suites; the new rendered-button regression fails before the fix because focus remains on a removed modal control. [Evidence](evidence/r142-focus-offline.json) preserves the exact candidate and scope. Native period-modal keyboard acceptance remains open until the isolated normal build is installed and exercised.
+
+Root independently passed the new live ordinary-edit → automation SaveDraft/Enable/Pause → Undo case with nonempty historical data, and the SQL trigger audit for automation rename, task edit and task Undo. The audit now checks exact row identity, operation and cardinality; the Undo case verifies original task fields on reopened disk as well as memory and preserves complete automation/history state. [Evidence](evidence/r143-live-undo-write-audit.json) identifies the candidate. This strengthens T04/T15 acceptance without waiving outstanding runtime, integrated regression or scrolling gates.
+
 ## Development checkpoint policy
 
 All work for this optimization goal uses `feature/review-2026-11-08-optimization`. The user authorized periodic checkpoint commits and pushes on 2026-11-09 to prevent code loss. Checkpoints may contain unfinished work and failing acceptance cases; they are not releases or task sign-off. Root owns Git staging, commits and pushes. Implementers continue on this same shared branch. Local `.local/` workspaces, binaries, runtime traces and credentials remain excluded by repository policy. Validation screenshots also remain local and must not be committed or pushed. The initial checkpoint predated this screenshot instruction; cleanup commit `e60ab38` removed all 60 tracked review screenshots from the branch tip and added ignore rules, preserving local copies. Earlier Git history was not rewritten.

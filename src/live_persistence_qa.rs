@@ -28,7 +28,7 @@ fn run_root() -> PathBuf {
 const CASE_ENV: &str = "LIVE_PERSISTENCE_QA_CASE";
 const ROOT_ENV: &str = "LIVE_PERSISTENCE_QA_ROOT";
 const SEQUENTIAL_ENV: &str = "LIVE_PERSISTENCE_QA_SEQUENTIAL";
-const CASES: [&str; 23] = [
+const CASES: [&str; 25] = [
     "core",
     "reopen",
     "pending-quit",
@@ -52,6 +52,8 @@ const CASES: [&str; 23] = [
     "lazy-period-hydration",
     "lazy-body-missing-retry",
     "lazy-latest-failed",
+    "t04-automation-lifecycle-undo",
+    "t15-incremental-sql-audit",
 ];
 
 fn run_case(case: &str) -> Result<(), String> {
@@ -115,6 +117,12 @@ fn run_case(case: &str) -> Result<(), String> {
         "lazy-period-hydration" => lazy_period_hydrates_on_open(&root.join("lazy-period")),
         "lazy-body-missing-retry" => lazy_body_missing_and_retry(&root.join("lazy-missing")),
         "lazy-latest-failed" => lazy_latest_attempt_invalidates(&root.join("lazy-failed")),
+        "t04-automation-lifecycle-undo" => {
+            t04_automation_lifecycle_undo(&root.join("t04-lifecycle-undo"))
+        }
+        "t15-incremental-sql-audit" => {
+            t15_incremental_sql_audit(&root.join("t15-sql-audit"))
+        }
         "history-43200" => {
             let elapsed = measure_history(&root, "history-43200", 43_200)?;
             println!("LIVE_PERF history_page_43200_us={elapsed}");
@@ -1394,6 +1402,601 @@ fn automation_save_case(root: &Path, finish_step3: bool, newer_form: bool) -> Re
         if finish_step3 && step_seen != 3 {
             return Err(format!("Save draft & finish was not on step 3: step={step_seen}"));
         }
+    }
+    let _ = cx.update_window(handle, |_, w, _| w.remove_window());
+    Ok(())
+}
+
+fn automation_snapshot(store: &Store) -> (Vec<crate::automation::AutomationDefinition>, Vec<crate::automation::AutomationOccurrence>, Vec<AgentRun>, u64, u64) {
+    (
+        store.automations().to_vec(),
+        store.all_occurrences().to_vec(),
+        store.runs().to_vec(),
+        store.next_id(),
+        store.run_id_floor(),
+    )
+}
+
+fn finish_pending(cx: &mut HeadlessAppContext, handle: AnyWindowHandle, app: &Entity<TaskApp>, label: &str) -> Result<(), String> {
+    pump_until(cx, handle, app, label, |a| !a.live_has_pending_receipts())
+}
+
+fn prepare_paused_automation(
+    cx: &mut HeadlessAppContext,
+    handle: AnyWindowHandle,
+    app: &Entity<TaskApp>,
+    objective: &str,
+) -> Result<u64, String> {
+    let existing = cx.update(|cx| app.read(cx).store.automations().len());
+    cx.update_window(handle, |_, w, cx| {
+        app.update(cx, |a, cx| {
+            a.start_automation_create(w, cx);
+            a.automation_ui.objective.update(cx, |state, cx| {
+                state.set_value(objective, w, cx);
+            });
+            a.automation_ui.expected.update(cx, |state, cx| {
+                state.set_value("One answer", w, cx);
+            });
+            let _ = a.save_automation_draft_outcome(cx);
+        });
+        w.render_frame(cx);
+    })
+    .map_err(|error| format!("automation create failed: {error:?}"))?;
+    pump_until(cx, handle, app, "automation draft durable", |a| {
+        !a.live_has_pending_receipts() && a.store.automations().len() == existing + 1
+    })?;
+    let id = cx
+        .update(|cx| {
+            app.read(cx)
+                .store
+                .automations()
+                .iter()
+                .map(|definition| definition.id)
+                .max()
+        })
+        .ok_or("automation draft id missing")?;
+    cx.update_window(handle, |_, _, cx| {
+        app.update(cx, |a, cx| a.enable_automation(cx));
+    })
+    .map_err(|error| format!("automation enable failed: {error:?}"))?;
+    pump_until(cx, handle, app, "automation enabled", |a| {
+        !a.live_has_pending_receipts()
+            && a.store
+                .automation(id)
+                .is_some_and(|definition| definition.status == crate::automation::DefinitionStatus::Enabled)
+    })?;
+    cx.update_window(handle, |_, _, cx| {
+        app.update(cx, |a, cx| a.pause_automation_ui(id, cx));
+    })
+    .map_err(|error| format!("automation pause failed: {error:?}"))?;
+    pump_until(cx, handle, app, "automation paused", |a| {
+        !a.live_has_pending_receipts()
+            && a.store
+                .automation(id)
+                .is_some_and(|definition| definition.status == crate::automation::DefinitionStatus::Paused)
+    })?;
+    Ok(id)
+}
+
+fn semantic_automation_view(store: &Store) -> Result<serde_json::Value, String> {
+    let definitions = store
+        .automations()
+        .iter()
+        .map(|definition| serde_json::to_value(definition).map_err(|error| error.to_string()))
+        .collect::<Result<Vec<_>, String>>()?;
+    let occurrences = store
+        .all_occurrences()
+        .iter()
+        .map(|occurrence| {
+            serde_json::json!({
+                "id": occurrence.id,
+                "automation_id": occurrence.automation_id,
+                "status": occurrence.status,
+                "trigger_key": occurrence.trigger_key,
+                "reference_time": occurrence.reference_time,
+                "scheduled_for": occurrence.scheduled_for,
+                "run_ids": occurrence.run_ids,
+                "final_run_id": occurrence.final_run_id,
+                "unread": occurrence.unread,
+            })
+        })
+        .collect::<Vec<_>>();
+    let runs = store
+        .runs()
+        .iter()
+        .map(|run| {
+            serde_json::json!({
+                "id": run.id,
+                "task_id": run.task_id,
+                "occurrence_id": run.automation_occurrence_id,
+                "status": run.status,
+            })
+        })
+        .collect::<Vec<_>>();
+    Ok(serde_json::json!({
+        "definitions": definitions,
+        "occurrences": occurrences,
+        "runs": runs,
+        "next_id": store.next_id(),
+        "run_id_floor": store.run_id_floor(),
+    }))
+}
+
+fn body_bytes_audit(path: &Path) -> Result<(usize, String), String> {
+    let conn = rusqlite::Connection::open_with_flags(
+        path,
+        rusqlite::OpenFlags::SQLITE_OPEN_READ_ONLY,
+    )
+    .map_err(|error| error.to_string())?;
+    sql_hash(&conn, "SELECT run_id,body FROM run_bodies ORDER BY run_id")
+}
+
+fn t04_automation_lifecycle_undo(root: &Path) -> Result<(), String> {
+    let (path, task) = seed_live_workspace_with_history(root)?;
+    let (mut cx, handle, app) = open_live(root, &path)?;
+    let original = cx.update(|cx| {
+        let task = app.read(cx).store.task(task).unwrap();
+        (
+            task.title.clone(),
+            task.stage,
+            task.labels.clone(),
+            task.approved_plan.clone(),
+        )
+    });
+    let seeded = cx.update(|cx| automation_snapshot(&app.read(cx).store));
+    if seeded.1.is_empty() || seeded.2.is_empty() {
+        return Err("T04 fixture did not seed occurrence/run history".into());
+    }
+
+    cx.update_window(handle, |_, _, cx| {
+        app.update(cx, |a, cx| {
+            a.apply_domain_command_undoable(
+                crate::scoped_domain::DomainCommand::TaskTitle {
+                    task,
+                    title: "Scoped edit before automations".into(),
+                },
+                "Task renamed",
+                cx,
+            );
+        });
+    })
+    .map_err(|error| format!("scoped edit failed: {error:?}"))?;
+    finish_pending(&mut cx, handle, &app, "scoped edit durable")?;
+
+    let new_id = prepare_paused_automation(&mut cx, handle, &app, "T04 new quick automation")?;
+    if new_id == 1 {
+        return Err("T04 new automation reused the seeded historic id".into());
+    }
+    let memory_before = cx.update(|cx| automation_snapshot(&app.read(cx).store));
+    if memory_before.1.len() != seeded.1.len() || memory_before.2.len() != seeded.2.len() {
+        return Err("enabling a paused automation changed seeded occurrence/run history".into());
+    }
+    let memory_semantics =
+        cx.update(|cx| semantic_automation_view(&app.read(cx).store))?;
+    let disk_before_store = read_v4_store(root, &path)?;
+    let disk_before = automation_snapshot(&disk_before_store);
+    let disk_semantics = semantic_automation_view(&disk_before_store)?;
+    if memory_semantics != disk_semantics {
+        return Err("memory and reopened disk disagree before Undo".into());
+    }
+    let (bodies_before, body_hash_before) = body_bytes_audit(&path)?;
+    if bodies_before == 0 || body_hash_before.is_empty() {
+        return Err("T04 fixture seeded no run body bytes".into());
+    }
+
+    cx.update_window(handle, |_, w, cx| {
+        app.update(cx, |a, cx| a.undo_change(w, cx));
+    })
+    .map_err(|error| format!("ordinary undo failed: {error:?}"))?;
+    finish_pending(&mut cx, handle, &app, "ordinary undo durable")?;
+
+    let (title, owned, memory_after) = cx.update(|cx| {
+        let a = app.read(cx);
+        let task = a.store.task(task).unwrap();
+        (
+            task.title.clone(),
+            (
+                task.stage,
+                task.labels.clone(),
+                task.approved_plan.clone(),
+            ),
+            automation_snapshot(&a.store),
+        )
+    });
+    if title != original.0 {
+        return Err(format!("ordinary edit was not restored: {title:?}"));
+    }
+    if owned != (original.1, original.2.clone(), original.3.clone()) {
+        return Err("ordinary Undo changed the task's owned fields".into());
+    }
+    if memory_after != memory_before {
+        return Err(
+            "ordinary Undo changed automation definitions, occurrences, runs or ID floors in memory"
+                .into(),
+        );
+    }
+    let disk_after_store = read_v4_store(root, &path)?;
+    let disk_after = automation_snapshot(&disk_after_store);
+    if disk_after != disk_before {
+        return Err("ordinary Undo changed automation/history/runtime state on disk".into());
+    }
+    let disk_task = disk_after_store
+        .task(task)
+        .ok_or("task missing from reopened disk")?;
+    if disk_task.title != original.0
+        || disk_task.stage != original.1
+        || disk_task.labels != original.2
+        || disk_task.approved_plan != original.3
+    {
+        return Err("reopened disk task fields were not restored by ordinary Undo".into());
+    }
+    let disk_semantics_after = semantic_automation_view(&disk_after_store)?;
+    if disk_semantics_after != disk_semantics {
+        return Err("reopened disk semantics changed across ordinary Undo".into());
+    }
+    let (bodies_after, body_hash_after) = body_bytes_audit(&path)?;
+    if bodies_after != bodies_before || body_hash_after != body_hash_before {
+        return Err(format!(
+            "ordinary Undo rewrote run body bytes: {bodies_before}/{body_hash_before} -> {bodies_after}/{body_hash_after}"
+        ));
+    }
+    let paused = disk_after_store
+        .automation(new_id)
+        .ok_or("new automation missing from reopened disk")?;
+    if paused.status != crate::automation::DefinitionStatus::Paused {
+        return Err(format!("new automation status changed: {:?}", paused.status));
+    }
+    let _ = cx.update_window(handle, |_, w, _| w.remove_window());
+    Ok(())
+}
+
+fn assert_history_seeded(path: &Path) -> Result<(), String> {
+    let conn = rusqlite::Connection::open_with_flags(
+        path,
+        rusqlite::OpenFlags::SQLITE_OPEN_READ_ONLY,
+    )
+    .map_err(|error| error.to_string())?;
+    for (table, sql) in [
+        (
+            "automation_occurrences",
+            "SELECT COUNT(*) FROM automation_occurrences",
+        ),
+        ("runs", "SELECT COUNT(*) FROM runs"),
+        ("run_bodies", "SELECT COUNT(*) FROM run_bodies WHERE length(body)>0"),
+        (
+            "occurrence_snapshots",
+            "SELECT COUNT(*) FROM occurrence_snapshots",
+        ),
+        ("tasks", "SELECT COUNT(*) FROM tasks"),
+    ] {
+        let count: i64 = conn
+            .query_row(sql, [], |row| row.get(0))
+            .map_err(|error| error.to_string())?;
+        if count == 0 {
+            return Err(format!("T15 fixture seeded no {table} rows to audit"));
+        }
+    }
+    Ok(())
+}
+
+fn sql_hash(conn: &rusqlite::Connection, sql: &str) -> Result<(usize, String), String> {
+    use sha2::{Digest, Sha256};
+    let mut statement = conn.prepare(sql).map_err(|error| error.to_string())?;
+    let column_count = statement.column_count();
+    let mut rows = statement.query([]).map_err(|error| error.to_string())?;
+    let mut hash = Sha256::new();
+    let mut count = 0usize;
+    while let Some(row) = rows.next().map_err(|error| error.to_string())? {
+        count += 1;
+        for index in 0..column_count {
+            let value: rusqlite::types::Value = row.get(index).map_err(|error| error.to_string())?;
+            hash.update(format!("{value:?}\x1f"));
+        }
+        hash.update(b"\n");
+    }
+    Ok((count, format!("{:x}", hash.finalize())))
+}
+
+fn sql_audit(path: &Path) -> Result<serde_json::Value, String> {
+    let conn = rusqlite::Connection::open_with_flags(
+        path,
+        rusqlite::OpenFlags::SQLITE_OPEN_READ_ONLY,
+    )
+    .map_err(|error| error.to_string())?;
+    let tables = [
+        ("automations", "SELECT id,status,updated_at,payload FROM automations ORDER BY id"),
+        ("occurrences", "SELECT id,automation_id,status,unread,trigger_key,snapshot_hash,payload FROM automation_occurrences ORDER BY id"),
+        ("runs", "SELECT id,task_id,occurrence_id,status,has_body,body_bytes,payload FROM runs ORDER BY id"),
+        ("run_bodies", "SELECT run_id,body FROM run_bodies ORDER BY run_id"),
+        ("occurrence_snapshots", "SELECT hash,payload,refs FROM occurrence_snapshots ORDER BY hash"),
+        ("tasks", "SELECT id,stage,payload FROM tasks ORDER BY id"),
+    ];
+    let mut out = serde_json::Map::new();
+    for (name, sql) in tables {
+        let (count, hash) = sql_hash(&conn, sql)?;
+        out.insert(name.into(), serde_json::json!({"rows": count, "sha256": hash}));
+    }
+    Ok(serde_json::Value::Object(out))
+}
+
+fn seed_live_workspace_with_history(root: &Path) -> Result<(PathBuf, u64), String> {
+    std::fs::create_dir_all(root).map_err(|error| error.to_string())?;
+    let mut store = Store::empty();
+    store.project_mut(1).unwrap().directory = root.to_string_lossy().into_owned();
+    store.research_config_mut().models = [
+        "fixture/planner",
+        "fixture/collector",
+        "fixture/analyst",
+        "fixture/adviser",
+    ]
+    .map(String::from);
+    let task = updated_task(&mut store);
+    let template = crate::automation_execution::build_template("Historic automation", "One report")
+        .map_err(|error| error.to_string())?;
+    let automation = store
+        .create_automation_draft(
+            1,
+            crate::automation::AutomationShape::Research,
+            "Historic seeded automation".into(),
+            "Historic automation".into(),
+            "One report".into(),
+            crate::automation_schedule::Schedule {
+                spec: crate::automation_schedule::ScheduleSpec::Interval { minutes: 60 },
+                timezone: "UTC".into(),
+            },
+            crate::automation::AutomationPolicy::default(),
+            Some(template.clone()),
+            chrono::Utc::now().timestamp(),
+        )
+        .map_err(|error| error.to_string())?;
+    let occurrence = crate::automation::AutomationOccurrence {
+        id: 1,
+        automation_id: automation,
+        definition_version: 1,
+        source: crate::automation::TriggerSource::Scheduled,
+        trigger_key: "historic-seeded-key".into(),
+        scheduled_for: Some(1),
+        requested_at: None,
+        actual_started_at: Some(2),
+        timezone: "UTC".into(),
+        reference_time: 1,
+        data_window: crate::automation::TimeWindow::unresolved("seeded"),
+        snapshot: crate::automation::AutomationOccurrenceSnapshot {
+            objective: "Historic automation".into(),
+            expected_result: "One report".into(),
+            shape: Some(crate::automation::AutomationShape::Research),
+            template,
+            models: std::array::from_fn(|_| "fixture/model".to_string()),
+            agents: Default::default(),
+            materials: Vec::new(),
+            policy: crate::automation::AutomationPolicy::default(),
+            approval_version: 1,
+            approval_signature: "seeded".into(),
+        },
+        status: crate::automation::OccurrenceStatus::Succeeded,
+        reason: None,
+        research_goal_id: None,
+        research_goal_ids: Vec::new(),
+        research_topic_id: None,
+        run_ids: vec![1],
+        final_run_id: Some(1),
+        unread: false,
+        skipped_count: 0,
+        skipped_from: None,
+        skipped_to: None,
+        created_at: 1,
+        deadline_at: None,
+        retry_requested_at: None,
+    };
+    store.push_occurrence(occurrence);
+    store.push_run(AgentRun {
+        id: 1,
+        task_id: task,
+        task_title: "Historic run".into(),
+        directory: root.to_string_lossy().into_owned(),
+        prompt: "Historic seeded body".into(),
+        started_at: String::new(),
+        queued_at: String::new(),
+        workspace_source: None,
+        ended_at: None,
+        session_id: None,
+        exit_code: None,
+        agent: "test".into(),
+        model: "test".into(),
+        stage: Stage::Done,
+        status: "Succeeded".into(),
+        logs: Vec::new(),
+        output: "Historic report body".into(),
+        attachments: Vec::new(),
+        research_kind: None,
+        sources: Vec::new(),
+        input_signature: String::new(),
+        automation_occurrence_id: Some(1),
+        planning_owner: None,
+        deadline_at: None,
+        auto_retry_attempt: 0,
+        retry_not_before: None,
+        project_plan: None,
+    });
+    let path = seed_store(root, &store)?;
+    Ok((path, task))
+}
+
+fn install_write_audit(path: &Path) -> Result<(), String> {
+    let conn = rusqlite::Connection::open(path).map_err(|error| error.to_string())?;
+    let mut sql = String::from(
+        "CREATE TABLE qa_write_audit (seq INTEGER PRIMARY KEY AUTOINCREMENT, table_name TEXT NOT NULL, op TEXT NOT NULL, row_id TEXT);",
+    );
+    let specs = [
+        ("automations", "id", "NEW.id", "OLD.id"),
+        ("automation_occurrences", "id", "NEW.id", "OLD.id"),
+        ("runs", "id", "NEW.id", "OLD.id"),
+        ("run_bodies", "run_id", "NEW.run_id", "OLD.run_id"),
+        ("occurrence_snapshots", "hash", "NEW.hash", "OLD.hash"),
+        ("tasks", "id", "NEW.id", "OLD.id"),
+        ("meta", "key", "NEW.key", "OLD.key"),
+    ];
+    for (table, _column, new_id, old_id) in specs {
+        sql.push_str(&format!(
+            "CREATE TRIGGER qa_{table}_ins AFTER INSERT ON {table} BEGIN INSERT INTO qa_write_audit(table_name,op,row_id) VALUES('{table}','INSERT',{new_id}); END;\n"
+        ));
+        sql.push_str(&format!(
+            "CREATE TRIGGER qa_{table}_upd AFTER UPDATE ON {table} BEGIN INSERT INTO qa_write_audit(table_name,op,row_id) VALUES('{table}','UPDATE',{new_id}); END;\n"
+        ));
+        sql.push_str(&format!(
+            "CREATE TRIGGER qa_{table}_del AFTER DELETE ON {table} BEGIN INSERT INTO qa_write_audit(table_name,op,row_id) VALUES('{table}','DELETE',{old_id}); END;\n"
+        ));
+    }
+    conn.execute_batch(&sql).map_err(|error| error.to_string())
+}
+
+fn audit_marker(path: &Path) -> Result<i64, String> {
+    let conn = rusqlite::Connection::open_with_flags(path, rusqlite::OpenFlags::SQLITE_OPEN_READ_ONLY)
+        .map_err(|error| error.to_string())?;
+    conn.query_row("SELECT COALESCE(MAX(seq),0) FROM qa_write_audit", [], |row| row.get(0))
+        .map_err(|error| error.to_string())
+}
+
+fn audit_since(path: &Path, marker: i64) -> Result<Vec<(String, String, String)>, String> {
+    let conn = rusqlite::Connection::open_with_flags(path, rusqlite::OpenFlags::SQLITE_OPEN_READ_ONLY)
+        .map_err(|error| error.to_string())?;
+    let mut statement = conn
+        .prepare("SELECT table_name,op,row_id FROM qa_write_audit WHERE seq>?1 ORDER BY seq")
+        .map_err(|error| error.to_string())?;
+    let mut rows = statement.query([marker]).map_err(|error| error.to_string())?;
+    let mut out = Vec::new();
+    while let Some(row) = rows.next().map_err(|error| error.to_string())? {
+        out.push((row.get(0).map_err(|e| e.to_string())?, row.get(1).map_err(|e| e.to_string())?, row.get(2).map_err(|e| e.to_string())?));
+    }
+    Ok(out)
+}
+
+fn assert_exact_writes(
+    writes: &[(String, String, String)],
+    expected: &[(&str, &str, u64)],
+    label: &str,
+) -> Result<(), String> {
+    if writes.len() != expected.len() {
+        return Err(format!(
+            "{label} wrote {} rows, expected {}: {:?}",
+            writes.len(),
+            expected.len(),
+            writes
+        ));
+    }
+    for ((table, op, row), (want_table, want_op, want_row)) in writes.iter().zip(expected) {
+        if table != want_table || op != want_op || row != &want_row.to_string() {
+            return Err(format!(
+                "{label} wrote {table}/{op}/{row}, expected {want_table}/{want_op}/{want_row}"
+            ));
+        }
+    }
+    Ok(())
+}
+
+fn audit_summary(writes: &[(String, String, String)]) -> String {
+    let mut counts: std::collections::BTreeMap<&str, usize> = std::collections::BTreeMap::new();
+    for (table, _, _) in writes {
+        *counts.entry(table.as_str()).or_default() += 1;
+    }
+    if counts.is_empty() {
+        return "none".into();
+    }
+    counts
+        .iter()
+        .map(|(table, count)| format!("{table}:{count}"))
+        .collect::<Vec<_>>()
+        .join(",")
+}
+
+fn assert_no_history_writes(writes: &[(String, String, String)], label: &str) -> Result<(), String> {
+    for (table, op, row) in writes {
+        if matches!(
+            table.as_str(),
+            "automation_occurrences" | "runs" | "run_bodies" | "occurrence_snapshots"
+        ) {
+            return Err(format!("{label} rewrote historical {table} row {row} via {op}"));
+        }
+    }
+    Ok(())
+}
+
+fn t15_incremental_sql_audit(root: &Path) -> Result<(), String> {
+    let (path, task) = seed_live_workspace_with_history(root)?;
+    install_write_audit(&path)?;
+    assert_history_seeded(&path)?;
+    let (mut cx, handle, app) = open_live(root, &path)?;
+    let id = prepare_paused_automation(&mut cx, handle, &app, "T15 audit check")?;
+    let original = cx.update(|cx| {
+        let task = app.read(cx).store.task(task).unwrap();
+        (task.title.clone(), task.stage, task.labels.clone(), task.approved_plan.clone())
+    });
+
+    let marker = audit_marker(&path)?;
+    cx.update_window(handle, |_, w, cx| {
+        app.update(cx, |a, cx| {
+            a.edit_automation(id, w, cx);
+            a.automation_ui.name.update(cx, |state, cx| {
+                state.set_value("Renamed automation audit", w, cx);
+            });
+            let _ = a.save_automation_draft_outcome(cx);
+        });
+        w.render_frame(cx);
+    })
+    .map_err(|error| format!("automation rename failed: {error:?}"))?;
+    pump_until(&mut cx, handle, &app, "rename durable", |a| {
+        !a.live_has_pending_receipts()
+            && a.store
+                .automation(id)
+                .is_some_and(|definition| definition.name == "Renamed automation audit")
+    })?;
+    let rename_writes = audit_since(&path, marker)?;
+    println!("LIVE_AUDIT t15 rename writes={}", audit_summary(&rename_writes));
+    assert_no_history_writes(&rename_writes, "automation rename")?;
+    assert_exact_writes(
+        &rename_writes,
+        &[("automations", "UPDATE", id)],
+        "automation rename",
+    )?;
+
+    let marker = audit_marker(&path)?;
+    cx.update_window(handle, |_, _, cx| {
+        app.update(cx, |a, cx| {
+            a.apply_domain_command_undoable(
+                crate::scoped_domain::DomainCommand::TaskTitle {
+                    task,
+                    title: "T15 undo audit".into(),
+                },
+                "Task renamed",
+                cx,
+            );
+        });
+    })
+    .map_err(|error| format!("scoped edit for audit failed: {error:?}"))?;
+    finish_pending(&mut cx, handle, &app, "audit edit durable")?;
+    let edit_writes = audit_since(&path, marker)?;
+    println!("LIVE_AUDIT t15 edit writes={}", audit_summary(&edit_writes));
+    assert_no_history_writes(&edit_writes, "scoped task edit")?;
+    assert_exact_writes(&edit_writes, &[("tasks", "UPDATE", task)], "scoped task edit")?;
+
+    let marker = audit_marker(&path)?;
+    cx.update_window(handle, |_, w, cx| {
+        app.update(cx, |a, cx| a.undo_change(w, cx));
+    })
+    .map_err(|error| format!("scoped undo for audit failed: {error:?}"))?;
+    finish_pending(&mut cx, handle, &app, "audit undo durable")?;
+    let undo_writes = audit_since(&path, marker)?;
+    println!("LIVE_AUDIT t15 undo writes={}", audit_summary(&undo_writes));
+    assert_no_history_writes(&undo_writes, "scoped Undo")?;
+    assert_exact_writes(&undo_writes, &[("tasks", "UPDATE", task)], "scoped Undo")?;
+    let after = cx.update(|cx| {
+        let task = app.read(cx).store.task(task).unwrap();
+        (task.title.clone(), task.stage, task.labels.clone(), task.approved_plan.clone())
+    });
+    if after != original {
+        return Err(format!(
+            "scoped Undo did not restore owned task fields: before={original:?} after={after:?}"
+        ));
     }
     let _ = cx.update_window(handle, |_, w, _| w.remove_window());
     Ok(())

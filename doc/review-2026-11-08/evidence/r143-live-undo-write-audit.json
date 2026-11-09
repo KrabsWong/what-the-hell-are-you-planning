@@ -1,0 +1,20 @@
+{
+  "candidate_sha256": "bf48801344c19fdf44d7063e5aaa7b5f1610e7c9aaa3056e7394990c7832959d",
+  "results": [
+    {
+      "case": "t04-automation-lifecycle-undo",
+      "exit": 0,
+      "seconds": 0.26,
+      "log": ".local/t04-t15/root-r143-t04-automation-lifecycle-undo.log"
+    },
+    {
+      "case": "t15-incremental-sql-audit",
+      "exit": 0,
+      "seconds": 0.27,
+      "log": ".local/t04-t15/root-r143-t15-incremental-sql-audit.log"
+    }
+  ],
+  "source_sha256": "ce69602f9734d46d533d3ae2144e9ccd9c6ae7c3d69067dfee99ef21fb074bf6",
+  "review": "Exact row ID, UPDATE operation and write count asserted; nonempty historical occurrences/runs/bodies/snapshots untouched. Undo restores original task fields both in memory and reopened disk, preserving all automation definitions, occurrences, runs, ID floors and body bytes.",
+  "scope": "r137 product plus live-persistence QA changes; independent functional acceptance of the two new cases, not final runtime/performance/native acceptance."
+}

@@ -1,0 +1,23 @@
+{
+  "recorded_at": "2026-11-09T13:11:53.684430+08:00",
+  "candidate_sha256": "df7c9bf5686a918721677f0c1065c4482a7c3cb312cd6b72def1f199773dfea6",
+  "scope": "r137 product plus conditional modal-focus repair and focused navigation regression",
+  "root_independent_runs": [
+    {
+      "argument": "--qa-navigation-context",
+      "exit": 0,
+      "log": ".local/native-review/t19-modal-focus-candidate/root-navigation-context.log"
+    },
+    {
+      "argument": "--qa-keyboard-visual",
+      "exit": 0,
+      "log": ".local/native-review/t19-modal-focus-candidate/root-keyboard-visual.log"
+    }
+  ],
+  "before_proof": "Same navigation regression without focus patch fails: focus remains removed modal FocusId rather than live root handle.",
+  "review": "Conditional root focus after overlay removal, before restoring task comment input. Actual rendered modal button click followed by Command-[ and Command-K without manual refocus; source filter and scroll restored; comment typing retained.",
+  "remaining": [
+    "Native period-modal shortcut reproduction must pass with installed reviewed candidate.",
+    "Does not waive archive count-disclosure repair, runtime batch failure, or native scroll smoothness."
+  ]
+}

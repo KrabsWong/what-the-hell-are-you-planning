@@ -1841,7 +1841,15 @@ impl TaskApp {
     pub fn navigate(&mut self, scope: Scope, window: &mut Window, cx: &mut Context<Self>) {
         self.park_current_comment(cx);
         self.park_research_composer(cx);
+        let removed_modal_focus = self.period_overlay().is_some()
+            || self.settings_overlay()
+            || self.task_editor_overlay().is_some()
+            || self.previous_versions_task.is_some()
+            || self.research_save_impact.is_some();
         self.clear_navigation_overlays();
+        if removed_modal_focus {
+            window.focus(&self.focus, cx);
+        }
         if scope == Scope::Runs {
             // `route_for_scope` keeps only an ordinary selected run; an
             // automation step cannot leak into the ordinary results page.
@@ -1963,6 +1971,11 @@ impl TaskApp {
         if self.store.task(id).is_none() {
             return;
         }
+        let removed_modal_focus = self.period_overlay().is_some()
+            || self.settings_overlay()
+            || self.task_editor_overlay().is_some()
+            || self.previous_versions_task.is_some()
+            || self.research_save_impact.is_some();
         if self.selected() != Some(id) {
             self.park_current_comment(cx);
         }
@@ -1970,6 +1983,12 @@ impl TaskApp {
             self.detail_scroll.set_offset(point(px(0.), px(0.)));
         }
         self.clear_navigation_overlays();
+        if removed_modal_focus {
+            // The focused handle belonged to the removed overlay subtree; an
+            // orphan FocusId would make app shortcuts fall back to the window
+            // root and miss TaskApp's key handlers.
+            window.focus(&self.focus, cx);
+        }
         self.tabs.retain(|task| *task != id);
         self.tabs.push(id);
         self.show_task_details = false;

@@ -755,20 +755,72 @@ pub fn run() {
             before_scroll < px(-10.),
             "precondition: automation results scrolled"
         );
+        let analysis = fixture.period_steps[1];
         w.click(format!("open-occurrence-{}", fixture.period), cx);
         w.render_frame(cx);
-        w.click(format!("automation-step-{}", fixture.period_steps[0]), cx);
+        // Real click on the rendered analysis Open button focuses that modal
+        // control before the task page replaces the dialog.
+        w.click(format!("automation-step-{analysis}"), cx);
         w.render_frame(cx);
+        assert_eq!(app.read(cx).period_overlay(), None);
+        assert_eq!(
+            w.focused(cx),
+            Some(app.read(cx).focus.clone()),
+            "leaving a modal must restore a live root focus, not keep an orphaned modal FocusId"
+        );
+        // No manual refocus: the platform Back shortcut must reach TaskApp.
+        w.press("cmd-[", cx);
+        w.render_frame(cx);
+        assert_eq!(app.read(cx).period_overlay(), Some(fixture.period));
+        assert_eq!(app.read(cx).scope(), Scope::AutomationRuns);
+        assert_eq!(app.read(cx).automation_ui.result_filter, Some(fixture.automation));
+        assert_eq!(app.read(cx).automation_ui.scroll.offset().y, before_scroll);
+
+        // The same live-focus invariant keeps the global-search shortcut working.
+        w.click(format!("automation-step-{analysis}"), cx);
+        w.render_frame(cx);
+        assert_eq!(w.focused(cx), Some(app.read(cx).focus.clone()));
+        w.press("cmd-k", cx);
+        w.render_frame(cx);
+        assert!(app.read(cx).global_search_ui.open);
+        w.press("escape", cx);
+        w.render_frame(cx);
+        assert!(!app.read(cx).global_search_ui.open);
+        w.press("cmd-[", cx);
+        w.render_frame(cx);
+        assert_eq!(app.read(cx).period_overlay(), Some(fixture.period));
+
+        // Typing focus still follows the real input click after the transition.
+        w.click(format!("automation-step-{analysis}"), cx);
+        w.render_frame(cx);
+        click_in(w, cx, "detail-scroll", "task-activity-toggle");
+        click_in(w, cx, "detail-scroll", "comment-input");
+        w.input("typing focus preserved", cx);
+        let comment_focus = app.read(cx).comment.read(cx).focus_handle(cx);
+        assert_eq!(
+            w.focused(cx),
+            Some(comment_focus),
+            "the comment editor owns keyboard focus after the real click"
+        );
+        assert!(
+            app.read(cx).comment.read(cx).value().contains("typing focus preserved"),
+            "the restored task page must keep typed input focus"
+        );
+        // Cmd-[ belongs to the text-editing key context while the comment input
+        // is focused; Back navigation still works through its live rendered
+        // control after typing.
+        w.press("cmd-a", cx);
+        w.press("backspace", cx);
         w.click("navigation-back", cx);
         w.render_frame(cx);
-        assert_eq!(app.read(cx).scope(), Scope::AutomationRuns);
         assert_eq!(app.read(cx).period_overlay(), Some(fixture.period));
+        assert_eq!(app.read(cx).scope(), Scope::AutomationRuns);
+        assert_eq!(app.read(cx).automation_ui.result_filter, Some(fixture.automation));
         assert_eq!(
             app.read(cx).automation_ui.scroll.offset().y,
             before_scroll,
             "automation results scroll restored exactly"
         );
-        assert_eq!(app.read(cx).automation_ui.result_filter, Some(fixture.automation));
     }).unwrap();
 
     // 7. Save failure leaves the composer and retry saves exactly once.

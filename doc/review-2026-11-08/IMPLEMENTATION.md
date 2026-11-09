@@ -34,6 +34,12 @@ The new actual-occurrence benchmark separates direct mark-read, real command tog
 
 A narrow live `SetRead` path is now assigned to avoid full Store command staging while preserving primary-save admission, exact tracked writes, ordered receipts, failure/retry and non-undoable read-state behavior. The existing legacy command path remains. Independent review and before/after verification are required before acceptance.
 
+## r151 acceptance scope adjustment
+
+The user explicitly authorized completing a full first review round while recording nonblocking wording and rare/extreme combinations for later optimization. [The authority policy](TASKS.md#first-round-acceptance-policy-update) now reflects this. Implementers have been instructed to finish the current narrow repairs and essential regressions, return immutable candidates, and separate nonblocking gaps from failures. Root retains final classification; no current data/execution, material-save, common-navigation or reproduced scrolling blocker is waived by this update.
+
+For the step-count control, the ordinary click/Back path with real filtered, scrolled lists and a typed deferred Steps destination remains required. Exhaustively crossing every dirty-exit decision with every collection scope is a follow-up candidate once existing generic dirty-exit tests and a focused Steps-target replay test pass; it must not become a new combinatorial release gate. The repeated invalid-fixture build was interrupted and corrected before further validation.
+
 ## Development checkpoint policy
 
 All work for this optimization goal uses `feature/review-2026-11-08-optimization`. The user authorized periodic checkpoint commits and pushes on 2026-11-09 to prevent code loss. Checkpoints may contain unfinished work and failing acceptance cases; they are not releases or task sign-off. Root owns Git staging, commits and pushes. Implementers continue on this same shared branch. Local `.local/` workspaces, binaries, runtime traces and credentials remain excluded by repository policy. Validation screenshots also remain local and must not be committed or pushed. The initial checkpoint predated this screenshot instruction; cleanup commit `e60ab38` removed all 60 tracked review screenshots from the branch tip and added ignore rules, preserving local copies. Earlier Git history was not rewritten.

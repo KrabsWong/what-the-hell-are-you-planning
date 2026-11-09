@@ -3477,6 +3477,12 @@ impl TaskApp {
         occupied.len()
     }
     fn dispatch_runs(&mut self, cx: &mut Context<Self>) {
+        // Admission QA records launches at the queue-effect boundary. Runtime
+        // polling must not turn those fake launches into real agent processes.
+        #[cfg(feature = "qa")]
+        if self.qa_dispatch_fake.is_some() {
+            return;
+        }
         if !self.storage_error.is_empty() {
             return;
         }
@@ -3993,8 +3999,11 @@ impl TaskApp {
         if self.persist_if_changed(false) {
             cx.notify();
         }
+        let queued_runtime_work = !self.queued_runs.is_empty();
+        #[cfg(feature = "qa")]
+        let queued_runtime_work = queued_runtime_work && self.qa_dispatch_fake.is_none();
         let keep = !self.active_runs.is_empty()
-            || !self.queued_runs.is_empty()
+            || queued_runtime_work
             || self.startup.pending.is_some()
             || self.startup.workspace_pending.is_some()
             || self.discovery.is_some()

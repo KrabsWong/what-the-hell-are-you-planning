@@ -70,7 +70,7 @@ Dependencies below are mandatory merge prerequisites unless explicitly called â€
 
 ## T03 â€” Separate retrying a period from resuming its schedule
 
-**Status:** accepted in the reviewed working-tree candidate on 2026-11-08; not committed or released. See [independent review](IMPLEMENTATION.md#t03-independent-review-and-acceptance). T01 and T20 remain release gates.
+**Status:** initial focused acceptance recorded on 2026-11-08; implementation is included in checkpoint `d3ef9a0`. This historical acceptance does not waive revalidation after subsequent persistence/runtime changes or the final release gates. See [independent review](IMPLEMENTATION.md#t03-independent-review-and-acceptance). T01 and T20 remain release gates.
 
 **Priority/size:** P1/M. **Findings:** F02. **Dependencies:** none.
 
@@ -94,7 +94,7 @@ Dependencies below are mandatory merge prerequisites unless explicitly called â€
 
 ## T05 â€” Share execution eligibility with status presentation
 
-**Status:** accepted in the reviewed working-tree candidate on 2026-11-08; not committed or released. See [independent acceptance](IMPLEMENTATION.md#t05-independent-acceptance). T01 and T20 remain release gates.
+**Status:** initial focused acceptance recorded on 2026-11-08; implementation is included in checkpoint `d3ef9a0`. This historical acceptance does not waive revalidation after subsequent persistence/runtime changes or the final release gates. See [independent acceptance](IMPLEMENTATION.md#t05-independent-acceptance). T01 and T20 remain release gates.
 
 **Priority/size:** P1/M. **Findings:** F04. **Dependencies:** none.
 
@@ -106,7 +106,7 @@ Dependencies below are mandatory merge prerequisites unless explicitly called â€
 
 ## T06 â€” Introduce typed result presentation
 
-**Status:** accepted in the reviewed working-tree candidate on 2026-11-08; not committed or released. See [independent acceptance](IMPLEMENTATION.md#t06-independent-acceptance). T21 must preserve this presentation contract; final integration/native release gates remain.
+**Status:** initial focused acceptance recorded on 2026-11-08; implementation is included in checkpoint `d3ef9a0`. This historical acceptance does not waive revalidation after subsequent persistence/runtime changes or the final release gates. See [independent acceptance](IMPLEMENTATION.md#t06-independent-acceptance). T21 must preserve this presentation contract; final integration/native release gates remain.
 
 **Priority/size:** P1/M. **Findings:** F05, F06. **Dependencies:** none; coordinate with T05.
 
@@ -118,7 +118,7 @@ Dependencies below are mandatory merge prerequisites unless explicitly called â€
 
 ## T07 â€” Keep task neighbors within the active navigation domain
 
-**Status:** accepted in the reviewed working-tree candidate on 2026-11-08; not committed or released. See [independent acceptance](IMPLEMENTATION.md#t07-independent-acceptance).
+**Status:** initial focused acceptance recorded on 2026-11-08; implementation is included in checkpoint `d3ef9a0`. This historical acceptance does not waive revalidation after subsequent persistence/runtime changes or the final release gates. See [independent acceptance](IMPLEMENTATION.md#t07-independent-acceptance).
 
 **Priority/size:** P2/S. **Findings:** F07. **Dependencies:** none.
 
@@ -140,7 +140,7 @@ Dependencies below are mandatory merge prerequisites unless explicitly called â€
 
 ## T09 â€” Reset new forms from one explicit default model
 
-**Status:** accepted in the reviewed working-tree candidate on 2026-11-08; not committed or released. See [independent verification](IMPLEMENTATION.md#t09-independent-acceptance). T01 and T20 remain release gates.
+**Status:** initial focused acceptance recorded on 2026-11-08; implementation is included in checkpoint `d3ef9a0`. This historical acceptance does not waive revalidation after subsequent persistence/runtime changes or the final release gates. See [independent verification](IMPLEMENTATION.md#t09-independent-acceptance). T01 and T20 remain release gates.
 
 **Priority/size:** P2/S. **Findings:** F09. **Dependencies:** none.
 
@@ -162,7 +162,7 @@ Dependencies below are mandatory merge prerequisites unless explicitly called â€
 
 ## T11 â€” Restore consistent action affordances and visual hierarchy
 
-**Status:** accepted in the reviewed working-tree candidate on 2026-11-08; not committed or released. See [independent acceptance](IMPLEMENTATION.md#t11-independent-acceptance). Final T19/T20 native and release gates remain.
+**Status:** initial focused acceptance recorded on 2026-11-08; implementation is included in checkpoint `d3ef9a0`. This historical acceptance does not waive revalidation after subsequent persistence/runtime changes or the final release gates. See [independent acceptance](IMPLEMENTATION.md#t11-independent-acceptance). Final T19/T20 native and release gates remain.
 
 **Priority/size:** P2/M. **Findings:** F11, F17. **Dependencies:** none; T05/T06 for final state screenshots.
 
@@ -214,7 +214,7 @@ Dependencies below are mandatory merge prerequisites unless explicitly called â€
 
 ## T16 â€” Unify temporal ordering and harden schedule arithmetic
 
-**Status:** accepted in the reviewed working-tree candidate on 2026-11-08; not committed or released. See [independent acceptance](IMPLEMENTATION.md#t16-independent-acceptance). T01 and T20 remain release gates.
+**Status:** initial focused acceptance recorded on 2026-11-08; implementation is included in checkpoint `d3ef9a0`. This historical acceptance does not waive revalidation after subsequent persistence/runtime changes or the final release gates. See [independent acceptance](IMPLEMENTATION.md#t16-independent-acceptance). T01 and T20 remain release gates.
 
 **Priority/size:** P2/M (arithmetic subtask P3). **Findings:** F13, F18. **Dependencies:** none.
 
@@ -236,7 +236,7 @@ Dependencies below are mandatory merge prerequisites unless explicitly called â€
 
 ## T18 â€” Make unattended capability guarantees accurate
 
-**Status:** accepted in the reviewed working-tree candidate on 2026-11-08; not committed or released. See [independent acceptance](IMPLEMENTATION.md#t18-independent-acceptance). T25 and release gates remain open.
+**Status:** initial focused acceptance recorded on 2026-11-08; implementation is included in checkpoint `d3ef9a0`. This historical acceptance does not waive revalidation after subsequent persistence/runtime changes or the final release gates. See [independent acceptance](IMPLEMENTATION.md#t18-independent-acceptance). T25 and release gates remain open.
 
 **Priority/size:** P1/M investigation + scoped implementation. **Findings:** F16. **Dependencies:** none.
 
@@ -291,7 +291,7 @@ For every case record Passed/Failed/Blocked/Not run, expected destination/effect
 
 ## T22 â€” Present archived research as archived history
 
-**Status:** the r125 missing-card defect passed isolated r129 QA and native Dark r130 membership/Restore checks. T22 remains conditional on T10/T12: opening archived steps and using Back still navigates to the ordinary Topic instead of the Archive caller. See [native membership and return-path evidence](evidence/r130-native-archive.json). Do not close this task until that return journey and final integration pass.
+**Status:** the missing-card and wrong-Topic return defects are resolved in checkpoint `d3ef9a0`. Combined r137 archived-research QA passes; native r137/r138 shows retained List/Board membership, truthful archived-step labels, Restore, and return to the Archive Board by both Back button and Command-[. See [native origin/control evidence](evidence/r138-native-origin.json) and [combined checks](evidence/r137-integrated.json). The full release matrix remains open; earlier transient post-lock shortcut failures are retained for the broader T19 keyboard review.
 
 **Priority/size:** P2/M. **Finding:** F20. **Dependencies:** T05; coordinate with T06.
 

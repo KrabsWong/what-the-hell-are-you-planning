@@ -1,4 +1,6 @@
-//! Structural navigation: every Back action opens the immediate breadcrumb parent.
+//! Structural navigation helpers. User drill-down Back restores the typed
+//! return frame first; breadcrumb structure is the fallback and explicit parent
+//! navigation path.
 use crate::app::{Scope, TaskApp};
 use crate::domain::Store;
 use gpui_kit::*;

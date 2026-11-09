@@ -15,11 +15,11 @@ pub fn run() {
     let root = std::env::temp_dir().join(format!("planning-topic-qa-{}", std::process::id()));
     std::fs::create_dir_all(&root).unwrap();
     let mut store = Store::empty();
-    store.project_at_mut(0).unwrap().name = "投资研究".into();
+    store.project_at_mut(0).unwrap().name = "Investment research".into();
     let goal = store
         .create_research_goal(
-            "英伟达季度财报与基本面研究".into(),
-            "分析增长与风险".into(),
+            "NVIDIA quarterly results and fundamentals".into(),
+            "Analyze growth and risks".into(),
             1,
         )
         .unwrap();
@@ -54,7 +54,7 @@ pub fn run() {
         w.click("new-project", cx);
         w.render_frame(cx);
         w.click("project-name", cx);
-        w.input("财报", cx);
+        w.input("earnings", cx);
         w.click("create-project", cx);
         let project = app.read(cx).store.projects().last().unwrap().id;
         assert_eq!(app.read(cx).scope(), Scope::Project(project));
@@ -77,7 +77,7 @@ pub fn run() {
         .update_window(handle, |_, w, cx| {
             // Seed the grouping fixture; new topics are created through research intake.
             let id = app.update(cx, |a, _| {
-                a.store.create_topic(1, "英伟达 NVIDIA").unwrap()
+                a.store.create_topic(1, "NVIDIA").unwrap()
             });
             app.update(cx, |a, cx| {
                 a.open_task(goal, w, cx);
@@ -89,19 +89,19 @@ pub fn run() {
             w.click(1usize, cx);
             assert_eq!(app.read(cx).store.task(goal).unwrap().topic_id, Some(id));
             app.update(cx, |a, cx| {
-                a.store.apply_research_plan(goal, r#"{"tasks":[{"title":"收集财报","instructions":"收集原始财报","kind":"collect","depends_on":[]},{"title":"分析基本面","instructions":"分析财报","kind":"analyze","depends_on":[0]},{"title":"研究报告","instructions":"汇总判断","kind":"advise","depends_on":[1]}]}"#).unwrap();
-                let child = a.store.create_task("补充核查", 1, crate::domain::Stage::Planned, Some(goal)).unwrap();
+                a.store.apply_research_plan(goal, r#"{"tasks":[{"title":"Collect results","instructions":"Collect primary filings","kind":"collect","depends_on":[]},{"title":"Analyze fundamentals","instructions":"Analyze results","kind":"analyze","depends_on":[0]},{"title":"Research report","instructions":"Summarize findings","kind":"advise","depends_on":[1]}]}"#).unwrap();
+                let child = a.store.create_task("Follow-up verification", 1, crate::domain::Stage::Planned, Some(goal)).unwrap();
                 assert_eq!(a.store.task_topic(child).unwrap().id, id);
                 a.change_stage(child, crate::domain::Stage::Done, cx);
                 assert_eq!(a.store.task(child).unwrap().stage, crate::domain::Stage::Done, "Ordinary subtasks retain manual completion");
                 for title in [
-                    "存储芯片周期：DRAM、NAND 与 HBM 的供需、库存与价格走势",
-                    "先进制程代工与先进封装：产能扩张、资本开支与定价能力",
-                    "半导体设备、零部件与材料：资本开支周期、出口管制与国产替代",
-                    "成熟制程、模拟、功率与汽车/工业半导体：需求分化与中国产能影响",
-                    "跨 A 股、港股、美股的半导体估值、周期定位与投资机会地图",
+                    "Memory cycle: DRAM, NAND and HBM supply, inventory and pricing",
+                    "Leading-edge foundry and advanced packaging: capacity, capex and pricing",
+                    "Semiconductor equipment, components and materials: capex, export controls and localization",
+                    "Mature nodes, analog, power and automotive/industrial chips: demand and China capacity",
+                    "Semiconductor valuation and cycle map across A-shares, Hong Kong and US markets",
                 ] {
-                    let extra = a.store.create_research_goal(title.into(), "研究行业趋势".into(), 1).unwrap();
+                    let extra = a.store.create_research_goal(title.into(), "Research industry trends".into(), 1).unwrap();
                     a.store.set_goal_topic(extra, Some(id)).unwrap();
                 }
                 a.navigate(Scope::Topic(id), w, cx);
@@ -144,7 +144,7 @@ pub fn run() {
         w.click(format!("topic-goal-{goal}"), cx);
         assert_eq!(app.read(cx).selected(), Some(goal));
         let (crumbs, _) = app.read(cx).navigation_path();
-        assert!(crumbs.iter().any(|(_, name, _)| name == "#英伟达 NVIDIA"));
+        assert!(crumbs.iter().any(|(_, name, _)| name == "#NVIDIA"));
         w.render_frame(cx);
     })
     .unwrap();
@@ -200,10 +200,10 @@ pub fn run() {
     failed.status = "Failed".into();
     fixture.extend_runs([running, failed]);
     fixture.task_mut(children[0]).unwrap().title =
-        "收集官方财报与投资者电话会：核实收入、毛利率、现金流及未来季度指引，保留完整来源".into();
+        "Collect official filings and earnings calls: verify revenue, margin, cash flow and guidance with full sources".into();
     fixture
         .create_task(
-            "等待人工补充材料",
+            "Waiting for manual material",
             1,
             crate::domain::Stage::Planned,
             Some(goal),
@@ -258,8 +258,17 @@ pub fn run() {
         .unwrap();
     cx.update_window(handle, |_, w, cx| {
         w.click("navigation-back", cx);
-        assert_eq!(app.read(cx).scope(), Scope::Topic(topic));
+        // Open steps was invoked from All/Board above; Back restores that
+        // initiating caller, not the structural Topic parent.
+        assert_eq!(app.read(cx).scope(), Scope::All);
+        assert_eq!(app.read(cx).layout, crate::app::Layout::Board);
         w.render_frame(cx);
+        app.update(cx, |a, cx| {
+            a.navigate(Scope::Topic(topic), w, cx);
+            a.layout = crate::app::Layout::Board;
+        });
+        w.render_frame(cx);
+        assert_eq!(app.read(cx).scope(), Scope::Topic(topic));
         w.click("topic-actions-menu", cx);
         w.render_frame(cx);
         w.click(1usize, cx); // Rename topic
@@ -270,7 +279,7 @@ pub fn run() {
             .unwrap()
             .2
             .clone()
-            .update(cx, |s, cx| s.set_value("英伟达长期研究", w, cx));
+            .update(cx, |s, cx| s.set_value("NVIDIA long-term research", w, cx));
         w.click("save-topic", cx);
         assert_eq!(
             app.read(cx)
@@ -280,7 +289,7 @@ pub fn run() {
                 .find(|t| t.id == topic)
                 .unwrap()
                 .name,
-            "英伟达长期研究"
+            "NVIDIA long-term research"
         );
     })
     .unwrap();
@@ -335,7 +344,7 @@ pub fn run() {
         assert_eq!(app.read(cx).planning_topic, Some(topic));
         app.update(cx, |a, cx| {
             a.project_brief
-                .update(cx, |s, cx| s.set_value("下一季度财报，检查业绩", w, cx));
+                .update(cx, |s, cx| s.set_value("Next-quarter earnings, check results", w, cx));
         });
         w.render_frame(cx);
         w.click("save-project-context", cx);
@@ -374,7 +383,7 @@ pub fn run() {
     let saved = Storage::new(path).load().unwrap().unwrap();
     assert_eq!(
         saved.topics().iter().find(|t| t.id == topic).unwrap().name,
-        "英伟达长期研究"
+        "NVIDIA long-term research"
     );
     assert_eq!(saved.task(goal).unwrap().topic_id, Some(topic));
     println!("Topic QA passed; screenshots: {}", root.display());
@@ -900,13 +909,13 @@ pub fn board_directory() {
             app.update(cx, |a, cx| {
                 a.store = Store::empty();
                 for title in [
-                    "Anthropic IPO 与 AI 资本周期之争：经营基本面、市场分歧和未来情景分析",
-                    "债券、外汇与股票（一级/二级）市场的交易标的、交易机制与全球规模占比对比",
-                    "汇丰与腾讯港股持仓：当前全球与香港市场环境下是否继续持有",
-                    "Alphabet 与 Intel 第三季度财报不及预期原因及投行观点汇总",
-                    "美股半导体板块剧烈波动的成因与未来趋势",
+                    "Anthropic IPO and the AI capex cycle: fundamentals, debate and scenarios",
+                    "Bond, FX and equity primary/secondary market instruments, mechanics and global share",
+                    "HSBC and Tencent Hong Kong holdings: hold or exit in current markets",
+                    "Why Alphabet and Intel Q3 results missed and what banks concluded",
+                    "Causes and outlook of sharp US semiconductor volatility",
                 ] {
-                    let goal = a.store.create_research_goal(title.into(), "研究行业趋势".into(), 1).unwrap();
+                    let goal = a.store.create_research_goal(title.into(), "Research industry trends".into(), 1).unwrap();
                     topics.push(a.store.task_topic(goal).unwrap().id);
                 }
                 a.store.topic_mut(topics[4]).unwrap().replanned_from = Some(topics[0]);

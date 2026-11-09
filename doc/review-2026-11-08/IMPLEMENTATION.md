@@ -2465,3 +2465,19 @@ Root rejected the first palette revision because it mixed RGB backgrounds with R
 The frozen combined source passes 706 Rust unit tests (2 ignored), 8 dispatch crash tests, 2 additional persistence tests and 3 v4 crash tests after setting `PLANNING_NODE` to the existing Node 24 executable. The first attempt is retained: its sole failure was Node missing from PATH, not a product assertion. Icon verification passes with 51 registered assets.
 
 The isolated signed native candidate visibly repairs the previously reproduced Period 5 failure: the result opens with its saved final report, Complete/Current status and Done / 1 of 1 steps. Escape returns to the results list. Dark and Light compact result rows retain their Open controls. Archive membership remains visible in List and Board. During the subsequent Open steps/Back batch, Computer reported that the Mac was locked, so no return-path outcome is inferred. Evidence and remaining native scope: [r137 native](evidence/r137-native.json). Native smoothness and the full release matrix remain open.
+
+## r138: native archived origin confirmed; shortcuts remain unaccepted
+
+On the same signed r137 native candidate after unlock, root repeated Archive Board → Open 3 steps → Back button twice. Both returns preserved Archive/Board and its goal/Restore card. Archived steps kept truthful history labels and no run/approval controls. This closes the previously reproduced wrong-Topic destination for the pointer Back path.
+
+The native `super+bracketleft` input did not navigate, and `super+k` did not open Search in that context; pointer Search and Escape worked. This is an unresolved keyboard acceptance case, not proof of a particular application cause. A local-only capture/bubble diagnostic will distinguish event delivery, modifiers and focus before changing product logic. See [r138 native origin](evidence/r138-native-origin.json).
+
+### r138 shortcut diagnostic and unchanged-binary control
+
+The local-only diagnostic logged correct Command modifiers (`platform=true`) and root focus for both `[` and `k`; capture and bubble handlers ran, and navigation/search worked. Root then removed the diagnostic by restoring the byte-identical signed r137 executable and verifying its hash/signature. On that original binary, Archive Board → Open steps → Command-[ visibly returned to the same Archive Board with its card and Restore. No product keyboard patch was made. This supplies the missing native shortcut-origin success; earlier failures after unlock remain in the record as transient and unclassified, not silently reclassified as fixed. The full keyboard and smoothness matrices remain open.
+
+The full r137 regression driver has also exposed a topics Back expectation mismatch and two retained-fixture path setup failures. These are being investigated without removing assertions or replacing the retained fixture. Original failures will remain alongside supplemental reruns.
+
+## r139: ordinary research dispatch blocks native acceptance
+
+At 1440×920, approving synthetic G23 succeeded. Run goal then left all three steps paused, and Resume queue reported an outstanding durable admission for several minutes without starting the local fixture agent. This is a core execution failure; completed-goal archive/restore acceptance was not reached. The running isolated fixture is retained for diagnosis. OpenCode is assigned the runtime/admission investigation and regression; root will repeat the native workflow after reviewing the fix. See [r139 native dispatch](evidence/r139-native-dispatch.json). No smoothness conclusion is drawn while the offline matrix is running.

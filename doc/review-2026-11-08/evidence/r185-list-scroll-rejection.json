@@ -1,0 +1,20 @@
+{
+  "round": "r185",
+  "candidate": {
+    "base_native_manifest": ".local/native-review/r180-build-manifest.json",
+    "automation_views_sha256": "8f417845e40a1958c08799d44dd7a75f6991210c7cea082f82fba83b9dfd53b6",
+    "source": "/Users/fuxingxing/workspaces/what-the-hell-are-you-planning/.local/native-review/r185-list-source",
+    "note": "Independent frozen viewport repair candidate.",
+    "candidate_sha256": "d38ece847d38472943620d63dfaae4d7aad5f893f4b5a110816d8fb3552b062b",
+    "installed_sha256": "dfd5747bd8e752a95dd725b8d70c3613998e55b3b0d32d644bc9380b586958f7"
+  },
+  "result": "failed",
+  "blank_regression_fixed": true,
+  "observations": [
+    "Title, filter and rows are visible.",
+    "Down2pages at1900,1100 leaves header and first00:54row in place.",
+    "Down3pages at2200,1400 also leaves same top content; Load more cannot be reached."
+  ],
+  "performance_acceptance": false,
+  "followup": "Verify actual wheel delivery, viewport bounds and scroll bridge in rendered TaskApp, then rerun native."
+}

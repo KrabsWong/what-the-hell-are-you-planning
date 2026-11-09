@@ -52,7 +52,7 @@ The application is **not accepted for delivery**. All 25 tasks remain in scope. 
 | --- | --- |
 | T01 / T20 integrated regression | The complete r174 ledger retained 52 passes and three nonpasses. Recovery and render failures have independently verified replacements in r179/r181. The r183 runner distinguishes legacy latency diagnostics from required live performance. A final frozen integrated ledger and unit/integration checks remain required. |
 | T14 / T15 live performance | The r179 quiet 500/1,000 run passed all fourteen p95 gates. The later lifecycle integration requires a current-candidate repeat; the 50 ms threshold remains unchanged. |
-| T19 native scrolling | The r182 dedicated 40-row downward scroll, cold open and Load more missed the 120Hz budget. The r184 virtual-list candidate is rejected because the content area is blank. Repair, rendered interaction checks and native surface/size/theme acceptance remain required. |
+| T19 native scrolling | The r182 dedicated 40-row downward scroll, cold open and Load more missed the 120Hz budget. The r185 viewport repair displays content, but two native downward gestures leave the list at the top and Load more inaccessible. Actual scroll delivery, rendered interaction checks and native surface/size/theme acceptance remain required. |
 | Changed lifecycle and archived readers | r180 verifies durable lifecycle completion and replanning; r181 verifies retained archived E20/A21 bodies and restoration to Done. These observed fixes stand, subject to final integrated regression. |
 | First-round follow-ups | Archived upstream-waiting wording, exhaustive rare state combinations and large-history latency stress remain explicitly distinguishable from core acceptance. The final task disposition must list each deferred remainder and its follow-up criterion. |
 
@@ -2747,3 +2747,7 @@ TASKS now applies the previously approved 1,000-record boundary consistently in 
 ## r184: virtual-list candidate rejected natively
 
 Root built a frozen intermediate list candidate independently and opened the existing 1,000-period fixture. Automation results rendered its breadcrumb and sidebar count but no title, filter, rows or Load more; a downward scroll left the content blank. This is a blocking functional regression, not a performance improvement. The implementation remains uncommitted and was returned to OpenCode for viewport sizing and a real rendered interaction check. No timing from this empty view is accepted as scrolling evidence. See [native rejection](evidence/r184-list-native-rejection.json).
+
+## r185: viewport fixed; wheel scrolling still rejected
+
+The next independently built candidate displays the title, filter and initial result rows, resolving the r184 blank content. Native downward gestures of two and three pages at separate points still leave the same header and first 00:54 row visible, so Load more is unreachable. The same Computer gesture moved the baseline list in r182. This remains a functional blocker; timing a stationary view is not smoothness acceptance. OpenCode must exercise real TaskApp wheel delivery and repair viewport/scroll synchronization before another native pass. See [scroll rejection](evidence/r185-list-scroll-rejection.json).

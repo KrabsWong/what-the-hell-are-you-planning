@@ -46,7 +46,7 @@ Complete the first integrated round across all 25 task areas, identifying each a
 
 ## Mandatory scrolling acceptance
 
-Scrolling smoothness is a release requirement across every scrollable surface, not only a benchmark target. T14/T15 must keep persistence, body loading and history queries from blocking interaction; T19/T20 must verify actual scrolling on the isolated native application. Exercise long reports and sources, large research lists/boards, automation history, settings, material lists and scrollable dialogs in both themes and required window sizes, including concurrent run updates and saves. Include small, 43,200-period and larger representative histories where applicable. Record device/display refresh conditions, workload, frame-time distribution and long-frame events, plus before/after traces for any defect. Inspect UI-thread work, layout/rendering, allocation and I/O when a hitch occurs. Every reproducible hitch remains a failed acceptance case until fixed and rerun; static screenshots, synthetic vector slices and average latency alone do not prove smoothness. Keep original latency/memory/database gates as well.
+Scrolling smoothness is a release requirement across every scrollable surface, not only a benchmark target. T14/T15 must keep persistence, body loading and history queries from blocking interaction; T19/T20 must verify actual scrolling on the isolated native application. Exercise long reports and sources, large research lists/boards, automation history, settings, material lists and scrollable dialogs in both themes and required window sizes, including concurrent run updates and saves. Required fixtures cover small workspaces and representative histories up to 1,000 records. Retain 43,200-period and larger measurements as nonblocking stress diagnostics under the performance scale update above. Record device/display refresh conditions, workload, frame-time distribution and long-frame events, plus before/after traces for any defect. Inspect UI-thread work, layout/rendering, allocation and I/O when a hitch occurs. Every reproducible hitch remains a failed acceptance case until fixed and rerun; static screenshots, synthetic vector slices and average latency alone do not prove smoothness. Keep original latency/memory/database gates as well.
 
 ## Delivery order and dependencies
 
@@ -214,7 +214,7 @@ Dependencies below are mandatory merge prerequisites unless explicitly called �
 
 **How:** use a single ordered persistence worker and generation/commit acknowledgements. Coalesce streaming updates, distinguish pending/durable/failed states, and permit dispatch only after the required commit succeeds. Prevent an older save acknowledgement from overwriting newer in-memory state. Account for snapshot-copy/serialization cost, not just SQLite IO.
 
-**Acceptance:** on the same 43,200-occurrence fixture, UI interactions remain responsive during save; target p95 main-thread save-related work under 50 ms, with hardware and sample count recorded. Restart/crash injection verifies cursor+occurrence atomicity and no duplicate dispatch. Saving/failed/retry status accurately reflects durability. No “Saved” is shown before acknowledgement.
+**Acceptance:** on representative fixtures up to 1,000 occurrences, UI interactions remain responsive during save; target p95 main-thread save-related work under 50 ms, with hardware and sample count recorded. Restart/crash injection verifies cursor+occurrence atomicity and no duplicate dispatch. Saving/failed/retry status accurately reflects durability. No “Saved” is shown before acknowledgement.
 
 ## T15 — Add incremental writes and indexed history queries
 
@@ -224,7 +224,7 @@ Dependencies below are mandatory merge prerequisites unless explicitly called �
 
 **How:** add dirty-entity persistence and indexed query columns for owner, execution time, status and unread; use cursor pagination and load report bodies on demand. Provide a versioned migration with backup and integrity validation. Measure the actual UI query path rather than a synthetic already-loaded-vector slice.
 
-**Acceptance:** renaming one automation writes only necessary rows/metadata; opening the first history page does not deserialize every report. Query results preserve time ordering and pagination under concurrent insert/retry. Migration/reopen restores all reports, sources, dedupe keys and approvals. Benchmarks include small, 43,200-period and larger representative histories with memory, latency and database-size evidence.
+**Acceptance:** renaming one automation writes only necessary rows/metadata; opening the first history page does not deserialize every report. Query results preserve time ordering and pagination under concurrent insert/retry. Migration/reopen restores all reports, sources, dedupe keys and approvals. Required benchmarks include small and 1,000-period representative histories with memory, latency and database-size evidence. Preserve 43,200-period and larger results as stress diagnostics; their correctness remains required but their latency does not independently block this round.
 
 ## T16 — Unify temporal ordering and harden schedule arithmetic
 

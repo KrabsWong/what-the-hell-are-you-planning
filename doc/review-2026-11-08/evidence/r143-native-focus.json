@@ -1,0 +1,31 @@
+{
+  "unsigned_sha256": "32a68942799b672ccea3948273d7e3421ccc83fd20663ec14cdd377d50dbd53b",
+  "signed_sha256": "5cbc365e20cd4779857044bf29987e63832b20ece9159ad25be275051865594b",
+  "guard_exit": 2,
+  "source_manifest": ".local/native-review/r143-focus-source.json",
+  "backup": "/Users/fuxingxing/workspaces/what-the-hell-are-you-planning/.local/native-review/r143-focus-backup",
+  "recorded_at": "2026-11-09T13:16:49.419589+08:00",
+  "method": "Computer native pointer, scroll, Command-[, Command-K and Escape; no manual focus reset between modal Open and shortcuts",
+  "scope": "r139 normal isolated product plus reviewed modal focus repair only; Light 1440x920",
+  "cases": [
+    {
+      "path": "Filtered Automation results > Period 3 > scroll to steps > analysis Open > Command-[",
+      "result": "pass",
+      "observed": "Same Period 3 reopened at report/steps scroll position with original approved version and full report."
+    },
+    {
+      "path": "Period 3 > analysis Open > Command-K > Escape > Command-[",
+      "result": "pass",
+      "observed": "Global Search opened; Escape returned to analysis; Command-[ reopened Period 3."
+    },
+    {
+      "path": "Period 3 > Escape",
+      "result": "pass",
+      "observed": "Review recurring research filter retained; 2 of 5 periods visible."
+    }
+  ],
+  "limitations": [
+    "Does not approve ordinary dispatch repair or full native smoothness.",
+    "Saving changes remained visible after navigation; durable save feedback remains separate from focus acceptance."
+  ]
+}

@@ -4,6 +4,7 @@
 
 [POST_DELIVERY_REVIEW.md](POST_DELIVERY_REVIEW.md) supersedes the broad UX acceptance below for ordinary completed-result navigation, asynchronous report loading, visual hierarchy/layout and sidebar scrolling. The user's corrections reveal missed common cases and incorrect review prescriptions; they are not all new requirements or rare edge cases. Current source and added QA assertions were reviewed, but this documentation update did not independently rerun tests or native acceptance. V01–V06 define the remaining targeted verification. Historical passes remain valid only for their recorded source and scope.
 
+
 The authoritative scope and acceptance criteria remain in [TASKS.md](TASKS.md). Start with the [current release gate](#current-release-gate-status-r204); older dated entries preserve investigation history. Implementation is delegated to local OpenCode in bounded batches. A task is accepted only after independent diff review and verification; an agent's completion message alone is not acceptance.
 
 ## r143 focused acceptance update
@@ -194,6 +195,7 @@ Code inspection still found background navigation in project/request planning co
 
 T01 received a `session.prompt` steer instruction through the local OpenCode API to update stale QA navigation assumptions using explicit user actions rather than restore automatic completion routing. Session ownership and model remain unchanged. T02/T03 and T01 are not yet accepted.
 
+
 ## T02/T03 final candidate checks and native retry
 
 Independent final candidate checks passed: 314 unit tests, 0 failures, 2 documented opt-in ignores, and full automation QA including completion boundaries, ordinary continuation/retry, and preservation of settings/report/dirty-form/period-dialog state. Logs: [unit](evidence/T02-T03-final-unit.log), [automation](evidence/T02-T03-final-automation.log). Native binary source hashes are recorded in `.local/opencode-dispatch/T02-T03-native-source.json`; later worktree edits are not implicitly covered by these results.
@@ -206,9 +208,11 @@ The separate native ordinary planning experiment remains **incomplete**: request
 
 OpenCode is implementing conservative automation Undo invalidation and complete draft initialization/reset using `opencode-go/deepseek-v4.1-flash`. Prompt/log: `.local/opencode-dispatch/T04-T09-prompt.txt`, `.local/opencode-dispatch/T04-T09-run.jsonl`. T01 owns its baseline QA files concurrently; this batch is restricted to non-overlapping automation/app files and targeted tests. Neither task is accepted.
 
+
 ## T03 independent review and acceptance
 
 **Accepted in the reviewed working-tree candidate**, not committed or released. The final review verified separate retry/resume commands, archived/ownership/approved-snapshot rejection before mutation, original snapshot execution after edited Draft and shape changes, preservation of completed steps/reference identity, retry deadline handling, and future-only schedule resume. Tests compare the full definition before/after retry, and failure cases preserve the occurrence. The UI uses the same blocker, exposes approved version and edited-version context, and no longer resumes the schedule from period retry. Native cancellation/retry confirmed successful same-period execution with the definition still paused. Evidence is linked above. Subsequent integration edits must rerun these regressions; T01 and T20 remain release gates.
+
 
 ## T02 native completion verification resolved
 
@@ -220,6 +224,7 @@ A fresh slow planning request (run 21) was observed Running before navigating to
 
 Returned a concrete ownership concern while implementation is active: preserving automation/occurrence vectors during whole-store Undo is insufficient if restored tasks/projects/topics orphan those records. Require invalidating/rejecting incompatible snapshots before restoration, including direct Undo before persistence, while retaining safe ordinary edits after automation changes. Review is pending the revised candidate.
 
+
 ## T01 research fixture diagnosis and T18 preparation
 
 Independent inspection of `.local/research-qa/86710/workspace.json` showed the first collector attempt failed the fake CLI's obsolete `BROWSER INTEGRATION` / `Task Manager research` assertion. Three automatic retries then failed the fixture's mandatory `--file` assertion. This is not proof of a successful chain, and changing the expected run count would hide the failure. OpenCode was instructed to update the first assertion against the current browser integration contract and separately classify retry attachment behavior (retained session evidence versus required file retransmission), without weakening evidence preservation or modifying frozen inputs.
@@ -228,15 +233,18 @@ T18 read-only audit dispatched with `opencode-go/deepseek-v4.1-flash`, prompt `.
 
 Prepared independent sequential 33-entry gate runner `.local/opencode-dispatch/run_release_gate.py`. It records source/binary hashes, exact exit codes, per-entry logs and timings, and uses a SQLite backup of an isolated fixture for render performance. It has not been run against the still-changing candidate and is not passing evidence.
 
+
 ## T09 shape-switch review: changes required
 
 The new automation QA passed Undo protection and new-draft defaults, but the shape-switch case failed: the stored version remained 1 rather than advancing to 2. Independent source inspection found that `save_automation_form` compares the desired shape but `revise_automation` does not accept a shape argument; it validates the new template against the old definition shape. Returned to OpenCode with instructions to stage and validate shape/template/version/approval atomically in the domain command, update callers, and preserve T03 historical snapshot semantics. No acceptance is inferred from the two passing new cases; the complete targeted suite must pass after correction.
+
 
 ## T18 audit reviewed; isolated implementation started
 
 [Capability audit](evidence/T18-capability-audit.md) confirms objective-only heuristics, unchecked expected-result input, prompt-only external-action guidance, and unchanged shared OpenCode/Codex runtime permissions. No unauthorized external write was observed. Supervisor decision: make the information-work intent and residual runtime permissions explicit, strengthen shared input validation, and avoid a false sandbox guarantee or a separate automation agent configuration. Preserve local report writing and allowed evidence collection.
 
 The same OpenCode session (`ses_e452c6763ffeClysWYDo3qcE0K`) is implementing only `src/automation_policy.rs` plus module registration and focused unit tests while T04/T09 owns integration files. Prompt/log: `.local/opencode-dispatch/T18-policy-module-prompt.txt`, `.local/opencode-dispatch/T18-policy-module.jsonl`. Generated/inherited instruction paths, UI/domain integration and maintained documentation remain required follow-up work. Expected-result planning context must be coordinated with T25; the current misleading planner implication cannot remain. T18 is not accepted.
+
 
 ## T04 independent acceptance; T09 late completion returned
 
@@ -246,6 +254,7 @@ Independent verification of the reviewed candidate passed: 314 unit tests, 0 fai
 
 **T09 remains unaccepted.** Independent code review identified a late-completion gap: `select_automation_shape` clears the planning pointer, but `automation_plan_ready` also accepts the still-matching editing ID, allowing old completion to restore a discarded plan or advance wizard state after a type switch. Returned to OpenCode with `.local/opencode-dispatch/T04-T09-review2.txt` / `.local/opencode-dispatch/T04-T09-review2.jsonl` for request/generation-aware handling and a regression using actual planning completion, including switch-away-and-back. Also requested atomic failed shape/template validation evidence. Passing synchronous tests do not prove this edge.
 
+
 ## Recovery and policy review follow-up
 
 Independent inspection of the isolated recovery fixture `planning-recovery-qa-91970/workspace.sqlite3` explained the old 10-run assertion: after the formerly permanent-running session becomes stopped, Resume all correctly admits its three retained unfinished steps as well, producing 13 total records. New attempts succeeded for tasks 6, 3, 4, 10, 11, 12, 7 and 8. OpenCode was instructed to assert the precise admitted task set and unique attempts, preserve completed-result reuse, and keep unknown-session/never-started exclusions; a total-count edit alone is insufficient evidence. No scheduler behavior change is justified by this fixture mismatch.
@@ -254,11 +263,13 @@ The T18 policy prototype initially skipped every quoted action, including direct
 
 The independent release runner now copies the candidate executable before the sweep, ensuring all 33 dispatch entries use the same binary even if later builds occur. Full sweep remains pending candidate readiness.
 
+
 ## T18 policy module verified; T07 dispatched
 
 The isolated policy module passed independent `rustc --edition 2024 --test src/automation_policy.rs` execution: 14 passed, 0 failed. [Evidence](evidence/T18-policy-independent.log). It includes field-specific validation, optional expected-result behavior, negation/quoted-description handling, quoted imperative rejection, and Unicode-safe boundaries. These tests prove heuristic behavior only; there is no runtime capability enforcement. The module is not yet connected to application/domain entry points, so **T18 remains open**. Reviewed SHA-256: `5306854f7330c6f1e65510d493a02744c72a8af76c97cfe30336aab0ec5905af`.
 
 T07 dispatched to OpenCode with `.local/opencode-dispatch/T07-prompt.txt` / `.local/opencode-dispatch/T07-run.jsonl`, model `opencode-go/deepseek-v4.1-flash`. Ownership is limited to navigation helpers, neighbor/recent-menu sections and existing sidebar QA; T01/T09 were notified to avoid those sections. Required behavior includes non-wrapping within-period steps, separate overview, contextual recent entries and safe missing-target fallback, while ordinary navigation remains unchanged. No acceptance is implied.
+
 
 ## T09 independent acceptance
 
@@ -268,17 +279,20 @@ Independent final checks: 328 unit tests passed, 0 failed, 2 documented ignores;
 
 Computer verified the frozen isolated native candidate: set weekly + Sunday + SkipAll, go Back and Continue (values retained), Cancel then New (empty fields, Daily 10:00, Asia/Shanghai system timezone, LatestOnly), select Hours then Cancel/New and revisit Fixed interval (Minutes selected). No test draft was saved. [Back retention](evidence/T09-native-back-preserves.png), [new defaults](evidence/T09-native-new-defaults.png), [minute unit reset](evidence/T09-native-minute-unit-reset.png). The full remaining default limits/weekdays and changed edit-form cases are asserted semantically by QA. Native source hashes/build log: `.local/opencode-dispatch/T09-final-native-source.json`, `.local/opencode-dispatch/T09-final-native-build.log`. Only the uniquely named isolated app was restarted; the user's original app was not touched.
 
+
 ## T18 integration dispatched; T25 expected-output contract clarified
 
 T18 now implements the remaining input-validation integration and truthful capability copy in the same OpenCode session, using `.local/opencode-dispatch/T18-integration-prompt.txt` / `.local/opencode-dispatch/T18-integration.jsonl`. It owns automation policy/domain/form/QA files and capability documentation; T01 and T07 files are excluded. Required checks include expected-only unsupported input, generated template instructions, atomic rejection, legacy readability and a benign fake-CLI control. No runtime sandbox guarantee or second automation agent configuration is introduced.
 
 The audit also confirmed Research expected-result text is currently omitted from planner context. T18 must correct misleading helper copy immediately. T25's existing expected-output revision requirement is now explicit in its acceptance criteria: expected-only edits bind the planner prompt and returned plan to a new immutable input contract, including conservative legacy handling. This behavior is still pending T25; it is not silently counted as completed by a copy correction.
 
+
 ## T01 checkpoint and sidebar QA ownership correction
 
 OpenCode checkpoint reports five original failures now passing: affordance, research, workspace, recovery and publishing. Topics and simplify remain under repair; all seven must be rerun together before the independent 33-entry gate. Supervisor confirmed two stale fixture assumptions: topic menu actionable indices are Move 0 / Rename 1 / Archive-or-Restore 2, and a completed sidebar step intentionally opens its result (`selected=None`, run scope, matching task-result context). Replacement assertions must verify the clicked step's actual displayed result, not merely relax selection expectations.
 
 The T07 dispatch named a nonexistent `sidebar_qa.rs`; the actual existing entry is `topic_qa::sidebar()`. Ownership was corrected in both sessions: T07 may change that function and distinct helpers, while T01 keeps `topic_qa::run()` archive/menu repairs. Narrow edits preserve concurrent work. This correction does not add a dispatch flag or reduce coverage.
+
 
 ## T07 focus correction and T18 instruction-bearing titles
 
@@ -371,6 +385,7 @@ T16 retains activity ordering/timestamp ownership; T01 retains its baseline QA b
 
 Independent full unit tests and automation QA passed (345 unit tests passed, two opt-in tests ignored, both commands exit 0). However, rendered activity-order screenshots exposed a fixture dispatch error: an unmaterialized scheduled row failed during storage attachment, changing the intended unstarted state and showing an error footer. Root returned this despite green checks. The fixture must prevent unintended dispatch before attachment, use valid queued data and assert exact post-load states/errors before replacement screenshots can support acceptance. T16 remains unaccepted.
 
+
 ## T16 corrected fixture visual review; integration still pending
 
 Root independently inspected the corrected activity list, definition history, and global results screenshots. All three consistently show the older-ID retry first with a `Retried` timestamp; subsequent rows show `Started` and `Scheduled`. The definition remains Enabled and the footer reports All changes saved. The fixture now enables fake mode before attachment and stores inert Cancelled/Failed/Skipped periods, with explicit post-attachment assertions for status, retry timestamp, absence of errors, and latest identity. This fixes the prior unintended recovery dispatch error rather than hiding its footer. Evidence: [list](evidence/T16-reviewed-activity-list.png), [history](evidence/T16-reviewed-activity-history.png), [results](evidence/T16-reviewed-activity-results.png).
@@ -381,11 +396,13 @@ T16 is not yet finally accepted: its post-correction full test attempt encounter
 
 A bounded read-only audit of shared execution eligibility and status presentation has been dispatched to OpenCode using `opencode-go/deepseek-v4.1-flash`. Prompt: `.local/opencode-dispatch/T05-audit-prompt.txt`; log: `.local/opencode-dispatch/T05-audit.jsonl`. Implementation ownership will be assigned after reviewing exact dispatcher/presentation mismatches and coordinating with the active T23/T25 changes. No acceptance is implied by this dispatch.
 
+
 ## T23/T25 in-progress independent review blockers
 
 Root returned three concrete implementation problems to OpenCode before acceptance: (1) ownership normalization indexed `matches[0]` inside eager `then_some`, which panics for an unmatched nonempty legacy signature; use lazy or slice matching and prove reopen safety; (2) binding validation converted signature errors to absence of a problem, permitting invalid modern bindings; distinguish true legacy data and reject orphaned/invalid modern bindings; (3) unconditional binding removal during definition revision would unnecessarily require replanning for schedule-only edits; retain compatible planning bindings while separately invalidating approval. Requested regression cases include unmatched historical signatures, orphaned modern bindings, schedule-only edit/reapproval, and changed planning text. These are review findings against an actively changing candidate, not accepted fixes.
 
 T01 also received a test correction: compare title and menu bounds from the same rendered route. Its current header assertion clicked Back before comparing the new title with old menu geometry. Mandatory narrow-window menu coverage must remain; screenshots should be captured before failing assertions.
+
 
 ## Follow-up source review and T06 dispatch
 
@@ -395,17 +412,21 @@ Independent T05 inspection also identified the ordinary `task_status` submission
 
 A bounded read-only T06 audit was dispatched using `opencode-go/deepseek-v4.1-flash` to trace final/intermediate/live result selection and reader/copy/export consistency. Prompt and log: `.local/opencode-dispatch/T06-audit-prompt.txt` and `.local/opencode-dispatch/T06-audit.jsonl`. Implementation must coordinate with T23/T25 ownership and T05 eligibility; dispatch is not acceptance.
 
+
 ## Independent intermediate compilation recovery
 
 Root ran `PATH=/opt/homebrew/opt/node@24/bin:$PATH cargo test --features qa --quiet` with its actual process exit code preserved: exit 0, 345 passed, 2 documented opt-in ignores. Evidence: [unit log](evidence/planning-intermediate-independent-unit.log). This verifies the tested intermediate source compiles and passes existing units; the source remains under active modification and the new T23/T25 migration/attempt requirements are not thereby accepted. T01 was notified to rebuild and resume simplify plus the seven focused baseline suites, with sidebar regression coverage required after header geometry changes.
+
 
 ## T01 narrow report header rejected after rebuild
 
 The successfully rebuilt simplify candidate still fails at the earlier `open-tasks-menu` click in the deep report route. Root inspected the 1000 px light screenshot and confirmed the breadcrumb row extends beyond the right viewport, pushing Recently opened offscreen. This is a real layout defect, distinct from the separately diagnosed missing `observed` registration on `navigation-header`. The 1440 px dark ordinary-task header is readable but does not prove the narrow deep route. Evidence: [rejected narrow header](evidence/T01-narrow-report-header-rejected.png). OpenCode was instructed to fix TitleBar/flex width constraints and preserve both the early menu click and the long-title assertions; shortening or skipping the fixture is not accepted.
 
+
 ## Independent automation integration failure returned
 
 Root rebuilt with `cargo build --features qa` successfully, then ran `--qa-automation` with Node 24 on PATH. The QA process exited 101 at `automation_qa.rs:271`: the reviewed two-goal template was absent (`None`, expected `Some(2)`). Logs: `.local/opencode-dispatch/root-integration-build.log`, `.local/opencode-dispatch/root-integration-automation.log`. T23/T25 must diagnose the new attempt/binding guard against this flow without weakening the two-goal assertion or bypassing current-attempt validation. This is a concrete unresolved integration failure; the earlier passing unit suite does not establish automation workflow compatibility.
+
 
 ## Automation integration rerun passed; T05/T06 implementation dispatched
 
@@ -415,15 +436,18 @@ Reviewed audits: [T05](evidence/T05-audit.md), [T06](evidence/T06-audit.md). Bot
 
 Ownership is function-scoped: T05 owns eligibility and step status cells; T06 owns reader presentation/copy/export and quality suffixes; T23/T25 keeps planning ownership/history/forms. T01 retains navigation header and baseline QA. Prompts `.local/opencode-dispatch/T05-implement-prompt.txt` and `T06-implement-prompt.txt` contain exact constraints and regression matrices. No task acceptance follows from dispatch.
 
+
 ## T23/T25 request tests passed; end-to-end capture remains required
 
 Root independently ran `cargo test --quiet request_planning::`: exit 0, 24 passed, no ignored tests in this filtered suite. Evidence: [request tests](evidence/T23-T25-independent-request-unit.log). Source review confirms new tests cover immutable objective/expected revisions, same-input attempt precedence, missing modern binding/project rejection, and the unmatched legacy signature panic.
 
 The new `planning_revision_completion_check` covers stale completion and dirty expected-result protection, but its manually inserted successful runs do not establish what the real wizard sends to the CLI. Root explicitly retained fake-CLI prompt capture through the real wizard (A to B, expected-only change, unchanged replan, failure retry), three-attempt restart/history UI, and Research exclusion as outstanding acceptance evidence. T23/T25 remains open. T01 was asked to localize its remaining popup `Integer(0)` failure with a project stack frame and pre-click evidence before further fixture edits.
 
+
 ## T23/T25 dirty-input assertion removal rejected
 
 Root reviewed an in-progress change removing the assertion that the expected-result field still contains the user's edited text after an older plan completes. The remaining `plan.is_none()` assertion proves only that the obsolete plan is not presented; it does not prove input preservation. OpenCode was instructed to restore exact before/after objective and expected-result comparisons, using the appropriate UI context if necessary, and fix any behavior failure rather than remove the check. This remains an explicit acceptance condition.
+
 
 ## Narrow header partial fix still rejected
 
@@ -431,13 +455,16 @@ Root inspected the latest narrow report screenshot after crumb widths changed fr
 
 The T23/T25 expected-result preservation assertion has been restored in source through an explicit UI-context read. Its execution remains subject to the new planning QA run; restoration alone is not passing evidence.
 
+
 ## T06 first selector review returned for correctness
 
 Root reviewed the first `result_presentation.rs` implementation before UI integration and returned three blockers: marker/envelope classification precedes attempt-state gating and can label Running/Failed/Cancelled data as a final report; stale-input detection relies on task stage instead of the signature/current-result contract, missing input changes while Done; and occurrence selection examines only Advise candidates, omitting completed Collect/Analyze evidence when no final exists. Required regressions include active valid envelopes, failed partial envelopes, cancelled evidence markers, Done tasks with changed input/dependency signatures, and failed multi-goal periods retaining completed reports and intermediate evidence. These are source-level findings against an unfinished candidate; T06 is not accepted.
 
+
 ## T01 investigation reset to isolate the actual layout defect
 
 After repeated selector changes failed to establish narrow header containment, root deliberately interrupted the active T01 turn, confirmed its process ended, and resumed the same OpenCode session/model with a consolidated focused task. The next required evidence is a minimal deep-report header fixture at both widths/themes with full menu bounds, screenshots, and an actual recent-item route check. Native TitleBar behavior and T07 semantics must remain intact. Only after that passes should the full simplify suite resume. Prompt/log: `.local/opencode-dispatch/T01-header-reset-prompt.txt` and `T01-header-reset.jsonl`. This is a workflow correction, not acceptance or a scope reduction.
+
 
 ## T05 eligibility review found explicit-retry regression
 
@@ -445,37 +472,48 @@ Root identified that `retry_occurrence` preserves the old failed run while reope
 
 Root also returned unconditional barrier label overrides: a step whose decision is Done, Running, or Blocked must not be labelled Waiting merely because a phase/goal barrier fact exists. Label, decision, and reason must agree. These source findings block T05 acceptance until tested.
 
+
 The independent T05 retry test attempt did not execute: compilation exited 101 because the active eligibility integration used `u32` for a stored `u8` retry count and called `icon_view` on `TaskStatus` instead of its execution field. Log: `.local/opencode-dispatch/root-T05-retry-regression.log`. These transient implementation errors were returned; they provide no passing or failing behavioral test evidence.
+
 
 ## T05 explicit-retry regression independently reproduced
 
 After compilation recovered, root reran the existing `failed_period_reopens_in_place_and_keeps_finished_steps` test. It executed and failed (exit 101): preparing the reopened period returned `The next goal of this period is not runnable yet` at `automation_runtime.rs:1114`. Evidence: [independent failure](evidence/T05-independent-retry-failure.log). This confirms the shared eligibility regression against accepted T03 behavior. The original test and historical run state must remain intact; T05 must fix the decision/preparation rules and rerun the complete retry cases.
 
+
 ## T06 first pure selector suite independently passed
 
 Root ran `cargo test --quiet result_presentation::` against the updated intermediate candidate: exit 0, 9 passed. Evidence: [selector tests](evidence/T06-independent-selector-unit.log). The tested cases cover active/failed/cancelled envelope separation, invalid successful envelopes, brace-leading Markdown, changed signatures, legacy text, and multi-goal completeness/evidence retention. This supports the pure selector cases only; UI integration, complete state matrix, regeneration/freshness combinations and copy/export consistency remain open.
+
 
 ## T05 retry restored; new eligibility tests still incomplete
 
 Root independently reran the original explicit-retry regression: 1 passed, exit 0 ([log](evidence/T05-independent-retry-fixed.log)). The new eligibility module suite executed with 10 passed and 2 failed ([log](evidence/T05-independent-eligibility-initial.log)). Root classified the failures: the ordered-goal test must not expect duplicate preparation while another attempt is active; the terminal descendant test must distinguish internal Ended from its Waiting UI projection. OpenCode must preserve no-duplicate dispatch and add explicit label/reason assertions when correcting these expectations. This narrow retry pass does not accept all T05 behavior.
 
+
 ## Independent integrated unit suite: 375 passed
 
 Root ran the complete unit suite after the T05 retry and eligibility corrections: exit 0, 375 passed, 2 documented opt-in ignores. Evidence: [full units](evidence/integration-independent-unit-375.log). This replaces the prior intermediate failing unit result for the tested source; active UI integration continues, so it is not a frozen release gate. Root also reviewed the real planning CLI capture QA and required three actual history selections after reopen, correct per-revision content/status, unchanged underlying navigation/store, and light/dark evidence before planning acceptance.
 
+
 The independently invoked `cargo run --features qa --quiet -- --qa-planning` completed with exit 0. Evidence: [planning QA](evidence/T23-T25-independent-planning-qa.log). It covers real wizard prompt capture for changed objective/expected result, expected-only edits, unchanged replanning, failed-attempt retry, and persisted attempt listing after reopen, plus dirty/stale completion guards. Root's additional requirement to click and inspect at least three distinct history attempts and review light/dark screenshots is still pending; no T23/T25 acceptance yet.
+
 
 ## Independent intermediate integration: 379 unit tests passed
 
 Root reran the complete unit suite with Node 24 on PATH: exit 0, 379 passed, 2 opt-in ignores. Evidence: [unit log](evidence/integration-independent-unit-379.log). This validates the current intermediate integration, not a frozen release candidate. Root visually inspected the focused Light-1000 deep report header screenshot: the full Recently opened control and popup are now contained. T01 must still verify sidebar resizing and window resizing, retain all original simplify coverage, and complete the release suites. T06 remains open pending rendered state and copy/export acceptance; passing pure selector tests does not prove those requirements.
 
+
 Root independently built the QA binary (exit 0) and ran `--qa-header-layout` (exit 0): [log](evidence/T01-independent-header-layout.log). This proves the fixed-size deep-report menu containment and recent-item routing at 1000/1440 px in both themes. Resize coverage remains pending. Root returned a T05 QA coverage gap: asserting `Store::task_status().label()` after scrolling an Open button does not prove the rendered status label. Visible semantic label assertions and task/progress surface coverage are required.
+
 
 ## T23 planning-history close loses its origin
 
 Root source review found that `open_planning_attempt` clears `settings_dialog`, while `close_planning_attempt` only clears the history dialog and focuses the app. Reviewing a saved attempt from Plan versions therefore loses the initiating settings/history surface on Close. This violates target interaction contract 3 and blocks T23 acceptance. OpenCode was instructed to preserve/restore explicit modal origin, scroll and opener focus, handle Escape and global legacy origin, and prove three sequential actual history selections without resetting UI flags in the test. Root also rejected request-to-request data comparisons as proof of rendered per-revision content: dialog objective, expected result, revision and status need actual rendered verification.
 
+
 Root ran the initial `--qa-execution-eligibility` on the independently built intermediate binary: exit 101, missing observed `automation-result-body` scroll anchor. [Failure log](evidence/T05-independent-visible-qa-initial-failure.log). The anchor appears only as a registry ancestor; this is a fixture/observation failure, not proof of product status correctness. Returned to OpenCode along with rendered-label coverage requirements. Root also ran `python3 script/check_icons.py`: exit 0 ([log](evidence/integration-independent-icons-current.log)).
+
 
 ## Next architecture audit and baseline snapshot attempt
 
@@ -483,11 +521,13 @@ Root dispatched a read-only T13 command/scoped-undo audit to OpenCode Go DeepSee
 
 T01 reports all seven focused suites plus sidebar passing. Root copied an isolated source snapshot for the original 33-entry gate; its build failed before QA execution because the new T06 clipboard QA called App-only methods on HeadlessAppContext (E0599). Evidence: `.local/opencode-dispatch/root-baseline-snapshot-build.log`. The separate latest unit attempt also failed compilation on ResearchExport lacking Debug for unwrap_err (E0277), `.local/opencode-dispatch/root-integration-units-5.log`. Both were returned to T06; prior 379-pass evidence remains limited to its earlier source. The full 33-entry gate has not run yet.
 
+
 ## Independent frozen baseline snapshot 2
 
 Root copied src/assets and the dependency manifests into `.local/opencode-dispatch/baseline-snapshot-2`, renamed only the package to isolate its binary, and built it successfully. The original 33-entry sequential QA gate is now executing against the copied immutable binary; source/binary hashes and per-entry exits are recorded in `baseline-snapshot-2/gate/index.json`. Root independently ran the same snapshot unit suite: exit 0, 380 passed, 2 opt-in ignores ([log](evidence/baseline-snapshot2-independent-units.log)). This is a baseline integration checkpoint, not final release approval.
 
 The first 22 completed QA entries include two failures: attachments (`research_qa.rs:1029`, completed progress-step click leaves the selected run on another task) and onboarding (`workspace_qa.rs:239`, explicit saved legacy period report is no longer selected). Root returned the first to T01 for route/fixture diagnosis without weakening the expected destination. Root traced the second to T06 selecting only modern Advise children and required preserving an explicitly owned legacy final_run_id body with unverified labeling; T24 relocation must continue retaining reports. Remaining entries continue running.
+
 
 ## Full original 33-entry gate completed: 29 passed, 4 failed
 
@@ -500,9 +540,11 @@ The independent frozen snapshot 2 gate completed with exit 1: **29 passed, 4 fai
 
 All earlier seven failing baseline suites now pass on this snapshot, but these four integration failures prevent T01/T02 release sign-off. Supplemental planning, execution-eligibility and result-presentation suites remain independently required and are still under implementation/review.
 
+
 ## T06 rendered QA executes, but visual evidence rejected
 
 Root independently ran `cargo run --features qa --quiet -- --qa-result-presentation`: exit 0 ([log](evidence/T06-independent-rendered-qa-first-pass.log)). The real Copy result and export parity checks passed. However, visual inspection found [the alleged dark screenshot](evidence/T06-rejected-dark-actually-light.png) uses the light palette and shows unrelated Storage unavailable status. The fixture directly assigns Store without applying appearance or attaching isolated storage. The pass does not establish dark-theme or valid normal-state acceptance. Root returned fixture initialization and actual palette verification, required scroll evidence for the report body in the regeneration view, and identified missing Quick failure/cancellation/staleness/regeneration, ordinary cancellation/regeneration and rendered multi-goal completeness cases. No T06 acceptance.
+
 
 ## Legacy report regression independently repaired; recovery diagnosis narrowed
 
@@ -512,6 +554,7 @@ Root inspected the frozen failed recovery fixture database read-only. Run 1 is S
 
 Root reviewed the T13 audit and returned two design hazards before implementation: stale prepared-store replay must not overwrite background completions (require generation/conflict/reprepare semantics), and user Stop must still stop external work during a storage outage while truthfully reporting nondurable cancellation. Merely calling the existing two-write enqueue path from a receipt is not sufficient command-boundary extraction. Audit revision is pending.
 
+
 ## T13 pure command slice dispatched; T05 progress evidence rejected
 
 Root dispatched T13 S0 to the same OpenCode Go DeepSeek v4.1 Flash session after its read-only audit ended. The prompt requires the concurrency/stop-safety design corrections, domain-only command preparation, scoped inverse tests and stale-prepared-state rejection. Ownership is limited to new domain-command files plus module registration; UI/runtime migration remains pending. Prompt: `.local/opencode-dispatch/T13-S0-prompt.txt`. Initial audit retained as [evidence](evidence/T13-initial-audit.md); it is not approved architecture until the corrections are incorporated.
@@ -520,7 +563,9 @@ Root visually reviewed the earlier T05 progress screenshot and found an [empty o
 
 During T05 recovery diagnosis OpenCode modified two files inside the frozen baseline snapshot source. Root immediately required moving diagnostics to a separate clone and restoring those two source hashes. The gate executable hash is unchanged and the completed 33-entry results remain tied to that binary. Source restoration verification is pending; do not use modified snapshot source as new acceptance evidence.
 
+
 Root interrupted the T05 turn after further writes to frozen snapshot source, confirmed its process exited, preserved the diagnostic edits separately, and restored both files from snapshot 1 only after verifying they matched snapshot 2 original hashes. **All snapshot 2 source hashes now match the original gate manifest; the gate binary was unchanged.** T05 was resumed in the same model/session with a consolidated recovery/real-owner-route prompt and explicit read-only snapshot constraints: `.local/opencode-dispatch/T05-recovery-resume-prompt.txt`. Diagnostic work must use a separate clone. This restoration changes no product implementation and preserves the original 33-entry evidence.
+
 
 ## Attachments and batch regressions independently passed
 
@@ -531,6 +576,7 @@ Root also independently ran expanded planning QA: exit 0 ([log](evidence/T23-ind
 ## T08 global search implementation dispatched
 
 Root dispatched T08 to OpenCode Go DeepSeek v4.1 Flash with narrow search-module, footer/keyboard and route integration ownership. Prompt: `.local/opencode-dispatch/T08-implement-prompt.txt`; log: `.local/opencode-dispatch/T08-implementation.jsonl`. It must satisfy all original T08 entry-point/keyboard/ownership/return-context criteria and preserve dirty drafts; no execution or persistence semantics are in scope. Root review is pending.
+
 
 ## Confirmed recovery independently advances; later retry UI fixture still fails
 
@@ -931,15 +977,18 @@ S1 is accepted as the pure foundation only. T12 remains Open: replacing live rou
 
 Root also reviewed the reported T08 global-search failure at `global_search_qa.rs:934`: it asserts the old interim dirty-edit refusal text. T10 is authorized to replace that exact expectation with shared Save/Discard/Stay behavior and strong source/draft/durability/impact assertions. Search activation must not revert to an obsolete message contract merely to pass the old test.
 
+
 ## T13 S3a pure foundation authorized with a narrow sequencing adjustment
 
 Root authorized the original T13 implementation session to implement domain-only atomic task edits and conditional inverses in focused new modules, with minimal module registration and meaningful tests. This allows architecture work to proceed after the independent S2 command pass while T10 repairs the remaining full-automation origin/scroll regression. It does not accept S2, T04, or full T13.
 
 The existing command executor, CommandBase, TaskApp and live UI must remain unchanged in this slice. Inverse guards cover only changed fields and necessary approval/runtime companions; unrelated metadata and runtime updates must survive. Future integration must reprepare against current state or apply typed deltas, never adopt a stale whole-store candidate. Historical run immutability is approved in principle for future context changes, preserving portable relocation identity and exact impact previews. All remaining command migrations and material retention obligations remain required.
 
+
 ## T21 and T22 returned fixes: independent behavioral checkpoint
 
 Root built and copied executable `1575d772bf92ca53f743cd30ad1398f4762e6cd4deb2b2304daf1b50f4f53ff1`, then independently ran both `--qa-archived-research` and `--qa-research-inputs`: each exited **0**. See [archive evidence](evidence/T22-independent-return-archive-pass.log), [input/history evidence](evidence/T21-independent-return-input-pass.log), and [binary identity](evidence/T21-T22-return-checkpoint.sha256). Visual inspection of the newly captured matrix and remaining integration/native requirements are still pending; these successful behavioral checks alone do not accept either full task.
+
 
 ## Returned checkpoint visual and scoped-edit review
 
@@ -950,11 +999,14 @@ Root inspected the newly passing T21/T22 screenshots. The [impact action](eviden
 
 Root also reviewed the in-progress T13 pure edit core and returned missing semantic runtime guards, stale impact/read-set validation, preflight atomicity, unrelated global approval reconciliation, unsafe field/value cross-product construction and concurrency tests whose updates occurred before preparation. No pure-foundation or live-integration acceptance is claimed for this candidate.
 
+
 Root additionally ran the complete automation QA on checkpoint `1575d772`: actual exit **101** at the results-scroll restoration assertion ([log](evidence/T10-independent-return-scroll-still-fails.log)). Earlier checks, including Undo protection, passed. The full scenario still lacks a proven initial nonzero scroll precondition; T10 must distinguish fixture/input-event failure from restoration failure, capture exact offsets, and verify both period Back and Close. T04 and full S2 acceptance remain gated.
+
 
 ## T14 S1a pure journal and acknowledgement foundation authorized
 
 After completion of its running S0 measurements, T14 may implement focused typed journal/coordinator primitives in new modules, with injectable failure tests. This sequencing adjustment permits pure architecture work while T13's live command migration remains pending. No live Store mutation tracking, UI persistence change, worker attachment or schema migration is authorized by this slice. Chronological coalescing, indivisible atomic groups, parked successors after failure, workspace-specific receipts, bounded retention and exactly-once effect eligibility are required. Full compile-enforced mutation coverage, actual database worker integration, T13 seam review and measured performance acceptance remain mandatory later work.
+
 
 ## Expanded return matrix: passing test exposed a real layout failure
 
@@ -967,9 +1019,11 @@ Root successfully built fixed checkpoint `d3a19cb8aa6229e7b8692e9c2a35187f3e14b7
 
 All four actual process exits were captured, rather than inferred from a piped command. Failures were returned to the corresponding OpenCode sessions.
 
+
 ## S0 baseline provenance correction
 
 Root inspected the final S0 logs and found different executable hashes across fixture modes. Those runs launched the shared Cargo output while other sessions rebuilt it; hashing that path can describe a replacement executable rather than the running image. Preserve the measurements as mixed-source concurrent observations, not a comparable single-build baseline. T14 must copy one successful build to an immutable path, record its hash before execution and run every baseline mode from that copy. The previously recorded root-owned fixed executable baseline remains valid. This correction does not require stopping other implementation sessions.
+
 
 ## T22 independent acceptance
 
@@ -979,11 +1033,13 @@ The QA matrix covers light/dark at 1440×920 and 1000×680, List/Board/detail re
 
 At the same executable checkpoint, research-input QA also exits **0** ([log](evidence/T21-independent-long-history-pass.log)). The [long-title history selector](evidence/T21-long-history-readable-dark-1000.png) now keeps multiple readable attempts visible with run/time identity. T21 remains open for remaining scrolling/native checks and comment/material/directory/domain/scoped-Undo integration.
 
+
 ## Native archive confirmation and history keyboard review
 
 Root refreshed and launched only the isolated Planning Native Review app, with [recorded binary identity](evidence/native-archive-history-checkpoint.sha256) and [source hashes](evidence/native-archive-history-source.json). Through Computer, root verified native archive Cancel and Stop and archive, retained read-only history, truthful failure when the fixture agent does not acknowledge interruption, and the resulting Archive destination. See [observed steps and limits](evidence/native-archive-history-review.txt).
 
 Native history Escape did not dismiss the dialog; Close worked. This was returned to T21 for explicit modal focus, Escape, Tab/ShiftTab containment and focus restoration. Keyboard support remains in scope despite the excluded screen-reader audit. This native check does not substitute for the complete narrow-window/theme/release matrix.
+
 
 ## Remaining pure architecture and navigation review blockers
 
@@ -993,6 +1049,7 @@ T13's revised pure core adds semantic stamps and stale-preview checks, but root 
 
 T14's initial pure coordinator retains every released generation in an unbounded vector even though its durable watermark can deduplicate receipts. Root returned that growth, queue retention accounting, oversized atomic groups/backpressure, checked payload construction and exact-state fake-sink coverage. Metadata/topics/requests/config coverage remains mandatory before live integration. Pure tests do not establish SQLite atomicity or actual background-worker durability.
 
+
 ## T13 S3a independent pure-foundation acceptance
 
 Root reviewed the final scoped edit and shared stage-validation implementation, including the positive completed-goal inverse, field/approval rollback, current-context/runtime conflicts and rejection of forged editor stage intents. Independent `cargo test --quiet scoped_edit` exited **0**, with **26 passed** ([evidence](evidence/T13-independent-pure-scoped-edit-pass.log)). This accepts only the pure S3a foundation. No live editor migration, command durability integration or complete T13 acceptance is claimed.
@@ -1001,11 +1058,13 @@ The live boundary must still supply pending-batch context, preserve the draft th
 
 Root additionally reran the complete unit suite with the documented Node 24 PATH: **564 passed, 0 failed, 2 ignored**, actual exit **0** ([log](evidence/T13-S3a-current-full-unit-pass.log)). The preceding default-PATH run failed only the publishing dependency check because Node was unavailable; that environmental failure was corrected before this pass. Full UI/native gates remain open.
 
+
 ## T14 retention bound and T21 persistent-scroll returns
 
 Root inspected the final S1a journal and returned a concrete retention-bound defect: string-length sums omit vector element allocations and spare String/Vec capacity. For example, 100,000 empty labels retain roughly 2.4 MB of String slots while adding zero text bytes to the estimate. Require allocation-aware conservative accounting, saturating arithmetic and adversarial empty/spare-capacity/nested-payload tests, with whole rejected groups preserved. The same OpenCode session resumed with `T14-S1a-memory-return.txt`; pure S1a is not accepted. The attempted independent journal test exited **101** during a concurrent T21 unsupported scroll-method edit, before tests ran; that compile error was returned to T21.
 
 T21's latest long-history test observed a negative offset immediately after wheel input but zero after subsequent rendering. Root rejected transient offset movement as proof of usable scrolling: require stable nonzero offset over multiple frames, positive scroll extent and a screenshot showing later paragraphs. Native modal keyboard verification remains required.
+
 
 ## T13 live editor integration authorized
 
@@ -1013,31 +1072,38 @@ Root authorized narrow S3b after independent S3a acceptance, while the separate 
 
 Root also found that the failing automation QA selected a materialized period across all automation definitions, then filtered the visible list to one definition. A target outside that definition can never become visible regardless of scrolling. Returned this specific fixture mismatch and required target membership/count assertions before the unchanged offset-restoration checks.
 
+
 ## Independent scroll checkpoint 3
 
 Root built successfully and copied immutable executable `1b6c2ed4a89782efa28f58b640799e622b4e6f6dcfb3806a8b9c69eeddd28999`. Navigation-context QA exited **0** ([log](evidence/scroll-checkpoint3-navigation.log)). Research-input QA also exited **0**, but all four long-history logs show zero scroll before and after rendering ([log](evidence/scroll-checkpoint3-inputs.log)); this interim passing test does not prove scrolling. Root inspected the [narrow screenshot](evidence/T21-scroll-still-zero-light-1000.png): the reader still shows paragraphs 0–1 after wheel input. Returned for stable offset, positive extent and later-paragraph visual evidence. Full automation QA on the same immutable executable is in progress. This checkpoint does not accept full T10 or T21.
 
 Full automation on checkpoint 3 completed with actual exit **101**: expected an opened period `Some(29)`, observed `None` after activation ([log](evidence/scroll-checkpoint3-automation.log)). Earlier Undo protection and queue/planning regressions passed. Returned the remaining activation failure to T10; full gate remains open.
 
+
 ## T14 allocation accounting follow-up
 
 Root found that the revised metadata loops replaced the cumulative estimate with each item's size, dropping container capacity and all preceding items. Returned saturating accumulation and multi-item regressions. After correction, independent journal tests exited **101**, with **19 passed, 1 failed** ([log](evidence/T14-independent-capacity-intermediate.log)). The remaining nested-capacity test submitted generation 2 to a fresh coordinator expecting generation 1, so it never reached its intended overflow check. Require valid fixture sequencing without weakening production generation validation. Pure S1a remains under review.
+
 
 ## S3b retry review: preserve original edit ownership
 
 Root reviewed the initial live adapter before completion and returned unconditional retry re-preparation from the retained full editor payload. That would turn previously unchanged fields into new edits after another path changed them, or silently overwrite a newer value of an originally edited field. Require original changed-field/read-set guards: preserve unrelated updates, conflict on newer owned-field changes and retain the draft. Pending-batch validation must also run at commit/retry, not only initial preparation. A new independent journal test attempt was interrupted by this live adapter's not-yet-wired fields/methods; no journal acceptance is inferred from a compile failure.
 
+
 ## S3b mixed Undo compatibility review
 
 Root returned the initial mixed-stack implementation's blanket `undo.clear()` on automation changes/run dispatch and its global active-run Undo gate. Those legacy safeguards would erase or block safe scoped task edits after unrelated work. Require selective invalidation of legacy records, preserved chronological ordering and scoped field/goal-runtime conflict checks for typed entries; retain protection against whole-Store restoration. Regression cases must include unrelated active runs, unrelated automation mutation, relevant-goal conflicts and mixed legacy/scoped history.
+
 
 ## T10 incomplete handoff returned
 
 The S5/S6 session ended with the full automation activation failure and the remaining search/dirty-route/theme matrix unfinished. Root resumed the same session with `T10-S6-activation-return.txt`. The handoff's assertion that activation is only a QA targeting issue is not yet proven: require stable clipped bounds/scroll measurements across render and pointer movement, actual control activation and before/after screenshots. No direct state injection or weaker restoration checks may substitute for the user action. All remaining S6 cases remain mandatory.
 
+
 ## T14 enqueue-growth boundary returned
 
 Root found another bounded-retention inconsistency: `retained_bytes` accounts for deque capacity, but admission checks that capacity before `push_back` can grow it. A fresh coordinator whose byte budget equals the first group's estimate accepts that group, then reports retention above its budget. Require consistent accounting for anticipated container growth and post-admission `retained_bytes <= max_pending_bytes` tests at exact boundaries, existing-capacity growth, blocked/awaiting states and drained queues. Atomic groups must remain indivisible and rejected payloads retained. The latest independent test attempt exited **101** before tests because T21's experimental `max_lines(Some(...))` call did not match the pinned API; no journal pass is claimed.
+
 
 ## Independent journal pass and confirmation-path ownership gap
 
@@ -1047,9 +1113,11 @@ Root found the S3b confirmation button still re-prepares the entire old draft, i
 
 Root also ran the complete current unit suite with Node 24 PATH: actual exit **0**, **568 passed, 0 failed, 2 ignored** ([log](evidence/S3b-intermediate-full-unit-pass.log)). This intermediate unit pass does not cover the newly returned UI confirmation ownership or journal admission-growth cases, and does not accept the live S3b integration.
 
+
 ## T14 consistent payload budget independently verified
 
 Root reviewed the corrected accounting contract: byte admission covers owned pending payload allocations; coordinator bookkeeping is separately bounded by pending-group count and is not represented as a total-RSS budget. Awaiting acknowledgement retains only effect payload after the committed group is released. Independent tests exited **0**, **21 passed**, including exact-budget admission, queue growth/drain and blocked/awaiting cases ([log](evidence/T14-independent-boundary-21-pass.log)). A subsequently added explicit atomic-overflow test is still awaiting independent execution: the rerun failed to compile during an in-progress S3b helper call (`same_editor_payload`). The pure foundation is close to acceptance but no full T14 completion is claimed.
+
 
 ## T14 S1a pure foundation independently accepted
 
@@ -1057,9 +1125,11 @@ Root accepts the reviewed pure journal/coordinator foundation after code review 
 
 Acceptance is limited to S1a. The payload-byte budget excludes coordinator bookkeeping (bounded by group count), allocator overhead and total process RSS. Fake sinks do not establish SQLite durability. Compile-enforced mutation tracking, the live worker/ack boundary, real transaction/crash checks, incremental writes, indexed/lazy history reads and measured UI performance remain required for full T14/T15.
 
+
 ## Scoped rebase impact must match effective field delta
 
 Root returned `rebase_task_edit` using the retained full form as its impact-preview input while applying only the original changed fields. Example: a label-only edit followed by a newer title would preview restoring the old title, although the actual command changes only labels. Require effective preview intent built from current untouched values plus owned deltas, reusing T21 signature authority. Tests must cover metadata-only edit/newer title and title edit/newer description, with owned-field conflicts preserved.
+
 
 ## T14/T15 isolated SQLite backend authorized
 
@@ -1067,11 +1137,13 @@ After S1a acceptance, root authorized the same OpenCode owner to implement a rea
 
 The dispatch is `T14-T15-sqlite-backend-authorization.txt`. Compile-enforced mutation tracking, complete scoped Undo/command migration, actual UI query integration, real worker acknowledgements and final crash/performance gates remain mandatory. Backend unit success alone cannot accept full T14/T15.
 
+
 ## T21 scrollable-reader checkpoint still rejected
 
 Root inspected the latest owner-produced passing QA [narrow screenshot](evidence/T21-scrollable-reader-still-start-footer-overflow.png). After wheel input it still shows paragraphs 0–1, and Copy/Export extend below the dialog border. The revised test dispatches scroll but no longer asserts a stable internal scroll position, so its green exit cannot establish usability. Returned supported TextView/ListState measurement, a later-paragraph screenshot and constrained footer/layout bounds for all four size/theme combinations. Root also required successful immutable-build provenance after observing an owner command run QA despite a failed build.
 
 The S1a owner finished its session before executing the next backend slice. Root confirmed termination and explicitly resumed the same session with `T14-T15-sqlite-backend-authorization.txt`; execution log is `T14-T15-sqlite-backend.jsonl`.
+
 
 ## Effective scoped intent independently verified
 
@@ -1081,11 +1153,13 @@ Root also copied fixed executable `a55ed408f0bafcd9b0610e2a7a65b4c9c9120f688ec7f
 
 The fixed-binary task-editor QA exited **101** at its first Undo-count assertion ([log](evidence/T13-live-editor-first-undo-count-failure.log)): the scenario saves metadata then title, so two chronological entries are expected, but the assertion expected one. Returned precise increment/order validation and two-step inverse checks; do not clear history merely to satisfy the fixture.
 
+
 ## Isolated SQLite backend early transaction review
 
 Root returned two concrete issues in the initial backend: opening a missing/unsupported/wrong-identity database must not create a file or switch journal mode before read-only validation; and receipt/generation admission must be checked inside the write transaction, not before `BEGIN IMMEDIATE`. Require untouched-file rejection evidence and two-connection generation/retry tests. Backend implementation remains in progress and has no acceptance.
 
 The T21 session ended after only restoring compilation; root confirmed termination and resumed the owned-reader implementation explicitly with `T21-owned-reader-return.txt`. Stable internal scroll evidence and full modal layout/keyboard behavior remain required.
+
 
 ## SQLite read consistency and pagination review
 
@@ -1326,6 +1400,7 @@ S3d current material UI QA covers ordinary-task success/menu Remove/Undo/history
 
 Independent r18 task-edit QA exited 101 at the new material removal menu: test uses visible label "Remove from goal" as ElementId, but no such ID is registered. Returned real-menu selector/frame repair without direct handler bypass. Immutable SHA-256 `19544043ee1ebf10493b621ecbedc2ed0670ee9076b55acaa14ea630cb6a765c`. [Failure log](evidence/r18-material-menu-failure.log). Earlier task-edit passes predate this added material case.
 
+
 ## Additional material ownership failures returned
 
 Independent review found that initial Add confirmation owns its plan only in research_save_impact; cancellation drops that plan before pending-material cleanup can see it, potentially orphaning imported copies. The import completion path also ignores a failed non-modal save and can overwrite its error with a success toast. Successful import into a target archived or deleted during import drops attachment ownership without cleanup. Returned all three to T13 with initial-confirmation cancellation, durable failure/retry and target-disappearance tests. These remain unaccepted until independently verified.
@@ -1334,15 +1409,18 @@ Independent review found that initial Add confirmation owns its plan only in res
 
 The user explicitly requires action hierarchy rather than uniformly prominent buttons. Added target contract 11 to TASKS.md and dispatched it to T13, T10 and T19 using the existing OpenCode Go DeepSeek v4.1 Flash sessions. Primary, secondary, icon-only and More-menu placement must follow page intent and frequency while preserving discoverability and predictable behavior. This supplements existing correctness and full visual acceptance, and does not add VoiceOver scope.
 
+
 ## L1a tracking boundary review returned
 
 The initial tracked collection exposes raw mutable iteration/indexing, allowing identity changes without its mutation guard. Ordinary Clone clears dirty state, and drain consumes a violation before returning an error, permitting a later retry to forget the violation. Public Store collection fields also permit replacement with a clean collection, bypassing deletion tracking. Returned guard-only mutations, restricted bootstrap ownership, preserved pending intent, sticky violations and atomic cross-collection drain with targeted regression tests. L1a is not accepted; live persistence activation remains unauthorized until this boundary and downstream durability admission pass review.
 
 Independent feature-qa compilation during L1a exited 101 with 19 errors, including guarded mutable-borrow lifetimes and a moved background snapshot in T19 QA. Returned each class to its owner; no new binary or runtime success is claimed. [Log](evidence/r19-tracking-compilation-blocked.log).
 
+
 ## L1a source-integrity recovery
 
 An OpenCode substring replacement truncated domain.rs from 2431 to 560 lines, removing Store definitions and blocking all builds. Root independently recovered the exact pre-edit file from OpenCode snapshot tree f05555a5dd5ca0471e92338f4663c8fbc844086e into a local recovery artifact without overwriting shared source. Returned recovery instructions and the failed end-marker diagnosis to T14; other UI owners were told to avoid repeated builds until repair. Recovery must preserve prior shared changes and reapply bounded guarded edits. No acceptance is implied.
+
 
 ## Material pending ownership and More-menu review
 
@@ -1350,11 +1428,13 @@ Returned another S3d issue: successful Material Undo unconditionally clears the 
 
 The revised task More menu invents Copy task link with a wthayp://task/{id} URL, but repository inspection found no registered scheme or incoming handler. Returned removal of this unsupported promise; visual hierarchy work must reorganize supported actions rather than introduce broken destinations. Independent icon embedding check passed with 51 registered icons. This narrow static result does not substitute for compilation, keyboard or native light/dark evidence.
 
+
 ## T17 reconciliation dispatched; L1a follow-up
 
 Started OpenCode session ses_e43e5c93fffe71D24BgQu1KTuv with opencode-go/deepseek-v4.1-flash for T17, scoped to product/user/workflow/route documentation. DESIGN remains owned by T19. The authorization explicitly distinguishes current behavior from unfinished persistence, lazy UI and scoped Undo targets, requires source-backed lifecycle definitions and preserves final integration verification. Local prompt: .local/opencode-dispatch/T17-document-reconciliation.txt.
 
 T14 has restored the domain definitions from the recovered snapshot and extracted the tracked container, but compilation and boundary verification remain incomplete. Returned duplicate-key insertion (first-match drain can select the wrong payload) and crate-visible clean-reset APIs on live Store as additional tracking gaps. The unsupported task-link menu action has been removed in current source; keyboard/native verification of the revised menu remains pending.
+
 
 ## T19 incomplete handoff returned for full coverage
 
@@ -1364,15 +1444,18 @@ Corrected the handoff diagnosis: domain.rs is shorter because TrackedVec was ext
 
 Independent r21 `cargo check --features qa --quiet` exited 101 with 52 errors after recovery, primarily guarded borrow lifetimes and remaining immutable-accessor mutation callers, including feature-only QA. Returned exact log and per-file counts to T14. [Log](evidence/r21-compilation-blocked.log). No binary was copied or tested from this failed build.
 
+
 ## Independent isolated tracking reproduction r22
 
 To isolate the container from ongoing shared build failures, root compiled an immutable copy of domain_tracked.rs with minimal entity stubs. Three focused tests ran: ordinary Clone retains pending changes and identity violations remain visible on repeated reads passed; duplicate identity failed. After loading id 1/value 10 and pushing id 1/value 20, pending_changes returned the old value 10 while the live collection contained two entries. Returned this executable reproduction to T14. [Log](evidence/r22-tracking-isolated.log), [source hash and scope](evidence/r22-tracking-source.json). This is actual generic-container evidence only, not Store integration, persistence or application acceptance.
 
 Independent r23 feature-qa check exited 101 with six errors, reduced from r21's 52. Five concern guarded run/occurrence borrow lifetimes; one is an in-progress material save bool-to-typed-outcome caller conversion. Coordinated non-overlapping research_app sections between T14 and T13. [Log](evidence/r23-compilation-blocked.log). Compilation is still not accepted.
 
+
 ## S3d refreshed retry identity returned
 
 The new pending-clear guard compares entire prepared plans. retry_material_save refreshes the plan but only replaces pending when impact changes. For an ordinary-task failed Remove followed by attachment reorder, retry can save the exact target correctly while its new index/before state differs and impact remains None; the old pending plan is then retained after success, blocking future operations. Returned stable operation identity or matching-intent refresh before commit, with failed Remove/reorder/success/pending-cleared/next-operation coverage. This correction must preserve unrelated pending work and retain actual failures.
+
 
 ## Independent isolated container retest r24
 
@@ -1382,6 +1465,7 @@ Actual r24 full binary unit regression could not execute: 109 compilation errors
 
 Returned a further S3d race: an import already in flight can complete after a second material command becomes pending; dispatch rejects the imported Add before taking ownership, and the caller continues without retaining or cleaning its copies. Required admission coordination or explicit rejected-copy handling while preserving the existing pending operation and save error.
 
+
 ## Independent immutable QA checkpoint r25
 
 QA build exited 0; copied binary SHA-256 5b052937c552c1ef36c5b23f8406eeb2e11c5971077914dac38636070a497e30. Task-edit exited 101 at the new material-failure pending assertion: the fixture sets storage=None before import, so data_dir rejects before copying/saving and never creates pending state. Returned an actual SQLite write-failure fixture preserving a valid parent data directory and assertions that import/save were attempted. [Log](evidence/r25-task-edit-failure.log).
@@ -1390,11 +1474,13 @@ Global Search still exits 101 on second Enter after Stay despite the new frame s
 
 The same immutable r25 binary also failed topics (Back scope All vs Topic 2), topic-actions (None vs selected goal 1), keyboard-visual (populated Search asserted before hits appeared) and simplify. Simplify now passes its earlier report Back check and reaches an obsolete test expecting the removed unsupported Copy task link; its blind menu index can now invoke another action. Returned topic routes to T10 and label-checked supported-menu regression plus settled populated Search to T19. Logs: [topics](evidence/r25-topics-failure.log), [topic actions](evidence/r25-topic-actions-failure.log), [simplify](evidence/r25-simplify-failure.log), [keyboard visual](evidence/r25-keyboard-visual-failure.log). None of these suites is accepted.
 
+
 ## L1a bootstrap restriction and unit regression r26
 
 Independent full binary unit compilation exited 101 with 43 errors, reduced from 109; tests still did not execute. Returned remaining per-file counts and [log](evidence/r26-unit-compilation-blocked.log) to T14.
 
 The clean-reset methods became a consuming with_loaded_tracked method, but consuming an existing Store still permits dropping its tracked state. Returned a genuine fresh-builder restriction, or validation that all tracked collections are empty with no dirty keys/tombstones/violations. Required populated-clean and dirty-cleared rejection plus truly fresh clean-load tests. No L1a or live persistence acceptance is implied by the container-only passes.
+
 
 ## Independent immutable QA checkpoint r27
 
@@ -1402,11 +1488,13 @@ Fresh QA build exited 0; immutable binary SHA-256 3d125bc5590e84856073dd478eee8d
 
 Global Search passed its earlier Stay/second Enter point but failed later at deleted-target explanatory feedback (line 1144). [Log](evidence/r27-global-search.log). Keyboard-visual still failed its immediate populated-Search assertion. [Log](evidence/r27-keyboard-visual.log). Returned each current failure to its owner. T17 interim review also found contradictory Back descriptions and stale T25/T22 status in the route matrix; returned evidence-backed corrections before handoff.
 
+
 ## Root intervention and mandatory scroll acceptance
 
 The user authorizes root to directly fix repeatedly returned issues. Root took exclusive ownership of T19 visual_search and separated input dispatch from its subscription-driven result assertion, adding a visible exact-result assertion. Verification is pending: r28 build was blocked by new automation-result fixture guard lifetimes and a missing focus helper, returned to the T19 owner. No pass is claimed for the direct fix yet.
 
 The user also elevated scrolling smoothness to a hard delivery requirement. Added Mandatory scrolling acceptance to TASKS and dispatched it to T14, T19 and T17: actual native scroll, frame-time/long-frame evidence, large histories and concurrent runtime/persistence workloads, both sizes/themes. Any reproducible hitch remains a failing case; static images, average timings and synthetic collection slicing are insufficient. Existing full-scope acceptance remains intact.
+
 
 ## Root direct Search fixture correction verified r31
 
@@ -1416,11 +1504,13 @@ Fresh build exited 0; immutable SHA-256 78bc98cf3e6791f617571ffa0f6b2947878f21b9
 
 Native performance tooling is available: xcrun locates Xcode xctrace, whose installed templates include Animation Hitches, Time Profiler and Metal System Trace. This establishes measurement capability only; actual scrolling traces and acceptance are still pending.
 
+
 ## Full unit regression restored r32
 
 Independent full binary unit test command exited 0: 618 passed, 0 failed, 2 ignored. [Log](evidence/r32-full-unit-pass.log). L1a fresh-bootstrap restriction and duplicate validation are present; explicit cross-collection atomic drain evidence remains requested before that phase is accepted. No live backend activation or scrolling acceptance is implied.
 
 Root took over automation_result_keyboard after repeated incomplete T19 handoffs: actual period-result entry, independent Enter/Space/Escape scenarios, exact remembered opener and background restoration, and 24 forward/reverse focus moves inside the full dialog scope. The production opening focus was already changed to the existing Close focus handle when root attempted its patch, so root preserved that current change rather than claiming authorship. Fresh build and verification are underway.
+
 
 ## Independent full Search and current keyboard/visual suites pass r34
 
@@ -1429,6 +1519,7 @@ Fresh QA build exited 0; immutable SHA-256 c3538c4df0b6d84587f2415585b71fdf258fa
 Current T19 keyboard/visual suite exited 0, fixture .local/t19-qa/22366. Root strengthened automation-result scenarios to use the real Open control, exact live opener/context restoration, Enter/Space/Escape and 24 Tab/Shift-Tab moves inside the full dialog. A subsequent Search keyboard failure was a fixture defect: it captured Search-input focus after opening as its expected opener. Root corrected it to the remembered pre-overlay focus, retaining exact equality. [Log](evidence/r34-keyboard-visual-pass.log), [source checkpoint](evidence/r34-keyboard-source.json).
 
 These full-suite passes establish the exercised automated cases only. Fresh Computer native verification, screenshot review, full remaining route coverage and mandatory scrolling traces still remain; T19/T20 and overall delivery are not accepted.
+
 
 ## r35 independent tracking and native checkpoint
 
@@ -1439,17 +1530,21 @@ These full-suite passes establish the exercised automated cases only. Fresh Comp
 - Computer verified Automation results opens a period result and Enter and Space close it while retaining the list. Escape closes after a settled frame. A batched open/Tab/Shift-Tab/Escape sequence left the dialog visible until a second Escape; this timing observation is unresolved and is not counted as a passing rapid-input regression. The initial CUA handle also became stale and required rebinding to the same live app.
 - Native scrolling frame distributions and the full native keyboard/theme/size matrix remain outstanding. No full-task or release approval is inferred from this checkpoint.
 
+
 ## T17 independent documentation return
 
 Root found a current behavior contradiction in USER_GUIDE step 4: it promises automatic return to the project Kanban after planning, whereas `project_app.rs` completion preserves the current route and prompts the user to open the project. T17 is returned for correction and an audit of related navigation promises. Historical Search/material failures in the handoff also need reconciliation with independent r34/r27 passes, without claiming full integration acceptance. The documented double-primary project toolbar remains an explicit hierarchy follow-up. Revision prompt: `.local/opencode-dispatch/T17-review-return.txt`.
+
 
 ## Focused follow-up: task menu regression
 
 Independent source inspection identified a stale menu selector in `simplify_qa.rs`: the current task menu starts with Edit task, but the fixture clicks index 1 before asserting an editor. The former fake Copy link was removed, so the positional assumption no longer describes the UI. T10 received this precise return instruction: target the real Edit action, preserve product behavior, settle asynchronous events, and verify the current cancel action. This diagnosis is not a passing rerun. The T13 command QA process was independently confirmed absent after an earlier live observation; its owner was instructed to inspect the terminal outcome rather than infer success or failure from elapsed time.
 
+
 ## L1b early independent return: synchronous intent I/O
 
 The in-progress dispatch adapter still performs synchronous filesystem reads/writes and whole-pending-intent serialization through `open_internal`/`restore_intents` and `admit`/`remember_intent`/`write_intents`. Its caller is the app command path, so moving SQLite work to a worker does not yet remove UI-thread persistence stalls. Root returned this concrete blocker to the existing T14 session: move intent persistence, restoration and acknowledgement cleanup to a bounded worker-owned protocol while preserving crash retention and durable admission. The current write/rename implementation also does not establish file/directory durability for a system crash. L1b remains unaccepted; intermediate fixture failures must be fixed without weakening approval or execution eligibility.
+
 
 ## L1b early independent return: observable launch idempotency
 
@@ -1457,17 +1552,20 @@ The draft QA fake suppresses duplicate `start` calls itself. Root rejected that 
 
 A native Instruments availability recording was started against only isolated app PID 25910 using Animation Hitches. The tool reached its 15-second recording limit and remained live finalizing at the last observation. This is an instrumentation availability check with no scroll workload, not smoothness evidence. Log: `.local/native-review/r35-instrument-availability.log`; pending trace: `.local/native-review/r35-instrument-availability.trace`. The full native scrolling workload matrix remains mandatory.
 
+
 ## Native instrumentation and material responsiveness review
 
 - The isolated PID 25910 Animation Hitches recording completed with exit 0, as did XML table export. Trace metadata identifies the built-in display at 120 Hz. The export exposes frame-lifetime, display and hitch tables. No deliberate scroll workload ran, and frame-lifetime rows alone do not establish application-specific presented-frame timing; therefore this does not pass any scrolling gate. Local evidence: `.local/native-review/r35-instrument-toc.xml`, `r35-frame-tables.xml`, and the availability trace/log.
 - Root found synchronous full-file reads/SHA-256 in live material remove/confirm and Undo paths (`material_app.rs`, `scoped_material.rs`, `app.rs`). Some paths hash before and after lists repeatedly. T13 was instructed to preserve identity/conflict checks while moving heavy file work to bounded background jobs, revalidating live state on completion, and covering large files and concurrent edits. Narrow r27 correctness acceptance does not accept this responsiveness issue.
 - The project toolbar's two-primary inconsistency was dispatched to T19 for a narrowly scoped secondary Run/resume styling change and DESIGN label reconciliation. Native light/dark validation remains required.
 
+
 ## r35 actual native Settings scroll baseline
 
 Computer exercised six native scroll gestures on Settings → Agent & models in the isolated r35 app, Light, 1440×920: down 2 pages, up 2, down 1, up 1, down 2, up 2. Screenshots confirmed movement between Global default and Browser runtime, with the profile toolbar fixed. Animation Hitches recording targeted only PID 25910 for 30 seconds. Workload manifest: `.local/native-review/r35-settings-scroll-light-workload.json`; trace/log share the `r35-settings-scroll-light` prefix. Recording finalization and frame attribution/analysis remain pending at this checkpoint. There was no deliberate concurrent in-app save/run workload, and other coding/build processes were active, so this is a baseline sample and not a release gate pass.
 
 T19 delivered the narrow project hierarchy change: New research retains primary fill, Run/resume or Add to queue uses the existing secondary button, and Project options remains More. Root inspected the sole callsite and unchanged action/disabled/tooltip semantics. DESIGN now matches the existing result-dialog Cancel placement and Research settings label. Compilation and full theme/size native verification remain pending during active persistence edits.
+
 
 ## r36 independent admission tests and remaining acceptance gaps
 
@@ -1477,6 +1575,7 @@ The current app QA recovery case constructs a Store containing a queued run. Thi
 
 T13's prior process was confirmed terminal and its correctness handoff reviewed. It was resumed with `.local/opencode-dispatch/T13-material-background.txt` to implement the material background pipeline and continue the remaining settings/context/archive migrations. Existing compile conflicts are temporary integration conditions, not grounds to omit those tasks.
 
+
 ## Native scroll trace result and QA binary isolation correction
 
 The 30-second r35 Settings scroll recording/export completed successfully. Instruments reports 682 hitch events attributed explicitly to isolated app PID 25910; hitch durations median 8.333333 ms, p95 8.3335 ms, maximum 16.666791 ms, on the reported 120 Hz display. [Parsed summary and limitations](evidence/r35-settings-scroll-summary.json). These are hitch durations, not total frame times. The debug build, concurrent external workloads and absent exact input markers limit interpretation; this sample does not pass the scrolling gate and requires controlled optimized reproduction and attribution.
@@ -1484,6 +1583,7 @@ The 30-second r35 Settings scroll recording/export completed successfully. Instr
 Root investigated live T10 QA PID 28242 rather than restarting on a timeout. A stack sample showed ordinary Application/NSApplication execution, and symbol inspection found no navigation-context QA or HeadlessAppContext symbols in `/tmp/t10-candidate-final` (SHA-256 `4ce7a171442f8e8219a4b392c6aa9c6aa1058cc7dc55e0bb4f753a71de7e7fe9`). It was a non-QA executable copied from the shared build target. Root stopped only that owned command chain (parent 28239, child 28242) to prevent subsequent QA flags launching ordinary app paths. [Sample evidence](evidence/T10-wrong-binary-sample.txt). No navigation pass or runtime failure is inferred from this invalid invocation. All active implementation owners received exclusive CARGO_TARGET_DIR requirements; T10 must also add a fail-closed guard for unhandled QA flags before any normal workspace initialization. This accidental normal-start boundary still requires read-only investigation; do not assume production data was untouched by that process.
 
 T17's requested correction is independently confirmed: USER_GUIDE now describes passive background planning completion, matching project_app.rs. Current search/material status and project toolbar hierarchy wording now reflect the reviewed checkpoints, with integration/native gates left open. Final T17 reconciliation awaits the completed implementation.
+
 
 ## QA invocation containment and verified CLI protection
 
@@ -1493,11 +1593,13 @@ Root directly added a guard immediately before normal application initialization
 
 T10 may continue only with an exclusive QA target directory and a verified immutable QA binary. The obsolete `/tmp/t10-candidate-final` must never run again. The session received these instructions after guard verification. Root also returned remaining material worker concerns: unbounded response channel/request file list, whole-file buffering and suppressed thread-spawn errors must be resolved while retaining concurrent-file-change checks.
 
+
 ## r37 independent full unit regression
 
 Actual command: `PATH=/opt/homebrew/opt/node@24/bin:$PATH cargo test --features qa --quiet`. Exit 101: 628 passed, 1 failed, 2 ignored. The failing test is `scoped_material::tests::apply_add_preflights_content_before_any_mutation`, at line 857 in the compiled candidate: changed content is no longer rejected by `apply_material_add` as expected. [Full evidence](evidence/r37-full-tests-failure.log).
 
 Root returned the failure to T13 with the requirement to retain content identity and atomic rejection in the background verification design. Tests must cover the actual worker-to-UI proof and stale completion boundary; removing the safety assertion or restoring expensive UI reads is not an acceptable fix. The subprocess crash test target did not run after this failing unit target. No latest full-suite acceptance is claimed.
+
 
 ## r35 native CPU profile analysis and rendering investigation
 
@@ -1505,11 +1607,13 @@ The real settings-scroll trace CPU export completed. It contains 17,325 samples;
 
 Pinned framework source uses a CVDisplayLink-driven window frame source; no hardcoded 60 Hz cap was established in this inspection. The sidebar mark continuously animates and already has a separate entity. Whether it invalidates unrelated page work remains a hypothesis, not a proven cause. T19 was dispatched to examine invalidation/caching/layout using this evidence, preserve approved brand motion, and provide controlled optimized A/B candidates for root native profiling. Prompt: `.local/opencode-dispatch/T19-scroll-profile.txt`. All long-surface, theme/size, concurrent-save and history-scale acceptance requirements remain open.
 
+
 ## Material identity serialization compatibility return
 
 Root identified an additional migration risk in the draft `Attachment::content_sha256` field: serde defaults absent legacy values to empty but serializes the new empty field, while research approval and input signatures serialize whole attachments (`research.rs`). Unchanged legacy materials can therefore produce changed signature bytes merely on reload. T13 was required to preserve legacy approval/report validity and add old-format attachment plus stored-signature roundtrip/reopen coverage. Filling a verification cache must not silently create a new research input revision. The current cached-hash helper also still reads legacy files synchronously and cannot substitute cached identity for fresh byte verification. These remain explicit acceptance blockers.
 
 Root started a coherent optimized baseline build from the frozen isolated r35 source plus verified CLI guard, using separate package/target `.local/native-review/release-target` and two build jobs. It does not replace or restart the current native app. Log: `.local/opencode-dispatch/root-r35-release-baseline-build.log`. This baseline will separate debug-build overhead from the native rendering diagnosis; it does not represent completion of ongoing T13/T14 changes.
+
 
 ## r38 independent QA from exclusive verified binary
 
@@ -1523,6 +1627,7 @@ Root copied the completed exclusive T10 target build to an immutable QA executab
 | Task edit | 101 | Line 794 expects two materials immediately after Undo but sees one. Investigate and assert actual asynchronous completion and failure outcomes. [Log](evidence/r38-task-edit.log) |
 
 All three failures were returned to their owners with exact logs and invariant-preserving requirements. These are valid QA executions, unlike the prior wrong-binary attempts. They do not close T01/T10/T13/T20.
+
 
 The same verified r38 executable independently passed `--qa-navigation-context` with exit 0. [Log](evidence/r38-navigation-context.log). This is a focused navigation-context pass; the separate Topics/Simplify failures and full integration gates remain. The full global-search rerun was still live as PID 44224 at this checkpoint and is not classified by elapsed time.
 
@@ -1725,6 +1830,7 @@ A minimal independent test with `run_id_floor = 50_001` failed at `SqliteV4::cre
 
 Returned T14 requirements: persist and restore the scalar, add its ordered metadata delta, retain default compatibility for older files missing the field, test nonzero seeding/migration/restart, and audit every persistent Store field for tracked mutation and complete write/read coverage. This new case does not invalidate the historical r54 passing test execution, but it proves that execution did not cover the newly identified invariant.
 
+
 ## r57 independent scoped-Undo atomicity regression
 
 All four OpenCode implementation sessions were verified running through `session.active`; this is active implementation, not task acceptance. Independent source review found that `scoped_domain::apply_undo` mutates entities before validating settings, and settings restoration validates and writes each field sequentially. A later conflict can therefore return an error after partial rollback.
@@ -1739,6 +1845,7 @@ Computer rechecked the isolated r48 native baseline: opening an automation perio
 
 The same frozen scoped-domain module suite completed with 2 passed and 3 failed: the independent partial-rollback regression, a conflict test missing a mutation after capture, and a topic fixture passing a topic ID as a parent-task ID. All three outcomes were returned without removing assertions. [Suite result](evidence/r57-scoped-domain-tests.json). T14 subsequently made persistent Store fields private in the active source; getter/mutation migration and independent verification are still in progress.
 
+
 ## r58 retained-footer sizing diagnosis and focused verification
 
 Root inspected the pinned gpui-fast implementation: a cached view's style belongs to a separate layout node, while the rendered element is laid out as a root inside the assigned bounds. The footer rendered row lacked an explicit full-width constraint. A frozen r55 revised source with only `w_full()` and `min_w_0()` added to that row independently passed navigation-context (16.356 seconds) and Settings (18.086 seconds). The fail-closed guard exited 2. Candidate SHA-256: `d5542205531053aeb62cf724c000db02e83e6fa82361f038621f911e19c335f4`. [Results](evidence/r58-footer-checks.json), [source](evidence/r58-footer-source.json). OpenCode incorporated these two constraints into the active source.
@@ -1748,6 +1855,7 @@ Keyboard/visual failed at the older footer test's expectation `disabled() == Som
 The new scoped-command source now validates all settings before inverse mutation, but independent acceptance awaits a compilable integrated checkpoint. Additional preflight requirements were returned for invalid model-stage indices and archive-owner chains. T14's private fields now expose clean collection loaders, so loading must remain restricted to construction or reject live/pending state; a public clean replacement method would recreate the mutation-tracking bypass. No task or scrolling acceptance is added by these source observations.
 
 The stronger frozen keyboard/visual follow-up passed in 16.572 seconds, exit 0, guard exit 2. It performs a real concurrency edit and clicks the cached Undo, verifies the original value is restored, then verifies Undo is disabled. Candidate SHA-256 `a174942b48adbfdf1fb9fc4d06c4437cca0afaabc3e5809d136dfae1838bc8ac`. This resolves the specific footer test on the frozen candidate without treating missing attributes as proof. [Result](evidence/r58-footer-verified-checks.json), [source](evidence/r58-footer-verified-source.json). Current-tree integration and native scrolling remain open.
+
 
 ## r59 optimized native diagnostic candidate
 
@@ -1761,6 +1869,7 @@ For interpretation, Apple defines hitches as missed display deadlines, distinct 
 
 T13/T14 integration review also caught broad Store API substitutions applied to non-Store values. File ownership was clarified: T13 owns scoped-domain command adaptations, while T14 maintains the private Store API and its remaining callers. Rejection tests must compare pending typed deltas as well as Store values because value equality omits dirty tracking metadata.
 
+
 ## r60 native workload isolation and command-boundary review
 
 The first reattempt completed eight native gestures but continuous process monitoring detected Cargo/rustc starting after clean preflight, overlapping the recording window. That trace remains contaminated and is excluded from smoothness acceptance. [Contaminated workload](evidence/r60-settings-workload.json). Steer-only build holds were insufficient because already-running tool batches continued launching compilation.
@@ -1768,6 +1877,7 @@ The first reattempt completed eight native gestures but continuous process monit
 Root deliberately interrupted the three still-running OpenCode sessions through `session.interrupt`; the T19 session was already terminal. `session.active` then returned an empty map, and no Cargo/rustc process remained. This was a short measurement suspension, not a restart caused by a timeout or lack of progress. A separate recording completed eight confirmed native scroll gestures. Monitor observations through the end-of-recording notification contained no build processes. Trace finalization and exact timestamp coverage/hitch analysis remain pending. [Isolated workload](evidence/r60-clean-settings-workload.json). All four original sessions were then resumed with the same requested model and current edits preserved; authoritative status confirmed all four running again.
 
 Source review found remaining whole-Store staging inside `Store::move_topic_project`, even after its outer command stopped cloning. This was returned for bounded affected-entity preparation. Run inverses must hold only the context metadata actually changed, not entire runtime records/report bodies. Current clean collection loaders have been restricted to the domain module, and archive restore now preflights its owner chain; neither source observation is full live persistence acceptance. The icon embedding check passed with 51 registered icons and `git diff --check` passed. Codex usage was verified at 93% used (7% remaining); no reset was consumed.
+
 
 ### r60 independent results
 
@@ -1781,6 +1891,7 @@ The full unit run failed with 658 passed, 2 failed and 2 ignored. One atomic-dra
 
 The explicit frozen integration run passed all 8 dispatch crash subprocess tests and all 3 v4 crash subprocess tests (exit 0). The two unit failures above remain open; this does not convert the full suite to green. [Crash results](evidence/r60-crash-tests.json).
 
+
 ## r61 independent integrated verification and acknowledgement audit
 
 The previous turn verified the requested OpenCode provider/model but did not advance implementation acceptance. Root revalidated all four implementation sessions through `session.active`, then captured a byte-consistent 372-file source snapshot. The full independent `cargo test --features qa --quiet` completed with 663 unit tests passed, 2 ignored, 8 dispatch crash tests passed and 3 v4 crash tests passed (exit 0). The two r60 fixture failures are resolved in this snapshot without removing the exact drain-membership assertion or changing no-op setter semantics. [Source](evidence/r61-integrated-source.json), [full tests](evidence/r61-full-tests.json).
@@ -1793,11 +1904,13 @@ A new boundary audit found scalar/list dirty epochs reset to zero after acknowle
 
 Codex usage was verified at 95% used (5% remaining). No banked reset was consumed. No screenshots or raw traces were added to Git. All four implementation sessions remained running at the latest authoritative status check.
 
+
 ## r62 stale-receipt fix independently verified
 
 Root retained the exact r61 failing regression and replaced only `domain_tracked.rs` with OpenCode's fix in a separate frozen diagnostic source. Scalar and list acknowledgements no longer reset their generation counters. The full test command passed, including the unchanged independent stale-receipt regression, all 8 dispatch crash tests and all 3 v4 crash tests (exit 0). This establishes the specific red-to-green fix without attributing unrelated current-tree edits to the tested candidate. [Derivation](evidence/r62-epoch-fixed-source.json), [test result](evidence/r62-epoch-fixed-tests.json).
 
 Current-tree OpenCode work separately adds scalar/list duplicate and out-of-order acknowledgement fixtures and begins retained-sidebar integration. Neither the diagnostic run nor source inspection establishes final live asynchronous persistence or native smoothness acceptance. Root returned two further review requirements: characterize the topic-move signature-failure rollback's pending tracking state, and verify pointer hit-testing, sidebar scroll/resize and semantic invalidation around the animated-logo overlay. These are source-review concerns, not newly reproduced production failures. All four implementation sessions were independently confirmed running. The icon embedding check passed with 51 registered icons.
+
 
 ## r63 sidebar isolation and release-gate coverage reconciliation
 
@@ -1809,6 +1922,7 @@ A release-scope audit found 48 direct QA flags in current `main.rs`, compared wi
 
 Root explicitly returned T14 to the missing live integration: worker ownership/startup, nonblocking typed submission, durable/failed/retry UI, generation-safe acknowledgements, dispatch gating and removal of main-thread whole-Store saved copies. Worker foundations alone are not completion. All four OpenCode implementation sessions were confirmed running during this round.
 
+
 ## r64 migration preflight review and executable gate inventory
 
 Root updated the independent local release runner to require the candidate's frozen source root, derive standalone QA flags from that source, retain all historical 33 entries, and include the six separately parsed persistence measurement modes. A syntax/inventory preflight confirms 46 standalone suites and 6 performance modes; the two crash-child flags remain explicitly covered by their parent integration tests. The maintained runner is `script/run_review_gate.py`; its help command and Python syntax were verified. A negative hash-preflight test rejected the candidate before copying or executing it. This is harness preflight only, not execution or final release acceptance. [Preflight](evidence/r64-gate-preflight.json).
@@ -1819,6 +1933,7 @@ A first diagnostic composition pulled concurrent persistence API migration and f
 
 All four implementation sessions were verified running. Codex usage was 96% used (4% remaining); no banked reset was consumed.
 
+
 ## r65 topic-move checks passed; live-save alternative rejected
 
 Root froze the corrected topic-move methods/helpers and scoped-command module against the known-good r62 base, excluding concurrent persistence/navigation migration. All 10 scoped-domain tests passed (exit 0), including the completed approved chain's exact prospective signatures and malformed-cycle rejection preserving Store values and pending deltas. The two earlier fixture failures are resolved in this derivation. Crash integration binaries were filtered out by the test selector, so this is not a new crash-test run. Run preimages now capture only identity, input signature and project-plan metadata instead of cloning complete `AgentRun` bodies. Full current-tree migration/Undo integration remains required. [Source](evidence/r65-command-source.json), [tests](evidence/r65-command-tests.json).
@@ -1826,6 +1941,7 @@ Root froze the corrected topic-move methods/helpers and scoped-command module ag
 Root rejected the new `LiveSaveWorker` as the final T14/T15 direction: it duplicates the existing bounded worker with unbounded channels, clones the full replica and calls legacy `storage.save` per group, waits synchronously for command receipts, joins on shutdown, and resets pending count even when requests may remain in flight. Ordinary `persist_if_changed` still saves synchronously. OpenCode was instructed to wire the existing ordered incremental worker with bounded submissions, asynchronous command continuations, workspace/generation guards and correct pending/durable/failed presentation. A parallel compatibility adapter is not completion of the agreed architecture.
 
 Root prepared an optimized native diagnostic source from the installed r59 baseline with only retained-sidebar changes. The isolated bootstrap path is preserved. The release build is running; no application has been replaced or restarted in this round. This derivation enables a closer sidebar-only comparison while current-tree migration continues. [Native source](evidence/r65-native-source.json).
+
 
 ## r66 optimized sidebar candidate prepared; native interaction awaits unlock
 
@@ -1837,6 +1953,7 @@ T14's session became terminal after removing the rejected parallel worker and re
 
 Typed task/result selection is now projected from routes in the active source. Root returned remaining S4–S6 concerns: `install_route` must not silently discard origin/page/overlay state via a new navigation controller after a failed replacement; result ownership must use actual Goal/child relationships rather than infer Goal solely from mismatched task IDs. Final route and restoration acceptance remains open. Checkpoint `6fe95f1` was successfully pushed to the same development branch; screenshots and traces remain local.
 
+
 ## r67 integrated compile correction and live-receipt boundary audit
 
 Root froze 402 files from the current integrated source. The full test command stopped at compilation: `Stateful<Div>.map(observed)` is not a valid builder call in the pinned toolkit. Root corrected the live sidebar overlay to wrap its complete element in `observed(...)`, preserving its child and test identity. The failed full run remains recorded; no integrated test success is inferred from the correction. [Source](evidence/r67-integrated-source.json), [failed full run](evidence/r67-full-tests.json).
@@ -1844,6 +1961,7 @@ Root froze 402 files from the current integrated source. The full test command s
 The live-save admission seam handles ordinary-save receipts before the existing dispatch/status workspace checks. Root added an independent same-generation foreign-workspace receipt regression to a frozen diagnostic, with only the sidebar compile correction in addition. It failed with exit 101 (0 passed, 1 failed): `foreign workspace receipt was accepted as a durable live save`. This reproduces the receipt-validation defect through the adapter boundary. [Regression result](evidence/r67-live-receipt-tests.json). Root also returned a source concern: Returned/Rejected live groups remove their generation-to-epoch mapping, but accepted resubmission does not restore it, so a later receipt may lose its ordinary-save identity. Required checks include exact-intent retry, workspace/effect validation before retirement, backpressure and durable acknowledgement. These are acceptance boundaries for the unfinished live integration, not claims of observed user-data loss. [Diagnostic source](evidence/r67-live-receipt-source.json).
 
 The native manual-unlock handoff remains pending. All four OpenCode sessions were revalidated as running; independent source and offline verification continue without reducing the native acceptance requirement.
+
 
 ## r68 acknowledgement fix and current integration verification
 
@@ -1853,7 +1971,9 @@ The startup selector remains uncalled outside its own tests at this observation.
 
 Codex usage was verified at 98% used, exactly 2% remaining. The user's reset threshold is strictly below 2%, so no reset was consumed. Native interaction remains awaiting the manual-unlock handoff; independent code verification continues.
 
+
 The failed crash test passed when rerun alone with `--exact --test-threads=1` (2.396 seconds), leaving the earlier failure unresolved. Root inspected the retained failed fixture: only the resolution marker remained, with the launch claim absent. Two older leftover failed fixtures had the same marker shape. These observations were returned to T14 for crash-boundary/claim-retirement timing analysis; no assertions were removed and no full-suite success is claimed. [Focused rerun](evidence/r68-crash-focused.json).
+
 
 ## r69 crash-ordering fix and reset threshold
 
@@ -1863,6 +1983,7 @@ The fix still requires explicit release-failure/backpressure coverage: removing 
 
 Computer again reported the Mac locked. Codex usage is now 99% used (1% remaining), meeting the user's strictly-below-2% reset condition. The exact authorized Dec 1 03:56 GMT+8 credit remains available and unused. No consumption action is exposed by available tools, and native UI access is blocked by the lock; root recorded eligibility without claiming consumption or using the other credit. The OpenAI Docs skill was consulted, but official documentation did not establish an alternative banked-reset execution API. Source/testing work continues while manual unlock remains pending.
 
+
 ## r70 retained timeout state and retirement-phase review
 
 Root read the retained r69 timeout fixture without changing it: run 4000 is durably `Blocked`, while both its launch claim and failed-resolution marker remain. This narrows the stalled state but does not by itself prove which transition failed. [Fixture observation](evidence/r70-timeout-fixture.json).
@@ -1871,11 +1992,13 @@ The live retry addition introduces `dispatch_status_durable`, but source review 
 
 The crash parent and child both use a 20-second bound, allowing the parent to kill the child before its terminal diagnostic is emitted. Root requested one early bounded diagnostic snapshot of the pending resolution/receipt phase and adapter state, preserving the existing timeout and assertions. All four OpenCode sessions remain running; `git diff --check` passed. Native unlock and the eligible but unused reset remain pending.
 
+
 ## r71 integrated navigation gate stopped before launch
 
 Root froze 416 current files for independent navigation-context, global-search and sidebar QA. Compilation failed before any candidate was copied or launched: the new retirement struct was missing an import, the retirement retry method held a mutable adapter borrow across `finish_resolution`, and the new sidebar fixture still accessed `scope` as a field rather than calling `scope()`. These were returned to T14/T19 with precise locations. No stale candidate was substituted and no QA pass is claimed. [Source](evidence/r71-integrated-source.json), [gate result](evidence/r71-navigation-checks.json).
 
 OpenCode's sidebar fixture caught brand/scroll alignment drift. Root required geometry checks against the actual identity row, including titlebar clipping and nonzero scroll offsets, rather than merely sharing duplicated position constants between implementation and tests. The installed r65 native diagnostic predates this newer overlay entity/alignment change and is not a final candidate. All four implementation sessions remain running; native unlock and the authorized unused reset remain pending.
+
 
 ## r72 integrated recovery and navigation verification
 
@@ -1883,11 +2006,13 @@ Root independently tested the frozen 418-file r72 source: 673 unit tests passed,
 
 Root returned an additional rerun recovery concern: `retry_status_completion` marks `decision_started` before `finish_resolution`, although preparation, material preparation or admission can fail. Existing-replacement marker removal also ignores enqueue errors. T14 was verified terminal before resuming the same OpenCode session with retry-phase and injected-failure requirements, plus the still-required full live persistence/startup integration. The full standalone QA and persistence performance ledger is now running against the immutable r72 candidate in an isolated copied fixture. Native interaction remains unverified pending the manual-unlock handoff.
 
+
 ## r74 full-gate progress and command scaling review
 
 The independent r72 candidate passed the base, affordance, archived-research and attachment QA entries; the full ledger remains running. [Progress only](evidence/r74-gate-progress.json). T13 reported completion with scoped field inverses and nine agent-run QA checks; root has not promoted this report to full acceptance. Root found repeated full-run-vector lookups in `capture_runs` and `changed_runs`, giving O(K*N) work for K affected runs among N historical runs. T13 was verified terminal, then resumed with single-pass lookup and actual large-history move/Undo measurement requirements, preserving approved result validity and runtime history.
 
 Computer again confirmed that the Mac is locked. The existing manual-unlock handoff remains pending; native scrolling acceptance and reset consumption have not occurred. No blocked or completed goal status is inferred while implementation and offline verification continue.
+
 
 ## r75 independent live-save latency rejection
 
@@ -1895,9 +2020,11 @@ The frozen r72 candidate passed the automation functional QA, but its 43,200-occ
 
 Root also found that the benchmark selects a legacy automation ID instead of entering the typed detail route; its claimed detail frame is not adequate detail-page evidence. T12 received this correction together with an overlay atomicity concern: planning-attempt opening removes existing overlays before validating the new run, while current ownership validation only checks run existence. Required regressions cover missing/foreign runs preserving prior route, overlay and drafts. All four OpenCode implementation sessions were observed running; full offline QA remains in progress.
 
+
 The full r72 offline ledger finished: 51 of 52 process invocations exited zero; `--qa-topic-migration` exited 101 at `topic_qa.rs:574`, where valid project rename failed to close its modal. The failure was returned to T13. [Full ledger](evidence/r75-full-gate.json). Zero process exits remain insufficient for performance acceptance as documented above.
 
 After the user manually unlocked the Mac, Computer accessed the isolated r65 native candidate. It remained visibly on `Starting…` for over 20 seconds; a two-second sample showed the main thread idle in its event loop. A native window zoom immediately exposed All research, suggesting a repaint/invalidation problem. This is evidence against installed r65, not a claim about the newer source. T19 received the observation and current-candidate regression requirement. Native interaction access is restored; the full native matrix remains outstanding. The updated user goal removes the earlier reset clause; no reset was consumed and no reset action is being pursued.
+
 
 ## r76 continuation beyond partial implementation checkpoints
 
@@ -1905,11 +2032,13 @@ Root verified T12 and T14 sessions terminal before resuming those same sessions.
 
 The current icon embedding checker passed with 51 registered icons, and `git diff --check` passed. A same-branch WIP backup preserves current source and evidence; it is not release acceptance. Screenshots, raw traces and logs remain local.
 
+
 ## r77 independent committed-source verification
 
 Root independently ran `cargo test --features qa --quiet` against an exact archive of pushed commit `ed40899`; the command exited zero in 53.661 seconds. [Result](evidence/r76-full-tests.json). This does not replace native/performance acceptance. The topic-migration failure was traced to a fixture with no attached storage, while the scoped rename command correctly requires durable storage. Root prepared an independent derivation of the same commit with only the updated `topic_qa.rs` fixture, retaining existing cancel, invalid-input and valid-save assertions; its guarded QA run is in progress.
 
 T14 again ended with a dependency explanation rather than implementing the known command/form continuation prerequisite. Root verified its terminal state and resumed the same session with an explicit code-first prerequisite assignment. T19 was asked to provide an exact-source optimized isolated candidate after its repaint/geometry regression work; installation and native acceptance remain root-owned.
+
 
 ## r78 topic fixture accepted narrowly; live continuation rejected
 
@@ -1919,6 +2048,7 @@ The new live command implementation submits a prepared delta, then reprepares ag
 
 T19's startup regression manually calls pump ticks and renders frames; root requested real scheduled startup completion without user events in addition. Manual method invocation alone cannot demonstrate the native repaint defect is fixed.
 
+
 ## r79 automation recheck and meaningful performance gating
 
 Root independently ran full automation QA against the frozen `ed40899` plus topic-fixture-only candidate. The SHA-verified binary passed the invalid guard, and automation QA exited zero in 42.412 seconds. [Result](evidence/r79-automation.json). The earlier T13 candidate's legacy planning-overlay failure is not reproduced on this newer integrated derivation; T12 was informed to preserve the working contract.
@@ -1927,11 +2057,13 @@ Root reviewed the command scaling fixture: its 43,200 records are unrelated to t
 
 Root strengthened `script/run_review_gate.py`: a measured synchronous UI save block of at least 50 ms is now `performance_rejected` even if the executable exits zero. Missing/changed timing output requires measurement review. The real 1,336 ms log was replayed through the actual classification code and rejected; script syntax passed. A below-threshold single sample still does not prove p95 responsiveness or native scrolling acceptance.
 
+
 ## r80 persistence ownership handoff after terminal checkpoint
 
 Root verified the previous T14 session terminal. Its code still leaves live activation disabled, form saves reporting success on enqueue, and whole-Store prepared-command comparisons/copies in the prospective live path. These are incomplete requirements, not acceptable performance tradeoffs. Root handed the existing work to a fresh OpenCode session using the same required model and a compact local handoff, covering durable form/command continuations, one bounded writer, startup activation and actual indexed/lazy UI reads. No parallel T14 owner remains active.
 
 T19 received the precise compile issue in its asynchronous startup regression: the `cx` inside a window-update closure is `App`, not the headless context/executor. Scheduled progress must be driven outside that borrow with supported APIs. Current source is not yet accepted as buildable; prior frozen candidates remain separately identified.
+
 
 ## r81 stronger Undo invariants and index-lifetime review
 
@@ -1939,11 +2071,14 @@ Root prepared an isolated derivation of the previously passing r77 candidate, st
 
 The new indexed Undo implementation received another source-review finding: removing a created topic/project shifts vector positions before later deltas use the original index map. Required correction is to defer removals or otherwise preserve stable lookup identities, with a mixed removal/edit regression. Root also required skipping history-index construction for empty run deltas so ordinary title Undo does not scan unrelated history.
 
+
 ## r82 T04 frozen-candidate reacceptance
 
 Root's r81 independent derivation built, passed the invalid-QA guard, and passed the full automation QA with strengthened assertions at five Undo sites. Complete automation definitions, periods/dedupe keys, runtime history and identity floors match both in memory and after reading the database. [Evidence](evidence/r81-undo.json). T04 is reaccepted specifically for this frozen candidate; the ongoing indexed Undo and live persistence work must rerun the same assertions before integrated acceptance. T13 received the exact diagnostic source and instructions to integrate the assertions without overwriting unrelated QA changes.
 
+
 Root started independent scoped-domain tests against a frozen derivation containing the latest domain/index changes and deferred-removal correction. The asynchronous build/test handle remains active. Startup scheduler review also found the proposed always-restart timer lacks a demonstrated pre-fix race: root required a failing reproduction and burst-scheduling coverage, since repeatedly restarting the timer can delay polling. The current keep-alive predicate omits live persistence states; T14/T19 were asked to coordinate receipt draining and follow-up dirty saves without relying on user input.
+
 
 ## r83 affected-history fixture failure and regression quality
 
@@ -1951,17 +2086,22 @@ Root's independent r82 scoped-domain run exited 101: 12 tests passed and the new
 
 Root also reviewed the structural-removal regression: it removes an item appended after the edited survivor, so the survivor's index never shifts. T13 was required to place the removed entity before the survivor and demonstrate failure against the prior indexed implementation. A green test that does not exercise index movement is insufficient evidence for this fix.
 
+
 Root directly corrected the persistent startup-test compilation blocker after assigning narrow ownership: clock advancement and executor draining now occur on `HeadlessAppContext` outside the `App`/window update borrow. All completion/notification/render assertions remain. Function ownership was returned to T19 immediately afterward. Root froze the current integrated source and started `cargo check --features qa`; neither compilation success nor native root-cause resolution is assumed before evidence.
+
 
 ## r84 startup observation boundary
 
 The r83 integrated build and invalid guard succeeded, but keyboard/visual QA exited 101 after 13.946 seconds because `startup-checking` was absent from the observation registry. The startup view has an ID but no observation wrapper, so this failure alone does not establish a native repaint failure. [Result](evidence/r83-keyboard-visual.json). T19 received the exact missing-observation finding. Root prepared a controlled r83 derivation changing only the startup element's observation wrapper; unchanged startup assertions are being rerun.
 
+
 ## r85 asynchronous form-identity boundary review
 
 The new live-save continuation module now distinguishes pending acceptance from durability, but root found that task/request completion clears the current editor/composer unconditionally. Waiting for Store dirty state to clear cannot protect edits still held in input controls or a different form opened while the receipt is pending. T14 received requirements for captured form identity and input revision, preserving later drafts and current navigation on late receipts. Root also required comparing the captured workspace/incarnation rather than overwriting it on receipt, and exact accepted-generation correlation rather than matching an unsubmitted generation-zero continuation by epoch alone. Delayed-ack, changed-form and workspace-switch cases are required before activation.
 
+
 The controlled r84 startup-observation derivation built, passed the invalid-QA guard and passed the full keyboard/visual QA. [Result](evidence/r84-startup-observed.json). This isolates the r83 missing-element failure to test observation. It does not prove the native stale-startup-frame defect is fixed, nor justify the epoch-pump rewrite. T19 was asked to run the same scheduled-completion case with the original boolean pump and retain native verification as a separate requirement.
+
 
 ## r86 corrected affected-history derivation and form-instance identity
 
@@ -1969,21 +2109,28 @@ Root froze the corrected scoped-domain file over the prior isolated domain basel
 
 Live completion now compares task and field values, but root required a distinct editor/composer instance identity as well: closing and reopening the same task with identical values while a receipt is pending must not let that receipt close the new form. New validation errors must likewise survive unrelated late receipts.
 
+
 The r86 independent scoped run passed all 13 tests. The corrected 240-affected-step / 43,200-history case produced 485 deltas and measured move 63.323 ms, Undo 1.146 ms in debug. The unrelated-history case measured move 4.784 ms, Undo 1.137 ms. [Result](evidence/r86-scoped-tests.json). These are domain-level measurements, not native responsiveness acceptance; optimized actual-command scaling and UI evidence remain required. Crash binaries were filtered out by the scoped test selector, so this run does not claim crash-suite coverage.
+
 
 ## r87 same-branch work-in-progress backup
 
 Root is preserving the latest navigation migration, indexed Undo, live-save continuation work and independent r76–r86 evidence in the same development branch. The current live-save integration is still under active implementation and is not claimed buildable or accepted by the earlier frozen-candidate results. Icon embedding passed for 51 registered assets and whitespace validation passed. Screenshots, raw traces, logs and local candidate binaries are excluded from staging.
 
+
 WIP commit `957d268` was pushed successfully to `feature/review-2026-11-08-optimization`. Root started a paired startup derivation from r84 with the original boolean pump restored. Only the epoch-specific method test is removed; the actual scheduled-completion, notification and rendered-state assertions remain unchanged. This comparison tests whether the proposed scheduler change is necessary for the observed headless behavior; native stale-frame reproduction remains separate.
+
 
 ## r88 pending-capacity preflight review
 
 The new command path applies a typed delta to live state before `submit_live_snapshot` checks whether the primary continuation slot is occupied. The outer guard still checks legacy pending fields. Root returned the requirement to reserve/check capacity before any live mutation, or retain each accepted mutation in a bounded continuation queue. A second command rejected during an in-flight primary must leave values, dirty deltas and pending effects unchanged; otherwise it can be persisted later without its intended continuation.
 
+
 The paired r87 candidate with the original boolean pump built and passed the guarded full keyboard/visual QA, retaining the actual scheduled-startup assertions. [Result](evidence/r87-original-pump.json). Both original and epoch-based pumps pass this headless case; it does not reproduce the native stale-frame observation and cannot justify claiming that a scheduler rewrite fixes it. T19 was informed to keep native root-cause investigation separate.
 
+
 Root prepared an optimized isolated native diagnostic from the independently passed r87 original-pump source. Its sole isolation override hardcodes the existing local review bootstrap path. This r88 build is intended to investigate startup/sidebar behavior and is explicitly not the final integrated release candidate. The user's production app and workspace are not restart targets.
+
 
 ## r89 bounded-queue correctness and native diagnostic preparation
 
@@ -1991,7 +2138,9 @@ Root rejected a live follow-up overflow branch that calls `pop_front` when coale
 
 The optimized r88 isolated diagnostic built in 37.36 seconds and passed the invalid-QA guard. [Build evidence](evidence/r88-native-build.json). Root started navigation-context and keyboard/visual QA before any installation; replacement is gated on both results and exact isolated bundle identity/hash/process checks. This diagnostic is for native startup/sidebar investigation, not final release acceptance.
 
+
 The r88 optimized diagnostic passed navigation-context and keyboard/visual QA. Root verified the exact isolated bundle/process/hash, stopped only isolated PID 81259, backed up the signed executable and installed/verified the new signed diagnostic (`55f56309ae92f4251be952ed03c4f3284e7d8c86811e9fd9c53956c393320263`). [Installation evidence](evidence/r88-native-install.json). Computer then reported the Mac locked again; native launch/visual behavior was not observed. A new manual-unlock handoff is pending while code work continues.
+
 
 ## r90 continuation identity and resumed native handoff
 
@@ -1999,39 +2148,52 @@ Root found that follow-up coalescing also replaces distinct `EnqueueNext` occurr
 
 After the user reported unlocking, Computer still returned `Mac is locked` while acquiring the isolated review app. Root requested another unlock retry and continued code review; no native launch or visual acceptance is claimed. A frozen 437-file integration snapshot was captured for an independent compile check.
 
+
 The r90 frozen integration compile check exited 101 on an extra closing delimiter in `EditCommand::guard_reprepare`, `src/domain_command.rs:291`. The current source retained the same delimiter when checked; T14 received the exact failure. [Evidence](evidence/r90-compile.json). Root also rejected the replacement queue design's unbounded per-group completion vector: a group-count limit alone does not bound retained obligations while the worker is unavailable.
+
 
 ## r91 runtime backpressure must preserve completion events
 
 The live queue now has total retained-completion count and byte checks, and the r90 parser delimiter was removed in the current source. Neither change has independent passing integration evidence yet. Root found a new callback boundary to verify: `automation_after_run` returns when auxiliary capacity is full, although its research/recovery callers have already consumed the run completion. T14 must demonstrate eventual reconciliation after capacity is available without user input or restart, exactly-once next-stage effects, and durability before dispatch. Rejecting a fresh user action and deferring an already-received runtime event require different handling.
 
+
 The r91 frozen compile check exited 101 with 12 errors: ten QA field-to-getter migration sites (T12), a missing `NotifyProbe` type (T19), and one stale persistence method signature (T14). Root also identified an unconditional recursive `ResearchTaskPage::steps_layout` getter, a runtime failure that appears only as a compiler warning. Each finding was returned to its owner with source locations and unchanged-assertion requirements. [Evidence](evidence/r91-compile.json). This candidate is not buildable or accepted.
+
 
 ## r92 graceful shutdown requires live persistence ownership
 
 Root reviewed the production application lifecycle before live-path activation. `on_app_quit` calls `shutdown` and returns an empty future; `shutdown` only queues the live save. `PersistenceWorker::Drop` requests shutdown and detaches an unfinished thread, while queued groups may be returned to an owner that is being dropped. These paths do not yet prove durability for accepted edits or final runtime output on normal Quit or workspace switching. T14 received the requirement for a nonblocking graceful-close protocol retaining the worker, lock and receipt owner, and delayed-write save/quit/reopen plus failure tests through the actual app lifecycle. Worker-only shutdown accounting is insufficient evidence.
 
+
 ## r93 same-branch integration backup
 
 Root is backing up the current typed page-state migration, scoped Undo improvements, pending/durable continuation work and r87–r92 review evidence on the existing development branch. The recursive layout getter has been corrected in current source, but the latest independently compiled r91 snapshot failed and the live path remains disabled. This commit is a work-in-progress backup, not a release candidate or full acceptance. Lucide embedding passed for 51 registered icons. Screenshots, traces, local logs and candidate binaries remain excluded.
 
+
 WIP commit `54db910` was pushed to the same development branch. An exact-commit archive compile left one error, the missing startup notification probe. Root added only the four-line local probe type, retained all assertions, and independently compiled that controlled r94 derivation successfully. [Evidence](evidence/r94-compile.json). The first archive attempt failed on the host Python tar API; its accidentally started parent-worktree compile is excluded from acceptance. The successful r94 check uses the verified extracted commit plus the stated sole override. Runtime and release gates remain open.
 
+
 The r94 frozen derivation passed the full test command: 678 unit tests (2 ignored), 8 dispatch crash tests and 3 SQLite v4 crash tests, exit 0, with Node v24.22.2. [Evidence](evidence/r94-tests.json). This covers only commit `54db910` plus the probe definition, not subsequent graceful-shutdown/live activation edits or native behavior.
+
 
 ## r95 live attachment must not fall back to legacy writes
 
 The current worktree now activates live persistence when an incremental workspace attaches. Root found that adapter attachment failure disables the live flag but still retains `Some(storage)`, allowing generic save methods to select their legacy branch for a migrated workspace. T14 must fail closed with explicit unavailable-backend semantics, prove that no legacy write is attempted, and test attach failure after migration followed by mutation, autosave, retry and successful recovery. The startup full-Store `last_saved` clone also remains subject to the original UI-thread allocation requirement. These current-worktree changes are separate from the passing r94 frozen tests.
 
+
 The immutable r94 candidate built and passed the invalid-QA isolation guard, then all five targeted UI checks: navigation-context, keyboard-visual, global-search, topics and automation. [Evidence](evidence/r94-ui-qa.json). The binary hash is recorded with individual exits and durations. These headless checks do not replace native scrolling, screenshots or current live-path activation acceptance.
+
 
 ## r96 live lifecycle and recovery identity review
 
 The r96 frozen integration compiled successfully. [Evidence](evidence/r96-compile.json). Root returned four lifecycle gaps: idle quit may fail to start its drain pump, unavailable live persistence is incorrectly considered clean, repeated window close can bypass an in-flight process-stop worker, and close completion needs an explicit wake/close action. Root also required workspace identity and commit correlation in the new recovery sidecar, explicit write-error handling, and validation of platform quit paths. A controlled r97 derivation adds an independent regression that leaves an old recovery sidecar while replacing the SQLite workspace with a distinct incarnation; startup must reject the stale recovery or preserve replacement values. That test is running.
 
+
 The r97 independent recovery test reproduced cross-workspace overwrite: startup changed the replacement workspace model from `replacement/model` to `old-workspace/model`. The focused run exited 101 with one pass and two failures; the other failure was the existing startup test's outdated `migrated_store` assertion. [Evidence](evidence/r97-recovery.json). T14 received the regression. Root also rejected the new same-incarnation replay test as insufficient: replaying identical values cannot show that a stale recovery preserves a later durable edit to the same entity. That later-edit case is now explicitly required.
 
+
 The r98 independent focused run passed five cases, including the new foreign-incarnation protection, but failed the strengthened later-commit case: stale recovery replaced `Later durable title` with `Committed title`. [Evidence](evidence/r98-recovery.json). T14 received the exact regression. Its subsequent blanket rejection of unequal generations still needs a partial-drain case: when A commits and B remains pending, startup must preserve the newer committed state and recover B. Retaining a stale file for manual inspection alone does not prove normal-quit durability. Computer was checked again and still reported the Mac locked; the existing unlock handoff remains pending.
+
 
 ## r99–r100 native access restored and clean scrolling trace
 
@@ -2039,21 +2201,26 @@ After the user unlocked the Mac, root resumed native inspection of the isolated 
 
 The first 30-second Instruments recording crashed during finalization and could not export; it is excluded. A second 12.768-second trace completed and exported successfully, with all eight gestures inside the window and zero Cargo/rustc samples during recording. It recorded 18 hitches overall: none overlapping the short input-call intervals, nine within explicitly extended 500 ms settling windows. Accessibility observations occurred between gestures, so this does not by itself prove those nine were caused by scrolling. Main-thread samples point to paint, scene replay and bounds-tree insertion; sidebar work was small in this candidate. [Trace analysis](evidence/r100-native-scroll.json). Root restored all four OpenCode sessions after recording, and T19 received the trace plus a requirement to separate idle repaint, scrolling and observation overhead before choosing a fix. Full native smoothness remains unaccepted.
 
+
 ## r101 recovery tail and reader lifecycle review
 
 Root reviewed the new recovery plan and actual history reader integration. Emergency snapshots append a generation-zero dirty tail even when changes are merely awaiting an accepted group's acknowledgement; the stale-plan test must include that actual tail. Root strengthened the same-entity stale recovery test accordingly and the gap test to include an earlier valid group. The r101 capture caught an in-progress duplicate closing statement/brace; a controlled r101b derivation removes only that syntax fragment and retains both stronger tests. It is running independently.
 
 T15 also received requirements to remove the reader's synchronous Drop join, bound request/response queues, correlate page responses with their request/cache generation, and distinguish not-loaded from valid-empty or failed results. Current empty-history/body conditions otherwise re-request indefinitely. Idle opening must start IO polling; pending reads must keep it alive, and settled idle state must stop it. These are acceptance requirements for the actual UI path, not just the indexed database API.
 
+
 The syntax-corrected r101b focused run passed seven cases and failed the dirty-tail stale-recovery case: `Committed title` replaced `Later durable title`. Whole-plan validation now passes the stronger late-gap case. [Evidence](evidence/r101-recovery.json). T14 is adding snapshot identity and an atomic recovery marker; root requires testing the actual capture/recover/commit/new-edit/crash-before-retirement sequence, not inferring success from hand-built accepted-only plans.
 
 Root also inspected the pinned GPUI implementation: native `on_app_quit` futures receive only 200 ms, and windows are cleared before those futures are awaited. T14 received these concrete lifecycle constraints; moving a long drain into the callback alone cannot prove normal platform Quit safety.
+
 
 ## r102 live integration and native evidence backup
 
 Root is preserving the current live activation, graceful-exit/recovery rework, indexed history reader, navigation return-frame work and r94–r101 independent evidence on the existing development branch. The current worktree remains in progress and is not accepted by earlier frozen results. The latest controlled recovery test is still red; native scrolling requires further controls and the full matrix. Icon embedding passed for 51 registered assets and whitespace validation passed. Local screenshots, raw traces, logs and binaries are excluded.
 
+
 WIP commit `23485f3` was pushed successfully to the same branch. An exact archive of that commit passed `cargo check --features qa`; the full test command has started against that fixed source. [Compile evidence](evidence/r102-compile.json). This is not a release acceptance claim.
+
 
 ## r103 full baseline and T13 handoff verification
 
@@ -2061,9 +2228,11 @@ The exact r102 commit passed ordinary compilation but its full test command exit
 
 T13 reported a completed code candidate with scoped-command/Undo scale coverage and ten UI checks. Root is independently checking the fixed source; current live integration and final native acceptance remain separate, so the terminal agent report is not program sign-off.
 
+
 The r103 full command passed 691 unit tests (2 ignored), 8 dispatch crash tests and 3 SQLite v4 crash tests. [Evidence](evidence/r103-tests.json). Root independently reran the actual scoped command/Undo scale test at 3/240/800 affected steps and 43,200 history records: moves 7.247/7.953/16.156 ms and Undo 1.756/1.387/1.577 ms under the test profile. [Scale evidence](evidence/r103-scoped-scale.json). These single samples do not prove UI p95 or native smoothness. The complete standalone QA/performance gate has started from a guarded immutable binary built from the same frozen source.
 
 Root explicitly identified a UI coverage gap: existing QA fixtures attach legacy storage and do not assert the new live backend is active. T14 must add actual TaskApp startup/worker/pending/durable/error/reader/lifecycle coverage. Root also returned a lazy-body race: request identity alone cannot prevent an old disk reply from overwriting newer in-memory runtime output; a body revision/unloaded-state guard is required.
+
 
 ## T14/T15 live persistence and indexed history checkpoint (r104)
 
@@ -2077,6 +2246,7 @@ History pages use indexed keyset queries pinned to a commit watermark; concurren
 
 Agent-reported checkpoint: [T14/T15 evidence](evidence/r104-t14-t15-live-activation.json). Open acceptance gates: TaskApp live pending/durable/failure/retry, stale ACK, backpressure/runtime replay, close/switch safety, and native responsiveness. These core checks are pending verification, not authorized deferrals. Material/project/settings clone preparation may be deferred only after measured user-action blocking establishes that core responsiveness is unaffected. Root independently validates the checkpoint claims below.
 
+
 ## r104 independent integration review
 
 Computer access was reconfirmed on the isolated native review app; the Settings window could be raised and observed. The installed r88 diagnostic remains older than the current source and is not current-version acceptance. OpenCode is preparing a frozen optimized candidate with the same isolated bootstrap override for the next native pass.
@@ -2087,9 +2257,11 @@ A separate r104 fixed source snapshot passed 700 unit tests (2 ignored), 8 dispa
 
 The independent r104 live fixture exited 1 at its second-primary assertion. The QA author has since changed that probe from a generic title command to an exclusive settings form save; root requested deterministic pending-ACK control and a precise distinction between permitted command queueing and form rejection. This early failure leaves later fixture cases untested and is not yet classified as a production defect. [Live fixture evidence](evidence/r104-root-live-qa.json).
 
+
 ## r105 native live-startup rejection
 
 Root verified the complete isolated source manifest, binary hash, signed unknown-QA startup guard and fixture backup before replacing only the native review bundle. The old process was confirmed exited first. The new optimized candidate opened onboarding for an existing configured workspace with `Saving will start when persistence is ready.` Clicking Retry workspace preparation then failed to lock the workspace; `lsof` showed only the same native process holding that lock. [Native evidence](evidence/r105-native-startup.json). This is a core startup/retry blocker, returned to T14 and the live-QA owner. Direct attachment QA is insufficient: acceptance must exercise background preparation, attachment, worker readiness and startup gating together. Navigation and scrolling were not reached in this candidate.
+
 
 ## r106 checkpoint and live-path findings
 
@@ -2099,17 +2271,20 @@ The live-QA implementer measured editor submission at 3,897,869 microseconds wit
 
 The complete r103 gate finished all 52 entries: 49 passed its entry checks, onboarding and simplify exited 101, and automation performance was rejected for the 1,421 ms synchronous UI save despite exit zero. [Full gate evidence](evidence/r103-full-gate.json). The six persistence benchmark modes completed, including the larger fixture; their exit codes alone are not native smoothness or latency acceptance. The later live-persistence entrypoint remains a separate gate.
 
+
 ## r107 native startup fix and independent UI results
 
 The exact 402ff49 optimized isolated build opened the existing configured workspace directly, resolving the observed r105 startup gate. Native result opening/Escape kept the list; Settings no longer showed a false All-research parent. The real workspace-menu Settings entry still had no Back control and Cmd+[ stayed on Settings, so T12 received a focused origin-handling follow-up. [Native evidence](evidence/r107-native.json).
 
 Root independently passed sidebar, navigation-context, simplify, global-search and onboarding on the exact checkpoint. The live fixture failed its performance assertion: editor submission blocked 3,298,293 microseconds with 43,200 empty-body runs (6,560,541 microseconds through durability). [UI evidence](evidence/r106-root-ui.json). The current development workload prevents a p95 claim but does not make a multi-second synchronous block acceptable.
 
+
 ## r108 atomicity repair and native dirty-exit finding
 
 Root briefly interrupted only T14, moved live task-editor/comment primary-capacity checks before their first mutation, and supplied the missing diagnostic timer declaration that blocked shared compilation. T14 was resumed on the same session immediately; T13 continues the live overlap regressions. An independent frozen build is in progress.
 
 Native Dark-theme Quick creation preserved fresh defaults and the Stay path. However, Cancel → Save draft and continue treated asynchronous Pending as failure: the modal stayed open with `The automation draft could not be saved.` while the background still said Saving. Read-only SQLite confirmed the named Draft was already durable and no occurrence or run was added. [Native evidence](evidence/r108-native-draft.json). T12 owns typed dirty-exit integration, T14 the durable-completion hook, and T13 live tests. This is a user-visible core contract failure, not optional visual polish.
+
 
 ## r109 concurrent SQLite lifecycle and review follow-up
 
@@ -2119,11 +2294,14 @@ The live-QA implementer reports that editor submission fell below 50 ms after si
 
 Root also rejected a draft dirty-exit completion implementation that inferred success from global persistence idleness. The requested destination must follow its own durable receipt exactly once; unrelated operations, a failed write or a reopened identical-value form must not trigger a stale exit. T12 owns this integration with T14's receipt hook. Native acceptance remains pending: Computer again reported a locked Mac when retried after the user's unlock reply. No native result is inferred from headless tests.
 
+
 The dirty-exit review also covers ordinary research requests: the former boolean capture API returned true for an accepted but not-yet-durable write. T12 must expose its pending outcome and wait for the matching request receipt, preserving the composer on failure and ignoring stale receipts for a newer form. Root additionally found that an initial optimized ownership lookup omitted the unique legacy input-signature fallback; T14 must preserve that compatibility before its speedup can be accepted.
 
 The dependency candidate changes only rusqlite 0.38.0 → 0.39.0 and libsqlite3-sys 0.36.0 → 0.37.0 in the lockfile. Root verified the downloaded bundled source declares SQLite 3.51.3 and started independent tests from a frozen r108 source with only those dependency changes and the new concurrency regression test. This isolates dependency validation from ongoing navigation edits; it is not final integration acceptance.
 
+
 Root independently passed both SQLite dependency regressions, including actual runtime version 3.51.3. [Dependency test evidence](evidence/r109-root-sqlite-tests.json). More decisively, the unchanged original r108 same-process application suite, rebuilt with only the dependency update, finished in 30.33 seconds instead of hanging for 240 seconds. It advanced through persistence, reopen, pending quit and startup retry to the final performance gate. [Application-level evidence](evidence/r109-root-live-dependency.json). This supports the upstream lock-fix explanation; it is not a deterministic causality proof. The suite still failed because the unchanged baseline editor submission blocked for 3,843,279 microseconds. The performance fix and dirty-exit integration remain unaccepted pending independent tests of their final implementations.
+
 
 ## r110 dependency acceptance boundary
 
@@ -2131,11 +2309,13 @@ Root's dependency-only snapshot passed 700 unit tests (2 ignored), 8 dispatch-ad
 
 The SQLite dependency update is accepted within this tested boundary. It does not accept the ongoing dirty-exit integration or sidebar performance change, and it does not satisfy native scrolling or full-program release gates. Root review required an exact TaskEdit operation token in addition to the automation/research-request tokens, plus a regression exercising dirty-exit Save before reopening an identical form; a direct Save-only test would not cover the navigation bug.
 
+
 ## r111 live review and resumed native inspection
 
 Root's frozen working-tree live suite independently measured the 43,200 empty-run editor save at 16,086 microseconds before the UI update returned (28,435 microseconds through durability), versus the prior multi-second stall. This passes the narrow 50 ms save gate for this sample; it does not prove native scroll smoothness or p95. The suite still failed the task-reopen dirty-exit case and an invalid planning route assertion. [Independent live evidence](evidence/r111-root-live.json). The task completion must mark its exact write durable even when a newer form owns the screen, then drop the stale exit by identity. The planning composer opens in place, so its pending test must not assume opening it changes the underlying route.
 
 Computer became accessible again. Native Quick wizard inspection found step3 calling an unapproved draft Approved plan and exposing Goal/Final report/Replan internals despite describing Quick as having no goal tree or planning. Step2 also shifts the Cancel/footer alignment and exposes dispatch implementation prose. T19 owns the render-only correction; T12 retains save handlers and form identity in the shared file. [Native evidence](evidence/r111-native-quick-wizard.json). Final corrected native acceptance remains open.
+
 
 ## r112 QA compilation repair and scope correction
 
@@ -2143,13 +2323,16 @@ Root briefly interrupted T12, moved `run_until_parked` from the inner GPUI `App`
 
 The planning QA correction must also honor Cancel's contract: `CancelPlanning` closes the composer in place, preserving its underlying project route. A test that expects All research must explicitly request that navigation target; it must not change product behavior to satisfy an incorrect test expectation.
 
+
 ## r113 standalone draft save failure
 
 Root reproduced a second caller of the original pending-save feedback defect. In the isolated native app, changing the saved Quick draft name and clicking standalone Save draft persisted the name in SQLite, but the editor remained open with Saving even after read-only disk confirmation and another native observation. [Native evidence](evidence/r113-native-direct-save.json). The pending `LiveCompletion::Command` path did not perform the same form completion as the synchronous saved path. T12/T14 must carry an exact automation form identity into completion; T13 must cover standalone step1 Save and step3 Save draft & finish, failure/retry, and reopened-form protection. Fixing only the dirty-exit dialog is insufficient.
 
+
 ## r114 completion integration ownership
 
 Root stopped the conflicting parallel edits to standalone automation completion: T12 is intentionally interrupted, while T14 is the sole owner of the save API and receipt integration. T19 continues only wizard rendering. The duplicate temporary receipt structures must be consolidated before the next candidate is built. A further review requires clearing an unconsumed automation-save handoff after command rejection or synchronous completion, so an unrelated later command cannot inherit it. T13 owns the focused regression and the existing live suite. This is an integration repair, not a relaxation of the acceptance criteria.
+
 
 ## T14/T15 live acceptance checkpoint (r114)
 
@@ -2161,11 +2344,13 @@ Automation direct Save draft now has one explicit completion mechanism (`navigat
 
 Full gate: 701 unit passed (2 ignored), 8 dispatch crash, 3 v4 crash, 2 SQLite regression tests. [Evidence](evidence/r114-t14-t15-final-live.json).
 
+
 ## r115 independent save and navigation acceptance
 
 Root froze the integrated source and independently passed all 20 live persistence cases, 701 unit tests (2 ignored), 8 dispatch-crash tests, 2 SQLite regression tests, and 3 v4 crash tests. The 43,200 empty-run editor save returned from synchronous UI work in 17,122 microseconds; this single sample does not establish native scroll smoothness. [Live evidence](evidence/r115-root-live.json), [test evidence](evidence/r115-root-tests.json).
 
 In the isolated native candidate, direct Save draft now closes the editor to the corresponding definition and shows truthful saved feedback. Editing again, selecting All research and choosing Save draft and continue reaches All research without a false failure or stuck Saving state. A read-only database check confirms the changed draft name, Draft status and unchanged occurrence count of five. [Native evidence](evidence/r115-native.json). The candidate excludes the later Quick tooltip wording; remaining theme, compact-window, keyboard and scrolling acceptance is still open.
+
 
 ## r116 native idle control and scrolling rejection
 
@@ -2173,9 +2358,11 @@ Root recorded the same optimized r115 candidate on Dark Settings / Agent & model
 
 This does not pass native smoothness. Rapid reversals were grouped without intermediate AX reads, but a subsequent AX observation and screenshot remain possible overhead; the idle TOC export overlapped the initial capture before gestures. T19 must isolate the remaining rendering/scrolling cost before another candidate is accepted. The recorded intervals are hitch durations, not complete frame durations or calculated FPS. T12 separately owns the real workspace-menu Settings keyboard regression; no speculative key-token normalization is accepted without evidence.
 
+
 ## r117 verified-source checkpoint
 
 The development checkpoint stages the exact r115 source manifest, including its independently passed save and crash regressions. Later Quick tooltip wording and the workspace-menu focus repair remain unstaged for separate acceptance. This checkpoint preserves tested work; it is not release approval. Native scrolling remains rejected by r116 evidence.
+
 
 ### r117 checkpoint publication and review follow-up
 
@@ -2183,13 +2370,16 @@ Checkpoint `aa22024` was pushed to `feature/review-2026-11-08-optimization`. Onl
 
 Root rejected a proposed keyboard regression change that replaced the exact captured-scroll assertion with a mere return-frame presence assertion. The focus repair must retain scroll/filter restoration coverage, using a genuinely overflowing fixture if required. T12 must report failures without weakening the contract. T19 is analyzing the r116 idle/scroll contrast before proposing the next performance change.
 
+
 ## r118 native Light Quick wizard verification
 
 On the isolated r115 candidate, root verified full-width schedule/review steps, stable Cancel/primary anchors, and truthful Quick instruction/expected-answer review. Step3 Save draft & finish returns to the matching draft detail without enabling. The old Enable tooltip still says plan in this installed candidate; the known later wording fix remains outside this native acceptance. [Evidence](evidence/r118-native-quick-light.json). Compact layout and full native-matrix completion remain open.
 
+
 ### r118 performance analysis review
 
 Root rejected the first T19 causal interpretation: the first eight input calls occupied only 565 ms, so nine multi-second hitch clusters cannot be asserted to match nine calls one-to-one. Its stated median interval also contradicted its frequency counts. The report must distinguish call timing, potentially queued native events/inertia, and observations, and provide reproducible statistics. A negative static-logo control would exclude one cause only; it would not prove tool cadence or rule out application/framework pacing. Native smoothness remains unaccepted.
+
 
 ## r119 independent keyboard candidate and statistics correction
 
@@ -2199,11 +2389,13 @@ Root independently calculated a 16.666667 ms median hitch-start interval and a d
 
 Dragging the native window edge did not visibly resize it; compact acceptance was not performed. A subsequent isolated candidate can start at the exact compact dimensions, recorded as a test-only window-bounds override.
 
+
 ## r120 compact native keyboard repair verification
 
 Root built and installed an optimized isolated r119-source candidate with two explicit test-only overrides: isolated workspace bootstrap and initial 1000×680 logical window bounds. Signed/unsigned guards passed; the prior isolated process exited before replacement, and the fixture was backed up. [Install and native evidence](evidence/r120-native-compact.json).
 
 The actual workspace-menu Settings path now responds to Computer `super+bracketleft` and returns to Automations. The same input had failed before the page-focus repair. This narrowly accepts the native keyboard fix without speculative key aliases. Captured-scroll QA remains a separate unresolved gate. Light compact research and automation lists were readable in the fixture; the rest of the compact matrix remains open.
+
 
 ## r121 compact wizard and full-matrix follow-up
 
@@ -2211,27 +2403,33 @@ Root verified the compact Quick wizard across steps, reachable fixed footer cont
 
 The offline r115 matrix also exposed `--qa-task-edit` failing after impact confirmation because `pending_saved_exit` was still present. T14 owns diagnosis and must distinguish a production completion defect from a QA settling gap without removing route/durability assertions. T19 corrected its r116 statistics and withdrew the unsupported gesture-cluster/tool-cadence claims. Exported display-scoped frame tables lack sufficient app-surface attribution, so cause and native smoothness remain unresolved.
 
+
 ## r122 review constraints for remaining regressions
 
 Root rejected setting the automation scroll offset after opening the workspace menu: that bypasses the real journey and can hide a menu-triggered reset. The test must scroll an overflowing list, verify the offset after rendering and menu opening, then verify captured and restored offsets. T12 is also checking whether shrinkable list rows prevent genuine overflow; any layout change needs measured bounds and last-row reachability.
 
 Root also rejected a synchronous completion helper that marked any pending saved exit durable/closed without matching the specific task operation. T14 must preserve token/form ownership, protect unrelated pending exits, and cover the synchronous/no-change paths without weakening the existing impact-confirmation regression. These reviews do not change native keyboard acceptance or waive native smoothness.
 
+
 ## r123 compact Automation results failure
 
 Root observed horizontal overflow on Automation results at 1000×680 logical pixels in Dark. The subtitle and toolbar hint extend offscreen, and each of five result rows places its right-side action outside the viewport. This is an actionable compact-layout failure, not a tool issue. T19 owns responsive results rendering and must assert action visibility/clickability with realistic metadata in both themes/sizes. [Evidence](evidence/r123-compact-results.json).
+
 
 ## r124 independent task-exit verification
 
 Root built a frozen r119 base with only the exact task/form synchronous completion fix. The unknown-QA guard passed; task-edit QA and live-persistence QA both passed independently. This accepts the targeted saved-exit regression, not the subsequent lazy-body or compact-results work. [Evidence](evidence/r124-task-exit.json). Computer access also succeeded again; the installed r120 compact candidate still reproduces the known clipped results actions.
 
+
 ## r125 native Archive view inconsistency
 
 At 1000×680 in Dark, Archive List shows one archived goal and its Restore action. Switching to Board keeps the count at one (Execution 1) but renders “No tasks match this status.” Switching back to List restores the visible row. This is an unresolved view-consistency defect; no restore or deletion was performed. [Evidence](evidence/r125-archive-board.json).
 
+
 ## r126 full frozen-source offline matrix
 
 The r115 candidate completed all 53 inventoried offline entries: 51 passed, two failed, and none timed out. Root cross-checked the terminal ledger. The failures are sidebar caller-scroll capture and task-edit pending exit; the latter has separate passing r124 evidence. All six persistence benchmark modes exited successfully, including the 607.60-second XL case. Exit status alone does not accept latency targets. [Full compact ledger](evidence/r126-offline-matrix.json). Native compact defects and scrolling remain open, and later source changes still require their own verification.
+
 
 ## r127 review boundaries for lazy results and archived cards
 
@@ -2239,13 +2437,16 @@ Root rejected treating an unloaded body as a content-bearing `research_result`: 
 
 For the r125 Archive defect, code inspection identifies the active Execution-group renderer being reused for archived InProgress cards. Archived status intentionally has no execution group, so all such cards disappear. The requested repair preserves archived topic-grouped cards without restoring execution admission or approval controls.
 
+
 ### r127 independent navigation acceptance
 
 The frozen navigation candidate built successfully and passed its unknown-QA guard. Sidebar QA passed in 1.79 seconds and navigation-context QA passed in 21.21 seconds. The sidebar regression now exercises genuine overflow, last-row reachability, the real workspace menu, restored page focus, and exact captured/restored scroll (within one pixel). This separately resolves the remaining r115 offline sidebar failure; it does not accept the unrelated in-progress result/body/Archive changes or native smoothness. [Evidence](evidence/r127-navigation.json).
 
+
 ## r128 performance evidence scope correction
 
 Root rejected interpreting legacy benchmark timings as direct measurements of the current live backend. The persistence harness constructs `new_mock` and calls `attach_storage`, which reaches `attach_loaded_storage_live` with `None`; it measures legacy full load/save. Native startup and live-persistence QA attach the incremental live backend. Legacy stalls remain valid evidence for that path, and offline render risks remain relevant, but the required live-backend p95 is not established by either those legacy numbers or the existing single-sample live timings. T13 must report constructor/backend provenance and the missing live percentile coverage explicitly.
+
 
 ### r128 integrated checkpoint verification
 
@@ -2253,15 +2454,18 @@ Root combined only the verified navigation and exact task/form saved-exit change
 
 The corrected [performance scope report](evidence/r128-performance-scope.json) preserves legacy stalls and explicitly leaves the current live p95 unknown. T13 now owns a separate live performance harness using actual LiveStartup, repeated UI actions and ordered durable acknowledgements. Native scrolling remains an independent failed gate.
 
+
 ## r129 lazy-body and compact-evidence review
 
 Root returned the lazy-body candidate for additional work. Its new multi-step test did not actually establish selected-period completion/status after asynchronous hydration. The unavailable-body notice pointed to a footer retry without demonstrating a matching body-retry action, and the loading copy claimed period completion even for active/failed periods with intermediate results. Root also requested coverage of opening a period when the history pump is idle and of scheduled retry wake-up. No native result-state acceptance is claimed.
 
 Root requested that compact-results QA capture the list before opening a result dialog; dialog-only screenshots cannot validate list typography. Container bounds and accessibility labels alone do not prove visible text wraps or remains readable. Archive membership is being tested separately on a frozen r128-based candidate.
 
+
 ### r129 independent Archive regression result
 
 The frozen archived-card repair built and passed the unknown-QA guard. The actual `--qa-archived-research` suite passed in 8.53 seconds. Root inspected its compact Light screenshot: the archived InProgress goal is present with Archived status, step access and Restore, with no execution/approval control. [Evidence](evidence/r129-archive.json). Native Dark reproduction must still be rerun; T22 remains open until then. An initial unsupported `--qa-archive` invocation was safely rejected and is retained as an invocation error, not a product regression.
+
 
 ## r130 native Archive membership and return-path regression
 
@@ -2269,13 +2473,16 @@ Root installed the guarded optimized r129-based candidate into the isolated test
 
 A subsequent native journey failed: Archive Board → Open 3 steps → Back navigates to the ordinary Topic board with zero active goals instead of returning to Archive. Both the keyboard shortcut and the top Back button reproduce the wrong destination. T12 owns the origin capture/return repair; T22 remains conditional on this cross-task navigation gate. [Evidence](evidence/r130-native-archive.json).
 
+
 ## r132 native compact-results repair rejected
 
 Root built and installed only the proposed results/header and occurrence-row layout changes over r130. At 1000×680 Dark, subtitle and unread hint now fit, but all five result rows still place Open beyond the right viewport edge. Container-width declarations have not fixed the actual action reachability. T19 must repair the bounded parent/row layout and prove full action bounds before another candidate. [Evidence](evidence/r132-native-results.json).
 
+
 ## r131 repeated live-performance gate failure
 
 The new actual-LiveStartup harness completed 30 measured saves per fixture with exact final disk-title validation. For 43,200 periods, command p95 was 5.352 ms, completion-pump p95 85.591 ms, render p95 80.147 ms and aggregate main-thread-work p95 149.467 ms; the 50 ms target failed. These component percentiles are not additive. Concurrent compilation was active, so root requires a confirmed quiet comparison before assigning cause. [Evidence](evidence/r131-live-performance.json). The failure is retained; it is not waived, and the native scrolling gate remains separate.
+
 
 ## r133 controlled-performance preparation and root layout takeover
 
@@ -2283,13 +2490,16 @@ Root requested compute holds from all external sessions. The first quiet preflig
 
 After repeated feature-QA compile failures and the r132 native rejection, root interrupted T19 and took ownership of its compact-results layout and test slice. The new draft keeps the action outside a flexible text column, separates automation identity from wrapping activity/status metadata, and captures the list before testing Open/Escape. This draft is not yet built or accepted; builds wait until the controlled performance run is complete.
 
+
 ### r133 quiet live-performance comparison
 
 With every OpenCode session inactive and no Cargo/rustc for five seconds before the run, root independently reran the same immutable live benchmark binary. The complete monitor observed zero build-process samples. On 43,200 periods, 30 measured saves gave main-thread-work p95 7.234 ms and durable-wall p95 13.237 ms; the measured 50 ms save gate passes in this condition. First-page main-thread-work p95 was 6.766 ms. Both exact final titles matched disk. [Evidence](evidence/r133-quiet-performance.json). The r131 noisy failure remains recorded; this contrast does not waive native scrolling or establish performance for later source changes.
 
+
 ## r134 root compact-layout QA fixture correction
 
 The root-owned layout candidate compiled and passed its unknown-QA guard. Keyboard/visual QA then rejected the new compact-results fixture before layout checks: a Quick definition incorrectly used the multi-step Research template. Root corrected the fixture to use the existing Quick builder and froze r135 for a new run. No layout acceptance is claimed from this failed invocation. [Evidence](evidence/r134-compact-fixture.json).
+
 
 ## Lazy report-body status and UI regression (r129 private r128 slice)
 
@@ -2561,6 +2771,7 @@ Root independently checked the hashes and SQLite integrity of the new ordinary, 
 
 The r186 trace confirms a separate required-size list performance failure: downward and upward gesture windows reach 159.255 ms and 146.249 ms work with 19 and 17 missed refreshes. Their corresponding prepaint phases take 156.072 ms and 144.192 ms. The animation-heavy window p95 near 2.9 ms does not override those input-associated stalls. This ordinary-list path now requires a measured repair as well as the automation-results work.
 
+
 ## r187 native wheel and pagination review
 
 The isolated candidate restored wheel movement and made Load more reachable. Opening Period 981 displayed the matching Skipped result, and Close returned to the list. This is partial functional evidence, not acceptance of T19.
@@ -2573,11 +2784,13 @@ The three measured scroll windows had zero missed refreshes and maximum CPU pres
 
 OpenCode diagnosis identified residual automation ownership in the synthetic ordinary fixture: automation-owned topics and occurrence goal references survived clearing task ownership. Its runs also lack valid input signatures. The observed Todo 0/3 and blank counted board therefore cannot establish a normal ordinary-workspace defect. Preserve the measured stalls as evidence for that hybrid fixture, but re-baseline before attributing them to valid ordinary research. A replacement API-generated fixture is authorized with genuinely derived Done/3-of-3 goals and unrelated paused automation history. Product caching changes remain pending independent review of that baseline. Native dimensions were 1440 by 920 logical pixels (2880 by 1840 screenshot pixels).
 
+
 ## r188 historical long-report native review
 
 On the frozen r187 binary, the 7,700-byte historical report in Period 1000 rendered, scrolled down to Sources and research-step links, scrolled back up, and closed to Automation results. This covers the dark 1440 by 920 reader only. Historical/stale/incomplete labels were visible; this fixture does not prove current-valid report publication.
 
 Performance remains unaccepted: opening recorded 19.58 ms maximum CPU present work and five missed refreshes; downward scrolling recorded 10.82 ms and one missed refresh; upward scrolling recorded 7.37 ms and zero missed refreshes (only one present in that capture window). The longest open draw spent 9.96 ms painting; the downward draw peaked at 7.14 ms, so its 10.82 ms present-work peak must not be misreported as all render/prepaint cost. A separate read-only OpenCode diagnosis is assigned before authorizing a repair. Exact windows and build identity are in `evidence/r188-report-native.json`.
+
 
 ## r189 material and settings functional coverage
 
@@ -2585,21 +2798,25 @@ Native review on the frozen r187 build verified the 24-material grid, scrolling 
 
 Nonblocking T11 follow-up: replace the automatic-publishing full-width toggle button with a switch/checkbox showing explicit On/Off state. Preserve the existing publication disclosure and confirmation; acceptance requires distinguishable states in both themes without hover or color alone. No prerequisite task is required. This follows the approved first-round policy for visual refinements and does not waive scroll or execution gates.
 
+
 ## r190 wheel extent and pagination anchor verified
 
 The independently built final list candidate now moves by multiple rows on large wheel gestures, reaches Load more, and retains the same clipped 00:46 / full 00:45 rows at the same position after appending the next page. Light-theme downward scrolling moves from the header and 00:54 to 00:30; upward scrolling restores the header and 00:54. Dark and light observations use a 1440 by 920 logical window and the isolated 1,000-period fixture. Root independently passed all eleven automation-view tests. This accepts the reproduced wheel extent and pagination-anchor fixes, not the complete T19 matrix.
 
 Opening still recorded 15.995 ms maximum frame-work elapsed time and one missed refresh; the first downward gesture recorded 11.245 ms and one missed refresh. Load more and subsequent recorded gestures had no missed refreshes, with maxima between 4.690 and 7.987 ms. The light upward window contains only one present and is insufficient for a sustained smoothness conclusion. Frame-work elapsed time is not CPU sampling or scan-out latency. Ordinary-workspace fixture verification, reader diagnosis, smaller-window and concurrent-save coverage remain open. See [native evidence](evidence/r190-scroll-native.json) and [focused tests](evidence/r190-focused-list-verification.json).
 
+
 ## r191 integrated unit and integration regression
 
 Root independently passed the current list candidate with 740 QA-enabled unit tests and 13 integration tests; two existing unit tests remain ignored. Default-feature coverage also passed 737 unit tests and two integrations. An initial default run failed only because Node was absent from PATH; the corrected Node 24 environment passed. Original and corrected logs remain local. This supports checkpointing the reviewed virtual-list fix; the standalone 55-entry ledger and outstanding native performance matrix remain required. [Verification](evidence/r191-full-tests.json).
+
 
 ## r192 residual attribution and fixture review
 
 Root independently checked the corrected ordinary fixture's integrity, exact hash, 80 roots, 240 steps, 240 runs, nonempty signatures and absence of ordinary automation/occurrence ownership. This is structural verification, not yet a native Done/board acceptance claim. [Fixture evidence](evidence/r191-ordinary-fixture-verification.json).
 
 The r190 missed open frame spends 15.941 of 15.995 ms drawing (6.176 ms prepaint and 9.080 ms paint). The missed first-scroll frame spends only 4.071 of 11.245 ms drawing; its 7.174 ms residual cannot be called rendering or CPU cost from this trace. Root reviewed and preserved the separate diagnostic binary exposing pre-draw and post-draw timestamps, input dispatch and body hydration markers. It changes only private instrumentation; selection, Markdown and animations remain enabled. Native diagnosis waits for the quiet offline gate to finish. [Instrumentation review](evidence/r192-instrumentation-review.json).
+
 
 ## r193 user-authorized occasional-hitch policy
 
@@ -2610,27 +2827,35 @@ The user explicitly accepts occasional isolated hitches and prioritizes completi
 
 Default/QA-enabled unit and integration gates remain passed. The complete 55-entry ledger is still running. No overall delivery acceptance is claimed.
 
+
 The r191 runner has now independently completed `--qa-live-performance` successfully on frozen commit `a2c2c4d`: both required fixtures and all fourteen per-operation p95 gates pass at 4.695–11.916 ms against the unchanged 50 ms threshold. This closes T14/T15's current-source live-benchmark gap; it does not imply completion of the still-running ledger or remaining native surface coverage. [Current performance evidence](evidence/r193-current-live-performance.json).
+
 
 ## r194 candidate provenance correction
 
 Root found the r191 gate artifact hash exactly matches the retained r181 QA binary. A successful incremental Cargo invocation and a frozen source inventory are insufficient to establish current binary provenance in this reused target directory. Root terminated the r191 runner and its child, preserving all logs. The claimed current-source live pass in r193 is withdrawn; it is historical diagnostic evidence only. The 55-entry ledger must restart on a forced, verified build. The preceding r191 test-process results remain recorded separately; they are not evidence that the copied standalone executable was rebuilt. The user-authorized occasional-hitch policy is unaffected.
 
+
 The forced rebuild completed in 38.12 seconds and produced a new `23240064…` binary. Root verified every current Rust source file against the frozen `a2c2c4d` source inventory before copying the artifact. A new 55-entry run is active; no results are inherited from the rejected binary. [Candidate provenance](evidence/r194-candidate-provenance.json).
+
 
 ## r195 current-candidate automation regression
 
 The verified `23240064…` standalone candidate fails `--qa-automation` at the filtered-results scroll-range assertion. That assertion reads the legacy ScrollHandle extent after the results page moved to ListState. Native scrolling has separate passing evidence, but the full period-to-step-and-return test is not accepted. OpenCode is assigned a bounded QA integration repair preserving actual rendered wheel movement, visible period selection, filter and exact Back/Close scroll restoration. The definition-list ScrollHandle checks remain valid and must not be changed indiscriminately. The frozen ledger continues to collect the remaining results. [Failure and rework contract](evidence/r194-automation-regression.json).
 
+
 The new provenance-valid `23240064…` candidate independently passes the live-performance entry: 30 samples after three warmups on each required fixture, all fourteen p95 values 4.559–18.755 ms against the unchanged 50 ms gate. This replaces the withdrawn attribution rather than reusing its results. The complete ledger still contains the automation QA failure awaiting targeted repair verification. [Verified current measurements](evidence/r195-current-live-performance.json). The bounded remaining work is now tracked in [FIRST_ROUND_REMAINING.md](FIRST_ROUND_REMAINING.md).
+
 
 ## r196 automation regression independently passed
 
 Root built the reviewed QA-only repair and independently passed the entire automation entry on `81c87c20…`. The test now requires at least 20 pixels of actual ListState movement from the 40-pixel wheel event and checks that the navigation ScrollHandle mirrors the list within one pixel. Existing visible-period, exact filter, Back and Close restoration assertions remain. No product source changed. This is the passing replacement for the r194 automation entry; the original failure stays in the frozen ledger. [Replay evidence](evidence/r196-automation-replay.json).
 
+
 ## r197 ordinary List native verification
 
 The corrected fixture now natively displays 80 ordinary goals with visible Done/3-of-3 rows. Dark and light 1440×920 List gestures reach goal01 and return to goal80. This closes the invalid-fixture status ambiguity for the ordinary List. Board horizontal gestures over the column body did not reveal the offscreen Done column; header-target input and nested-axis propagation require diagnosis before assigning a product cause. Resize reached1220×800, not the required1000×680. Neither Board nor compact coverage is accepted. The session overlapped headless functional QA and is not a quiet timing pass. [Native observations](evidence/r197-ordinary-native.json).
+
 
 ## r198 compact native outcomes
 
@@ -2660,17 +2885,20 @@ Root held an isolated SQLite write transaction, changed Dark to System, and scro
 
 Native 1440×920 Light reader passed opening, six-page scrolling to Sources/steps and back to metadata/report start, and Close returning to Automation results. The retained r190 large binary has the same reader code; subsequent product changes only affect result-list mount restoration. Evidence: `evidence/r204-large-light-reader.json`. R3 first-round surface gaps are closed.
 
+
 ## r207 — Native Board discrepancy classified
 
 The corrected private paint-phase observer captured CUA right6 and left6 at physical (1450,550), inside the compact Board. Both delivered ScrollEvent dx=0/dy=0. A down2 control at the same point delivered dy=-1362. The Board had 1198px horizontal extent. Therefore the unchanged columns do not establish a product handling defect. Root independently passed all three real rendered horizontal-event cases in r205. Native physical horizontal scrolling remains **Blocked by tooling**, not Passed; carry it as a named first-round verification deferral. See [capture evidence](evidence/r207-native-board-input.json).
 
 The first probe compile failed E0521 because its listener captured a borrowed ScrollHandle; OpenCode corrected ownership before the successful build and capture. The observer exists only in the private isolated source. No product Board change or production workspace access occurred. The isolated app was quit after capture. Final result-row qualifier acceptance and T20 disposition remain pending.
 
+
 ## r208 — Result-row native transition and test review
 
 The compact Light native check passes: the lazy first result says `Succeeded · saved report`; Open identifies Period 1000 as incomplete, stale and historical; Close returns to the same position with `Succeeded · incomplete`. See [native evidence](evidence/r208-result-row-native.json). The fallback describes durable availability without eager body loading; it does not certify completeness.
 
 Code acceptance is pending. Root rejected an initial test that depended on an ignored local database and silently skipped when absent. The replacement is self-contained, but root's independent affected suite currently has 13 passes and one fixture failure: preparing an Analyze run before its prerequisite is rejected. OpenCode must repair the fixture and preserve the transition assertion. The runtime behavior passed native verification; no failing test is relabeled as passed. Final T20 disposition remains pending.
+
 
 ## r210 — Final affected checks and first-round sign-off
 

@@ -1,0 +1,14 @@
+{
+  "fixture": ".local/native-review/r187-ordinary-valid-1000/workspace/workspace.sqlite3",
+  "sha256": "71e648638339f59495de81188b532f18d9a993618db680f171a1d37c72a776ee",
+  "integrity": "ok",
+  "ordinary_roots": 80,
+  "ordinary_steps": 240,
+  "ordinary_runs": 240,
+  "task_ownership_leaks": 0,
+  "run_ownership_leaks": 0,
+  "empty_signatures": 0,
+  "occurrence_goal_leaks": 0,
+  "periods": 1000,
+  "scope": "Root read-only structural verification. Derived status audit supplied by implementer; native Done/board confirmation remains pending."
+}

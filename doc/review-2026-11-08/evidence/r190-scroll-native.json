@@ -89,5 +89,24 @@
       "p95_frame_work_ms": 5.090375,
       "missed_refreshes": 0
     }
+  ],
+  "missed_frame_attribution": [
+    {
+      "window": "open",
+      "frame_work_ms": 15.995458,
+      "draw_ms": 15.9405,
+      "prepaint_ms": 6.175625,
+      "paint_ms": 9.079958,
+      "note": "Draw dominates this frame; exact phase provenance is the paired previous draw for the same window."
+    },
+    {
+      "window": "down_20",
+      "frame_work_ms": 11.245375,
+      "draw_ms": 4.071125,
+      "prepaint_ms": 2.285375,
+      "paint_ms": 1.199209,
+      "non_draw_elapsed_ms": 7.17425,
+      "note": "Residual is elapsed time outside draw; original trace does not distinguish pre-draw and post-draw or establish CPU causality."
+    }
   ]
 }

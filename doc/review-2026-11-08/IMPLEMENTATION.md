@@ -44,19 +44,19 @@ For the step-count control, the ordinary click/Back path with real filtered, scr
 
 All work for this optimization goal uses `feature/review-2026-11-08-optimization`. The user authorized periodic checkpoint commits and pushes on 2026-11-09 to prevent code loss. Checkpoints may contain unfinished work and failing acceptance cases; they are not releases or task sign-off. Root owns Git staging, commits and pushes. Implementers continue on this same shared branch. Local `.local/` workspaces, binaries, runtime traces and credentials remain excluded by repository policy. Validation screenshots also remain local and must not be committed or pushed. The initial checkpoint predated this screenshot instruction; cleanup commit `e60ab38` removed all 60 tracked review screenshots from the branch tip and added ignore rules, preserving local copies. Earlier Git history was not rewritten.
 
-## Current release gate status (r188)
+## Current release gate status (r191)
 
 The application is **not accepted for delivery**. All 25 tasks remain in scope. Existing focused/native evidence is retained; the following table identifies current release work without treating a changed HEAD as a reason to repeat unrelated accepted flows.
 
 | Gate | Current evidence and remaining work |
 | --- | --- |
-| T01 / T20 integrated regression | The complete r174 ledger retained 52 passes and three nonpasses. Recovery and render failures have independently verified replacements in r179/r181. The r183 runner distinguishes legacy latency diagnostics from required live performance. A final frozen integrated ledger and unit/integration checks remain required. |
+| T01 / T20 integrated regression | The complete r174 ledger retained 52 passes and three nonpasses. Recovery and render failures have independently verified replacements in r179/r181. The r183 runner distinguishes legacy latency diagnostics from required live performance. r191 independently passes 740 QA-enabled unit tests and 13 integrations. The final 55-entry frozen ledger is running; no final ledger pass is claimed. |
 | T14 / T15 live performance | The r179 quiet 500/1,000 run passed all fourteen p95 gates. The later lifecycle integration requires a current-candidate repeat; the 50 ms threshold remains unchanged. |
-| T19 native scrolling | The r187 candidate restores scrolling and pagination access, but large gestures move too little and Load more shifts the visible row anchor. The r188 historical report renders and scrolls, but opening and downward scrolling still miss refresh budgets. Valid ordinary Research fixtures and the remaining surface/size/theme checks are required. |
+| T19 native scrolling | r190 fixes large-gesture displacement and preserves the Load more anchor in both themes. First open and first downward scroll each miss one refresh. The r188 historical report also misses refresh budgets. A corrected ordinary fixture has been delivered and its hash/integrity independently checked; native ordinary and remaining surface/size/theme/concurrent-save checks are required. |
 | Changed lifecycle and archived readers | r180 verifies durable lifecycle completion and replanning; r181 verifies retained archived E20/A21 bodies and restoration to Done. These observed fixes stand, subject to final integrated regression. |
 | First-round follow-ups | Archived upstream-waiting wording, exhaustive rare state combinations and large-history latency stress remain explicitly distinguishable from core acceptance. The final task disposition must list each deferred remainder and its follow-up criterion. |
 
-See [r180 lifecycle evidence](evidence/r180-lifecycle-native.json), [r181 archive/capacity evidence](evidence/r181-native-capacity.json), [r182 dedicated trace](evidence/r182-dedicated-scroll.json), [r183 classifier checks](evidence/r183-runner-classification.json), [r187 wheel/pagination evidence](evidence/r187-scroll-native.json), and [r188 report evidence](evidence/r188-report-native.json). The historical table below is preserved for audit; its superseded runtime and planning blockers are not the current status.
+See [r190 wheel and anchor evidence](evidence/r190-scroll-native.json), [r191 full tests](evidence/r191-full-tests.json), [r180 lifecycle evidence](evidence/r180-lifecycle-native.json), [r181 archive/capacity evidence](evidence/r181-native-capacity.json), [r182 dedicated trace](evidence/r182-dedicated-scroll.json), [r183 classifier checks](evidence/r183-runner-classification.json), [r187 wheel/pagination evidence](evidence/r187-scroll-native.json), and [r188 report evidence](evidence/r188-report-native.json). The historical table below is preserved for audit; its superseded runtime and planning blockers are not the current status.
 
 ## Historical full-scope snapshot (through r151)
 
@@ -2796,3 +2796,10 @@ Opening still recorded 15.995 ms maximum frame-work elapsed time and one missed 
 ## r191 integrated unit and integration regression
 
 Root independently passed the current list candidate with 740 QA-enabled unit tests and 13 integration tests; two existing unit tests remain ignored. Default-feature coverage also passed 737 unit tests and two integrations. An initial default run failed only because Node was absent from PATH; the corrected Node 24 environment passed. Original and corrected logs remain local. This supports checkpointing the reviewed virtual-list fix; the standalone 55-entry ledger and outstanding native performance matrix remain required. [Verification](evidence/r191-full-tests.json).
+
+
+## r192 residual attribution and fixture review
+
+Root independently checked the corrected ordinary fixture's integrity, exact hash, 80 roots, 240 steps, 240 runs, nonempty signatures and absence of ordinary automation/occurrence ownership. This is structural verification, not yet a native Done/board acceptance claim. [Fixture evidence](evidence/r191-ordinary-fixture-verification.json).
+
+The r190 missed open frame spends 15.941 of 15.995 ms drawing (6.176 ms prepaint and 9.080 ms paint). The missed first-scroll frame spends only 4.071 of 11.245 ms drawing; its 7.174 ms residual cannot be called rendering or CPU cost from this trace. Root reviewed and preserved the separate diagnostic binary exposing pre-draw and post-draw timestamps, input dispatch and body hydration markers. It changes only private instrumentation; selection, Markdown and animations remain enabled. Native diagnosis waits for the quiet offline gate to finish. [Instrumentation review](evidence/r192-instrumentation-review.json).

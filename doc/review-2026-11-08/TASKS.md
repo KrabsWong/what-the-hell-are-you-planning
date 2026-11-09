@@ -370,3 +370,5 @@ All findings have a linked disposition: implemented, deliberately accepted with 
 | F21 | T23 | T12/T25 |
 | F22 | T24 | T20 |
 | F23 | T25 | T23 |
+| F24 | T10/T11 | T22/T20 |
+| F25 | T14/T21 | T20 |

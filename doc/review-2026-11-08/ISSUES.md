@@ -202,6 +202,14 @@ In Archive List, clicking the goal's `0/3` chevron changes its direction but sho
 
 Follow-up under **T10/T11/T22**, accepted through **T20**: preserve the product's goal-only collection contract and give the count an explicit, useful action to the goal's Steps page, or remove the disclosure affordance if the count is passive. Do not silently change collection filtering/count semantics. Verify real clicks in All, Project, Topic and Archive lists, correct goal/Steps destination, Back restoring the source filter/layout/scroll, and readable Light/Dark controls. This is a navigation-contract repair; no persistence or execution change is needed. It can proceed independently of dispatch repair after the current modal-focus patch is isolated.
 
+### F25 — Material verification can stop progressing while import reports success (P1, r146 native + code)
+
+On the r143 isolated normal build, choose Add Files on a paused research goal and select a valid local PNG. The file dialog closes and the app says “materials included in the next run,” but Materials remains 0 and the required input-impact review is not shown. A later screenshot was blocked by Mac lock, so the final import outcome is not asserted. [Evidence](evidence/r146-focused-checks.json) preserves this observation and its limits.
+
+`poll_runtime` polls material jobs, but its keep-alive predicate omits `pending_material_job`. `poll_research_io` clears the import receiver and submits verification; with no other active work the pump may stop before that response arrives. Material submissions also lack an explicit pump wake. Independently, the success toast is emitted after submitting verification, before impact approval and durable save.
+
+Repair under **T14/T21**, with **T20** acceptance: include active verification/cleanup work in the bounded runtime lifecycle and wake it from idle. Waiting for user approval must remain quiescent. Show truthful pending/review feedback and reserve saved-success feedback for the durable receipt. Add executor-driven tests that start from idle without manually polling: import → verification → impact review; Cancel → cleanup → idle; confirm → exact disk attachment → saved state. Native acceptance must repeat these flows and verify material count, approval/result impact and restart persistence. This depends on the in-progress runtime wake/receipt repair; it does not require changing the attachment file format or collection-navigation work.
+
 ## Architecture boundaries to extract
 
 | Boundary | Current coupling | Recommended responsibility |

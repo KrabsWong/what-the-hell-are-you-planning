@@ -51,7 +51,7 @@ The application is **not accepted for delivery**. All 25 tasks remain in scope. 
 | Gate | Current evidence and remaining work |
 | --- | --- |
 | T01 / T20 integrated regression | The complete r174 ledger retained 52 passes and three nonpasses. Recovery and render failures have independently verified replacements in r179/r181. The r183 runner distinguishes legacy latency diagnostics from required live performance. r191 independently passes 740 QA-enabled unit tests and 13 integrations. The r191 ledger was terminated after its binary provenance was rejected; a forced build and full replay are required. |
-| T14 / T15 live performance | The r191 numbers cannot establish current-source performance: the copied binary matches the r181 hash. The current-source gap remains open until forced rebuild and replay. |
+| T14 / T15 live performance | The provenance-valid r194 candidate passes all fourteen 500/1,000-record live p95 gates at 4.559–18.755 ms. The withdrawn r193 attribution remains rejected. Full regression and remaining native coverage are separate. |
 | T19 native scrolling | r190 fixes large-gesture displacement and preserves the Load more anchor in both themes. First open and first downward scroll each miss one refresh; under the subsequent user update these are recorded follow-ups, not independent release blockers. The r188 historical report outliers are also retained for follow-up. A corrected ordinary fixture has been delivered and its hash/integrity independently checked; native ordinary and remaining surface/size/theme/concurrent-save checks are required. |
 | Changed lifecycle and archived readers | r180 verifies durable lifecycle completion and replanning; r181 verifies retained archived E20/A21 bodies and restoration to Done. These observed fixes stand, subject to final integrated regression. |
 | First-round follow-ups | Archived upstream-waiting wording, exhaustive rare state combinations and large-history latency stress remain explicitly distinguishable from core acceptance. The final task disposition must list each deferred remainder and its follow-up criterion. |
@@ -2824,3 +2824,16 @@ Root found the r191 gate artifact hash exactly matches the retained r181 QA bina
 
 
 The forced rebuild completed in 38.12 seconds and produced a new `23240064…` binary. Root verified every current Rust source file against the frozen `a2c2c4d` source inventory before copying the artifact. A new 55-entry run is active; no results are inherited from the rejected binary. [Candidate provenance](evidence/r194-candidate-provenance.json).
+
+
+## r195 current-candidate automation regression
+
+The verified `23240064…` standalone candidate fails `--qa-automation` at the filtered-results scroll-range assertion. That assertion reads the legacy ScrollHandle extent after the results page moved to ListState. Native scrolling has separate passing evidence, but the full period-to-step-and-return test is not accepted. OpenCode is assigned a bounded QA integration repair preserving actual rendered wheel movement, visible period selection, filter and exact Back/Close scroll restoration. The definition-list ScrollHandle checks remain valid and must not be changed indiscriminately. The frozen ledger continues to collect the remaining results. [Failure and rework contract](evidence/r194-automation-regression.json).
+
+
+The new provenance-valid `23240064…` candidate independently passes the live-performance entry: 30 samples after three warmups on each required fixture, all fourteen p95 values 4.559–18.755 ms against the unchanged 50 ms gate. This replaces the withdrawn attribution rather than reusing its results. The complete ledger still contains the automation QA failure awaiting targeted repair verification. [Verified current measurements](evidence/r195-current-live-performance.json). The bounded remaining work is now tracked in [FIRST_ROUND_REMAINING.md](FIRST_ROUND_REMAINING.md).
+
+
+## r196 automation regression independently passed
+
+Root built the reviewed QA-only repair and independently passed the entire automation entry on `81c87c20…`. The test now requires at least 20 pixels of actual ListState movement from the 40-pixel wheel event and checks that the navigation ScrollHandle mirrors the list within one pixel. Existing visible-period, exact filter, Back and Close restoration assertions remain. No product source changed. This is the passing replacement for the r194 automation entry; the original failure stays in the frozen ledger. [Replay evidence](evidence/r196-automation-replay.json).

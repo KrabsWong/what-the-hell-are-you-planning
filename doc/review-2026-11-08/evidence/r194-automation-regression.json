@@ -1,0 +1,11 @@
+{
+  "binary_sha256": "23240064da36786f2d288302776e41c9f2d283c0b49acfd46ff9fcd1e7fe0fdb",
+  "entry": "--qa-automation",
+  "exit_code": 101,
+  "log": ".local/opencode-dispatch/r194-final-gate/qa-automation.log",
+  "failure": "src/automation_qa.rs:5265: fixture must provide enough filtered rows to scroll",
+  "review": "The assertion reads automation_ui.scroll.max_offset on the now-virtualized AutomationRuns page. The retained ScrollHandle mirrors offset but is no longer the list extent authority. Native wheel movement is separately verified; the complete automated period drill-down/return regression has not passed.",
+  "rework": "Use real virtual-list extent and rendered wheel displacement. Preserve visible goal-bearing period selection, filter, exact Back/Close offset and target identity assertions. Do not modify the valid definition-list ScrollHandle test in navigation_qa.rs.",
+  "owner": "OpenCode opencode-go/deepseek-v4.1-flash",
+  "status": "Rework assigned; full frozen ledger continues to collect other failures."
+}

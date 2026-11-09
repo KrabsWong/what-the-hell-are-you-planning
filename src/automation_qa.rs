@@ -5240,12 +5240,29 @@ fn ui_interaction(root: &Path) -> PathBuf {
                 cx.notify();
             });
             w.render_frame(cx);
+            let before_list_scroll = app
+                .read(cx)
+                .automation_ui
+                .result_list
+                .scroll_px_offset_for_scrollbar()
+                .y;
             w.scroll(
                 "automation-results-scroll",
                 ScrollDelta::Pixels(point(px(0.), px(-40.))),
                 cx,
             );
             w.render_frame(cx);
+            w.render_frame(cx);
+            let after_list_scroll = app
+                .read(cx)
+                .automation_ui
+                .result_list
+                .scroll_px_offset_for_scrollbar()
+                .y;
+            assert!(
+                after_list_scroll <= before_list_scroll - px(20.),
+                "wheel must move the virtual results list; before={before_list_scroll:?} after={after_list_scroll:?}"
+            );
             let candidates: Vec<u64> = app
                 .read(cx)
                 .store
@@ -5261,10 +5278,6 @@ fn ui_interaction(root: &Path) -> PathBuf {
             assert!(
                 !candidates.is_empty(),
                 "fixture must keep goal-bearing periods for the filtered automation"
-            );
-            assert!(
-                app.read(cx).automation_ui.scroll.max_offset().y > px(0.),
-                "fixture must provide enough filtered rows to scroll"
             );
             let mut chosen = None;
             for _ in 0..60 {
@@ -5291,10 +5304,21 @@ fn ui_interaction(root: &Path) -> PathBuf {
             let latest = chosen.expect(
                 "no visible period with research steps after scrolling the results list",
             );
+            w.render_frame(cx);
             let before_scroll = app.read(cx).automation_ui.scroll.offset().y;
+            let list_scroll = app
+                .read(cx)
+                .automation_ui
+                .result_list
+                .scroll_px_offset_for_scrollbar()
+                .y;
             assert!(
                 before_scroll < px(-10.),
                 "automation results must actually scroll before the drill-down; got {before_scroll:?}"
+            );
+            assert!(
+                (before_scroll - list_scroll).abs() <= px(1.),
+                "ScrollHandle must mirror the virtual list offset; handle={before_scroll:?} list={list_scroll:?}"
             );
             w.render_frame(cx);
             let target = ElementId::Name(format!("open-occurrence-{latest}").into());

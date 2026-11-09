@@ -2855,3 +2855,11 @@ Native 1000×680 verification passed material-grid scrolling in both themes, exa
 ### r200 compact results repair accepted
 
 OpenCode removed a pending zero scroll-restore target that could cancel initial wheel input. Root reviewed the bounded change, independently passed the immediate route-mount wheel test, rebuilt the isolated app, and verified the actual Board-to-results sidebar path at 1000×680. Both themes scroll; Load more and reader Close preserve the visible anchor. See `evidence/r200-compact-results.json`. Board horizontal access remains open.
+
+### r201 compact reader and automation settings
+
+Both themes passed 1000×680 long-report down/up scrolling to Sources and step actions, reader Close, and automation Settings scrolling to its final policy/snapshot content with fixed controls visible. Evidence: `evidence/r201-compact-reader-settings.json`. The fixture intentionally has stale historical input; it is not complete-result correctness evidence. Global result rows omit the incomplete qualifier shown by detail history and the reader; retain this status-consistency follow-up for scope review. Large light reader and concurrent native save remain pending.
+
+### r202 board native discrepancy retained
+
+OpenCode rendered horizontal-event tests pass at header, empty column and card positions. Root retried both native horizontal directions inside the observed Todo card at physical (1450,550), with no visible movement. This is an unresolved native acceptance discrepancy, not a proven product root cause. A bounded private event probe is assigned to distinguish delivered deltas from routing. See `evidence/r202-board-retry.json`.

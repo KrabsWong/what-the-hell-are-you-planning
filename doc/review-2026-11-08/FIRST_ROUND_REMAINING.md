@@ -28,7 +28,7 @@ Status: in progress; not release approval. Authority: [TASKS](TASKS.md). Current
 
 ## R3 — Complete missing compact/theme surfaces
 
-**Current result:** r199 passed compact materials and all settings tabs, including exact task/scroll restoration. Compact results failed r198; the zero-target restore fix passed root tests and r200 native both-theme scrolling, pagination-anchor and reader Close checks. Reader and automation-dialog gaps remain. See [compact evidence](evidence/r199-compact-material-settings.json).
+**Current result:** r199 passed compact materials and all settings tabs, including exact task/scroll restoration. Compact results failed r198; the zero-target restore fix passed root tests and r200 native both-theme scrolling, pagination-anchor and reader Close checks. r201 passed compact reader and automation Settings dialog in both themes. Only the large light-reader check remains in R3. See [compact evidence](evidence/r199-compact-material-settings.json).
 
 **Do:** fill the missing Automation results, long reader, settings and material-page coverage.
 

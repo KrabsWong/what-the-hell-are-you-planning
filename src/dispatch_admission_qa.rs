@@ -74,6 +74,7 @@ pub fn run() {
     pending_admission_defers_fanout_and_cancel_cleans_binding(&root);
     parked_worker_quiesces_and_retry_resumes(&root);
     material_verification_wakes_and_settles(&root);
+    material_confirm_ack_closes_review(&root);
     render_wake_saves_idle_legacy_edit(&root);
     recover_after_ack_before_launch(&root);
     resolve_claimed_ambiguity(&root);
@@ -1055,6 +1056,202 @@ fn material_verification_wakes_and_settles(root: &Path) {
                 && !a.runtime_pump_active()
         }),
         "cancelled material verification must clean up and quiesce"
+    );
+}
+
+fn material_confirm_ack_closes_review(root: &Path) {
+    let directory = root.join("material-confirm");
+    std::fs::create_dir_all(&directory).unwrap();
+    let (mut store, task) = fixture(&directory);
+    if let Some(goal) = store.owning_research_goal(task) {
+        store.task_mut(goal).unwrap().approved_plan = store.goal_plan_signature(goal);
+    }
+    let relative = "attachments/confirm.png";
+    std::fs::create_dir_all(directory.join("attachments")).unwrap();
+    let bytes = b"\x89PNG\r\n\x1a\nconfirm material";
+    std::fs::write(directory.join(relative), bytes).unwrap();
+    let sha = format!("{:x}", Sha256::digest(bytes));
+    let attachment = crate::attachments::Attachment {
+        name: "confirm.png".into(),
+        relative_path: relative.into(),
+        media_type: "image/png".into(),
+        size: bytes.len() as u64,
+        content_sha256: sha.clone(),
+    };
+    let imported = vec![crate::scoped_material::ImportedCopy {
+        relative_path: relative.into(),
+        size: bytes.len() as u64,
+        content_sha256: sha,
+        owner_task: task,
+    }];
+
+    let path = directory.join("workspace.sqlite3");
+    crate::sqlite_v4::SqliteV4::create_seeded(&path, &directory, INCARNATION, &store).unwrap();
+    let storage = Storage::new(path.clone());
+    let _ = storage.upgrade_paths(|_| {});
+    let lock = storage.acquire_lock().unwrap();
+    let mut live = persistence_live::select_existing(&storage).unwrap().unwrap();
+    let loaded = live.migrated_store.take();
+
+    let mut cx = HeadlessAppContext::with_platform(
+        platform::current_platform(true).text_system(),
+        Arc::new(crate::ui_assets::AppAssets),
+        platform::current_headless_renderer,
+    );
+    cx.update(init);
+    let mut entity = None;
+    let window = cx
+        .open_window(size(px(1000.), px(680.)), |w, cx| {
+            let view = cx.new(|cx| TaskApp::new_mock(w, cx));
+            view.update(cx, |a, cx| {
+                a.attach_loaded_storage_live(storage, Ok((lock, loaded)), Some(live), w, cx);
+            });
+            entity = Some(view.clone());
+            cx.new(|cx| base::Root::new(view, w, cx))
+        })
+        .unwrap();
+    let app = entity.unwrap();
+    let handle: AnyWindowHandle = window.into();
+
+    let deadline = Instant::now() + Duration::from_secs(30);
+    let mut ready = false;
+    while Instant::now() < deadline {
+        cx.advance_clock(Duration::from_millis(80));
+        ready = cx.update(|cx| {
+            let a = app.read(cx);
+            a.live_persistence_active() && !a.runtime_pump_active() && !a.live_needs_pump()
+        });
+        if ready {
+            break;
+        }
+        std::thread::sleep(Duration::from_millis(4));
+    }
+    assert!(ready, "live startup did not become idle");
+
+    let submitted = cx
+        .update_window(handle, |_, _, cx| {
+            app.update(cx, |a, cx| {
+                a.submit_material_add_verify_for_root(
+                    directory.clone(),
+                    task,
+                    vec![attachment.clone()],
+                    imported,
+                    cx,
+                )
+            })
+        })
+        .unwrap();
+    assert!(submitted, "material verification must be accepted");
+
+    // Verification completes through the real pump; the impact review must open.
+    let mut review_open = false;
+    let deadline = Instant::now() + Duration::from_secs(20);
+    while Instant::now() < deadline {
+        cx.advance_clock(Duration::from_millis(40));
+        review_open = cx.update(|cx| {
+            let a = app.read(cx);
+            a.pending_material_job.is_none()
+                && a.pending_material_edit.is_some()
+                && a.research_save_impact.is_some()
+        });
+        if review_open {
+            break;
+        }
+        std::thread::sleep(Duration::from_millis(4));
+    }
+    assert!(
+        review_open,
+        "material impact review did not open through the pump"
+    );
+
+    let before = cx.update(|cx| {
+        app.read(cx)
+            .store
+            .task(task)
+            .map(|value| value.attachments.len())
+            .unwrap_or(0)
+    });
+    let confirmed = cx
+        .update_window(handle, |_, w, cx| {
+            app.update(cx, |a, cx| a.confirm_research_save(w, cx))
+        })
+        .unwrap();
+    assert!(
+        !confirmed,
+        "confirmation must return while the durable receipt is pending"
+    );
+
+    // Real ACK path: the pump receives the receipt, then the render applies the
+    // deferred dismissal and focus restore. No manual poll.
+    let mut closed = false;
+    let deadline = Instant::now() + Duration::from_secs(20);
+    while Instant::now() < deadline {
+        cx.advance_clock(Duration::from_millis(40));
+        cx.update_window(handle, |_, w, cx| w.render_frame(cx))
+            .unwrap();
+        closed = cx.update(|cx| {
+            let a = app.read(cx);
+            a.research_save_impact.is_none()
+                && a.pending_material_edit.is_none()
+                && !a.live_needs_pump()
+                && !a.runtime_pump_active()
+                && a.store
+                    .task(task)
+                    .is_some_and(|value| value.attachments.len() == before + 1)
+        });
+        if closed {
+            break;
+        }
+        std::thread::sleep(Duration::from_millis(4));
+    }
+    assert!(
+        closed,
+        "durable material ACK did not dismiss the review and persist one attachment"
+    );
+    let focus_restored = cx
+        .update_window(handle, |_, w, cx| {
+            app.read(cx).focus.contains_focused(w, cx)
+        })
+        .unwrap();
+    assert!(
+        focus_restored,
+        "focus must return to the app after the review closes"
+    );
+
+    let durable = crate::sqlite_v4::SqliteV4::open(&path, &directory, INCARNATION)
+        .unwrap()
+        .load_store()
+        .unwrap();
+    assert_eq!(
+        durable
+            .task(task)
+            .unwrap()
+            .attachments
+            .iter()
+            .filter(|candidate| candidate.relative_path == relative)
+            .count(),
+        1,
+        "the confirmed material must be durable exactly once"
+    );
+
+    // Repeating the action after the modal is gone must not duplicate it.
+    let repeated = cx
+        .update_window(handle, |_, w, cx| {
+            app.update(cx, |a, cx| a.confirm_research_save(w, cx))
+        })
+        .unwrap();
+    assert!(!repeated, "a dismissed review cannot be confirmed again");
+    let after_repeat = cx.update(|cx| {
+        app.read(cx)
+            .store
+            .task(task)
+            .map(|value| value.attachments.len())
+            .unwrap_or(0)
+    });
+    assert_eq!(
+        after_repeat,
+        before + 1,
+        "repeated confirmation must not duplicate the attachment"
     );
 }
 

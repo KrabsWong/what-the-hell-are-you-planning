@@ -85,6 +85,8 @@ pub(crate) enum LiveCompletion {
     Material {
         undo: crate::scoped_material::MaterialUndo,
         message: String,
+        /// Exact reviewed material change this receipt belongs to.
+        identity: crate::material_app::MaterialSaveIdentity,
     },
     MaterialUndo {
         cleanup: Vec<crate::scoped_material::ImportedCopy>,
@@ -182,6 +184,11 @@ pub(crate) struct StoppedRun {
 pub(crate) enum DeferredUiAction {
     ClearComment { task: u64, body: String },
     FinishSavedExit { open: u64 },
+    /// Close the material impact modal only if it still belongs to this exact
+    /// durable receipt, then restore the opener/root focus.
+    CloseMaterialImpact {
+        identity: crate::material_app::MaterialSaveIdentity,
+    },
 }
 
 /// Groups retained outside the worker's ordered acknowledgement window. Kept
@@ -1723,13 +1730,26 @@ impl TaskApp {
                 self.toast = "Comment added".into();
                 self.save_feedback = Some(Ok("Comment added".into()));
             }
-            LiveCompletion::Material { undo, message } => {
-                self.pending_material_edit = None;
+            LiveCompletion::Material {
+                undo,
+                message,
+                identity,
+            } => {
+                if self
+                    .pending_material_edit
+                    .as_ref()
+                    .is_some_and(|pending| pending.prepared.identity() == identity)
+                {
+                    self.pending_material_edit = None;
+                }
                 self.undo_invalidation = None;
                 self.undo.push_material(undo);
                 self.error.clear();
                 self.toast = format!("{message} · Undo is available");
                 self.save_feedback = Some(Ok(message));
+                // Window-dependent dismissal/focus runs on the next render.
+                self.deferred_ui
+                    .push(DeferredUiAction::CloseMaterialImpact { identity });
             }
             LiveCompletion::MaterialUndo { cleanup } => {
                 self.undo_invalidation = None;
@@ -1893,6 +1913,32 @@ impl TaskApp {
                 DeferredUiAction::FinishSavedExit { open } => {
                     self.open_task(open, window, cx);
                     self.finish_saved_exit(window, cx);
+                }
+                DeferredUiAction::CloseMaterialImpact { identity } => {
+                    let matches = self.research_save_impact.as_ref().is_some_and(|pending| {
+                        matches!(
+                            &pending.prepared,
+                            crate::research_input_app::PendingPreparedSave::Materials(prepared)
+                                if prepared.identity() == identity
+                        )
+                    });
+                    if matches {
+                        self.research_save_impact = None;
+                        if self
+                            .pending_material_edit
+                            .as_ref()
+                            .is_some_and(|pending| pending.prepared.identity() == identity)
+                        {
+                            self.pending_material_edit = None;
+                        }
+                        let opener = self.research_save_opener.take();
+                        if let Some(opener) = opener {
+                            window.focus(&opener, cx);
+                        } else {
+                            window.focus(&self.focus, cx);
+                        }
+                        cx.notify();
+                    }
                 }
                 DeferredUiAction::ClearComment { task, body } => {
                     let current = self.comment.read(cx).value().trim().to_string();

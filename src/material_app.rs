@@ -19,11 +19,48 @@ pub(crate) enum PreparedMaterialSave {
     Remove(MaterialRemovePlan),
 }
 
+#[derive(Clone, Debug, PartialEq, Eq)]
+pub(crate) enum MaterialSaveIdentity {
+    Add {
+        task: u64,
+        imported: Vec<(String, u64, String)>,
+    },
+    Remove {
+        task: u64,
+        identity: crate::scoped_material::AttachmentIdentity,
+    },
+}
+
 impl PreparedMaterialSave {
     pub(crate) fn id(&self) -> u64 {
         match self {
             Self::Add(plan) => plan.id(),
             Self::Remove(plan) => plan.id(),
+        }
+    }
+
+    /// Stable identity of this exact reviewed material change. Durable
+    /// completions may only dismiss the review modal they submitted.
+    pub(crate) fn identity(&self) -> MaterialSaveIdentity {
+        match self {
+            Self::Add(plan) => MaterialSaveIdentity::Add {
+                task: plan.id(),
+                imported: plan
+                    .imported()
+                    .iter()
+                    .map(|copy| {
+                        (
+                            copy.relative_path.clone(),
+                            copy.size,
+                            copy.content_sha256.clone(),
+                        )
+                    })
+                    .collect(),
+            },
+            Self::Remove(plan) => MaterialSaveIdentity::Remove {
+                task: plan.id(),
+                identity: plan.target_identity().clone(),
+            },
         }
     }
 
@@ -300,9 +337,11 @@ impl TaskApp {
             PreparedMaterialSave::Add(_) => "Materials added",
             PreparedMaterialSave::Remove(_) => "Material removed",
         };
+        let identity = prepared.identity();
         let completion = crate::live_save_app::LiveCompletion::Material {
             undo: undo.clone(),
             message: message.into(),
+            identity,
         };
         if let Err(error) = self.live_can_accept_primary() {
             self.storage_error = error.clone();

@@ -598,6 +598,17 @@ impl Store {
         )
     }
 
+    /// Archived-history signature, including lazy dependency bodies. Used only
+    /// for presentation freshness; content validation remains strict.
+    pub(crate) fn research_signature_history_present(&self, id: u64) -> Option<String> {
+        self.research_present_signature_checked_mode(
+            id,
+            &mut vec![id],
+            &mut Validation::default(),
+            true,
+        )
+    }
+
     /// Archived-history-only lazy result. Only a durable body still marked lazy
     /// is returned; callers must not assert content quality until hydration.
     pub(crate) fn research_history_result_pending(&self, id: u64) -> Option<&AgentRun> {

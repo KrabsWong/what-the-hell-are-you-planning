@@ -431,7 +431,12 @@ fn present_run_with(
         return present_non_research(run, attempt, step_label);
     };
 
-    let current_signature = store.research_signature_present(run.task_id);
+    let archived = store.task_is_archived(run.task_id);
+    let current_signature = if archived {
+        store.research_signature_history_present(run.task_id)
+    } else {
+        store.research_signature_present(run.task_id)
+    };
     // Preserve the original equality check, including `None` for ordinary
     // research: a newer active Advise with no occurrence is also a regeneration.
     let regenerating = run.status == "Succeeded"
@@ -453,10 +458,20 @@ fn present_run_with(
                     && AttemptStatus::from_run_status(&other.status).is_active()
             }),
         };
-    let current = store
-        .research_result_present(run.task_id)
-        .map(|result| result.id)
-        == Some(run.id)
+    let archived_current = archived
+        && (store
+            .research_history_result(run.task_id)
+            .map(|result| result.id)
+            == Some(run.id)
+            || store
+                .research_history_result_pending(run.task_id)
+                .map(|result| result.id)
+                == Some(run.id));
+    let current = archived_current
+        || store
+            .research_result_present(run.task_id)
+            .map(|result| result.id)
+            == Some(run.id)
         // A regeneration temporarily owns the task's latest run. The previous
         // validated report remains the current reader answer while it runs.
         || (regenerating
@@ -1786,6 +1801,76 @@ mod tests {
             .clone();
         let changed = present_run(&lazy, &changed_run);
         assert!(changed.freshness.stale_input, "changed ancestor input must invalidate");
+        assert!(!changed.freshness.is_current());
+        let _ = std::fs::remove_dir_all(root);
+    }
+
+    #[test]
+    fn archived_intermediate_result_stays_current_before_and_after_lazy_hydration() {
+        let (mut store, goal) = workspace();
+        let root = std::env::temp_dir().join(format!(
+            "planning-r175-archive-presentation-{}-{}",
+            std::process::id(),
+            std::time::SystemTime::now()
+                .duration_since(std::time::UNIX_EPOCH)
+                .unwrap()
+                .as_nanos()
+        ));
+        std::fs::create_dir_all(&root).unwrap();
+        store.project_at_mut(0).unwrap().directory = root.to_string_lossy().into_owned();
+        let steps = store.apply_research_plan(goal, PLAN).unwrap();
+        for step in &steps {
+            add_run(&mut store, *step, None, "Succeeded", "Synthetic evidence");
+            store.set_stage(*step, Stage::Done).unwrap();
+        }
+        store.archive(goal).unwrap();
+        let path = root.join("workspace.sqlite3");
+        let database =
+            crate::sqlite_v4::SqliteV4::create_seeded(&path, &root, 0x52_31_37_35, &store)
+                .unwrap();
+        let mut lazy = database.load_store_lazy().unwrap();
+        let run_id = lazy
+            .runs()
+            .iter()
+            .find(|run| run.task_id == steps[0] && run.status == "Succeeded")
+            .map(|run| run.id)
+            .unwrap();
+        let before = lazy
+            .runs()
+            .iter()
+            .find(|run| run.id == run_id)
+            .unwrap()
+            .clone();
+        let before = present_run(&lazy, &before);
+        assert!(!before.freshness.stale_input);
+        assert!(!before.freshness.historical);
+        assert!(!before.freshness.legacy_contract);
+        assert!(before.freshness.is_current());
+
+        let body = database.body(run_id).unwrap().unwrap();
+        assert!(lazy.hydrate_run_body(run_id, body));
+        let after = lazy
+            .runs()
+            .iter()
+            .find(|run| run.id == run_id)
+            .unwrap()
+            .clone();
+        let after = present_run(&lazy, &after);
+        assert!(!after.freshness.stale_input);
+        assert!(!after.freshness.historical);
+        assert!(!after.freshness.legacy_contract);
+        assert!(after.freshness.is_current());
+        assert_eq!(after.kind, ResultKind::IntermediateEvidence);
+
+        lazy.task_mut(steps[0]).unwrap().description.push_str(" changed scope");
+        let changed = lazy
+            .runs()
+            .iter()
+            .find(|run| run.id == run_id)
+            .unwrap()
+            .clone();
+        let changed = present_run(&lazy, &changed);
+        assert!(changed.freshness.stale_input, "real changed input must remain stale");
         assert!(!changed.freshness.is_current());
         let _ = std::fs::remove_dir_all(root);
     }

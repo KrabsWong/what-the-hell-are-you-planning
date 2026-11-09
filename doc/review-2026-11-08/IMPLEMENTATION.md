@@ -2671,3 +2671,9 @@ Native replanning now progresses from one Generate plan click to one successful 
 On the r174 integrated build, archived G19 List and Board both identify saved results as available and expose no Run action. E20 detail retains Run 25, its body opens, Back returns through E20 to G19, and Restore returns all three steps to Done without new runs. A reader-only classification gap remains: opening archived valid E20 adds stale/legacy labels even though the retained result is valid. OpenCode is repairing that bounded presentation path without changing execution eligibility. See [native archive evidence](evidence/r175-archive-native.json).
 
 The frozen r174 standalone ledger has passed live persistence and live performance and continues through the remaining entries. OpenCode is separately aligning the default performance fixtures and required gates to the user-approved 1,000-record boundary; large stress diagnostics remain available. No task-wide completion is inferred from these partial results.
+
+## r176: archived-reader classification passes independent tests
+
+Root independently passed 732 unit tests (two existing ignored tests) and all 13 integration/crash tests on the frozen two-file archived-reader repair. Archived history now uses the history-aware presentation signature and retained-result lookup; real changed input remains stale. Strict content validation and execution eligibility are unchanged. Native confirmation of this repair remains pending. See [source evidence](evidence/r176-archive-reader-source.json).
+
+On the still-running r174 isolated build, dark theme preserves the completed G19 list and readable final report. View final report opens R22 Run 27 and Back returns to G19 Steps. This verifies the observed route and theme only; it does not accept the pending archived-reader or automation receipt fixes.

@@ -1,0 +1,542 @@
+{
+  "binary_sha256": "23240064da36786f2d288302776e41c9f2d283c0b49acfd46ff9fcd1e7fe0fdb",
+  "guard_exit": 2,
+  "source_hash_note": "Frozen-source inventory; reviewed build manifest is still required to prove binary/source provenance.",
+  "source_root": "/Users/fuxingxing/workspaces/what-the-hell-are-you-planning/.local/opencode-dispatch/r191-frozen-source",
+  "required_separate_crash_tests": {
+    "--qa-dispatch-crash": "dispatch_admission_crash",
+    "--qa-v4-crash": "v4_crash"
+  },
+  "scope": "All standalone offline QA and performance modes; parent crash tests and native matrix require separate evidence.",
+  "automation_perf_scope": {
+    "classification": "legacy attachment-latency diagnostic",
+    "required_periods": 1000,
+    "required_env": "PLANNING_QA_PERIODS=1000",
+    "gating": "Only the correctness exit code gates; the single raw ui_save_block_ms sample is non-gating.",
+    "acceptance_note": "Not p95, not native scrolling and not the production performance gate; required live performance is --qa-live-performance.",
+    "stress_modes": "PLANNING_QA_PERIODS=43200/86400 are explicit non-gating stress diagnostics and are not run by this gate."
+  },
+  "live_performance_scope": {
+    "entry": "--qa-live-performance",
+    "required_fixtures": [
+      "small-500",
+      "required-1000"
+    ],
+    "target_p95_ui_us": 50000,
+    "gating": "Missing entry/source, required fixture, required operation gate or any p95 >= 50 ms fails this ledger closed.",
+    "native_note": "This measures the live TaskApp/save/history path; native scrolling acceptance remains separate."
+  },
+  "results": [
+    {
+      "entry": "--qa",
+      "status": "passed",
+      "exit_code": 0,
+      "elapsed_seconds": 9.12,
+      "log": "qa.log",
+      "alias_note": ""
+    },
+    {
+      "entry": "--qa-affordance",
+      "status": "passed",
+      "exit_code": 0,
+      "elapsed_seconds": 19.56,
+      "log": "qa-affordance.log",
+      "alias_note": ""
+    },
+    {
+      "entry": "--qa-archived-research",
+      "status": "passed",
+      "exit_code": 0,
+      "elapsed_seconds": 9.36,
+      "log": "qa-archived-research.log",
+      "alias_note": ""
+    },
+    {
+      "entry": "--qa-attachments",
+      "status": "passed",
+      "exit_code": 0,
+      "elapsed_seconds": 2.18,
+      "log": "qa-attachments.log",
+      "alias_note": ""
+    },
+    {
+      "entry": "--qa-automation",
+      "status": "failed",
+      "exit_code": 101,
+      "elapsed_seconds": 33.86,
+      "log": "qa-automation.log",
+      "alias_note": ""
+    },
+    {
+      "entry": "--qa-automation-perf",
+      "status": "diagnostic",
+      "exit_code": 0,
+      "elapsed_seconds": 0.65,
+      "log": "qa-automation-perf.log",
+      "alias_note": "",
+      "correctness": "passed",
+      "diagnostic": {
+        "kind": "legacy_attachment_latency",
+        "gating": false,
+        "sample_count": 1,
+        "expected_periods": 1000,
+        "period_scope_matches": true,
+        "acceptance_note": "One synchronous whole-store save-block sample on a legacy QA attachment; it is not p95, not native scrolling and not the production performance gate. Required live performance is --qa-live-performance.",
+        "ui_save_block_ms": 47,
+        "measurement": "available",
+        "fixture_periods": 1000
+      },
+      "ui_save_block_ms": 47,
+      "fixture_periods": 1000
+    },
+    {
+      "entry": "--qa-batch",
+      "status": "passed",
+      "exit_code": 0,
+      "elapsed_seconds": 13.02,
+      "log": "qa-batch.log",
+      "alias_note": ""
+    },
+    {
+      "entry": "--qa-board-scroll",
+      "status": "passed",
+      "exit_code": 0,
+      "elapsed_seconds": 1.8,
+      "log": "qa-board-scroll.log",
+      "alias_note": ""
+    },
+    {
+      "entry": "--qa-board-topics",
+      "status": "passed",
+      "exit_code": 0,
+      "elapsed_seconds": 0.93,
+      "log": "qa-board-topics.log",
+      "alias_note": ""
+    },
+    {
+      "entry": "--qa-brand",
+      "status": "passed",
+      "exit_code": 0,
+      "elapsed_seconds": 0.13,
+      "log": "qa-brand.log",
+      "alias_note": ""
+    },
+    {
+      "entry": "--qa-calendar",
+      "status": "passed",
+      "exit_code": 0,
+      "elapsed_seconds": 0.47,
+      "log": "qa-calendar.log",
+      "alias_note": ""
+    },
+    {
+      "entry": "--qa-command",
+      "status": "passed",
+      "exit_code": 0,
+      "elapsed_seconds": 2.13,
+      "log": "qa-command.log",
+      "alias_note": ""
+    },
+    {
+      "entry": "--qa-concurrency",
+      "status": "passed",
+      "exit_code": 0,
+      "elapsed_seconds": 17.72,
+      "log": "qa-concurrency.log",
+      "alias_note": ""
+    },
+    {
+      "entry": "--qa-dispatch-admission",
+      "status": "passed",
+      "exit_code": 0,
+      "elapsed_seconds": 3.03,
+      "log": "qa-dispatch-admission.log",
+      "alias_note": ""
+    },
+    {
+      "entry": "--qa-display-order",
+      "status": "passed",
+      "exit_code": 0,
+      "elapsed_seconds": 0.27,
+      "log": "qa-display-order.log",
+      "alias_note": ""
+    },
+    {
+      "entry": "--qa-execution-eligibility",
+      "status": "passed",
+      "exit_code": 0,
+      "elapsed_seconds": 5.61,
+      "log": "qa-execution-eligibility.log",
+      "alias_note": ""
+    },
+    {
+      "entry": "--qa-global-search",
+      "status": "passed",
+      "exit_code": 0,
+      "elapsed_seconds": 23.13,
+      "log": "qa-global-search.log",
+      "alias_note": ""
+    },
+    {
+      "entry": "--qa-handoff-progress",
+      "status": "passed",
+      "exit_code": 0,
+      "elapsed_seconds": 3.72,
+      "log": "qa-handoff-progress.log",
+      "alias_note": ""
+    },
+    {
+      "entry": "--qa-header-layout",
+      "status": "passed",
+      "exit_code": 0,
+      "elapsed_seconds": 4.36,
+      "log": "qa-header-layout.log",
+      "alias_note": ""
+    },
+    {
+      "entry": "--qa-intake",
+      "status": "passed",
+      "exit_code": 0,
+      "elapsed_seconds": 8.89,
+      "log": "qa-intake.log",
+      "alias_note": ""
+    },
+    {
+      "entry": "--qa-keyboard-visual",
+      "status": "passed",
+      "exit_code": 0,
+      "elapsed_seconds": 18.93,
+      "log": "qa-keyboard-visual.log",
+      "alias_note": ""
+    },
+    {
+      "entry": "--qa-live-performance",
+      "status": "passed",
+      "exit_code": 0,
+      "elapsed_seconds": 71.69,
+      "log": "qa-live-performance.log",
+      "alias_note": "",
+      "correctness": "passed",
+      "live_performance": {
+        "gating": true,
+        "target_p95_ui_us": 50000,
+        "required_fixtures": [
+          "small-500",
+          "required-1000"
+        ],
+        "required_occurrences": {
+          "small-500": 500,
+          "required-1000": 1000
+        },
+        "required_operations": [
+          "editor",
+          "automation_save_draft",
+          "automation_enable",
+          "automation_pause",
+          "settings",
+          "scoped_task_undo",
+          "history_page"
+        ],
+        "coverage_ok": true,
+        "acceptance_note": "Required live-backend production responsiveness gate: 500- and 1,000-occurrence fixtures, finite nonnegative per-operation p95_us strictly below 50,000. Missing or nonnumeric coverage fails closed.",
+        "fixtures": [
+          {
+            "label": "small-500",
+            "gating": true,
+            "occurrences": 500
+          },
+          {
+            "label": "required-1000",
+            "gating": true,
+            "occurrences": 1000
+          }
+        ]
+      }
+    },
+    {
+      "entry": "--qa-live-persistence",
+      "status": "passed",
+      "exit_code": 0,
+      "elapsed_seconds": 12.86,
+      "log": "qa-live-persistence.log",
+      "alias_note": ""
+    },
+    {
+      "entry": "--qa-navigation-context",
+      "status": "passed",
+      "exit_code": 0,
+      "elapsed_seconds": 22.14,
+      "log": "qa-navigation-context.log",
+      "alias_note": ""
+    },
+    {
+      "entry": "--qa-onboarding",
+      "status": "passed",
+      "exit_code": 0,
+      "elapsed_seconds": 0.78,
+      "log": "qa-onboarding.log",
+      "alias_note": ""
+    },
+    {
+      "entry": "--qa-planning",
+      "status": "passed",
+      "exit_code": 0,
+      "elapsed_seconds": 5.74,
+      "log": "qa-planning.log",
+      "alias_note": ""
+    },
+    {
+      "entry": "--qa-projects",
+      "status": "passed",
+      "exit_code": 0,
+      "elapsed_seconds": 8.92,
+      "log": "qa-projects.log",
+      "alias_note": ""
+    },
+    {
+      "entry": "--qa-publishing",
+      "status": "passed",
+      "exit_code": 0,
+      "elapsed_seconds": 3.65,
+      "log": "qa-publishing.log",
+      "alias_note": ""
+    },
+    {
+      "entry": "--qa-recovery",
+      "status": "passed",
+      "exit_code": 0,
+      "elapsed_seconds": 4.2,
+      "log": "qa-recovery.log",
+      "alias_note": ""
+    },
+    {
+      "entry": "--qa-recovery-scroll",
+      "status": "passed",
+      "exit_code": 0,
+      "elapsed_seconds": 0.6,
+      "log": "qa-recovery-scroll.log",
+      "alias_note": ""
+    },
+    {
+      "entry": "--qa-render-perf",
+      "status": "passed",
+      "exit_code": 0,
+      "elapsed_seconds": 128.35,
+      "log": "qa-render-perf.log",
+      "alias_note": ""
+    },
+    {
+      "entry": "--qa-research",
+      "status": "passed",
+      "exit_code": 0,
+      "elapsed_seconds": 10.28,
+      "log": "qa-research.log",
+      "alias_note": ""
+    },
+    {
+      "entry": "--qa-research-inputs",
+      "status": "passed",
+      "exit_code": 0,
+      "elapsed_seconds": 12.84,
+      "log": "qa-research-inputs.log",
+      "alias_note": ""
+    },
+    {
+      "entry": "--qa-result-layout",
+      "status": "passed",
+      "exit_code": 0,
+      "elapsed_seconds": 5.56,
+      "log": "qa-result-layout.log",
+      "alias_note": ""
+    },
+    {
+      "entry": "--qa-result-presentation",
+      "status": "passed",
+      "exit_code": 0,
+      "elapsed_seconds": 30.38,
+      "log": "qa-result-presentation.log",
+      "alias_note": ""
+    },
+    {
+      "entry": "--qa-retries",
+      "status": "passed",
+      "exit_code": 0,
+      "elapsed_seconds": 0.64,
+      "log": "qa-retries.log",
+      "alias_note": ""
+    },
+    {
+      "entry": "--qa-rich-markdown",
+      "status": "passed",
+      "exit_code": 0,
+      "elapsed_seconds": 7.7,
+      "log": "qa-rich-markdown.log",
+      "alias_note": ""
+    },
+    {
+      "entry": "--qa-set-read",
+      "status": "passed",
+      "exit_code": 0,
+      "elapsed_seconds": 0.43,
+      "log": "qa-set-read.log",
+      "alias_note": ""
+    },
+    {
+      "entry": "--qa-settings",
+      "status": "passed",
+      "exit_code": 0,
+      "elapsed_seconds": 14.39,
+      "log": "qa-settings.log",
+      "alias_note": ""
+    },
+    {
+      "entry": "--qa-sidebar",
+      "status": "passed",
+      "exit_code": 0,
+      "elapsed_seconds": 1.66,
+      "log": "qa-sidebar.log",
+      "alias_note": ""
+    },
+    {
+      "entry": "--qa-simplify",
+      "status": "passed",
+      "exit_code": 0,
+      "elapsed_seconds": 52.09,
+      "log": "qa-simplify.log",
+      "alias_note": ""
+    },
+    {
+      "entry": "--qa-t11",
+      "status": "passed",
+      "exit_code": 0,
+      "elapsed_seconds": 10.47,
+      "log": "qa-t11.log",
+      "alias_note": ""
+    },
+    {
+      "entry": "--qa-task-edit",
+      "status": "passed",
+      "exit_code": 0,
+      "elapsed_seconds": 6.68,
+      "log": "qa-task-edit.log",
+      "alias_note": ""
+    },
+    {
+      "entry": "--qa-topic-actions",
+      "status": "passed",
+      "exit_code": 0,
+      "elapsed_seconds": 0.77,
+      "log": "qa-topic-actions.log",
+      "alias_note": ""
+    },
+    {
+      "entry": "--qa-topic-migration",
+      "status": "passed",
+      "exit_code": 0,
+      "elapsed_seconds": 1.46,
+      "log": "qa-topic-migration.log",
+      "alias_note": ""
+    },
+    {
+      "entry": "--qa-topic-queue",
+      "status": "passed",
+      "exit_code": 0,
+      "elapsed_seconds": 6.13,
+      "log": "qa-topic-queue.log",
+      "alias_note": ""
+    },
+    {
+      "entry": "--qa-topics",
+      "status": "passed",
+      "exit_code": 0,
+      "elapsed_seconds": 2.0,
+      "log": "qa-topics.log",
+      "alias_note": ""
+    },
+    {
+      "entry": "--qa-workflow",
+      "status": "passed",
+      "exit_code": 0,
+      "elapsed_seconds": 2.38,
+      "log": "qa-workflow.log",
+      "alias_note": ""
+    },
+    {
+      "entry": "--qa-workspace",
+      "status": "passed",
+      "exit_code": 0,
+      "elapsed_seconds": 8.1,
+      "log": "qa-workspace.log",
+      "alias_note": ""
+    },
+    {
+      "entry": "--qa-persistence-perf inventory",
+      "status": "passed",
+      "exit_code": 0,
+      "elapsed_seconds": 1.86,
+      "log": "qa-persistence-perf inventory.log",
+      "alias_note": ""
+    },
+    {
+      "entry": "--qa-persistence-perf small",
+      "status": "passed",
+      "exit_code": 0,
+      "elapsed_seconds": 2.72,
+      "log": "qa-persistence-perf small.log",
+      "alias_note": ""
+    },
+    {
+      "entry": "--qa-persistence-perf occ43200",
+      "status": "passed",
+      "exit_code": 0,
+      "elapsed_seconds": 83.62,
+      "log": "qa-persistence-perf occ43200.log",
+      "alias_note": ""
+    },
+    {
+      "entry": "--qa-persistence-perf body-heavy",
+      "status": "passed",
+      "exit_code": 0,
+      "elapsed_seconds": 32.69,
+      "log": "qa-persistence-perf body-heavy.log",
+      "alias_note": ""
+    },
+    {
+      "entry": "--qa-persistence-perf retry-heavy",
+      "status": "passed",
+      "exit_code": 0,
+      "elapsed_seconds": 83.05,
+      "log": "qa-persistence-perf retry-heavy.log",
+      "alias_note": ""
+    },
+    {
+      "entry": "--qa-persistence-perf xl",
+      "status": "passed",
+      "exit_code": 0,
+      "elapsed_seconds": 605.18,
+      "log": "qa-persistence-perf xl.log",
+      "alias_note": ""
+    }
+  ],
+  "summary": {
+    "overall": "failed",
+    "required_entries": 54,
+    "required_passed": 53,
+    "non_gating_diagnostics": [
+      "--qa-automation-perf"
+    ],
+    "gating_failures": [
+      "--qa-automation"
+    ],
+    "automation_perf_latency_gating": false,
+    "live_performance_gating": true
+  },
+  "original_index_sha256": "70f253d95fad1b177bded164d610ef15076ac5db80429aabfa04518a85d717cf",
+  "replacement": {
+    "entry": "--qa-automation",
+    "status": "passed",
+    "evidence": "r196-automation-replay.json",
+    "reason": "Obsolete ScrollHandle extent assertion replaced with actual wheel movement and mirror checks; product source unchanged for replacement."
+  },
+  "effective_offline_disposition": "54 required entries covered by r194 plus r196 targeted replacement; one non-gating diagnostic completed. Native regressions remain open; pending product changes need targeted revalidation."
+}

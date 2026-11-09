@@ -4,6 +4,8 @@ Status: in progress; not release approval. Authority: [TASKS](TASKS.md). Current
 
 ## R1 — Finish current standalone regression
 
+**Current result:** complete for the frozen candidate. The 55-entry ledger finished: 53/54 required entries passed initially; the remaining automation entry passed the independent r196 replay after its obsolete QA assertion was repaired. The diagnostic also completed. See [final ledger](evidence/r199-offline-ledger.json). Subsequent product fixes still need affected checks.
+
 **Do:** complete the frozen 55-entry ledger on the provenance-verified `23240064…` executable, then independently replay any repaired entries.
 
 **How:** retain the r194 runner output and per-entry logs. The automation entry currently fails because its range assertion reads the old ScrollHandle instead of the virtual list. Review the OpenCode QA repair and run the complete automation entry; retain actual wheel displacement, visible period selection, filter, and exact Back/Close restoration assertions. QA-only repairs do not invalidate unrelated passing product paths; product repairs require the affected regressions again.
@@ -14,6 +16,8 @@ Status: in progress; not release approval. Authority: [TASKS](TASKS.md). Current
 
 ## R2 — Verify ordinary List and Board
 
+**Current result:** ordinary List passed both sizes/themes in r197/r198. Board horizontal access failed native verification and remains open.
+
 **Do:** natively inspect the corrected 80-goal / 240-step ordinary fixture with unrelated 1,000-period automation history.
 
 **How:** use the isolated r190 app and `.local/native-review/r187-ordinary-valid-1000`. Confirm Done/3-of-3 rows and a populated Done board. Scroll in both directions, checking item identity and position, in light/dark at 1440×920 and 1000×680. Check horizontal board movement when columns overflow. Do not reuse the invalid r183 hybrid fixture.
@@ -23,6 +27,8 @@ Status: in progress; not release approval. Authority: [TASKS](TASKS.md). Current
 **Dependencies:** R1 measurement activity must be finished before timed native capture. Structural fixture checks already [passed](evidence/r191-ordinary-fixture-verification.json).
 
 ## R3 — Complete missing compact/theme surfaces
+
+**Current result:** r199 passed compact materials and all settings tabs, including exact task/scroll restoration. Compact results failed r198; OpenCode supplied a zero-target restore fix pending native acceptance. Reader and automation-dialog gaps remain. See [compact evidence](evidence/r199-compact-material-settings.json).
 
 **Do:** fill the missing Automation results, long reader, settings and material-page coverage.
 

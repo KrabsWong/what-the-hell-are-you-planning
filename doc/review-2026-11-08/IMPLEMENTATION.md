@@ -2837,3 +2837,17 @@ The new provenance-valid `23240064…` candidate independently passes the live-p
 ## r196 automation regression independently passed
 
 Root built the reviewed QA-only repair and independently passed the entire automation entry on `81c87c20…`. The test now requires at least 20 pixels of actual ListState movement from the 40-pixel wheel event and checks that the navigation ScrollHandle mirrors the list within one pixel. Existing visible-period, exact filter, Back and Close restoration assertions remain. No product source changed. This is the passing replacement for the r194 automation entry; the original failure stays in the frozen ledger. [Replay evidence](evidence/r196-automation-replay.json).
+
+
+## r197 ordinary List native verification
+
+The corrected fixture now natively displays 80 ordinary goals with visible Done/3-of-3 rows. Dark and light 1440×920 List gestures reach goal01 and return to goal80. This closes the invalid-fixture status ambiguity for the ordinary List. Board horizontal gestures over the column body did not reveal the offscreen Done column; header-target input and nested-axis propagation require diagnosis before assigning a product cause. Resize reached1220×800, not the required1000×680. Neither Board nor compact coverage is accepted. The session overlapped headless functional QA and is not a quiet timing pass. [Native observations](evidence/r197-ordinary-native.json).
+
+
+## r198 compact native outcomes
+
+The explicitly sized1000×680 isolated build verifies ordinary List Done/3-of-3 and full bidirectional reachability in both themes. Two functional blockers remain: Board does not move horizontally on either direction over its header, and Automation results opened after the ordinary Board does not move on repeated large downward gestures. Header wrapping and result Open controls remain visible. These are not deferred frame outliers. OpenCode owns separate bounded Board and results-list reproductions using actual rendered wheel events, followed by root native replay. [Compact evidence](evidence/r198-compact-native.json).
+
+### r199 compact materials and settings
+
+Native 1000×680 verification passed material-grid scrolling in both themes, exact attachment24 opening, all three settings tabs with bottom content reachable, and Back restoring TASK-G23 with its material scroll position. Evidence: `evidence/r199-compact-material-settings.json`. Save acknowledgement was visible, but overlapping an in-flight save with scrolling was not established. No timing acceptance is claimed.

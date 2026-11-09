@@ -1,0 +1,52 @@
+{
+  "base_head": "5d56d17bb3fe1c2234afbe15b7530531c70d5e99",
+  "candidate": {
+    "path": ".local/native-review/r167-integration-f9c86f670a3800172e5962f64e318d1c9457febaf9b8fb940946953898605290",
+    "sha256": "c76196f14be14ba151fa7f5d9ea5979fa88d567a50cf9222c159820b916fbf16",
+    "installed_sha256": "f4a5f7a49d82cd1c740b122ecccfd0aef397a5a15516677737db20c5be0a195f"
+  },
+  "scope": "Isolated normal native build containing committed material and scroll corrections; unfinished planning excluded",
+  "material_native": {
+    "initial_reopen_count": 1,
+    "confirm_clicks": 1,
+    "after_confirm_count": 2,
+    "matching_impact_dialog_closed": true,
+    "saved_feedback": "Materials added",
+    "undo_clicks": 1,
+    "after_undo_count": 1,
+    "remaining_attachment_count_sql": 1,
+    "remaining_attachment": [
+      {
+        "name": "r146-material.png",
+        "relative_path": "attachments/56339-1794206321149826000-0.png",
+        "media_type": "image/png",
+        "size": 79,
+        "content_sha256": "553c5d80d1b9ccfae7b5e7b99fa49b25354f68118f3a6418e7c54ba2b644210e"
+      }
+    ],
+    "focus": "No native focus restoration claim; AX reported window focus.",
+    "minor_remainder": "After Undo, the earlier Saved/Materials added banner remained while the footer correctly said Last change undone. Record as nonblocking stale action feedback for later cleanup."
+  },
+  "restart_status_finding": {
+    "native_all_research_G19": "Todo Ready, 0/3",
+    "database_task_stages": {
+      "19": "Done",
+      "20": "Done",
+      "21": "Done",
+      "22": "Done"
+    },
+    "conclusion": "UI/database disagreement after restart; records remain Done. Read-only diagnosis assigned; no data-loss claim."
+  },
+  "planning_gate": {
+    "root_async_exit": 1,
+    "failure": "durable admission currently accepts only DispatchRun commands",
+    "root_cancel_exit": 0,
+    "required_repair": "Support DispatchRequestPlan and DispatchRegeneration in the same durable admission pipeline, with atomic request ownership and retained historical results."
+  },
+  "remaining": [
+    "New planning adapter support and independent combined regression",
+    "Restart status diagnosis",
+    "Quiet large-history scrolling",
+    "Final full release inventory"
+  ]
+}

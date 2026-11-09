@@ -334,7 +334,7 @@ fn dirty_save_waits_for_confirmation(root: &Path) {
         assert!(app.research_save_is_pending(), "review opens before exit");
         assert!(app.draft.is_some(), "the draft is retained during review");
         assert!(
-            app.navigation.after_save_target.is_some(),
+            app.navigation.pending_saved_exit.is_some(),
             "the intended destination is pending, not executed"
         );
         assert_eq!(app.store.task(goal).unwrap().title, "Branched research");
@@ -347,6 +347,7 @@ fn dirty_save_waits_for_confirmation(root: &Path) {
         let app = app.read(cx);
         assert!(app.draft.is_none());
         assert!(app.navigation.after_save_target.is_none());
+        assert!(app.navigation.pending_saved_exit.is_none());
         assert_eq!(app.store.task(goal).unwrap().title, "Dirty exit title");
         let loaded = Storage::new(path.clone()).load().unwrap().unwrap();
         assert_eq!(loaded.task(goal).unwrap().title, "Dirty exit title");

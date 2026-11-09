@@ -50,6 +50,38 @@ impl TaskApp {
     pub(crate) fn begin_workspace_open(&mut self, storage: crate::persistence::Storage, cx: &mut Context<Self>) {
         if self.startup.workspace_pending.is_some() { return; }
         if self.pending_workspace_switch.is_some() { return; }
+        // A clean retry of the current workspace must not unlink/reopen its
+        // database while the old worker/read threads may still be closing it.
+        // Reuse the attached store and only retry the failed worker/reader.
+        let same_open_workspace = self
+            .storage
+            .as_ref()
+            .is_some_and(|current| current.path() == storage.path());
+        if same_open_workspace
+            && self.storage.is_some()
+            && self.live_clean_for_quit()
+        {
+            self.storage_error.clear();
+            if self.live_required && !self.live_persistence_active()
+                && let Err(error) = self.retry_live_attachment(cx)
+            {
+                self.storage_error = error;
+                self.startup.silent = false;
+                cx.notify();
+                return;
+            }
+            if self.history_reader.is_none()
+                && let Some((path, root, incarnation)) = self.live_attach.clone()
+            {
+                self.start_history_reader(&path, &root, incarnation);
+            }
+            self.workspace_required = false;
+            self.startup.required = true;
+            self.startup.silent = true;
+            self.check_startup(cx);
+            cx.notify();
+            return;
+        }
         // A workspace switch owns the old worker until every accepted write is
         // durable. An unavailable incremental backend with dirty edits cannot
         // be abandoned either: that would silently drop the only copy.
@@ -96,6 +128,20 @@ impl TaskApp {
     pub(crate) fn poll_pending_workspace_switch(&mut self, cx: &mut Context<Self>) {
         if self.startup.workspace_pending.is_some() { return; }
         let Some(storage) = self.pending_workspace_switch.take() else { return; };
+        let same_open_workspace = self
+            .storage
+            .as_ref()
+            .is_some_and(|current| current.path() == storage.path());
+        if same_open_workspace && self.storage.is_some() && self.live_clean_for_quit() {
+            // Already attached to this exact workspace; a deferred "switch" was
+            // only waiting for the last write. Do not close/reopen the file.
+            self.pending_workspace_switch = None;
+            self.storage_error.clear();
+            self.toast = "Workspace saved".into();
+            self.workspace_required = false;
+            cx.notify();
+            return;
+        }
         if self.live_required && !self.live_clean_for_quit() {
             if !self.live_persistence_active() {
                 self.pending_workspace_switch = None;

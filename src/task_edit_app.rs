@@ -212,9 +212,16 @@ impl TaskApp {
         }
         let id = prepared.plan.id();
         if self.live_persistence_active() {
+            if let Err(error) = self.live_can_accept_primary() {
+                self.storage_error = error.clone();
+                self.show_save_error(&error, cx);
+                return TaskSaveOutcome::Rejected(error);
+            }
             // Apply the validated write set directly to live state. The plan's
             // fallible checks all run before its first write, so no whole-store
             // clone is needed on the ordinary editing path.
+            #[cfg(feature = "qa")]
+            let apply_started = std::time::Instant::now();
             let applied = match apply_task_edit(&mut self.store, &prepared.plan) {
                 Ok(applied) => applied,
                 Err(error) => {
@@ -230,13 +237,22 @@ impl TaskApp {
                 instance,
                 close_editor: navigate_editor.is_some(),
                 undo: applied.undo.clone(),
+                exit_token: self.navigation.pending_exit_token.take(),
             };
-            if let Err(error) = self.live_can_accept_primary() {
-                self.storage_error = error.clone();
-                self.show_save_error(&error, cx);
-                return TaskSaveOutcome::Rejected(error);
-            }
-            match self.submit_live_snapshot(completion, cx) {
+            #[cfg(feature = "qa")]
+            eprintln!(
+                "LIVE_DIAG apply_us={}",
+                apply_started.elapsed().as_micros()
+            );
+            #[cfg(feature = "qa")]
+            let submit_started = std::time::Instant::now();
+            let submit_result = self.submit_live_snapshot(completion, cx);
+            #[cfg(feature = "qa")]
+            eprintln!(
+                "LIVE_DIAG submit_us={}",
+                submit_started.elapsed().as_micros()
+            );
+            match submit_result {
                 Ok(crate::live_save_app::SaveAcceptance::Pending) => {
                     self.pending_task_edit = None;
                     self.toast = "Saving task…".into();
@@ -283,6 +299,7 @@ impl TaskApp {
             instance,
             close_editor: navigate_editor.is_some(),
             undo: applied.undo.clone(),
+            exit_token: self.navigation.pending_exit_token.take(),
         };
         if let Err(error) = self.live_can_accept_primary() {
             self.storage_error = error.clone();
@@ -477,6 +494,13 @@ impl TaskApp {
         cx: &mut Context<Self>,
     ) -> TaskSaveOutcome {
         if self.live_persistence_active() {
+            if let Err(error) = self.live_can_accept_primary() {
+                self.storage_error = error.clone();
+                self.show_save_error(&error, cx);
+                return TaskSaveOutcome::Rejected(error);
+            }
+            #[cfg(feature = "qa")]
+            let apply_started = std::time::Instant::now();
             let applied = match apply_comment_edit(&mut self.store, &prepared.plan) {
                 Ok(applied) => applied,
                 Err(error) => {
@@ -490,12 +514,20 @@ impl TaskApp {
                 body: prepared.body.clone(),
                 undo: applied.undo.clone(),
             };
-            if let Err(error) = self.live_can_accept_primary() {
-                self.storage_error = error.clone();
-                self.show_save_error(&error, cx);
-                return TaskSaveOutcome::Rejected(error);
-            }
-            match self.submit_live_snapshot(completion, cx) {
+            #[cfg(feature = "qa")]
+            eprintln!(
+                "LIVE_DIAG apply_us={}",
+                apply_started.elapsed().as_micros()
+            );
+            #[cfg(feature = "qa")]
+            let submit_started = std::time::Instant::now();
+            let submit_result = self.submit_live_snapshot(completion, cx);
+            #[cfg(feature = "qa")]
+            eprintln!(
+                "LIVE_DIAG submit_us={}",
+                submit_started.elapsed().as_micros()
+            );
+            match submit_result {
                 Ok(crate::live_save_app::SaveAcceptance::Pending) => {
                     self.pending_comment_edit = None;
                     self.toast = "Saving comment…".into();

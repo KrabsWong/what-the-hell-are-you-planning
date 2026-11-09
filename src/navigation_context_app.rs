@@ -23,8 +23,42 @@ use crate::navigation_context::{
 use crate::settings_views::SettingsTab;
 use gpui_kit::*;
 
-pub(crate) struct NavigationState {
-    /// Last surface opened for each task tab, so Recently opened can reopen a
+/// A dirty-exit Save whose durable receipt is still in flight. The decision
+/// modal stays open; the exact captured exit runs once after acknowledgement.
+#[derive(Clone, Debug, PartialEq)]
+pub(crate) struct PendingSavedExit {
+    pub surface: DecisionSurface,
+    pub target: ExitTarget,
+    pub from_search: bool,
+    pub token: u64,
+    pub durable: bool,
+    pub closed_by_completion: bool,
+    pub form: PendingSavedExitForm,
+}
+
+#[derive(Clone, Debug, PartialEq)]
+pub(crate) enum PendingSavedExitForm {
+    Automation {
+        input: crate::domain_command::AutomationDraftInput,
+        subject: Option<u64>,
+        epoch: u64,
+    },
+    Task {
+        task: u64,
+        instance: Option<crate::live_save_app::TaskEditorInstance>,
+        values: crate::draft_exit::TaskEditValues,
+    },
+    Planning {
+        id: u64,
+        input: String,
+        epoch: u64,
+        destination: Option<crate::navigation_context::CreationMode>,
+        start: bool,
+        replan_source: Option<u64>,
+    },
+}
+
+pub(crate) struct NavigationState {    /// Last surface opened for each task tab, so Recently opened can reopen a
     /// report instead of always dropping to the detail page.
     pub recent_surfaces: BTreeMap<u64, RecentSurface>,
     /// Virtualized task list scroll.
@@ -52,6 +86,13 @@ pub(crate) struct NavigationState {
     pub decision_return_focus: Option<FocusHandle>,
     /// Exit to perform after a T21 impact confirmation and confirmed save.
     pub after_save_target: Option<(ExitTarget, bool)>,
+    /// Dirty-exit Save waiting for the exact durable command receipt.
+    pub pending_saved_exit: Option<PendingSavedExit>,
+    /// Column/save command token handed to the next live command submission.
+    pub pending_exit_token: Option<u64>,
+    /// Standalone automation Save completion handed to the next command.
+    pub pending_automation_save: Option<crate::live_save_app::AutomationSaveReceipt>,
+    next_exit_token: u64,
     /// Selected run while the visible page is not the typed result page (for
     /// example a planning attempt reviewed from Settings). S4 replaces this
     /// payload with a typed overlay; it is never route identity.
@@ -79,6 +120,10 @@ impl NavigationState {
             pending_exit: None,
             decision_return_focus: None,
             after_save_target: None,
+            pending_saved_exit: None,
+            pending_exit_token: None,
+            pending_automation_save: None,
+            next_exit_token: 1,
             selected_attempt: None,
             settings_section: crate::navigation_route::SettingsSection::General,
             steps_layout: crate::app::Layout::Board,
@@ -743,6 +788,7 @@ impl TaskApp {
                 surface,
                 target,
                 error: None,
+                notice: None,
                 from_search: false,
             });
             w.focus(&self.modal_focus, cx);
@@ -762,11 +808,26 @@ impl TaskApp {
         let Some(pending) = self.navigation.pending_exit.take() else {
             return;
         };
+        if self.navigation.pending_saved_exit.is_some() {
+            self.navigation.pending_exit = Some(pending);
+            return;
+        }
+        let exit_token = if decision == ExitDecision::Save {
+            let token = self.navigation.next_exit_token;
+            self.navigation.next_exit_token = self.navigation.next_exit_token.wrapping_add(1);
+            self.navigation.pending_exit_token = Some(token);
+            Some(token)
+        } else {
+            None
+        };
         let save = if decision == ExitDecision::Save {
-            self.save_decision_surface(&pending, w, cx)
+            self.save_decision_surface(&pending, exit_token, w, cx)
         } else {
             SaveOutcome::Saved
         };
+        if !matches!(save, SaveOutcome::Pending(_)) {
+            self.navigation.pending_exit_token = None;
+        }
         if decision != ExitDecision::Save {
             self.navigation.after_save_target = None;
         }
@@ -780,6 +841,14 @@ impl TaskApp {
                     self.discard_surface(&pending.surface, w, cx);
                 }
                 self.execute_exit(target, w, cx);
+            }
+            DecisionOutcome::Pending { message } => {
+                let mut pending = pending;
+                pending.error = None;
+                pending.notice = Some(message);
+                self.navigation.pending_exit = Some(pending);
+                w.focus(&self.modal_focus, cx);
+                cx.notify();
             }
             DecisionOutcome::Stay { error } => {
                 let from_search = pending.from_search;
@@ -812,45 +881,104 @@ impl TaskApp {
     fn save_decision_surface(
         &mut self,
         pending: &PendingExit,
+        exit_token: Option<u64>,
         w: &mut Window,
         cx: &mut Context<Self>,
     ) -> SaveOutcome {
+        self.navigation.pending_saved_exit = None;
         match &pending.surface {
             DecisionSurface::TaskEdit { .. } => {
-                let saved = self.request_save_draft(w, cx);
-                if self.research_save_is_pending() {
-                    // Keep the decision and intended exit pending until T21's
-                    // impact confirmation produces a confirmed durable save.
-                    self.navigation.after_save_target =
-                        Some((pending.target.clone(), pending.from_search));
-                    SaveOutcome::Rejected(
-                        "Review the save impact before leaving this task.".into(),
-                    )
-                } else if saved {
-                    SaveOutcome::Saved
-                } else {
-                    SaveOutcome::Rejected(if self.error.is_empty() {
-                        "The task edit could not be saved. Review the form and retry.".into()
-                    } else {
-                        self.error.clone()
-                    })
+                use crate::task_edit_app::TaskSaveOutcome;
+                match self.request_save_draft_outcome(w, cx) {
+                    TaskSaveOutcome::Saved | TaskSaveOutcome::NoChanges => SaveOutcome::Saved,
+                    TaskSaveOutcome::Saving => {
+                        let instance = self.task_editor_instance();
+                        let Some(values) = self.draft_editor_values(cx) else {
+                            return SaveOutcome::Rejected(
+                                "The task edit closed before it could be acknowledged.".into(),
+                            );
+                        };
+                        self.navigation.pending_saved_exit = Some(PendingSavedExit {
+                            surface: pending.surface.clone(),
+                            target: pending.target.clone(),
+                            from_search: pending.from_search,
+                            token: exit_token.unwrap_or(0),
+                            durable: false,
+                            closed_by_completion: false,
+                            form: PendingSavedExitForm::Task {
+                                task: match &pending.surface {
+                                    DecisionSurface::TaskEdit { task } => *task,
+                                    _ => 0,
+                                },
+                                instance,
+                                values,
+                            },
+                        });
+                        SaveOutcome::Pending(
+                            "Saving… leaving after the task edit is durable.".into(),
+                        )
+                    }
+                    TaskSaveOutcome::PendingImpact => {
+                        let instance = self.task_editor_instance();
+                        let Some(values) = self.draft_editor_values(cx) else {
+                            return SaveOutcome::Rejected(
+                                "The task edit closed before it could be acknowledged.".into(),
+                            );
+                        };
+                        self.navigation.pending_saved_exit = Some(PendingSavedExit {
+                            surface: pending.surface.clone(),
+                            target: pending.target.clone(),
+                            from_search: pending.from_search,
+                            token: exit_token.unwrap_or(0),
+                            durable: false,
+                            closed_by_completion: false,
+                            form: PendingSavedExitForm::Task {
+                                task: match &pending.surface {
+                                    DecisionSurface::TaskEdit { task } => *task,
+                                    _ => 0,
+                                },
+                                instance,
+                                values,
+                            },
+                        });
+                        self.navigation.after_save_target = None;
+                        SaveOutcome::Pending(
+                            "Review the save impact before leaving this task.".into(),
+                        )
+                    }
+                    TaskSaveOutcome::PendingDurability(message)
+                    | TaskSaveOutcome::RetryableFailure(message)
+                    | TaskSaveOutcome::Rejected(message) => SaveOutcome::Rejected(message),
                 }
             }
             DecisionSurface::AutomationWizard { .. } => {
-                if self.save_automation_draft(cx) {
-                    SaveOutcome::Saved
-                } else {
-                    let message = self
-                        .automation_ui
-                        .feedback
-                        .as_ref()
-                        .and_then(|feedback| feedback.as_ref().err())
-                        .cloned()
-                        .or_else(|| (!self.error.is_empty()).then(|| self.error.clone()))
-                        .unwrap_or_else(|| {
-                            "The automation draft could not be saved.".to_string()
+                match self.save_automation_draft_outcome(cx) {
+                    crate::automation_views::AutomationSaveOutcome::Saved => SaveOutcome::Saved,
+                    crate::automation_views::AutomationSaveOutcome::Saving {
+                        input,
+                        subject,
+                        form_epoch,
+                    } => {
+                        self.navigation.pending_saved_exit = Some(PendingSavedExit {
+                            surface: pending.surface.clone(),
+                            target: pending.target.clone(),
+                            from_search: pending.from_search,
+                            token: exit_token.unwrap_or(0),
+                            durable: false,
+                            closed_by_completion: false,
+                            form: PendingSavedExitForm::Automation {
+                                input,
+                                subject,
+                                epoch: form_epoch,
+                            },
                         });
-                    SaveOutcome::Rejected(message)
+                        SaveOutcome::Pending(
+                            "Saving… leaving after the draft is durable.".into(),
+                        )
+                    }
+                    crate::automation_views::AutomationSaveOutcome::Rejected(message) => {
+                        SaveOutcome::Rejected(message)
+                    }
                 }
             }
             DecisionSurface::PlanningRequest => {
@@ -864,14 +992,45 @@ impl TaskApp {
                     CreationMode::ExistingTopic { topic, .. } => Some(topic),
                     _ => None,
                 };
-                if self.capture_research_request(mode.project(), topic, input, false, cx) {
-                    SaveOutcome::Saved
-                } else {
-                    SaveOutcome::Rejected(if self.error.is_empty() {
-                        "The research request could not be saved.".into()
-                    } else {
-                        self.error.clone()
-                    })
+                match self.capture_research_request_outcome(
+                    mode.project(),
+                    topic,
+                    input,
+                    false,
+                    cx,
+                ) {
+                    crate::project_app::RequestCaptureOutcome::Saved => SaveOutcome::Saved,
+                    crate::project_app::RequestCaptureOutcome::Pending {
+                        id,
+                        input,
+                        epoch,
+                        destination,
+                        start,
+                        replan_source,
+                    } => {
+                        self.navigation.pending_saved_exit = Some(PendingSavedExit {
+                            surface: pending.surface.clone(),
+                            target: pending.target.clone(),
+                            from_search: pending.from_search,
+                            token: exit_token.unwrap_or(0),
+                            durable: false,
+                            closed_by_completion: false,
+                            form: PendingSavedExitForm::Planning {
+                                id,
+                                input,
+                                epoch,
+                                destination,
+                                start,
+                                replan_source,
+                            },
+                        });
+                        SaveOutcome::Pending(
+                            "Saving… leaving after the request is durable.".into(),
+                        )
+                    }
+                    crate::project_app::RequestCaptureOutcome::Rejected(message) => {
+                        SaveOutcome::Rejected(message)
+                    }
                 }
             }
         }
@@ -1004,6 +1163,140 @@ impl TaskApp {
             D::GlobalSearch => self.close_global_search(w, cx),
         }
         cx.notify();
+    }
+
+    pub(crate) fn dirty_exit_durable(&mut self, token: u64) {
+        if let Some(ack) = &mut self.navigation.pending_saved_exit
+            && ack.token == token
+        {
+            ack.durable = true;
+        }
+    }
+
+    pub(crate) fn dirty_exit_form_closed(
+        &mut self,
+        instance: Option<crate::live_save_app::TaskEditorInstance>,
+    ) {
+        if let Some(ack) = &mut self.navigation.pending_saved_exit
+            && matches!(
+                &ack.form,
+                PendingSavedExitForm::Task {
+                    instance: expected,
+                    ..
+                } if expected == &instance
+            )
+        {
+            ack.closed_by_completion = true;
+        }
+    }
+
+    pub(crate) fn dirty_exit_failed(
+        &mut self,
+        token: u64,
+        reason: String,
+        cx: &mut Context<Self>,
+    ) {
+        let matches = self
+            .navigation
+            .pending_saved_exit
+            .as_ref()
+            .is_some_and(|ack| ack.token == token);
+        if !matches {
+            return;
+        }
+        self.navigation.pending_saved_exit = None;
+        if let Some(pending) = &mut self.navigation.pending_exit {
+            pending.notice = None;
+            pending.error = Some(format!(
+                "The save could not be completed: {reason}. Review and retry."
+            ));
+        }
+        cx.notify();
+    }
+
+    /// Poll a dirty-exit Save that is waiting for its exact durable receipt.
+    /// A failed write keeps the decision modal and makes Save retryable. A
+    /// newer/reopened form is preserved and the late exit is dropped.
+    pub(crate) fn poll_pending_saved_exit(
+        &mut self,
+        w: &mut Window,
+        cx: &mut Context<Self>,
+    ) -> bool {
+        let Some(ack) = self.navigation.pending_saved_exit.take() else {
+            return false;
+        };
+        if !ack.durable {
+            self.navigation.pending_saved_exit = Some(ack);
+            return false;
+        }
+        let same_form = match &ack.form {
+            PendingSavedExitForm::Automation {
+                input,
+                subject,
+                epoch,
+            } => {
+                let input_matches = self.automation_ui.creating
+                    && self.automation_ui.form_epoch == *epoch
+                    && self
+                        .automation_draft_input(cx)
+                        .ok()
+                        .as_ref()
+                        .is_some_and(|current| current == input);
+                let subject_exists =
+                    subject.is_none_or(|id| self.store.automation(id).is_some());
+                input_matches && subject_exists
+            }
+            PendingSavedExitForm::Task {
+                task: _,
+                instance,
+                values,
+            } => {
+                if self.task_editor_instance() == *instance {
+                    self.draft_editor_values(cx).as_ref() == Some(values)
+                } else {
+                    // Only this exact completion may have closed the captured
+                    // editor. A newer/reopened form is never approved by task
+                    // existence alone.
+                    ack.closed_by_completion && self.draft.is_none()
+                }
+            }
+            PendingSavedExitForm::Planning {
+                id,
+                input,
+                epoch,
+                destination,
+                replan_source,
+                ..
+            } => {
+                let same_epoch = self.planning_form_epoch == *epoch;
+                if self.planning_destination.is_some() {
+                    same_epoch
+                        && self.planning_destination == *destination
+                        && self.planning_replan_source == *replan_source
+                        && self.project_brief.read(cx).value().trim() == input.trim()
+                } else {
+                    same_epoch
+                        && self
+                            .store
+                            .research_requests()
+                            .iter()
+                            .any(|request| request.id == *id)
+                }
+            }
+        };
+        if !same_form {
+            // The user reopened or edited a newer form; never close it.
+            self.navigation.pending_exit = None;
+            cx.notify();
+            return true;
+        }
+        self.navigation.pending_exit = None;
+        self.discard_surface(&ack.surface, w, cx);
+        if ack.from_search {
+            self.close_global_search(w, cx);
+        }
+        self.execute_exit(ack.target, w, cx);
+        true
     }
 
     /// Resume the exit that was waiting for T21's impact confirmation and a
@@ -1172,6 +1465,7 @@ impl TaskApp {
                 surface,
                 target: ExitTarget::Navigate(target),
                 error: None,
+                notice: None,
                 from_search: true,
             });
             w.focus(&self.modal_focus, cx);

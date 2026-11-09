@@ -50,15 +50,33 @@ impl TaskApp {
         window: &mut Window,
         cx: &mut Context<Self>,
     ) -> bool {
+        matches!(
+            self.request_save_draft_outcome(window, cx),
+            crate::task_edit_app::TaskSaveOutcome::Saved
+        )
+    }
+
+    /// Typed save result used by the dirty-exit decision so a genuine pending
+    /// receipt is not reported as a rejection.
+    pub(crate) fn request_save_draft_outcome(
+        &mut self,
+        window: &mut Window,
+        cx: &mut Context<Self>,
+    ) -> crate::task_edit_app::TaskSaveOutcome {
+        use crate::task_edit_app::TaskSaveOutcome;
         if self.research_save_impact.is_some() {
-            return false;
+            return TaskSaveOutcome::Rejected(
+                "Review the pending save impact first.".into(),
+            );
         }
         self.pending_task_edit = None;
+        #[cfg(feature = "qa")]
+        let prepare_started = std::time::Instant::now();
         let prepared = match self.prepare_task_editor_save(cx) {
             Ok(prepared) => prepared,
             Err(error) => {
-                self.show_save_error(error, cx);
-                return false;
+                self.show_save_error(error.clone(), cx);
+                return TaskSaveOutcome::Rejected(error);
             }
         };
         if let Some(impact) = prepared.plan.impact().cloned()
@@ -73,10 +91,22 @@ impl TaskApp {
             });
             window.focus(&self.dialog_first_focus, cx);
             cx.notify();
-            return false;
+            return TaskSaveOutcome::PendingImpact;
         }
-        self.commit_prepared_task_edit(prepared, window, cx)
-            .is_saved()
+        #[cfg(feature = "qa")]
+        eprintln!(
+            "LIVE_DIAG prepare_us={}",
+            prepare_started.elapsed().as_micros()
+        );
+        #[cfg(feature = "qa")]
+        let commit_started = std::time::Instant::now();
+        let outcome = self.commit_prepared_task_edit(prepared, window, cx);
+        #[cfg(feature = "qa")]
+        eprintln!(
+            "LIVE_DIAG commit_us={}",
+            commit_started.elapsed().as_micros()
+        );
+        outcome
     }
 
     /// Confirm the reviewed impact. A changed graph, approval, field or runtime
@@ -341,6 +371,11 @@ impl TaskApp {
         if self.research_save_impact.take().is_some() {
             self.pending_task_edit = None;
             self.pending_comment_edit = None;
+            self.navigation.pending_saved_exit = None;
+            self.navigation.pending_exit_token = None;
+            if let Some(pending) = &mut self.navigation.pending_exit {
+                pending.notice = None;
+            }
             if material_review {
                 self.cancel_pending_material(cx);
             }

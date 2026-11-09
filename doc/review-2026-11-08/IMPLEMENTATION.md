@@ -25,8 +25,8 @@ All 25 tasks remain in scope. Accepted means the reviewed candidate met its task
 | T11 | Restore consistent action affordances and visual hierarchy | Accepted in reviewed working-tree candidate; integration/release gates remain |
 | T12 | Extract a typed navigation controller | Pure S1 independently accepted (28 tests); live typed-authority migration active with explicit result ownership and save-outcome policies; not accepted |
 | T13 | Extract domain commands and scoped undo | S3b/S3c and S3d material task-edit QA independently pass (r27); remaining material cases, settings/context/archive and final snapshot removal pending |
-| T14 | Move persistence off the UI thread with ordered acknowledgements | Production startup now selects/migrates v4 and attaches the single ordered worker; typed form/command/runtime continuations, generation/epoch/workspace correlation, recovery plans and graceful quit/close implemented. Live TaskApp QA and native performance acceptance remain with the dedicated QA owner. |
-| T15 | Add incremental writes and indexed history queries | Startup hydrates without report bodies; an off-thread indexed page reader drives automation history paging with watermark invalidation; bodies load on demand with a revision guard. Migration/backup/WAL tests remain accepted; full UI/performance gate pending. |
+| T14 | Move persistence off the UI thread with ordered acknowledgements | Live path implemented and passing 20/20 dedicated live cases (startup/migration, pending/durable/retry, dirty exits, standalone automation save, quit/reopen). 43,200-run editor synchronous UI work measured at 15.1 ms. Native release matrix remains T19/T20. |
+| T15 | Add incremental writes and indexed history queries | Startup hydrates without bodies; indexed page reader with watermark invalidation and 2.5 ms first 43,200 page; lazy bodies guard against stale replies. Migration/backup/WAL tests accepted; native scrolling/perf release evidence remains T19/T20. |
 | T16 | Unify temporal ordering and harden schedule arithmetic | Accepted in reviewed working-tree candidate; integration/release gates remain |
 | T17 | Reconcile current product/design/workflow documentation | Scoped documentation reconciliation dispatched; independent review and final behavior reconciliation pending |
 | T18 | Make unattended capability guarantees accurate | Accepted in reviewed working-tree candidate; integration/release gates remain |
@@ -2243,3 +2243,57 @@ Root independently passed both SQLite dependency regressions, including actual r
 Root's dependency-only snapshot passed 700 unit tests (2 ignored), 8 dispatch-admission crash tests, 3 v4 crash tests and the final 2 SQLite regression tests. The concurrent database passed integrity checking and contained exactly 214 expected rows. The first unit invocation lacked Node on PATH; the documented rerun used the installed Node v24.22.2 and passed without code changes. [Independent validation](evidence/r110-root-dependency-validation.json).
 
 The SQLite dependency update is accepted within this tested boundary. It does not accept the ongoing dirty-exit integration or sidebar performance change, and it does not satisfy native scrolling or full-program release gates. Root review required an exact TaskEdit operation token in addition to the automation/research-request tokens, plus a regression exercising dirty-exit Save before reopening an identical form; a direct Save-only test would not cover the navigation bug.
+
+
+## r111 live review and resumed native inspection
+
+Root's frozen working-tree live suite independently measured the 43,200 empty-run editor save at 16,086 microseconds before the UI update returned (28,435 microseconds through durability), versus the prior multi-second stall. This passes the narrow 50 ms save gate for this sample; it does not prove native scroll smoothness or p95. The suite still failed the task-reopen dirty-exit case and an invalid planning route assertion. [Independent live evidence](evidence/r111-root-live.json). The task completion must mark its exact write durable even when a newer form owns the screen, then drop the stale exit by identity. The planning composer opens in place, so its pending test must not assume opening it changes the underlying route.
+
+Computer became accessible again. Native Quick wizard inspection found step3 calling an unapproved draft Approved plan and exposing Goal/Final report/Replan internals despite describing Quick as having no goal tree or planning. Step2 also shifts the Cancel/footer alignment and exposes dispatch implementation prose. T19 owns the render-only correction; T12 retains save handlers and form identity in the shared file. [Native evidence](evidence/r111-native-quick-wizard.json). Final corrected native acceptance remains open.
+
+
+## r112 QA compilation repair and scope correction
+
+Root briefly interrupted T12, moved `run_until_parked` from the inner GPUI `App` closure to the outer `HeadlessAppContext`, and resumed the same OpenCode session. This fixes the compilation error without deleting or weakening the dirty-exit assertion. A frozen independent `cargo check --locked --features qa` passed after the repair. [Compile evidence](evidence/r112-root-check.json). Outputs from older executables after a failed build are not accepted as evidence for the current implementation.
+
+The planning QA correction must also honor Cancel's contract: `CancelPlanning` closes the composer in place, preserving its underlying project route. A test that expects All research must explicitly request that navigation target; it must not change product behavior to satisfy an incorrect test expectation.
+
+
+## r113 standalone draft save failure
+
+Root reproduced a second caller of the original pending-save feedback defect. In the isolated native app, changing the saved Quick draft name and clicking standalone Save draft persisted the name in SQLite, but the editor remained open with Saving even after read-only disk confirmation and another native observation. [Native evidence](evidence/r113-native-direct-save.json). The pending `LiveCompletion::Command` path did not perform the same form completion as the synchronous saved path. T12/T14 must carry an exact automation form identity into completion; T13 must cover standalone step1 Save and step3 Save draft & finish, failure/retry, and reopened-form protection. Fixing only the dirty-exit dialog is insufficient.
+
+
+## r114 completion integration ownership
+
+Root stopped the conflicting parallel edits to standalone automation completion: T12 is intentionally interrupted, while T14 is the sole owner of the save API and receipt integration. T19 continues only wizard rendering. The duplicate temporary receipt structures must be consolidated before the next candidate is built. A further review requires clearing an unconsumed automation-save handoff after command rejection or synchronous completion, so an unrelated later command cannot inherit it. T13 owns the focused regression and the existing live suite. This is an integration repair, not a relaxation of the acceptance criteria.
+
+
+## T14/T15 live acceptance checkpoint (r114)
+
+The dedicated live fixture now passes all 20 cases on the production live path, including real background v4 startup/retry, pending/durable/write-failure retry, reopen, pending quit, task/automation/planning dirty exits, reopened-identical forms, standalone automation Save draft at step 1 and step 3, newer-form preservation, settings save, 43,200-run editor save and indexed history.
+
+Measured synchronous live UI work on the 43,200 empty-run fixture: editor save 15,102 us, small editor 3,877 us, settings 1,954 us, first indexed history page 2,524 us. The earlier ~3.8 s editor stall was a per-row O(n²) ownership/archive rescan in `progress_result_task_count`; result-count ownership now uses the held run plus the unique legacy signature fallback, and the sidebar no longer rescans the run history per row.
+
+Automation direct Save draft now has one explicit completion mechanism (`navigation.pending_automation_save` -> `LiveCompletion::Command.automation_save`). It finishes only for the same captured form epoch/input; a pending dirty-exit retains ownership of the close/route, and a rejected or legacy sync save clears the handoff so a later command cannot steal it.
+
+Full gate: 701 unit passed (2 ignored), 8 dispatch crash, 3 v4 crash, 2 SQLite regression tests. [Evidence](evidence/r114-t14-t15-final-live.json).
+
+
+## r115 independent save and navigation acceptance
+
+Root froze the integrated source and independently passed all 20 live persistence cases, 701 unit tests (2 ignored), 8 dispatch-crash tests, 2 SQLite regression tests, and 3 v4 crash tests. The 43,200 empty-run editor save returned from synchronous UI work in 17,122 microseconds; this single sample does not establish native scroll smoothness. [Live evidence](evidence/r115-root-live.json), [test evidence](evidence/r115-root-tests.json).
+
+In the isolated native candidate, direct Save draft now closes the editor to the corresponding definition and shows truthful saved feedback. Editing again, selecting All research and choosing Save draft and continue reaches All research without a false failure or stuck Saving state. A read-only database check confirms the changed draft name, Draft status and unchanged occurrence count of five. [Native evidence](evidence/r115-native.json). The candidate excludes the later Quick tooltip wording; remaining theme, compact-window, keyboard and scrolling acceptance is still open.
+
+
+## r116 native idle control and scrolling rejection
+
+Root recorded the same optimized r115 candidate on Dark Settings / Agent & models. The 12.834-second idle control recorded zero app hitches. The 20.793-second scroll recording recorded 420 app hitches, including 21 overlapping input-call intervals and 76 overlapping input or an explicit 500 ms settling window. Nine gestures fell inside the trace; the final upward check occurred outside it. Both recordings finalized and exported successfully, and recording-window monitors observed no Cargo/rustc processes. [Evidence and limitations](evidence/r116-native-scroll.json).
+
+This does not pass native smoothness. Rapid reversals were grouped without intermediate AX reads, but a subsequent AX observation and screenshot remain possible overhead; the idle TOC export overlapped the initial capture before gestures. T19 must isolate the remaining rendering/scrolling cost before another candidate is accepted. The recorded intervals are hitch durations, not complete frame durations or calculated FPS. T12 separately owns the real workspace-menu Settings keyboard regression; no speculative key-token normalization is accepted without evidence.
+
+
+## r117 verified-source checkpoint
+
+The development checkpoint stages the exact r115 source manifest, including its independently passed save and crash regressions. Later Quick tooltip wording and the workspace-menu focus repair remain unstaged for separate acceptance. This checkpoint preserves tested work; it is not release approval. Native scrolling remains rejected by r116 evidence.

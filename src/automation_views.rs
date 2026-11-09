@@ -249,9 +249,22 @@ impl ResultTints {
     }
 }
 
+pub(crate) enum AutomationSaveOutcome {
+    Saved,
+    Saving {
+        input: crate::domain_command::AutomationDraftInput,
+        subject: Option<u64>,
+        form_epoch: u64,
+    },
+    Rejected(String),
+}
+
 pub struct AutomationUi {
     pub selected: Option<u64>,
     pub creating: bool,
+    /// Generation of the currently open wizard form. Reopening the same values
+    /// creates a distinct identity for late-ACK safety.
+    pub form_epoch: u64,
     pub editing: Option<u64>,
     pub step: u8,
     /// Generated automation project; never shown as a project choice.
@@ -319,6 +332,7 @@ impl AutomationUi {
         Self {
             selected: None,
             creating: false,
+            form_epoch: 1,
             editing: None,
             step: 1,
             project: 1,
@@ -957,6 +971,7 @@ impl TaskApp {
 
     pub fn start_automation_create(&mut self, window: &mut Window, cx: &mut Context<Self>) {
         self.install_route(crate::navigation_route::Route::automation_editor(None));
+        self.automation_ui.form_epoch = self.automation_ui.form_epoch.wrapping_add(1);
         self.automation_ui.selected = None;
         self.automation_ui.creating = true;
         self.automation_ui.editing = None;
@@ -1041,6 +1056,7 @@ impl TaskApp {
             return;
         };
         self.install_route(crate::navigation_route::Route::automation_editor(Some(id)));
+        self.automation_ui.form_epoch = self.automation_ui.form_epoch.wrapping_add(1);
         self.automation_ui.selected = Some(id);
         self.automation_ui.creating = true;
         self.automation_ui.editing = Some(id);
@@ -1419,7 +1435,7 @@ impl TaskApp {
 
     /// Read the validated form into the domain command input. All schedule,
     /// policy, template and approval rules remain in their existing owners.
-    fn automation_draft_input(
+    pub(crate) fn automation_draft_input(
         &mut self,
         cx: &App,
     ) -> Result<crate::domain_command::AutomationDraftInput, String> {
@@ -1468,21 +1484,38 @@ impl TaskApp {
     }
 
     pub fn save_automation_draft(&mut self, cx: &mut Context<Self>) -> bool {
+        matches!(
+            self.save_automation_draft_outcome(cx),
+            AutomationSaveOutcome::Saved
+        )
+    }
+
+    /// Distinguishes a genuine in-flight durable save from a rejection. The
+    /// dirty-exit decision keeps its modal open and waits for the exact ACK.
+    pub(crate) fn save_automation_draft_outcome(
+        &mut self,
+        cx: &mut Context<Self>,
+    ) -> AutomationSaveOutcome {
         self.automation_ui.feedback = None;
         let input = match self.automation_draft_input(cx) {
             Ok(input) => input,
             Err(error) => {
-                self.automation_ui.feedback = Some(Err(error));
+                self.automation_ui.feedback = Some(Err(error.clone()));
                 cx.notify();
-                return false;
+                return AutomationSaveOutcome::Rejected(error);
             }
         };
         let command = crate::domain_command::Command::SaveDraft {
             id: self.automation_ui.editing,
-            input,
+            input: input.clone(),
             now: Self::automation_now(),
         };
-        let saved = match self.execute_command(command, cx) {
+        self.navigation.pending_automation_save =
+            Some(crate::live_save_app::AutomationSaveReceipt {
+                input: input.clone(),
+                form_epoch: self.automation_ui.form_epoch,
+            });
+        let outcome = match self.execute_command(command, cx) {
             Ok(crate::command_app::CommandRun::Saving { subject }) => {
                 if let Some(id) = subject {
                     self.automation_ui.editing = Some(id);
@@ -1490,7 +1523,11 @@ impl TaskApp {
                 }
                 self.automation_ui.feedback =
                     Some(Ok("Saving… the draft becomes durable after acknowledgement.".into()));
-                false
+                AutomationSaveOutcome::Saving {
+                    input,
+                    subject,
+                    form_epoch: self.automation_ui.form_epoch,
+                }
             }
             Ok(crate::command_app::CommandRun::Durable(receipt)) => {
                 let id = receipt.subject.expect("save draft returns a definition id");
@@ -1511,15 +1548,18 @@ impl TaskApp {
                 };
                 self.automation_ui.feedback = Some(Ok(message.into()));
                 self.toast = "Automation saved locally".into();
-                true
+                AutomationSaveOutcome::Saved
             }
             Err(error) => {
-                self.automation_ui.feedback = Some(Err(error));
-                false
+                self.automation_ui.feedback = Some(Err(error.clone()));
+                AutomationSaveOutcome::Rejected(error)
             }
         };
+        // A rejected/preparation failure or legacy synchronous save never takes
+        // the handoff. Never let a later unrelated command consume it.
+        self.navigation.pending_automation_save = None;
         cx.notify();
-        saved
+        outcome
     }
 
     pub fn enable_automation(&mut self, cx: &mut Context<Self>) {
@@ -3857,6 +3897,7 @@ impl TaskApp {
             .id("automation-wizard-scroll")
             .track_scroll(&self.automation_ui.scroll)
             .flex_1()
+            .w_full()
             .h_full()
             .min_h_0()
             .min_w_0()
@@ -3866,6 +3907,7 @@ impl TaskApp {
         content =
             content.child(
                 row()
+                    .w_full()
                     .justify_between()
                     .child(
                         col()
@@ -4134,7 +4176,12 @@ impl TaskApp {
                         .child(self.automation_field("Pause after N failures", "automation-failures", &self.automation_ui.failures, cx))
                         .child(self.automation_field("Log retention (days)", "automation-retention", &self.automation_ui.retention, cx)),
                 ))
-                .child(muted("The next three triggers are computed by the same function that dispatches runs. They are not model-generated.", cx));
+                .child(crate::views::observed(
+                    div()
+                        .id("automation-schedule-note")
+                        .aria_label("Times use the schedule and time zone above.")
+                        .child(muted("Times use the schedule and time zone above.", cx)),
+                ));
             if !self.automation_ui.preview_error.is_empty() {
                 content = content.child(crate::views::notice(
                     crate::views::NoticeTone::Danger,
@@ -4143,21 +4190,63 @@ impl TaskApp {
                 ));
             }
         } else {
-            content = content.child(
+            let quick = self.automation_ui.shape.is_quick();
+            let review_heading = if quick {
+                "Review and authorization"
+            } else {
+                "Review generated plan"
+            };
+            content = content.child(crate::views::observed(
                 div()
+                    .id("automation-review-heading")
+                    .aria_label(review_heading)
                     .font_weight(FontWeight::SEMIBOLD)
-                    .child(selectable("Approved plan")),
-            );
-            if let Some(template) = &self.automation_ui.plan {
-                if self.automation_ui.shape.is_quick() {
-                    content = content.child(muted(
-                        "One answer step per period. No project, topic, goal tree or planning runs.",
+                    .child(selectable(review_heading)),
+            ));
+            if quick {
+                let objective = self
+                    .automation_ui
+                    .objective
+                    .read(cx)
+                    .value()
+                    .trim()
+                    .to_string();
+                let expected = self
+                    .automation_ui
+                    .expected
+                    .read(cx)
+                    .value()
+                    .trim()
+                    .to_string();
+                content = content.child(crate::views::observed(
+                    col()
+                        .id("automation-quick-authorization")
+                        .aria_label(format!("{objective}\n{expected}"))
+                        .p_3()
+                        .gap_2()
+                        .rounded_md()
+                        .border_1()
+                        .border_color(rgb(colors.line))
+                        .bg(rgb(colors.panel))
+                        .child(overview_heading("Instruction"))
+                        .child(selectable(objective))
+                        .when(!expected.is_empty(), |view| {
+                            view.child(overview_heading("Expected answer"))
+                                .child(selectable(expected))
+                        }),
+                ));
+                if self.automation_ui.plan.is_none() {
+                    content = content.child(crate::views::notice(
+                        crate::views::NoticeTone::Danger,
+                        "Return to the schedule and continue to review this task.",
                         cx,
                     ));
                 }
+            } else if let Some(template) = &self.automation_ui.plan {
                 for (goal_index, goal) in template.goals.iter().enumerate() {
-                    content = content.child(
+                    content = content.child(crate::views::observed(
                         col()
+                            .id(format!("automation-plan-goal-{goal_index}"))
                             .p_3()
                             .gap_2()
                             .rounded_md()
@@ -4184,7 +4273,8 @@ impl TaskApp {
                                             crate::research::ResearchKind::Collect =>
                                                 "Evidence collection",
                                             crate::research::ResearchKind::Analyze => "Analysis",
-                                            crate::research::ResearchKind::Advise => "Final report",
+                                            crate::research::ResearchKind::Advise =>
+                                                "Final report",
                                             crate::research::ResearchKind::Goal => "Plan",
                                         }
                                     ))))
@@ -4206,16 +4296,10 @@ impl TaskApp {
                                     ))
                                     .into_any_element()
                             })),
-                    );
+                    ));
                 }
                 content = content.child(muted(
-                    "Each period instantiates this plan unchanged. Planning is never repeated unless you choose Replan.",
-                    cx,
-                ));
-            } else if self.automation_ui.shape.is_quick() {
-                content = content.child(crate::views::notice(
-                    crate::views::NoticeTone::Danger,
-                    "Go back and continue from the schedule to generate the step.",
+                    "Each period repeats this plan unchanged after you enable it. Planning is never repeated unless you choose Replan.",
                     cx,
                 ));
             } else if self.automation_ui.planning_automation.is_some() {
@@ -4228,7 +4312,7 @@ impl TaskApp {
             } else {
                 content = content.child(crate::views::notice_panel(
                     crate::views::NoticeTone::Danger,
-                    "No approved plan yet",
+                    "No plan generated yet",
                     "Retry planning to generate one.",
                     cx,
                 ));
@@ -4248,45 +4332,54 @@ impl TaskApp {
                         })),
                 );
             }
-            content = content.child(
-                div()
-                    .font_weight(FontWeight::SEMIBOLD)
-                    .child(selectable("Next triggers")),
-            );
-            content = content.child(label(
-                self.automation_ui
-                    .preview
-                    .iter()
-                    .map(|value| {
-                        self.automation_ui
-                            .schedule(cx)
-                            .map(|schedule| format_in_zone(*value, &schedule.timezone))
-                            .unwrap_or_else(|_| value.to_string())
-                    })
-                    .collect::<Vec<_>>()
-                    .join("\n"),
-                cx,
-            ));
+            content = content
+                .child(
+                    div()
+                        .font_weight(FontWeight::SEMIBOLD)
+                        .child(selectable("Schedule")),
+                )
+                .child(muted(
+                    format!(
+                        "{} · {}",
+                        self.automation_ui.kind.label(),
+                        self.automation_ui.timezone.read(cx).value().trim()
+                    ),
+                    cx,
+                ))
+                .child(label(
+                    self.automation_ui
+                        .preview
+                        .iter()
+                        .map(|value| {
+                            self.automation_ui
+                                .schedule(cx)
+                                .map(|schedule| format_in_zone(*value, &schedule.timezone))
+                                .unwrap_or_else(|_| value.to_string())
+                        })
+                        .collect::<Vec<_>>()
+                        .join("\n"),
+                    cx,
+                ));
             content = content.child(
                 div()
                     .font_weight(FontWeight::SEMIBOLD)
                     .child(selectable("Execution")),
             );
             content = content.child(muted(
-                if self.automation_ui.shape.is_quick() {
-                    "The approved snapshot fixes the instruction, agent, model, time zone and limits. Each period runs one step in its own folder under the Automations area, through the same research pipeline and agent as a manual run."
+                if quick {
+                    "Enabling approves this instruction, agent, model, time zone and limits for repeated execution. Each period runs one step in its own folder under the Automations area, through the same research pipeline and agent as a manual run."
                 } else {
-                    "The approved snapshot fixes every goal and step, the agent, models, time zone and limits. Each period creates a new topic under Automations with its own folder, session and browser Space, and never replans."
+                    "Enabling approves this plan: every goal and step, the agent, models, time zone and limits. Each period creates a new topic under Automations with its own folder, session and browser Space, and never replans."
                 },
                 cx,
             ));
             content = content.child(muted(
-                "Enabling approves this template for repeated execution. Missed periods run only the newest one by default; it is skipped if older than the allowed delay. Runs happen only while the app is open and the computer is awake.",
+                "Missed periods run only the newest one by default; it is skipped if older than the allowed delay. Runs happen only while the app is open and the computer is awake.",
                 cx,
             ));
         }
 
-        let mut footer = row().justify_between().gap_3();
+        let mut footer = row().w_full().justify_between().gap_3();
         footer = footer.child(when(
             step > 1,
             quiet_button("automation-back-step", "Back")
@@ -4345,12 +4438,14 @@ impl TaskApp {
         footer = footer.child(actions);
         col()
             .flex_1()
+            .w_full()
             .h_full()
             .min_h_0()
             .min_w_0()
             .child(content.into_any_element())
             .child(
                 div()
+                    .w_full()
                     .flex_shrink_0()
                     .px_6()
                     .pb_6()

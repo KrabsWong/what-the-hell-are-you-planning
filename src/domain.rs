@@ -867,7 +867,7 @@ impl Store {
             return true;
         }
         if self
-            .request_for_run(run.id)
+            .request_for_run_record(run)
             .is_some_and(|request| request.automation_id.is_some())
         {
             return true;
@@ -893,18 +893,28 @@ impl Store {
     }
     /// Count tasks, not attempts: current work and saved completed results.
     pub fn progress_result_task_count(&self) -> usize {
+        // Preserve the original semantics exactly: a task counts when its
+        // newest qualifying run is in progress OR any qualifying run has a
+        // validated non-empty output. Ownership/archive lookups no longer rescan
+        // the whole run history, so the same 43,200-run task stays cheap.
         let mut latest = std::collections::HashSet::new();
         let mut included = std::collections::HashSet::new();
+        let mut archived_by_task = std::collections::HashMap::new();
         for run in self.runs.iter().rev().filter(|run| {
             run.project_plan.is_none()
                 && !self.run_is_automation_owned(run)
                 && run.research_kind != Some(crate::research::ResearchKind::Goal)
                 && self.task(run.task_id).is_some()
-                && !self.run_is_archived(run)
+                && !*archived_by_task
+                    .entry(run.task_id)
+                    .or_insert_with(|| self.task_is_archived(run.task_id))
         }) {
             let is_latest = latest.insert(run.task_id);
-            let in_progress = is_latest && matches!(run.status.as_str(),
-                "Queued" | "Running" | "Recovering" | "Cancelling");
+            let in_progress = is_latest
+                && matches!(
+                    run.status.as_str(),
+                    "Queued" | "Running" | "Recovering" | "Cancelling"
+                );
             let has_result = run.status == "Succeeded" && !run.output.trim().is_empty();
             if in_progress || has_result {
                 included.insert(run.task_id);

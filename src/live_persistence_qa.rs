@@ -25,44 +25,173 @@ fn run_root() -> PathBuf {
         .join(std::process::id().to_string())
 }
 
-pub fn run() {
-    let root = run_root();
-    let _ = std::fs::remove_dir_all(&root);
-    if let Err(error) = std::fs::create_dir_all(&root) {
-        eprintln!("LIVE_PERSISTENCE_QA status=failed error={error}");
-        std::process::exit(1);
-    }
-    match run_all(&root) {
-        Ok(()) => println!(
-            "LIVE_PERSISTENCE_QA status=ok root={}",
-            root.display()
-        ),
-        Err(error) => {
-            eprintln!("LIVE_PERSISTENCE_QA status=failed error={error}");
-            std::process::exit(1);
+const CASE_ENV: &str = "LIVE_PERSISTENCE_QA_CASE";
+const ROOT_ENV: &str = "LIVE_PERSISTENCE_QA_ROOT";
+const SEQUENTIAL_ENV: &str = "LIVE_PERSISTENCE_QA_SEQUENTIAL";
+const CASES: [&str; 20] = [
+    "core",
+    "reopen",
+    "pending-quit",
+    "startup-retry",
+    "write-failure-retry",
+    "reopened-identical-form",
+    "dirty-exit-task",
+    "dirty-exit-task-reopen-identical",
+    "dirty-exit-automation",
+    "dirty-exit-automation-reopen-identical",
+    "dirty-exit-planning",
+    "dirty-exit-planning-cancel",
+    "automation-save-step1",
+    "automation-save-finish-step3",
+    "automation-save-newer-form",
+    "automation-rejected-unrelated-command",
+    "settings-save",
+    "editor-small",
+    "editor-43200",
+    "history-43200",
+];
+
+fn run_case(case: &str) -> Result<(), String> {
+    let root = std::env::var_os(ROOT_ENV)
+        .map(PathBuf::from)
+        .unwrap_or_else(run_root);
+    std::fs::create_dir_all(&root).map_err(|error| error.to_string())?;
+    match case {
+        "core" => core_save_and_ack(&root.join("core")),
+        "reopen" => reopen_after_quit(&root.join("core")),
+        "pending-quit" => pending_quit_drain(&root.join("quit")),
+        "startup-retry" => startup_self_lock_retry(&root.join("startup-retry")),
+        "write-failure-retry" => write_failure_retry(&root.join("write-failure-retry")),
+        "reopened-identical-form" => {
+            reopened_identical_form(&root.join("reopened-identical-form"))
         }
+        "dirty-exit-task" => dirty_exit_task_editor(&root.join("dirty-exit-task")),
+        "dirty-exit-task-reopen-identical" => {
+            dirty_exit_task_reopen_identical(&root.join("dirty-exit-task-reopen"))
+        }
+        "dirty-exit-automation" => dirty_exit_automation(&root.join("dirty-exit-automation")),
+        "dirty-exit-automation-reopen-identical" => dirty_exit_automation_reopen_identical(
+            &root.join("dirty-exit-automation-reopen"),
+        ),
+        "dirty-exit-planning" => dirty_exit_planning(&root.join("dirty-exit-planning"), false),
+        "dirty-exit-planning-cancel" => {
+            dirty_exit_planning(&root.join("dirty-exit-planning-cancel"), true)
+        }
+        "automation-save-step1" => automation_save_case(&root.join("automation-save-step1"), false, false),
+        "automation-save-finish-step3" => {
+            automation_save_case(&root.join("automation-save-step3"), true, false)
+        }
+        "automation-save-newer-form" => {
+            automation_save_case(&root.join("automation-save-newer"), false, true)
+        }
+        "automation-rejected-unrelated-command" => automation_rejected_unrelated(
+            &root.join("automation-rejected-unrelated"),
+        ),
+        "settings-save" => {
+            let (ui, total) = measure_settings_save(&root, "settings-small")?;
+            println!("LIVE_PERF settings_save_ui_us={ui} settings_save_total_us={total}");
+            Ok(())
+        }
+        "editor-small" => {
+            let (ui, total) = measure_editor_save(&root, "small", 0)?;
+            println!("LIVE_PERF editor_save_small_ui_us={ui} editor_save_small_total_us={total}");
+            Ok(())
+        }
+        "editor-43200" => {
+            let (ui, total) = measure_editor_save(&root, "large-43200-empty-runs", 43_200)?;
+            println!(
+                "LIVE_PERF editor_save_43200_empty_runs_ui_us={ui} editor_save_total_us={total}"
+            );
+            if ui >= 50_000 {
+                return Err(format!(
+                    "editor save UI blocking {ui}us at 43,200 empty-run history (>=50ms)"
+                ));
+            }
+            Ok(())
+        }
+        "history-43200" => {
+            let elapsed = measure_history(&root, "history-43200", 43_200)?;
+            println!("LIVE_PERF history_page_43200_us={elapsed}");
+            Ok(())
+        }
+        other => Err(format!("unknown live persistence QA case {other}")),
     }
 }
 
-fn run_all(root: &Path) -> Result<(), String> {
-    core_save_and_ack(&root.join("core"))?;
-    reopen_after_quit(&root.join("core"))?;
-    pending_quit_drain(&root.join("quit"))?;
-    startup_self_lock_retry(&root.join("startup-retry"))?;
-    let (small_ui, small_total) = measure_editor_save(root, "small", 0)?;
-    let (large_ui, large_total) = measure_editor_save(root, "large-43200-empty-runs", 43_200)?;
-    let (settings_ui, settings_total) = measure_settings_save(root, "settings-small")?;
-    measure_history(root, "history-small", 64)?;
-    let history_large = measure_history(root, "history-43200", 43_200)?;
-    println!(
-        "LIVE_PERF editor_save_small_ui_us={small_ui} editor_save_small_total_us={small_total} editor_save_43200_empty_runs_ui_us={large_ui} editor_save_total_us={large_total} settings_save_ui_us={settings_ui} settings_save_total_us={settings_total} history_page_43200_us={history_large}"
-    );
-    if large_ui >= 50_000 {
-        return Err(format!(
-            "reproducible UI blocking: editor save submit took {large_ui}us (>=50ms)"
-        ));
+/// Default: one child process per case so QA lifecycle teardown cannot overlap
+/// the next fixture's worker/reader start-up. This is QA isolation only; the
+/// r108 production hang is a T19 SQLite/lifecycle defect and is NOT proved
+/// fixed by process isolation. Set LIVE_PERSISTENCE_QA_SEQUENTIAL=1 to run the
+/// same cases sequentially in one process (external bounded timeout required)
+/// to reproduce that lifecycle after the dependency upgrade.
+pub fn run() {
+    if let Ok(case) = std::env::var(CASE_ENV) {
+        match run_case(&case) {
+            Ok(()) => println!("LIVE_PERSISTENCE_QA case={case} status=ok"),
+            Err(error) => {
+                eprintln!("LIVE_PERSISTENCE_QA case={case} status=failed error={error}");
+                std::process::exit(1);
+            }
+        }
+        return;
     }
-    Ok(())
+    let root = run_root();
+    let _ = std::fs::remove_dir_all(&root);
+    if let Err(error) = std::fs::create_dir_all(&root) {
+        eprintln!("LIVE_PERSISTENCE_QA status=failed root error={error}");
+        std::process::exit(1);
+    }
+    if std::env::var_os(SEQUENTIAL_ENV).is_some() {
+        let mut failures = Vec::new();
+        for case in CASES {
+            if let Err(error) = run_case(case) {
+                eprintln!("LIVE_SCENARIO_FAILED {case}: {error}");
+                failures.push(format!("{case}: {error}"));
+            }
+        }
+        if failures.is_empty() {
+            println!("LIVE_PERSISTENCE_QA status=ok sequential=1 root={}", root.display());
+        } else {
+            eprintln!(
+                "LIVE_PERSISTENCE_QA status=failed sequential=1 error={}",
+                failures.join(" | ")
+            );
+            std::process::exit(1);
+        }
+        return;
+    }
+    let executable = match std::env::current_exe() {
+        Ok(path) => path,
+        Err(error) => {
+            eprintln!("LIVE_PERSISTENCE_QA status=failed current_exe error={error}");
+            std::process::exit(1);
+        }
+    };
+    let mut failures = Vec::new();
+    for case in CASES {
+        let status = std::process::Command::new(&executable)
+            .arg("--qa-live-persistence")
+            .env(CASE_ENV, case)
+            .env(ROOT_ENV, &root)
+            .status();
+        match status {
+            Ok(status) if status.success() => {}
+            Ok(status) => {
+                eprintln!("LIVE_SCENARIO_FAILED {case}: exit {status}");
+                failures.push(format!("{case}: exit {status}"));
+            }
+            Err(error) => failures.push(format!("{case}: spawn {error}")),
+        }
+    }
+    if failures.is_empty() {
+        println!("LIVE_PERSISTENCE_QA status=ok root={}", root.display());
+    } else {
+        eprintln!(
+            "LIVE_PERSISTENCE_QA status=failed error={}",
+            failures.join(" | ")
+        );
+        std::process::exit(1);
+    }
 }
 
 fn seed_store(root: &Path, store: &Store) -> Result<PathBuf, String> {
@@ -152,6 +281,16 @@ fn pump_until(
 }
 
 
+fn startup_gate_clear(app: &TaskApp) -> bool {
+    app.startup.workspace_pending.is_none()
+        && !app.workspace_required
+        && app.storage_error.is_empty()
+        && app.live_required
+        && app.live_persistence_active()
+        && !app.live_has_pending_receipts()
+        && app.live_clean_for_quit()
+}
+
 fn open_via_startup(root: &Path, path: &Path) -> Result<Fixture, String> {
     let storage = Storage::new(path.to_path_buf());
     let mut cx = HeadlessAppContext::with_platform(
@@ -179,7 +318,7 @@ fn open_via_startup(root: &Path, path: &Path) -> Result<Fixture, String> {
                     a.poll_workspace_open(w, cx);
                     a.poll_runtime(cx);
                 });
-                app.read(cx).live_required && app.read(cx).live_persistence_active()
+                startup_gate_clear(app.read(cx))
             })
             .map_err(|error| format!("startup poll failed: {error:?}"))?;
         if active {
@@ -203,6 +342,9 @@ fn startup_self_lock_retry(root: &Path) -> Result<(), String> {
     let _ = updated_task(&mut store);
     let path = seed_store(root, &store)?;
     let (mut cx, handle, app) = open_via_startup(root, &path)?;
+    if !cx.update(|cx| startup_gate_clear(app.read(cx))) {
+        return Err("initial startup gate did not clear".into());
+    }
     cx.update(|cx| {
         app.update(cx, |a, _| {
             a.workspace_required = true;
@@ -219,8 +361,7 @@ fn startup_self_lock_retry(root: &Path) -> Result<(), String> {
                     a.poll_workspace_open(w, cx);
                     a.poll_runtime(cx);
                 });
-                let a = app.read(cx);
-                a.live_required && a.live_persistence_active() && a.storage_error.is_empty()
+                startup_gate_clear(app.read(cx))
             })
             .map_err(|error| format!("retry poll failed: {error:?}"))?;
         if done {
@@ -321,6 +462,58 @@ fn core_save_and_ack(root: &Path) -> Result<(), String> {
     if !cx.update(|cx| app.read(cx).live_primary.is_some()) {
         return Err("first live settings save did not hold a primary barrier".into());
     }
+    // Editor and comment saves must be rejected before they mutate owned fields
+    // while a primary receipt is still in flight.
+    let (title_before, approval_before, comments_before) = cx.update(|cx| {
+        let task = app.read(cx).store.task(task).unwrap();
+        (
+            task.title.clone(),
+            task.approved_plan.clone(),
+            task.comments.len(),
+        )
+    });
+    cx.update_window(handle, |_, w, cx| {
+        app.update(cx, |a, cx| {
+            a.open_task(task, w, cx);
+            a.begin_draft(task, w, cx);
+            let input = a.draft.as_ref().unwrap().title.clone();
+            input.update(cx, |state, cx| state.set_value("Overlap editor", w, cx));
+        });
+        w.render_frame(cx);
+    })
+    .map_err(|error| format!("overlap editor open failed: {error:?}"))?;
+    let editor_accepted = cx
+        .update_window(handle, |_, w, cx| {
+            app.update(cx, |a, cx| a.request_save_draft(w, cx))
+        })
+        .map_err(|error| format!("overlap editor save failed: {error:?}"))?;
+    let comment_accepted = cx
+        .update_window(handle, |_, w, cx| {
+            app.update(cx, |a, cx| a.request_task_comment(task, "Overlap comment", w, cx))
+        })
+        .map_err(|error| format!("overlap comment failed: {error:?}"))?;
+    let (title_after, approval_after, comments_after) = cx.update(|cx| {
+        let task = app.read(cx).store.task(task).unwrap();
+        (
+            task.title.clone(),
+            task.approved_plan.clone(),
+            task.comments.len(),
+        )
+    });
+    if editor_accepted || comment_accepted {
+        return Err("editor/comment save was accepted during a pending primary".into());
+    }
+    if title_after != title_before
+        || approval_after != approval_before
+        || comments_after != comments_before
+    {
+        return Err(format!(
+            "rejected editor/comment overlap mutated owned state: title {title_before:?}->{title_after:?} approval_changed={} comments {comments_before}->{comments_after}",
+            approval_after != approval_before
+        ));
+    }
+    cx.update(|cx| app.update(cx, |a, _| a.draft = None));
+
     let second = cx
         .update_window(handle, |_, _, cx| {
             app.update(cx, |a, cx| {
@@ -475,6 +668,713 @@ fn empty_history_runs(task: u64, history: usize) -> Vec<AgentRun> {
         .collect()
 }
 
+fn write_failure_retry(root: &Path) -> Result<(), String> {
+    std::fs::create_dir_all(root).map_err(|error| error.to_string())?;
+    let mut store = Store::empty();
+    store.project_mut(1).unwrap().directory = root.to_string_lossy().into_owned();
+    let task = updated_task(&mut store);
+    let path = seed_store(root, &store)?;
+    let (mut cx, handle, app) = open_live(root, &path)?;
+    let undo_before = cx.update(|cx| app.read(cx).undo.len());
+    let fault_set = cx.update(|cx| {
+        app.update(cx, |a, _| {
+            a.dispatch_admission
+                .as_mut()
+                .ok_or("missing dispatch admission")?
+                .set_fault(crate::sqlite_v4::Fault::BeforeCommit)
+        })
+    });
+    if let Err(error) = fault_set {
+        return Err(format!("set write fault failed: {error:?}"));
+    }
+    let outcome = cx
+        .update_window(handle, |_, _, cx| {
+            app.update(cx, |a, cx| {
+                a.apply_domain_command_undoable(
+                    crate::scoped_domain::DomainCommand::TaskTitle {
+                        task,
+                        title: "Retry value".into(),
+                    },
+                    "Task renamed",
+                    cx,
+                )
+            })
+        })
+        .map_err(|error| format!("faulted save failed: {error:?}"))?;
+    if outcome.is_none() {
+        return Err("faulted save was rejected before submitting".into());
+    }
+    let deadline = Instant::now() + Duration::from_secs(20);
+    let mut failed = false;
+    while Instant::now() < deadline {
+        failed = cx
+            .update_window(handle, |_, _, cx| {
+                app.update(cx, |a, cx| a.poll_runtime(cx));
+                app.read(cx).live_failure.is_some()
+            })
+            .map_err(|error| format!("failure poll failed: {error:?}"))?;
+        if failed {
+            break;
+        }
+        std::thread::sleep(Duration::from_millis(5));
+    }
+    if !failed {
+        return Err("injected write failure was not reported".into());
+    }
+    let (undo_failed, disk_failed, error_failed) = cx.update(|cx| {
+        (
+            app.read(cx).undo.len(),
+            read_v4_store(root, &path).ok(),
+            app.read(cx).storage_error.clone(),
+        )
+    });
+    if undo_failed != undo_before {
+        return Err("failed write pushed Undo before a durable receipt".into());
+    }
+    if disk_failed
+        .as_ref()
+        .and_then(|store| store.task(task).map(|task| task.title.as_str()))
+        == Some("Retry value")
+    {
+        return Err("injected failure still produced a durable write".into());
+    }
+    if error_failed.is_empty() {
+        return Err("failed write did not surface a retryable error".into());
+    }
+    let cleared = cx.update(|cx| {
+        app.update(cx, |a, cx| {
+            if let Some(adapter) = a.dispatch_admission.as_mut()
+                && let Err(error) = adapter.set_fault(crate::sqlite_v4::Fault::None)
+            {
+                return Err(error);
+            }
+            a.retry_live_persistence(cx);
+            Ok(())
+        })
+    });
+    if let Err(error) = cleared {
+        return Err(format!("clear write fault failed: {error:?}"));
+    }
+    pump_until(&mut cx, handle, &app, "retry durable receipt", |a| {
+        !a.live_has_pending_receipts() && a.live_failure.is_none()
+    })?;
+    let (undo_after, disk_after) = cx.update(|cx| {
+        (
+            app.read(cx).undo.len(),
+            read_v4_store(root, &path).ok(),
+        )
+    });
+    if undo_after != undo_before + 1 {
+        return Err(format!(
+            "retry did not apply exactly one Undo: before={undo_before} after={undo_after}"
+        ));
+    }
+    if disk_after
+        .and_then(|store| store.task(task).map(|task| task.title.clone()))
+        .as_deref()
+        != Some("Retry value")
+    {
+        return Err("retry did not persist the accepted value".into());
+    }
+    let _ = cx.update_window(handle, |_, w, _| w.remove_window());
+    Ok(())
+}
+
+fn reopened_identical_form(root: &Path) -> Result<(), String> {
+    std::fs::create_dir_all(root).map_err(|error| error.to_string())?;
+    let mut store = Store::empty();
+    store.project_mut(1).unwrap().directory = root.to_string_lossy().into_owned();
+    let task = updated_task(&mut store);
+    let path = seed_store(root, &store)?;
+    let (mut cx, handle, app) = open_live(root, &path)?;
+    cx.update_window(handle, |_, w, cx| {
+        app.update(cx, |a, cx| {
+            a.open_task(task, w, cx);
+            a.begin_draft(task, w, cx);
+            let title = a.draft.as_ref().unwrap().title.clone();
+            title.update(cx, |state, cx| state.set_value("Same value", w, cx));
+        });
+        w.render_frame(cx);
+    })
+    .map_err(|error| format!("identical form open failed: {error:?}"))?;
+    let saved = cx
+        .update_window(handle, |_, w, cx| {
+            app.update(cx, |a, cx| a.request_save_draft(w, cx))
+        })
+        .map_err(|error| format!("identical form save failed: {error:?}"))?;
+    if saved {
+        return Err("identical form save unexpectedly reported durable".into());
+    }
+    // Reopen the same task with the exact same value before the first ACK.
+    cx.update_window(handle, |_, w, cx| {
+        app.update(cx, |a, cx| {
+            a.draft = None;
+            a.navigation.task_edit_baseline = None;
+            a.open_task(task, w, cx);
+            a.begin_draft(task, w, cx);
+            let title = a.draft.as_ref().unwrap().title.clone();
+            title.update(cx, |state, cx| state.set_value("Same value", w, cx));
+        });
+        w.render_frame(cx);
+    })
+    .map_err(|error| format!("identical form reopen failed: {error:?}"))?;
+    pump_until(&mut cx, handle, &app, "identical form ACK", |a| {
+        !a.live_has_pending_receipts()
+    })?;
+    let (open, value, disk) = cx.update(|cx| {
+        let a = app.read(cx);
+        (
+            a.draft.is_some(),
+            a.draft
+                .as_ref()
+                .map(|draft| draft.title.read(cx).value().to_string()),
+            read_v4_store(root, &path).ok(),
+        )
+    });
+    if !open || value.as_deref() != Some("Same value") {
+        return Err(format!(
+            "stale ACK closed or changed a newer identical form: open={open} value={value:?}"
+        ));
+    }
+    if disk
+        .and_then(|store| store.task(task).map(|task| task.title.clone()))
+        .as_deref()
+        != Some("Same value")
+    {
+        return Err("identical form ACK did not persist the saved value".into());
+    }
+    let _ = cx.update_window(handle, |_, w, _| w.remove_window());
+    Ok(())
+}
+
+fn exit_target() -> crate::draft_exit::ExitTarget {
+    crate::draft_exit::ExitTarget::Navigate(
+        crate::navigation_context::NavigationTarget::Research {
+            scope: crate::app::Scope::All,
+        },
+    )
+}
+
+fn dirty_exit_task_editor(root: &Path) -> Result<(), String> {
+    std::fs::create_dir_all(root).map_err(|error| error.to_string())?;
+    let mut store = Store::empty();
+    store.project_mut(1).unwrap().directory = root.to_string_lossy().into_owned();
+    let task = updated_task(&mut store);
+    let path = seed_store(root, &store)?;
+    let (mut cx, handle, app) = open_live(root, &path)?;
+    cx.update_window(handle, |_, w, cx| {
+        app.update(cx, |a, cx| {
+            a.open_task(task, w, cx);
+            a.begin_draft(task, w, cx);
+            let input = a.draft.as_ref().unwrap().title.clone();
+            input.update(cx, |state, cx| state.set_value("Exit saved", w, cx));
+            assert!(!a.request_exit(exit_target(), w, cx));
+            assert!(a.navigation.pending_exit.is_some());
+            a.decide_exit(crate::draft_exit::ExitDecision::Save, w, cx);
+        });
+        w.render_frame(cx);
+    })
+    .map_err(|error| format!("dirty task exit failed: {error:?}"))?;
+    let (pending, error, after) = cx.update(|cx| {
+        let a = app.read(cx);
+        (
+            a.navigation.pending_exit.is_some(),
+            a.navigation
+                .pending_exit
+                .as_ref()
+                .and_then(|pending| pending.error.clone()),
+            a.navigation.after_save_target.is_some(),
+        )
+    });
+    if error.is_some() {
+        return Err(format!(
+            "live pending task exit was reported as failure before its receipt: {error:?}"
+        ));
+    }
+    if !pending && !after {
+        return Err("live pending task exit lost its decision".into());
+    }
+    pump_until(&mut cx, handle, &app, "dirty task exit receipt", |a| {
+        !a.live_has_pending_receipts() && a.navigation.pending_exit.is_none()
+    })?;
+    let (scope, draft, saved) = cx.update(|cx| {
+        let a = app.read(cx);
+        (
+            a.scope(),
+            a.draft.is_some(),
+            a.store.task(task).map(|task| task.title.clone()),
+        )
+    });
+    if scope != crate::app::Scope::All {
+        return Err(format!("task exit did not proceed after ACK: scope={scope:?}"));
+    }
+    if draft {
+        return Err("task exit left the saved editor open after ACK".into());
+    }
+    if saved.as_deref() != Some("Exit saved") {
+        return Err(format!("task exit did not persist: {saved:?}"));
+    }
+    let _ = cx.update_window(handle, |_, w, _| w.remove_window());
+    Ok(())
+}
+
+fn dirty_exit_task_reopen_identical(root: &Path) -> Result<(), String> {
+    std::fs::create_dir_all(root).map_err(|error| error.to_string())?;
+    let mut store = Store::empty();
+    store.project_mut(1).unwrap().directory = root.to_string_lossy().into_owned();
+    let task = updated_task(&mut store);
+    let path = seed_store(root, &store)?;
+    let (mut cx, handle, app) = open_live(root, &path)?;
+    cx.update_window(handle, |_, w, cx| {
+        app.update(cx, |a, cx| {
+            a.open_task(task, w, cx);
+            a.begin_draft(task, w, cx);
+            let title = a.draft.as_ref().unwrap().title.clone();
+            title.update(cx, |state, cx| state.set_value("Identical exit", w, cx));
+            assert!(!a.request_exit(exit_target(), w, cx));
+            a.decide_exit(crate::draft_exit::ExitDecision::Save, w, cx);
+            // A different surface and a fresh generation with the same values
+            // exist before the first ACK. The stale ACK must not navigate or
+            // close this editor.
+            a.navigate(crate::app::Scope::Project(1), w, cx);
+            a.open_task(task, w, cx);
+            a.begin_draft(task, w, cx);
+            let title = a.draft.as_ref().unwrap().title.clone();
+            title.update(cx, |state, cx| state.set_value("Identical exit", w, cx));
+        });
+        w.render_frame(cx);
+    })
+    .map_err(|error| format!("reopen task exit failed: {error:?}"))?;
+    pump_until(&mut cx, handle, &app, "reopen task ACK", |a| {
+        !a.live_has_pending_receipts() && a.navigation.pending_saved_exit.is_none()
+    })?;
+    let (scope, draft, value, count) = cx.update(|cx| {
+        let a = app.read(cx);
+        (
+            a.scope(),
+            a.draft.is_some(),
+            a.draft
+                .as_ref()
+                .map(|draft| draft.title.read(cx).value().to_string()),
+            read_v4_store(root, &path)
+                .ok()
+                .map(|store| store.research_requests().len())
+                .unwrap_or(0),
+        )
+    });
+    if scope != crate::app::Scope::Project(1) || !draft || value.as_deref() != Some("Identical exit")
+    {
+        return Err(format!(
+            "stale task ACK navigated/closed a newer identical editor: scope={scope:?} open={draft} value={value:?}"
+        ));
+    }
+    let _ = count;
+    let _ = cx.update_window(handle, |_, w, _| w.remove_window());
+    Ok(())
+}
+
+fn dirty_exit_automation_reopen_identical(root: &Path) -> Result<(), String> {
+    std::fs::create_dir_all(root).map_err(|error| error.to_string())?;
+    let mut store = Store::empty();
+    store.project_mut(1).unwrap().directory = root.to_string_lossy().into_owned();
+    let _ = updated_task(&mut store);
+    let path = seed_store(root, &store)?;
+    let (mut cx, handle, app) = open_live(root, &path)?;
+    let before = cx.update(|cx| app.read(cx).store.automations().len());
+    cx.update_window(handle, |_, w, cx| {
+        app.update(cx, |a, cx| {
+            a.start_automation_create(w, cx);
+            a.automation_ui.objective.update(cx, |state, cx| {
+                state.set_value("Identical automation", w, cx);
+            });
+            assert!(!a.request_exit(
+                crate::draft_exit::ExitTarget::CancelWizard { editing: None },
+                w,
+                cx,
+            ));
+            a.decide_exit(crate::draft_exit::ExitDecision::Save, w, cx);
+            // Reopen with the same values, new form epoch, before ACK.
+            a.start_automation_create(w, cx);
+            a.automation_ui.objective.update(cx, |state, cx| {
+                state.set_value("Identical automation", w, cx);
+            });
+        });
+        w.render_frame(cx);
+    })
+    .map_err(|error| format!("reopen automation exit failed: {error:?}"))?;
+    pump_until(&mut cx, handle, &app, "reopen automation ACK", |a| {
+        !a.live_has_pending_receipts() && a.navigation.pending_saved_exit.is_none()
+    })?;
+    let (creating, value, count) = cx.update(|cx| {
+        let a = app.read(cx);
+        (
+            a.automation_ui.creating,
+            a.automation_ui.objective.read(cx).value().to_string(),
+            read_v4_store(root, &path)
+                .ok()
+                .map(|store| store.automations().len())
+                .unwrap_or(0),
+        )
+    });
+    if !creating || value != "Identical automation" {
+        return Err(format!(
+            "stale automation ACK closed/changed a newer identical wizard: creating={creating} value={value:?}"
+        ));
+    }
+    if count != before + 1 {
+        return Err(format!(
+            "automation save-and-exit did not persist exactly one draft: before={before} disk={count}"
+        ));
+    }
+    let _ = cx.update_window(handle, |_, w, _| w.remove_window());
+    Ok(())
+}
+
+fn dirty_exit_automation(root: &Path) -> Result<(), String> {
+    std::fs::create_dir_all(root).map_err(|error| error.to_string())?;
+    let mut store = Store::empty();
+    store.project_mut(1).unwrap().directory = root.to_string_lossy().into_owned();
+    let _ = updated_task(&mut store);
+    let path = seed_store(root, &store)?;
+    let (mut cx, handle, app) = open_live(root, &path)?;
+    let before = cx.update(|cx| app.read(cx).store.automations().len());
+    cx.update_window(handle, |_, w, cx| {
+        app.update(cx, |a, cx| {
+            a.start_automation_create(w, cx);
+            a.automation_ui.objective.update(cx, |state, cx| {
+                state.set_value("Check prices every day and cite a source.", w, cx);
+            });
+            assert!(!a.request_exit(
+                crate::draft_exit::ExitTarget::CancelWizard { editing: None },
+                w,
+                cx,
+            ));
+            assert!(a.navigation.pending_exit.is_some());
+            a.decide_exit(crate::draft_exit::ExitDecision::Save, w, cx);
+        });
+        w.render_frame(cx);
+    })
+    .map_err(|error| format!("dirty automation exit failed: {error:?}"))?;
+    let error = cx.update(|cx| {
+        app.read(cx)
+            .navigation
+            .pending_exit
+            .as_ref()
+            .and_then(|pending| pending.error.clone())
+    });
+    if error.is_some() {
+        return Err(format!(
+            "live pending automation exit was reported as failure before its receipt: {error:?}"
+        ));
+    }
+    pump_until(&mut cx, handle, &app, "dirty automation exit receipt", |a| {
+        !a.live_has_pending_receipts() && a.navigation.pending_exit.is_none()
+    })?;
+    let (count, wizard, error) = cx.update(|cx| {
+        let a = app.read(cx);
+        (
+            a.store.automations().len(),
+            a.automation_ui.creating,
+            a.error.clone(),
+        )
+    });
+    if count != before + 1 {
+        return Err(format!(
+            "automation save-and-exit did not commit exactly one draft: before={before} after={count} error={error:?}"
+        ));
+    }
+    if wizard {
+        return Err("automation save-and-exit left the wizard open after ACK".into());
+    }
+    let _ = cx.update_window(handle, |_, w, _| w.remove_window());
+    Ok(())
+}
+
+fn dirty_exit_planning(root: &Path, cancel: bool) -> Result<(), String> {
+    std::fs::create_dir_all(root).map_err(|error| error.to_string())?;
+    let mut store = Store::empty();
+    store.project_mut(1).unwrap().directory = root.to_string_lossy().into_owned();
+    let _ = updated_task(&mut store);
+    let path = seed_store(root, &store)?;
+    let (mut cx, handle, app) = open_live(root, &path)?;
+    let before = cx.update(|cx| app.read(cx).store.research_requests().len());
+    cx.update_window(handle, |_, w, cx| {
+        app.update(cx, |a, cx| {
+            // Start from an explicit route different from the requested exit
+            // target, so remaining on it proves the pending receipt withheld
+            // navigation.
+            a.navigate(crate::app::Scope::Project(1), w, cx);
+            a.open_project_plan(1, w, cx);
+            a.project_brief.update(cx, |state, cx| {
+                state.set_value("Live planning request", w, cx);
+            });
+            let target = if cancel {
+                crate::draft_exit::ExitTarget::CancelPlanning
+            } else {
+                exit_target()
+            };
+            assert!(!a.request_exit(target, w, cx));
+            assert!(a.navigation.pending_exit.is_some());
+            a.decide_exit(crate::draft_exit::ExitDecision::Save, w, cx);
+        });
+        w.render_frame(cx);
+    })
+    .map_err(|error| format!("dirty planning exit failed: {error:?}"))?;
+    let (scope, composer, composer_text, pending, after, error) = cx.update(|cx| {
+        let a = app.read(cx);
+        (
+            a.scope(),
+            a.planning_destination.is_some(),
+            a.project_brief.read(cx).value().to_string(),
+            a.navigation.pending_exit.is_some(),
+            a.navigation.after_save_target.is_some(),
+            a.navigation
+                .pending_exit
+                .as_ref()
+                .and_then(|pending| pending.error.clone()),
+        )
+    });
+    if scope != crate::app::Scope::Project(1) {
+        return Err(format!(
+            "planning request exit proceeded before its durable receipt: scope={scope:?}"
+        ));
+    }
+    if !composer || composer_text != "Live planning request" {
+        return Err(format!(
+            "planning composer was not retained pending ACK: open={composer} text={composer_text:?}"
+        ));
+    }
+    if error.is_some() {
+        return Err(format!(
+            "live pending planning request was reported as failure: {error:?}"
+        ));
+    }
+    if !pending && !after {
+        return Err("planning request exit lost its intended destination".into());
+    }
+    pump_until(&mut cx, handle, &app, "planning request ACK", |a| {
+        !a.live_has_pending_receipts() && a.navigation.pending_exit.is_none()
+    })?;
+    let (scope, composer, count, disk) = cx.update(|cx| {
+        let a = app.read(cx);
+        (
+            a.scope(),
+            a.planning_destination.is_some(),
+            a.store.research_requests().len(),
+            read_v4_store(root, &path).ok(),
+        )
+    });
+    // CancelPlanning is an in-place close that preserves the current route;
+    // the structural exit target must reach All exactly once.
+    let expected_scope = if cancel {
+        crate::app::Scope::Project(1)
+    } else {
+        crate::app::Scope::All
+    };
+    if scope != expected_scope {
+        return Err(format!(
+            "planning request exit reached the wrong destination after ACK: expected {expected_scope:?} got {scope:?}"
+        ));
+    }
+    if composer {
+        return Err("planning composer stayed open after its ACK".into());
+    }
+    if count != before + 1 {
+        return Err(format!(
+            "planning request was not committed exactly once: before={before} after={count}"
+        ));
+    }
+    let disk_count = disk
+        .map(|store| store.research_requests().len())
+        .unwrap_or(0);
+    if disk_count != before + 1 {
+        return Err(format!(
+            "planning request was not durable after ACK: disk={disk_count}"
+        ));
+    }
+    let _ = cx.update_window(handle, |_, w, _| w.remove_window());
+    Ok(())
+}
+
+fn automation_rejected_unrelated(root: &Path) -> Result<(), String> {
+    std::fs::create_dir_all(root).map_err(|error| error.to_string())?;
+    let mut store = Store::empty();
+    store.project_mut(1).unwrap().directory = root.to_string_lossy().into_owned();
+    let task = updated_task(&mut store);
+    let path = seed_store(root, &store)?;
+    let (mut cx, handle, app) = open_live(root, &path)?;
+    let base = cx.update(|cx| app.read(cx).store.max_concurrent_runs());
+    let target = if base < 10 { base + 1 } else { base - 1 };
+    let mut rejected = false;
+    cx.update_window(handle, |_, w, cx| {
+        app.update(cx, |a, cx| {
+            a.start_automation_create(w, cx);
+            a.automation_ui.objective.update(cx, |state, cx| {
+                state.set_value("Rejected automation", w, cx);
+            });
+            // Make the primary slot busy; the automation command must reject
+            // and must not leave a handoff for a later unrelated command.
+            assert!(a.apply_scoped_settings(
+                crate::scoped_settings::SettingsChange::ExecutionConcurrency(target),
+                cx,
+            ));
+            assert!(a.live_primary.is_some());
+            let outcome = a.save_automation_draft_outcome(cx);
+            rejected =
+                matches!(outcome, crate::automation_views::AutomationSaveOutcome::Rejected(_));
+        });
+        w.render_frame(cx);
+    })
+    .map_err(|error| format!("rejected automation save failed: {error:?}"))?;
+    if !rejected {
+        return Err("busy automation save was not rejected".into());
+    }
+    let marker_after_reject = cx.update(|cx| {
+        app.read(cx)
+            .navigation
+            .pending_automation_save
+            .is_some()
+    });
+    pump_until(&mut cx, handle, &app, "settings ACK before unrelated", |a| {
+        !a.live_has_pending_receipts()
+    })?;
+    let unrelated = cx
+        .update_window(handle, |_, _, cx| {
+            app.update(cx, |a, cx| {
+                a.apply_domain_command_undoable(
+                    crate::scoped_domain::DomainCommand::TaskTitle {
+                        task,
+                        title: "Unrelated edit".into(),
+                    },
+                    "Task renamed",
+                    cx,
+                )
+            })
+        })
+        .map_err(|error| format!("unrelated command failed: {error:?}"))?;
+    if unrelated.is_none() {
+        return Err("unrelated command was rejected unexpectedly".into());
+    }
+    pump_until(&mut cx, handle, &app, "unrelated ACK", |a| {
+        !a.live_has_pending_receipts()
+    })?;
+    let (creating, selected, value, marker_left, count, disk) = cx.update(|cx| {
+        let a = app.read(cx);
+        (
+            a.automation_ui.creating,
+            a.automation_ui.selected.is_some(),
+            a.automation_ui.objective.read(cx).value().to_string(),
+            a.navigation.pending_automation_save.is_some(),
+            a.store.automations().len(),
+            read_v4_store(root, &path)
+                .ok()
+                .map(|store| store.automations().len())
+                .unwrap_or(0),
+        )
+    });
+    if marker_after_reject || marker_left {
+        return Err(format!(
+            "rejected automation save left a stale handoff: after_reject={marker_after_reject} left={marker_left}"
+        ));
+    }
+    if !creating || selected || value != "Rejected automation" {
+        return Err(format!(
+            "unrelated command consumed/closed the rejected form: creating={creating} selected={selected} value={value:?}"
+        ));
+    }
+    if count != 0 || disk != 0 {
+        return Err(format!(
+            "rejected automation save was committed: memory={count} disk={disk}"
+        ));
+    }
+    let _ = cx.update_window(handle, |_, w, _| w.remove_window());
+    Ok(())
+}
+
+fn automation_save_case(root: &Path, finish_step3: bool, newer_form: bool) -> Result<(), String> {
+    std::fs::create_dir_all(root).map_err(|error| error.to_string())?;
+    let mut store = Store::empty();
+    store.project_mut(1).unwrap().directory = root.to_string_lossy().into_owned();
+    let _ = updated_task(&mut store);
+    let path = seed_store(root, &store)?;
+    let (mut cx, handle, app) = open_live(root, &path)?;
+    let before = cx.update(|cx| app.read(cx).store.automations().len());
+    let mut step_seen = 0u8;
+    cx.update_window(handle, |_, w, cx| {
+        app.update(cx, |a, cx| {
+            a.start_automation_create(w, cx);
+            a.automation_ui.objective.update(cx, |state, cx| {
+                state.set_value("Check prices every day and cite a source.", w, cx);
+            });
+            if finish_step3 {
+                a.automation_wizard_next(w, cx);
+                a.automation_wizard_next(w, cx);
+                step_seen = a.automation_ui.step;
+            }
+            let saved = a.save_automation_draft(cx);
+            assert!(!saved || step_seen == 3);
+            if newer_form {
+                // A newer wizard with different input opens before the ACK.
+                a.start_automation_create(w, cx);
+                a.automation_ui.objective.update(cx, |state, cx| {
+                    state.set_value("Newer automation input", w, cx);
+                });
+            }
+        });
+        w.render_frame(cx);
+    })
+    .map_err(|error| format!("automation save failed: {error:?}"))?;
+    pump_until(&mut cx, handle, &app, "automation save ACK", |a| {
+        !a.live_has_pending_receipts()
+    })?;
+    let (creating, selected, value, feedback, count) = cx.update(|cx| {
+        let a = app.read(cx);
+        (
+            a.automation_ui.creating,
+            a.automation_ui.selected.is_some(),
+            a.automation_ui.objective.read(cx).value().to_string(),
+            a.automation_ui.feedback.clone(),
+            read_v4_store(root, &path)
+                .ok()
+                .map(|store| store.automations().len())
+                .unwrap_or(0),
+        )
+    });
+    if count != before + 1 {
+        return Err(format!(
+            "automation save did not persist exactly one draft: before={before} disk={count}"
+        ));
+    }
+    if newer_form {
+        if !creating || value != "Newer automation input" {
+            return Err(format!(
+                "stale automation save ACK closed/changed a newer wizard: creating={creating} value={value:?}"
+            ));
+        }
+    } else {
+        if creating {
+            return Err("standalone automation save never cleared the wizard after ACK".into());
+        }
+        if !selected && !finish_step3 {
+            return Err("standalone automation save did not select the saved draft".into());
+        }
+        if feedback
+            .as_ref()
+            .and_then(|value| value.as_ref().err())
+            .is_some()
+        {
+            return Err(format!(
+                "standalone automation save reported an error after ACK: {feedback:?}"
+            ));
+        }
+        if finish_step3 && step_seen != 3 {
+            return Err(format!("Save draft & finish was not on step 3: step={step_seen}"));
+        }
+    }
+    let _ = cx.update_window(handle, |_, w, _| w.remove_window());
+    Ok(())
+}
+
 fn measure_editor_save(
     root: &Path,
     label: &str,
@@ -503,12 +1403,17 @@ fn measure_editor_save(
     })
     .map_err(|error| format!("perf editor open failed: {error:?}"))?;
     let started = Instant::now();
+    let mut inner_us = 0u128;
     let saved = cx
         .update_window(handle, |_, w, cx| {
-            app.update(cx, |a, cx| a.request_save_draft(w, cx))
+            let inner = Instant::now();
+            let saved = app.update(cx, |a, cx| a.request_save_draft(w, cx));
+            inner_us = inner.elapsed().as_micros();
+            saved
         })
         .map_err(|error| format!("perf editor save failed: {error:?}"))?;
     let ui = started.elapsed().as_micros();
+    eprintln!("LIVE_EDITOR_SAVE label={label} inner_us={inner_us} update_window_us={ui}");
     if !saved {
         pump_until(&mut cx, handle, &app, "perf editor durable", |a| {
             !a.live_has_pending_receipts()

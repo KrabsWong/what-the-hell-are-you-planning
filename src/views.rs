@@ -465,7 +465,7 @@ impl TaskApp {
                             let entity = entity.clone();
                             move |_, w, cx| {
                                 let _ = entity.update(cx, |app, cx| {
-                                    app.structural_navigation();
+                                    app.record_origin();
                                     app.navigate(Scope::Settings, w, cx);
                                 });
                             }
@@ -4036,20 +4036,22 @@ impl TaskApp {
             return div().into_any_element();
         };
         let colors = palette(cx);
+        let saving = self.navigation.pending_saved_exit.is_some();
         let mut actions = row().flex_wrap().justify_end().gap_2();
         actions = actions
             .child(
-                button("dirty-exit-stay", crate::draft_exit::stay_action_label()).on_click(
-                    cx.listener(|a, _, w, cx| {
+                button("dirty-exit-stay", crate::draft_exit::stay_action_label())
+                    .disabled(saving)
+                    .on_click(cx.listener(|a, _, w, cx| {
                         a.decide_exit(crate::draft_exit::ExitDecision::Stay, w, cx)
-                    }),
-                ),
+                    })),
             )
             .child(
                 button(
                     "dirty-exit-discard",
                     crate::draft_exit::discard_action_label(),
                 )
+                .disabled(saving)
                 .on_click(cx.listener(|a, _, w, cx| {
                     a.decide_exit(crate::draft_exit::ExitDecision::Discard, w, cx)
                 })),
@@ -4059,6 +4061,7 @@ impl TaskApp {
                     "dirty-exit-save",
                     crate::draft_exit::save_action_label(pending.surface),
                 )
+                .disabled(saving)
                 .on_click(cx.listener(|a, _, w, cx| {
                     a.decide_exit(crate::draft_exit::ExitDecision::Save, w, cx)
                 })),
@@ -4097,6 +4100,13 @@ impl TaskApp {
                 cx,
             ));
         }
+        if let Some(notice) = &pending.notice {
+            body = body.child(crate::views::notice(
+                crate::views::NoticeTone::Info,
+                notice.clone(),
+                cx,
+            ));
+        }
         if self.research_save_impact.is_some() {
             body = body.child(crate::views::notice(
                 crate::views::NoticeTone::Info,
@@ -4119,12 +4129,36 @@ impl TaskApp {
     }
 }
 
+#[cfg(feature = "qa")]
+struct LiveRenderGuard(std::time::Instant, usize);
+#[cfg(feature = "qa")]
+impl Drop for LiveRenderGuard {
+    fn drop(&mut self) {
+        let elapsed = self.0.elapsed().as_micros();
+        if self.1 > 10_000 {
+            eprintln!("LIVE_DIAG render_us={elapsed} runs={}", self.1);
+        }
+    }
+}
+
 impl Render for TaskApp {
     fn render(&mut self, window: &mut Window, cx: &mut Context<Self>) -> impl IntoElement {
+        #[cfg(feature = "qa")]
+        let live_render_started = std::time::Instant::now();
+        #[cfg(feature = "qa")]
+        let _live_render_guard = LiveRenderGuard(live_render_started, self.store.runs().len());
         #[cfg(feature = "qa")]
         crate::brand::note_app_render();
         if self.history_needs_pump() {
             self.start_pump(cx);
+        }
+        if self.navigation.pending_saved_exit.is_some() {
+            let weak = cx.weak_entity();
+            window.defer(cx, move |window, cx| {
+                let _ = weak.update(cx, |app, cx| {
+                    app.poll_pending_saved_exit(window, cx);
+                });
+            });
         }
         if !self.window_close_registered {
             self.window_close_registered = true;

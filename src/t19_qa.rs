@@ -20,6 +20,7 @@ pub fn run() {
     footer_retention_invalidation(&root);
     sidebar_retained_surface(&root);
     startup_completion_scheduled(&root);
+    automation_wizard_quick_review(&root);
     settings_scroll_probe(&root);
     keyboard_matrix(&root);
     automation_result_keyboard(&root);
@@ -969,6 +970,94 @@ fn startup_completion_scheduled(root: &Path) {
         w.find("startup-recheck");
     })
     .unwrap();
+    cx.update_window(handle, |_, w, _| w.remove_window())
+        .unwrap();
+}
+
+fn automation_wizard_quick_review(root: &Path) {
+    let directory = root.join("automation-wizard-review");
+    std::fs::create_dir_all(&directory).unwrap();
+    let store = fixture(&directory);
+    let path = directory.join("workspace.sqlite3");
+    Storage::new(path.clone()).save(&store).unwrap();
+    let (mut cx, handle, app) = with_app(store, &path, 1440., 920., |app, w, cx| {
+        app.set_scope_identity(Scope::Automations);
+        cx.notify();
+        let _ = w;
+    });
+    let mut cancel_step1 = Bounds::default();
+    let mut action_step1 = Bounds::default();
+
+    cx.update_window(handle, |_, w, cx| {
+        w.render_frame(cx);
+        w.click("new-automation", cx);
+        w.render_frame(cx);
+        w.click("automation-shape-quick", cx);
+        w.render_frame(cx);
+        w.click("automation-objective", cx);
+        w.input("Check today's fuel price", cx);
+        w.click("automation-expected", cx);
+        w.input("Current price and source", cx);
+        w.render_frame(cx);
+        cancel_step1 = w.find("cancel-automation-wizard").bounds();
+        action_step1 = w.find("automation-next-step").bounds();
+
+        w.click("automation-next-step", cx);
+        w.render_frame(cx);
+        let cancel_step2 = w.find("cancel-automation-wizard").bounds();
+        assert!(
+            (cancel_step2.left() - cancel_step1.left()).abs() <= px(0.5)
+                && (cancel_step2.right() - cancel_step1.right()).abs() <= px(0.5),
+            "step 2 must keep the wizard Cancel anchor"
+        );
+        assert_eq!(
+            w.find("automation-schedule-note").label(),
+            Some("Times use the schedule and time zone above.")
+        );
+        let action_step2 = w.find("automation-next-step").bounds();
+        assert!(
+            (action_step2.right() - action_step1.right()).abs() <= px(0.5),
+            "step 2 must keep the primary action anchored"
+        );
+    })
+    .unwrap();
+    screenshot(&mut cx, handle, &directory, "wizard-step2.png");
+    cx.update_window(handle, |_, w, cx| {
+        w.render_frame(cx);
+        w.click("automation-next-step", cx);
+        w.render_frame(cx);
+        assert_eq!(
+            w.find("automation-review-heading").label(),
+            Some("Review and authorization"),
+            "Quick's final step is authorization, not an approved plan"
+        );
+        assert!(
+            w.try_find("automation-plan-goal-0").is_none(),
+            "Quick must not expose synthetic goal-tree internals"
+        );
+        let card = w.find("automation-quick-authorization");
+        let card_text = card.label().unwrap_or_default();
+        assert!(card_text.contains("Check today's fuel price"));
+        assert!(card_text.contains("Current price and source"));
+        let cancel_step3 = w.find("cancel-automation-wizard").bounds();
+        let action_step3 = w.find("enable-automation").bounds();
+        assert!(
+            (cancel_step3.left() - cancel_step1.left()).abs() <= px(0.5)
+                && (cancel_step3.right() - cancel_step1.right()).abs() <= px(0.5),
+            "step 3 must keep the wizard Cancel anchor"
+        );
+        assert!(
+            (action_step3.right() - action_step1.right()).abs() <= px(0.5),
+            "step 3 must keep the primary action anchored"
+        );
+        assert!(
+            w.find("enable-automation").visible(),
+            "authorization keeps the enabling action"
+        );
+        let _ = app;
+    })
+    .unwrap();
+    screenshot(&mut cx, handle, &directory, "wizard-step3.png");
     cx.update_window(handle, |_, w, _| w.remove_window())
         .unwrap();
 }

@@ -35,6 +35,30 @@ impl SaveAcceptance {
     }
 }
 
+#[derive(Clone, Debug, PartialEq)]
+pub(crate) struct AutomationSaveReceipt {
+    pub input: crate::domain_command::AutomationDraftInput,
+    pub form_epoch: u64,
+}
+
+impl LiveCompletion {
+    pub(crate) fn exit_token(&self) -> Option<u64> {
+        match self {
+            Self::Command { exit_token, .. }
+            | Self::Request { exit_token, .. }
+            | Self::TaskEdit { exit_token, .. } => *exit_token,
+            _ => None,
+        }
+    }
+
+    pub(crate) fn automation_save(&self) -> Option<&AutomationSaveReceipt> {
+        match self {
+            Self::Command { automation_save, .. } => automation_save.as_ref(),
+            _ => None,
+        }
+    }
+}
+
 /// UI-only work that runs after the corresponding write is durable.
 #[derive(Clone, Debug, PartialEq)]
 pub(crate) enum LiveCompletion {
@@ -50,6 +74,8 @@ pub(crate) enum LiveCompletion {
         instance: Option<TaskEditorInstance>,
         close_editor: bool,
         undo: crate::scoped_edit::TaskEditUndo,
+        /// Exact dirty-exit operation waiting for this receipt.
+        exit_token: Option<u64>,
     },
     Comment {
         task: u64,
@@ -81,6 +107,7 @@ pub(crate) enum LiveCompletion {
         input: String,
         replan_source: Option<u64>,
         form_epoch: u64,
+        exit_token: Option<u64>,
     },
     /// Typed command post-commit continuation. Effects run only here, after the
     /// exact group is durable.
@@ -88,6 +115,10 @@ pub(crate) enum LiveCompletion {
         class: crate::domain_command::CommandClass,
         subject: Option<u64>,
         effects: Vec<crate::domain_command::CommandEffect>,
+        /// Exact dirty-exit operation waiting for this receipt.
+        exit_token: Option<u64>,
+        /// Explicit completion for a standalone automation Save draft.
+        automation_save: Option<AutomationSaveReceipt>,
     },
     /// Deferred post-commit effects for automation/runtime transitions. These
     /// must never run when the write failed.
@@ -150,6 +181,7 @@ pub(crate) struct StoppedRun {
 #[derive(Clone, Debug)]
 pub(crate) enum DeferredUiAction {
     ClearComment { task: u64, body: String },
+    FinishSavedExit { open: u64 },
 }
 
 /// Groups retained outside the worker's ordered acknowledgement window. Kept
@@ -263,6 +295,15 @@ impl TaskApp {
 
     pub(crate) fn live_primary_busy(&self) -> bool {
         self.live_primary.is_some()
+    }
+
+    /// True when the active continuation is a task-editor save. Dirty-exit
+    /// navigation uses this to show Pending rather than a false failure.
+    pub(crate) fn live_task_edit_pending(&self) -> bool {
+        matches!(
+            self.live_primary.as_ref().map(|pending| &pending.completion),
+            Some(LiveCompletion::TaskEdit { .. })
+        )
     }
 
     pub(crate) fn live_has_pending_receipts(&self) -> bool {
@@ -720,6 +761,25 @@ impl TaskApp {
             // Never let an unrelated receipt overwrite the current error.
             return;
         }
+        let failed_token = if matches_primary {
+            self.live_primary
+                .as_ref()
+                .and_then(|pending| pending.completion.exit_token())
+        } else {
+            self.live_followups
+                .iter()
+                .filter(|group| {
+                    generation != 0
+                        && group.generation == generation
+                        && group.epoch == epoch
+                        && group.workspace == workspace
+                })
+                .flat_map(|group| group.completions.iter())
+                .find_map(LiveCompletion::exit_token)
+        };
+        if let Some(token) = failed_token {
+            self.dirty_exit_failed(token, reason.clone(), cx);
+        }
         self.live_failure = Some(reason.clone());
         self.storage_error = reason;
         self.live_retry_at = Some(std::time::Instant::now() + std::time::Duration::from_millis(300));
@@ -1127,6 +1187,53 @@ impl TaskApp {
         }
     }
 
+    fn finish_automation_draft_save(
+        &mut self,
+        subject: Option<u64>,
+        target: AutomationSaveReceipt,
+        cx: &mut Context<Self>,
+    ) {
+        let same_form = self.automation_ui.form_epoch == target.form_epoch
+            && self
+                .automation_draft_input(cx)
+                .ok()
+                .as_ref()
+                == Some(&target.input);
+        if !same_form {
+            // Durable, but a newer form owns the surface: never overwrite it.
+            return;
+        }
+        if self.navigation.pending_saved_exit.is_some() {
+            // A dirty-exit decision owns the close/route. Keep the wizard
+            // identity intact so its exact-form poll can execute the exit.
+            return;
+        }
+        let Some(id) = subject.or(self.automation_ui.editing) else {
+            return;
+        };
+        self.automation_ui.editing = Some(id);
+        self.automation_ui.selected = Some(id);
+        self.automation_ui.creating = false;
+        let status = self
+            .store
+            .automation(id)
+            .map(|definition| definition.status);
+        let message = match status {
+            Some(crate::automation::DefinitionStatus::Enabled) => {
+                "Saved. The enabled version remains approved."
+            }
+            Some(crate::automation::DefinitionStatus::Paused) => {
+                "Saved. The automation remains paused."
+            }
+            Some(crate::automation::DefinitionStatus::NeedsAttention) => {
+                "No changes. Resolve the listed problem before it can run."
+            }
+            _ => "Draft saved. Nothing will run until you enable it.",
+        };
+        self.automation_ui.feedback = Some(Ok(message.into()));
+        self.toast = "Automation saved locally".into();
+    }
+
     /// Everything that could still be lost on an immediate normal quit.
     pub(crate) fn live_clean_for_quit(&self) -> bool {
         quit_state_is_clean(
@@ -1468,6 +1575,7 @@ impl TaskApp {
                 instance,
                 close_editor,
                 undo,
+                exit_token,
             } => {
                 self.pending_task_edit = None;
                 self.undo_invalidation = None;
@@ -1477,6 +1585,12 @@ impl TaskApp {
                 // Only the exact unchanged form instance closes. InputState
                 // edits are not Store dirt, and a close+reopen of the same task
                 // creates new entities, so both are compared explicitly.
+                // The durable fact is independent of whether this form is still
+                // the current one. Mark the exact exit first; the render pump
+                // then discards a stale exit using the captured identity.
+                if let Some(token) = exit_token {
+                    self.dirty_exit_durable(token);
+                }
                 let same_form = close_editor
                     && instance == self.task_editor_instance()
                     && instance.is_some()
@@ -1486,6 +1600,13 @@ impl TaskApp {
                     let _ = self.close_task_editor_overlay();
                     self.draft = None;
                     self.navigation.task_edit_baseline = None;
+                    self.dirty_exit_form_closed(instance);
+                    if self.navigation.after_save_target.is_some() {
+                        // The user explicitly chose to leave after this save.
+                        // Complete that exit on the next window frame.
+                        self.deferred_ui
+                            .push(DeferredUiAction::FinishSavedExit { open: task });
+                    }
                 } else if self.task_editor_overlay().is_some() {
                     // A different/newer form owns the surface (or the same form
                     // has newer edits): do not claim the current draft is saved
@@ -1543,7 +1664,11 @@ impl TaskApp {
                 input,
                 replan_source,
                 form_epoch,
+                exit_token,
             } => {
+                if let Some(token) = exit_token {
+                    self.dirty_exit_durable(token);
+                }
                 let unchanged = self.planning_form_epoch == form_epoch
                     && self.planning_destination == destination
                     && self.planning_replan_source == replan_source
@@ -1573,7 +1698,15 @@ impl TaskApp {
                 class,
                 subject,
                 effects,
+                exit_token,
+                automation_save,
             } => {
+                if let Some(token) = exit_token {
+                    self.dirty_exit_durable(token);
+                }
+                if let Some(receipt) = automation_save {
+                    self.finish_automation_draft_save(subject, receipt, cx);
+                }
                 self.storage_error.clear();
                 if class != crate::domain_command::CommandClass::OrdinaryEdit {
                     self.invalidate_undo_for_automation();
@@ -1660,6 +1793,10 @@ impl TaskApp {
         }
         for action in std::mem::take(&mut self.deferred_ui) {
             match action {
+                DeferredUiAction::FinishSavedExit { open } => {
+                    self.open_task(open, window, cx);
+                    self.finish_saved_exit(window, cx);
+                }
                 DeferredUiAction::ClearComment { task, body } => {
                     let current = self.comment.read(cx).value().trim().to_string();
                     if self.selected() == Some(task) && current == body {

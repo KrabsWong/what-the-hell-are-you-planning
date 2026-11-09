@@ -1,0 +1,24 @@
+{
+  "binary_sha256": "08aabbd6dbb269eab712f697641f61ca7784acc06f88e28d093c921e1c662568",
+  "source_manifest": ".local/opencode-dispatch/r111-source.json",
+  "guard_exit": 2,
+  "exit_code": 1,
+  "result": "failed",
+  "duration_seconds": 69.285377209,
+  "failed_cases": [
+    "dirty-exit-task-reopen-identical",
+    "dirty-exit-planning"
+  ],
+  "classification": {
+    "dirty-exit-task-reopen-identical": "Exact durable token only marked on matching form; newer form leaves pending exit unresolved. Returned to T14/T12.",
+    "dirty-exit-planning": "QA assumes composer changes underlying All route; source opens it in place. Returned to T13 for correct route assertion, preserving pending/durability checks."
+  },
+  "measured_us": {
+    "editor_small_ui": 4502,
+    "editor_small_total": 8490,
+    "editor_43200_empty_runs_ui": 16086,
+    "editor_43200_total": 28435,
+    "history_page_43200": 2518
+  },
+  "limits": "Single headless sample under concurrent development workload; under50ms save gate, not native scrolling or p95 acceptance."
+}

@@ -145,10 +145,14 @@ impl TaskApp {
                 .drain_store_delta()
                 .map_err(|error| error.to_string())?;
             let subject = prepared.outcome.subject;
+            let exit_token = self.navigation.pending_exit_token.take();
+            let automation_save = self.navigation.pending_automation_save.take();
             let completion = crate::live_save_app::LiveCompletion::Command {
                 class,
                 subject,
                 effects: prepared.outcome.effects.clone(),
+                exit_token,
+                automation_save,
             };
             if delta.changes.is_empty() && delta.metadata.is_empty() {
                 self.complete_live_now(completion, cx);

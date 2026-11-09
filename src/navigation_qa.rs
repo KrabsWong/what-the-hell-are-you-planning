@@ -154,14 +154,91 @@ fn verify_structural_paths(
     handle: AnyWindowHandle,
     fixture: &Fixture,
 ) {
+    // Real workspace-menu Settings action captures the caller page.
     cx.update_window(handle, |_, w, cx| {
         app.update(cx, |a, cx| {
             a.structural_navigation();
-            a.navigate(crate::app::Scope::Settings, w, cx);
-            let (links, current) = a.navigation_path();
-            assert!(links.is_empty(), "Settings is not a Research child");
-            assert_eq!(current, "Settings");
+            a.navigate(crate::app::Scope::Automations, w, cx);
+            a.automation_ui
+                .scroll
+                .set_offset(point(px(0.), px(-80.)));
+            cx.notify();
+        });
+    })
+    .unwrap();
+    cx.update_window(handle, |_, w, cx| {
+        w.render_frame(cx);
+        w.click("workspace-menu", cx);
+        w.render_frame(cx);
+        w.within("popup-menu").click(3usize, cx);
+        w.render_frame(cx);
+    })
+    .unwrap();
+    cx.update_window(handle, |_, w, cx| {
+        let a = app.read(cx);
+        assert!(a.settings_page(), "workspace menu opens Settings");
+        let (links, current) = a.navigation_path();
+        assert!(links.is_empty(), "Settings is not a Research child");
+        assert_eq!(current, "Settings");
+        assert!(
+            w.try_find("navigation-back").is_some(),
+            "workspace-menu Settings captures its caller"
+        );
+        let captured_scroll = a
+            .return_frames()
+            .last()
+            .and_then(|frame| {
+                frame
+                    .scroll
+                    .get(crate::navigation_route::ScrollKey::PeriodBody)
+            })
+            .map(|(_, y)| y)
+            .unwrap_or(0.0);
+        assert!(
+            captured_scroll <= -70.0,
+            "Settings return frame captures the caller scroll"
+        );
+    })
+    .unwrap();
+    cx.update_window(handle, |_, w, cx| {
+        w.click("navigation-back", cx);
+        w.render_frame(cx);
+    })
+    .unwrap();
+    cx.update_window(handle, |_, _, cx| {
+        let a = app.read(cx);
+        assert_eq!(a.scope(), crate::app::Scope::Automations);
+    })
+    .unwrap();
 
+    // The same action preserves a list filter.
+    cx.update_window(handle, |_, w, cx| {
+        app.update(cx, |a, cx| {
+            a.structural_navigation();
+            a.navigate(crate::app::Scope::All, w, cx);
+            a.set_query("Row".into());
+            cx.notify();
+        });
+    })
+    .unwrap();
+    cx.update_window(handle, |_, w, cx| {
+        w.click("workspace-menu", cx);
+        w.render_frame(cx);
+        w.within("popup-menu").click(3usize, cx);
+        w.render_frame(cx);
+        w.click("navigation-back", cx);
+        w.render_frame(cx);
+    })
+    .unwrap();
+    cx.update_window(handle, |_, _, cx| {
+        let a = app.read(cx);
+        assert_eq!(a.scope(), crate::app::Scope::All);
+        assert_eq!(a.query(), "Row", "Settings Back preserves the list filter");
+    })
+    .unwrap();
+
+    cx.update_window(handle, |_, w, cx| {
+        app.update(cx, |a, cx| {
             a.structural_navigation();
             a.navigate(crate::app::Scope::AutomationRuns, w, cx);
             let (links, current) = a.navigation_path();

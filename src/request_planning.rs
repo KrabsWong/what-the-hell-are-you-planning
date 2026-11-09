@@ -371,6 +371,38 @@ impl Store {
         }
     }
 
+    /// Ownership lookup for a run the caller already holds. Avoids rescanning
+    /// the whole run history per row in result counts.
+    pub(crate) fn request_for_run_record(&self, run: &crate::domain::AgentRun) -> Option<&ResearchRequest> {
+        if let Some(owner) = run.planning_owner.as_ref() {
+            return self
+                .research_requests()
+                .iter()
+                .find(|request| request.id == owner.request_id);
+        }
+        if let Some(request) = self
+            .research_requests()
+            .iter()
+            .find(|request| request.planning_run_id == Some(run.id))
+        {
+            return Some(request);
+        }
+        // Legacy read fallback: a unique verified signature identifies an owner
+        // whose latest pointer moved. Ambiguous signatures stay unowned.
+        let signature = run.input_signature.as_str();
+        if signature.is_empty() {
+            return None;
+        }
+        let mut matches = self.research_requests().iter().filter(|request| {
+            self.request_plan_signature(request.id)
+                .ok()
+                .as_deref()
+                == Some(signature)
+        });
+        let first = matches.next()?;
+        matches.next().is_none().then_some(first)
+    }
+
     pub fn request_for_run(&self, run_id: u64) -> Option<&ResearchRequest> {
         if let Some(owner) = self
             .runs()
@@ -1522,6 +1554,51 @@ mod tests {
         let before = s.clone();
         assert!(s.apply_request_plan(id, PLAN).is_err());
         assert_eq!(s, before);
+    }
+
+    fn run_with_signature(signature: &str) -> crate::domain::AgentRun {
+        crate::domain::AgentRun {
+            automation_occurrence_id: None,
+            planning_owner: None,
+            deadline_at: None,
+            auto_retry_attempt: 0,
+            retry_not_before: None,
+            project_plan: None,
+            id: 900,
+            task_title: "Legacy planner".into(),
+            directory: String::new(),
+            prompt: String::new(),
+            started_at: String::new(),
+            queued_at: String::new(),
+            workspace_source: None,
+            ended_at: None,
+            session_id: None,
+            exit_code: None,
+            task_id: 1,
+            agent: "test".into(),
+            model: "test".into(),
+            stage: crate::domain::Stage::Planned,
+            status: "Succeeded".into(),
+            logs: Vec::new(),
+            output: String::new(),
+            attachments: Vec::new(),
+            research_kind: None,
+            sources: Vec::new(),
+            input_signature: signature.into(),
+        }
+    }
+
+    #[test]
+    fn legacy_unique_signature_resolves_moved_planning_owner() {
+        let (mut s, id) = automation_store();
+        let request = s
+            .create_automation_request(id, 1, "Objective A", "Expected A")
+            .unwrap();
+        let signature = s.request_plan_signature(request).unwrap();
+        let run = run_with_signature(&signature);
+        s.push_run(run.clone());
+        assert_eq!(s.request_for_run(run.id).unwrap().id, request);
+        assert_eq!(s.request_for_run_record(&run).unwrap().id, request);
     }
 
     #[test]

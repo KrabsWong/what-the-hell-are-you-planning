@@ -173,6 +173,8 @@ pub(crate) struct PendingExit {
     pub surface: DecisionSurface,
     pub target: ExitTarget,
     pub error: Option<String>,
+    /// Neutral progress text while a save receipt is genuinely pending.
+    pub notice: Option<String>,
     pub from_search: bool,
 }
 
@@ -189,6 +191,9 @@ pub(crate) enum ExitDecision {
 #[derive(Clone, Debug, PartialEq, Eq)]
 pub(crate) enum SaveOutcome {
     Saved,
+    /// A real durable write is in flight. Not Saved, but not a failure either:
+    /// keep the decision and complete the original exit after acknowledgement.
+    Pending(String),
     Rejected(String),
     Unavailable(String),
 }
@@ -196,6 +201,7 @@ pub(crate) enum SaveOutcome {
 #[derive(Clone, Debug, PartialEq)]
 pub(crate) enum DecisionOutcome {
     Proceed(ExitTarget),
+    Pending { message: String },
     Stay { error: Option<String> },
 }
 
@@ -210,6 +216,7 @@ pub(crate) fn resolve_decision(
         ExitDecision::Discard => DecisionOutcome::Proceed(pending.target.clone()),
         ExitDecision::Save => match save {
             SaveOutcome::Saved => DecisionOutcome::Proceed(pending.target.clone()),
+            SaveOutcome::Pending(message) => DecisionOutcome::Pending { message },
             SaveOutcome::Rejected(error) | SaveOutcome::Unavailable(error) => {
                 DecisionOutcome::Stay {
                     error: Some(error),
@@ -452,11 +459,23 @@ mod tests {
             surface: DecisionSurface::AutomationWizard { editing: None },
             target: ExitTarget::Navigate(NavigationTarget::AutomationList),
             error: None,
+            notice: None,
             from_search: false,
         };
         assert_eq!(
             resolve_decision(&pending, ExitDecision::Save, SaveOutcome::Saved),
             DecisionOutcome::Proceed(ExitTarget::Navigate(NavigationTarget::AutomationList))
+        );
+        assert_eq!(
+            resolve_decision(
+                &pending,
+                ExitDecision::Save,
+                SaveOutcome::Pending("Saving…".into())
+            ),
+            DecisionOutcome::Pending {
+                message: "Saving…".into()
+            },
+            "a genuine in-flight save is neither rejected nor advanced"
         );
         for save in [
             SaveOutcome::Rejected("Add an instruction first.".into()),

@@ -551,6 +551,60 @@ pub fn run() {
         assert_eq!(app.read(cx).scope(), Scope::All);
     }).unwrap();
 
+    // 4b. Dirty automation Save waits for the exact durable receipt and then
+    // executes the requested exit once. Reopening/retyping a newer form must
+    // never be closed by the late ACK.
+    cx.update_window(handle, |_, w, cx| {
+        w.click("all-automations", cx);
+        w.render_frame(cx);
+        w.click("new-automation", cx);
+        w.render_frame(cx);
+        w.click("automation-objective", cx);
+        w.input("R108 pending save fixture", cx);
+        w.click("all", cx);
+        w.render_frame(cx);
+        assert!(w.try_find("dirty-exit-save").is_some());
+        w.click("dirty-exit-save", cx);
+        w.render_frame(cx);
+    })
+    .unwrap();
+    for _ in 0..400 {
+        let done = cx
+            .update_window(handle, |_, w, cx| {
+                w.render_frame(cx);
+                app.read(cx).scope() == Scope::All && !app.read(cx).automation_ui.creating
+            })
+            .unwrap_or(false);
+        cx.run_until_parked();
+        if done {
+            break;
+        }
+        std::thread::sleep(std::time::Duration::from_millis(10));
+    }
+    cx.update_window(handle, |_, _, cx| {
+        let a = app.read(cx);
+        assert_eq!(a.scope(), Scope::All, "durable Save executes the exit once");
+        assert!(!a.automation_ui.creating);
+        assert!(a.navigation.pending_saved_exit.is_none());
+        assert!(a.navigation.pending_exit.is_none());
+        assert!(
+            a.store
+                .automations()
+                .iter()
+                .any(|definition| definition.objective.contains("R108 pending save fixture")),
+            "the committed draft exists"
+        );
+        let loaded = Storage::new(path.clone()).load().unwrap().unwrap();
+        assert!(
+            loaded
+                .automations()
+                .iter()
+                .any(|definition| definition.objective.contains("R108 pending save fixture")),
+            "the committed draft is durable in the database"
+        );
+    })
+    .unwrap();
+
     // 5. The planning composer is a modal surface: background mouse routes are
     // unavailable, while Cancel/Close and platform shortcuts raise the shared
     // decision. Stay keeps the text; Discard restores the origin project.

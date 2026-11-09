@@ -5,6 +5,20 @@ use crate::{
 };
 use gpui_kit::*;
 
+#[derive(Clone, Debug, PartialEq)]
+pub(crate) enum RequestCaptureOutcome {
+    Saved,
+    Pending {
+        id: u64,
+        input: String,
+        epoch: u64,
+        destination: Option<crate::navigation_context::CreationMode>,
+        start: bool,
+        replan_source: Option<u64>,
+    },
+    Rejected(String),
+}
+
 impl TaskApp {
     pub fn open_project_plan(&mut self, project: u64, w: &mut Window, cx: &mut Context<Self>) {
         if !self.store.projects().iter().any(|p| p.id == project) {
@@ -200,6 +214,23 @@ impl TaskApp {
         start: bool,
         cx: &mut Context<Self>,
     ) -> bool {
+        !matches!(
+            self.capture_research_request_outcome(project, topic, input, start, cx),
+            RequestCaptureOutcome::Rejected(_)
+        )
+    }
+
+    pub(crate) fn capture_research_request_outcome(
+        &mut self,
+        project: u64,
+        topic: Option<u64>,
+        input: String,
+        start: bool,
+        cx: &mut Context<Self>,
+    ) -> RequestCaptureOutcome {
+        let destination = self.planning_destination;
+        let replan_source = self.planning_replan_source;
+        let form_epoch = self.planning_form_epoch;
         let mut staged = self.store.clone();
         let request = if let Some(source) = self.planning_replan_source {
             staged.create_topic_replan_request(source, input.clone())
@@ -209,9 +240,9 @@ impl TaskApp {
         let id = match request {
             Ok(id) => id,
             Err(e) => {
-                self.error = e;
+                self.error = e.clone();
                 cx.notify();
-                return false;
+                return RequestCaptureOutcome::Rejected(e);
             }
         };
         // Commit the request in one confirmed write. A failure leaves the live
@@ -220,15 +251,16 @@ impl TaskApp {
             self.storage_error = error.clone();
             self.error = error;
             cx.notify();
-            return false;
+            return RequestCaptureOutcome::Rejected(self.error.clone());
         }
         let completion = crate::live_save_app::LiveCompletion::Request {
             id,
             start,
-            destination: self.planning_destination,
+            destination,
             input: input.clone(),
-            replan_source: self.planning_replan_source,
-            form_epoch: self.planning_form_epoch,
+            replan_source,
+            form_epoch,
+            exit_token: self.navigation.pending_exit_token.take(),
         };
         let acceptance = match self.save_staged_store(&staged, completion, cx) {
             Ok(acceptance) => acceptance,
@@ -236,7 +268,7 @@ impl TaskApp {
                 self.storage_error = error.clone();
                 self.error = error;
                 cx.notify();
-                return false;
+                return RequestCaptureOutcome::Rejected(self.error.clone());
             }
         };
         if !self.expanded_sidebar_projects.contains(&project) {
@@ -260,7 +292,18 @@ impl TaskApp {
             self.toast = "Saving request…".into();
         }
         cx.notify();
-        true
+        if acceptance.is_durable() {
+            RequestCaptureOutcome::Saved
+        } else {
+            RequestCaptureOutcome::Pending {
+                id,
+                input,
+                epoch: form_epoch,
+                destination,
+                start,
+                replan_source,
+            }
+        }
     }
 
     pub(crate) fn submit_research_request(

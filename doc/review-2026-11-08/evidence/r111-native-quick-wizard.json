@@ -1,0 +1,25 @@
+{
+  "candidate": "402ff49 isolated optimized native review bundle",
+  "installed_binary_sha256": "66d0bf836e930564b37698b625a4a48e206625c1a90dc4bea57daa48e4fe20ae",
+  "theme": "Dark",
+  "surface": "Quick task edit wizard, R108 draft validation",
+  "actions": [
+    "Stay in prior dirty-exit dialog",
+    "Continue from step1 to schedule",
+    "Continue from schedule to authorization review"
+  ],
+  "observed": [
+    "Computer accessible after latest user reply",
+    "Step2 displays schedule, time zone and next three triggers",
+    "Step3 Draft uses Approved plan, Goal1/1, Final report and Replan language despite Quick no-goal/no-planning explanation",
+    "Cancel and footer button anchors shift horizontally between step2 and steps1/3",
+    "Step2 exposes implementation prose about dispatch function and model generation"
+  ],
+  "result": "Failed presentation consistency; returned to T19 render-only followup",
+  "execution": "Enable automation was not clicked; no scheduled or manual run requested.",
+  "scope": "Current installed older candidate; final repaired candidate must be rerun natively.",
+  "additional_check": {
+    "action": "Cancel at step3 then Discard and continue",
+    "result": "Returned to same saved Draft detail; Review and enable remained primary, Pause and Run manually disabled; no execution requested."
+  }
+}

@@ -1,0 +1,23 @@
+{
+  "binary_sha256": "6fd62f392d96d4a0832229995408dff4b45e1b715230eecdc378ac08c4891dc4",
+  "source_manifest": ".local/opencode-dispatch/r109-dependency-source.json",
+  "command": "--qa-live-persistence",
+  "baseline": "Original frozen r108 same-process live QA with only SQLite dependency upgrade",
+  "guard_exit": 2,
+  "exit_code": 1,
+  "result": "failed",
+  "duration_seconds": 30.331911709,
+  "hang_reproduced": false,
+  "remaining_failure": "Unchanged baseline editor save UI blocking 3843279us at 43200 empty-body runs; threshold50000us",
+  "measured_us": {
+    "editor_small_ui": 4504,
+    "editor_small_total": 83603,
+    "editor_43200_ui": 3843279,
+    "editor_43200_total": 7679018,
+    "settings_ui": 1805,
+    "settings_total": 4167,
+    "history_page_43200": 3573
+  },
+  "interpretation": "The original same-process r108 scenario advanced through core, reopening, pending quit and startup retry to the final performance gate after changing only dependency versions. This supports the upstream SQLite lock-fix explanation, but one successful lifecycle run is not a deterministic causality proof or full acceptance.",
+  "log": ".local/opencode-dispatch/r109-dependency-live.log"
+}

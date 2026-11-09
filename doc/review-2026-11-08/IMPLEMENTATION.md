@@ -2196,3 +2196,50 @@ The independent r104 live fixture exited 1 at its second-primary assertion. The 
 ## r105 native live-startup rejection
 
 Root verified the complete isolated source manifest, binary hash, signed unknown-QA startup guard and fixture backup before replacing only the native review bundle. The old process was confirmed exited first. The new optimized candidate opened onboarding for an existing configured workspace with `Saving will start when persistence is ready.` Clicking Retry workspace preparation then failed to lock the workspace; `lsof` showed only the same native process holding that lock. [Native evidence](evidence/r105-native-startup.json). This is a core startup/retry blocker, returned to T14 and the live-QA owner. Direct attachment QA is insufficient: acceptance must exercise background preparation, attachment, worker readiness and startup gating together. Navigation and scrolling were not reached in this candidate.
+
+
+## r106 checkpoint and live-path findings
+
+Checkpoint `402ff49` was pushed to the existing development branch, excluding local screenshots, traces, logs and fixture data. An exact archive passed 700 unit tests (2 ignored), 8 dispatch crash tests and 3 v4 crash tests. [Independent evidence](evidence/r106-root-tests.json). The next isolated native build uses this exact checkpoint to verify the readiness/lock-handoff changes against r105.
+
+The live-QA implementer measured editor submission at 3,897,869 microseconds with 43,200 empty-body runs (7,953,571 microseconds through durability); the suite rejected that UI stall. This is implementer-reported evidence pending root reproduction, not an accepted benchmark. Root explicitly rejected deferring the measured preparation cost. Code review also found live task-editor/comment fast paths applying changes before primary-capacity preflight, which could mutate state despite rejecting an overlapping save. T14 must move preflight before mutation; the dedicated live-QA owner must verify unchanged fields/approval/comments on rejection. These remain core acceptance blockers.
+
+The complete r103 gate finished all 52 entries: 49 passed its entry checks, onboarding and simplify exited 101, and automation performance was rejected for the 1,421 ms synchronous UI save despite exit zero. [Full gate evidence](evidence/r103-full-gate.json). The six persistence benchmark modes completed, including the larger fixture; their exit codes alone are not native smoothness or latency acceptance. The later live-persistence entrypoint remains a separate gate.
+
+
+## r107 native startup fix and independent UI results
+
+The exact 402ff49 optimized isolated build opened the existing configured workspace directly, resolving the observed r105 startup gate. Native result opening/Escape kept the list; Settings no longer showed a false All-research parent. The real workspace-menu Settings entry still had no Back control and Cmd+[ stayed on Settings, so T12 received a focused origin-handling follow-up. [Native evidence](evidence/r107-native.json).
+
+Root independently passed sidebar, navigation-context, simplify, global-search and onboarding on the exact checkpoint. The live fixture failed its performance assertion: editor submission blocked 3,298,293 microseconds with 43,200 empty-body runs (6,560,541 microseconds through durability). [UI evidence](evidence/r106-root-ui.json). The current development workload prevents a p95 claim but does not make a multi-second synchronous block acceptable.
+
+
+## r108 atomicity repair and native dirty-exit finding
+
+Root briefly interrupted only T14, moved live task-editor/comment primary-capacity checks before their first mutation, and supplied the missing diagnostic timer declaration that blocked shared compilation. T14 was resumed on the same session immediately; T13 continues the live overlap regressions. An independent frozen build is in progress.
+
+Native Dark-theme Quick creation preserved fresh defaults and the Stay path. However, Cancel → Save draft and continue treated asynchronous Pending as failure: the modal stayed open with `The automation draft could not be saved.` while the background still said Saving. Read-only SQLite confirmed the named Draft was already durable and no occurrence or run was added. [Native evidence](evidence/r108-native-draft.json). T12 owns typed dirty-exit integration, T14 the durable-completion hook, and T13 live tests. This is a user-visible core contract failure, not optional visual polish.
+
+
+## r109 concurrent SQLite lifecycle and review follow-up
+
+The frozen r108 live suite timed out after 240 seconds. A one-second native sample showed the main thread opening the next fixture while the former writer and history reader closed SQLite handles, with all three blocked in Unix mutex paths. [Independent timeout evidence](evidence/r108-root-live-timeout.json). The bundled SQLite version is 3.51.1; the [upstream 3.51.2 release](https://sqlite.org/releaselog/3_51_2.html) describes a related Unix lock deadlock fix. This is a suspected upstream match, not a proven diagnosis. T19 owns the minimal compatible dependency update, actual runtime-version verification and a same-process concurrency regression. Per-scenario child-process QA isolation does not close the production lifecycle gate.
+
+The live-QA implementer reports that editor submission fell below 50 ms after sidebar-count optimization, but root review found a behavior regression: counting only the newest run hides an older saved successful result after a later failed or empty attempt. T14 must preserve the existing result-count contract while removing repeated scans. These performance numbers remain implementer-reported until the corrected implementation passes independent review.
+
+Root also rejected a draft dirty-exit completion implementation that inferred success from global persistence idleness. The requested destination must follow its own durable receipt exactly once; unrelated operations, a failed write or a reopened identical-value form must not trigger a stale exit. T12 owns this integration with T14's receipt hook. Native acceptance remains pending: Computer again reported a locked Mac when retried after the user's unlock reply. No native result is inferred from headless tests.
+
+
+The dirty-exit review also covers ordinary research requests: the former boolean capture API returned true for an accepted but not-yet-durable write. T12 must expose its pending outcome and wait for the matching request receipt, preserving the composer on failure and ignoring stale receipts for a newer form. Root additionally found that an initial optimized ownership lookup omitted the unique legacy input-signature fallback; T14 must preserve that compatibility before its speedup can be accepted.
+
+The dependency candidate changes only rusqlite 0.38.0 → 0.39.0 and libsqlite3-sys 0.36.0 → 0.37.0 in the lockfile. Root verified the downloaded bundled source declares SQLite 3.51.3 and started independent tests from a frozen r108 source with only those dependency changes and the new concurrency regression test. This isolates dependency validation from ongoing navigation edits; it is not final integration acceptance.
+
+
+Root independently passed both SQLite dependency regressions, including actual runtime version 3.51.3. [Dependency test evidence](evidence/r109-root-sqlite-tests.json). More decisively, the unchanged original r108 same-process application suite, rebuilt with only the dependency update, finished in 30.33 seconds instead of hanging for 240 seconds. It advanced through persistence, reopen, pending quit and startup retry to the final performance gate. [Application-level evidence](evidence/r109-root-live-dependency.json). This supports the upstream lock-fix explanation; it is not a deterministic causality proof. The suite still failed because the unchanged baseline editor submission blocked for 3,843,279 microseconds. The performance fix and dirty-exit integration remain unaccepted pending independent tests of their final implementations.
+
+
+## r110 dependency acceptance boundary
+
+Root's dependency-only snapshot passed 700 unit tests (2 ignored), 8 dispatch-admission crash tests, 3 v4 crash tests and the final 2 SQLite regression tests. The concurrent database passed integrity checking and contained exactly 214 expected rows. The first unit invocation lacked Node on PATH; the documented rerun used the installed Node v24.22.2 and passed without code changes. [Independent validation](evidence/r110-root-dependency-validation.json).
+
+The SQLite dependency update is accepted within this tested boundary. It does not accept the ongoing dirty-exit integration or sidebar performance change, and it does not satisfy native scrolling or full-program release gates. Root review required an exact TaskEdit operation token in addition to the automation/research-request tokens, plus a regression exercising dirty-exit Save before reopening an identical form; a direct Save-only test would not cover the navigation bug.

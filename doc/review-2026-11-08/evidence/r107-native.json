@@ -1,0 +1,17 @@
+{
+  "base_commit": "402ff49",
+  "source": ".local/native-review/r106-402ff49-source",
+  "manifest_verified": true,
+  "unsigned_sha256": "0f93226b5be048ecb655437c901c6f4bdc8489a0b50517286efd990fa3be58c7",
+  "signed_sha256": "66d0bf836e930564b37698b625a4a48e206625c1a90dc4bea57daa48e4fe20ae",
+  "guard_exit": 2,
+  "fixture_backup": ".local/native-review/r107-fixture-backup",
+  "observations": [
+    "Existing configured v4 workspace opened All research directly; prior onboarding startup failure did not recur.",
+    "Automation results opens selected period; Escape closes only result and preserves list.",
+    "Back from sidebar Automation results uses Automations structural parent.",
+    "Automations -> Personal workspace menu -> Settings has Settings-only heading, no false All research crumb.",
+    "The Settings entry has no Back control; Cmd+[ stays in Settings. Returned to T12 for actual entry-path origin handling."
+  ],
+  "scope": "Narrow native startup/navigation checks; full layout/keyboard/scroll matrix pending."
+}

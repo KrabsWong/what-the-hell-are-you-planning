@@ -1,0 +1,25 @@
+{
+  "base_commit": "402ff49",
+  "installed_signed_sha256": "66d0bf836e930564b37698b625a4a48e206625c1a90dc4bea57daa48e4fe20ae",
+  "theme": "Dark",
+  "steps": [
+    "Settings General: switch Light to Dark; saved status appeared.",
+    "All automations -> New automation: fresh Quick default and blank inputs.",
+    "Enter R108 draft validation and Summarize the local QA fixture without external actions.",
+    "Cancel -> Stay -> Cancel -> Save draft and continue."
+  ],
+  "actual": [
+    "Dirty-exit dialog offers Stay, Discard and continue, Save draft and continue.",
+    "Save submission changes underlying page to Edit automation and shows Saving.",
+    "Dialog shows The automation draft could not be saved and remains open.",
+    "Read-only SQLite confirms id3 Draft with entered name is durable; occurrence/run counts remain5/21."
+  ],
+  "expected": "Pending is a distinct state; durable acknowledgement completes the original exit exactly once, without false failure or unintended execution.",
+  "status": "rejected_async_dirty_exit",
+  "owners": [
+    "T12 navigation and typed draft outcome",
+    "T14 completion hook",
+    "T13 live QA"
+  ],
+  "scope": "Native small fixture and Dark form inspection; not performance or full visual acceptance."
+}

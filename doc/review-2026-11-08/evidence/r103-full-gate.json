@@ -1,0 +1,435 @@
+{
+  "source": ".local/r103-baseline-source",
+  "base_commit": "23485f3",
+  "sole_override": "test helper snapshot_id empty initializer",
+  "binary_sha256": "a3fabed0c22c4cfccb60a3eeda2a6048f2668d873c97fb348d80cb96dea15871",
+  "guard_exit": 2,
+  "exit_code": 1,
+  "entries": 52,
+  "status_counts": {
+    "passed": 49,
+    "performance_rejected": 1,
+    "failed": 2
+  },
+  "results": [
+    {
+      "entry": "--qa",
+      "status": "passed",
+      "exit_code": 0,
+      "elapsed_seconds": 10.52,
+      "log": "qa.log",
+      "alias_note": ""
+    },
+    {
+      "entry": "--qa-affordance",
+      "status": "passed",
+      "exit_code": 0,
+      "elapsed_seconds": 21.86,
+      "log": "qa-affordance.log",
+      "alias_note": ""
+    },
+    {
+      "entry": "--qa-archived-research",
+      "status": "passed",
+      "exit_code": 0,
+      "elapsed_seconds": 10.49,
+      "log": "qa-archived-research.log",
+      "alias_note": ""
+    },
+    {
+      "entry": "--qa-attachments",
+      "status": "passed",
+      "exit_code": 0,
+      "elapsed_seconds": 2.95,
+      "log": "qa-attachments.log",
+      "alias_note": ""
+    },
+    {
+      "entry": "--qa-automation",
+      "status": "passed",
+      "exit_code": 0,
+      "elapsed_seconds": 41.09,
+      "log": "qa-automation.log",
+      "alias_note": ""
+    },
+    {
+      "entry": "--qa-automation-perf",
+      "status": "performance_rejected",
+      "exit_code": 0,
+      "elapsed_seconds": 26.33,
+      "log": "qa-automation-perf.log",
+      "alias_note": "",
+      "ui_save_block_ms": 1421,
+      "acceptance_note": "One sample can reject a blocking save; it cannot prove p95 responsiveness or native scrolling smoothness."
+    },
+    {
+      "entry": "--qa-batch",
+      "status": "passed",
+      "exit_code": 0,
+      "elapsed_seconds": 13.45,
+      "log": "qa-batch.log",
+      "alias_note": ""
+    },
+    {
+      "entry": "--qa-board-scroll",
+      "status": "passed",
+      "exit_code": 0,
+      "elapsed_seconds": 2.34,
+      "log": "qa-board-scroll.log",
+      "alias_note": ""
+    },
+    {
+      "entry": "--qa-board-topics",
+      "status": "passed",
+      "exit_code": 0,
+      "elapsed_seconds": 1.32,
+      "log": "qa-board-topics.log",
+      "alias_note": ""
+    },
+    {
+      "entry": "--qa-brand",
+      "status": "passed",
+      "exit_code": 0,
+      "elapsed_seconds": 0.19,
+      "log": "qa-brand.log",
+      "alias_note": ""
+    },
+    {
+      "entry": "--qa-calendar",
+      "status": "passed",
+      "exit_code": 0,
+      "elapsed_seconds": 0.73,
+      "log": "qa-calendar.log",
+      "alias_note": ""
+    },
+    {
+      "entry": "--qa-command",
+      "status": "passed",
+      "exit_code": 0,
+      "elapsed_seconds": 2.63,
+      "log": "qa-command.log",
+      "alias_note": ""
+    },
+    {
+      "entry": "--qa-concurrency",
+      "status": "passed",
+      "exit_code": 0,
+      "elapsed_seconds": 20.05,
+      "log": "qa-concurrency.log",
+      "alias_note": ""
+    },
+    {
+      "entry": "--qa-dispatch-admission",
+      "status": "passed",
+      "exit_code": 0,
+      "elapsed_seconds": 1.6,
+      "log": "qa-dispatch-admission.log",
+      "alias_note": ""
+    },
+    {
+      "entry": "--qa-display-order",
+      "status": "passed",
+      "exit_code": 0,
+      "elapsed_seconds": 0.45,
+      "log": "qa-display-order.log",
+      "alias_note": ""
+    },
+    {
+      "entry": "--qa-execution-eligibility",
+      "status": "passed",
+      "exit_code": 0,
+      "elapsed_seconds": 6.0,
+      "log": "qa-execution-eligibility.log",
+      "alias_note": ""
+    },
+    {
+      "entry": "--qa-global-search",
+      "status": "passed",
+      "exit_code": 0,
+      "elapsed_seconds": 22.88,
+      "log": "qa-global-search.log",
+      "alias_note": ""
+    },
+    {
+      "entry": "--qa-handoff-progress",
+      "status": "passed",
+      "exit_code": 0,
+      "elapsed_seconds": 3.53,
+      "log": "qa-handoff-progress.log",
+      "alias_note": ""
+    },
+    {
+      "entry": "--qa-header-layout",
+      "status": "passed",
+      "exit_code": 0,
+      "elapsed_seconds": 4.12,
+      "log": "qa-header-layout.log",
+      "alias_note": ""
+    },
+    {
+      "entry": "--qa-intake",
+      "status": "passed",
+      "exit_code": 0,
+      "elapsed_seconds": 8.79,
+      "log": "qa-intake.log",
+      "alias_note": ""
+    },
+    {
+      "entry": "--qa-keyboard-visual",
+      "status": "passed",
+      "exit_code": 0,
+      "elapsed_seconds": 16.35,
+      "log": "qa-keyboard-visual.log",
+      "alias_note": ""
+    },
+    {
+      "entry": "--qa-navigation-context",
+      "status": "passed",
+      "exit_code": 0,
+      "elapsed_seconds": 16.13,
+      "log": "qa-navigation-context.log",
+      "alias_note": ""
+    },
+    {
+      "entry": "--qa-onboarding",
+      "status": "failed",
+      "exit_code": 101,
+      "elapsed_seconds": 0.77,
+      "log": "qa-onboarding.log",
+      "alias_note": ""
+    },
+    {
+      "entry": "--qa-planning",
+      "status": "passed",
+      "exit_code": 0,
+      "elapsed_seconds": 4.66,
+      "log": "qa-planning.log",
+      "alias_note": ""
+    },
+    {
+      "entry": "--qa-projects",
+      "status": "passed",
+      "exit_code": 0,
+      "elapsed_seconds": 9.12,
+      "log": "qa-projects.log",
+      "alias_note": ""
+    },
+    {
+      "entry": "--qa-publishing",
+      "status": "passed",
+      "exit_code": 0,
+      "elapsed_seconds": 4.89,
+      "log": "qa-publishing.log",
+      "alias_note": ""
+    },
+    {
+      "entry": "--qa-recovery",
+      "status": "passed",
+      "exit_code": 0,
+      "elapsed_seconds": 4.66,
+      "log": "qa-recovery.log",
+      "alias_note": ""
+    },
+    {
+      "entry": "--qa-recovery-scroll",
+      "status": "passed",
+      "exit_code": 0,
+      "elapsed_seconds": 0.78,
+      "log": "qa-recovery-scroll.log",
+      "alias_note": ""
+    },
+    {
+      "entry": "--qa-render-perf",
+      "status": "passed",
+      "exit_code": 0,
+      "elapsed_seconds": 1.44,
+      "log": "qa-render-perf.log",
+      "alias_note": ""
+    },
+    {
+      "entry": "--qa-research",
+      "status": "passed",
+      "exit_code": 0,
+      "elapsed_seconds": 11.81,
+      "log": "qa-research.log",
+      "alias_note": ""
+    },
+    {
+      "entry": "--qa-research-inputs",
+      "status": "passed",
+      "exit_code": 0,
+      "elapsed_seconds": 15.87,
+      "log": "qa-research-inputs.log",
+      "alias_note": ""
+    },
+    {
+      "entry": "--qa-result-layout",
+      "status": "passed",
+      "exit_code": 0,
+      "elapsed_seconds": 6.39,
+      "log": "qa-result-layout.log",
+      "alias_note": ""
+    },
+    {
+      "entry": "--qa-result-presentation",
+      "status": "passed",
+      "exit_code": 0,
+      "elapsed_seconds": 31.83,
+      "log": "qa-result-presentation.log",
+      "alias_note": ""
+    },
+    {
+      "entry": "--qa-retries",
+      "status": "passed",
+      "exit_code": 0,
+      "elapsed_seconds": 1.6,
+      "log": "qa-retries.log",
+      "alias_note": ""
+    },
+    {
+      "entry": "--qa-rich-markdown",
+      "status": "passed",
+      "exit_code": 0,
+      "elapsed_seconds": 6.98,
+      "log": "qa-rich-markdown.log",
+      "alias_note": ""
+    },
+    {
+      "entry": "--qa-settings",
+      "status": "passed",
+      "exit_code": 0,
+      "elapsed_seconds": 14.82,
+      "log": "qa-settings.log",
+      "alias_note": ""
+    },
+    {
+      "entry": "--qa-sidebar",
+      "status": "passed",
+      "exit_code": 0,
+      "elapsed_seconds": 1.24,
+      "log": "qa-sidebar.log",
+      "alias_note": ""
+    },
+    {
+      "entry": "--qa-simplify",
+      "status": "failed",
+      "exit_code": 101,
+      "elapsed_seconds": 0.41,
+      "log": "qa-simplify.log",
+      "alias_note": ""
+    },
+    {
+      "entry": "--qa-t11",
+      "status": "passed",
+      "exit_code": 0,
+      "elapsed_seconds": 10.54,
+      "log": "qa-t11.log",
+      "alias_note": ""
+    },
+    {
+      "entry": "--qa-task-edit",
+      "status": "passed",
+      "exit_code": 0,
+      "elapsed_seconds": 6.75,
+      "log": "qa-task-edit.log",
+      "alias_note": ""
+    },
+    {
+      "entry": "--qa-topic-actions",
+      "status": "passed",
+      "exit_code": 0,
+      "elapsed_seconds": 0.79,
+      "log": "qa-topic-actions.log",
+      "alias_note": ""
+    },
+    {
+      "entry": "--qa-topic-migration",
+      "status": "passed",
+      "exit_code": 0,
+      "elapsed_seconds": 1.52,
+      "log": "qa-topic-migration.log",
+      "alias_note": ""
+    },
+    {
+      "entry": "--qa-topic-queue",
+      "status": "passed",
+      "exit_code": 0,
+      "elapsed_seconds": 6.02,
+      "log": "qa-topic-queue.log",
+      "alias_note": ""
+    },
+    {
+      "entry": "--qa-topics",
+      "status": "passed",
+      "exit_code": 0,
+      "elapsed_seconds": 2.02,
+      "log": "qa-topics.log",
+      "alias_note": ""
+    },
+    {
+      "entry": "--qa-workflow",
+      "status": "passed",
+      "exit_code": 0,
+      "elapsed_seconds": 2.39,
+      "log": "qa-workflow.log",
+      "alias_note": ""
+    },
+    {
+      "entry": "--qa-workspace",
+      "status": "passed",
+      "exit_code": 0,
+      "elapsed_seconds": 8.72,
+      "log": "qa-workspace.log",
+      "alias_note": ""
+    },
+    {
+      "entry": "--qa-persistence-perf inventory",
+      "status": "passed",
+      "exit_code": 0,
+      "elapsed_seconds": 1.8,
+      "log": "qa-persistence-perf inventory.log",
+      "alias_note": ""
+    },
+    {
+      "entry": "--qa-persistence-perf small",
+      "status": "passed",
+      "exit_code": 0,
+      "elapsed_seconds": 2.89,
+      "log": "qa-persistence-perf small.log",
+      "alias_note": ""
+    },
+    {
+      "entry": "--qa-persistence-perf occ43200",
+      "status": "passed",
+      "exit_code": 0,
+      "elapsed_seconds": 105.48,
+      "log": "qa-persistence-perf occ43200.log",
+      "alias_note": ""
+    },
+    {
+      "entry": "--qa-persistence-perf body-heavy",
+      "status": "passed",
+      "exit_code": 0,
+      "elapsed_seconds": 59.89,
+      "log": "qa-persistence-perf body-heavy.log",
+      "alias_note": ""
+    },
+    {
+      "entry": "--qa-persistence-perf retry-heavy",
+      "status": "passed",
+      "exit_code": 0,
+      "elapsed_seconds": 103.43,
+      "log": "qa-persistence-perf retry-heavy.log",
+      "alias_note": ""
+    },
+    {
+      "entry": "--qa-persistence-perf xl",
+      "status": "passed",
+      "exit_code": 0,
+      "elapsed_seconds": 625.82,
+      "log": "qa-persistence-perf xl.log",
+      "alias_note": ""
+    }
+  ],
+  "scope": "All standalone entries in this frozen candidate plus six persistence benchmark modes. Crash parents independently passed at r103. Later --qa-live-persistence is not in this older inventory and is tracked separately. Exit-zero benchmark status does not prove latency targets or native scrolling."
+}

@@ -157,6 +157,55 @@ use gpui_kit::*;
 
 actions!(task_manager, [Quit]);
 
+/// Return the first argument that is not a supported macOS launch argument.
+///
+/// Every supported QA command returns before the guard that calls this, so the
+/// only inputs that reach it are macOS/Finder/Xcode launch arguments and
+/// genuine mistakes. Only two documented forms are preserved:
+///
+/// - Finder's process serial number, `-psn_<digits>_<digits>`.
+/// - Xcode's `-NSDocumentRevisionsDebugMode YES` (or `NO`).
+///
+/// Everything else, including unknown single-dash switches, a bare `-`, `--`
+/// and positional tokens, fails closed instead of bootstrapping a workspace.
+fn unsupported_argument(args: &[String]) -> Option<String> {
+    let mut index = 0;
+    while index < args.len() {
+        if supported_macos_launch_argument(args, &mut index) {
+            continue;
+        }
+        return Some(args[index].clone());
+    }
+    None
+}
+
+fn supported_macos_launch_argument(args: &[String], index: &mut usize) -> bool {
+    let argument = args[*index].as_str();
+    if let Some(serial) = argument.strip_prefix("-psn_") {
+        let mut parts = serial.split('_');
+        let high = parts.next().unwrap_or_default();
+        let low = parts.next().unwrap_or_default();
+        let well_formed = !high.is_empty()
+            && !low.is_empty()
+            && parts.next().is_none()
+            && high.bytes().all(|byte| byte.is_ascii_digit())
+            && low.bytes().all(|byte| byte.is_ascii_digit());
+        if well_formed {
+            *index += 1;
+            return true;
+        }
+        return false;
+    }
+    if argument == "-NSDocumentRevisionsDebugMode"
+        && let Some(value) = args.get(*index + 1)
+        && (value == "YES" || value == "NO")
+    {
+        *index += 2;
+        return true;
+    }
+    false
+}
+
 fn main() {
     if std::env::args().nth(1).as_deref() == Some("--ego-browser-mcp") {
         let result = std::env::args().nth(2).ok_or_else(|| "Missing ego-browser path".to_string())
@@ -392,12 +441,13 @@ fn main() {
         qa::run();
         return;
     }
-    // A missing QA feature or misspelled QA flag must never open a real workspace.
-    if let Some(argument) = std::env::args().skip(1).find(|argument| {
-        argument == "--qa" || argument.starts_with("--qa-")
-            || matches!(argument.as_str(), "--projects-live" | "--research-live")
-    }) {
-        eprintln!("Unsupported QA argument {argument}. Build with --features qa and use a supported QA command. No workspace was opened.");
+    // A missing QA feature or misspelled flag must never open a real workspace.
+    // Every supported route returns above, so only genuine mistakes and macOS
+    // launch arguments reach this guard.
+    if let Some(argument) = unsupported_argument(&std::env::args().skip(1).collect::<Vec<_>>()) {
+        eprintln!(
+            "Unsupported argument {argument}. Build with --features qa and use a supported QA command. No workspace was opened."
+        );
         std::process::exit(2);
     }
     application().with_assets(ui_assets::AppAssets).run(|cx| {
@@ -453,4 +503,89 @@ fn main() {
         quit_task.detach();
         cx.activate(true);
     });
+}
+
+#[cfg(test)]
+mod argument_guard_tests {
+    use super::unsupported_argument;
+
+    fn args(values: &[&str]) -> Vec<String> {
+        values.iter().map(|value| value.to_string()).collect()
+    }
+
+    #[test]
+    fn rejects_unknown_application_flags() {
+        for case in [
+            "--live-persistence-qa",
+            "--qa-typo",
+            "-live-persistence-qa",
+            "-bogus",
+            "-bogus path",
+            "-",
+            "--",
+        ] {
+            assert!(unsupported_argument(&args(&[case])).is_some(), "{case}");
+        }
+        assert_eq!(
+            unsupported_argument(&args(&["--live-persistence-qa", "--qa-live-persistence"])),
+            Some("--live-persistence-qa".into())
+        );
+    }
+
+    #[test]
+    fn rejects_malformed_process_serial_numbers() {
+        for case in ["-psn_", "-psn_abc", "-psn_0", "-psn_0_", "-psn__1", "-psn_0_1_2", "-psn_0_x"] {
+            assert_eq!(
+                unsupported_argument(&args(&[case])),
+                Some(case.to_string()),
+                "{case}"
+            );
+        }
+        assert_eq!(
+            unsupported_argument(&args(&["-bogus", "path"])),
+            Some("-bogus".into())
+        );
+    }
+
+    #[test]
+    fn rejects_incomplete_document_revision_switches() {
+        assert_eq!(
+            unsupported_argument(&args(&["-NSDocumentRevisionsDebugMode"])),
+            Some("-NSDocumentRevisionsDebugMode".into())
+        );
+        assert_eq!(
+            unsupported_argument(&args(&["-NSDocumentRevisionsDebugMode", "MAYBE"])),
+            Some("-NSDocumentRevisionsDebugMode".into())
+        );
+        assert_eq!(
+            unsupported_argument(&args(&["-NSDocumentRevisionsDebugMode", "--qa-live-persistence"])),
+            Some("-NSDocumentRevisionsDebugMode".into())
+        );
+    }
+
+    #[test]
+    fn preserves_documented_macos_launch_arguments() {
+        assert_eq!(unsupported_argument(&args(&[])), None);
+        assert_eq!(unsupported_argument(&args(&["-psn_0_12345"])), None);
+        assert_eq!(
+            unsupported_argument(&args(&["-NSDocumentRevisionsDebugMode", "YES"])),
+            None
+        );
+        assert_eq!(
+            unsupported_argument(&args(&["-NSDocumentRevisionsDebugMode", "NO"])),
+            None
+        );
+        assert_eq!(
+            unsupported_argument(&args(&["-psn_0_1", "-NSDocumentRevisionsDebugMode", "YES"])),
+            None
+        );
+    }
+
+    #[test]
+    fn rejects_positional_arguments() {
+        assert_eq!(
+            unsupported_argument(&args(&["workspace.sqlite3"])),
+            Some("workspace.sqlite3".into())
+        );
+    }
 }

@@ -1,0 +1,33 @@
+{
+  "scope": "Additional attribution inspection of retained r116 Settings scroll trace; not a new candidate acceptance run",
+  "trace": ".local/native-review/r116-scroll-settings-dark.trace",
+  "tables": {
+    "hitches-renders": {
+      "rows": 2412,
+      "process_column": false,
+      "min_duration_ms": 0.616666,
+      "max_duration_ms": 20.500541
+    },
+    "hitches-framewait": {
+      "rows": 2410,
+      "process_column": false,
+      "min_duration_ms": 3.298958,
+      "max_duration_ms": 14.949541
+    },
+    "hitches-gpu": {
+      "rows": 2410,
+      "process_column": false,
+      "min_duration_ms": 0.329708,
+      "max_duration_ms": 1.724708
+    },
+    "hitches-updates": {
+      "rows": 16,
+      "process_column": true,
+      "min_duration_ms": 0.120375,
+      "max_duration_ms": 0.564416,
+      "process": "planning-native-review (59009)"
+    }
+  },
+  "conclusion": "The aggregate 420 hitch count is not directly attributed to the app. Only hitches-updates contains a process column in these exports; its 16 app rows do not measure complete render/display latency. Render/frame-wait/GPU/display tables lack process attribution. This does not prove smooth scrolling or remove the native gate.",
+  "next_required": "Use app-attributed frame/render timing and controlled native gestures on the final candidate, with quiet-build verification and all mandated surfaces. Preserve aggregate hitch evidence as diagnostic only."
+}

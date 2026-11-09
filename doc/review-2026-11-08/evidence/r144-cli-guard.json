@@ -1,0 +1,88 @@
+{
+  "candidate_sha256": "bf44816f6d693c585fb3fec102c409e80bfa549eb5763baca74df267f4f995e2",
+  "source_sha256": "6407a450e7a3fb48c8c1e2cb02aaa8f3db67f7a73123c489a197f11e7a9e4707",
+  "root_subprocess_results": [
+    {
+      "arguments": [
+        "--live-persistence-qa"
+      ],
+      "exit": 2
+    },
+    {
+      "arguments": [
+        "-live-persistence-qa"
+      ],
+      "exit": 2
+    },
+    {
+      "arguments": [
+        "-bogus",
+        "path"
+      ],
+      "exit": 2
+    },
+    {
+      "arguments": [
+        "-"
+      ],
+      "exit": 2
+    },
+    {
+      "arguments": [
+        "--"
+      ],
+      "exit": 2
+    },
+    {
+      "arguments": [
+        "-psn_"
+      ],
+      "exit": 2
+    },
+    {
+      "arguments": [
+        "-psn_abc"
+      ],
+      "exit": 2
+    },
+    {
+      "arguments": [
+        "-psn_0"
+      ],
+      "exit": 2
+    },
+    {
+      "arguments": [
+        "-psn_0_1_2"
+      ],
+      "exit": 2
+    },
+    {
+      "arguments": [
+        "-NSDocumentRevisionsDebugMode"
+      ],
+      "exit": 2
+    },
+    {
+      "arguments": [
+        "-NSDocumentRevisionsDebugMode",
+        "MAYBE"
+      ],
+      "exit": 2
+    },
+    {
+      "arguments": [
+        "--qa-invalid-probe"
+      ],
+      "exit": 2
+    },
+    {
+      "arguments": [
+        "workspace.sqlite3"
+      ],
+      "exit": 2
+    }
+  ],
+  "guard_unit_tests": "Root compiled extracted unchanged functions/tests with rustc --test; 5 passed",
+  "scope": "Unsupported application arguments rejected before normal app startup; supported QA execution covered by agent 25-case sequential suite. No normal app launch in root checks."
+}

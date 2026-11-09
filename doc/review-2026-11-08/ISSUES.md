@@ -196,6 +196,12 @@ Create a Quick task or Research automation. Close the isolated app, clear/change
 
 This is a source-confirmed changed-objective path; native Replan with unchanged input completed successfully. Fix **T25**: create a new immutable planning-request revision for a changed objective, bind the plan/approval to that revision, and preserve earlier attempts and periods. Verify the prompt contains the new objective before approving the result.
 
+### F24 — Collection step-count disclosure changes without revealing content (P2, r141 native + code)
+
+In Archive List, clicking the goal's `0/3` chevron changes its direction but shows no steps. The same goal's Steps page contains all three children. [Native evidence](evidence/r141-native-archive-return.json) records the reproduction. `TaskApp::visible_tasks` retains only root goals; `ordered_visible_tasks` then calls `append_children` with that goals-only list, while `task_row` still exposes an expansion action based on children in the full Store. The list therefore promises a disclosure it cannot render.
+
+Follow-up under **T10/T11/T22**, accepted through **T20**: preserve the product's goal-only collection contract and give the count an explicit, useful action to the goal's Steps page, or remove the disclosure affordance if the count is passive. Do not silently change collection filtering/count semantics. Verify real clicks in All, Project, Topic and Archive lists, correct goal/Steps destination, Back restoring the source filter/layout/scroll, and readable Light/Dark controls. This is a navigation-contract repair; no persistence or execution change is needed. It can proceed independently of dispatch repair after the current modal-focus patch is isolated.
+
 ## Architecture boundaries to extract
 
 | Boundary | Current coupling | Recommended responsibility |

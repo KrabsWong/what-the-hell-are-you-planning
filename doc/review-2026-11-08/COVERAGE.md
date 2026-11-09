@@ -6,6 +6,10 @@ Baseline: `611a4586eedb56600a83c8b272a3af43ba95e4a4`. Review: 2026-11-08. This l
 
 The feature matrix below preserves the original 2026-11-08 walkthrough; its baseline passes and failures are not claims about the latest product. Current task dispositions are in [IMPLEMENTATION.md](IMPLEMENTATION.md#current-full-scope-status). The [r139 offline matrix](evidence/r139-offline-matrix.json) covers 54 entries with original failures and passing supplemental checks retained. Native [r139 ordinary execution](evidence/r139-native-dispatch.json) fails after approval; [r140 filtered period return](evidence/r140-native-period-return.json) passes the pointer return chain but reproduces a global-shortcut failure. A later unrelated report action woke one stalled ordinary step, without changing the report route; the remaining queue did not finish. Completed 3/3 ordinary archive/restore, full native keyboard and native scrolling remain open. No baseline pass overrides these newer failures.
 
+### r141 resumed archive check
+
+[Native archive evidence](evidence/r141-native-archive-return.json) confirms Archive → goal Steps Board → analysis → Command-[ returns to the same Steps Board without a manual focus reset. This does not close the period-modal shortcut defect. A separate failure is reproduced: the Archive list step-count chevron changes direction but reveals no children. `visible_tasks` filters to root goals, while `ordered_visible_tasks` attempts to append children from that already-filtered set. The count control must gain a useful, explicit action consistent with goal-only collection semantics; acceptance requires actual pointer activation and return-context verification, not only a chevron-state assertion. T10/T11/T22/T20 remain open for this defect.
+
 ## Evidence model
 
 - **Native verified:** Computer performed the action and observed its resulting state in the isolated app.

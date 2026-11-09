@@ -2757,3 +2757,16 @@ The next independently built candidate displays the title, filter and initial re
 Root independently checked the hashes and SQLite integrity of the new ordinary, latest-report and material fixtures. The ordinary copy exposes 80 root goals. Its list moves on real downward/upward gestures, unlike the rejected automation-results candidate. The board displays Todo 80 but no cards, and a downward gesture does not reveal them. The fixture records raw Done while the rendered list derives Todo/0 of 3; fixture validity and board status/rendering are being diagnosed before assigning a product cause. Neither the empty board nor this bounded dark/large-window sample accepts the full scrolling matrix. See [native and fixture evidence](evidence/r186-research-native.json).
 
 The r186 trace confirms a separate required-size list performance failure: downward and upward gesture windows reach 159.255 ms and 146.249 ms work with 19 and 17 missed refreshes. Their corresponding prepaint phases take 156.072 ms and 144.192 ms. The animation-heavy window p95 near 2.9 ms does not override those input-associated stalls. This ordinary-list path now requires a measured repair as well as the automation-results work.
+
+
+## r187 native wheel and pagination review
+
+The isolated candidate restored wheel movement and made Load more reachable. Opening Period 981 displayed the matching Skipped result, and Close returned to the list. This is partial functional evidence, not acceptance of T19.
+
+Large wheel requests still moved roughly one row per gesture; reaching the first footer required repeated requests. Load more changed the top visible timestamp from 00:46 to 00:42, moving the viewport by approximately four rows. OpenCode must investigate wheel extent/clamping and preserve the visible row anchor when extending the list. Acceptance requires realistic wheel displacement, reachable pagination, stable visible-row position across Load more, and regression coverage using the rendered page.
+
+The three measured scroll windows had zero missed refreshes and maximum CPU present work of 7.55, 5.32, and 4.16 ms. Load more peaked at 8.24 ms with zero missed refreshes. Cold opening peaked at 16.69 ms with two missed refreshes. These measurements do not excuse the incorrect scroll behavior. Source/build identities and exact windows are in `evidence/r187-scroll-native.json`; raw traces remain local.
+
+### r186 fixture qualification correction
+
+OpenCode diagnosis identified residual automation ownership in the synthetic ordinary fixture: automation-owned topics and occurrence goal references survived clearing task ownership. Its runs also lack valid input signatures. The observed Todo 0/3 and blank counted board therefore cannot establish a normal ordinary-workspace defect. Preserve the measured stalls as evidence for that hybrid fixture, but re-baseline before attributing them to valid ordinary research. A replacement API-generated fixture is authorized with genuinely derived Done/3-of-3 goals and unrelated paused automation history. Product caching changes remain pending independent review of that baseline. Native dimensions were 1440 by 920 logical pixels (2880 by 1840 screenshot pixels).

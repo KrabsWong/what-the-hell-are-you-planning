@@ -1,0 +1,68 @@
+{
+  "build": {
+    "source": "/Users/fuxingxing/workspaces/what-the-hell-are-you-planning/.local/native-review/r187-list-source",
+    "automation_views_sha256": "e718a9ba0a4135552272637fd19b90d9ff2ec5dab7abd1eaa3bacb98443baa4f",
+    "base_native_manifest": ".local/native-review/r180-build-manifest.json",
+    "candidate_sha256": "c8eb6e932897bbec353656deaab9b68ac08f62e8faf7b6b9402c4f8365bbd303",
+    "installed_sha256": "33eabb81d497db7a03ea7c93a4fbfd2d4272db1beae7f3b269abf8074d063b6a"
+  },
+  "observations": [
+    "Wheel now moves rows; Load more reachable after repeated gestures.",
+    "Load more shifts top visible timestamp from 00:46 to 00:42; anchor preservation not accepted.",
+    "Period 981 Skipped opens correct result modal and Close returns to list.",
+    "Large wheel requests move roughly one row per gesture; diagnosis required before acceptance."
+  ],
+  "windows": [
+    {
+      "name": "open",
+      "start_ms": 1794215902994,
+      "end_ms": 1794215904394,
+      "presents": 158,
+      "late": 1,
+      "missed": 2,
+      "max_ms": 16.691333,
+      "p95_ms": 2.212584
+    },
+    {
+      "name": "down_20",
+      "start_ms": 1794215911823,
+      "end_ms": 1794215914121,
+      "presents": 130,
+      "late": 0,
+      "missed": 0,
+      "max_ms": 7.546125,
+      "p95_ms": 3.216625
+    },
+    {
+      "name": "down_again",
+      "start_ms": 1794215920753,
+      "end_ms": 1794215921878,
+      "presents": 107,
+      "late": 0,
+      "missed": 0,
+      "max_ms": 5.3155,
+      "p95_ms": 2.687541
+    },
+    {
+      "name": "down_third",
+      "start_ms": 1794215927744,
+      "end_ms": 1794215928611,
+      "presents": 96,
+      "late": 0,
+      "missed": 0,
+      "max_ms": 4.162709,
+      "p95_ms": 3.031125
+    },
+    {
+      "name": "load_more",
+      "start_ms": 1794215947926,
+      "end_ms": 1794215949242,
+      "presents": 122,
+      "late": 0,
+      "missed": 0,
+      "max_ms": 8.235375,
+      "p95_ms": 1.078167
+    }
+  ],
+  "status": "partial_functionality_verified_not_accepted"
+}

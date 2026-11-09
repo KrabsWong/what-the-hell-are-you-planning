@@ -2685,3 +2685,9 @@ Root froze and built c113c16 with the new required-size performance fixtures. Th
 The separate legacy automation fixture reports 108 ms synchronous save at 1,000 periods. Source inspection confirms its QA-only attachment explicitly omits LiveStartup and measures Storage.save, so it is not evidence of the production ordered writer. The original r174 ledger remains unchanged; scope classifications are separate evidence, never rewritten passes.
 
 On the r174 native candidate, focused Cmd+K and footer Search open the same search. Escape returns to G19; keyboard selection of Period 3 opens the correct recurring-research period. Closing it returns to the owning automation and Back returns to G19. See [performance and search evidence](evidence/r177-performance-search.json).
+
+## r178: complete standalone ledger retained; lifecycle review continues
+
+The frozen r174 standalone gate completed all 55 entries: 52 passed, recovery and render-perf failed, and automation-perf retained its original performance-rejected status. All six persistence-performance modes, including xl, completed successfully. The automation-perf result measures the legacy QA-only writer with 43,200 periods and is an out-of-scope latency diagnostic; it is not rewritten as passed. The two functional/harness failures still require explained fixes and independent replacement evidence. See [complete offline ledger](evidence/r178-complete-offline-ledger.json).
+
+Root review of the automation lifecycle repair found a further identity gap: a new unsaved Quick form edited while Enable awaits its durable receipt must adopt the newly created definition id before preserving the newer dirty fields, otherwise the next save can create another definition. This was returned to OpenCode for a bounded repair and regression. Other lifecycle checks reported by OpenCode remain provisional until independently verified.

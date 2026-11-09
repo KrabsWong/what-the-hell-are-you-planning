@@ -8,7 +8,7 @@ Date: 2026-11-09. Branch: `feature/review-2026-11-08-optimization`.
 
 **Historical decision at aee91f9; broad UX acceptance superseded after user corrections.** The r210 report recorded dispositions for T01–T25. Its broad no-wrong-destination/UX-completion claim was not justified for the common ordinary-research, loading and layout paths corrected by the user; those paths require V01–V05 in POST_DELIVERY_REVIEW. Unaffected evidence is retained without extending it to the new source. This is not a claim that every external service or environment combination was tested, and it does not deploy or replace the production app.
 
-Authority: [TASKS](TASKS.md). Original findings: [ISSUES](ISSUES.md). Historical coverage: [COVERAGE](COVERAGE.md). Detailed chronology: [IMPLEMENTATION](IMPLEMENTATION.md). This document supersedes earlier “current” pending dispositions; original failures remain historical evidence.
+Authority: [TASKS](TASKS.md). Original findings: [ISSUES](ISSUES.md). Historical coverage: [COVERAGE](COVERAGE.md). Detailed chronology: [IMPLEMENTATION](IMPLEMENTATION.md). This document records the former r210 disposition; [POST_DELIVERY_REVIEW](POST_DELIVERY_REVIEW.md) now governs the corrected UX paths. Original failures remain historical evidence.
 
 ## Evidence and source scope
 

@@ -5,7 +5,7 @@
 [POST_DELIVERY_REVIEW.md](POST_DELIVERY_REVIEW.md) supersedes the broad UX acceptance below for ordinary completed-result navigation, asynchronous report loading, visual hierarchy/layout and sidebar scrolling. The user's corrections reveal missed common cases and incorrect review prescriptions; they are not all new requirements or rare edge cases. Current source and added QA assertions were reviewed, but this documentation update did not independently rerun tests or native acceptance. V01–V06 define the remaining targeted verification. Historical passes remain valid only for their recorded source and scope.
 
 
-The authoritative scope and acceptance criteria remain in [TASKS.md](TASKS.md). Start with the [current release gate](#current-release-gate-status-r204); older dated entries preserve investigation history. Implementation is delegated to local OpenCode in bounded batches. A task is accepted only after independent diff review and verification; an agent's completion message alone is not acceptance.
+The authoritative scope and acceptance criteria remain in [TASKS.md](TASKS.md). Start with the [post-delivery correction review](POST_DELIVERY_REVIEW.md); older dated entries preserve investigation history. Implementation is delegated to local OpenCode in bounded batches. A task is accepted only after independent diff review and verification; an agent's completion message alone is not acceptance.
 
 ## r143 focused acceptance update
 

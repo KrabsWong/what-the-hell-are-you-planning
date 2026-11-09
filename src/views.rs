@@ -1347,7 +1347,7 @@ impl TaskApp {
         // Settings is a workspace-level destination reached from the workspace
         // menu, not a child of Research. Back uses an explicit return frame when
         // one exists; the structural trail has no All-research parent.
-        if self.scope() == Scope::Settings {
+        if self.settings_page() {
             return (vec![], "Settings".into());
         }
         // Automation results are a child of Automations, not of Research. A step
@@ -1513,6 +1513,7 @@ impl TaskApp {
         let colors = palette(cx);
         let (links, current) = self.navigation_path();
         let destination = links.last().map(|(_, title, _)| title.clone());
+        let back_available = destination.is_some() || self.has_return_frames();
         let mut trail = row()
             .id("location-trail")
             .flex_1()
@@ -1585,18 +1586,19 @@ impl TaskApp {
             .gap_3()
             .border_b_1()
             .border_color(rgb(colors.line))
-            .when(destination.is_some(), |d| {
+            .when(back_available, |d| {
                 d.child(
                     quiet_button("navigation-back", "Back")
                         .icon(assets::IconName::ArrowLeft)
                         .h_7()
                         .px_1()
                         .flex_shrink_0()
-                        .disabled(destination.is_none())
+                        .disabled(!back_available)
                         .tooltip(
                             destination
+                                .clone()
                                 .map(|name| format!("Back to {name} · ⌘["))
-                                .unwrap_or_else(|| "No previous page".into()),
+                                .unwrap_or_else(|| "Back to previous page · ⌘[".into()),
                         )
                         .on_click(cx.listener(|a, _, w, cx| a.request_back(w, cx))),
                 )

@@ -328,6 +328,12 @@ pub(crate) fn brand_phase(elapsed_seconds: f32) -> f32 {
     (elapsed_seconds.max(0.) % CYCLE_SECONDS) / CYCLE_SECONDS
 }
 
+/// Phase drawn when motion is pinned (reduce-motion or the QA static
+/// diagnostic). A stable phase keeps incidental rerenders visually identical.
+pub(crate) fn brand_render_phase(elapsed_seconds: f32, pinned: bool) -> f32 {
+    if pinned { 0.0 } else { brand_phase(elapsed_seconds) }
+}
+
 pub(crate) fn brand_frame_is_static(elapsed_seconds: f32) -> bool {
     let time = elapsed_seconds.max(0.) % CYCLE_SECONDS;
     let local = if time >= 2.48 { time - 2.48 } else { time };
@@ -359,7 +365,9 @@ pub(crate) fn sidebar_logo_at(color: u32, phase: f32) -> AnyElement {
 
 #[cfg(test)]
 mod overlay_animation_tests {
-    use super::{brand_frame_is_static, brand_next_motion_wait, brand_phase};
+    use super::{
+        brand_frame_is_static, brand_next_motion_wait, brand_phase, brand_render_phase,
+    };
 
     #[test]
     fn static_segments_and_motion_starts_are_exact() {
@@ -375,5 +383,10 @@ mod overlay_animation_tests {
         assert!((brand_next_motion_wait(2.48) - 0.48).abs() < 1e-5);
         assert!((brand_next_motion_wait(2.1) - 0.86).abs() < 1e-5);
         assert!((brand_next_motion_wait(4.48) - 0.96).abs() < 1e-5);
+        assert_eq!(brand_render_phase(0.0, true), 0.0);
+        assert_eq!(brand_render_phase(1.3, true), 0.0);
+        assert_eq!(brand_render_phase(3.7, true), 0.0);
+        assert!((brand_render_phase(1.3, false) - brand_phase(1.3)).abs() < 1e-6);
+        assert!((brand_render_phase(3.7, false) - brand_phase(3.7)).abs() < 1e-6);
     }
 }

@@ -25,8 +25,8 @@ All 25 tasks remain in scope. Accepted means the reviewed candidate met its task
 | T11 | Restore consistent action affordances and visual hierarchy | Accepted in reviewed working-tree candidate; integration/release gates remain |
 | T12 | Extract a typed navigation controller | Pure S1 independently accepted (28 tests); live typed-authority migration active with explicit result ownership and save-outcome policies; not accepted |
 | T13 | Extract domain commands and scoped undo | S3b/S3c and S3d material task-edit QA independently pass (r27); remaining material cases, settings/context/archive and final snapshot removal pending |
-| T14 | Move persistence off the UI thread with ordered acknowledgements | Isolated foundations and L1a three-collection mutation tracking independently accepted at r35; L1b durable dispatch integration running; complete live tracking and performance acceptance pending |
-| T15 | Add incremental writes and indexed history queries | Isolated backend restored and independently accepted (18 tests); live incremental tracking, pagination/lazy body UI and end-to-end performance remain pending |
+| T14 | Move persistence off the UI thread with ordered acknowledgements | Production startup now selects/migrates v4 and attaches the single ordered worker; typed form/command/runtime continuations, generation/epoch/workspace correlation, recovery plans and graceful quit/close implemented. Live TaskApp QA and native performance acceptance remain with the dedicated QA owner. |
+| T15 | Add incremental writes and indexed history queries | Startup hydrates without report bodies; an off-thread indexed page reader drives automation history paging with watermark invalidation; bodies load on demand with a revision guard. Migration/backup/WAL tests remain accepted; full UI/performance gate pending. |
 | T16 | Unify temporal ordering and harden schedule arithmetic | Accepted in reviewed working-tree candidate; integration/release gates remain |
 | T17 | Reconcile current product/design/workflow documentation | Scoped documentation reconciliation dispatched; independent review and final behavior reconciliation pending |
 | T18 | Make unattended capability guarantees accurate | Accepted in reviewed working-tree candidate; integration/release gates remain |
@@ -2152,3 +2152,47 @@ Root also inspected the pinned GPUI implementation: native `on_app_quit` futures
 ## r102 live integration and native evidence backup
 
 Root is preserving the current live activation, graceful-exit/recovery rework, indexed history reader, navigation return-frame work and r94–r101 independent evidence on the existing development branch. The current worktree remains in progress and is not accepted by earlier frozen results. The latest controlled recovery test is still red; native scrolling requires further controls and the full matrix. Icon embedding passed for 51 registered assets and whitespace validation passed. Local screenshots, raw traces, logs and binaries are excluded.
+
+
+WIP commit `23485f3` was pushed successfully to the same branch. An exact archive of that commit passed `cargo check --features qa`; the full test command has started against that fixed source. [Compile evidence](evidence/r102-compile.json). This is not a release acceptance claim.
+
+
+## r103 full baseline and T13 handoff verification
+
+The exact r102 commit passed ordinary compilation but its full test command exited 101 during test compilation: the recovery-plan helper omitted the new `snapshot_id` field. [Evidence](evidence/r102-tests.json). Current source initializes that helper field; root prepared r103 from the exact commit plus only that initializer and restarted the full test command without changing assertions. Empty-id helper cases do not prove the production nonempty snapshot-marker path.
+
+T13 reported a completed code candidate with scoped-command/Undo scale coverage and ten UI checks. Root is independently checking the fixed source; current live integration and final native acceptance remain separate, so the terminal agent report is not program sign-off.
+
+
+The r103 full command passed 691 unit tests (2 ignored), 8 dispatch crash tests and 3 SQLite v4 crash tests. [Evidence](evidence/r103-tests.json). Root independently reran the actual scoped command/Undo scale test at 3/240/800 affected steps and 43,200 history records: moves 7.247/7.953/16.156 ms and Undo 1.756/1.387/1.577 ms under the test profile. [Scale evidence](evidence/r103-scoped-scale.json). These single samples do not prove UI p95 or native smoothness. The complete standalone QA/performance gate has started from a guarded immutable binary built from the same frozen source.
+
+Root explicitly identified a UI coverage gap: existing QA fixtures attach legacy storage and do not assert the new live backend is active. T14 must add actual TaskApp startup/worker/pending/durable/error/reader/lifecycle coverage. Root also returned a lazy-body race: request identity alone cannot prevent an old disk reply from overwriting newer in-memory runtime output; a body revision/unloaded-state guard is required.
+
+
+## T14/T15 live persistence and indexed history checkpoint (r104)
+
+The production startup path now acquires the workspace lock, upgrades pre-v3 databases, migrates v3 to v4 with a verified backup, or creates a new v4 database, all on the background preparation thread. Attachment activates exactly one ordered `PersistenceWorker`; `live_required` prevents any fallback to the legacy v3 writer when that activation fails, so the workspace stays read-only until the worker reattaches.
+
+Ordinary writes use tracked entity/metadata deltas. Form saves merge the validated delta into live state and return `Pending`; saved status, form close, Undo insertion and command effects run only from the matching durable receipt (workspace + generation + epoch). A second form/command save is rejected before mutation while the primary continuation is in flight. Form close also compares a captured editor/composer instance identity and values, so a late ACK cannot close or reset a reopened form. Runtime one-shot callbacks retain only stable identities in a bounded replay queue and are replayed from the pump after capacity frees.
+
+Emergency quit records a typed recovery plan that preserves accepted group generations, intent hashes and the final unsubmitted tail; duplicate tail values already represented by an accepted group are dropped. Startup validates the whole plan before applying anything, rejects foreign incarnations and generation gaps, retires already-committed receipts, and writes a snapshot marker in the same atomic group as recovered writes. Cmd-Q uses a nonblocking drain; platform quit/close that cannot be cancelled writes the recovery plan synchronously and reports failure instead of claiming success.
+
+History pages use indexed keyset queries pinned to a commit watermark; concurrent inserts invalidate the page sequence instead of silently skipping rows. Report bodies are omitted at startup and fetched one at a time; a delayed reply hydrates only the exact unchanged unloaded revision, so newer streaming or regenerated output is never overwritten.
+
+Agent-reported checkpoint: [T14/T15 evidence](evidence/r104-t14-t15-live-activation.json). Open acceptance gates: TaskApp live pending/durable/failure/retry, stale ACK, backpressure/runtime replay, close/switch safety, and native responsiveness. These core checks are pending verification, not authorized deferrals. Material/project/settings clone preparation may be deferred only after measured user-action blocking establishes that core responsiveness is unaffected. Root independently validates the checkpoint claims below.
+
+
+## r104 independent integration review
+
+Computer access was reconfirmed on the isolated native review app; the Settings window could be raised and observed. The installed r88 diagnostic remains older than the current source and is not current-version acceptance. OpenCode is preparing a frozen optimized candidate with the same isolated bootstrap override for the next native pass.
+
+The ongoing r103 full gate found onboarding retry and simplify/Back failures, plus a 1,421 ms synchronous UI save in the legacy automation performance fixture. These were returned to the responsible OpenCode sessions; the legacy measurement cannot establish current live-path responsiveness. Root also identified that the new live QA initially measured time through durable acknowledgement, rather than separating UI blocking from end-to-end latency, and requested separate measurements.
+
+A separate r104 fixed source snapshot passed 700 unit tests (2 ignored), 8 dispatch crash tests and 3 v4 crash tests. [Independent tests](evidence/r104-root-tests.json). The new live UI fixture is being checked separately. Non-core deferrals are now allowed by the user under the explicit TASKS.md policy; neither data safety nor reproducible interaction stalls are waived.
+
+The independent r104 live fixture exited 1 at its second-primary assertion. The QA author has since changed that probe from a generic title command to an exclusive settings form save; root requested deterministic pending-ACK control and a precise distinction between permitted command queueing and form rejection. This early failure leaves later fixture cases untested and is not yet classified as a production defect. [Live fixture evidence](evidence/r104-root-live-qa.json).
+
+
+## r105 native live-startup rejection
+
+Root verified the complete isolated source manifest, binary hash, signed unknown-QA startup guard and fixture backup before replacing only the native review bundle. The old process was confirmed exited first. The new optimized candidate opened onboarding for an existing configured workspace with `Saving will start when persistence is ready.` Clicking Retry workspace preparation then failed to lock the workspace; `lsof` showed only the same native process holding that lock. [Native evidence](evidence/r105-native-startup.json). This is a core startup/retry blocker, returned to T14 and the live-QA owner. Direct attachment QA is insufficient: acceptance must exercise background preparation, attachment, worker readiness and startup gating together. Navigation and scrolling were not reached in this candidate.

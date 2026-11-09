@@ -1,0 +1,6 @@
+{
+  "source": ".local/r104-review-source",
+  "binary_sha256": "894ab9d510be9de5d6f90c95d63482686b1028714cd20ad1cd64623655500358",
+  "guard_exit": 2,
+  "build_exit": 0
+}

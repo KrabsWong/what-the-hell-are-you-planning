@@ -10,6 +10,14 @@ This is the authority for this optimization program. PRODUCT and DESIGN remain t
 
 P1 means data/scheduling correctness, unexpected consequential behavior or a release-blocking verification gap. P2 means navigation, presentation or maintainability that materially affects ordinary use. P3 means a bounded edge case or follow-on improvement. Effort bands S/M/L are relative implementation size, not delivery promises.
 
+## Time-boxing and deferred work
+
+On 2026-11-09, the user authorized moving past work that takes too long when doing so does not affect core functionality. A reviewer may mark a task or a precisely scoped remainder **Deferred**, with the reason, current implementation boundary, evidence that core behavior is unaffected, remaining risk, and a concrete follow-up acceptance criterion. Deferred work is not passed or implemented; retain its original task ID and disclose it in the delivery report.
+
+Prioritize working research and automation flows, data durability, execution ownership, truthful status, predictable navigation, and smooth interaction. Data loss, duplicate execution, wrong destinations, misleading save/result states, and reproducible interaction stalls remain blockers. Additional internal abstraction, cosmetic refinements, and optional extensions may be deferred once the relevant core regression checks pass. Do not expand a refactor merely to complete an internal taxonomy. Existing in-progress changes must still leave the delivered branch coherent and tested.
+
+Deferral candidates require review evidence; none is automatically approved by priority label or elapsed time alone. Record decisions in IMPLEMENTATION.md and beside the affected task. The final gate covers all delivered behavior and explicitly lists any deferred remainder.
+
 ## Target interaction contracts
 
 1. Background work may update status, counts and notifications; it never changes the route, selected item, open dialog, scroll position or draft. A user command may navigate only when its label/purpose implies that destination.

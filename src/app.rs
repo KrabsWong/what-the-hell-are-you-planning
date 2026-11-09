@@ -404,6 +404,8 @@ pub struct TaskApp {
     /// Submission/worker failure kept distinct from the pending state. The dirty
     /// edits remain in memory and retry; no effects run.
     pub(crate) live_failure: Option<String>,
+    /// Transient startup reason (worker not ready). Never a workspace failure.
+    pub(crate) live_pending_reason: Option<String>,
     pub(crate) live_retry_at: Option<Instant>,
     /// One-shot runtime callbacks rejected by continuation backpressure. They
     /// retain only stable identities and are replayed from the bounded pump
@@ -441,7 +443,7 @@ pub struct TaskApp {
     pub storage_error: String,
     pub(crate) last_saved: Store,
     pub(crate) last_save: Instant,
-    _storage_lock: Option<std::fs::File>,
+    pub(crate) _storage_lock: Option<std::fs::File>,
     pub executable_input: Entity<InputState>,
     pub codex_executable_input: Entity<InputState>,
     pub directory_input: Entity<InputState>,
@@ -643,7 +645,7 @@ impl TaskApp {
         }
         Ok(())
     }
-    #[cfg(feature = "qa")]
+    #[cfg(any(test, feature = "qa"))]
     pub fn new_mock(window: &mut Window, cx: &mut Context<Self>) -> Self {
         Self::with_store(Store::mock(), window, cx)
     }
@@ -789,6 +791,7 @@ impl TaskApp {
             live_followups: std::collections::VecDeque::new(),
             live_workspace: None,
             live_failure: None,
+            live_pending_reason: None,
             live_retry_at: None,
             live_deferred_runs: std::collections::VecDeque::new(),
             live_deferred_after_run: std::collections::VecDeque::new(),
@@ -1063,10 +1066,14 @@ impl TaskApp {
                 return None;
             }
         };
-        let acceptance = match self.save_current_store_durably(
-            crate::live_save_app::LiveCompletion::None,
-            cx,
-        ) {
+        // The continuation owns the inverse and the durable toast. A pending
+        // receipt must not push Undo or claim saved state yet.
+        let completion = crate::live_save_app::LiveCompletion::Domain {
+            undo: (undoable && outcome.undo.changed_entities() > 0)
+                .then(|| outcome.undo.clone()),
+            message: message.into(),
+        };
+        let acceptance = match self.save_current_store_durably(completion, cx) {
             Ok(acceptance) => acceptance,
             Err(error) => {
                 let _ = crate::scoped_domain::apply_undo(&mut self.store, &outcome.undo);
@@ -1076,15 +1083,9 @@ impl TaskApp {
             }
         };
         self.undo_invalidation = None;
-        if undoable && outcome.undo.changed_entities() > 0 {
-            self.undo.push_domain(outcome.undo.clone());
+        if !acceptance.is_durable() {
+            self.toast = "Saving…".into();
         }
-        // Only a durable receipt may claim saved state.
-        self.toast = if acceptance.is_durable() {
-            message.into()
-        } else {
-            "Saving…".into()
-        };
         self.error.clear();
         cx.notify();
         Some(outcome)
@@ -1173,10 +1174,16 @@ impl TaskApp {
         self.set_query(String::new());
     }
 
+    pub(crate) fn settings_page(&self) -> bool {
+        matches!(
+            self.nav.route(),
+            crate::navigation_route::Route::Settings(_)
+        )
+    }
+
     /// Active Settings section, or the last preference when another page is
     /// visible. The active Settings page owns its tab in the typed route.
-    pub(crate) fn settings_section(&self) -> crate::navigation_route::SettingsSection {
-        match self.nav.route() {
+    pub(crate) fn settings_section(&self) -> crate::navigation_route::SettingsSection {        match self.nav.route() {
             crate::navigation_route::Route::Settings(page) => page.tab(),
             _ => self.navigation.settings_section,
         }

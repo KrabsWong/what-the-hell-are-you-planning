@@ -51,8 +51,17 @@ impl TaskApp {
         if self.startup.workspace_pending.is_some() { return; }
         if self.pending_workspace_switch.is_some() { return; }
         // A workspace switch owns the old worker until every accepted write is
-        // durable. Defer the new open instead of dropping the adapter/worker.
-        if self.live_persistence_active() && !self.live_clean_for_quit() {
+        // durable. An unavailable incremental backend with dirty edits cannot
+        // be abandoned either: that would silently drop the only copy.
+        if self.live_required && !self.live_clean_for_quit() {
+            if !self.live_persistence_active() {
+                self.storage_error =
+                    "Not switched: the previous workspace still has unsaved changes and persistence is unavailable. Retry saving or reopen the same workspace."
+                        .into();
+                self.toast = "Not switched · previous changes are not saved".into();
+                cx.notify();
+                return;
+            }
             self.pending_workspace_switch = Some(storage);
             let _ = self.persist_live_followup();
             if let Some(pending) = self.live_primary.as_ref()
@@ -65,20 +74,60 @@ impl TaskApp {
             cx.notify();
             return;
         }
-        self.begin_workspace_open_now(storage, cx);
+        // One lock/worker handoff protocol. For the same path, reuse the lock
+        // this process already owns; dropping it would let a second process
+        // acquire the workspace while the old worker is still shutting down.
+        // For a different path, release it only after the clean check above.
+        let same_workspace = self
+            .storage
+            .as_ref()
+            .is_some_and(|current| current.path() == storage.path());
+        let existing_lock = if same_workspace {
+            self._storage_lock.take()
+        } else {
+            self._storage_lock = None;
+            None
+        };
+        self.reset_live_state();
+        self.storage = None;
+        self.begin_workspace_open_now(storage, existing_lock, cx);
     }
 
     pub(crate) fn poll_pending_workspace_switch(&mut self, cx: &mut Context<Self>) {
         if self.startup.workspace_pending.is_some() { return; }
         let Some(storage) = self.pending_workspace_switch.take() else { return; };
-        if !self.live_clean_for_quit() {
+        if self.live_required && !self.live_clean_for_quit() {
+            if !self.live_persistence_active() {
+                self.pending_workspace_switch = None;
+                self.storage_error =
+                    "Workspace switch cancelled: the previous workspace still has unsaved changes and persistence is unavailable."
+                        .into();
+                return;
+            }
             self.pending_workspace_switch = Some(storage);
             return;
         }
-        self.begin_workspace_open_now(storage, cx);
+        let same_workspace = self
+            .storage
+            .as_ref()
+            .is_some_and(|current| current.path() == storage.path());
+        let existing_lock = if same_workspace {
+            self._storage_lock.take()
+        } else {
+            self._storage_lock = None;
+            None
+        };
+        self.reset_live_state();
+        self.storage = None;
+        self.begin_workspace_open_now(storage, existing_lock, cx);
     }
 
-    fn begin_workspace_open_now(&mut self, storage: crate::persistence::Storage, cx: &mut Context<Self>) {
+    fn begin_workspace_open_now(
+        &mut self,
+        storage: crate::persistence::Storage,
+        existing_lock: Option<std::fs::File>,
+        cx: &mut Context<Self>,
+    ) {
         // An old workspace's clock must never dispatch into the new store.
         self.cancel_automation_timer();
         self.workspace_required = true;
@@ -91,7 +140,10 @@ impl TaskApp {
         self.startup.workspace_pending = Some(rx);
         std::thread::spawn(move || {
             let result = (|| {
-                let lock = storage.acquire_lock()?;
+                let lock = match existing_lock {
+                    Some(lock) => lock,
+                    None => storage.acquire_lock()?,
+                };
                 let backup = storage.upgrade_paths(|phase| { let _ = tx.send(WorkspaceOpenEvent::Progress(phase)); })?;
                 let mut live = crate::persistence_live::select_existing(&storage)?;
                 if live.is_none() {

@@ -162,6 +162,25 @@ pub(crate) const MAX_LIVE_FOLLOWUP_GROUPS: usize = 16;
 pub(crate) const MAX_RETAINED_COMPLETIONS: usize = 256;
 pub(crate) const MAX_RETAINED_COMPLETION_BYTES: usize = 256 * 1024;
 
+/// Pure quit/close safety decision. An unavailable incremental backend with
+/// dirty edits is never considered safe, even though no worker is attached.
+pub(crate) fn quit_state_is_clean(
+    live_required: bool,
+    live_active: bool,
+    dirty: bool,
+    primary: bool,
+    followups: bool,
+    deferred: bool,
+    adapter_pending: bool,
+) -> bool {
+    if !live_active {
+        // Read-only/unattached: safe only when no in-memory change or effect
+        // remains. `live_required` alone is not a write loss.
+        return !dirty && !primary && !followups && !deferred;
+    }
+    !dirty && !primary && !followups && !deferred && !adapter_pending
+}
+
 fn followup_usage(groups: &std::collections::VecDeque<LiveGroup>) -> (usize, usize) {
     let mut count = 0usize;
     let mut bytes = 0usize;
@@ -443,9 +462,11 @@ impl TaskApp {
                 Ok(())
             }
             Err(error) if error.contains("not ready") => {
-                // Startup is still opening the worker. The dirty set stays
-                // intact and the pump retries without losing the continuation.
-                self.storage_error = "Saving will start when persistence is ready.".into();
+                // Startup is still opening the worker. This is not a workspace
+                // failure: keep the dirty set and retry from the pump without
+                // gating setup/onboarding on a transient condition.
+                self.live_pending_reason =
+                    Some("Saving will start when persistence is ready.".into());
                 Ok(())
             }
             Err(error) => {
@@ -474,7 +495,8 @@ impl TaskApp {
         let generation = match adapter.submit_live_group(delta.changes, delta.metadata, delta.epoch) {
             Ok(generation) => generation,
             Err(error) if error.contains("not ready") => {
-                self.storage_error = "Saving will start when persistence is ready.".into();
+                self.live_pending_reason =
+                    Some("Saving will start when persistence is ready.".into());
                 return Ok(());
             }
             Err(error) => {
@@ -558,6 +580,7 @@ impl TaskApp {
         };
         match adapter.submit_live_group(delta.changes, delta.metadata, delta.epoch) {
             Ok(generation) => {
+                self.live_pending_reason = None;
                 self.live_followups.push_back(LiveGroup {
                     generation,
                     epoch: delta.epoch,
@@ -975,18 +998,30 @@ impl TaskApp {
                         run_id,
                         result,
                     } => {
-                        let matches_loading = matches!(
-                            self.run_body_state.get(&run_id),
+                        let expected = match self.run_body_state.get(&run_id) {
                             Some(crate::history_reader::BodyLoad::Loading {
-                                request_id: active
-                            }) if *active == request_id
-                        );
-                        if !matches_loading {
-                            continue;
-                        }
+                                request_id: active,
+                                expected,
+                            }) if *active == request_id => expected.clone(),
+                            _ => continue,
+                        };
                         match result {
                             Ok(Some(body)) if !body.is_empty() => {
-                                self.store.hydrate_run_body(run_id, body);
+                                // Hydrate only the exact unchanged revision. A
+                                // newer streaming/regenerated output (including a
+                                // deliberately cleared body) wins over the disk
+                                // snapshot and remains part of the next delta.
+                                let unchanged = self
+                                    .store
+                                    .runs()
+                                    .iter()
+                                    .find(|run| run.id == run_id)
+                                    .is_some_and(|run| {
+                                        crate::history_reader::body_reply_is_current(run, &expected)
+                                    });
+                                if unchanged {
+                                    self.store.hydrate_run_body(run_id, body);
+                                }
                                 self.run_body_state
                                     .insert(run_id, crate::history_reader::BodyLoad::Loaded);
                             }
@@ -1049,6 +1084,12 @@ impl TaskApp {
                 };
                 if request {
                     let request_id = self.next_history_request();
+                    let expected = self
+                        .store
+                        .runs()
+                        .iter()
+                        .find(|run| run.id == run_id)
+                        .map(crate::history_reader::RunBodyRevision::capture);
                     let sent = self
                         .history_reader
                         .as_ref()
@@ -1056,7 +1097,20 @@ impl TaskApp {
                     self.run_body_state.insert(
                         run_id,
                         if sent {
-                            crate::history_reader::BodyLoad::Loading { request_id }
+                            crate::history_reader::BodyLoad::Loading {
+                                request_id,
+                                expected: expected.unwrap_or(
+                                    crate::history_reader::RunBodyRevision {
+                                        status: String::new(),
+                                        ended_at: None,
+                                        session_id: None,
+                                        exit_code: None,
+                                        output_len: 0,
+                                        sources: 0,
+                                        logs: 0,
+                                    },
+                                ),
+                            }
                         } else {
                             crate::history_reader::BodyLoad::Failed {
                                 error: "history reader is busy".into(),
@@ -1075,19 +1129,17 @@ impl TaskApp {
 
     /// Everything that could still be lost on an immediate normal quit.
     pub(crate) fn live_clean_for_quit(&self) -> bool {
-        if !self.live_persistence_active() {
-            // An unavailable incremental backend must not be treated as a
-            // successfully saved workspace while dirty edits are retained.
-            return !self.live_required && !self.store.has_tracked_changes();
-        }
-        !self.store.has_tracked_changes()
-            && self.live_primary.is_none()
-            && self.live_followups.is_empty()
-            && !self.live_has_deferred_runtime()
-            && !self
-                .dispatch_admission
+        quit_state_is_clean(
+            self.live_required,
+            self.live_persistence_active(),
+            self.store.has_tracked_changes(),
+            self.live_primary.is_some(),
+            !self.live_followups.is_empty(),
+            self.live_has_deferred_runtime(),
+            self.dispatch_admission
                 .as_ref()
-                .is_some_and(|adapter| adapter.live_pending())
+                .is_some_and(|adapter| adapter.live_pending()),
+        )
     }
 
     /// Start a nonblocking graceful quit. Process stopping and persistence both
@@ -1293,62 +1345,15 @@ impl TaskApp {
         if let Some(storage) = self.storage.as_ref()
             && let Some(incarnation) = self.live_workspace
         {
-            let mut groups = Vec::new();
-            let mut durable_generation = 0;
-            if let Some(adapter) = self.dispatch_admission.as_ref() {
-                durable_generation = adapter.durable_generation();
-                for group in adapter.live_snapshot() {
-                    let intent_hash = crate::sqlite_v4::SqliteV4::group_intent_hash(&group)
-                        .unwrap_or_default();
-                    groups.push(crate::persistence_live::RecoveryGroup {
-                        generation: group.generation(),
-                        intent_hash,
-                        changes: group.changes().to_vec(),
-                        metadata: group.metadata().to_vec(),
-                        effects: group.effects().to_vec(),
-                    });
-                }
-            }
-            if let Ok(delta) = self.store.drain_store_delta() {
-                // Accepted groups are still tracked dirty until their receipt.
-                // Keep only tail values that differ from the latest accepted
-                // payload for the same key/field; duplicating an accepted group
-                // as generation zero would let an old snapshot overwrite a
-                // later durable edit after a crash.
-                let mut latest_changes = std::collections::HashMap::new();
-                let mut latest_metadata = std::collections::HashMap::new();
-                for group in &groups {
-                    for change in &group.changes {
-                        latest_changes.insert(change.key(), change.clone());
-                    }
-                    for metadata in &group.metadata {
-                        latest_metadata.insert(metadata.field(), metadata.clone());
-                    }
-                }
-                let changes: Vec<_> = delta
-                    .changes
-                    .into_iter()
-                    .filter(|change| {
-                        latest_changes.get(&change.key()) != Some(change)
-                    })
-                    .collect();
-                let metadata: Vec<_> = delta
-                    .metadata
-                    .into_iter()
-                    .filter(|metadata| {
-                        latest_metadata.get(metadata.field()) != Some(metadata)
-                    })
-                    .collect();
-                if !changes.is_empty() || !metadata.is_empty() {
-                    groups.push(crate::persistence_live::RecoveryGroup {
-                        generation: 0,
-                        intent_hash: String::new(),
-                        changes,
-                        metadata,
-                        effects: Vec::new(),
-                    });
-                }
-            }
+            let accepted = self
+                .dispatch_admission
+                .as_ref()
+                .map(|adapter| adapter.live_snapshot())
+                .unwrap_or_default();
+            let durable_generation = self
+                .dispatch_admission
+                .as_ref()
+                .map_or(0, |adapter| adapter.durable_generation());
             let snapshot_id = format!(
                 "{}-{}-{}",
                 incarnation,
@@ -1358,12 +1363,20 @@ impl TaskApp {
                     .map(|value| value.as_nanos())
                     .unwrap_or_default(),
             );
-            let plan = crate::persistence_live::RecoveryPlan {
-                snapshot_id,
+            let tail = self.store.drain_store_delta().unwrap_or(
+                crate::domain::StoreDelta {
+                    changes: Vec::new(),
+                    metadata: Vec::new(),
+                    epoch: 0,
+                },
+            );
+            let plan = crate::persistence_live::build_recovery_plan(
                 incarnation,
                 durable_generation,
-                groups,
-            };
+                snapshot_id,
+                accepted,
+                tail,
+            );
             if let Err(error) =
                 crate::persistence_live::write_recovery(storage.path(), &plan)
             {
@@ -1739,6 +1752,27 @@ mod tests {
         };
         let group = group(vec![a.clone(), b.clone()]);
         assert_eq!(group.completions, vec![a, b]);
+    }
+
+    #[test]
+    fn idle_live_workspace_is_clean_for_quit() {
+        assert!(quit_state_is_clean(true, true, false, false, false, false, false));
+        assert!(quit_state_is_clean(false, false, false, false, false, false, false));
+    }
+
+    #[test]
+    fn pending_write_or_stop_worker_is_never_clean() {
+        assert!(!quit_state_is_clean(true, true, true, false, false, false, false));
+        assert!(!quit_state_is_clean(true, true, false, true, false, false, false));
+        assert!(!quit_state_is_clean(true, true, false, false, true, false, false));
+        assert!(!quit_state_is_clean(true, true, false, false, false, true, false));
+        assert!(!quit_state_is_clean(true, true, false, false, false, false, true));
+    }
+
+    #[test]
+    fn unavailable_backend_with_dirty_edits_is_not_clean() {
+        assert!(!quit_state_is_clean(true, false, true, false, false, false, false));
+        assert!(quit_state_is_clean(true, false, false, false, false, false, false));
     }
 
     #[test]

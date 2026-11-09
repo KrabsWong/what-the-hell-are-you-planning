@@ -28,6 +28,22 @@ fn sidecar(path: &Path) -> PathBuf {
     path.with_extension("v4-incarnation")
 }
 
+fn normalize_loaded(store: &mut crate::domain::Store) -> Result<(), String> {
+    if store.automation_schema_version() == 0 {
+        store.set_automation_schema_version(crate::automation::AUTOMATION_SCHEMA_VERSION);
+    } else if store.automation_schema_version() > crate::automation::AUTOMATION_SCHEMA_VERSION {
+        return Err(format!(
+            "Unsupported automation schema version {} (expected {}). The workspace was left unchanged.",
+            store.automation_schema_version(),
+            crate::automation::AUTOMATION_SCHEMA_VERSION
+        ));
+    }
+    store.validate_automation_integrity()?;
+    store.normalize_topics();
+    store.normalize_planning_ownership();
+    Ok(())
+}
+
 fn recovery_sidecar(path: &Path) -> PathBuf {
     path.with_extension("live-recovery.json")
 }
@@ -161,7 +177,9 @@ fn fresh_incarnation() -> u64 {
         .duration_since(std::time::UNIX_EPOCH)
         .map(|value| value.as_nanos() as u64)
         .unwrap_or(1);
-    nanos ^ (u64::from(std::process::id()) << 32) ^ 0x9E37_79B9_7F4A_7C15
+    let value = nanos ^ (u64::from(std::process::id()) << 32) ^ 0x9E37_79B9_7F4A_7C15;
+    // Incarnations are persisted as SQLite INTEGER; keep them in i64 range.
+    (value & (i64::MAX as u64)).max(1)
 }
 
 /// Reapply an emergency snapshot only when it belongs to this exact workspace
@@ -255,6 +273,64 @@ fn apply_recovery(
     Ok(None)
 }
 
+/// Build an emergency plan from the exact accepted groups and the final dirty
+/// snapshot. A dirty payload that exactly duplicates the latest accepted value
+/// for the same key/field is dropped from the generation-zero tail, so a crash
+/// after the accepted commit cannot replay an older duplicate over a later edit.
+pub(crate) fn build_recovery_plan(
+    incarnation: u64,
+    durable_generation: u64,
+    snapshot_id: String,
+    accepted: Vec<crate::persistence_journal::StagedGroup>,
+    tail: crate::domain::StoreDelta,
+) -> RecoveryPlan {
+    let mut groups = Vec::new();
+    let mut latest_changes = std::collections::HashMap::new();
+    let mut latest_metadata = std::collections::HashMap::new();
+    for group in accepted {
+        let intent_hash = crate::sqlite_v4::SqliteV4::group_intent_hash(&group)
+            .unwrap_or_default();
+        for change in group.changes() {
+            latest_changes.insert(change.key(), change.clone());
+        }
+        for metadata in group.metadata() {
+            latest_metadata.insert(metadata.field(), metadata.clone());
+        }
+        groups.push(RecoveryGroup {
+            generation: group.generation(),
+            intent_hash,
+            changes: group.changes().to_vec(),
+            metadata: group.metadata().to_vec(),
+            effects: group.effects().to_vec(),
+        });
+    }
+    let changes: Vec<_> = tail
+        .changes
+        .into_iter()
+        .filter(|change| latest_changes.get(&change.key()) != Some(change))
+        .collect();
+    let metadata: Vec<_> = tail
+        .metadata
+        .into_iter()
+        .filter(|metadata| latest_metadata.get(metadata.field()) != Some(metadata))
+        .collect();
+    if !changes.is_empty() || !metadata.is_empty() {
+        groups.push(RecoveryGroup {
+            generation: 0,
+            intent_hash: String::new(),
+            changes,
+            metadata,
+            effects: Vec::new(),
+        });
+    }
+    RecoveryPlan {
+        snapshot_id,
+        incarnation,
+        durable_generation,
+        groups,
+    }
+}
+
 /// Create the incremental backend for a brand-new workspace. The caller holds
 /// the workspace lock. An empty store is seeded so the first worker can resume
 /// at generation zero with the same incarnation sidecar.
@@ -266,7 +342,8 @@ pub(crate) fn create_new(storage: &Storage) -> Result<Option<LiveStartup>, Strin
     let root = storage.workspace_root().to_path_buf();
     let incarnation = fresh_incarnation();
     write_sidecar(&sidecar(path), incarnation)?;
-    let store = crate::domain::Store::empty();
+    let mut store = crate::domain::Store::empty();
+    normalize_loaded(&mut store)?;
     crate::sqlite_v4::SqliteV4::create_seeded(path, &root, incarnation, &store)?;
     Ok(Some(LiveStartup {
         path: path.to_path_buf(),
@@ -305,6 +382,7 @@ pub(crate) fn select_existing(storage: &Storage) -> Result<Option<LiveStartup>, 
                 &database,
                 &mut store,
             )?;
+            normalize_loaded(&mut store)?;
             Ok(Some(LiveStartup {
                 path: path.to_path_buf(),
                 root,
@@ -333,6 +411,7 @@ pub(crate) fn select_existing(storage: &Storage) -> Result<Option<LiveStartup>, 
                 &database,
                 &mut store,
             )?;
+            normalize_loaded(&mut store)?;
             Ok(Some(LiveStartup {
                 path: path.to_path_buf(),
                 root,
@@ -427,6 +506,7 @@ mod tests {
 
     fn plan(incarnation: u64, durable_generation: u64, groups: Vec<RecoveryGroup>) -> RecoveryPlan {
         RecoveryPlan {
+            snapshot_id: String::new(),
             incarnation,
             durable_generation,
             groups,
@@ -612,6 +692,87 @@ mod tests {
         let loaded = selected.migrated_store.as_ref().unwrap();
         assert_eq!(loaded.task(1).unwrap().title, "Uncommitted B");
         assert!(loaded.has_tracked_changes());
+    }
+
+    #[test]
+    fn actual_plan_drops_duplicate_accepted_tail() {
+        let store = Store::mock();
+        let incarnation = 8_009;
+        let mut journal = crate::persistence_journal::ChangeJournal::new(incarnation);
+        let (group, _) = staged(&mut journal, &store, "Accepted A");
+        let duplicate = crate::domain::StoreDelta {
+            changes: vec![changed_task(&store, "Accepted A")],
+            metadata: Vec::new(),
+            epoch: 1,
+        };
+        let plan = build_recovery_plan(
+            incarnation,
+            1,
+            "snap".into(),
+            vec![group],
+            duplicate,
+        );
+        assert_eq!(plan.groups.len(), 1);
+        assert!(plan.groups.iter().all(|group| group.generation > 0));
+    }
+
+    #[test]
+    fn actual_plan_keeps_distinct_unsubmitted_tail() {
+        let store = Store::mock();
+        let incarnation = 8_010;
+        let mut journal = crate::persistence_journal::ChangeJournal::new(incarnation);
+        let (group, _) = staged(&mut journal, &store, "Accepted A");
+        let tail = crate::domain::StoreDelta {
+            changes: vec![changed_task(&store, "Unsubmitted B")],
+            metadata: Vec::new(),
+            epoch: 2,
+        };
+        let plan = build_recovery_plan(
+            incarnation,
+            1,
+            "snap".into(),
+            vec![group],
+            tail,
+        );
+        assert_eq!(plan.groups.len(), 2);
+        assert_eq!(plan.groups[1].generation, 0);
+        assert_eq!(plan.groups[1].changes.len(), 1);
+    }
+
+    #[test]
+    fn actual_plan_partial_drain_recovers_only_uncommitted_tail() {
+        let (root, path) = temp_workspace("recovery-actual-partial");
+        let store = Store::mock();
+        let incarnation = 8_011;
+        let mut database =
+            crate::sqlite_v4::SqliteV4::create_seeded(&path, &root, incarnation, &store).unwrap();
+        let mut journal = crate::persistence_journal::ChangeJournal::new(incarnation);
+        let (group, _) = staged(&mut journal, &store, "Accepted A");
+        database.commit_group(&group).unwrap();
+        drop(database);
+        let plan = build_recovery_plan(
+            incarnation,
+            1,
+            "snap-partial".into(),
+            vec![group],
+            crate::domain::StoreDelta {
+                changes: vec![changed_task(&store, "Uncommitted B")],
+                metadata: Vec::new(),
+                epoch: 2,
+            },
+        );
+        write_recovery(&path, &plan).unwrap();
+        let selected = select_existing(&Storage::new(path.clone()))
+            .unwrap()
+            .expect("v4 selected");
+        assert!(selected.recovery_warning.is_none());
+        let loaded = selected.migrated_store.as_ref().unwrap();
+        assert_eq!(loaded.task(1).unwrap().title, "Uncommitted B");
+        assert_eq!(
+            loaded.recovery_snapshot(),
+            "snap-partial",
+            "retirement marker travels with the recovered group"
+        );
     }
 
     #[test]

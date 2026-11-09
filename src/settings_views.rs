@@ -275,6 +275,7 @@ impl TaskApp {
     }
 
     pub fn open_model_settings(&mut self, w: &mut Window, cx: &mut Context<Self>) {
+        self.record_origin();
         self.set_settings_tab(SettingsTab::Models);
         self.settings_scroll.set_offset(point(px(0.), px(0.)));
         self.navigate(Scope::Settings, w, cx);

@@ -1,0 +1,9 @@
+{
+  "commit": "23485f3",
+  "command": "cargo test --features qa --quiet",
+  "exit_code": 101,
+  "phase": "test compilation",
+  "error": "missing snapshot_id in persistence_live::tests::plan at line429",
+  "test_execution": "not completed",
+  "follow_up": "r103 exact commit plus one test-helper field initializer; assertions retained"
+}

@@ -57,10 +57,50 @@ impl Default for HistoryLoad {
     }
 }
 
+/// Snapshot of the fields that identify the report body revision. A delayed
+/// disk reply may only hydrate when this is still exactly current.
+#[derive(Clone, Debug, PartialEq, Eq)]
+pub(crate) struct RunBodyRevision {
+    pub status: String,
+    pub ended_at: Option<String>,
+    pub session_id: Option<String>,
+    pub exit_code: Option<i32>,
+    pub output_len: usize,
+    pub sources: usize,
+    pub logs: usize,
+}
+
+/// True only when this run still has the exact unloaded-body revision captured
+/// at request time. Newer streaming output, a cleared/regenerated output or a
+/// changed status makes the disk reply stale.
+pub(crate) fn body_reply_is_current(
+    run: &crate::domain::AgentRun,
+    expected: &RunBodyRevision,
+) -> bool {
+    run.output.is_empty() && RunBodyRevision::capture(run) == *expected
+}
+
+impl RunBodyRevision {
+    pub(crate) fn capture(run: &crate::domain::AgentRun) -> Self {
+        Self {
+            status: run.status.clone(),
+            ended_at: run.ended_at.clone(),
+            session_id: run.session_id.clone(),
+            exit_code: run.exit_code,
+            output_len: run.output.len(),
+            sources: run.sources.len(),
+            logs: run.logs.len(),
+        }
+    }
+}
+
 #[derive(Clone, Debug, PartialEq, Eq)]
 pub(crate) enum BodyLoad {
     NotRequested,
-    Loading { request_id: u64 },
+    Loading {
+        request_id: u64,
+        expected: RunBodyRevision,
+    },
     Loaded,
     Absent,
     Failed { error: String, retry_at: std::time::Instant },
@@ -237,5 +277,86 @@ impl Drop for HistoryReader {
         // Never join on the UI thread: a slow disk read may still be running.
         let _ = self.requests.try_send(ReaderRequest::Shutdown);
         let _ = self.join.take();
+    }
+}
+
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use crate::domain::{AgentRun, Stage, Store};
+
+    fn fixture() -> (Store, AgentRun) {
+        let mut store = Store::mock();
+        let run = AgentRun {
+            automation_occurrence_id: None,
+            planning_owner: None,
+            deadline_at: None,
+            auto_retry_attempt: 0,
+            retry_not_before: None,
+            project_plan: None,
+            id: 1,
+            task_title: "QA body".into(),
+            directory: String::new(),
+            prompt: String::new(),
+            queued_at: String::new(),
+            workspace_source: None,
+            started_at: String::new(),
+            ended_at: Some("2026-11-09T00:00:00Z".into()),
+            session_id: None,
+            exit_code: Some(0),
+            task_id: 1,
+            agent: "OpenCode".into(),
+            model: "qa/body".into(),
+            stage: Stage::Done,
+            status: "Succeeded".into(),
+            logs: Vec::new(),
+            output: String::new(),
+            attachments: Vec::new(),
+            research_kind: None,
+            sources: Vec::new(),
+            input_signature: String::new(),
+        };
+        store.push_run(run.clone());
+        (store, run)
+    }
+
+    #[test]
+    fn delayed_body_reply_does_not_override_newer_runtime_output() {
+        let (mut store, run) = fixture();
+        let expected = RunBodyRevision::capture(&run);
+        // A streaming/runtime update lands while the disk read is in flight.
+        {
+            let mut live = store.run_mut(run.id).unwrap();
+            live.output = "newer streaming output".into();
+            live.status = "Running".into();
+        }
+        let live = store.runs().iter().find(|value| value.id == run.id).unwrap();
+        assert!(!body_reply_is_current(live, &expected));
+    }
+
+    #[test]
+    fn delayed_body_reply_hydrates_only_the_unchanged_unloaded_run() {
+        let (mut store, run) = fixture();
+        let expected = RunBodyRevision::capture(&run);
+        {
+            let mut live = store.run_mut(run.id).unwrap();
+            live.output.clear();
+        }
+        let live = store.runs().iter().find(|value| value.id == run.id).unwrap();
+        assert!(body_reply_is_current(live, &expected));
+    }
+
+    #[test]
+    fn cleared_output_is_not_refilled_by_a_stale_disk_body() {
+        let (mut store, run) = fixture();
+        let expected = RunBodyRevision::capture(&run);
+        {
+            let mut live = store.run_mut(run.id).unwrap();
+            live.output.clear();
+            live.logs.push("[research] Regenerating".into());
+        }
+        let live = store.runs().iter().find(|value| value.id == run.id).unwrap();
+        assert!(!body_reply_is_current(live, &expected));
     }
 }

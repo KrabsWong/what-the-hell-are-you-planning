@@ -95,16 +95,12 @@ impl Render for BrandOverlay {
             std::env::var("PLANNING_T19_DIAGNOSTIC_STATIC_LOGO").as_deref() == Ok("1");
         #[cfg(not(feature = "qa"))]
         let static_diagnostic = false;
-        let phase = crate::brand::brand_phase(elapsed);
-        let static_frame = static_diagnostic
-            || cx.reduce_motion()
-            || crate::brand::brand_frame_is_static(elapsed);
+        let pinned = static_diagnostic || cx.reduce_motion();
+        let phase = crate::brand::brand_render_phase(elapsed, pinned);
+        let static_frame = pinned || crate::brand::brand_frame_is_static(elapsed);
         if !static_frame {
             window.request_animation_frame();
-        } else if !static_diagnostic
-            && !cx.reduce_motion()
-            && !self.wake_scheduled
-        {
+        } else if !pinned && !self.wake_scheduled {
             // Wake exactly when the next moving segment starts; do not repaint
             // the window during the visually static lead-in/hold.
             self.wake_scheduled = true;
@@ -120,7 +116,6 @@ impl Render for BrandOverlay {
             })
             .detach();
         }
-        let phase = if static_diagnostic { 0.0 } else { phase };
         observed(
             div()
                 .id("sidebar-brand-overlay")

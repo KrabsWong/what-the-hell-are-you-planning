@@ -211,6 +211,61 @@ impl TaskApp {
             return TaskSaveOutcome::Rejected(message);
         }
         let id = prepared.plan.id();
+        if self.live_persistence_active() {
+            // Apply the validated write set directly to live state. The plan's
+            // fallible checks all run before its first write, so no whole-store
+            // clone is needed on the ordinary editing path.
+            let applied = match apply_task_edit(&mut self.store, &prepared.plan) {
+                Ok(applied) => applied,
+                Err(error) => {
+                    let message = scoped_error_text(error);
+                    self.show_save_error(&message, cx);
+                    return TaskSaveOutcome::Rejected(message);
+                }
+            };
+            let instance = self.task_editor_instance();
+            let completion = crate::live_save_app::LiveCompletion::TaskEdit {
+                task: id,
+                expected: prepared.reviewed.clone(),
+                instance,
+                close_editor: navigate_editor.is_some(),
+                undo: applied.undo.clone(),
+            };
+            if let Err(error) = self.live_can_accept_primary() {
+                self.storage_error = error.clone();
+                self.show_save_error(&error, cx);
+                return TaskSaveOutcome::Rejected(error);
+            }
+            match self.submit_live_snapshot(completion, cx) {
+                Ok(crate::live_save_app::SaveAcceptance::Pending) => {
+                    self.pending_task_edit = None;
+                    self.toast = "Saving task…".into();
+                    cx.notify();
+                    return TaskSaveOutcome::Saving;
+                }
+                Ok(crate::live_save_app::SaveAcceptance::Durable) => {
+                    self.undo.push_task_edit(applied.undo.clone());
+                    if let Some(window) = navigate_editor {
+                        let _ = self.close_task_editor_overlay();
+                        self.draft = None;
+                        self.navigation.task_edit_baseline = None;
+                        self.open_task(id, window, cx);
+                        self.finish_saved_exit(window, cx);
+                    }
+                    self.error.clear();
+                    self.toast = "Task saved to local workspace".into();
+                    self.save_feedback = Some(Ok("Task saved to local workspace".into()));
+                    cx.notify();
+                    return TaskSaveOutcome::Saved;
+                }
+                Err(error) => {
+                    self.storage_error = error.clone();
+                    self.pending_task_edit = Some(PendingTaskEdit { prepared });
+                    self.show_save_error(&error, cx);
+                    return TaskSaveOutcome::RetryableFailure(error);
+                }
+            }
+        }
         let mut staged = self.store.clone();
         let applied = match apply_task_edit(&mut staged, &prepared.plan) {
             Ok(applied) => applied,
@@ -421,6 +476,56 @@ impl TaskApp {
         window: Option<&mut Window>,
         cx: &mut Context<Self>,
     ) -> TaskSaveOutcome {
+        if self.live_persistence_active() {
+            let applied = match apply_comment_edit(&mut self.store, &prepared.plan) {
+                Ok(applied) => applied,
+                Err(error) => {
+                    let message = scoped_error_text(error);
+                    self.show_save_error(&message, cx);
+                    return TaskSaveOutcome::Rejected(message);
+                }
+            };
+            let completion = crate::live_save_app::LiveCompletion::Comment {
+                task: prepared.task,
+                body: prepared.body.clone(),
+                undo: applied.undo.clone(),
+            };
+            if let Err(error) = self.live_can_accept_primary() {
+                self.storage_error = error.clone();
+                self.show_save_error(&error, cx);
+                return TaskSaveOutcome::Rejected(error);
+            }
+            match self.submit_live_snapshot(completion, cx) {
+                Ok(crate::live_save_app::SaveAcceptance::Pending) => {
+                    self.pending_comment_edit = None;
+                    self.toast = "Saving comment…".into();
+                    cx.notify();
+                    return TaskSaveOutcome::Saving;
+                }
+                Ok(crate::live_save_app::SaveAcceptance::Durable) => {
+                    self.undo.push_comment(applied.undo.clone());
+                    if let Some(window) = window {
+                        let current = self.comment.read(cx).value().trim().to_string();
+                        if self.selected() == Some(prepared.task) && current == prepared.body {
+                            self.comment
+                                .update(cx, |state, cx| state.set_value("", window, cx));
+                        }
+                        self.refresh_research_inputs(window, cx);
+                    }
+                    self.error.clear();
+                    self.toast = "Comment added".into();
+                    self.save_feedback = Some(Ok("Comment added".into()));
+                    cx.notify();
+                    return TaskSaveOutcome::Saved;
+                }
+                Err(error) => {
+                    self.storage_error = error.clone();
+                    self.pending_comment_edit = Some(PendingCommentEdit { prepared });
+                    self.show_save_error(&error, cx);
+                    return TaskSaveOutcome::RetryableFailure(error);
+                }
+            }
+        }
         let mut staged = self.store.clone();
         let applied = match apply_comment_edit(&mut staged, &prepared.plan) {
             Ok(applied) => applied,

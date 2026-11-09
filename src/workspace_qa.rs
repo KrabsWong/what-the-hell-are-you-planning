@@ -308,7 +308,7 @@ fn upgrade_retry_preserves_lock_ownership() {
         }
         cx.update_window(handle, |_, _, cx| {
             let a = app.read(cx);
-            assert!(a.storage.is_some(), "retry must install the successfully prepared workspace");
+            assert!(a.storage.is_some(), "retry must install the successfully prepared workspace: {}", a.storage_error);
             assert!(a.storage_error.is_empty(), "retry must clear the previous attachment error");
             assert!(!a.workspace_required);
             assert!(a.startup.upgrade_backup.as_ref().is_some_and(|backup| backup.is_file()));

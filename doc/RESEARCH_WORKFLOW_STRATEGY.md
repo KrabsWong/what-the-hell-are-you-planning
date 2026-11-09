@@ -297,6 +297,14 @@ This is a contributor maintenance rule, not a background synchronization service
 
 Task metadata, stage changes, comments and step reopen use prepared scoped edits where their live command path is enabled. They use the reviewed T21 impact preview where that save path is enabled; final T21 UI/history acceptance remains pending. Comments are execution inputs: they enter the prompt and both research signatures, so posting one can withdraw goal approval and requires the reviewed impact before a durable write. Step reopen restores only a cancelled research step to Todo; it is not a whole-workspace snapshot replay. For those edits, scoped Undo restores only the changed fields, stage and recorded approval companion, preserves unrelated metadata and all run/log history, and conflicts when a newer owned field, approval or same-goal runtime event changed. Material add/remove task-edit QA passes at r27, but failed-material Undo, the changed-impact footer retry path, native Add Files, settings/context/archive command migration and removal of the remaining legacy whole-workspace snapshot path are not complete. Do not describe this as a full scoped Undo migration. Durable automation changes invalidate an incompatible legacy whole-workspace Undo entry rather than restoring schedules, occurrences or runtime history. Frozen automation-period inputs still reject direct metadata-exempt edits, comments and stage changes.
 
+### Local durability and history reads
+
+Incremental v4 workspaces write through one ordered background worker. A saved request, automation change or runtime status is shown as saved only after its exact generation is durable; a pending write stays visible as saving and retries without discarding newer edits. A form closes only when the same form instance and values are still open, so a late acknowledgement cannot close a reopened draft.
+
+Report bodies are not loaded with startup history. The automation history page uses indexed keyset queries pinned to a commit watermark; a concurrent insert invalidates the sequence and restarts the page instead of skipping a row. A report body is fetched only when its result is displayed, and a delayed reply never overwrites newer streaming or regenerated output.
+
+If an application termination cannot wait for the worker, startup reapplies a typed recovery plan that preserves accepted group generations and the final unsubmitted tail. Plans from another workspace incarnation, with a generation gap, or with a mismatched durable receipt are not replayed; the database's newer durable state wins and the rejected plan is retained for inspection.
+
 ### Change history
 
 - **2026-11-04:** Established the consolidated strategy from current planning and execution prompts, report rendering and publication behavior. Documented cross-stage clarity/fidelity, final-body reading limits, the Karpathy-inspired adaptation and the maintenance contract.

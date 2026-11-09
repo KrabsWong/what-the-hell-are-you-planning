@@ -1,0 +1,27 @@
+{
+  "base": "r103 fixed source",
+  "command": "cargo test --features qa --quiet scoped_domain::tests::large_affected_topic_move_scales_across_workloads -- --nocapture",
+  "exit_code": 0,
+  "history": 43200,
+  "cases": [
+    {
+      "affected": 3,
+      "deltas": 11,
+      "command_ms": 7.246833,
+      "undo_ms": 1.7555
+    },
+    {
+      "affected": 240,
+      "deltas": 485,
+      "command_ms": 7.952917,
+      "undo_ms": 1.386875
+    },
+    {
+      "affected": 800,
+      "deltas": 1605,
+      "command_ms": 16.155667,
+      "undo_ms": 1.577167
+    }
+  ],
+  "scope": "Single domain-command/Undo samples under test profile with concurrent development load; not UI p95, native scrolling or release performance acceptance; filtered crash suites not rerun by this command"
+}

@@ -1,0 +1,7 @@
+{
+  "base_commit": "23485f3",
+  "derivation": "one test-helper snapshot_id initializer only",
+  "build_exit": 0,
+  "build_seconds": 20.775,
+  "binary_sha256": "a3fabed0c22c4cfccb60a3eeda2a6048f2668d873c97fb348d80cb96dea15871"
+}

@@ -1,0 +1,47 @@
+{
+  "candidate": "r104 working tree",
+  "cargo_target_dir": ".local/t14-target",
+  "checks": {
+    "cargo_check_default": "exit 0",
+    "cargo_check_features_qa": "exit 0",
+    "full_unit": {
+      "passed": 699,
+      "failed": 1,
+      "ignored": 2,
+      "failure": "report_git publishing test requires Node.js; environment dependency"
+    },
+    "persistence_live": {
+      "passed": 13,
+      "failed": 0
+    },
+    "live_save_app": {
+      "passed": 7,
+      "failed": 0
+    },
+    "history_reader": {
+      "passed": 3,
+      "failed": 0
+    }
+  },
+  "implemented": [
+    "background v4 selection/create/migration and single ordered worker attachment",
+    "fail-closed live_required state; no legacy writer fallback after adapter failure",
+    "typed form/command/runtime continuations correlated by workspace+generation+epoch",
+    "pre-mutation primary/auxiliary continuation capacity checks",
+    "editor/composer instance identity prevents late-ACK close or reset",
+    "recovery plan with accepted generations, intent hashes, filtered final tail and atomic snapshot marker",
+    "whole-plan recovery validation before mutation; foreign/gap/stale receipts rejected without replay",
+    "nonblocking Cmd-Q drain, window-close veto, emergency typed recovery plan with explicit failure",
+    "off-thread indexed history pages with request ids, watermark invalidation and bounded channels",
+    "lazy report bodies with unchanged-revision hydration guard"
+  ],
+  "deferred": [
+    "dedicated TaskApp live fixture QA matrix (owned by live QA session)",
+    "native 43,200-period p95/frame and scrolling evidence on the live backend",
+    "material/project/settings form saves still prepare on a scoped clone"
+  ],
+  "limitations": [
+    "Platform termination cannot be cancelled by GPUI; the emergency recovery plan is the durable fallback and a write failure is reported.",
+    "No production app was launched for this checkpoint."
+  ]
+}

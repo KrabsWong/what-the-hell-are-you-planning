@@ -1,0 +1,23 @@
+{
+  "candidate_build_sha256": "2811ddae7eee28c0d8252effea3e531d113cf8ca225bc1f8aaac1cd7fa549545",
+  "candidate_signed_sha256": "db491fb382703f26cb0fd328baeccbe6f218e7c5d6952c2c540b0d3a06653140",
+  "command": "--qa-dispatch-admission",
+  "root_exit_code": 0,
+  "result": "DISPATCH_ADMISSION_QA status=ok",
+  "coverage": [
+    "executor-driven three-step submission",
+    "before-receipt and after-receipt cancellation",
+    "fanout pending-admission ownership",
+    "real retry-dispatch-admission footer control",
+    "idle legacy-save/render wake",
+    "material verification wake and cancellation settling",
+    "existing durable admission/recovery regressions"
+  ],
+  "source_review": "Root reviewed runtime wake/keep predicates, batch generation bindings, cancellation retirement ordering and production retry UI wiring. Source snapshot hashes retained locally.",
+  "limitations": [
+    "Private overlay candidate; current HEAD SetRead/T19 integration not yet verified",
+    "Material helper QA accepts impact review or attachment, so native confirm/durable reload remains required",
+    "Native full ordinary research and fresh completed archive/restore remain required",
+    "No scrolling acceptance claim"
+  ]
+}

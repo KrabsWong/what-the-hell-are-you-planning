@@ -234,6 +234,14 @@ fn main() {
     #[cfg(feature = "qa")]
     if std::env::args().any(|arg| arg == "--qa-retries") { retry_qa::run(); return; }
     #[cfg(feature = "qa")]
+    if std::env::args().any(|arg| arg == "--qa-automation-dialog-first-scroll") { t19_qa::automation_dialog_first_scroll(); return; }
+    #[cfg(feature = "qa")]
+    if std::env::args().any(|arg| arg == "--qa-automation-dialog-native") { t19_qa::automation_dialog_native(); return; }
+    #[cfg(feature = "qa")]
+    if std::env::args().any(|arg| arg == "--qa-automation-dialog-scroll") { t19_qa::automation_dialog_scroll(); return; }
+    #[cfg(feature = "qa")]
+    if std::env::args().any(|arg| arg == "--qa-scroll-native") { render_qa::scroll_native(); return; }
+    #[cfg(feature = "qa")]
     if std::env::args().any(|arg| arg == "--qa-render-perf") { render_qa::run(); return; }
     #[cfg(feature = "qa")]
     if std::env::args().any(|arg| arg == "--qa-result-layout") {

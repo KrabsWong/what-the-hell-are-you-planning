@@ -295,12 +295,25 @@ pub fn scroll_benchmark() {
     let mut view = None;
     let window = cx.open_window(size(px(1000.), px(720.)), |w, cx| {
         let app = cx.new(|cx| TaskApp::new_mock(w, cx));
-        app.update(cx, |a, cx| { a.store = store; a.navigate(Scope::All, w, cx); a.layout = Layout::Board; });
+        app.update(cx, |a, cx| { a.store = store; a.navigate(Scope::All, w, cx); a.layout = Layout::Board;
+            a.todo_batch = Some(TodoBatch { project_id: 1, items: vec![benchmark_goal], completed: 0, runs_completed: 0,
+                state: BatchState::Paused("Scroll fixture paused queue".into()), run_ids: Default::default(),
+                done_items: vec![], failed_items: vec![], failed_tasks: vec![] }); });
         view = Some(app.clone());
         cx.new(|cx| base::Root::new(app, w, cx))
     }).unwrap();
     let handle = window.into();
     cx.update_window(handle, |_, w, cx| { w.render_frame(cx); }).unwrap();
+    cx.update_window(handle, |_, _, cx| {
+        let a = view.as_ref().unwrap().read(cx);
+        for task in a.store.tasks() {
+            let expected = a.store.task_status(task.id, a.todo_batch.as_ref());
+            let actual = a.display_task_status(task.id);
+            assert_eq!(actual.label(), expected.label());
+            assert_eq!(actual.reason, expected.reason);
+        }
+    }).unwrap();
+    let computations = crate::workflow_views::STATUS_COMPUTATIONS.load(std::sync::atomic::Ordering::Relaxed);
     let initial_left = cx.update_window(handle, |_, w, _| w.find("column-in-progress").bounds().left()).unwrap();
     let mut elapsed = Vec::new();
     for n in 0..30 {
@@ -327,6 +340,7 @@ pub fn scroll_benchmark() {
             }).unwrap();
         }
     }
+    assert_eq!(crate::workflow_views::STATUS_COMPUTATIONS.load(std::sync::atomic::Ordering::Relaxed), computations, "Wheel frames must reuse statuses even with a paused queue");
     let app = view.unwrap();
     cx.update_window(handle, |_, w, cx| {
         assert_eq!(app.read(cx).display_task_status(benchmark_goal).phase, Stage::Done);
@@ -402,5 +416,22 @@ pub fn scroll_benchmark() {
     }
     elapsed.sort_by(f64::total_cmp);
     println!("Expanded sidebar scroll: 24 goals / 72 steps; median {:.2} ms, p95 {:.2} ms per scroll+render", elapsed[60], elapsed[113]);
+    let pending = app.update(&mut cx, |a, cx| {
+        let goal = a.store.create_research_goal("Queue invalidation".into(), "Fixture".into(), 1).unwrap();
+        a.store.apply_research_plan(goal, r#"{"tasks":[{"title":"Evidence","instructions":"Collect","kind":"collect","depends_on":[]},{"title":"Analysis","instructions":"Analyze","kind":"analyze","depends_on":[0]},{"title":"Report","instructions":"Report","kind":"advise","depends_on":[1]}]}"#).unwrap();
+        a.todo_batch.as_mut().unwrap().items = vec![goal];
+        cx.notify();
+        goal
+    });
+    cx.update_window(handle, |_, w, cx| { w.render_frame(cx); }).unwrap();
+    assert_eq!(app.update(&mut cx, |a, _| a.display_task_status(pending).execution), crate::execution_status::ExecutionStatus::Paused);
+    app.update(&mut cx, |a, cx| {
+        a.todo_batch.as_mut().unwrap().state = BatchState::Running;
+        cx.notify();
+    });
+    cx.update_window(handle, |_, w, cx| { w.render_frame(cx); }).unwrap();
+    assert_eq!(app.update(&mut cx, |a, _| a.display_task_status(pending).execution), crate::execution_status::ExecutionStatus::Queued,
+        "Queue-only changes must invalidate retained statuses without a Store mutation");
+
 
 }

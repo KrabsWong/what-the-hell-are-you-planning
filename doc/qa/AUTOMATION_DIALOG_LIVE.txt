@@ -1,0 +1,13 @@
+WORKSPACE_REPRO tasks=184 runs=188 period=12 sidebar_count_ms=218.36
+2026-11-09 22:45:18.913 before-fix[4470:12057294] error messaging the mach port for IMKCFRunLoopWakeUpReliable
+NATIVE_DIALOG_SCROLL Dark Size { 1440px × 920px }: work p50=2.08 p95=2.81 max=80.88 ms; timer interval p95=88.34 max=117.63 ms; intervals>50ms=49; bidirectional displacement passed
+
+WORKSPACE_REPRO tasks=184 runs=188 period=12 sidebar_count_ms=0.05
+NATIVE_DIALOG_SCROLL Dark Size { 1440px × 920px }: work p50=2.16 p95=5.56 max=9.26 ms; timer interval p95=25.79 max=30.83 ms; intervals>50ms=0; bidirectional displacement passed
+
+before-fix
+WORKSPACE_REPRO tasks=184 runs=188 period=11 sidebar_count_ms=72.58
+NATIVE_DIALOG_SCROLL Dark Size { 1440px × 920px }: work p50=3.29 p95=4.13 max=80.75 ms; timer interval p95=87.33 max=161.41 ms; intervals>50ms=54; bidirectional displacement passed
+after-fix
+WORKSPACE_REPRO tasks=184 runs=188 period=11 sidebar_count_ms=0.05
+NATIVE_DIALOG_SCROLL Dark Size { 1440px × 920px }: work p50=3.63 p95=3.86 max=7.28 ms; timer interval p95=28.84 max=33.48 ms; intervals>50ms=0; bidirectional displacement passed

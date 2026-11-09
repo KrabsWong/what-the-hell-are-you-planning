@@ -187,7 +187,7 @@ fn visual_surface(root: &Path, mode: Appearance, width: f32, height: f32, surfac
     store.set_appearance(mode);
     if surface == "project-rename" {
         store.project_at_mut(0).unwrap().name =
-            "A deliberately long English and 中文 project name used to verify readable disclosure"
+            "A deliberately long English project name used to verify readable disclosure"
                 .into();
     }
     let path = directory.join("workspace.sqlite3");
@@ -1747,4 +1747,314 @@ fn screenshot(cx: &mut HeadlessAppContext, handle: AnyWindowHandle, directory: &
         .unwrap()
         .save(directory.join(name))
         .unwrap();
+}
+
+/// Exercise real wheel dispatch and retained report invalidation in both themes.
+pub fn automation_dialog_scroll() {
+    use std::sync::atomic::Ordering;
+    use crate::shell_surfaces::RESULT_PRESENTATIONS;
+    let root = std::env::current_dir().unwrap().join(".local/automation-dialog-scroll");
+    for mode in [Appearance::Light, Appearance::Dark] {
+        for (width, height) in [(1000., 680.), (1440., 920.)] {
+            let directory = root.join(format!("{mode:?}-{width}"));
+            std::fs::create_dir_all(&directory).unwrap();
+            let (mut store, automation, occurrence) = automation_result_fixture(&directory);
+            store.set_appearance(mode);
+            let path = directory.join("workspace.sqlite3");
+            Storage::new(path.clone()).save(&store).unwrap();
+            let (mut cx, handle, app) = with_app(store, &path, width, height, |app, w, cx| {
+                app.set_scope_identity(Scope::Automations);
+                app.open_automation(automation, w, cx);
+                app.open_occurrence_result(occurrence, w, cx);
+            });
+            screenshot(&mut cx, handle, &directory, "before.png");
+            let initial = RESULT_PRESENTATIONS.load(Ordering::Relaxed);
+            let mut samples = Vec::new();
+            for direction in [-1., 1.] {
+                for _ in 0..60 {
+                    let started = std::time::Instant::now();
+                    cx.update_window(handle, |_, w, cx| {
+                        // A logo notification dirties ancestors but must not
+                        // rebuild the report presentation.
+                        app.read(cx).brand_overlay.clone().unwrap().update(cx, |_, cx| cx.notify());
+                        let position = w.find("automation-result-body").bounds().center();
+                        w.dispatch_event(MouseMoveEvent { position, ..Default::default() }.to_platform_input(), cx);
+                        w.dispatch_event(ScrollEvent {
+                            position,
+                            delta: ScrollDelta::Pixels(point(px(0.), px(direction * 16.))),
+                            ..Default::default()
+                        }.to_platform_input(), cx);
+                        w.draw(cx).clear(cx);
+                    }).unwrap();
+                    cx.run_until_parked();
+                    samples.push(started.elapsed().as_secs_f64() * 1000.);
+                }
+                cx.update_window(handle, |_, _, cx| {
+                    let offset = app.read(cx).automation_ui.dialog_scroll.offset().y.as_f32()
+                        + app.read(cx).automation_ui.report_readers.borrow().values().map(|state| state.read(cx).list_state().scroll_px_offset_for_scrollbar().y.as_f32()).sum::<f32>();
+                    if direction < 0. { assert!(offset < -100., "wheel must move the report"); }
+                    else { assert!(offset.abs() < 1., "reverse wheel must return to top: {offset}"); }
+                }).unwrap();
+            }
+            assert_eq!(initial, RESULT_PRESENTATIONS.load(Ordering::Relaxed), "wheel and logo frames must reuse the presentation");
+            cx.update_window(handle, |_, w, cx| {
+                app.update(cx, |app, cx| {
+                    app.store.occurrence_mut(occurrence).unwrap().status = crate::automation::OccurrenceStatus::Failed;
+                    cx.notify();
+                });
+                w.render_frame(cx);
+            }).unwrap();
+            cx.run_until_parked();
+            assert!(RESULT_PRESENTATIONS.load(Ordering::Relaxed) > initial, "semantic changes must refresh the report");
+            screenshot(&mut cx, handle, &directory, "after.png");
+            samples.sort_by(f64::total_cmp);
+            println!("DIALOG_SCROLL {mode:?} {width}x{height}: wheel+frame p50={:.2} p95={:.2} max={:.2} ms; presentation reuse and invalidation passed", samples[60], samples[114], samples[119]);
+            cx.update_window(handle, |_, w, cx| {
+                w.press("escape", cx);
+                w.render_frame(cx);
+                assert!(app.read(cx).period_overlay().is_none());
+                w.remove_window();
+            }).unwrap();
+        }
+    }
+    automation_result_keyboard(&root);
+    println!("AUTOMATION_DIALOG_SCROLL_QA passed");
+}
+
+/// Native-window counterpart to the deterministic retained-surface regression.
+/// Uses only a generated fixture and exits after a timed bidirectional gesture.
+pub fn automation_dialog_native() {
+    let root = std::env::current_dir().unwrap().join(".local/automation-dialog-native");
+    std::fs::create_dir_all(&root).unwrap();
+    let (mut store, automation, occurrence) = automation_result_fixture(&root);
+    let run_id = store.occurrence(occurrence).unwrap().final_run_id.unwrap();
+    let mut output: serde_json::Value = serde_json::from_str(&store.run_mut(run_id).unwrap().output).unwrap();
+    output["report"] = serde_json::Value::String(format!(
+        "# Fuel price report\n\n| Grade | Price |\n| --- | --- |\n| 92 | 8.85 |\n| 95 | 9.42 |\n\n{}", output["report"].as_str().unwrap()
+    ));
+    store.run_mut(run_id).unwrap().output = output.to_string();
+    let snapshot = std::env::var_os("PLANNING_DIALOG_WORKSPACE");
+    let (store, automation, occurrence) = if let Some(path) = snapshot.as_ref() {
+        let store = crate::render_qa::load_workspace(Path::new(path)).unwrap();
+        let id = std::env::var("PLANNING_DIALOG_PERIOD").unwrap().parse::<u64>().unwrap();
+        let automation = store.occurrence(id).unwrap().automation_id;
+        let started = std::time::Instant::now();
+        for _ in 0..10 { std::hint::black_box(store.progress_result_task_count()); }
+        println!("WORKSPACE_REPRO tasks={} runs={} period={id} sidebar_count_ms={:.2}", store.tasks().len(), store.runs().len(), started.elapsed().as_secs_f64() * 100.);
+        (store, automation, id)
+    } else { (store, automation, occurrence) };
+    let semantic_updates = snapshot.is_some();
+    let dark = std::env::var("PLANNING_DIALOG_DARK").as_deref() == Ok("1");
+    let compact = std::env::var("PLANNING_DIALOG_COMPACT").as_deref() == Ok("1");
+    let mode = if dark { Appearance::Dark } else { Appearance::Light };
+    let dimensions = if compact { size(px(1000.), px(680.)) } else { size(px(1440.), px(920.)) };
+    application().with_assets(crate::ui_assets::AppAssets).run(move |cx| {
+        init(cx);
+        let (handle, app) = open_window(WindowOptions {
+            window_bounds: Some(WindowBounds::Windowed(Bounds::centered(None, dimensions, cx))),
+            titlebar: Some(TitlebarOptions { title: Some("Automation scroll QA — isolated fixture".into()), ..Default::default() }),
+            ..Default::default()
+        }, cx, |w, cx| {
+            let app = cx.new(|cx| TaskApp::new_mock(w, cx));
+            app.update(cx, |app, cx| {
+                app.store = store;
+                app.set_appearance(mode, w, cx);
+                app.set_scope_identity(Scope::Automations);
+                app.open_automation(automation, w, cx);
+                app.open_occurrence_result(occurrence, w, cx);
+                cx.notify();
+            });
+            app
+        }).unwrap();
+        cx.activate(true);
+        cx.spawn(async move |cx| {
+            cx.background_executor().timer(Duration::from_secs(1)).await;
+            let mut work = Vec::new();
+            let mut intervals = Vec::new();
+            let mut previous = std::time::Instant::now();
+            for frame in 0..240 {
+                cx.background_executor().timer(Duration::from_millis(16)).await;
+                let started = std::time::Instant::now();
+                intervals.push(started.duration_since(previous).as_secs_f64() * 1000.);
+                previous = started;
+                cx.update_window(handle, |_, w, cx| {
+                    if semantic_updates && frame % 5 == 0 {
+                        app.update(cx, |_, cx| cx.notify());
+                    }
+                    let position = w.find("automation-result-body").bounds().center();
+                    w.dispatch_event(MouseMoveEvent { position, ..Default::default() }.to_platform_input(), cx);
+                    w.dispatch_event(ScrollEvent {
+                        position,
+                        delta: ScrollDelta::Pixels(point(px(0.), px(if frame < 120 { -8. } else { 8. }))),
+                        ..Default::default()
+                    }.to_platform_input(), cx);
+                    w.draw(cx).clear(cx);
+                    if frame == 119 {
+                        assert!(app.read(cx).automation_ui.dialog_scroll.offset().y + app.read(cx).automation_ui.report_readers.borrow().values().map(|state| state.read(cx).list_state().scroll_px_offset_for_scrollbar().y).fold(px(0.), |sum, y| sum + y) < px(-100.));
+                    }
+                    if frame == 239 {
+                        assert!(app.read(cx).automation_ui.dialog_scroll.offset().y.abs() < px(1.));
+                        for state in app.read(cx).automation_ui.report_readers.borrow().values() {
+                            assert!(state.read(cx).list_state().scroll_px_offset_for_scrollbar().y.abs() < px(1.));
+                        }
+                    }
+                }).unwrap();
+                work.push(started.elapsed().as_secs_f64() * 1000.);
+            }
+            work.sort_by(f64::total_cmp);
+            intervals.sort_by(f64::total_cmp);
+            println!("NATIVE_DIALOG_SCROLL {mode:?} {dimensions:?}: work p50={:.2} p95={:.2} max={:.2} ms; timer interval p95={:.2} max={:.2} ms; intervals>50ms={}; bidirectional displacement passed", work[120], work[228], work[239], intervals[228], intervals[239], intervals.iter().filter(|ms| **ms > 50.).count());
+            cx.update(|cx| cx.quit());
+        }).detach();
+    });
+}
+
+/// Check painted geometry, not only the mutable scroll handle, immediately
+/// after opening a modal over an already-rendered results page.
+pub fn automation_dialog_first_scroll() {
+    let path = std::env::var("PLANNING_DIALOG_WORKSPACE").unwrap();
+    let mut store = crate::render_qa::load_workspace(Path::new(&path)).unwrap();
+    let occurrence = std::env::var("PLANNING_DIALOG_PERIOD").unwrap_or("11".into()).parse::<u64>().unwrap();
+    let repeat = std::env::var("PLANNING_DIALOG_REPORT_REPEAT").ok().and_then(|v| v.parse::<usize>().ok()).unwrap_or(1);
+    let run_ids = store.occurrence(occurrence).unwrap().run_ids.clone();
+    if repeat > 1 {
+        for id in &run_ids {
+            let Some(mut run) = store.run_mut(*id) else { continue; };
+            if let Ok(mut value) = serde_json::from_str::<serde_json::Value>(&run.output)
+                && let Some(report) = value.get("report").and_then(|v| v.as_str()) {
+                value["report"] = serde_json::Value::String(report.repeat(repeat));
+                run.output = value.to_string();
+            } else {
+                run.output = run.output.repeat(repeat);
+            }
+        }
+    }
+    let bytes: usize = store.runs().iter().filter(|r| run_ids.contains(&r.id)).map(|r| r.output.len()).sum();
+    println!("FIRST_SCROLL period={occurrence} stored_body_bytes={bytes} repeat={repeat}");
+    application().with_assets(crate::ui_assets::AppAssets).run(move |cx| {
+        init(cx);
+        let (handle, app) = open_window(WindowOptions {
+            window_bounds: Some(WindowBounds::Windowed(Bounds::centered(None, size(px(1440.), px(920.)), cx))),
+            titlebar: Some(TitlebarOptions { title: Some("First modal scroll QA — isolated snapshot".into()), ..Default::default() }),
+            ..Default::default()
+        }, cx, |w, cx| {
+            let app = cx.new(|cx| TaskApp::new_mock(w, cx));
+            app.update(cx, |a, cx| {
+                a.store = store;
+                a.set_scope_identity(Scope::AutomationRuns);
+                a.set_appearance(Appearance::Dark, w, cx);
+                cx.notify();
+            });
+            app
+        }).unwrap();
+        cx.activate(true);
+        cx.spawn(async move |cx| {
+            cx.background_executor().timer(Duration::from_millis(300)).await;
+            for attempt in 0..3 {
+                let opened = std::time::Instant::now();
+                cx.update_window(handle, |_, w, cx| {
+                    app.update(cx, |a, cx| {
+                        a.automation_ui.dialog_scroll.set_offset(point(px(0.), px(0.)));
+                        a.open_occurrence_result(occurrence, w, cx);
+                    });
+                }).unwrap();
+                let (position, initial_y) = loop {
+                    cx.background_executor().timer(Duration::from_millis(16)).await;
+                    let geometry = cx.update_window(handle, |_, w, _| {
+                        let body = w.try_find("automation-result-body")?;
+                        let marker = w.try_find("automation-result-state")?;
+                        Some((point(body.bounds().left() + px(2.), body.bounds().center().y), marker.bounds().top() - body.bounds().top()))
+                    }).unwrap();
+                    if let Some(geometry) = geometry { break geometry; }
+                    assert!(opened.elapsed() < Duration::from_secs(3), "Modal must become visible promptly");
+                };
+                let mut first_painted = None;
+                for frame in 0..30 {
+                    cx.update_window(handle, |_, w, cx| {
+                        if frame == 0 {
+                            w.dispatch_event(MouseMoveEvent { position, ..Default::default() }.to_platform_input(), cx);
+                        }
+                        w.dispatch_event(ScrollEvent {
+                            position, delta: ScrollDelta::Pixels(point(px(0.), px(-8.))),
+                            ..Default::default()
+                        }.to_platform_input(), cx);
+                    }).unwrap();
+                    cx.background_executor().timer(Duration::from_millis(16)).await;
+                    let (offset, painted_y) = cx.update_window(handle, |_, w, cx| {
+                        (app.read(cx).automation_ui.dialog_scroll.offset().y,
+                         w.find("automation-result-state").bounds().top() - w.find("automation-result-body").bounds().top())
+                    }).unwrap();
+                    if offset < px(-1.) && (painted_y - initial_y - offset).abs() < px(1.) && first_painted.is_none() {
+                        first_painted = Some(opened.elapsed());
+                    }
+                    if frame % 10 == 0 {
+                        println!("FIRST_SCROLL attempt={attempt} frame={frame} elapsed_ms={} offset={offset:?} painted_delta={:?}", opened.elapsed().as_millis(), painted_y - initial_y);
+                    }
+                }
+                println!("FIRST_SCROLL attempt={attempt} first_painted={first_painted:?}");
+                assert!(first_painted.is_some_and(|time| time < Duration::from_millis(250)), "Scroll handle changed without painting the modal promptly");
+                // Exercise real wheel dispatch inside the virtualized document.
+                let reader = cx.update_window(handle, |_, w, cx| {
+                    app.read(cx).automation_ui.report_readers.borrow().iter()
+                        .filter_map(|(key, state)| w.try_find(format!("{key}-reader"))
+                            .map(|element| (key.clone(), state.clone(), element.bounds().top())))
+                        .min_by(|a, b| a.2.partial_cmp(&b.2).unwrap())
+                        .map(|(key, state, _)| (key, state))
+                }).unwrap();
+                if let Some((key, state)) = reader {
+                    cx.update_window(handle, |_, _, cx| {
+                        app.read(cx).automation_ui.dialog_scroll.set_offset(point(px(0.), px(0.)));
+                        state.read(cx).list_state().set_offset_from_scrollbar(point(px(0.), px(0.)));
+                    }).unwrap();
+                    cx.update_window(handle, |_, w, _| w.refresh()).unwrap();
+                    cx.background_executor().timer(Duration::from_millis(100)).await;
+                    for _ in 0..40 {
+                        let revealed = cx.update_window(handle, |_, w, cx| {
+                            let bounds = w.find(format!("{key}-reader")).bounds();
+                            let body = w.find("automation-result-body").bounds();
+                            if bounds.bottom() <= body.bottom() + px(0.5) { return true; }
+                            let position = bounds.intersect(&body).center();
+                            let outer_before = app.read(cx).automation_ui.dialog_scroll.offset().y;
+                            w.dispatch_event(MouseMoveEvent { position, ..Default::default() }.to_platform_input(), cx);
+                            w.dispatch_event(ScrollEvent { position, delta: ScrollDelta::Pixels(point(px(0.), px(-32.))), ..Default::default() }.to_platform_input(), cx);
+                            assert_eq!(state.read(cx).list_state().scroll_px_offset_for_scrollbar().y, px(0.), "Reveal the clipped reader before consuming its text");
+                            assert!(app.read(cx).automation_ui.dialog_scroll.offset().y < outer_before);
+                            false
+                        }).unwrap();
+                        if revealed { break; }
+                        cx.background_executor().timer(Duration::from_millis(16)).await;
+                    }
+                    for (edge, dy) in [(false, -32.), (true, -32.), (true, 32.)] {
+                        let (inner_before, outer_before) = cx.update_window(handle, |_, w, cx| {
+                            let list = state.read(cx).list_state().clone();
+                            if edge {
+                                list.set_offset_from_scrollbar(point(px(0.), if dy < 0. { -list.max_offset_for_scrollbar().y } else { px(0.) }));
+                            }
+                            let before = list.scroll_px_offset_for_scrollbar().y;
+                            let outer = app.read(cx).automation_ui.dialog_scroll.offset().y;
+                            let bounds = w.find(format!("{key}-reader")).bounds();
+                            let body = w.find("automation-result-body").bounds();
+                            let position = bounds.intersect(&body).center();
+                            w.dispatch_event(MouseMoveEvent { position, ..Default::default() }.to_platform_input(), cx);
+                            w.dispatch_event(ScrollEvent { position, delta: ScrollDelta::Pixels(point(px(0.), px(dy))), ..Default::default() }.to_platform_input(), cx);
+                            (before, outer)
+                        }).unwrap();
+                        cx.background_executor().timer(Duration::from_millis(32)).await;
+                        cx.update_window(handle, |_, _, cx| {
+                            let inner = state.read(cx).list_state().scroll_px_offset_for_scrollbar().y;
+                            let outer = app.read(cx).automation_ui.dialog_scroll.offset().y;
+                            println!("NESTED_SCROLL edge={edge} inner={inner_before:?}->{inner:?} outer={outer_before:?}->{outer:?}");
+                            if edge { assert_eq!(inner, inner_before); assert!((outer - outer_before).as_f32() * dy > 0.); }
+                            else { assert!(inner < inner_before); assert_eq!(outer, outer_before); }
+                        }).unwrap();
+                    }
+                }
+                cx.update_window(handle, |_, w, cx| {
+                    app.update(cx, |a, cx| a.close_occurrence_result(w, cx));
+                }).unwrap();
+                cx.background_executor().timer(Duration::from_millis(100)).await;
+            }
+            cx.update(|cx| cx.quit());
+        }).detach();
+    });
 }

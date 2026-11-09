@@ -1,0 +1,88 @@
+=== native ===
+FIRST_SCROLL period=9 stored_body_bytes=49913 repeat=1
+FIRST_SCROLL attempt=0 frame=0 elapsed_ms=155 offset=-8px painted_delta=-8px
+FIRST_SCROLL attempt=0 frame=10 elapsed_ms=408 offset=-88px painted_delta=-88px
+FIRST_SCROLL attempt=0 frame=20 elapsed_ms=591 offset=-168px painted_delta=-168px
+FIRST_SCROLL attempt=0 first_painted=Some(155.333125ms)
+NESTED_SCROLL edge=false inner=-0px->-32px outer=-187.5px->-187.5px
+NESTED_SCROLL edge=true inner=-9460.5px->-9460.5px outer=-187.5px->-219.5px
+NESTED_SCROLL edge=true inner=-0px->-0px outer=-219.5px->-187.5px
+FIRST_SCROLL attempt=1 frame=0 elapsed_ms=50 offset=-8px painted_delta=-8px
+FIRST_SCROLL attempt=1 frame=10 elapsed_ms=219 offset=-88px painted_delta=-88px
+FIRST_SCROLL attempt=1 frame=20 elapsed_ms=393 offset=-168px painted_delta=-168px
+FIRST_SCROLL attempt=1 first_painted=Some(50.105125ms)
+NESTED_SCROLL edge=false inner=-0px->-32px outer=-187.5px->-187.5px
+NESTED_SCROLL edge=true inner=-9460.5px->-9460.5px outer=-187.5px->-219.5px
+NESTED_SCROLL edge=true inner=-0px->-0px outer=-219.5px->-187.5px
+FIRST_SCROLL attempt=2 frame=0 elapsed_ms=47 offset=-8px painted_delta=-8px
+FIRST_SCROLL attempt=2 frame=10 elapsed_ms=216 offset=-88px painted_delta=-88px
+FIRST_SCROLL attempt=2 frame=20 elapsed_ms=390 offset=-168px painted_delta=-168px
+FIRST_SCROLL attempt=2 first_painted=Some(47.600459ms)
+NESTED_SCROLL edge=false inner=-0px->-32px outer=-187.5px->-187.5px
+NESTED_SCROLL edge=true inner=-9460.5px->-9460.5px outer=-187.5px->-219.5px
+NESTED_SCROLL edge=true inner=-0px->-0px outer=-219.5px->-187.5px
+
+=== large ===
+FIRST_SCROLL period=9 stored_body_bytes=399304 repeat=8
+FIRST_SCROLL attempt=0 frame=0 elapsed_ms=73 offset=-8px painted_delta=-8px
+FIRST_SCROLL attempt=0 frame=10 elapsed_ms=268 offset=-88px painted_delta=-88px
+FIRST_SCROLL attempt=0 frame=20 elapsed_ms=441 offset=-168px painted_delta=-168px
+FIRST_SCROLL attempt=0 first_painted=Some(73.771208ms)
+NESTED_SCROLL edge=false inner=-0px->-32px outer=-187.5px->-187.5px
+NESTED_SCROLL edge=true inner=-78778px->-78778px outer=-187.5px->-219.5px
+NESTED_SCROLL edge=true inner=-0px->-0px outer=-219.5px->-187.5px
+FIRST_SCROLL attempt=1 frame=0 elapsed_ms=47 offset=-8px painted_delta=-8px
+FIRST_SCROLL attempt=1 frame=10 elapsed_ms=224 offset=-88px painted_delta=-88px
+FIRST_SCROLL attempt=1 frame=20 elapsed_ms=398 offset=-168px painted_delta=-168px
+FIRST_SCROLL attempt=1 first_painted=Some(47.254917ms)
+NESTED_SCROLL edge=false inner=-0px->-32px outer=-187.5px->-187.5px
+NESTED_SCROLL edge=true inner=-78778px->-78778px outer=-187.5px->-219.5px
+NESTED_SCROLL edge=true inner=-0px->-0px outer=-219.5px->-187.5px
+FIRST_SCROLL attempt=2 frame=0 elapsed_ms=47 offset=-8px painted_delta=-8px
+FIRST_SCROLL attempt=2 frame=10 elapsed_ms=213 offset=-88px painted_delta=-88px
+FIRST_SCROLL attempt=2 frame=20 elapsed_ms=382 offset=-168px painted_delta=-168px
+FIRST_SCROLL attempt=2 first_painted=Some(47.63975ms)
+NESTED_SCROLL edge=false inner=-0px->-32px outer=-187.5px->-187.5px
+NESTED_SCROLL edge=true inner=-78778px->-78778px outer=-187.5px->-219.5px
+NESTED_SCROLL edge=true inner=-0px->-0px outer=-219.5px->-187.5px
+
+=== empty ===
+FIRST_SCROLL period=11 stored_body_bytes=0 repeat=1
+FIRST_SCROLL attempt=0 frame=0 elapsed_ms=50 offset=-8px painted_delta=-8px
+FIRST_SCROLL attempt=0 frame=10 elapsed_ms=218 offset=-88px painted_delta=-88px
+FIRST_SCROLL attempt=0 frame=20 elapsed_ms=387 offset=-168px painted_delta=-168px
+FIRST_SCROLL attempt=0 first_painted=Some(50.223292ms)
+FIRST_SCROLL attempt=1 frame=0 elapsed_ms=42 offset=-8px painted_delta=-8px
+FIRST_SCROLL attempt=1 frame=10 elapsed_ms=215 offset=-88px painted_delta=-88px
+FIRST_SCROLL attempt=1 frame=20 elapsed_ms=388 offset=-168px painted_delta=-168px
+FIRST_SCROLL attempt=1 first_painted=Some(42.107875ms)
+FIRST_SCROLL attempt=2 frame=0 elapsed_ms=34 offset=-8px painted_delta=-8px
+FIRST_SCROLL attempt=2 frame=10 elapsed_ms=202 offset=-88px painted_delta=-88px
+FIRST_SCROLL attempt=2 frame=20 elapsed_ms=375 offset=-168px painted_delta=-168px
+FIRST_SCROLL attempt=2 first_painted=Some(34.670125ms)
+
+=== short ===
+FIRST_SCROLL period=12 stored_body_bytes=510 repeat=1
+FIRST_SCROLL attempt=0 frame=0 elapsed_ms=54 offset=-8px painted_delta=-8px
+FIRST_SCROLL attempt=0 frame=10 elapsed_ms=228 offset=-88px painted_delta=-88px
+FIRST_SCROLL attempt=0 frame=20 elapsed_ms=403 offset=-153px painted_delta=-153px
+FIRST_SCROLL attempt=0 first_painted=Some(54.614834ms)
+FIRST_SCROLL attempt=1 frame=0 elapsed_ms=33 offset=-8px painted_delta=-8px
+FIRST_SCROLL attempt=1 frame=10 elapsed_ms=208 offset=-88px painted_delta=-88px
+FIRST_SCROLL attempt=1 frame=20 elapsed_ms=383 offset=-153px painted_delta=-153px
+FIRST_SCROLL attempt=1 first_painted=Some(33.818333ms)
+FIRST_SCROLL attempt=2 frame=0 elapsed_ms=39 offset=-8px painted_delta=-8px
+FIRST_SCROLL attempt=2 frame=10 elapsed_ms=208 offset=-88px painted_delta=-88px
+FIRST_SCROLL attempt=2 frame=20 elapsed_ms=383 offset=-153px painted_delta=-153px
+FIRST_SCROLL attempt=2 first_painted=Some(39.363625ms)
+
+=== regression ===
+DIALOG_SCROLL Light 1000x680: wheel+frame p50=2.29 p95=3.15 max=7.98 ms; presentation reuse and invalidation passed
+DIALOG_SCROLL Light 1440x920: wheel+frame p50=2.60 p95=4.40 max=46.15 ms; presentation reuse and invalidation passed
+DIALOG_SCROLL Dark 1000x680: wheel+frame p50=2.45 p95=3.28 max=10.16 ms; presentation reuse and invalidation passed
+DIALOG_SCROLL Dark 1440x920: wheel+frame p50=2.84 p95=4.59 max=5.80 ms; presentation reuse and invalidation passed
+AUTOMATION_DIALOG_SCROLL_QA passed
+
+=== warm-final ===
+WORKSPACE_REPRO tasks=184 runs=188 period=9 sidebar_count_ms=0.05
+NATIVE_DIALOG_SCROLL Light Size { 1440px × 920px }: work p50=11.28 p95=12.85 max=16.42 ms; timer interval p95=33.97 max=41.52 ms; intervals>50ms=0; bidirectional displacement passed

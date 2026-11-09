@@ -385,6 +385,14 @@ impl Store {
         self.execution_eligibility_with_owner(id, owner)
     }
 
+    /// Resolve ownership before constructing the expensive dependency/phase checks.
+    /// Ordinary status rendering does not consume automation eligibility.
+    pub(crate) fn automation_execution_eligibility(&self, id: u64) -> Option<ExecutionEligibility> {
+        let goal = self.owning_research_goal(id).unwrap_or(id);
+        let owner = self.automation_owner_for_goal(goal)?;
+        Some(self.execution_eligibility_with_owner(id, EligibilityOwner::AutomationPeriod(owner)))
+    }
+
     /// The only active occurrence that contains this goal. Ambiguous stored
     /// ownership returns `None` rather than guessing from a latest ID/time.
     pub(crate) fn unique_active_occurrence_for_goal(
@@ -822,6 +830,27 @@ mod tests {
         assert!(status.reason.contains("Waiting for collection"));
         assert!(!status.reason.contains("Ready"));
         assert!(!status.reason.contains("add its topic to the queue"));
+    }
+
+    #[test]
+    fn presentation_eligibility_resolves_ownership_before_dependency_checks() {
+        let (mut store, goal, ids) = fixture();
+        for id in std::iter::once(&goal).chain(ids.iter()) {
+            store.task_mut(*id).unwrap().automation_id = None;
+        }
+        assert!(store.automation_execution_eligibility(ids[0]).is_none());
+        // Legacy ownership recorded only by the occurrence still takes the
+        // automation path, including ordered phase barriers and terminal state.
+        store.push_occurrence(occurrence(1, OccurrenceStatus::Running, vec![goal]));
+        for state in [OccurrenceStatus::Running, OccurrenceStatus::Cancelled] {
+            store.occurrence_mut(1).unwrap().status = state;
+            for id in &ids {
+                let actual = store.automation_execution_eligibility(*id).unwrap();
+                let expected = store.execution_eligibility(*id);
+                assert_eq!(actual.execution_status(), expected.execution_status());
+                assert_eq!(actual.reason(&store, *id), expected.reason(&store, *id));
+            }
+        }
     }
 
     #[test]

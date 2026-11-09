@@ -1,0 +1,10 @@
+2026-11-09 22:35:33.550 what-the-hell-are-you-planning[2840:12043906] error messaging the mach port for IMKCFRunLoopWakeUpReliable
+NATIVE_DIALOG_SCROLL Dark Size { 1000px × 680px }: work p50=3.42 p95=7.14 max=8.54 ms; timer interval p95=24.62 max=42.50 ms; intervals>50ms=0; bidirectional displacement passed
+NATIVE_DIALOG_SCROLL Light Size { 1000px × 680px }: work p50=2.82 p95=3.53 max=4.85 ms; timer interval p95=24.57 max=25.42 ms; intervals>50ms=0; bidirectional displacement passed
+NATIVE_DIALOG_SCROLL Light Size { 1440px × 920px }: work p50=2.21 p95=3.10 max=3.99 ms; timer interval p95=22.54 max=26.05 ms; intervals>50ms=0; bidirectional displacement passed
+NATIVE_DIALOG_SCROLL Dark Size { 1440px × 920px }: work p50=2.99 p95=3.70 max=4.54 ms; timer interval p95=20.78 max=21.57 ms; intervals>50ms=0; bidirectional displacement passed
+DIALOG_SCROLL Light 1000x680: wheel+frame p50=1.38 p95=1.82 max=2.64 ms; presentation reuse and invalidation passed
+DIALOG_SCROLL Light 1440x920: wheel+frame p50=1.33 p95=1.60 max=2.05 ms; presentation reuse and invalidation passed
+DIALOG_SCROLL Dark 1000x680: wheel+frame p50=1.31 p95=1.68 max=2.23 ms; presentation reuse and invalidation passed
+DIALOG_SCROLL Dark 1440x920: wheel+frame p50=1.36 p95=1.69 max=1.80 ms; presentation reuse and invalidation passed
+AUTOMATION_DIALOG_SCROLL_QA passed

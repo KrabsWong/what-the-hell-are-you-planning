@@ -436,6 +436,7 @@ pub struct AutomationUi {
     pub scroll: ScrollHandle,
     /// Scroll offset of the open period dialog body, restored by Back.
     pub dialog_scroll: ScrollHandle,
+    pub(crate) report_readers: RefCell<HashMap<String, Entity<gpui_kit::base::text::TextViewState>>>,
     /// Session-only background tint per automation in the all-results list.
     pub result_tints: ResultTints,
     pub name: Entity<InputState>,
@@ -722,6 +723,7 @@ impl AutomationUi {
             feedback: None,
             scroll: ScrollHandle::new(),
             dialog_scroll: ScrollHandle::new(),
+            report_readers: RefCell::new(HashMap::new()),
             result_tints: ResultTints::new(),
             name: input(window, cx, "e.g. Shenzhen fuel price", ""),
             objective: cx.new(|cx| {
@@ -750,6 +752,7 @@ impl AutomationUi {
     pub(crate) fn clear_store_caches(&mut self) {
         self.result_order.borrow_mut().clear();
         self.run_index.borrow_mut().clear();
+        self.report_readers.borrow_mut().clear();
     }
 
     /// Stable focus handle for one attempt's Review control. Creating it lazily
@@ -4051,24 +4054,82 @@ impl TaskApp {
             .into_any_element()
     }
 
-    fn automation_occurrence_detail(&self, id: u64, cx: &mut Context<Self>) -> AnyElement {
+    /// Keep short reports in the outer flow; virtualize long documents by block.
+    fn automation_report_reader(
+        &self, key: String, markdown: String, height: Pixels, cx: &mut Context<Self>,
+    ) -> AnyElement {
+        use gpui_kit::base::text::{TextView, TextViewState};
+        let long = markdown.len() > 4096 || markdown.lines().count() > 40;
+        let view = if long {
+            let mut readers = self.automation_ui.report_readers.borrow_mut();
+            // Retain only the active period's readers, including Back navigation.
+            let prefix = format!("automation-result-{}-", self.period_overlay().unwrap_or(0));
+            readers.retain(|key, _| key.starts_with(&prefix));
+            let state = readers.entry(key.clone()).or_insert_with(||
+                cx.new(|cx| TextViewState::markdown(&markdown, cx).scrollable(true))
+            ).clone();
+            state.update(cx, |state, cx| state.set_text(&markdown, cx));
+            TextView::new(&state).scrollable(true).h(height)
+        } else {
+            TextView::markdown(key.clone(), markdown)
+        }.markdown_extensions(crate::rich_markdown::extensions()).w_full()
+            .on_link_click(|url, _, _, cx| {
+                if url.starts_with("https://") || url.starts_with("http://") { cx.open_url(url); }
+            });
+        if !long { return view.into_any_element(); }
+        let state = self.automation_ui.report_readers.borrow()[&key].clone();
+        let outer = self.automation_ui.dialog_scroll.clone();
+        div().id(format!("{key}-reader")).relative().w_full().h(height).flex_shrink_0()
+            .child(canvas(|_, _, _| (), move |bounds, _, window, _| {
+                let visible = bounds.intersect(&window.content_mask().bounds);
+                let state = state.clone();
+                let outer = outer.clone();
+                // Register before the child so capture runs before its bounce handler.
+                window.on_mouse_event(move |event: &ScrollEvent, phase, window, cx| {
+                    if phase != DispatchPhase::Capture || !visible.contains(&event.position) { return; }
+                    let delta = event.delta.pixel_delta(window.line_height());
+                    if delta.y == px(0.) || delta.x.abs() > delta.y.abs() { return; }
+                    // Reveal a clipped reader before scrolling text inside it.
+                    let reveal = if delta.y < px(0.) && bounds.bottom() > visible.bottom() {
+                        delta.y.max(visible.bottom() - bounds.bottom())
+                    } else if delta.y > px(0.) && bounds.top() < visible.top() {
+                        delta.y.min(visible.top() - bounds.top())
+                    } else { px(0.) };
+                    let outer_next = (outer.offset().y + reveal).clamp(-outer.max_offset().y, px(0.));
+                    if reveal != px(0.) && outer_next != outer.offset().y {
+                        outer.set_offset(point(outer.offset().x, outer_next));
+                        window.refresh();
+                        cx.stop_propagation();
+                        return;
+                    }
+                    let list = state.read(cx).list_state().clone();
+                    let offset = list.scroll_px_offset_for_scrollbar();
+                    let max = list.max_offset_for_scrollbar();
+                    let next = (offset.y + delta.y).clamp(-max.y, px(0.));
+                    let at_edge = if delta.y < px(0.) { offset.y <= -max.y + px(0.5) } else { offset.y >= px(-0.5) };
+                    if !at_edge {
+                        list.set_offset_from_scrollbar(point(offset.x, next));
+                        state.update(cx, |_, cx| cx.notify());
+                    } else {
+                        outer.set_offset(point(outer.offset().x, (outer.offset().y + delta.y).clamp(-outer.max_offset().y, px(0.))));
+                    }
+                    window.refresh();
+                    cx.stop_propagation();
+                });
+            }).absolute().inset_0()).child(view).map(observed).into_any_element()
+    }
+
+    fn automation_occurrence_detail(
+        &self,
+        id: u64,
+        presentation: &crate::result_presentation::ResultPresentation,
+        reader_height: Pixels,
+        cx: &mut Context<Self>,
+    ) -> AnyElement {
         let Some(occurrence) = self.store.occurrence(id) else {
             return div().into_any_element();
         };
         let colors = palette(cx);
-        let epoch = self.store.dirty_epoch();
-        self.automation_ui
-            .run_index
-            .borrow_mut()
-            .ensure(epoch, &self.store);
-        let presentation = {
-            let index = self.automation_ui.run_index.borrow();
-            crate::result_presentation::present_occurrence_indexed(
-                &self.store,
-                occurrence,
-                index.index(),
-            )
-        };
         let mut panel = col()
             .id("automation-occurrence-detail")
             .p_4()
@@ -4217,17 +4278,10 @@ impl TaskApp {
         if presentation.reports.is_empty() && presentation.has_reader_body() {
             panel = panel.child(
                 div().p_3().rounded_md().bg(rgb(colors.panel)).child(
-                    gpui_kit::base::text::TextView::markdown(
+                    self.automation_report_reader(
                         format!("automation-result-{id}-fallback"),
-                        presentation.reader_markdown.clone(),
-                    )
-                    .markdown_extensions(crate::rich_markdown::extensions())
-                    .w_full()
-                    .on_link_click(|url, _, _, cx| {
-                        if url.starts_with("https://") || url.starts_with("http://") {
-                            cx.open_url(url);
-                        }
-                    }),
+                        presentation.reader_markdown.clone(), reader_height, cx,
+                    ),
                 ),
             );
             panel = panel.child(self.automation_result_sources(
@@ -4275,17 +4329,10 @@ impl TaskApp {
                         .id(format!("automation-report-body-{id}-{run_key}"))
                         .aria_label("Retained report body")
                         .p_3().rounded_md().bg(rgb(colors.panel)).child(
-                        gpui_kit::base::text::TextView::markdown(
+                        self.automation_report_reader(
                             format!("automation-result-{id}-{run_key}"),
-                            result.reader_markdown.clone(),
-                        )
-                        .markdown_extensions(crate::rich_markdown::extensions())
-                        .w_full()
-                        .on_link_click(|url, _, _, cx| {
-                            if url.starts_with("https://") || url.starts_with("http://") {
-                                cx.open_url(url);
-                            }
-                        }),
+                            result.reader_markdown.clone(), reader_height, cx,
+                        ),
                     ).map(observed),
                 );
                 if !result.sources.is_empty() {
@@ -4633,7 +4680,12 @@ impl TaskApp {
 
     /// A period's report, sources and technical detail open in one modal so the
     /// history stays a compact list.
-    pub(crate) fn automation_result_dialog(&self, cx: &mut Context<Self>) -> AnyElement {
+    pub(crate) fn automation_result_dialog(
+        &self,
+        presentation: &crate::result_presentation::ResultPresentation,
+        reader_height: Pixels,
+        cx: &mut Context<Self>,
+    ) -> AnyElement {
         let Some(id) = self.period_overlay() else {
             return div().into_any_element();
         };
@@ -4641,7 +4693,6 @@ impl TaskApp {
             return div().into_any_element();
         };
         let colors = palette(cx);
-        let presentation = crate::result_presentation::present_occurrence(&self.store, occurrence);
         let status_label = match presentation.status_suffix() {
             Some(suffix) => format!("{} · {suffix}", occurrence.status.label()),
             None => occurrence.status.label().to_string(),
@@ -4745,7 +4796,11 @@ impl TaskApp {
                             .min_h_0()
                             .overflow_y_scroll()
                             .track_scroll(&self.automation_ui.dialog_scroll)
-                            .child(self.automation_occurrence_detail(id, cx))
+                            // A native wheel can update the offset without waking
+                            // a newly installed cached overlay. Request a paint,
+                            // not a semantic app update: keep report/status caches.
+                            .on_scroll(|_, window, _| window.refresh())
+                            .child(self.automation_occurrence_detail(id, presentation, reader_height, cx))
                             .map(observed),
                     )
                     .child(row().justify_end().child(

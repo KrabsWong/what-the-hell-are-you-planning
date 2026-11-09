@@ -67,6 +67,15 @@ impl TaskStatus {
 
 impl Store {
     pub fn task_status(&self, id: u64, batch: Option<&TodoBatch>) -> TaskStatus {
+        self.task_status_with_execution(id, batch, |step| self.execution_status(step, batch))
+    }
+
+    pub(crate) fn task_status_with_execution(
+        &self,
+        id: u64,
+        batch: Option<&TodoBatch>,
+        mut resolve_execution: impl FnMut(u64) -> ExecutionStatus,
+    ) -> TaskStatus {
         use ExecutionStatus::*;
         if let Some(archived) = crate::archive_presentation::presentation(self, id) {
             return TaskStatus {
@@ -77,7 +86,7 @@ impl Store {
                 display_label: Some(archived.label),
             };
         }
-        let mut execution = self.execution_status(id, batch);
+        let mut execution = resolve_execution(id);
         let task = self.task(id);
         let goal = self.owning_research_goal(id).unwrap_or(id);
         let eligibility = task
@@ -86,18 +95,14 @@ impl Store {
                     .as_ref()
                     .is_some_and(|research| research.kind != ResearchKind::Goal)
             })
-            .map(|_| self.execution_eligibility(id))
-            .filter(|eligibility| eligibility.owner.is_automation());
+            .and_then(|_| self.automation_execution_eligibility(id));
         let automation_step = eligibility.is_some();
         let ordinary_submitted = batch.is_some_and(|b| b.contains_pending(goal))
             || self.runs().iter().any(|r| {
                 r.project_plan.is_none()
+                    && matches!(r.status.as_str(), "Queued" | "Running" | "Cancelling" | "Recovering")
                     && (r.task_id == id
                         || (goal == id && self.owning_research_goal(r.task_id) == Some(id)))
-                    && matches!(
-                        r.status.as_str(),
-                        "Queued" | "Running" | "Cancelling" | "Recovering"
-                    )
             });
         // An automation period owns its own submitted/wait state. A paused
         // definition does not pause an active period, and an empty ordinary
@@ -223,7 +228,7 @@ impl Store {
             let states: Vec<_> = self
                 .research_children(id)
                 .into_iter()
-                .map(|step| self.execution_status(step, batch))
+                .map(&mut resolve_execution)
                 .collect();
             let summary = ExecutionStatus::ALL
                 .into_iter()

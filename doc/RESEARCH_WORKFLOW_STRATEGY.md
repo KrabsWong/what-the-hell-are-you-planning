@@ -351,3 +351,18 @@ On restart, a current successful result may have its body loaded on demand. Expl
 Archived report readers use history-aware freshness checks: archiving alone does not make a retained, signature-matched report stale or legacy. Lazy saved bodies remain pending content validation until loaded. This presentation rule does not permit execution, export, or dependent work to bypass strict result validation; changed research inputs still mark the retained report stale.
 
 Automation Enable, Pause and Resume settle their user-facing completion only after the matching durable receipt. A pending lifecycle action rejects duplicate activation. Enable closes only its originating, unchanged wizard; newer unsaved edits and later navigation remain intact. A newly created Quick automation adopts its durable definition identity even when newer edits keep the form open, so the next save updates the same automation.
+
+
+Planning ownership lookup uses explicit owner metadata or a request's recorded
+planning-run ID first. Legacy unique-signature inference applies only to runs
+without a research kind; collection, analysis, report and goal-planning input
+signatures are not request-planning ownership keys. Ordinary result counts and
+reader polling therefore do not serialize every request plan for every research
+step. This does not relax result freshness or dependency validation.
+
+Presentation status computation resolves automation ownership before doing
+period eligibility checks; ordinary research never borrows automation admission
+rules. Goal summaries and visible child rows share execution projections within
+a semantic render cycle. Store changes, queue notifications and lazy-result
+hydration invalidate these presentation caches. Execution/admission validation
+remains uncached, and retry countdown explanations remain time-sensitive.

@@ -36,6 +36,58 @@ impl Render for ContentSurface {
     }
 }
 
+#[cfg(feature = "qa")]
+pub(crate) static RESULT_PRESENTATIONS: std::sync::atomic::AtomicU64 =
+    std::sync::atomic::AtomicU64::new(0);
+
+/// Retain the modal independently of the animated shell. Wheel frames reuse
+/// the presentation; every semantic parent notification invalidates it,
+/// including asynchronous body hydration that need not dirty the Store.
+pub(crate) struct AutomationResultSurface {
+    parent: WeakEntity<TaskApp>,
+    presentation: Option<crate::result_presentation::ResultPresentation>,
+    _parent_subscription: Subscription,
+}
+
+impl AutomationResultSurface {
+    fn new(parent: Entity<TaskApp>, cx: &mut Context<Self>) -> Self {
+        let subscription = cx.observe(&parent, |this, _, cx| {
+            this.presentation = None;
+            cx.notify();
+        });
+        Self {
+            parent: parent.downgrade(),
+            presentation: None,
+            _parent_subscription: subscription,
+        }
+    }
+}
+
+impl Render for AutomationResultSurface {
+    fn render(&mut self, window: &mut Window, cx: &mut Context<Self>) -> impl IntoElement {
+        let Some(parent) = self.parent.upgrade() else {
+            return div().into_any_element();
+        };
+        parent.update(cx, |app, cx| {
+            let Some(id) = app.period_overlay() else {
+                return div().into_any_element();
+            };
+            let Some(occurrence) = app.store.occurrence(id) else {
+                return div().into_any_element();
+            };
+            let presentation = self.presentation.get_or_insert_with(|| {
+                #[cfg(feature = "qa")]
+                RESULT_PRESENTATIONS.fetch_add(1, std::sync::atomic::Ordering::Relaxed);
+                app.automation_ui.run_index.borrow_mut().ensure(app.store.dirty_epoch(), &app.store);
+                crate::result_presentation::present_occurrence_indexed(
+                    &app.store, occurrence, app.automation_ui.run_index.borrow().index(),
+                )
+            });
+            app.automation_result_dialog(presentation, px((window.viewport_size().height.as_f32() * 0.45).clamp(180., 420.)), cx)
+        })
+    }
+}
+
 pub(crate) struct SidebarSurface {
     parent: WeakEntity<TaskApp>,
     _parent_subscription: Subscription,
@@ -196,6 +248,16 @@ impl TaskApp {
                             .expect("brand overlay initialized"),
                     ),
             ))
+            .into_any_element()
+    }
+
+    pub(crate) fn retained_automation_result(&mut self, cx: &mut Context<Self>) -> AnyElement {
+        if self.automation_result_surface.is_none() {
+            let parent = cx.entity();
+            self.automation_result_surface = Some(cx.new(|cx| AutomationResultSurface::new(parent, cx)));
+        }
+        self.automation_result_surface.clone().expect("result surface initialized")
+            .cached(StyleRefinement::default().absolute().inset_0().size_full())
             .into_any_element()
     }
 

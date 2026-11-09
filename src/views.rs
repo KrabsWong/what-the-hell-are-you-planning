@@ -1710,13 +1710,12 @@ impl TaskApp {
             header.map(observed).into_any_element()
         }
     }
-    fn toolbar(&self, cx: &mut Context<Self>) -> AnyElement {
+    fn toolbar(&self, count: usize, cx: &mut Context<Self>) -> AnyElement {
         let project = if let Scope::Project(id) = self.scope() {
             Some(id)
         } else {
             None
         };
-        let count = self.visible_tasks().len();
         let summary = if let Some(id) = project {
             let pending = self
                 .store
@@ -1837,7 +1836,7 @@ impl TaskApp {
     fn collection(&self, cx: &mut Context<Self>) -> AnyElement {
         let colors = palette(cx);
         let tasks = self.visible_tasks();
-        let mut main = col().size_full().child(self.toolbar(cx)).child(
+        let mut main = col().size_full().child(self.toolbar(tasks.len(), cx)).child(
             row()
                 .px_6()
                 .pb_4()
@@ -1962,7 +1961,7 @@ impl TaskApp {
         if self.layout == Layout::Board {
             return main.child(self.board(&tasks, cx)).into_any_element();
         }
-        let ordered = self.ordered_visible_tasks();
+        let ordered = self.order_visible_tasks(&tasks);
         let row_height = if self.compact { 32. } else { 38. };
         let mut rows = Vec::new();
         let grouped = !matches!(self.scope(), Scope::Project(_));
@@ -2098,7 +2097,9 @@ impl TaskApp {
         .into_any_element()
     }
     pub fn ordered_visible_tasks(&self) -> Vec<Task> {
-        let tasks = self.visible_tasks();
+        self.order_visible_tasks(&self.visible_tasks())
+    }
+    fn order_visible_tasks(&self, tasks: &[Task]) -> Vec<Task> {
         let ids: Vec<_> = tasks.iter().map(|t| t.id).collect();
         let mut ordered = vec![];
         for t in tasks
@@ -2107,7 +2108,7 @@ impl TaskApp {
         {
             ordered.push(t.clone());
             if !self.collapsed.contains(&t.id) {
-                append_children(&tasks, t.id, &self.collapsed, &mut ordered);
+                append_children(tasks, t.id, &self.collapsed, &mut ordered);
             }
         }
         if !matches!(self.scope(), Scope::Project(_)) {
@@ -4222,13 +4223,12 @@ impl Render for TaskApp {
             self.window_close_ready = false;
             window.remove_window();
         }
-        // Queue state is transient; otherwise tracked store mutations and app
-        // notifications invalidate statuses, not wheel/animation redraws.
+        // Queue changes notify the app and invalidate statuses through the observer.
+        // Merely having a batch must not invalidate every wheel/animation frame.
         let status_epoch = self.store.dirty_epoch();
-        if self.render_status_epoch.replace(status_epoch) != status_epoch
-            || self.todo_batch.is_some()
-        {
+        if self.render_status_epoch.replace(status_epoch) != status_epoch {
             self.render_statuses.borrow_mut().clear();
+            self.render_executions.borrow_mut().clear();
         }
         if let Some(id) = self.sidebar_reveal.take() {
             // Deferred effects run after this frame has laid out expanded ancestors.
@@ -4547,7 +4547,9 @@ impl Render for TaskApp {
             root = root.child(self.automation_settings_dialog(cx));
         }
         if self.period_overlay().is_some() {
-            root = root.child(self.automation_result_dialog(cx));
+            root = root.child(self.retained_automation_result(cx));
+        } else {
+            self.automation_result_surface = None;
         }
         if self.planning_attempt_overlay().is_some() {
             root = root.child(self.planning_attempt_dialog(cx));

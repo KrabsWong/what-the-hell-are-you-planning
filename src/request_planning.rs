@@ -387,6 +387,12 @@ impl Store {
         {
             return Some(request);
         }
+        // Research step/goal signatures are not request-planning signatures.
+        // Looking them up here serializes every request's goal tree for each
+        // ordinary result row, including sidebar counts and idle reader polls.
+        if run.research_kind.is_some() {
+            return None;
+        }
         // Legacy read fallback: a unique verified signature identifies an owner
         // whose latest pointer moved. Ambiguous signatures stay unowned.
         let signature = run.input_signature.as_str();
@@ -428,6 +434,7 @@ impl Store {
             .runs()
             .iter()
             .find(|run| run.id == run_id)
+            .filter(|run| run.research_kind.is_none())
             .map(|run| run.input_signature.as_str())
             .filter(|signature| !signature.is_empty())?;
         let mut matches = self.research_requests().iter().filter(|request| {
@@ -1314,7 +1321,7 @@ mod tests {
     #[test]
     fn pending_topic_survives_reload_failure_retry_and_is_filled_in_place() {
         let mut s = store();
-        let id = s.create_research_request(1, None, "分析 Intel 财报").unwrap();
+        let id = s.create_research_request(1, None, "Analyze Intel earnings").unwrap();
         let topic = s.request_at_mut(0).unwrap().topic_id.unwrap();
         assert_eq!(s.topics().iter().find(|t| t.id == topic).unwrap().project_id, 1);
         assert_eq!(s.topic_planning_status(topic), Some("Awaiting planning"));
@@ -1362,8 +1369,8 @@ mod tests {
         s.request_at_mut(0).unwrap().planning_run_id = Some(request_run.id);
         s.push_run(request_run);
         let before = s.clone();
-        s.rename_project(1, "  新项目名称  ").unwrap();
-        assert_eq!(s.projects()[0].name, "新项目名称");
+        s.rename_project(1, "  New project name  ").unwrap();
+        assert_eq!(s.projects()[0].name, "New project name");
         assert_eq!(s.projects()[0].id, before.projects()[0].id);
         assert_eq!(s.projects()[0].key, before.projects()[0].key);
         assert_eq!(s.projects()[0].directory, before.projects()[0].directory);
@@ -1397,7 +1404,7 @@ mod tests {
         assert_eq!(s.runs()[0].input_signature, old_signature);
         assert_ne!(s.runs()[0].input_signature, s.request_plan_signature(request).unwrap());
         let before = s.clone();
-        for name in ["".to_string(), "   ".into(), "字".repeat(161)] {
+        for name in ["".to_string(), "   ".into(), "x".repeat(161)] {
             assert!(s.rename_project(1, &name).is_err());
             assert_eq!(s, before);
         }
@@ -1408,7 +1415,7 @@ mod tests {
     #[test]
     fn missing_step_fields_are_repaired_without_bypassing_validation() {
         let mut s = store();
-        let id = s.create_research_request(1, None, "分析最近财报").unwrap();
+        let id = s.create_research_request(1, None, "Analyze recent earnings").unwrap();
         let mut malformed: serde_json::Value = serde_json::from_str(PLAN).unwrap();
         for task in malformed["goals"][0]["tasks"].as_array_mut().unwrap() {
             task.as_object_mut().unwrap().remove("kind");
@@ -1448,7 +1455,7 @@ mod tests {
         plan["goals"][0]["tasks"][0].as_object_mut().unwrap().remove("depends_on");
         assert!(parse_request_plan(&plan.to_string()).unwrap_err().contains("depends_on"));
         let mut s = store();
-        let id = s.create_research_request(1, None, "分析财报").unwrap();
+        let id = s.create_research_request(1, None, "Analyze earnings").unwrap();
         let mut run = s.prepare_request_plan(id).unwrap();
         run.status = "Failed".into();
         run.exit_code = Some(0);
@@ -1456,7 +1463,7 @@ mod tests {
         let run_id = run.id;
         s.request_at_mut(0).unwrap().planning_run_id = Some(run_id);
         s.push_run(run);
-        s.request_at_mut(0).unwrap().input = "另一个研究对象".into();
+        s.request_at_mut(0).unwrap().input = "Another research subject".into();
         assert_eq!(s.request_plan_auto_repair(run_id), None);
         assert!(!s.prepare_request_plan(id).unwrap().prompt.contains("REPAIR THE PREVIOUS PLAN"));
     }
@@ -1465,13 +1472,13 @@ mod tests {
     fn request_preserves_temporal_anchor_and_unverified_input_without_running() {
         let mut s = store();
         let id = s
-            .create_research_request(1, None, "Intel 昨天财报后大跌，分析原因")
+            .create_research_request(1, None, "Analyze why Intel fell after yesterday's earnings")
             .unwrap();
         let stamp = s.request_at_mut(0).unwrap().submitted_at.clone();
         chrono::DateTime::parse_from_rfc3339(&stamp).unwrap();
         let run = s.prepare_request_plan(id).unwrap();
         assert!(run.prompt.contains(&stamp));
-        assert!(run.prompt.contains("Intel 昨天财报后大跌"));
+        assert!(run.prompt.contains("Intel fell after yesterday's earnings"));
         assert!(run.prompt.contains("facts_to_verify"));
         assert!(run.prompt.contains(research::RESEARCH_TYPE_GUIDANCE));
         assert!(run.prompt.contains(research::RESEARCH_PLAN_GUIDANCE));
@@ -1599,6 +1606,25 @@ mod tests {
         s.push_run(run.clone());
         assert_eq!(s.request_for_run(run.id).unwrap().id, request);
         assert_eq!(s.request_for_run_record(&run).unwrap().id, request);
+    }
+
+    #[test]
+    fn research_steps_do_not_infer_planning_ownership_from_signatures() {
+        let (mut s, automation) = automation_store();
+        let request = s.create_automation_request(automation, 1, "Objective", "Expected").unwrap();
+        let signature = s.request_plan_signature(request).unwrap();
+        let mut run = run_with_signature(&signature);
+        run.research_kind = Some(ResearchKind::Collect);
+        s.push_run(run.clone());
+        assert!(s.request_for_run_record(&run).is_none());
+        assert!(s.request_for_run(run.id).is_none());
+        assert!(!s.run_is_automation_owned(&run));
+        // Explicit durable ownership still wins, even for inconsistent legacy
+        // records; the optimization only limits signature inference.
+        s.request_mut(request).unwrap().planning_run_id = Some(run.id);
+        assert_eq!(s.request_for_run_record(&run).unwrap().id, request);
+        assert_eq!(s.request_for_run(run.id).unwrap().id, request);
+        assert!(s.run_is_automation_owned(&run));
     }
 
     #[test]

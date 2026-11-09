@@ -21,6 +21,8 @@ Keep the existing native workspace layout, system fonts and warm neutral palette
 
 Action buttons are about 32 px tall with 6 px radius and 14 px system font; Undo in the bottom status bar uses a compact 24 px button. Toolbars stay on one line and truncate long titles instead of compressing buttons. Horizontally scrollable boards keep their current column widths. Form/detail action rows may wrap. Sidebar content scrolls and the theme switch stays fixed at the bottom instead of being pushed out as projects grow.
 
+Automation result dialogs keep short reports in the natural outer scroll flow. Reports exceeding 4 KiB or 40 lines use a bounded reading area with a vertical scrollbar and block virtualization. Its height follows the window (45% of viewport height, clamped to 180–420 px). A partially clipped reader is brought into view before its text scrolls. Vertical input over the article moves only the article while it can scroll; subsequent input at an edge moves the outer dialog. Metadata, sources and research steps remain in the outer flow. Horizontal input, text selection, links and scrollbar dragging retain their normal behavior.
+
 The sidebar brand mark and app name stay fixed above the navigation scroll area. Scrolling moves only the navigation list; the workspace switcher stays fixed below it.
 
 Result headers keep the title and actions on one line. Actions stay right-aligned without wrapping; long titles ellipsize and expose the full title on hover. Result kind, run, model, version and source metadata occupy a separate row below and may wrap independently.

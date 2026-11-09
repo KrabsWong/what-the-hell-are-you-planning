@@ -1,0 +1,62 @@
+Before shared fixes: forced full refresh
+all step states: 4.11 ms/pass
+All research: 302.88 ms/frame
+Recovery: 52.27 ms/frame
+Project: 50.84 ms/frame
+Topic: 50.94 ms/frame
+Steps: 52.30 ms/frame
+Report: 57.82 ms/frame
+
+After shared fixes: forced full refresh
+all step states: 4.07 ms/pass
+All research: 83.62 ms/frame
+Recovery: 23.76 ms/frame
+Project: 24.21 ms/frame
+Topic: 24.63 ms/frame
+Steps: 26.01 ms/frame
+Report: 32.37 ms/frame
+
+Headless wheel and invalidation checks
+Board scroll workload: 24 goals / 72 completed steps; median 8.49 ms, p95 9.43 ms per scroll+render
+Settings vertical scroll: median 1.37 ms, p95 1.53 ms per scroll+render
+Expanded sidebar scroll: 24 goals / 72 steps; median 7.12 ms, p95 8.38 ms per scroll+render
+
+Native dark: scheduled display callbacks
+Dark Sidebar background_updates=false: work p95=0.10 max=0.29 ms; input interval p95=16.75 max=21.02 ms; intervals>50ms=0
+Dark Sidebar background_updates=true: work p95=0.12 max=0.15 ms; input interval p95=40.73 max=42.72 ms; intervals>50ms=0
+Dark Research list background_updates=false: work p95=0.10 max=0.73 ms; input interval p95=24.82 max=37.23 ms; intervals>50ms=0
+Dark Research list background_updates=true: work p95=0.09 max=0.11 ms; input interval p95=34.46 max=37.57 ms; intervals>50ms=0
+Dark Research board background_updates=false: work p95=0.11 max=0.24 ms; input interval p95=35.05 max=57.41 ms; intervals>50ms=1
+Dark Research board background_updates=true: work p95=0.11 max=0.12 ms; input interval p95=47.36 max=48.44 ms; intervals>50ms=0
+Dark Model settings background_updates=false: work p95=0.17 max=0.29 ms; input interval p95=16.69 max=16.99 ms; intervals>50ms=0
+Dark Model settings background_updates=true: work p95=0.12 max=0.13 ms; input interval p95=23.71 max=24.64 ms; intervals>50ms=0
+Dark Automation results background_updates=false: work p95=0.15 max=0.44 ms; input interval p95=16.69 max=17.12 ms; intervals>50ms=0
+Dark Automation results background_updates=true: work p95=0.11 max=0.13 ms; input interval p95=24.00 max=24.48 ms; intervals>50ms=0
+Dark Research report background_updates=false: work p95=0.14 max=1.15 ms; input interval p95=21.55 max=30.39 ms; intervals>50ms=0
+Dark Research report background_updates=true: work p95=0.15 max=0.16 ms; input interval p95=24.44 max=25.99 ms; intervals>50ms=0
+
+Native light: scheduled display callbacks
+Light Sidebar background_updates=false: work p95=0.12 max=0.22 ms; input interval p95=21.71 max=22.44 ms; intervals>50ms=0
+Light Sidebar background_updates=true: work p95=0.12 max=0.13 ms; input interval p95=40.83 max=41.37 ms; intervals>50ms=0
+Light Research list background_updates=false: work p95=0.10 max=0.36 ms; input interval p95=24.37 max=49.34 ms; intervals>50ms=0
+Light Research list background_updates=true: work p95=0.11 max=0.14 ms; input interval p95=36.17 max=37.12 ms; intervals>50ms=0
+Light Research board background_updates=false: work p95=0.10 max=0.32 ms; input interval p95=34.62 max=57.02 ms; intervals>50ms=1
+Light Research board background_updates=true: work p95=0.11 max=0.12 ms; input interval p95=47.82 max=49.58 ms; intervals>50ms=0
+Light Model settings background_updates=false: work p95=0.20 max=0.47 ms; input interval p95=25.22 max=25.99 ms; intervals>50ms=0
+Light Model settings background_updates=true: work p95=0.11 max=0.20 ms; input interval p95=21.98 max=24.53 ms; intervals>50ms=0
+Light Automation results background_updates=false: work p95=0.16 max=0.77 ms; input interval p95=17.18 max=22.27 ms; intervals>50ms=0
+Light Automation results background_updates=true: work p95=0.11 max=0.17 ms; input interval p95=24.01 max=27.00 ms; intervals>50ms=0
+Light Research report background_updates=false: work p95=0.14 max=1.27 ms; input interval p95=25.01 max=29.16 ms; intervals>50ms=0
+Light Research report background_updates=true: work p95=0.15 max=0.16 ms; input interval p95=24.52 max=25.10 ms; intervals>50ms=0
+
+
+Automation dialog regression after shared fixes
+DIALOG_SCROLL Light 1000x680: wheel+frame p50=1.43 p95=1.94 max=2.67 ms; presentation reuse and invalidation passed
+DIALOG_SCROLL Light 1440x920: wheel+frame p50=1.48 p95=2.00 max=2.25 ms; presentation reuse and invalidation passed
+DIALOG_SCROLL Dark 1000x680: wheel+frame p50=1.47 p95=2.08 max=2.43 ms; presentation reuse and invalidation passed
+DIALOG_SCROLL Dark 1440x920: wheel+frame p50=1.57 p95=3.06 max=9.96 ms; presentation reuse and invalidation passed
+AUTOMATION_DIALOG_SCROLL_QA passed
+WORKSPACE_REPRO tasks=184 runs=188 period=11 sidebar_count_ms=0.04
+NATIVE_DIALOG_SCROLL Dark Size { 1440px × 920px }: work p50=3.41 p95=7.62 max=7.97 ms; timer interval p95=25.08 max=40.42 ms; intervals>50ms=0; bidirectional displacement passed
+WORKSPACE_REPRO tasks=184 runs=188 period=12 sidebar_count_ms=0.05
+NATIVE_DIALOG_SCROLL Dark Size { 1440px × 920px }: work p50=4.96 p95=12.45 max=15.89 ms; timer interval p95=29.70 max=39.52 ms; intervals>50ms=0; bidirectional displacement passed

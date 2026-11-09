@@ -179,8 +179,7 @@ impl Store {
         // Definition state stays outside this result; a paused definition never
         // turns an active period into an ordinary paused Research queue.
         if !is_goal {
-            let eligibility = self.execution_eligibility(id);
-            if eligibility.owner.is_automation() {
+            if let Some(eligibility) = self.automation_execution_eligibility(id) {
                 return eligibility.execution_status();
             }
         }

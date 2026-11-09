@@ -546,6 +546,7 @@ pub struct TaskApp {
     pub(crate) sidebar_surface: Option<Entity<crate::shell_surfaces::SidebarSurface>>,
     pub(crate) brand_overlay: Option<Entity<crate::shell_surfaces::BrandOverlay>>,
     pub(crate) content_surface: Option<Entity<crate::shell_surfaces::ContentSurface>>,
+    pub(crate) automation_result_surface: Option<Entity<crate::shell_surfaces::AutomationResultSurface>>,
     pub(crate) footer_bar: Option<Entity<crate::shell_surfaces::FooterBar>>,
     pub materials_focus: FocusHandle,
     pub attachment_status: String,
@@ -557,6 +558,8 @@ pub struct TaskApp {
     pub expanded_request_brief: Option<u64>,
     pub render_statuses:
         std::cell::RefCell<std::collections::HashMap<u64, crate::workflow::TaskStatus>>,
+    pub render_executions:
+        std::cell::RefCell<std::collections::HashMap<u64, crate::execution_status::ExecutionStatus>>,
     pub render_status_epoch: std::cell::Cell<u64>,
     pub board_execution_filter: Option<crate::workflow::ExecutionGroup>,
     pub show_task_activity: bool,
@@ -749,6 +752,7 @@ impl TaskApp {
             // Wheel events redraw ancestor views without changing task state.
             // Invalidate status validation only for semantic app updates.
             this.render_statuses.borrow_mut().clear();
+            this.render_executions.borrow_mut().clear();
             if this.persist_if_changed(false) {
                 cx.notify();
             }
@@ -1043,6 +1047,7 @@ impl TaskApp {
             sidebar_surface: None,
             brand_overlay: None,
             content_surface: None,
+            automation_result_surface: None,
             footer_bar: None,
             materials_focus: cx.focus_handle(),
             attachment_status: String::new(),
@@ -1053,6 +1058,7 @@ impl TaskApp {
             show_task_details: false,
             expanded_request_brief: None,
             render_statuses: Default::default(),
+            render_executions: Default::default(),
             render_status_epoch: Default::default(),
             board_execution_filter: None,
             show_task_activity: false,
@@ -2133,9 +2139,8 @@ impl TaskApp {
             return false;
         }
         match self.scope() {
-            Scope::All => self
-                .all_status
-                .matches(&self.store.task_status(t.id, self.todo_batch.as_ref())),
+            Scope::All => self.all_status == AllStatus::All
+                || self.all_status.matches(&self.store.task_status(t.id, self.todo_batch.as_ref())),
             Scope::Project(id) => t.project_id == id,
             Scope::Topic(id) => self
                 .store
@@ -2679,6 +2684,7 @@ impl TaskApp {
         self.store = store.unwrap_or_else(Store::empty);
         self.automation_ui.clear_store_caches();
         self.render_statuses.borrow_mut().clear();
+        self.render_executions.borrow_mut().clear();
         self.restore_sidebar();
         self.store.recover_interrupted_runs();
         self.recover_publications();
@@ -2754,6 +2760,21 @@ impl TaskApp {
     pub(crate) fn persist_if_changed(&mut self, force: bool) -> bool {
         let _total = crate::persistence_metrics::Span::start("persist.total");
         crate::persistence_metrics::bump("persist.calls", 1);
+        // Clean idle polls and throttled streaming updates cannot change plan
+        // approval. Avoid walking and serializing every goal before deciding
+        // that this call has nothing to save. Forced command boundaries still
+        // reconcile immediately.
+        if !force && !self.store.has_tracked_changes() {
+            crate::persistence_metrics::bump("persist.skip.unchanged", 1);
+            return false;
+        }
+        if !force
+            && !self.active_runs.is_empty()
+            && self.last_save.elapsed() < Duration::from_millis(500)
+        {
+            crate::persistence_metrics::bump("persist.skip.throttle", 1);
+            return false;
+        }
         // A pending command never owns the live store. Background completions
         // may still be saved while it waits; its base becomes stale and retry
         // reprepares from the current store instead of replaying staged data.
@@ -2764,13 +2785,6 @@ impl TaskApp {
         let unchanged = !self.store.has_tracked_changes();
         if unchanged {
             crate::persistence_metrics::bump("persist.skip.unchanged", 1);
-            return false;
-        }
-        if !force
-            && !self.active_runs.is_empty()
-            && self.last_save.elapsed() < Duration::from_millis(500)
-        {
-            crate::persistence_metrics::bump("persist.skip.throttle", 1);
             return false;
         }
         if self.live_persistence_active() {
@@ -3971,7 +3985,13 @@ impl TaskApp {
         for active in &mut self.active_runs {
             // Bound per-worker draining so a noisy session cannot starve others or the UI.
             let events: Vec<_> = active.handle.events.try_iter().take(128).collect();
-            changed |= !events.is_empty();
+            if events.is_empty() {
+                // Mutable access marks the run dirty even if record_events
+                // receives nothing. Idle workers must not generate save/ACK
+                // notifications and invalidate the whole interface at 80 ms.
+                continue;
+            }
+            changed = true;
             if let Some(message) = events.iter().find_map(|event| match event {
                 opencode::Event::BrowserBlocked(message) => Some(message.clone()),
                 _ => None,

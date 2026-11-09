@@ -2547,3 +2547,9 @@ The corrected count-navigation QA reached and passed the All/Archive count-to-St
 ### r156 count-navigation correction accepted in isolation
 
 The corrected navigation suite passed at both window sizes and both themes. All/Archive counts open Steps and Back restores real filtered scroll state; dirty Stay/Discard/Save preserves the typed Steps destination. Root inspected light/dark screenshots, verified all 51 embedded Lucide references, and ran the private candidate unit/integration tests successfully. The compact count uses a fixed right chevron rather than a false expand toggle; existing T12 render-wake edits were preserved during selective integration. See [focused acceptance](evidence/r156-count-navigation-review.json). Final shared-runtime/native regression remains required.
+
+## r157: production retry entry point still missing
+
+Root source review found that the proposed parked-dispatch retry method is invoked only by its QA harness, while the existing footer and retry handlers do not surface or invoke it. Helper-level recovery success therefore does not establish usable recovery. OpenCode must wire truthful failure feedback and a real retry control, then exercise that control for a representative retained dispatch. This remains a blocker; see [review and required acceptance](evidence/r157-runtime-review.json).
+
+The proposed 43,200-period native fixture was also rejected before installation: it retained only 193 runs/report bodies. OpenCode is replacing it with real per-result history and verifying links and isolation. The current small isolated native fixture remains unchanged. The independently reviewed SetRead correction has been checkpointed separately in `621a1d1`; it does not include unfinished runtime repairs.

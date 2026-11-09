@@ -511,6 +511,39 @@ impl TaskApp {
     fn footer_activity(&self, cx: &mut Context<Self>) -> AnyElement {
         let colors = palette(cx);
         let failed = !self.storage_error.is_empty();
+        if self.dispatch_parked
+            && let Some(message) = self.dispatch_admission_error.as_ref()
+        {
+            // A parked dispatch obligation is real work waiting for one explicit
+            // retry. Keep it in the compact footer instead of a modal.
+            return row()
+                .gap_2()
+                .child(
+                    gpui_kit::component::Icon::new(assets::IconName::CircleAlert)
+                        .size(px(14.))
+                        .flex_shrink_0()
+                        .text_color(rgb(colors.danger)),
+                )
+                .child(
+                    div()
+                        .min_w_0()
+                        .overflow_hidden()
+                        .text_ellipsis()
+                        .text_color(rgb(colors.danger))
+                        .child(selectable(format!("Dispatch needs attention · {message}"))),
+                )
+                .child(
+                    button("retry-dispatch-admission", "Retry dispatch")
+                        .small()
+                        .h(px(24.))
+                        .px_2()
+                        .tooltip("Retry the pending dispatch operation")
+                        .on_click(cx.listener(|app, _, _, cx| {
+                            app.retry_dispatch_admission(cx);
+                        })),
+                )
+                .into_any_element();
+        }
         if failed && self.storage.is_some() {
             return row()
                 .gap_2()
@@ -4151,7 +4184,18 @@ impl Render for TaskApp {
         let _live_render_guard = LiveRenderGuard(live_render_started, self.store.runs().len());
         #[cfg(feature = "qa")]
         crate::brand::note_app_render();
-        if self.history_needs_pump() {
+        // A render is the central wake point for durable work scheduled by
+        // context-free legacy callers (mark-read, follow-up saves, dispatch).
+        // Only wake while progress is still possible; a parked/failed worker
+        // waits for an explicit retry instead of looping on every frame.
+        let live_wake = self.live_needs_pump()
+            && self.live_failure.is_none()
+            && self.storage_error.is_empty();
+        if self.history_needs_pump()
+            || live_wake
+            || self.dispatch_pump_pending()
+            || self.pending_material_job.is_some()
+        {
             self.start_pump(cx);
         }
         if self.navigation.pending_saved_exit.is_some() {

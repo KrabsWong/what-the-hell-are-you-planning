@@ -56,6 +56,48 @@ pub(crate) struct RunDispatch {
     pub automation_owned: bool,
 }
 
+/// Result of a background run submission. `PendingAdmission` means the run is
+/// accepted but its run record is not durable yet; it must not be treated as a
+/// queue failure or a launched attempt.
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub(crate) enum RunSubmission {
+    Dispatched(RunDispatch),
+    PendingAdmission {
+        run_id: u64,
+        automation_owned: bool,
+    },
+    Rejected,
+}
+
+/// A batch step whose run was accepted by durable admission but whose run
+/// record is not durable yet. The batch generation pins it to the batch that
+/// requested it so a receipt can never bind into a later, unrelated batch.
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub(crate) struct PendingBatchRun {
+    pub run_id: u64,
+    pub goal: u64,
+    pub step: u64,
+    pub batch_generation: u64,
+}
+
+/// Ordered retirement phase for a cancelled pre-launch dispatch. The durable
+/// dispatch intent is removed first; only its acknowledgement allows the
+/// cancellation marker to be removed.
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub(crate) enum CancelRetirePhase {
+    Intent,
+    Marker,
+}
+
+#[derive(Clone, Debug, PartialEq, Eq)]
+pub(crate) struct PendingCancelRetire {
+    pub operation_key: String,
+    pub run_id: u64,
+    pub phase: CancelRetirePhase,
+    /// The current phase request was enqueued; do not enqueue it again.
+    pub requested: bool,
+}
+
 pub(crate) struct PreparedRunDispatch {
     pub run: AgentRun,
     pub files: Vec<PathBuf>,
@@ -330,6 +372,22 @@ pub struct TaskApp {
     pub(crate) dispatch_admission: Option<crate::dispatch_admission::DispatchAdmissionAdapter>,
     /// The admission awaiting a matching durable receipt; no queue/launch until set.
     pub(crate) dispatch_awaiting: Option<crate::dispatch_admission::AdmissionId>,
+    /// Batch run bindings accepted but not yet present in the durable store.
+    pub(crate) batch_pending_runs: Vec<PendingBatchRun>,
+    /// Monotonic batch identity source. Every new/replaced batch gets a fresh
+    /// generation so a late admission receipt cannot join a later batch.
+    pub(crate) batch_generation_seq: u64,
+    /// Runs cancelled while their dispatch was still pre-ACK. The durable
+    /// receipt must retire them without claiming or spawning.
+    pub(crate) dispatch_cancelled: std::collections::BTreeMap<u64, String>,
+    /// Receipt-ordered retirement of a cancelled dispatch intent and marker.
+    pub(crate) dispatch_cancel_retire: Vec<PendingCancelRetire>,
+    /// The persistence worker cannot progress dispatch work until an explicit
+    /// retry. The bounded pump must stop instead of polling a parked group.
+    pub(crate) dispatch_parked: bool,
+    /// QA-only one-shot hold after a durable receipt but before its launch claim.
+    #[cfg(feature = "qa")]
+    pub(crate) qa_hold_claim: bool,
     /// Files recomputed for the dispatch, kept until its durable receipt.
     pub(crate) dispatch_awaiting_files: Option<Vec<std::path::PathBuf>>,
     pub(crate) dispatch_admission_error: Option<String>,
@@ -912,6 +970,13 @@ impl TaskApp {
             pending_dispatch_reserved: None,
             dispatch_admission: None,
             dispatch_awaiting: None,
+            batch_pending_runs: Vec::new(),
+            batch_generation_seq: 0,
+            dispatch_cancelled: std::collections::BTreeMap::new(),
+            dispatch_cancel_retire: Vec::new(),
+            dispatch_parked: false,
+            #[cfg(feature = "qa")]
+            qa_hold_claim: false,
             dispatch_awaiting_files: None,
             dispatch_admission_error: None,
             dispatch_applied: std::collections::BTreeSet::new(),
@@ -2974,18 +3039,34 @@ impl TaskApp {
         true
     }
     pub fn start_run(&mut self, id: u64, cx: &mut Context<Self>) {
-        self.start_run_with_navigation(id, true, cx);
+        let _ = self.start_run_with_navigation(id, true, cx);
     }
 
     /// Timer ticks, queue continuations and recovery imports submit work without
     /// changing the route, selection, drafts or open dialogs.
     pub(crate) fn start_run_background(&mut self, id: u64, cx: &mut Context<Self>) {
-        self.start_run_with_navigation(id, false, cx);
+        let _ = self.start_run_with_navigation(id, false, cx);
     }
 
-    fn start_run_with_navigation(&mut self, id: u64, navigate: bool, cx: &mut Context<Self>) {
+    /// Batch callers need to distinguish a durably queued run from an accepted
+    /// admission whose run record is intentionally not inserted until ACK.
+    pub(crate) fn start_run_background_submission(
+        &mut self,
+        id: u64,
+        cx: &mut Context<Self>,
+    ) -> RunSubmission {
+        self.start_run_with_navigation(id, false, cx)
+    }
+
+    fn start_run_with_navigation(
+        &mut self,
+        id: u64,
+        navigate: bool,
+        cx: &mut Context<Self>,
+    ) -> RunSubmission {
+        let awaiting_before = self.dispatch_awaiting.as_ref().map(|id| id.run_id);
         if self.route_automation_task(id, cx) {
-            return;
+            return RunSubmission::Rejected;
         }
         self.store.reconcile_goal_approvals();
         self.error.clear();
@@ -2999,15 +3080,34 @@ impl TaskApp {
         } else if self.task_running(id) {
             self.error =
                 "This task is already running or queued. Open View progress to follow it.".into();
-        } else if let Some(dispatch) = self.start_run_inner(id, cx)
-            && navigate
-        {
-            self.open_run_progress(dispatch);
+        } else if let Some(dispatch) = self.start_run_inner(id, cx) {
+            if navigate {
+                self.open_run_progress(dispatch);
+            }
+            return RunSubmission::Dispatched(dispatch);
         }
         if !self.error.is_empty() {
             self.task_start_feedback = Some((id, self.error.clone()));
+            cx.notify();
+            return RunSubmission::Rejected;
+        }
+        // A live admission was accepted but has not written the run record yet.
+        if let Some(awaiting) = self.dispatch_awaiting.as_ref()
+            && Some(awaiting.run_id) != awaiting_before
+        {
+            let submission = RunSubmission::PendingAdmission {
+                run_id: awaiting.run_id,
+                automation_owned: self
+                    .store
+                    .task(id)
+                    .and_then(|task| task.automation_id)
+                    .is_some(),
+            };
+            cx.notify();
+            return submission;
         }
         cx.notify();
+        RunSubmission::Rejected
     }
     fn start_run_inner(&mut self, id: u64, cx: &mut Context<Self>) -> Option<RunDispatch> {
         if !self.ready_to_run(cx) || self.task_running(id) {
@@ -3736,6 +3836,15 @@ impl TaskApp {
         }
     }
     pub fn cancel_run_id(&mut self, id: u64, cx: &mut Context<Self>) {
+        // A run can be durable but still between its receipt and the launch
+        // claim/queue effect. It is in neither `active_runs` nor `queued_runs`,
+        // so cancel it through the admission path; otherwise the later claim
+        // would launch after Stop.
+        let already_scheduled = self.active_runs.iter().any(|active| active.id == id)
+            || self.queued_runs.iter().any(|(queued, _)| *queued == id);
+        if !already_scheduled && self.cancel_pending_dispatch(id, cx) {
+            return;
+        }
         if let Some(goal) = self.run_goal(id) {
             self.research_sequences.remove(&goal);
         }
@@ -3760,6 +3869,9 @@ impl TaskApp {
         if let Some(id) = self.displayed_run_id() {
             self.cancel_run_id(id, cx);
         }
+    }
+    pub(crate) fn runtime_pump_active(&self) -> bool {
+        self.pumping
     }
     pub(crate) fn start_pump(&mut self, cx: &mut Context<Self>) {
         if self.pumping {
@@ -3889,9 +4001,13 @@ impl TaskApp {
             || self.ego_probe.is_some()
             || self.attachment_import.is_some()
             || self.publishing_job.is_some()
+            // Material verification/cleanup is active external work. Human
+            // approval (`pending_material_edit`) is intentionally excluded.
+            || self.pending_material_job.is_some()
             || self.recovery_pending()
             || self.quit_requested
             || self.window_close_requested
+            || self.dispatch_pump_pending()
             || self.live_needs_pump();
         if !keep {
             self.pumping = false;

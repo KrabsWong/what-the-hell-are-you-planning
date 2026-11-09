@@ -173,6 +173,7 @@ impl TaskApp {
                         before,
                     });
                     self.toast = "Verifying material before removal…".into();
+                    self.start_pump(cx);
                     cx.notify();
                     return false;
                 }
@@ -496,6 +497,7 @@ impl TaskApp {
             Ok(job) => {
                 self.pending_material_job = Some(PendingMaterialJob::UndoRemove { job, undo });
                 self.toast = "Checking material before undo…".into();
+                self.start_pump(cx);
                 cx.notify();
                 true
             }
@@ -556,6 +558,7 @@ impl TaskApp {
                     copies,
                     root,
                 });
+                self.start_pump(cx);
                 true
             }
             Err(error) => {
@@ -606,6 +609,7 @@ impl TaskApp {
                     root,
                 });
                 self.toast = "Verifying materials…".into();
+                self.start_pump(cx);
                 cx.notify();
                 true
             }
@@ -889,6 +893,7 @@ impl TaskApp {
                                 copies: delete_copies,
                                 root,
                             });
+                            self.start_pump(cx);
                         }
                         Err(error) => {
                             self.pending_cleanup_retry.push(CleanupObligation {

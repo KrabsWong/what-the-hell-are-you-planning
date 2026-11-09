@@ -444,7 +444,11 @@ impl TaskApp {
                 self.submit_material_cleanup_for_root(bound_root.clone(), imported.clone(), cx);
             }
             if errors.is_empty() {
-                self.toast = format!("{elapsed}s · materials included in the next run");
+                // Verification and the durable attachment receipt are still
+                // pending; do not claim the materials are included yet.
+                self.toast = format!(
+                    "{elapsed}s · materials copied · verifying before attachment"
+                );
             }
             self.error = errors.join("\n");
             if !self.error.is_empty() {

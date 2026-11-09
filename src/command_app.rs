@@ -397,6 +397,148 @@ impl TaskApp {
         discarded
     }
 
+    /// Cancel a run whose dispatch is still waiting for its durable receipt.
+    /// Records a durable cancellation marker, prevents the later claim/spawn and
+    /// retires the run as Cancelled through the ordered status write. Returns
+    /// true when this call owned the pending admission.
+    pub(crate) fn cancel_pending_dispatch(&mut self, run_id: u64, cx: &mut Context<Self>) -> bool {
+        let Some(id) = self
+            .dispatch_awaiting
+            .clone()
+            .or_else(|| {
+                self.dispatch_claim_pending
+                    .as_ref()
+                    .map(|(id, _)| id.clone())
+            })
+            .filter(|id| id.run_id == run_id)
+        else {
+            return false;
+        };
+        self.dispatch_cancelled
+            .insert(run_id, id.operation_key.clone());
+        // A cancelled run must not proceed to a claim even if one was already
+        // requested; the durable status path retires any claim that exists.
+        if self
+            .dispatch_claim_pending
+            .as_ref()
+            .is_some_and(|(pending, _)| pending.run_id == run_id)
+        {
+            self.dispatch_claim_pending = None;
+        }
+        if let Some(adapter) = self.dispatch_admission.as_ref()
+            && let Err(error) = adapter.persist_cancel(&id)
+        {
+            // The cancellation is not durable yet. Stop polling until an
+            // explicit retry re-persists the marker; never claim success.
+            self.dispatch_admission_error = Some(format!(
+                "The cancellation marker could not be queued; this dispatch stays held and is not cancelled until the marker is durable: {error}"
+            ));
+            self.dispatch_parked = true;
+        }
+        // If the receipt already applied the run (durable, possibly between the
+        // receipt and its launch claim), retire it now and never queue it.
+        let snapshot = self.store.run_mut(run_id).map(|run| {
+            run.status = "Cancelled".into();
+            run.ended_at = Some(crate::opencode::timestamp());
+            run.logs.push(
+                "[run] Cancelled before launch; no process was started.".into(),
+            );
+            run.clone()
+        });
+        if let Some(run) = snapshot
+            && let Some(adapter) = self.dispatch_admission.as_mut()
+            && let Err(error) = adapter.persist_resolution_status(&id.operation_key, run)
+        {
+            self.dispatch_admission_error = Some(format!(
+                "The cancellation status could not be queued; it will retry: {error}"
+            ));
+            self.dispatch_parked = true;
+        }
+        cx.notify();
+        true
+    }
+
+    /// Start receipt-ordered retirement for one cancelled dispatch: remove the
+    /// durable dispatch intent, wait for its acknowledgement, then remove the
+    /// cancellation marker. The in-memory obligation survives until both are
+    /// confirmed, so a crash cannot resurrect the intent.
+    fn begin_cancel_retirement(
+        &mut self,
+        run_id: u64,
+        operation_key: String,
+        cx: &mut Context<Self>,
+    ) {
+        if self
+            .dispatch_cancel_retire
+            .iter()
+            .any(|pending| pending.operation_key == operation_key)
+        {
+            return;
+        }
+        self.dispatch_cancel_retire.push(crate::app::PendingCancelRetire {
+            operation_key: operation_key.clone(),
+            run_id,
+            phase: crate::app::CancelRetirePhase::Intent,
+            requested: false,
+        });
+        self.advance_cancel_retirement(&operation_key, cx);
+    }
+
+    fn advance_cancel_retirement(&mut self, operation_key: &str, cx: &mut Context<Self>) {
+        let Some((phase, requested)) = self
+            .dispatch_cancel_retire
+            .iter()
+            .find(|pending| pending.operation_key == operation_key)
+            .map(|pending| (pending.phase, pending.requested))
+        else {
+            return;
+        };
+        if requested {
+            return;
+        }
+        if let Some(pending) = self
+            .dispatch_cancel_retire
+            .iter_mut()
+            .find(|pending| pending.operation_key == operation_key)
+        {
+            pending.requested = true;
+        }
+        let Some(adapter) = self.dispatch_admission.as_mut() else {
+            if let Some(pending) = self
+                .dispatch_cancel_retire
+                .iter_mut()
+                .find(|pending| pending.operation_key == operation_key)
+            {
+                pending.requested = false;
+            }
+            self.dispatch_admission_error =
+                Some("Durable dispatch admission is unavailable; cancellation retirement is retained.".into());
+            self.dispatch_parked = true;
+            return;
+        };
+        let result = match phase {
+            crate::app::CancelRetirePhase::Intent => {
+                adapter.release_dispatch_intent(operation_key)
+            }
+            crate::app::CancelRetirePhase::Marker => adapter.release_cancel(operation_key),
+        };
+        if let Err(error) = result {
+            if let Some(pending) = self
+                .dispatch_cancel_retire
+                .iter_mut()
+                .find(|pending| pending.operation_key == operation_key)
+            {
+                pending.requested = false;
+            }
+            self.dispatch_admission_error = Some(format!(
+                "Cancellation retirement is still pending and will retry: {error}"
+            ));
+            self.dispatch_parked = true;
+            return;
+        }
+        self.start_pump(cx);
+    }
+
     fn retry_dispatch_intent(
         &mut self,
         pending: crate::app::PendingDispatch,
@@ -576,6 +718,33 @@ impl TaskApp {
         Ok(())
     }
 
+    /// True while any dispatch admission, claim, acknowledgement or recovery
+    /// obligation can still progress without user input. Parked work (a retained
+    /// or failed worker group) needs an explicit retry, so it must not keep the
+    /// bounded pump awake forever.
+    pub(crate) fn dispatch_pump_pending(&self) -> bool {
+        if self.dispatch_parked {
+            // Parked work cannot progress without an explicit retry. Polling it
+            // forever would spin a bounded timer after a worker failure.
+            return false;
+        }
+        self.dispatch_awaiting.is_some()
+            || self.dispatch_ack_pending.is_some()
+            || self.dispatch_claim_pending.is_some()
+            || self.dispatch_resolution_pending.is_some()
+            || self.dispatch_resolution_new.is_some()
+            || self.dispatch_resolution_launch_pending.is_some()
+            || self.dispatch_status_durable.is_some()
+            || !self.dispatch_cancel_retire.is_empty()
+            || self
+                .dispatch_admission
+                .as_ref()
+                .is_some_and(|adapter| adapter.has_status_pending())
+            || (!self.dispatch_recovery_done
+                && self.dispatch_admission.is_some()
+                && self.storage_error.is_empty())
+    }
+
     /// Real command-handling path for an admitted dispatch. It prepares the same
     /// typed command the synchronous path uses, then waits for durability before
     /// any queue effect or launch.
@@ -622,10 +791,19 @@ impl TaskApp {
         };
         match adapter.admit(prepared) {
             Ok(id) => {
+                if let Some(run) = reserved_run {
+                    self.pending_dispatch_reserved =
+                        Some((intent.clone(), run, files.clone()));
+                }
                 self.dispatch_awaiting = Some(id);
                 self.dispatch_awaiting_files = Some(files);
                 self.dispatch_admission_error = None;
+                self.dispatch_parked = false;
                 self.toast = "Saving dispatch before launch".into();
+                // The first dispatch can begin from a completely idle runtime;
+                // keep the bounded pump alive until its durable receipt, claim
+                // and acknowledgement complete.
+                self.start_pump(cx);
                 cx.notify();
                 None
             }
@@ -690,9 +868,84 @@ impl TaskApp {
                             &durable.parts,
                         );
                         let _ = inserted;
+                        if let Some(index) = self
+                            .batch_pending_runs
+                            .iter()
+                            .position(|pending| pending.run_id == durable.id.run_id)
+                        {
+                            let pending = self.batch_pending_runs.remove(index);
+                            // Bind only into the exact batch that requested this
+                            // run and only while that goal/step is still pending.
+                            // A receipt after cancel/replacement is dropped instead
+                            // of joining an unrelated batch.
+                            let binds = self.todo_batch.as_ref().is_some_and(|batch| {
+                                self.batch_generation_seq == pending.batch_generation
+                                    && batch.contains_pending(pending.goal)
+                                    && self
+                                        .store
+                                        .runs()
+                                        .iter()
+                                        .any(|run| run.id == pending.run_id && run.task_id == pending.step)
+                            });
+                            if binds {
+                                if let Some(batch) = self.todo_batch.as_mut() {
+                                    batch.run_ids.insert(pending.run_id, pending.goal);
+                                }
+                            }
+                        }
                         self.dispatch_awaiting = Some(durable.id.clone());
                         self.dispatch_admission_error = None;
                         self.error.clear();
+                        // A cancellation recorded before this receipt must retire
+                        // the run now: apply it, mark it Cancelled and acknowledge,
+                        // but never claim or spawn.
+                        let cancelled = self
+                            .dispatch_cancelled
+                            .get(&durable.id.run_id)
+                            .is_some_and(|cancelled_key| {
+                                cancelled_key == &durable.id.operation_key
+                            });
+                        if cancelled {
+                            let snapshot = if let Some(run) =
+                                self.store.run_mut(durable.id.run_id)
+                            {
+                                run.status = "Cancelled".into();
+                                run.ended_at = Some(crate::opencode::timestamp());
+                                run.logs.push(
+                                    "[run] Cancelled before launch; no process was started."
+                                        .into(),
+                                );
+                                Some(run.clone())
+                            } else {
+                                None
+                            };
+                            if let Some(run) = snapshot
+                                && let Some(adapter) = self.dispatch_admission.as_mut()
+                                && let Err(error) = adapter.persist_resolution_status(
+                                    &durable.id.operation_key,
+                                    run,
+                                )
+                            {
+                                self.dispatch_admission_error = Some(format!(
+                                    "The cancellation status could not be queued; it will retry: {error}"
+                                ));
+                                self.dispatch_parked = true;
+                            }
+                            changed = true;
+                            continue;
+                        }
+                    }
+                    #[cfg(feature = "qa")]
+                    if std::mem::take(&mut self.qa_hold_claim) {
+                        // Deterministic QA window: receipt applied, claim not yet
+                        // requested. Keeping `dispatch_claim_pending` set holds the
+                        // real Stop route before any launch without parking.
+                        self.dispatch_claim_pending = Some((
+                            durable.id.clone(),
+                            std::sync::Arc::new(durable.parts.clone()),
+                        ));
+                        changed = true;
+                        continue;
                     }
                     // Persist the launch claim before any spawn. The claim is the
                     // durable at-most-once marker for the external process.
@@ -700,10 +953,12 @@ impl TaskApp {
                     self.dispatch_claim_pending = Some((durable.id.clone(), parts.clone()));
                     if let Some(adapter) = self.dispatch_admission.as_mut() {
                         if let Err(error) = adapter.claim_launch(&durable.id) {
+                            // Keep the exact id/parts so an explicit retry
+                            // re-issues the claim; park to stop the pump.
                             self.dispatch_admission_error = Some(format!(
-                                "Launch claim could not be queued; no process was started: {error}"
+                                "Launch claim could not be queued; no process was started: {error}. Retry dispatch admission to resume this exact run."
                             ));
-                            self.dispatch_claim_pending = None;
+                            self.dispatch_parked = true;
                         }
                     }
                     changed = true;
@@ -777,21 +1032,42 @@ impl TaskApp {
                     }
                     changed = true;
                 }
-                crate::dispatch_admission::AdmissionUpdate::ResolutionFailed { reason, .. } => {
+                crate::dispatch_admission::AdmissionUpdate::ResolutionFailed { operation_key, reason } => {
                     self.dispatch_admission_error = Some(format!(
-                        "The resolution decision was not durable; nothing was changed: {reason}"
+                        "The resolution decision was not durable; nothing was changed: {reason}. Retry dispatch admission to resume this exact intent."
                     ));
+                    if self
+                        .dispatch_resolution_new
+                        .as_ref()
+                        .is_some_and(|(key, _)| key == &operation_key)
+                    {
+                        self.dispatch_resolution_new = None;
+                    }
+                    self.dispatch_parked = true;
                     changed = true;
                 }
-                crate::dispatch_admission::AdmissionUpdate::LaunchClaimFailed { reason, .. } => {
+                crate::dispatch_admission::AdmissionUpdate::LaunchClaimFailed { reason, operation_key } => {
+                    let matched = self
+                        .dispatch_claim_pending
+                        .as_ref()
+                        .is_some_and(|(id, _)| operation_key.ends_with(&id.operation_key));
                     self.dispatch_admission_error = Some(format!(
-                        "Launch claim was not durable; no process was started: {reason}"
+                        "Launch claim was not durable; no process was started: {reason}. Retry dispatch admission to resume this exact run."
                     ));
-                    self.dispatch_claim_pending = None;
+                    if matched {
+                        // Keep the exact id/parts so retry re-issues the claim.
+                        self.dispatch_parked = true;
+                    } else {
+                        self.dispatch_claim_pending = None;
+                        self.dispatch_parked = true;
+                    }
                     changed = true;
                 }
                 crate::dispatch_admission::AdmissionUpdate::ResolutionStatusFailed { reason, .. } => {
-                    self.dispatch_admission_error = Some(reason);
+                    self.dispatch_admission_error = Some(format!(
+                        "{reason}. Retry dispatch admission to resume the status write."
+                    ));
+                    self.dispatch_parked = true;
                     changed = true;
                 }
                 crate::dispatch_admission::AdmissionUpdate::ResolutionStatusDurable {
@@ -844,14 +1120,53 @@ impl TaskApp {
                         .as_ref()
                         .is_some_and(|id| id.operation_key == operation_key)
                     {
+                        let run_id = self.dispatch_awaiting.as_ref().map(|id| id.run_id);
                         self.dispatch_awaiting = None;
                         self.dispatch_awaiting_files = None;
                         self.dispatch_ack_pending = None;
                         self.dispatch_admission_error = None;
+                        if run_id.is_some_and(|run_id| {
+                            self.pending_dispatch_reserved
+                                .as_ref()
+                                .is_some_and(|(_, run, _)| run.id == run_id)
+                        }) {
+                            self.pending_dispatch_reserved = None;
+                        }
+                    }
+                    // The dispatch intent removal is confirmed; only now may
+                    // the cancellation marker be removed.
+                    let advance = self
+                        .dispatch_cancel_retire
+                        .iter_mut()
+                        .find(|pending| {
+                            pending.operation_key == operation_key
+                                && pending.phase == crate::app::CancelRetirePhase::Intent
+                        })
+                        .map(|pending| {
+                            pending.phase = crate::app::CancelRetirePhase::Marker;
+                            pending.requested = false;
+                            true
+                        })
+                        .unwrap_or(false);
+                    if advance {
+                        self.advance_cancel_retirement(&operation_key, cx);
                     }
                     changed = true;
                 }
                 crate::dispatch_admission::AdmissionUpdate::AckFailed { operation_key, reason } => {
+                    if self.dispatch_cancel_retire.iter().any(|pending| {
+                        pending.operation_key == operation_key
+                            && pending.phase == crate::app::CancelRetirePhase::Intent
+                    }) {
+                        // The dispatch intent removal failed; keep the exact
+                        // retirement obligation and the cancellation marker.
+                        self.dispatch_admission_error = Some(format!(
+                            "The cancellation intent retirement failed and will retry: {reason}"
+                        ));
+                        self.dispatch_parked = true;
+                        changed = true;
+                        continue;
+                    }
                     if let Some(mut retirement) = self.dispatch_status_durable.clone() {
                         if operation_key == format!("launch:{}", retirement.key) {
                             retirement.claim_enqueued = false;
@@ -872,6 +1187,9 @@ impl TaskApp {
                     }
                     self.dispatch_admission_error = Some(reason);
                     self.dispatch_ack_pending = None;
+                    // The acknowledgement request failed. Park rather than
+                    // re-sending every frame; explicit retry resumes it.
+                    self.dispatch_parked = true;
                     changed = true;
                 }
                 crate::dispatch_admission::AdmissionUpdate::LiveSaveDurable { generation, epoch } => {
@@ -886,17 +1204,103 @@ impl TaskApp {
                     self.on_live_failure(generation, epoch, reason, cx);
                     changed = true;
                 }
-                crate::dispatch_admission::AdmissionUpdate::StaleAck { reason, .. }
-                | crate::dispatch_admission::AdmissionUpdate::Blocked { reason, .. }
-                | crate::dispatch_admission::AdmissionUpdate::Retained { reason, .. } => {
+                crate::dispatch_admission::AdmissionUpdate::StaleAck { reason, .. } => {
+                    // The worker retained the mismatched group. Only an explicit
+                    // retry can resubmit it; keep the reserved intent.
                     self.dispatch_admission_error = Some(reason);
+                    self.dispatch_parked = true;
+                    changed = true;
+                }
+                crate::dispatch_admission::AdmissionUpdate::Blocked { id, reason } => {
+                    // A blocked group is retryable through the worker. Parking it
+                    // stops the pump without discarding the exact run identity.
+                    self.dispatch_admission_error = Some(format!(
+                        "Dispatch {0} is blocked: {reason}. Retry dispatch admission to resume it.",
+                        id.run_id
+                    ));
+                    self.dispatch_parked = true;
+                    changed = true;
+                }
+                crate::dispatch_admission::AdmissionUpdate::CancelRestored {
+                    operation_key,
+                    run_id,
+                } => {
+                    // A durable cancellation marker survived a restart. Retire the
+                    // run if it was already committed; otherwise release the intent.
+                    self.dispatch_cancelled
+                        .insert(run_id, operation_key.clone());
+                    let snapshot = self.store.run_mut(run_id).map(|run| {
+                        if run.status != "Cancelled" {
+                            run.status = "Cancelled".into();
+                            run.ended_at = Some(crate::opencode::timestamp());
+                            run.logs.push(
+                                "[run] Cancelled before launch; no process was started."
+                                    .into(),
+                            );
+                        }
+                        run.clone()
+                    });
+                    match snapshot {
+                        Some(run) => {
+                            if let Some(adapter) = self.dispatch_admission.as_mut()
+                                && let Err(error) = adapter
+                                    .persist_resolution_status(&operation_key, run)
+                            {
+                                self.dispatch_admission_error = Some(format!(
+                                    "The restored cancellation status could not be queued; it will retry: {error}"
+                                ));
+                                self.dispatch_parked = true;
+                            }
+                        }
+                        None => {
+                            // No committed run: retire the dispatch intent first,
+                            // then the cancellation marker, in receipt order.
+                            self.begin_cancel_retirement(
+                                run_id,
+                                operation_key.clone(),
+                                cx,
+                            );
+                        }
+                    }
+                    changed = true;
+                }
+                crate::dispatch_admission::AdmissionUpdate::CancelReleased { operation_key } => {
+                    self.dispatch_cancelled
+                        .retain(|_, key| key.as_str() != operation_key.as_str());
+                    self.dispatch_cancel_retire.retain(|pending| {
+                        pending.operation_key.as_str() != operation_key.as_str()
+                    });
+                    changed = true;
+                }
+                crate::dispatch_admission::AdmissionUpdate::CancelFailed {
+                    operation_key: _,
+                    reason,
+                } => {
+                    // The cancellation marker was not durable. Keep the held
+                    // dispatch and the exact intent; only an explicit retry may
+                    // re-persist the marker and retire the run.
+                    self.dispatch_admission_error = Some(format!(
+                        "The cancellation marker was not durable; this dispatch is still held and not cancelled: {reason}"
+                    ));
+                    self.dispatch_parked = true;
+                    changed = true;
+                }
+                crate::dispatch_admission::AdmissionUpdate::Retained { reason, .. } => {
+                    // A retained group is parked, not active backpressure. The
+                    // worker failure path also lands here, so polling it forever
+                    // would spin. Preserve the exact intent for an explicit retry.
+                    self.dispatch_admission_error = Some(format!(
+                        "{reason}. Retry dispatch admission to resume this exact intent."
+                    ));
+                    self.dispatch_parked = true;
                     changed = true;
                 }
             }
         }
         // Acknowledgement is retried only after an explicit failure; a pending
-        // request is not re-sent every frame.
-        if self.dispatch_ack_pending.is_none()
+        // request is not re-sent every frame, and parked work waits for retry.
+        if !self.dispatch_parked
+            && self.dispatch_ack_pending.is_none()
             && let Some(id) = self.dispatch_awaiting.clone()
             && self.dispatch_applied.contains(&id.operation_key)
         {
@@ -955,6 +1359,7 @@ impl TaskApp {
             .iter()
             .filter(|run| {
                 run.status == "Queued"
+                    && !self.dispatch_cancelled.contains_key(&run.id)
                     && !self.queued_runs.iter().any(|(id, _)| *id == run.id)
                     && !self.active_runs.iter().any(|active| active.id == run.id)
                     && !self.dispatch_launched.contains(&format!(
@@ -1258,14 +1663,23 @@ impl TaskApp {
     /// A failed enqueue leaves this obligation in place; it never rewrites the
     /// status group or loses the resolution marker.
     fn retry_status_completion(&mut self, cx: &mut Context<Self>) -> bool {
+        if self.dispatch_parked {
+            return false;
+        }
         let Some(mut retirement) = self.dispatch_status_durable.clone() else {
             return false;
         };
         let previous = retirement.clone();
+        let cancelling = self
+            .dispatch_cancelled
+            .get(&retirement.run_id)
+            .is_some_and(|key| key == &retirement.key);
         let Some(adapter) = self.dispatch_admission.as_mut() else {
             return false;
         };
-        let _ = adapter.release_dispatch_intent(&retirement.key);
+        if !cancelling {
+            let _ = adapter.release_dispatch_intent(&retirement.key);
+        }
         let mut error = None;
         if !retirement.claim_done {
             if !adapter.launch_claim_exists(&retirement.key) {
@@ -1327,6 +1741,16 @@ impl TaskApp {
             }
         }
         if marker_gone {
+            // The Cancelled status is durable. Retire the intent and marker in
+            // receipt order; the marker stays durable until the intent removal
+            // is acknowledged.
+            if cancelling {
+                let run_id = retirement.run_id;
+                let key = retirement.key.clone();
+                self.dispatch_status_durable = None;
+                self.begin_cancel_retirement(run_id, key, cx);
+                return true;
+            }
             self.dispatch_status_durable = None;
             return true;
         }
@@ -1394,17 +1818,138 @@ impl TaskApp {
     }
 
     /// Retry retained/blocked dispatch groups without blocking the UI.
-    pub(crate) fn retry_dispatch_admission(&mut self) -> bool {
+    /// Retry a parked dispatch obligation without allocating a new identity.
+    /// The worker resubmits retained/blocked groups and re-persists intents;
+    /// then the exact parked step (claim, cancellation status or resolution) is
+    /// re-driven. Returns false when no parked obligation exists.
+    pub(crate) fn retry_dispatch_admission(&mut self, cx: &mut Context<Self>) -> bool {
+        if !self.dispatch_parked {
+            return false;
+        }
         let Some(adapter) = self.dispatch_admission.as_mut() else {
             return false;
         };
-        match adapter.retry() {
-            Ok(()) => true,
-            Err(error) => {
-                self.dispatch_admission_error = Some(error);
-                false
+        if let Err(error) = adapter.retry() {
+            self.dispatch_admission_error = Some(format!(
+                "The persistence worker is still unavailable; the exact dispatch intent is retained: {error}"
+            ));
+            cx.notify();
+            return false;
+        }
+        self.dispatch_parked = false;
+        self.dispatch_admission_error = None;
+
+        // Re-persist any cancellation marker whose durability was not
+        // confirmed. The key is idempotent, so a duplicate write is harmless.
+        if let Some((run_id, key)) = self
+            .dispatch_cancelled
+            .iter()
+            .next()
+            .map(|(run_id, key)| (*run_id, key.clone()))
+        {
+            let id = crate::dispatch_admission::AdmissionId {
+                operation_key: key,
+                run_id,
+                occurrence: None,
+                generation: 0,
+            };
+            if let Some(adapter) = self.dispatch_admission.as_ref()
+                && let Err(error) = adapter.persist_cancel(&id)
+            {
+                self.dispatch_admission_error = Some(format!(
+                    "The cancellation marker still could not be queued; the dispatch stays held: {error}"
+                ));
+                self.dispatch_parked = true;
+                cx.notify();
+                return false;
             }
         }
+
+        // Receipt-ordered retirement already in progress: re-drive its current
+        // phase instead of allocating or claiming anything.
+        if let Some(key) = self
+            .dispatch_cancel_retire
+            .first()
+            .map(|pending| pending.operation_key.clone())
+        {
+            self.advance_cancel_retirement(&key, cx);
+            // A re-drive may already have an idempotent request in flight; the
+            // pump must still wake to observe its receipt.
+            self.start_pump(cx);
+            cx.notify();
+            return true;
+        }
+
+        if let Some((id, _)) = self.dispatch_claim_pending.clone() {
+            // The run is durable; only its at-most-once launch claim is missing.
+            if let Some(adapter) = self.dispatch_admission.as_mut()
+                && let Err(error) = adapter.claim_launch(&id)
+            {
+                self.dispatch_admission_error = Some(format!(
+                    "The launch claim still could not be queued; no process was started: {error}"
+                ));
+                self.dispatch_parked = true;
+                return false;
+            }
+        } else if self.dispatch_status_durable.is_none() {
+            // A cancellation status write may have failed before it became
+            // durable. Re-stage only when no status group is already pending;
+            // otherwise `adapter.retry()` resubmitted it above.
+            let cancelled_entry = self
+                .dispatch_cancelled
+                .iter()
+                .find(|(run_id, _)| {
+                    self.dispatch_awaiting
+                        .as_ref()
+                        .is_some_and(|id| id.run_id == **run_id)
+                })
+                .map(|(run_id, key)| (*run_id, key.clone()));
+            if let Some((run_id, key)) = cancelled_entry {
+                let already_pending = self
+                    .dispatch_admission
+                    .as_ref()
+                    .is_some_and(|adapter| adapter.has_status_pending());
+                if !already_pending {
+                    let snapshot = self
+                        .store
+                        .runs()
+                        .iter()
+                        .find(|run| run.id == run_id && run.status == "Cancelled")
+                        .cloned();
+                    if let Some(run) = snapshot
+                        && let Some(adapter) = self.dispatch_admission.as_mut()
+                        && let Err(error) = adapter.persist_resolution_status(&key, run)
+                    {
+                        self.dispatch_admission_error = Some(format!(
+                            "The cancellation status still could not be queued; it remains parked: {error}"
+                        ));
+                        self.dispatch_parked = true;
+                        return false;
+                    }
+                }
+            } else if let Some((key, _, rerun, replacement)) =
+                self.dispatch_resolution_pending.clone()
+            {
+                let marker_missing = self
+                    .dispatch_admission
+                    .as_ref()
+                    .is_some_and(|adapter| adapter.resolution(&key).is_none());
+                if marker_missing
+                    && let Some(adapter) = self.dispatch_admission.as_mut()
+                    && let Err(error) =
+                        adapter.persist_resolution(&key, rerun, replacement)
+                {
+                    self.dispatch_admission_error = Some(format!(
+                        "The resolution decision still could not be persisted: {error}"
+                    ));
+                    self.dispatch_parked = true;
+                    return false;
+                }
+            }
+        }
+        self.start_pump(cx);
+        cx.notify();
+        true
     }
 
     #[cfg(feature = "qa")]

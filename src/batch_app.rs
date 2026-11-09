@@ -80,11 +80,14 @@ impl TaskApp {
             }
         }
         if self.todo_batch.as_ref().is_none_or(|b| b.state == BatchState::Finished) {
+            self.batch_generation_seq = self.batch_generation_seq.wrapping_add(1);
             self.todo_batch = Some(TodoBatch {
                 project_id: project, items: vec![], completed: 0, runs_completed: 0,
                 state: BatchState::Running, run_ids: Default::default(),
                 done_items: vec![], failed_items: vec![], failed_tasks: vec![],
             });
+            // A replaced batch cannot own any in-flight admission receipt.
+            self.batch_pending_runs.clear();
         }
         let batch = self.todo_batch.as_mut().unwrap();
         let mut added = 0;
@@ -188,11 +191,28 @@ impl TaskApp {
     pub fn cancel_todo_batch(&mut self, cx: &mut Context<Self>) {
         self.stop_recovery_queue();
         // Detach first: cancellation callbacks must not schedule replacement work.
+        let pending_runs: Vec<u64> = self
+            .batch_pending_runs
+            .iter()
+            .map(|pending| pending.run_id)
+            .collect();
         if let Some(batch) = self.todo_batch.take() {
             for id in batch.run_ids.keys() {
                 self.cancel_run_id(*id, cx);
             }
         }
+        // A run accepted for admission but absent from `run_ids` still owns a
+        // durable intent; cancel the pending dispatch itself, not just ownership.
+        for run_id in pending_runs {
+            if !self.cancel_pending_dispatch(run_id, cx)
+                && self.store.runs().iter().any(|run| run.id == run_id)
+            {
+                self.cancel_run_id(run_id, cx);
+            }
+        }
+        // Admission receipts still in flight no longer belong to any batch.
+        self.batch_pending_runs.clear();
+        self.batch_generation_seq = self.batch_generation_seq.wrapping_add(1);
         self.toast = "Batch stopped · saved results kept".into();
         cx.notify();
     }
@@ -205,7 +225,7 @@ impl TaskApp {
         loop {
             let items = self.todo_batch.as_ref().unwrap().current_items(&self.store);
             if items.is_empty() { break; }
-            for item in &items {
+            'items: for item in &items {
                 let item = *item;
                 let Some(task) = self.store.task(item).filter(|task|
                     !self.store.task_is_archived(task.id) && matches!(task.stage,
@@ -239,32 +259,59 @@ impl TaskApp {
                     // must all be finalized before a new attempt is admitted.
                     if self.task_running(id) || batch.failed_tasks.contains(&id)
                         || batch.run_ids.keys().any(|run_id| self.store.runs().iter().any(|run| run.id == *run_id && run.task_id == id))
+                        || self.batch_pending_runs.iter().any(|pending|
+                            pending.step == id
+                                && pending.goal == item
+                                && pending.batch_generation == self.batch_generation_seq)
                     { continue; }
-                    let before = self.store.runs().len();
-                    self.start_run_background(id, cx);
-                    let submitted = self.store.runs().get(before).map(|r| (r.id, r.status.clone()));
-                    let batch = self.todo_batch.as_mut().unwrap();
-                    if let Some((run_id, _)) = submitted.filter(|(_, status)| matches!(status.as_str(), "Queued" | "Running")) {
-                        batch.run_ids.insert(run_id, item);
-                    } else {
-                        // No attempt was created, so this is not an exhausted task.
-                        // Preserve the topic and the reason instead of silently skipping it.
-                        let reason = if self.error.is_empty() {
-                            "The task could not be queued. Review this task and continue.".to_string()
-                        } else { self.error.clone() };
-                        batch.state = BatchState::Paused(format!("Could not start task {id}: {reason}"));
-                        self.task_start_feedback = Some((id, reason.clone()));
-                        if let Some(goal) = self.store.task_mut(item) {
-                            goal.activity.push(crate::domain::activity_event(&format!("Topic queue paused at task {id}: {reason}")));
+                    match self.start_run_background_submission(id, cx) {
+                        crate::app::RunSubmission::Dispatched(dispatch) => {
+                            self.todo_batch
+                                .as_mut()
+                                .unwrap()
+                                .run_ids
+                                .insert(dispatch.run_id, item);
                         }
-                        self.persist_if_changed(true);
-                        cx.notify();
-                        return;
+                        crate::app::RunSubmission::PendingAdmission { run_id, .. } => {
+                            // The run record appears only after the exact durable
+                            // admission. Do not pause the batch or claim a launch;
+                            // bind membership when that receipt is applied. One
+                            // admission occupies the slot, so defer every remaining
+                            // candidate instead of submitting and being rejected.
+                            let generation = self.batch_generation_seq;
+                            self.batch_pending_runs.push(crate::app::PendingBatchRun {
+                                run_id,
+                                goal: item,
+                                step: id,
+                                batch_generation: generation,
+                            });
+                            break 'items;
+                        }
+                        crate::app::RunSubmission::Rejected => {
+                            // No attempt was accepted, so this is not an exhausted task.
+                            // Preserve the topic and the reason instead of silently skipping it.
+                            let reason = if self.error.is_empty() {
+                                "The task could not be queued. Review this task and continue.".to_string()
+                            } else { self.error.clone() };
+                            self.todo_batch.as_mut().unwrap().state = BatchState::Paused(format!("Could not start task {id}: {reason}"));
+                            self.task_start_feedback = Some((id, reason.clone()));
+                            if let Some(goal) = self.store.task_mut(item) {
+                                goal.activity.push(crate::domain::activity_event(&format!("Topic queue paused at task {id}: {reason}")));
+                            }
+                            self.persist_if_changed(true);
+                            cx.notify();
+                            return;
+                        }
                     }
                 }
             }
             // Keep the entire topic active through dependency stages and retry delays.
             let busy = self.todo_batch.as_ref().unwrap().run_ids.values().any(|item| items.contains(item))
+                || self
+                    .batch_pending_runs
+                    .iter()
+                    .any(|pending|
+                        items.contains(&pending.goal) || items.contains(&pending.step))
                 || items.iter().any(|item| self.goal_busy(*item) || self.task_running(*item));
             if busy { break; }
             let has_failed_step = self.todo_batch.as_ref().unwrap().failed_tasks.iter().any(|id|

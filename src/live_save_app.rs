@@ -1609,6 +1609,14 @@ impl TaskApp {
         self.dispatch_awaiting = None;
         self.dispatch_awaiting_files = None;
         self.dispatch_ack_pending = None;
+        self.batch_pending_runs.clear();
+        self.dispatch_cancelled.clear();
+        self.dispatch_cancel_retire.clear();
+        self.dispatch_parked = false;
+        #[cfg(feature = "qa")]
+        {
+            self.qa_hold_claim = false;
+        }
         self.dispatch_applied.clear();
         self.dispatch_launched.clear();
         self.live_save_enabled = false;

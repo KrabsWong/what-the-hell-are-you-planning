@@ -5,18 +5,50 @@
 //! production workspace is touched.
 
 use crate::app::{LaunchIntent, PendingDispatch, PreparedRunDispatch, TaskApp};
+use crate::automation::{
+    AutomationDefinition, AutomationOccurrence, AutomationOccurrenceSnapshot, AutomationPolicy,
+    AutomationShape, AutomationTemplate, DefinitionStatus, OccurrenceStatus, TriggerSource,
+    WindowRule,
+};
+use crate::automation_schedule::{Schedule, ScheduleSpec};
 use crate::dispatch_admission::{AdmissionId, AdmissionUpdate, DispatchAdmissionAdapter};
 use crate::domain_command::{Command, CommandClass};
 use crate::persistence_worker::WorkerOptions;
 use crate::dispatch_admission::FakeDispatchRunner;
 use crate::domain::{AgentRun, Store};
+use crate::persistence::Storage;
+use crate::persistence_live;
+use gpui_kit::test::TestWindowExt;
 use gpui_kit::*;
+use sha2::{Digest, Sha256};
 use std::path::{Path, PathBuf};
 use std::sync::Arc;
 use std::time::{Duration, Instant};
 
 const WORKSPACE: u64 = 9_001;
+const INCARNATION: u64 = 0x54_31_2B_10;
+const FAKE_CLI: &str = r#"#!/usr/bin/env python3
+import json, sys, time
+args = sys.argv[1:]
+if 'models' in args:
+    print('fixture/model')
+    sys.exit(0)
+time.sleep(0.15)
+print(json.dumps({'type': 'reasoning', 'sessionID': 'dispatch-fixture', 'part': {'text': 'fixture'}}), flush=True)
+result = {'status': 'partial', 'report': '## Dispatch fixture\n\nSequential step completed.', 'sources': []}
+print(json.dumps({'type': 'text', 'part': {'text': json.dumps(result)}}), flush=True)
+"#;
+
+fn write_fake_cli(path: &Path) {
+    use std::os::unix::fs::PermissionsExt;
+    std::fs::write(path, FAKE_CLI).unwrap();
+    let mut permissions = std::fs::metadata(path).unwrap().permissions();
+    permissions.set_mode(0o755);
+    std::fs::set_permissions(path, permissions).unwrap();
+}
+
 const PLAN: &str = r#"{"tasks":[{"title":"Collect","instructions":"Find evidence","kind":"collect","depends_on":[]},{"title":"Analyze","instructions":"Analyze","kind":"analyze","depends_on":[0]},{"title":"Report","instructions":"Report","kind":"advise","depends_on":[1]}]}"#;
+const INDEPENDENT_PLAN: &str = r#"{"tasks":[{"title":"Collect A","instructions":"Find A","kind":"collect","depends_on":[]},{"title":"Collect B","instructions":"Find B","kind":"collect","depends_on":[]},{"title":"Analyze","instructions":"Analyze A","kind":"analyze","depends_on":[0]},{"title":"Report","instructions":"Report","kind":"advise","depends_on":[2]}]}"#;
 
 fn run_root() -> PathBuf {
     std::env::current_dir()
@@ -35,6 +67,14 @@ pub fn run() {
     let root = run_root();
     std::fs::create_dir_all(&root).unwrap();
     durable_before_launch(&root);
+    idle_first_dispatch_keeps_runtime_pump(&root);
+    executor_driven_three_step_dispatch(&root);
+    cancel_before_receipt_never_launches(&root);
+    cancel_after_receipt_before_claim_never_launches(&root);
+    pending_admission_defers_fanout_and_cancel_cleans_binding(&root);
+    parked_worker_quiesces_and_retry_resumes(&root);
+    material_verification_wakes_and_settles(&root);
+    render_wake_saves_idle_legacy_edit(&root);
     recover_after_ack_before_launch(&root);
     resolve_claimed_ambiguity(&root);
     rerun_resolution_admits_distinct_attempt(&root);
@@ -208,6 +248,1036 @@ impl AppHarness {
             })
             .unwrap()
     }
+
+    fn poll_runtime_once(&mut self) -> bool {
+        self.cx
+            .update_window(self.handle, |_, _, cx| {
+                self.app.update(cx, |a, cx| a.poll_runtime(cx))
+            })
+            .unwrap()
+    }
+
+    fn advance(&mut self, step: Duration) {
+        self.cx.advance_clock(step);
+    }
+
+    fn render(&mut self) {
+        self.cx
+            .update_window(self.handle, |_, window, cx| window.render_frame(cx))
+            .unwrap();
+    }
+
+    fn set_hold(&mut self, hold: bool) {
+        self.cx
+            .update_window(self.handle, |_, _, cx| {
+                self.app.update(cx, |a, _| {
+                    if let Some(adapter) = a.dispatch_admission.as_ref() {
+                        adapter.set_hold(hold);
+                    }
+                })
+            })
+            .unwrap();
+    }
+
+    fn set_fault(&mut self, fault: crate::sqlite_v4::Fault) {
+        self.cx
+            .update_window(self.handle, |_, _, cx| {
+                self.app.update(cx, |a, _| {
+                    if let Some(adapter) = a.dispatch_admission.as_ref() {
+                        adapter.set_fault(fault).unwrap();
+                    }
+                })
+            })
+            .unwrap();
+    }
+
+    fn cancel_pending(&mut self, run_id: u64) -> bool {
+        self.cx
+            .update_window(self.handle, |_, _, cx| {
+                self.app
+                    .update(cx, |a, cx| a.cancel_pending_dispatch(run_id, cx))
+            })
+            .unwrap()
+    }
+
+    fn retry_dispatch(&mut self) -> bool {
+        self.cx
+            .update_window(self.handle, |_, _, cx| {
+                self.app
+                    .update(cx, |a, cx| a.retry_dispatch_admission(cx))
+            })
+            .unwrap()
+    }
+
+    /// Drive only the real executor timer. No adapter calls or manual polling.
+    fn pump_until(
+        &mut self,
+        timeout: Duration,
+        mut done: impl FnMut(&TaskApp) -> bool,
+    ) -> bool {
+        let deadline = Instant::now() + timeout;
+        while Instant::now() < deadline {
+            self.cx.advance_clock(Duration::from_millis(30));
+            let value = self
+                .cx
+                .update_window(self.handle, |_, _, cx| {
+                    self.app.update(cx, |a, _| done(a))
+                })
+                .unwrap();
+            if value {
+                return true;
+            }
+            std::thread::sleep(Duration::from_millis(4));
+        }
+        false
+    }
+
+    fn run_status(&mut self, run_id: u64) -> Option<String> {
+        self.cx
+            .update_window(self.handle, |_, _, cx| {
+                self.app.update(cx, |a, _| {
+                    a.store
+                        .runs()
+                        .iter()
+                        .find(|run| run.id == run_id)
+                        .map(|run| run.status.clone())
+                })
+            })
+            .unwrap()
+    }
+
+    fn wait_recovery(&mut self) {
+        let deadline = Instant::now() + Duration::from_secs(2);
+        while Instant::now() < deadline {
+            let done = self
+                .cx
+                .update_window(self.handle, |_, _, cx| {
+                    self.app.update(cx, |a, cx| {
+                        a.poll_runtime(cx);
+                        a.dispatch_recovery_done
+                    })
+                })
+                .unwrap();
+            if done {
+                return;
+            }
+            std::thread::sleep(Duration::from_millis(10));
+        }
+        panic!("dispatch admission recovery did not become ready");
+    }
+}
+
+fn three_step_fixture(root: &Path) -> (Store, Vec<u64>) {
+    let mut store = Store::empty();
+    store.project_at_mut(0).unwrap().directory = root.to_string_lossy().into_owned();
+    store.set_default_model("fixture/model".into());
+    store.research_config_mut().models = std::array::from_fn(|_| "fixture/model".to_string());
+    let goal = store
+        .create_research_goal("Sequential dispatch goal".into(), "Scope".into(), 1)
+        .unwrap();
+    let steps = store.apply_research_plan(goal, PLAN).unwrap();
+    (store, steps)
+}
+
+fn independent_tasks_fixture(root: &Path) -> (Store, Vec<u64>) {
+    let mut store = Store::empty();
+    store.project_at_mut(0).unwrap().directory = root.to_string_lossy().into_owned();
+    store.set_default_model("fixture/model".into());
+    store.research_config_mut().models = std::array::from_fn(|_| "fixture/model".to_string());
+    // One first step per independent goal: each has no prerequisite, so a queued
+    // run for it is a genuinely independent first dispatch.
+    let tasks = (0..3)
+        .map(|index| {
+            let goal = store
+                .create_research_goal(
+                    format!("Independent dispatch {index}"),
+                    "Scope".into(),
+                    1,
+                )
+                .unwrap();
+            let steps = store.apply_research_plan(goal, PLAN).unwrap();
+            steps[0]
+        })
+        .collect();
+    (store, tasks)
+}
+
+fn idle_first_dispatch_keeps_runtime_pump(root: &Path) {
+    let (store, steps) = independent_tasks_fixture(root);
+    let mut harness = AppHarness::new("idle-pump", store.clone());
+    harness.wait_recovery();
+    harness.cx.update_window(harness.handle, |_, _, cx| {
+        harness.app.update(cx, |a, _| {
+            // Keep the scheduler from spawning a real agent in this focused
+            // polling regression; the admitted run must still queue exactly once.
+            a.storage_error = "QA runtime polling fixture: launch suppressed".into();
+        });
+    });
+    for (index, task) in steps.iter().enumerate() {
+        let run = queued_run(&store, *task, 2_000 + index as u64);
+        assert!(!harness.commit(run.clone(), LaunchIntent::Task(*task)));
+        // The idle workspace has no active run yet; the first runtime poll must
+        // still be kept alive by the awaiting admission.
+        assert!(
+            harness.poll_runtime_once(),
+            "runtime pump stopped before the first durable dispatch ACK"
+        );
+        let deadline = Instant::now() + Duration::from_secs(3);
+        loop {
+            let queued = harness
+                .cx
+                .update_window(harness.handle, |_, _, cx| {
+                    harness.app.update(cx, |a, _| {
+                        a.queued_runs.iter().filter(|(id, _)| *id == run.id).count()
+                    })
+                })
+                .unwrap();
+            if queued == 1 {
+                break;
+            }
+            assert!(Instant::now() < deadline, "dispatch did not become durable");
+            assert!(harness.poll_runtime_once());
+            std::thread::sleep(Duration::from_millis(10));
+        }
+        harness.cx.update_window(harness.handle, |_, _, cx| {
+            harness.app.update(cx, |a, _| {
+                assert_eq!(
+                    a.queued_runs.iter().filter(|(id, _)| *id == run.id).count(),
+                    1,
+                    "one admission must queue exactly one dispatch"
+                );
+                assert!(a.active_runs.is_empty(), "no process launched by polling");
+            });
+        });
+        let ack_deadline = Instant::now() + Duration::from_secs(3);
+        while harness
+            .cx
+            .update_window(harness.handle, |_, _, cx| {
+                harness.app.update(cx, |a, cx| {
+                    let _ = a.poll_runtime(cx);
+                    a.dispatch_awaiting.is_some() || a.dispatch_ack_pending.is_some()
+                })
+            })
+            .unwrap()
+        {
+            assert!(
+                Instant::now() < ack_deadline,
+                "dispatch acknowledgement did not settle"
+            );
+            std::thread::sleep(Duration::from_millis(10));
+        }
+    }
+}
+
+fn executor_driven_three_step_dispatch(root: &Path) {
+    let directory = root.join("executor-live");
+    std::fs::create_dir_all(&directory).unwrap();
+    let cli = directory.join("fake-opencode");
+    write_fake_cli(&cli);
+    let (mut store, steps) = three_step_fixture(&directory);
+    store.set_opencode_path(cli.to_string_lossy().into_owned());
+    store.research_config_mut().models = std::array::from_fn(|_| "fixture/model".to_string());
+    let goal = store
+        .tasks()
+        .iter()
+        .find(|task| task.research.is_some())
+        .map(|task| task.id)
+        .unwrap();
+    store.task_mut(goal).unwrap().approved_plan = store.goal_plan_signature(goal);
+
+    let path = directory.join("workspace.sqlite3");
+    crate::sqlite_v4::SqliteV4::create_seeded(&path, &directory, INCARNATION, &store).unwrap();
+    let storage = Storage::new(path.clone());
+    let _ = storage.upgrade_paths(|_| {});
+    let lock = storage.acquire_lock().unwrap();
+    let mut live = persistence_live::select_existing(&storage).unwrap().unwrap();
+    let loaded = live.migrated_store.take();
+
+    let mut cx = HeadlessAppContext::with_platform(
+        platform::current_platform(true).text_system(),
+        Arc::new(crate::ui_assets::AppAssets),
+        platform::current_headless_renderer,
+    );
+    cx.update(init);
+    let mut entity = None;
+    let window = cx
+        .open_window(size(px(1000.), px(680.)), |w, cx| {
+            let view = cx.new(|cx| TaskApp::new_mock(w, cx));
+            view.update(cx, |a, cx| {
+                a.attach_loaded_storage_live(
+                    storage,
+                    Ok((lock, loaded)),
+                    Some(live),
+                    w,
+                    cx,
+                );
+            });
+            entity = Some(view.clone());
+            cx.new(|cx| base::Root::new(view, w, cx))
+        })
+        .unwrap();
+    let app = entity.unwrap();
+    let deadline = Instant::now() + Duration::from_secs(30);
+    while Instant::now() < deadline {
+        cx.advance_clock(Duration::from_millis(100));
+        let ready = cx.update(|cx| {
+            let a = app.read(cx);
+            a.live_persistence_active() && a.dispatch_recovery_done
+        });
+        if ready {
+            break;
+        }
+        std::thread::sleep(Duration::from_millis(5));
+    }
+    assert!(
+        cx.update(|cx| {
+            let a = app.read(cx);
+            a.live_persistence_active() && a.dispatch_recovery_done
+        }),
+        "live startup did not become ready"
+    );
+
+    cx.update(|cx| app.update(cx, |a, cx| a.start_goal_batch(goal, cx)));
+    let deadline = Instant::now() + Duration::from_secs(30);
+    let mut complete = false;
+    while Instant::now() < deadline {
+        cx.advance_clock(Duration::from_millis(100));
+        let (done, settled) = cx.update(|cx| {
+            let a = app.read(cx);
+            let done = steps.iter().all(|task| {
+                a.store
+                    .runs()
+                    .iter()
+                    .filter(|run| run.task_id == *task)
+                    .count()
+                    == 1
+                    && a.store
+                        .runs()
+                        .iter()
+                        .filter(|run| run.task_id == *task)
+                        .all(|run| run.status == "Succeeded")
+            });
+            (done, done && !a.runtime_pump_active())
+        });
+        if settled {
+            complete = true;
+            break;
+        }
+        std::thread::sleep(Duration::from_millis(15));
+    }
+    assert!(
+        complete,
+        "three-step dispatch did not settle through the runtime pump: {}",
+        cx.update(|cx| {
+            let a = app.read(cx);
+            let runs: Vec<_> = a
+                .store
+                .runs()
+                .iter()
+                .map(|run| (run.id, run.task_id, run.status.clone(), run.logs.last().cloned()))
+                .collect();
+            format!(
+                "steps={steps:?} runs={runs:?} error={:?} storage_error={:?} admission_error={:?} queued={:?} active={:?} pumping={} batch={:?} approved={:?}",
+                a.error,
+                a.storage_error,
+                a.dispatch_admission_error,
+                a.queued_runs.iter().map(|(id, _)| *id).collect::<Vec<_>>(),
+                a.active_runs.iter().map(|run| run.id).collect::<Vec<_>>(),
+                a.runtime_pump_active(),
+                a.todo_batch.as_ref().map(|batch| batch.state.clone()),
+                a.todo_batch.as_ref().map(|batch| batch.run_ids.clone()),
+            )
+        })
+    );
+
+    cx.update(|cx| {
+        let a = app.read(cx);
+        assert!(a.storage_error.is_empty(), "{}", a.storage_error);
+        for task in &steps {
+            let attempts: Vec<_> = a.store.runs().iter().filter(|run| run.task_id == *task).collect();
+            assert_eq!(attempts.len(), 1, "each step has exactly one attempt");
+            assert_eq!(attempts[0].status, "Succeeded");
+        }
+        assert!(a.active_runs.is_empty());
+        assert!(a.queued_runs.is_empty());
+        assert!(!a.runtime_pump_active(), "runtime pump settles after the durable chain");
+    });
+}
+
+fn automation_occurrence(id: u64, run_id: u64, unread: bool) -> AutomationOccurrence {
+    let now = chrono::Utc::now().timestamp();
+    AutomationOccurrence {
+        id,
+        automation_id: 1,
+        definition_version: 1,
+        source: TriggerSource::Manual,
+        trigger_key: format!("manual:{id}"),
+        scheduled_for: None,
+        requested_at: Some(now),
+        actual_started_at: Some(now),
+        timezone: "UTC".into(),
+        reference_time: now,
+        data_window: crate::automation::TimeWindow::unresolved("qa"),
+        snapshot: AutomationOccurrenceSnapshot {
+            objective: "qa".into(),
+            expected_result: "qa".into(),
+            shape: Some(AutomationShape::Quick),
+            template: AutomationTemplate {
+                goals: Vec::new(),
+                window_rule: WindowRule::Unresolved,
+            },
+            models: std::array::from_fn(|_| "fixture/model".to_string()),
+            agents: [None, None, None, None],
+            materials: Vec::new(),
+            policy: AutomationPolicy::default(),
+            approval_version: 1,
+            approval_signature: "qa".into(),
+        },
+        status: OccurrenceStatus::Succeeded,
+        reason: None,
+        research_goal_id: None,
+        research_goal_ids: Vec::new(),
+        research_topic_id: None,
+        run_ids: vec![run_id],
+        final_run_id: Some(run_id),
+        unread,
+        skipped_count: 0,
+        skipped_from: None,
+        skipped_to: None,
+        created_at: now,
+        deadline_at: None,
+        retry_requested_at: None,
+    }
+}
+
+fn approved_goal_with_plan(root: &Path, plan: &str) -> (Store, u64, Vec<u64>) {
+    let mut store = Store::empty();
+    store.project_at_mut(0).unwrap().directory = root.to_string_lossy().into_owned();
+    store.set_default_model("fixture/model".into());
+    store.research_config_mut().models = std::array::from_fn(|_| "fixture/model".to_string());
+    let goal = store
+        .create_research_goal("Batch cancellation goal".into(), "Scope".into(), 1)
+        .unwrap();
+    let steps = store.apply_research_plan(goal, plan).unwrap();
+    store.task_mut(goal).unwrap().approved_plan = store.goal_plan_signature(goal);
+    (store, goal, steps)
+}
+
+fn cancel_before_receipt_never_launches(root: &Path) {
+    let (store, task) = fixture(root);
+    let run = queued_run(&store, task, 5_100);
+    let mut harness = AppHarness::new("cancel-pre-receipt", store);
+    harness.wait_recovery();
+    // Hold the worker so the durable receipt cannot arrive before cancellation.
+    harness.set_hold(true);
+    assert!(!harness.commit(run.clone(), LaunchIntent::Task(task)));
+    assert!(
+        harness.cancel_pending(run.id),
+        "a pending admission must be cancellable before its receipt"
+    );
+    harness.set_hold(false);
+    let settled = harness.pump_until(Duration::from_secs(15), |a| {
+        a.dispatch_cancelled.is_empty()
+            && a.dispatch_awaiting.is_none()
+            && a.dispatch_status_durable.is_none()
+            && a.store
+                .runs()
+                .iter()
+                .any(|candidate| candidate.id == run.id && candidate.status == "Cancelled")
+            && !a.runtime_pump_active()
+    });
+    assert!(
+        settled,
+        "pre-receipt cancellation did not settle: status={:?}",
+        harness.run_status(run.id)
+    );
+    assert!(
+        harness.starts().is_empty(),
+        "a cancelled pre-receipt dispatch must never launch"
+    );
+    harness
+        .cx
+        .update_window(harness.handle, |_, _, cx| {
+            harness.app.update(cx, |a, _| {
+                let saved = a
+                    .last_saved
+                    .runs()
+                    .iter()
+                    .find(|candidate| candidate.id == run.id)
+                    .expect("the receipt must leave a durable run");
+                assert_eq!(
+                    saved.status, "Cancelled",
+                    "pre-receipt cancellation must be durable"
+                );
+            })
+        })
+        .unwrap();
+}
+
+fn cancel_after_receipt_before_claim_never_launches(root: &Path) {
+    let (store, task) = fixture(root);
+    let run = queued_run(&store, task, 5_200);
+    let mut harness = AppHarness::new("cancel-before-claim", store);
+    harness.wait_recovery();
+    // Deterministic window: the claim request is held after the durable receipt.
+    harness
+        .cx
+        .update_window(harness.handle, |_, _, cx| {
+            harness.app.update(cx, |a, _| a.qa_hold_claim = true)
+        })
+        .unwrap();
+    assert!(!harness.commit(run.clone(), LaunchIntent::Task(task)));
+    assert!(
+        harness.pump_until(Duration::from_secs(10), |a| {
+            a.store.runs().iter().any(|candidate| candidate.id == run.id)
+                && a.dispatch_claim_pending.is_some()
+        }),
+        "the durable receipt was not applied before the held claim"
+    );
+    assert!(
+        harness.starts().is_empty(),
+        "the held claim must not have launched yet"
+    );
+    // Exercise the real public Stop route, not the internal helper.
+    harness
+        .cx
+        .update_window(harness.handle, |_, _, cx| {
+            harness.app.update(cx, |a, cx| a.cancel_run_id(run.id, cx))
+        })
+        .unwrap();
+    let settled = harness.pump_until(Duration::from_secs(15), |a| {
+        a.dispatch_cancelled.is_empty()
+            && a.dispatch_cancel_retire.is_empty()
+            && a.dispatch_awaiting.is_none()
+            && a.store
+                .runs()
+                .iter()
+                .any(|candidate| candidate.id == run.id && candidate.status == "Cancelled")
+            && !a.runtime_pump_active()
+    });
+    assert!(
+        settled,
+        "post-receipt cancellation did not settle: status={:?} diagnostic={}",
+        harness.run_status(run.id),
+        harness
+            .cx
+            .update_window(harness.handle, |_, _, cx| {
+                harness.app.update(cx, |a, _| format!(
+                    "cancelled={:?} retire={:?} awaiting={:?} status_durable={:?} parked={} ack={:?} claim={:?} admission_error={:?}",
+                    a.dispatch_cancelled,
+                    a.dispatch_cancel_retire,
+                    a.dispatch_awaiting.as_ref().map(|id| id.operation_key.clone()),
+                    a.dispatch_status_durable.as_ref().map(|r| r.key.clone()),
+                    a.dispatch_parked,
+                    a.dispatch_ack_pending.as_ref().map(|id| id.operation_key.clone()),
+                    a.dispatch_claim_pending.as_ref().map(|(id, _)| id.operation_key.clone()),
+                    a.dispatch_admission_error,
+                ))
+            })
+            .unwrap()
+    );
+    assert!(
+        harness.starts().is_empty(),
+        "a run cancelled before its claim was acknowledged must never launch"
+    );
+    harness
+        .cx
+        .update_window(harness.handle, |_, _, cx| {
+            harness.app.update(cx, |a, _| {
+                let saved = a
+                    .last_saved
+                    .runs()
+                    .iter()
+                    .find(|candidate| candidate.id == run.id)
+                    .expect("durable run");
+                assert_eq!(saved.status, "Cancelled");
+            })
+        })
+        .unwrap();
+}
+
+fn pending_admission_defers_fanout_and_cancel_cleans_binding(root: &Path) {
+    let directory = root.join("fanout");
+    std::fs::create_dir_all(&directory).unwrap();
+    let (store, goal, _steps) = approved_goal_with_plan(&directory, INDEPENDENT_PLAN);
+    let mut harness = AppHarness::new_in(root, "fanout", store);
+    harness.wait_recovery();
+    let database = harness.path.clone();
+    harness
+        .cx
+        .update_window(harness.handle, |_, _, cx| {
+            harness.app.update(cx, |a, _| {
+                a.storage = Some(Storage::new(database));
+            })
+        })
+        .unwrap();
+    harness.set_hold(true);
+    harness
+        .cx
+        .update_window(harness.handle, |_, _, cx| {
+            harness
+                .app
+                .update(cx, |a, cx| a.start_goal_batch(goal, cx))
+        })
+        .unwrap();
+    assert!(
+        harness.pump_until(Duration::from_secs(5), |a| a.batch_pending_runs.len() == 1),
+        "the first admission must occupy the single pending slot: {}",
+        harness
+            .cx
+            .update_window(harness.handle, |_, _, cx| {
+                harness.app.update(cx, |a, _| format!(
+                    "error={:?} storage_error={:?} batch={:?} pending={:?} awaiting={:?} queue={:?} stages={:?}",
+                    a.error,
+                    a.storage_error,
+                    a.todo_batch.as_ref().map(|b| (b.state.clone(), b.items.clone(), b.failed_items.clone())),
+                    a.batch_pending_runs,
+                    a.dispatch_awaiting.as_ref().map(|id| (id.run_id, id.operation_key.clone())),
+                    a.queued_runs.iter().map(|(id, _)| *id).collect::<Vec<_>>(),
+                    a.store.tasks().iter().map(|t| (t.id, t.stage, t.research.as_ref().map(|r| r.kind))).collect::<Vec<_>>(),
+                ))
+            })
+            .unwrap()
+    );
+    harness
+        .cx
+        .update_window(harness.handle, |_, _, cx| {
+            harness.app.update(cx, |a, _| {
+                assert_eq!(
+                    a.batch_pending_runs.len(),
+                    1,
+                    "remaining ready steps must be deferred, not rejected"
+                );
+                assert!(
+                    matches!(
+                        a.todo_batch.as_ref().map(|batch| &batch.state),
+                        Some(crate::batch::BatchState::Running)
+                    ),
+                    "a pending admission must not pause the batch"
+                );
+                assert!(a.queued_runs.is_empty());
+            })
+        })
+        .unwrap();
+    harness
+        .cx
+        .update_window(harness.handle, |_, _, cx| {
+            harness.app.update(cx, |a, cx| a.cancel_todo_batch(cx))
+        })
+        .unwrap();
+    harness
+        .cx
+        .update_window(harness.handle, |_, _, cx| {
+            harness.app.update(cx, |a, _| {
+                assert!(a.todo_batch.is_none());
+                assert!(
+                    a.batch_pending_runs.is_empty(),
+                    "cancel must remove pending batch bindings"
+                );
+                assert!(
+                    !a.dispatch_cancelled.is_empty(),
+                    "the accepted dispatch must remain tracked for cancellation"
+                );
+            })
+        })
+        .unwrap();
+    harness.set_hold(false);
+    assert!(
+        harness.pump_until(Duration::from_secs(15), |a| {
+            a.dispatch_cancelled.is_empty()
+                && a.dispatch_awaiting.is_none()
+                && !a.runtime_pump_active()
+        }),
+        "cancelled pending batch did not settle"
+    );
+    assert!(
+        harness.starts().is_empty(),
+        "no step may launch after the batch was cancelled"
+    );
+    harness
+        .cx
+        .update_window(harness.handle, |_, _, cx| {
+            harness.app.update(cx, |a, _| {
+                assert!(
+                    a.store
+                        .runs()
+                        .iter()
+                        .all(|run| run.status != "Queued" && run.status != "Running"),
+                    "no cancelled step may remain scheduled"
+                );
+            })
+        })
+        .unwrap();
+}
+
+fn parked_worker_quiesces_and_retry_resumes(root: &Path) {
+    let (store, task) = fixture(root);
+    let run = queued_run(&store, task, 5_300);
+    let mut harness = AppHarness::new("parked-worker", store);
+    harness.wait_recovery();
+    // Force the dispatch group commit to fail once so the worker parks it.
+    harness.set_fault(crate::sqlite_v4::Fault::MidGroup);
+    assert!(!harness.commit(run.clone(), LaunchIntent::Task(task)));
+    assert!(
+        harness.pump_until(Duration::from_secs(15), |a| {
+            a.dispatch_parked && !a.runtime_pump_active()
+        }),
+        "a blocked worker group must park and stop the bounded pump"
+    );
+    assert!(
+        harness.starts().is_empty(),
+        "no process may launch from a parked group"
+    );
+    // Explicit retry through the real compact footer control, not a helper.
+    harness.set_fault(crate::sqlite_v4::Fault::None);
+    harness.render();
+    harness
+        .cx
+        .update_window(harness.handle, |_, window, cx| {
+            window.click("retry-dispatch-admission", cx);
+        })
+        .unwrap();
+    assert!(
+        harness.pump_until(Duration::from_secs(15), |a| {
+            a.qa_dispatch_fake
+                .as_ref()
+                .is_some_and(|fake| fake.starts.contains(&run.id))
+                && !a.runtime_pump_active()
+        }),
+        "the visible retry control did not resume the exact parked dispatch"
+    );
+    let starts = harness.starts();
+    assert_eq!(
+        starts.iter().filter(|id| **id == run.id).count(),
+        1,
+        "the retried intent must launch exactly once"
+    );
+    assert!(
+        starts.iter().all(|id| *id == run.id),
+        "retry must not allocate another run"
+    );
+}
+
+fn material_verification_wakes_and_settles(root: &Path) {
+    let (mut store, task) = fixture(root);
+    if let Some(goal) = store.owning_research_goal(task) {
+        store.task_mut(goal).unwrap().approved_plan = store.goal_plan_signature(goal);
+    }
+    let mut harness = AppHarness::new("material-wake", store);
+    harness.wait_recovery();
+    let database = harness.path.clone();
+    let data = harness.root.clone();
+    harness
+        .cx
+        .update_window(harness.handle, |_, _, cx| {
+            harness.app.update(cx, |a, _| {
+                a.storage = Some(Storage::new(database));
+            })
+        })
+        .unwrap();
+    let relative = "attachments/synthetic.png";
+    std::fs::create_dir_all(data.join("attachments")).unwrap();
+    let bytes = b"\x89PNG\r\n\x1a\nsynthetic material";
+    std::fs::write(data.join(relative), bytes).unwrap();
+    let sha = format!("{:x}", Sha256::digest(bytes));
+    let attachment = crate::attachments::Attachment {
+        name: "synthetic.png".into(),
+        relative_path: relative.into(),
+        media_type: "image/png".into(),
+        size: bytes.len() as u64,
+        content_sha256: sha.clone(),
+    };
+    let imported = vec![crate::scoped_material::ImportedCopy {
+        relative_path: relative.into(),
+        size: bytes.len() as u64,
+        content_sha256: sha,
+        owner_task: task,
+    }];
+    let submitted = harness
+        .cx
+        .update_window(harness.handle, |_, _, cx| {
+            harness.app.update(cx, |a, cx| {
+                a.submit_material_add_verify_for_root(
+                    data.clone(),
+                    task,
+                    vec![attachment.clone()],
+                    imported,
+                    cx,
+                )
+            })
+        })
+        .unwrap();
+    assert!(submitted, "material verification must be accepted");
+    // No manual poll: the submission wakepoint and keep predicate must finish it.
+    assert!(
+        harness.pump_until(Duration::from_secs(15), |a| {
+            a.pending_material_job.is_none()
+        }),
+        "material verification did not settle through the runtime pump"
+    );
+    harness
+        .cx
+        .update_window(harness.handle, |_, _, cx| {
+            harness.app.update(cx, |a, _| {
+                let review =
+                    a.pending_material_edit.is_some() || a.research_save_impact.is_some();
+                let attached = a.store.task(task).is_some_and(|value| {
+                    value
+                        .attachments
+                        .iter()
+                        .any(|candidate| candidate.relative_path == relative)
+                });
+                assert!(
+                    review || attached,
+                    "verification must either open the impact review or attach durably"
+                );
+                assert!(
+                    !a.runtime_pump_active(),
+                    "human material review must not keep the pump spinning"
+                );
+            })
+        })
+        .unwrap();
+    harness
+        .cx
+        .update_window(harness.handle, |_, window, cx| {
+            harness
+                .app
+                .update(cx, |a, cx| a.cancel_research_save(window, cx));
+        })
+        .unwrap();
+    assert!(
+        harness.pump_until(Duration::from_secs(15), |a| {
+            a.pending_material_job.is_none()
+                && a.pending_material_edit.is_none()
+                && a.research_save_impact.is_none()
+                && a.pending_cleanup_retry.is_empty()
+                && !a.runtime_pump_active()
+        }),
+        "cancelled material verification must clean up and quiesce"
+    );
+}
+
+fn render_wake_saves_idle_legacy_edit(root: &Path) {
+    let directory = root.join("render-wake");
+    std::fs::create_dir_all(&directory).unwrap();
+    let mut store = Store::empty();
+    store.project_at_mut(0).unwrap().directory = directory.to_string_lossy().into_owned();
+    store.set_default_model("fixture/model".into());
+    store.research_config_mut().models = std::array::from_fn(|_| "fixture/model".to_string());
+    let task = store
+        .create_research_goal("Render wake goal".into(), "Scope".into(), 1)
+        .unwrap();
+    store.push_automation(AutomationDefinition {
+        id: 1,
+        version: 1,
+        project_id: 1,
+        shape: AutomationShape::Quick,
+        name: "Render wake QA".into(),
+        objective: "QA".into(),
+        expected_result: "QA".into(),
+        schedule: Schedule {
+            spec: ScheduleSpec::Interval { minutes: 1440 },
+            timezone: "UTC".into(),
+        },
+        status: DefinitionStatus::Draft,
+        template: None,
+        plan_binding: None,
+        approval: None,
+        policy: AutomationPolicy::default(),
+        cursor: None,
+        anchor: None,
+        consecutive_failures: 0,
+        attention_reason: None,
+        created_at: 0,
+        updated_at: 0,
+    });
+    let mut occurrence = automation_occurrence(900, 901, true);
+    occurrence.research_goal_id = Some(task);
+    occurrence.research_goal_ids = vec![task];
+    store.push_occurrence(occurrence);
+
+    let path = directory.join("workspace.sqlite3");
+    crate::sqlite_v4::SqliteV4::create_seeded(&path, &directory, INCARNATION, &store).unwrap();
+    let storage = Storage::new(path.clone());
+    let _ = storage.upgrade_paths(|_| {});
+    let lock = storage.acquire_lock().unwrap();
+    let mut live = persistence_live::select_existing(&storage).unwrap().unwrap();
+    let loaded = live.migrated_store.take();
+
+    let mut cx = HeadlessAppContext::with_platform(
+        platform::current_platform(true).text_system(),
+        Arc::new(crate::ui_assets::AppAssets),
+        platform::current_headless_renderer,
+    );
+    cx.update(init);
+    let mut entity = None;
+    let window = cx
+        .open_window(size(px(1000.), px(680.)), |w, cx| {
+            let view = cx.new(|cx| TaskApp::new_mock(w, cx));
+            view.update(cx, |a, cx| {
+                a.attach_loaded_storage_live(storage, Ok((lock, loaded)), Some(live), w, cx);
+            });
+            entity = Some(view.clone());
+            cx.new(|cx| base::Root::new(view, w, cx))
+        })
+        .unwrap();
+    let app = entity.unwrap();
+    let handle: AnyWindowHandle = window.into();
+
+    // Wait for startup to quiesce so the later edit genuinely begins idle.
+    let deadline = Instant::now() + Duration::from_secs(30);
+    let mut idle = false;
+    while Instant::now() < deadline {
+        cx.advance_clock(Duration::from_millis(80));
+        idle = cx.update(|cx| {
+            let a = app.read(cx);
+            a.live_persistence_active() && !a.runtime_pump_active() && !a.live_needs_pump()
+        });
+        if idle {
+            break;
+        }
+        std::thread::sleep(Duration::from_millis(4));
+    }
+    assert!(idle, "live startup did not become idle");
+
+    // Real idle mark-read mutation and persist, with no notify or start_pump.
+    cx.update_window(handle, |_, _, cx| {
+        app.update(cx, |a, _cx| {
+            a.store.mark_occurrence_read(900);
+            a.persist_if_changed(true);
+        });
+    })
+    .unwrap();
+    let pending_without_pump = cx.update(|cx| {
+        let a = app.read(cx);
+        !a.runtime_pump_active() && a.live_has_pending_receipts()
+    });
+    assert!(
+        pending_without_pump,
+        "mark-read must leave a receipt pending while the pump is idle: {}",
+        cx.update(|cx| {
+            let a = app.read(cx);
+            format!(
+                "pumping={} pending={} dirty={} unread={:?} occurrence={:?} live_active={}",
+                a.runtime_pump_active(),
+                a.live_has_pending_receipts(),
+                a.store.has_tracked_changes(),
+                a.store.occurrence(900).map(|value| value.unread),
+                a.store.occurrence(900).map(|value| value.id),
+                a.live_persistence_active(),
+            )
+        })
+    );
+
+    // A render is the only wake; no manual poll.
+    cx.update_window(handle, |_, w, cx| w.render_frame(cx))
+        .unwrap();
+    let deadline = Instant::now() + Duration::from_secs(20);
+    let mut read_settled = false;
+    while Instant::now() < deadline {
+        cx.advance_clock(Duration::from_millis(40));
+        read_settled = cx.update(|cx| {
+            let a = app.read(cx);
+            !a.live_needs_pump()
+                && !a.runtime_pump_active()
+                && !a.store.has_tracked_changes()
+                && a.store.occurrence(900).is_some_and(|value| !value.unread)
+        });
+        if read_settled {
+            break;
+        }
+        std::thread::sleep(Duration::from_millis(4));
+    }
+    let read_settled = read_settled
+        || cx.update(|cx| {
+            let a = app.read(cx);
+            !a.live_needs_pump()
+                && !a.runtime_pump_active()
+                && !a.store.has_tracked_changes()
+                && a.store.occurrence(900).is_some_and(|value| !value.unread)
+        });
+    assert!(
+        read_settled,
+        "the render wake did not carry the mark-read receipt to a saved idle state: {}",
+        cx.update(|cx| {
+            let a = app.read(cx);
+            format!(
+                "pumping={} needs_pump={} pending={} dirty={} unread={:?} saved_unread={:?} primary={} followups={} live_failure={:?} storage_error={:?}",
+                a.runtime_pump_active(),
+                a.live_needs_pump(),
+                a.live_has_pending_receipts(),
+                a.store.has_tracked_changes(),
+                a.store.occurrence(900).map(|value| value.unread),
+                a.last_saved.occurrence(900).map(|value| value.unread),
+                a.live_primary.is_some(),
+                a.live_followups.len(),
+                a.live_failure,
+                a.storage_error,
+            )
+        })
+    );
+
+    let durable_read = crate::sqlite_v4::SqliteV4::open(&path, &directory, INCARNATION)
+        .unwrap()
+        .load_store()
+        .unwrap();
+    assert!(
+        durable_read
+            .occurrence(900)
+            .is_some_and(|value| !value.unread),
+        "the mark-read receipt must be durable in the workspace"
+    );
+
+    // Representative other context-free legacy edit: mutate only the store and
+    // persist, then rely on the same render wake.
+    cx.update_window(handle, |_, _, cx| {
+        app.update(cx, |a, _cx| {
+            a.store
+                .task_mut(task)
+                .unwrap()
+                .labels
+                .push("legacy-edit".into());
+            a.persist_if_changed(true);
+        });
+    })
+    .unwrap();
+    cx.update_window(handle, |_, w, cx| w.render_frame(cx))
+        .unwrap();
+    let deadline = Instant::now() + Duration::from_secs(20);
+    let mut edit_settled = false;
+    while Instant::now() < deadline {
+        cx.advance_clock(Duration::from_millis(40));
+        edit_settled = cx.update(|cx| {
+            let a = app.read(cx);
+            !a.live_needs_pump()
+                && !a.runtime_pump_active()
+                && !a.store.has_tracked_changes()
+                && a
+                    .store
+                    .task(task)
+                    .is_some_and(|value| value.labels.iter().any(|label| label == "legacy-edit"))
+        });
+        if edit_settled {
+            break;
+        }
+        std::thread::sleep(Duration::from_millis(4));
+    }
+    let edit_settled = edit_settled
+        || cx.update(|cx| {
+            let a = app.read(cx);
+            !a.live_needs_pump()
+                && !a.runtime_pump_active()
+                && !a.store.has_tracked_changes()
+                && a
+                    .store
+                    .task(task)
+                    .is_some_and(|value| value.labels.iter().any(|label| label == "legacy-edit"))
+        });
+    assert!(
+        edit_settled,
+        "the render wake did not persist a second context-free legacy edit"
+    );
 }
 
 fn durable_before_launch(root: &Path) {

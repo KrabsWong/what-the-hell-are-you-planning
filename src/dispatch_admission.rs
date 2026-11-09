@@ -76,6 +76,12 @@ pub(crate) enum AdmissionUpdate {
     },
     Acknowledged { operation_key: String },
     AckFailed { operation_key: String, reason: String },
+    /// A durable cancellation marker was restored after restart. The matching
+    /// dispatch intent must not be admitted or launched; the run is retired as
+    /// Cancelled if it reached the durable store before the crash.
+    CancelRestored { operation_key: String, run_id: u64 },
+    CancelReleased { operation_key: String },
+    CancelFailed { operation_key: String, reason: String },
     Blocked { id: AdmissionId, reason: String },
     Retained { id: AdmissionId, reason: String },
     StaleAck { id: AdmissionId, reason: String },
@@ -250,6 +256,11 @@ impl DispatchAdmissionAdapter {
         self.staged
     }
 
+    /// True while an ordered status group is staged or awaiting its receipt.
+    pub(crate) fn has_status_pending(&self) -> bool {
+        !self.status_pending.is_empty()
+    }
+
     pub(crate) fn durable_count(&self) -> usize {
         self.durable
     }
@@ -342,6 +353,9 @@ impl DispatchAdmissionAdapter {
                                     replacement,
                                 });
                             }
+                        } else if key.starts_with("cancel:") {
+                            // The cancellation marker is durable. No further
+                            // action until the dispatch receipt retires the run.
                         } else {
                             if let Some(pending) = self
                                 .unstaged
@@ -369,6 +383,11 @@ impl DispatchAdmissionAdapter {
                                 operation_key,
                                 reason,
                             });
+                        } else if let Some(operation_key) = key.strip_prefix("cancel:") {
+                            updates.push(AdmissionUpdate::CancelFailed {
+                                operation_key: operation_key.to_string(),
+                                reason,
+                            });
                         } else {
                             self.retain_unstaged(&key, reason, &mut updates);
                         }
@@ -390,6 +409,10 @@ impl DispatchAdmissionAdapter {
                             updates.push(AdmissionUpdate::ResolutionReleased {
                                 operation_key: operation_key.to_string(),
                             });
+                        } else if let Some(operation_key) = key.strip_prefix("cancel:") {
+                            updates.push(AdmissionUpdate::CancelReleased {
+                                operation_key: operation_key.to_string(),
+                            });
                         } else {
                             self.awaiting_ack.remove(&key);
                             self.known_keys.remove(&key);
@@ -398,10 +421,19 @@ impl DispatchAdmissionAdapter {
                             });
                         }
                     }
-                    Err(reason) => updates.push(AdmissionUpdate::AckFailed {
-                        operation_key: key,
-                        reason,
-                    }),
+                    Err(reason) => {
+                        if let Some(operation_key) = key.strip_prefix("cancel:") {
+                            updates.push(AdmissionUpdate::CancelFailed {
+                                operation_key: operation_key.to_string(),
+                                reason,
+                            });
+                        } else {
+                            updates.push(AdmissionUpdate::AckFailed {
+                                operation_key: key,
+                                reason,
+                            });
+                        }
+                    }
                 },
                 WorkerEvent::Blocked {
                     generation,
@@ -670,6 +702,25 @@ impl DispatchAdmissionAdapter {
         self.worker.remove_intent(operation_key.to_string())
     }
 
+    /// Record a tiny durable cancellation marker before the dispatch receipt.
+    /// Restart recovery uses it to suppress admission and retire the run without
+    /// ever spawning a process.
+    pub(crate) fn persist_cancel(&self, id: &AdmissionId) -> Result<(), String> {
+        self.worker
+            .persist_marker(format!("cancel:{}", id.operation_key))
+    }
+
+    pub(crate) fn release_cancel(&mut self, operation_key: &str) -> Result<(), String> {
+        self.worker
+            .remove_intent(format!("cancel:{operation_key}"))
+    }
+
+    /// Test-only worker hold used to prove pre-ACK cancellation deterministically.
+    #[cfg(any(test, feature = "qa"))]
+    pub(crate) fn set_hold(&self, hold: bool) {
+        self.worker.set_hold(hold);
+    }
+
     pub(crate) fn release_resolution(&mut self, operation_key: &str) -> Result<(), String> {
         let Some(full_key) = self.resolution_keys.get(operation_key).cloned() else {
             return Ok(());
@@ -767,7 +818,28 @@ impl DispatchAdmissionAdapter {
                     })
             })
             .collect();
+        // Durable cancellation markers suppress re-admission of the matching
+        // dispatch intent and retire any already-committed run as Cancelled.
+        let cancelled_keys: std::collections::BTreeSet<String> = intents
+            .iter()
+            .filter_map(|(key, _)| {
+                key.strip_prefix("cancel:")
+                    .map(|operation_key| operation_key.to_string())
+            })
+            .collect();
         for (stored_key, parts) in intents {
+            if let Some(operation_key) = stored_key.strip_prefix("cancel:") {
+                let run_id = operation_key
+                    .rsplit(":run:")
+                    .next()
+                    .and_then(|value| value.parse::<u64>().ok())
+                    .unwrap_or(0);
+                updates.push(AdmissionUpdate::CancelRestored {
+                    operation_key: operation_key.to_string(),
+                    run_id,
+                });
+                continue;
+            }
             if let Some(operation_key) = stored_key.strip_prefix("launch:") {
                 self.launch_claims.insert(operation_key.to_string());
                 continue;
@@ -789,6 +861,11 @@ impl DispatchAdmissionAdapter {
                 continue;
             };
             if claimed_or_resolved.contains(&stored_key) {
+                continue;
+            }
+            if cancelled_keys.contains(&stored_key) {
+                // The user cancelled this dispatch before its durable receipt.
+                // Do not re-admit it; CancelRestored already reported the run.
                 continue;
             }
             if !self.known_keys.insert(stored_key) {

@@ -58,6 +58,10 @@ pub fn run() {
         .join(format!(".local/result-presentation-qa/{}", std::process::id()));
     let _ = std::fs::remove_dir_all(&root);
     std::fs::create_dir_all(&root).unwrap();
+    if std::env::var("PLANNING_REFRESH_PREVIEW").as_deref() == Ok("1") {
+        refresh_preview(&root);
+        return;
+    }
     pure_checks();
     lazy_reader_check(&root);
     atomic_reader_navigation_check(&root);
@@ -1139,10 +1143,42 @@ fn screenshot(
         .unwrap();
 }
 
+fn refresh_preview(root: &Path) {
+    let (store, report_task, _) = ordinary_fixture(root, OrdinaryState::Complete);
+    let goal = store.owning_research_goal(report_task).unwrap();
+    let path = root.join("workspace.sqlite3");
+    let database = crate::sqlite_v4::SqliteV4::create_seeded(&path, root, 0x52_45_46, &store).unwrap();
+    let lazy = database.load_store_lazy().unwrap();
+    let reader = crate::history_reader::HistoryReader::start(&path, root, 0x52_45_46).unwrap();
+    application().with_assets(crate::ui_assets::AppAssets).run(move |cx| {
+        init(cx);
+        open_window(WindowOptions {
+            window_bounds: Some(WindowBounds::Windowed(Bounds::centered(None, size(px(1440.), px(920.)), cx))),
+            titlebar: Some(TitlebarOptions {
+                title: Some("Needs refresh fix — isolated test".into()),
+                ..Default::default()
+            }),
+            ..Default::default()
+        }, cx, |w, cx| {
+            let app = cx.new(|cx| TaskApp::new_mock(w, cx));
+            app.update(cx, |a, cx| {
+                a.store = lazy;
+                a.history_reader = Some(reader);
+                a.set_appearance(Appearance::Dark, w, cx);
+                a.open_task(goal, w, cx);
+            });
+            app
+        }).unwrap();
+        cx.activate(true);
+    });
+}
+
 fn lazy_reader_check(root: &Path) {
     let directory = root.join("lazy-reader");
     std::fs::create_dir_all(&directory).unwrap();
     let (mut store, report_task, report_run) = ordinary_fixture(&directory, OrdinaryState::Complete);
+    let goal = store.owning_research_goal(report_task).unwrap();
+    let steps = store.research_children(goal);
     let first = store.runs().iter().find(|run| run.research_kind == Some(ResearchKind::Collect)
         && store.owning_research_goal(run.task_id) == store.owning_research_goal(report_task)).unwrap();
     let (first_task, first_run, first_body) = (first.task_id, first.id, first.output.clone());
@@ -1163,8 +1199,7 @@ fn lazy_reader_check(root: &Path) {
         view.update(cx, |a, cx| {
             // No reader worker: hold each loading transition deterministically.
             a.store = store;
-            a.open_task(first_task, w, cx);
-            a.show_task_result(first_run, cx);
+            a.open_task(goal, w, cx);
         });
         app = Some(view.clone());
         cx.new(|cx| base::Root::new(view, w, cx))
@@ -1172,6 +1207,34 @@ fn lazy_reader_check(root: &Path) {
     let app = app.unwrap();
     let handle: AnyWindowHandle = window.into();
     cx.update_window(handle, |_, w, cx| {
+        for mode in [Appearance::Light, Appearance::Dark] {
+            app.update(cx, |a, cx| a.set_appearance(mode, w, cx));
+            w.render_frame(cx);
+            for step in &steps {
+                w.find(format!("subtask-{step}"));
+                assert!(w.try_find(format!("subtask-refresh-{step}")).is_none(),
+                    "current lazy results and dependencies must not need refresh");
+            }
+        }
+        app.update(cx, |a, _| a.store.clear_lazy_body(first_run));
+        w.render_frame(cx);
+        for step in &steps {
+            w.find(format!("subtask-refresh-{step}"));
+        }
+        app.update(cx, |a, _| {
+            a.store.mark_lazy_body(first_run);
+            a.store.run_mut(first_run).unwrap().input_signature.push_str(" changed");
+        });
+        w.render_frame(cx);
+        for step in &steps {
+            w.find(format!("subtask-refresh-{step}"));
+        }
+        app.update(cx, |a, cx| {
+            let signature = &mut a.store.run_mut(first_run).unwrap().input_signature;
+            signature.truncate(signature.len() - " changed".len());
+            a.open_task(first_task, w, cx);
+            a.show_task_result(first_run, cx);
+        });
         w.render_frame(cx);
         assert_eq!(w.find("run-result-kind").label(), Some("Loading saved report…"));
         assert!(w.find("research-result-scroll").visible());

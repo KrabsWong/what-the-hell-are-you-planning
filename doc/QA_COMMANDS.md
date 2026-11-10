@@ -161,6 +161,7 @@ target/debug/what-the-hell-are-you-planning --qa-global-search
 
 - `--qa-header-layout`: deep-report breadcrumb containment at 1000 and 1440 widths in both themes, including sidebar resizing and a downsized window.
 - `--qa-result-presentation`: typed result presentation states across ordinary and automation runs.
+- `PLANNING_REFRESH_PREVIEW=1 target/debug/what-the-hell-are-you-planning --qa-result-presentation`: opens an interactive isolated app with a completed three-step goal loaded lazily from a synthetic SQLite fixture, for checking the absence of false **Needs refresh** labels. It does not open the user's workspace or start scheduled work.
 - `--qa-execution-eligibility`: eligibility reason consistency across dispatch and display.
 - `--qa-planning`: planning ownership/revision and stale-response boundaries.
 - `--qa-global-search`: footer/⌘K search from every origin, domain filter, exact research/automation/period selection, deleted targets, dirty-form preservation, and Escape/focus restoration at 1440×920 and 1000×680 in both themes.

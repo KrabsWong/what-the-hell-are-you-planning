@@ -3027,7 +3027,7 @@ impl TaskApp {
                             .runs()
                             .iter()
                             .any(|r| r.task_id == cid && r.status == "Succeeded")
-                        && self.store.research_result(cid).is_none(),
+                        && !self.store.research_result_available_or_pending(cid),
                     "Needs refresh",
                 )
             };

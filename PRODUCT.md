@@ -14,7 +14,7 @@ A native Rust / gpui-kit task workspace for automatic topic planning, manual Kan
 
 ## Brand Personality
 
-Keep the current native desktop direction: simple, restrained and practical. No brand redesign. System fonts, compact layout, the existing warm neutral palette and light/dark themes are implementation constraints.
+Keep the current native desktop direction: simple, restrained and practical, with opaque rounded workspace surfaces and softly elevated dialogs throughout the app. No glass effects or brand redesign. System fonts, compact layout, the existing warm neutral palette and light/dark themes are implementation constraints.
 
 ## Anti-references
 

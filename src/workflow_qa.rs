@@ -164,6 +164,19 @@ print(json.dumps({'type': 'text', 'part': {'text': text}}), flush=True)
         .unwrap()
         .save(root.join("list.png"))
         .unwrap();
+    for (name, mode) in [
+        ("light", crate::appearance::Appearance::Light),
+        ("dark", crate::appearance::Appearance::Dark),
+    ] {
+        cx.update_window(handle, |_, w, cx| {
+            crate::appearance::apply(mode, Some(w), cx);
+            w.render_frame(cx);
+            w.hover(format!("task-row-{goal}"), cx);
+            w.render_frame(cx);
+        }).unwrap();
+        cx.capture_screenshot(handle).unwrap()
+            .save(root.join(format!("list-hover-{name}.png"))).unwrap();
+    }
     cx.update_window(handle, |_, w, cx| {
         app.update(cx, |a, cx| a.open_task(goal, w, cx));
         w.render_frame(cx);

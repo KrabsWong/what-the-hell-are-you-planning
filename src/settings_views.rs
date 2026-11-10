@@ -317,9 +317,9 @@ impl TaskApp {
                     .w_full()
                     .p_4()
                     .gap_2()
-                    .rounded_md()
+                    .rounded(px(crate::appearance::GROUP_RADIUS))
                     .border_1()
-                    .border_color(rgb(colors.line))
+                    .border_color(rgb(colors.subtle_line))
                     .bg(rgb(colors.panel))
                     .child(
                         row()

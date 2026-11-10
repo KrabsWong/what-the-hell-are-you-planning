@@ -194,7 +194,7 @@ impl TaskApp {
                 .filter(|m| m.to_lowercase().contains(&query)).collect();
             let mut list = col().id(format!("{id}-options"))
                 .max_h(px(190.)).overflow_y_scroll().occlude()
-                .rounded_md().border_1().border_color(rgb(colors.line))
+                .rounded(px(crate::appearance::GROUP_RADIUS)).border_1().border_color(rgb(colors.subtle_line))
                 .bg(rgb(colors.panel)).shadow_md().p_1()
                 .on_mouse_down_out(cx.listener(move |this, event: &MouseDownEvent, w, cx| {
                     if !input_bounds.get().contains(&event.position)
@@ -294,7 +294,7 @@ impl TaskApp {
         let task = self.store.task(id).unwrap();
         let archived = self.store.task_is_archived(id);
         let busy = self.attachment_import.is_some();
-        let mut panel = col().id("task-materials").p_3().gap_1().rounded_md()
+        let mut panel = col().id("task-materials").p_3().gap_1().rounded(px(crate::appearance::GROUP_RADIUS))
             .border_1().border_color(rgb(colors.line))
             .track_focus(&self.materials_focus)
             .on_mouse_down(MouseButton::Left, cx.listener(|this, _, w, cx| {
@@ -371,10 +371,10 @@ impl TaskApp {
             let full_name = attachment.name.clone();
             let card = col().id(format!("material-card-{index}"))
                 .group(group.clone()).relative().w(px(176.)).max_w_full().flex_shrink_0()
-                .rounded_lg().border_1().border_color(rgb(colors.line))
+                .rounded(px(crate::appearance::GROUP_RADIUS)).border_1().border_color(rgb(colors.subtle_line))
                 .bg(rgb(colors.canvas)).hover(|s| s.border_color(rgb(colors.accent)))
                 .child(col().id(format!("attachment-{index}"))
-                    .rounded_lg().overflow_hidden().cursor_pointer()
+                    .rounded(px(crate::appearance::GROUP_RADIUS)).overflow_hidden().cursor_pointer()
                     .tooltip(move |w, cx| gpui_kit::component::tooltip::Tooltip::new(full_name.clone()).build(w, cx))
                     .on_click(cx.listener(move |this, _, _, cx| this.open_attachment(&open, cx)))
                     .child(preview)
@@ -385,7 +385,7 @@ impl TaskApp {
                 .child(div().absolute().top_2().right_2().opacity(0.)
                     .group_hover(group, |s| s.opacity(1.))
                     .child(tool_icon(format!("material-menu-{index}"), assets::IconName::Ellipsis, "Material actions")
-                        .bg(rgb(colors.canvas)).border_1().border_color(rgb(colors.line)).rounded_md()
+                        .bg(rgb(colors.canvas)).border_1().border_color(rgb(colors.line)).rounded(px(crate::appearance::CONTROL_RADIUS))
                         .dropdown_menu_with_anchor(Anchor::TopRight, move |menu, _, _| {
                             let open_entity = menu_entity.clone();
                             let remove_entity = menu_entity.clone();
@@ -461,7 +461,7 @@ impl TaskApp {
         }
         if archived {
             panel = panel.child(
-                col().p_4().gap_2().rounded_md().bg(rgb(colors.panel))
+                col().p_4().gap_2().rounded(px(crate::appearance::GROUP_RADIUS)).bg(rgb(colors.panel))
                     .child(chip("ARCHIVED", colors.muted, cx).id("archived-research-badge").map(observed))
                     .child(muted(
                         crate::archive_presentation::presentation(&self.store, id)
@@ -480,7 +480,7 @@ impl TaskApp {
         }
         if pending_approval && !archived {
             let goal = research.goal_id;
-            panel = panel.child(col().p_4().gap_3().rounded_md().bg(rgb(colors.panel))
+            panel = panel.child(col().p_4().gap_3().rounded(px(crate::appearance::GROUP_RADIUS)).bg(rgb(colors.panel))
                 .child(chip("AWAITING GOAL APPROVAL", colors.accent, cx))
                 .child(muted("Review the complete plan and expected output. Move the goal to Todo to approve all its steps; click Run to execute.", cx))
                 .when(research.kind == ResearchKind::Goal, |d| d.child(primary_button("approve-research-topic", "Move goal to Todo").disabled(archived)
@@ -644,7 +644,7 @@ impl TaskApp {
                         .gap_3()
                         .p_4()
                         .bg(rgb(colors.panel))
-                        .rounded_md()
+                        .rounded(px(crate::appearance::SURFACE_RADIUS))
                         .when(presentation.notice.is_some(), |d| {
                             d.child(notice_panel(
                                 NoticeTone::Warning,

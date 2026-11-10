@@ -131,7 +131,7 @@ impl Store {
             for report in reports {
                 let run = self.research_result(report)?;
                 markdown.push_str(&run.output);
-                markdown.push_str("\n\n### 引用来源\n\n");
+                markdown.push_str("\n\n### Sources\n\n");
                 for source in &run.sources {
                     // Titles are text, never raw HTML; the renderer handles URL policy.
                     markdown.push_str(&format!("- {}: <{}> ({})\n", source.title.replace(['\n', '\r'], " "), source.url, source.published_at));
@@ -435,10 +435,10 @@ impl TaskApp {
             let (status, description) = p.presentation();
             let color = if p.status == "Pushed · awaiting deployment" { colors.warning } else if busy { colors.accent } else if p.status == "Online" { colors.success }
                 else if matches!(p.status.as_str(), "Failed" | "Interrupted" | "Pushed · site access error") { colors.danger } else { colors.warning };
-            panel = panel.child(col().gap_1().px_3().py_2().rounded_md()
+            panel = panel.child(col().gap_1().px_3().py_2().rounded(px(crate::appearance::GROUP_RADIUS))
                 .bg(rgb(colors.side)).border_1().border_color(rgb(colors.subtle_line))
                 .child(row().flex_wrap().gap_2()
-                    .child(div().text_xs().font_weight(FontWeight::MEDIUM).px_2().py_1().rounded_md()
+                    .child(div().text_xs().font_weight(FontWeight::MEDIUM).px_2().py_1().rounded(px(crate::appearance::CONTROL_RADIUS))
                         .text_color(rgb(color)).bg(rgba((color << 8) | 20)).child(status.to_string()))
                     .child(row().min_w_0().max_w_full()
                     .child(link_button(format!("open-report-{}", p.id), "").icon(assets::IconName::ExternalLink).min_w_0().flex_1()

@@ -1,5 +1,8 @@
 use crate::app::Scope;
-use crate::appearance::palette;
+use crate::appearance::{
+    CONTROL_RADIUS, GROUP_RADIUS, SHELL_INSET, SURFACE_GUTTER, SURFACE_RADIUS,
+    floating_surface, palette,
+};
 pub(crate) use crate::controls::*;
 use crate::domain::{Priority, Task};
 use crate::{app::*, domain::*};
@@ -129,7 +132,7 @@ pub(crate) fn notice(tone: NoticeTone, text: impl Into<SharedString>, cx: &App) 
     let color = tone.color(&colors);
     div()
         .p_3()
-        .rounded_md()
+        .rounded(px(GROUP_RADIUS))
         .border_1()
         .border_color(rgb(color))
         .bg(rgb(tone.surface(&colors)))
@@ -148,7 +151,7 @@ pub(crate) fn notice_panel(
     col()
         .p_3()
         .gap_1()
-        .rounded_md()
+        .rounded(px(GROUP_RADIUS))
         .border_1()
         .border_color(rgb(color))
         .bg(rgb(tone.surface(&colors)))
@@ -226,60 +229,48 @@ impl TaskApp {
         self.layout_switch_for(false, cx)
     }
     pub(crate) fn layout_switch_for(&self, steps: bool, cx: &mut Context<Self>) -> AnyElement {
+        use gpui_kit::component::tab::{Tab, TabBar};
+
         let colors = palette(cx);
         let layout = if steps {
             self.steps_layout()
         } else {
             self.layout
         };
-        row()
+        TabBar::new(if steps { "steps-layout-switch" } else { "layout-switch" })
+            .segmented()
+            .selected_index(if layout == Layout::List { 0 } else { 1 })
             .flex_shrink_0()
-            .gap_0()
-            .p(px(2.))
-            .rounded(px(7.))
+            .h(px(36.))
+            .rounded(px(GROUP_RADIUS))
             .bg(rgb(colors.side))
             .child(
-                row_button(
-                    if steps {
-                        "steps-list-view"
-                    } else {
-                        "list-view"
-                    },
-                    "List",
-                )
-                .icon(assets::IconName::Menu)
-                .selected(layout == Layout::List)
-                .when(layout == Layout::List, |b| b.bg(rgb(colors.panel)))
-                .on_click(cx.listener(move |this, _, _, cx| {
-                    if steps {
-                        this.set_steps_layout(Layout::List);
-                    } else {
-                        this.layout = Layout::List;
-                    }
-                    cx.notify();
-                })),
+                Tab::new().aria_label("List").child(
+                    row()
+                        .id(if steps { "steps-list-view" } else { "list-view" })
+                        .child(gpui_kit::component::Icon::new(assets::IconName::Menu).size_4())
+                        .child("List")
+                        .map(observed),
+                ),
             )
             .child(
-                row_button(
-                    if steps {
-                        "steps-board-view"
-                    } else {
-                        "board-view"
-                    },
-                    "Board",
-                )
-                .icon(assets::IconName::LayoutDashboard)
-                .selected(layout == Layout::Board)
-                .when(layout == Layout::Board, |b| b.bg(rgb(colors.panel)))
-                .on_click(cx.listener(move |this, _, _, cx| {
-                    if steps {
-                        this.set_steps_layout(Layout::Board);
-                    } else {
-                        this.layout = Layout::Board;
-                    }
-                    cx.notify();
-                })),
+                Tab::new().aria_label("Board").child(
+                    row()
+                        .id(if steps { "steps-board-view" } else { "board-view" })
+                        .child(gpui_kit::component::Icon::new(assets::IconName::LayoutDashboard).size_4())
+                        .child("Board")
+                        .map(observed),
+                ),
             )
+            .on_click(cx.listener(move |this, index: &usize, _, cx| {
+                let layout = if *index == 0 { Layout::List } else { Layout::Board };
+                if steps {
+                    this.set_steps_layout(layout);
+                } else {
+                    this.layout = layout;
+                }
+                cx.notify();
+            }))
             .into_any_element()
     }
 
@@ -310,7 +301,7 @@ impl TaskApp {
                 .p_4()
                 .gap_3()
                 .items_start()
-                .rounded_lg()
+                .rounded(px(GROUP_RADIUS))
                 .bg(rgb(tone.surface(&colors)))
                 .border_1()
                 .border_color(rgb(color))
@@ -490,8 +481,6 @@ impl TaskApp {
             .h(px(30.))
             .px_4()
             .bg(rgb(colors.side))
-            .border_t_1()
-            .border_color(rgb(colors.line))
             .justify_between()
             .gap_4()
             .text_xs()
@@ -699,8 +688,6 @@ impl TaskApp {
             .flex_shrink_0()
             .h_full()
             .bg(rgb(colors.side))
-            .border_r_1()
-            .border_color(rgb(colors.line))
             .p_3();
         let identity = row()
             .h(px(60.))
@@ -842,7 +829,7 @@ impl TaskApp {
             projects_block = projects_block.child(
                 row()
                     .gap_0()
-                    .rounded_md()
+                    .rounded(px(CONTROL_RADIUS))
                     .hover(|d| d.bg(rgb(colors.hover)))
                     .child(
                         row_button(format!("project-{pid}"), "")
@@ -1066,7 +1053,7 @@ impl TaskApp {
                                 .when(nested, |d| {
                                     d.pl_1().border_l_1().border_color(rgb(colors.line))
                                 })
-                                .when(!nested, |d| d.rounded_md())
+                                .when(!nested, |d| d.rounded(px(CONTROL_RADIUS)))
                                 .hover(|d| d.bg(rgb(colors.hover)))
                                 .id(format!("sidebar-task-row-{tid}"))
                                 .when(active, |d| d.track_scroll(&self.sidebar_selected_row))
@@ -1158,10 +1145,8 @@ impl TaskApp {
                 row()
                     .flex_shrink_0()
                     .gap_0()
-                    .mt_1()
-                    .pt_1()
-                    .border_t_1()
-                    .border_color(rgb(colors.line))
+                    .mt_2()
+                    .pt_2()
                     .child(self.workspace_switcher(cx))
                     .child(
                         tool_icon(
@@ -1604,7 +1589,7 @@ impl TaskApp {
             .copied()
             .unwrap_or(px(280.));
         let header_width = (window.viewport_size().width - sidebar_width - px(1.)).max(px(320.));
-        let mut header = row()
+        let header = row()
             .id("navigation-header")
             .w(header_width)
             .min_w_0()
@@ -1612,8 +1597,6 @@ impl TaskApp {
             .flex_shrink_0()
             .px_4()
             .gap_3()
-            .border_b_1()
-            .border_color(rgb(colors.line))
             .when(back_available, |d| {
                 d.child(
                     quiet_button("navigation-back", "Back")
@@ -1632,71 +1615,13 @@ impl TaskApp {
                 )
             })
             .child(trail.map(observed));
-        let options: Vec<_> = self
-            .tabs
-            .iter()
-            .rev()
-            .filter_map(|id| {
-                self.store
-                    .task(*id)
-                    .filter(|t| !self.store.task_is_archived(t.id))
-                    .map(|_| (*id, self.store.task_navigation_label(*id)))
-            })
-            .collect();
-        if !options.is_empty() {
-            let entity = cx.entity().downgrade();
-            let selected = self.selected();
-            header = header.child(
-                quiet_button("open-tasks-menu", "Recently opened")
-                    .dropdown_caret(true)
-                    .flex_shrink_0()
-                    .text_color(rgb(colors.muted))
-                    .tooltip("Switch between recently opened task pages. This list does not indicate whether tasks are running or completed.")
-                    .dropdown_menu_with_anchor(Anchor::TopRight, move |mut menu, _, _| {
-                        for (id, title) in &options {
-                            let entity = entity.clone();
-                            let id = *id;
-                            let label = title.clone();
-                            menu = menu.item(
-                                labeled_menu_item(format!("recent-task-{id}"), label.clone())
-                                    .checked(selected == Some(id))
-                                    .on_click(move |_, w, cx| {
-                                        let _ = entity.update(cx, |a, cx| {
-                                            let surface = a
-                                                .navigation
-                                                .recent_surfaces
-                                                .get(&id)
-                                                .copied()
-                                                .unwrap_or(
-                                                    crate::navigation_context::RecentSurface::Task,
-                                                );
-                                            a.request_recent(id, surface, w, cx);
-                                        });
-                                    }),
-                            );
-                        }
-                        if selected.is_some() {
-                            let entity = entity.clone();
-                            menu = menu.separator().item(
-                                PopupMenuItem::new("Close current task").on_click(
-                                    move |_, w, cx| {
-                                        let _ =
-                                            entity.update(cx, |a, cx| a.close_current_task(w, cx));
-                                    },
-                                ),
-                            );
-                        }
-                        menu
-                    }),
-            );
-        }
         if cfg!(target_os = "macos") {
             gpui_kit::component::TitleBar::new()
                 .w_full()
                 .h(px(44.))
                 .pl_0()
                 .border_b_0()
-                .bg(rgb(colors.canvas))
+                .bg(rgb(colors.side))
                 .child(
                     div()
                         .flex_1()
@@ -2036,7 +1961,7 @@ impl TaskApp {
                                 let id = *id;
                                 let key = id.map(|id| id.to_string()).unwrap_or_else(|| "unassigned".into());
                                 row_button(format!("collection-topic-{key}"), "")
-                                    .h(px(row_height)).w_full().px_6().rounded_none()
+                                    .h(px(row_height)).w_full().px_6().rounded(px(CONTROL_RADIUS))
                                     .bg(rgb(palette(cx).side))
                                     .tooltip(name.clone())
                                     .accessibility_label(format!("{name} · {count} goals · Open topic"))
@@ -2057,7 +1982,7 @@ impl TaskApp {
                                     .h(px(row_height))
                                     .w_full()
                                     .px_6()
-                                    .rounded_none()
+                                    .rounded(px(CONTROL_RADIUS))
                                     .bg(rgb(palette(cx).side))
                                     .accessibility_label(format!("Open project {name}"))
                                     .child(
@@ -2086,6 +2011,7 @@ impl TaskApp {
                                     .into_any_element()
                             }
                         })
+                        .map(|item| div().py(px(2.)).child(item).into_any_element())
                         .collect()
                 }),
             )
@@ -2142,10 +2068,8 @@ impl TaskApp {
             .h(px(height))
             .px_6()
             .gap_3()
-            .border_b_1()
-            .border_color(rgb(colors.subtle_line))
             .cursor_pointer()
-            .hover(|d| d.bg(rgb(colors.hover)))
+            .hover(|d| d.bg(rgb(colors.hover)).rounded(px(CONTROL_RADIUS)))
             .on_click(cx.listener(move |this, _, w, cx| this.request_task(id, false, w, cx)))
             .child(
                 div().w(px(156.)).flex_shrink_0().child(
@@ -2338,7 +2262,7 @@ impl TaskApp {
                     .flex_shrink_0()
                     .h_full()
                     .gap_3()
-                    .rounded_md()
+                    .rounded(px(GROUP_RADIUS))
                     .when(!archive, |d| d
                         .drag_over::<DragTask>(move |d, drag, _, cx| {
                             let allowed = entity.upgrade().is_some_and(|entity| {
@@ -2394,7 +2318,7 @@ impl TaskApp {
                                         .h_24()
                                         .border_1()
                                         .border_color(rgb(colors.line))
-                                        .rounded_md()
+                                        .rounded(px(CONTROL_RADIUS))
                                         .flex()
                                         .items_center()
                                         .justify_center()
@@ -2429,7 +2353,7 @@ impl TaskApp {
             .id(format!("card-{id}"))
             .p_3()
             .gap_2()
-            .rounded(px(7.))
+            .rounded(px(GROUP_RADIUS))
             .border_1()
             .border_color(rgb(border))
             .bg(rgb(surface))
@@ -3100,7 +3024,7 @@ impl TaskApp {
                         .id(format!("comment-{i}"))
                         .p_3()
                         .gap_2()
-                        .rounded_md()
+                        .rounded(px(GROUP_RADIUS))
                         .bg(rgb(colors.panel))
                         .child(
                             row()
@@ -3646,7 +3570,7 @@ impl TaskApp {
             .bg(rgb(colors.panel))
             .border_1()
             .border_color(rgb(colors.line))
-            .rounded_md();
+            .rounded(px(CONTROL_RADIUS));
         match property {
             Property::Stage => {
                 for stage in Stage::ALL {
@@ -3858,8 +3782,7 @@ impl TaskApp {
                     .w(px(620.))
                     .p_6()
                     .gap_4()
-                    .bg(rgb(colors.panel))
-                    .rounded_lg()
+                    .map(|d| floating_surface(d, cx))
                     .child(
                         div()
                             .text_lg()
@@ -3920,10 +3843,7 @@ impl TaskApp {
                     .overflow_y_scroll()
                     .p_6()
                     .gap_4()
-                    .rounded(px(12.))
-                    .bg(rgb(colors.panel))
-                    .border_1()
-                    .border_color(rgb(colors.border_strong))
+                    .map(|d| floating_surface(d, cx))
                     .child(
                         row()
                             .justify_between()
@@ -4067,7 +3987,6 @@ impl TaskApp {
         let Some(pending) = &self.navigation.pending_exit else {
             return div().into_any_element();
         };
-        let colors = palette(cx);
         let saving = self.navigation.pending_saved_exit.is_some();
         let mut actions = row().flex_wrap().justify_end().gap_2();
         actions = actions
@@ -4104,8 +4023,7 @@ impl TaskApp {
             .max_h(relative(0.9))
             .p_6()
             .gap_4()
-            .rounded_lg()
-            .bg(rgb(colors.panel));
+            .map(|d| floating_surface(d, cx));
         body = body
             .child(
                 div()
@@ -4316,7 +4234,7 @@ impl Render for TaskApp {
             .track_focus(&self.focus)
             .size_full()
             .relative()
-            .bg(rgb(colors.canvas))
+            .bg(rgb(colors.side))
             .text_color(rgb(colors.text))
             .font_family(".AppleSystemUIFont")
             .text_sm()
@@ -4415,6 +4333,16 @@ impl Render for TaskApp {
                 div().flex_1().min_h_0().child(
                     h_resizable("workspace-split")
                         .with_state(&self.sidebar_split)
+                        .with_handle_appearance(std::rc::Rc::new(|handle, _, cx| {
+                            // Keep the library's drag target and cursor; paint only a
+                            // short grip on hover/drag instead of a full-height rule.
+                            Some(div().w_full().h_full().flex().items_center().justify_center()
+                                .when(!matches!(handle.state(), gpui_kit::base::ResizeHandleState::Idle), |d| {
+                                    d.child(div().w(px(2.)).h(px(48.)).rounded_full()
+                                        .bg(rgb(if handle.is_active() { palette(cx).accent } else { palette(cx).muted })))
+                                })
+                                .into_any_element())
+                        }))
                         .child(
                             resizable_panel()
                                 .size(px(260.))
@@ -4432,7 +4360,21 @@ impl Render for TaskApp {
                                     .when(self.save_feedback.is_some(), |d| {
                                         d.child(self.save_feedback_view(cx))
                                     })
-                                    .child(div().flex_1().min_h_0().child(content)),
+                                    .child(
+                                        div().flex_1().min_h_0().p(px(SHELL_INSET)).pt_0()
+                                            .child(
+                                                col().id("workspace-content-surface")
+                                                    .size_full().min_w_0().min_h_0()
+                                                    .rounded(px(SURFACE_RADIUS))
+                                                    .p(px(SURFACE_GUTTER))
+                                                    .bg(rgb(colors.canvas))
+                                                    .border_1().border_color(rgb(colors.subtle_line))
+                                                    .shadow(crate::appearance::workspace_shadow(cx))
+                                                    .overflow_hidden()
+                                                    .child(content)
+                                                    .map(observed),
+                                            ),
+                                    ),
                             ),
                         ),
                 ),
@@ -4480,8 +4422,7 @@ impl Render for TaskApp {
                             .w(px(420.))
                             .p_6()
                             .gap_4()
-                            .bg(rgb(colors.panel))
-                            .rounded_lg()
+                            .map(|d| floating_surface(d, cx))
                             .child(div().text_lg().child(selectable("New project")))
                             .child(Input::new(&input).id("project-name"))
                             .child(muted("Create a project to organize topics. You can add research requests later.", cx))

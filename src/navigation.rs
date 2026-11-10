@@ -558,13 +558,7 @@ impl TaskApp {
             }
         }
     }
-    pub(crate) fn close_current_task(&mut self, w: &mut Window, cx: &mut Context<Self>) {
-        let Some(id) = self.selected() else {
-            return;
-        };
-        self.tabs.retain(|task| *task != id);
-        self.go_back(w, cx);
-    }
+
 }
 
 /// One resolved result selection for the reader, breadcrumbs, history and typed

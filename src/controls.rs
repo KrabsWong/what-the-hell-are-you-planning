@@ -14,7 +14,7 @@ pub fn button(id: impl Into<ElementId>, text: impl Into<SharedString>) -> Button
         .label(text)
         .h(px(32.))
         .px_3()
-        .rounded(px(6.))
+        .rounded(px(crate::appearance::CONTROL_RADIUS))
 }
 /// Auxiliary actions use the main-branch ghost style without competing with
 /// the primary action. Labels remain visible at rest.
@@ -37,7 +37,7 @@ pub fn tool_icon(
     Button::new(id)
         .ghost()
         .h(px(32.))
-        .rounded(px(6.))
+        .rounded(px(crate::appearance::CONTROL_RADIUS))
         .icon(icon)
         .w(px(32.))
         .px_0()

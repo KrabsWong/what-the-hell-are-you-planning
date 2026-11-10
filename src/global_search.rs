@@ -11,7 +11,7 @@
 
 use crate::app::TaskApp;
 use crate::appearance::palette;
-use crate::controls::{select_button, tool_icon};
+use crate::controls::{select_button, single_line_text, tool_icon};
 use crate::domain::{Store, Task};
 use crate::research::ResearchKind;
 use crate::views::{col, label, muted, observed, row, selectable};
@@ -806,19 +806,22 @@ impl TaskApp {
         );
         observed(
             row()
-                .id(row_id)
+                .id(row_id.clone())
                 .w_full()
+                .min_w_0()
                 .flex_shrink_0()
                 .items_start()
                 .gap_3()
                 .px_3()
                 .py_2()
-                .rounded(px(6.))
+                .rounded(px(crate::appearance::CONTROL_RADIUS))
                 .cursor_pointer()
                 .role(Role::ListBoxOption)
                 .aria_selected(selected)
                 .aria_label(format!("{} · {}", hit.kind.label(), hit.title))
                 .aria_description(format!("{} · {}", hit.detail, hit.destination))
+                .border_1()
+                .border_color(rgba(0x00000000))
                 .when(selected, |this| {
                     this.bg(rgb(colors.accent_surface))
                         .border_1()
@@ -845,14 +848,16 @@ impl TaskApp {
                         .min_w_0()
                         .gap_1()
                         .child(
-                            div()
+                            single_line_text(format!("{row_id}-title"), hit.title.clone())
+                                .w_full()
+                                .flex_none()
                                 .text_sm()
                                 .font_weight(FontWeight::MEDIUM)
-                                .overflow_hidden()
-                                .child(hit.title.clone()),
+                                .map(observed),
                         )
                         .child(
                             row()
+                                .w_full()
                                 .gap_2()
                                 .min_w_0()
                                 .child(
@@ -864,23 +869,22 @@ impl TaskApp {
                                         .bg(rgb(colors.tag_surface))
                                         .text_color(rgb(colors.tag_text))
                                         .text_xs()
+                                        .whitespace_nowrap()
                                         .child(hit.kind.label()),
                                 )
                                 .child(
-                                    div()
-                                        .flex_1()
-                                        .min_w_0()
-                                        .overflow_hidden()
+                                    single_line_text(format!("{row_id}-detail"), hit.detail.clone())
                                         .text_xs()
                                         .text_color(rgb(colors.muted))
-                                        .child(hit.detail.clone()),
+                                        .map(observed),
                                 )
                                 .child(
                                     div()
                                         .flex_shrink_0()
                                         .text_xs()
                                         .text_color(rgb(colors.accent))
-                                        .child(hit.destination.clone()),
+                                        .whitespace_nowrap()
+                                        .child("Open"),
                                 ),
                         ),
                 ),
@@ -898,10 +902,7 @@ impl TaskApp {
             .max_h(relative(0.86))
             .p_3()
             .gap_3()
-            .bg(rgb(colors.panel))
-            .rounded(px(12.))
-            .border_1()
-            .border_color(rgb(colors.border_strong))
+            .map(|d| crate::appearance::floating_surface(d, cx))
             .text_color(rgb(colors.text))
             .capture_key_down(cx.listener(
                 |this, event: &KeyDownEvent, window, cx| {

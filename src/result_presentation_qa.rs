@@ -1386,7 +1386,7 @@ fn copy_result_check(root: &Path) {
         w.render_frame(cx);
         w.click("run-actions-menu", cx);
         w.render_frame(cx);
-        w.click(3usize, cx);
+        w.within("popup-menu").click(3usize, cx);
     })
     .unwrap();
     cx.run_until_parked();

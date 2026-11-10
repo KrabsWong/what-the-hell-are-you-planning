@@ -6,6 +6,39 @@ use gpui_kit::{
 };
 use serde::{Deserialize, Serialize};
 
+// Geometry is shared by library controls and application-owned surfaces.
+pub const CONTROL_RADIUS: f32 = 8.;
+pub const GROUP_RADIUS: f32 = 12.;
+pub const SURFACE_RADIUS: f32 = 16.;
+pub const DIALOG_RADIUS: f32 = 20.;
+pub const SHELL_INSET: f32 = 10.;
+// GPUI overflow masks are rectangular. Keep child painting inside the curve.
+pub const SURFACE_GUTTER: f32 = 6.;
+
+/// The workspace casts a soft leading-edge shadow onto the sidebar backdrop.
+pub fn workspace_shadow(cx: &App) -> Vec<gpui_kit::BoxShadow> {
+    use gpui_kit::*;
+    let color = if Theme::global(cx).is_dark() { 0x00000048 } else { 0x00000016 };
+    vec![BoxShadow::new(px(-5.), px(0.), rgba(color).into()).blur_radius(px(18.))]
+}
+
+/// Opaque elevated surface for application-owned dialogs and search.
+pub fn floating_surface<E: gpui_kit::Styled>(element: E, cx: &App) -> E {
+    use gpui_kit::*;
+    let colors = palette(cx);
+    element
+        .rounded(px(DIALOG_RADIUS))
+        .bg(rgb(colors.panel))
+        .border_1()
+        .border_color(rgb(colors.subtle_line))
+        .shadow(vec![
+            BoxShadow::new(px(0.), px(12.), rgba(0x00000026).into())
+                .blur_radius(px(32.)),
+            BoxShadow::new(px(0.), px(2.), rgba(0x00000014).into())
+                .blur_radius(px(6.)),
+        ])
+}
+
 #[derive(Clone, Copy, Debug, Default, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(rename_all = "snake_case")]
 pub enum Appearance {
@@ -59,7 +92,9 @@ pub fn apply(appearance: Appearance, window: Option<&mut Window>, cx: &mut App) 
     let p = palette(cx);
     let dark = Theme::global(cx).is_dark();
     Theme::update(cx, |theme| {
-        theme.radius = px(6.);
+        theme.radius = px(CONTROL_RADIUS);
+        theme.radius_lg = px(GROUP_RADIUS);
+        theme.shadow = true;
         theme.button = rgb(if dark { 0x2c2e32 } else { 0xf2f3ef }).into();
         theme.button_hover = rgb(if dark { 0x393d43 } else { 0xe1e4dc }).into();
         theme.button_active = rgb(if dark { 0x484e56 } else { 0xd0d6c9 }).into();

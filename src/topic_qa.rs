@@ -86,7 +86,7 @@ pub fn run() {
             });
             w.render_frame(cx);
             w.click("goal-topic", cx);
-            w.click(1usize, cx);
+            w.within("popup-menu").click(1usize, cx);
             assert_eq!(app.read(cx).store.task(goal).unwrap().topic_id, Some(id));
             app.update(cx, |a, cx| {
                 a.store.apply_research_plan(goal, r#"{"tasks":[{"title":"Collect results","instructions":"Collect primary filings","kind":"collect","depends_on":[]},{"title":"Analyze fundamentals","instructions":"Analyze results","kind":"analyze","depends_on":[0]},{"title":"Research report","instructions":"Summarize findings","kind":"advise","depends_on":[1]}]}"#).unwrap();
@@ -271,7 +271,7 @@ pub fn run() {
         assert_eq!(app.read(cx).scope(), Scope::Topic(topic));
         w.click("topic-actions-menu", cx);
         w.render_frame(cx);
-        w.click(1usize, cx); // Rename topic
+        w.within("popup-menu").click(1usize, cx); // Rename topic
         w.render_frame(cx);
         app.read(cx)
             .topic_editor
@@ -298,8 +298,8 @@ pub fn run() {
         w.render_frame(cx);
         w.click("topic-actions-menu", cx);
         w.render_frame(cx);
-        assert_eq!(w.find(3usize).label(), Some("Archive topic"));
-        w.click(3usize, cx); // Archive topic
+        assert_eq!(w.within("popup-menu").find(3usize).label(), Some("Archive topic"));
+        w.within("popup-menu").click(3usize, cx); // Archive topic
         assert!(
             app.read(cx)
                 .store
@@ -328,8 +328,8 @@ pub fn run() {
         w.render_frame(cx);
         w.click("topic-actions-menu", cx);
         w.render_frame(cx);
-        assert_eq!(w.find(3usize).label(), Some("Restore topic"));
-        w.click(3usize, cx); // Restore topic
+        assert_eq!(w.within("popup-menu").find(3usize).label(), Some("Restore topic"));
+        w.within("popup-menu").click(3usize, cx); // Restore topic
         assert!(
             !app.read(cx)
                 .store
@@ -563,7 +563,7 @@ pub fn run_migration() {
         w.render_frame(cx);
         w.click("project-actions", cx);
         w.render_frame(cx);
-        w.click(0usize, cx);
+        w.within("popup-menu").click(0usize, cx);
         assert!(app.read(cx).project_rename.is_some());
         assert!(!w.has_active_prompt());
         w.render_frame(cx);
@@ -781,7 +781,7 @@ pub fn goal_actions() {
         w.render_frame(cx);
         w.click("run-actions-menu", cx);
         w.render_frame(cx);
-        w.click(1usize, cx);
+        w.within("popup-menu").click(1usize, cx);
         assert_eq!(app.read(cx).selected(), Some(goal));
         assert_eq!(app.read(cx).task_result_context(), None);
         w.render_frame(cx);
@@ -790,7 +790,7 @@ pub fn goal_actions() {
         w.render_frame(cx);
         w.click("run-actions-menu", cx);
         w.render_frame(cx);
-        w.click(1usize, cx);
+        w.within("popup-menu").click(1usize, cx);
         assert_eq!(app.read(cx).selected(), Some(report));
         // An old successful report is insufficient when the latest attempt failed.
         app.update(cx, |a, cx| {

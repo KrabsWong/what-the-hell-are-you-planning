@@ -256,7 +256,7 @@ pub fn run() {
                 let before = app.read(cx).store.clone();
                 w.click("run-actions-menu", cx);
                 w.render_frame(cx);
-                w.click(0usize, cx);
+                w.within("popup-menu").click(0usize, cx);
                 assert!(w.try_find("run-log-panel").is_some());
                 assert!(
                     w.try_find("cancel-run").is_none(),

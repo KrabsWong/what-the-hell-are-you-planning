@@ -2732,7 +2732,7 @@ impl TaskApp {
                     .mt_6()
                     .p_6()
                     .gap_3()
-                    .rounded_lg()
+                    .rounded(px(crate::appearance::GROUP_RADIUS))
                     .border_1()
                     .border_color(rgb(colors.line))
                     .bg(rgb(colors.panel))
@@ -2798,7 +2798,7 @@ impl TaskApp {
                     .gap_3()
                     .items_center()
                     .flex_shrink_0()
-                    .rounded_lg()
+                    .rounded(px(crate::appearance::GROUP_RADIUS))
                     .border_1()
                     .border_color(rgb(colors.line))
                     .bg(rgb(colors.panel))
@@ -3192,7 +3192,7 @@ impl TaskApp {
                     .w_full()
                     .min_w_0()
                     .px_6()
-                    .pb_1()
+                    .pb_2()
                     .child(self.automation_occurrence_row(occurrence, true, cx))
                     .into_any_element()
             }
@@ -3537,7 +3537,7 @@ impl TaskApp {
                         cx,
                     )),
             );
-            let mut history = col().gap_0();
+            let mut history = col().gap_2();
             for occurrence in shown {
                 history = history.child(self.automation_occurrence_row(occurrence, false, cx));
             }
@@ -3814,8 +3814,7 @@ impl TaskApp {
                     .max_h(relative(0.9))
                     .p_6()
                     .gap_4()
-                    .rounded_lg()
-                    .bg(rgb(colors.panel))
+                    .map(|d| crate::appearance::floating_surface(d, cx))
                     .child(
                         row()
                             .justify_between()
@@ -4021,7 +4020,7 @@ impl TaskApp {
             .py_2()
             .gap_2()
             .items_center()
-            .rounded_md()
+            .rounded(px(crate::appearance::GROUP_RADIUS))
             .bg(rgb(colors.panel))
             .cursor_pointer()
             .hover(|d| d.bg(rgb(colors.hover)))
@@ -4134,7 +4133,7 @@ impl TaskApp {
             .id("automation-occurrence-detail")
             .p_4()
             .gap_3()
-            .rounded_lg()
+            .rounded(px(crate::appearance::GROUP_RADIUS))
             .bg(rgb(colors.side))
             .child(label(
                 occurrence_context(
@@ -4277,7 +4276,7 @@ impl TaskApp {
         );
         if presentation.reports.is_empty() && presentation.has_reader_body() {
             panel = panel.child(
-                div().p_3().rounded_md().bg(rgb(colors.panel)).child(
+                div().p_3().rounded(px(crate::appearance::GROUP_RADIUS)).bg(rgb(colors.panel)).child(
                     self.automation_report_reader(
                         format!("automation-result-{id}-fallback"),
                         presentation.reader_markdown.clone(), reader_height, cx,
@@ -4328,7 +4327,7 @@ impl TaskApp {
                     div()
                         .id(format!("automation-report-body-{id}-{run_key}"))
                         .aria_label("Retained report body")
-                        .p_3().rounded_md().bg(rgb(colors.panel)).child(
+                        .p_3().rounded(px(crate::appearance::GROUP_RADIUS)).bg(rgb(colors.panel)).child(
                         self.automation_report_reader(
                             format!("automation-result-{id}-{run_key}"),
                             result.reader_markdown.clone(), reader_height, cx,
@@ -4370,7 +4369,7 @@ impl TaskApp {
                     col()
                         .p_3()
                         .gap_1()
-                        .rounded_md()
+                        .rounded(px(crate::appearance::GROUP_RADIUS))
                         .border_1()
                         .border_color(rgb(colors.line))
                         .child(label(
@@ -4423,7 +4422,7 @@ impl TaskApp {
                     col()
                         .p_3()
                         .gap_1()
-                        .rounded_md()
+                        .rounded(px(crate::appearance::GROUP_RADIUS))
                         .border_1()
                         .border_color(rgb(colors.line))
                         .child(label(
@@ -4565,7 +4564,7 @@ impl TaskApp {
                     .py_1()
                     .gap_2()
                     .items_center()
-                    .rounded_md()
+                    .rounded(px(crate::appearance::GROUP_RADIUS))
                     .cursor_pointer()
                     .hover(|d| d.bg(rgb(colors.hover)))
                     .tooltip({
@@ -4692,7 +4691,6 @@ impl TaskApp {
         let Some(occurrence) = self.store.occurrence(id) else {
             return div().into_any_element();
         };
-        let colors = palette(cx);
         let status_label = match presentation.status_suffix() {
             Some(suffix) => format!("{} · {suffix}", occurrence.status.label()),
             None => occurrence.status.label().to_string(),
@@ -4719,8 +4717,7 @@ impl TaskApp {
                     .max_h(relative(0.9))
                     .p_6()
                     .gap_4()
-                    .rounded_lg()
-                    .bg(rgb(colors.panel))
+                    .map(|d| crate::appearance::floating_surface(d, cx))
                     .child(
                         row()
                             .justify_between()
@@ -4861,7 +4858,6 @@ impl TaskApp {
             }
             text
         };
-        let colors = palette(cx);
         let objective_id = format!("planning-attempt-objective-{run_id}");
         let expected_id = format!("planning-attempt-expected-{run_id}");
         let status_id = format!(
@@ -4876,7 +4872,7 @@ impl TaskApp {
         );
         div().id("planning-attempt-dialog").absolute().inset_0().occlude().bg(rgba(0x00000080)).flex().items_center().justify_center().p_4()
             .child(
-                col().w(px(860.)).max_w_full().max_h(relative(0.9)).p_6().gap_4().rounded_lg().bg(rgb(colors.panel))
+                col().w(px(860.)).max_w_full().max_h(relative(0.9)).p_6().gap_4().map(|d| crate::appearance::floating_surface(d, cx))
                     .child(
                         row().justify_between().items_start().gap_4()
                             .child(col().gap_1()
@@ -5173,7 +5169,7 @@ impl TaskApp {
                         col()
                             .p_3()
                             .gap_1()
-                            .rounded_md()
+                            .rounded(px(crate::appearance::GROUP_RADIUS))
                             .bg(rgb(colors.panel))
                             .child(
                                 div()
@@ -5273,7 +5269,7 @@ impl TaskApp {
                         .aria_label(format!("{objective}\n{expected}"))
                         .p_3()
                         .gap_2()
-                        .rounded_md()
+                        .rounded(px(crate::appearance::GROUP_RADIUS))
                         .border_1()
                         .border_color(rgb(colors.line))
                         .bg(rgb(colors.panel))
@@ -5298,7 +5294,7 @@ impl TaskApp {
                             .id(format!("automation-plan-goal-{goal_index}"))
                             .p_3()
                             .gap_2()
-                            .rounded_md()
+                            .rounded(px(crate::appearance::GROUP_RADIUS))
                             .border_1()
                             .border_color(rgb(colors.line))
                             .bg(rgb(colors.panel))

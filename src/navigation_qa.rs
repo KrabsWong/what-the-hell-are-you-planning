@@ -29,7 +29,6 @@ struct Fixture {
     first_period: u64,
     first_steps: Vec<u64>,
     second_period: u64,
-    second_step: u64,
     other_period: u64,
     other_second_period: u64,
 }
@@ -133,7 +132,7 @@ fn fixture() -> (Store, Fixture) {
     let second_period = add_period(&mut store, first_automation, 3_000);
     let other_period = add_period(&mut store, second_automation, 5_000);
     let other_second_period = add_period(&mut store, second_automation, 7_000);
-    let second_steps = finish_steps(&mut store, second_period);
+    let _ = finish_steps(&mut store, second_period);
     let _ = finish_steps(&mut store, other_period);
     let _ = finish_steps(&mut store, other_second_period);
     let first_steps = finish_steps(&mut store, first_period);
@@ -163,7 +162,6 @@ fn fixture() -> (Store, Fixture) {
             first_period,
             first_steps,
             second_period,
-            second_step: second_steps[0],
             other_period,
             other_second_period,
         },
@@ -592,21 +590,7 @@ fn exercise(
         );
         assert_eq!(app.read(cx).scope(), Scope::Runs);
 
-        // Recently opened entries name the automation and period.
-        let labels: Vec<String> = {
-            let a = app.read(cx);
-            a.tabs
-                .iter()
-                .map(|id| a.store.task_navigation_label(*id))
-                .collect()
-        };
-        assert!(
-            labels.iter().any(|label| {
-                label.contains("First automation")
-                    && label.contains(&format!("Period {}", fixture.first_period))
-            }),
-            "{theme}: recently opened labels lose automation ownership: {labels:?}"
-        );
+        assert!(w.try_find("open-tasks-menu").is_none());
         let current_period_steps: std::collections::HashSet<_> = app
             .read(cx)
             .store
@@ -641,87 +625,6 @@ fn exercise(
     })
     .unwrap();
 
-    // Activate a real recent entry from another period: the destination is
-    // the selected task, and its owner remains the second period.
-    cx.update_window(handle, |_, w, cx| {
-        app.update(cx, |a, cx| {
-            a.open_task(middle, w, cx);
-            a.open_task(fixture.second_step, w, cx);
-            a.open_task(first, w, cx);
-        });
-        w.render_frame(cx);
-    })
-    .unwrap();
-    cx.run_until_parked();
-    assert!(
-        cx.update_window(handle, |_, _, cx| {
-            app.read(cx).tabs.iter().any(|id| *id == fixture.second_step)
-        })
-        .unwrap(),
-        "{theme}: the foreign period step remains in recently opened"
-    );
-    open_recent_menu(cx, handle);
-    cx.update_window(handle, |_, w, cx| {
-        w.click(format!("recent-task-{}", fixture.second_step), cx);
-    })
-    .unwrap();
-    cx.run_until_parked();
-    let (selected, owner) = cx
-        .update_window(handle, |_, w, cx| {
-            w.render_frame(cx);
-            let a = app.read(cx);
-            (
-                a.selected(),
-                a.selected().and_then(|id| a.store.automation_period_for_task(id)),
-            )
-        })
-        .unwrap();
-    assert_eq!(
-        selected,
-        Some(fixture.second_step),
-        "{theme}: the recent entry opens its named task"
-    );
-    assert_eq!(
-        owner,
-        Some((fixture.first_automation, fixture.second_period)),
-        "{theme}: the recent entry keeps its automation and period ownership"
-    );
-
-    // Activate a current-period entry and verify the same context.
-    assert!(
-        cx.update_window(handle, |_, _, cx| {
-            app.read(cx).tabs.iter().any(|id| *id == first)
-        })
-        .unwrap(),
-        "{theme}: the current period step remains in recently opened"
-    );
-    open_recent_menu(cx, handle);
-    cx.update_window(handle, |_, w, cx| {
-        w.click(format!("recent-task-{first}"), cx);
-    })
-    .unwrap();
-    cx.run_until_parked();
-    let (selected, owner) = cx
-        .update_window(handle, |_, w, cx| {
-            w.render_frame(cx);
-            let a = app.read(cx);
-            (
-                a.selected(),
-                a.selected().and_then(|id| a.store.automation_period_for_task(id)),
-            )
-        })
-        .unwrap();
-    assert_eq!(
-        selected,
-        Some(first),
-        "{theme}: the current recent entry opens its named task"
-    );
-    assert_eq!(
-        owner,
-        Some((fixture.first_automation, fixture.first_period)),
-        "{theme}: the current entry keeps its automation and period ownership"
-    );
-
     cx.update_window(handle, |_, w, cx| {
         app.update(cx, |a, cx| {
             // This case tests the structural-fallback API on purpose: no
@@ -732,14 +635,6 @@ fn exercise(
         w.render_frame(cx);
     })
     .unwrap();
-}
-
-fn open_recent_menu(cx: &mut HeadlessAppContext, handle: AnyWindowHandle) {
-    cx.update_window(handle, |_, w, cx| w.click("open-tasks-menu", cx))
-        .unwrap();
-    cx.run_until_parked();
-    cx.update_window(handle, |_, w, cx| w.render_frame(cx))
-        .unwrap();
 }
 
 fn screenshot(

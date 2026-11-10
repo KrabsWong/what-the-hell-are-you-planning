@@ -108,7 +108,6 @@ pub fn header_layout() {
                     "navigation-back",
                     "location-trail",
                     "location-current",
-                    "open-tasks-menu",
                 ] {
                     let bounds = w.find(id).bounds();
                     assert!(
@@ -116,12 +115,7 @@ pub fn header_layout() {
                         "{id} overflowed: {bounds:?} viewport={viewport:?}"
                     );
                 }
-                let menu = w.find("open-tasks-menu").bounds();
-                let current = w.find("location-current").bounds();
-                assert!(
-                    current.right() <= menu.left(),
-                    "current overlaps menu: {current:?} {menu:?}"
-                );
+                assert!(w.try_find("open-tasks-menu").is_none());
             })
             .unwrap();
             for (label, sidebar_width) in [("sidebar-220", 220.), ("sidebar-480", 480.)] {
@@ -147,7 +141,6 @@ pub fn header_layout() {
                         "navigation-back",
                         "location-trail",
                         "location-current",
-                        "open-tasks-menu",
                     ] {
                         let bounds = w.find(id).bounds();
                         assert!(
@@ -180,36 +173,12 @@ pub fn header_layout() {
                 let viewport = w.viewport_size().width;
                 let after = w.find("navigation-back").bounds();
                 eprintln!("resize-down header: before={before:?} after={after:?} viewport={viewport:?}");
-                for id in ["navigation-back", "location-trail", "location-current", "open-tasks-menu"] {
+                for id in ["navigation-back", "location-trail", "location-current"] {
                     let bounds = w.find(id).bounds();
                     assert!(bounds.right() <= viewport, "resized: {id} overflowed: {bounds:?} viewport={viewport:?}");
                 }
             }).unwrap();
             }
-            cx.update_window(handle, |_, w, cx| w.click("open-tasks-menu", cx))
-                .unwrap();
-            cx.run_until_parked();
-            cx.update_window(handle, |_, w, cx| w.render_frame(cx))
-                .unwrap();
-            cx.update_window(handle, |_, w, _| {
-                let menu = w.find("open-tasks-menu").bounds();
-                assert!(menu.right() <= w.viewport_size().width);
-            })
-            .unwrap();
-            screenshot(&mut cx, handle, &directory, "deep-report-header-menu.png");
-            cx.update_window(handle, |_, w, cx| {
-                let target = format!("recent-task-{goal}");
-                assert!(
-                    w.try_find(target.clone()).is_some(),
-                    "recent menu must expose {target}"
-                );
-                w.click(target, cx);
-            })
-            .unwrap();
-            cx.update_window(handle, |_, _, cx| {
-                assert_eq!(app.read(cx).selected(), Some(goal));
-            })
-            .unwrap();
             cx.update_window(handle, |_, w, _| w.remove_window())
                 .unwrap();
         }
@@ -330,18 +299,24 @@ fn run_checks(layout_only: bool) {
                         let title_bar = w.find("run-title-bar").bounds();
                         let title = w.find("run-title").bounds();
                         let metadata = w.find("run-metadata").bounds();
+                        let surface = w.find("workspace-content-surface").bounds();
+                        assert!((surface.right() - (w.viewport_size().width
+                            - px(crate::appearance::SHELL_INSET))).abs() <= px(1.),
+                            "The workspace surface must retain its outer gutter");
+                        let content_right = surface.right()
+                            - px(crate::appearance::SURFACE_GUTTER + 1. + 16.);
                         for control in [regenerate, previous, next, more] {
                             assert!((control.center().y - title_bar.center().y).abs() <= px(1.),
                                 "Result controls must stay on the title row at width {width}, sidebar {sidebar_width}");
                         }
                         assert!(title.right() <= regenerate.left());
-                        assert!((more.right() - (w.viewport_size().width - px(16.))).abs() <= px(1.),
+                        assert!((more.right() - content_right).abs() <= px(1.),
                             "Result controls must remain right-aligned");
                         assert!(metadata.top() >= title_bar.bottom(),
                             "Run metadata must stay below the fixed action row");
                         assert!(regenerate.right() <= previous.left() && previous.right() <= next.left(),
                             "Regenerate must precede the Previous/Next arrows at window width {width}, sidebar {sidebar_width}");
-                        assert!((viewport.right() - (w.viewport_size().width - px(16.))).abs() <= px(1.),
+                        assert!((viewport.right() - content_right).abs() <= px(1.),
                             "Report must fill the available right pane at window width {width}, sidebar {sidebar_width}: {viewport:?}");
                         assert!((scroll.size.width - viewport.size.width).abs() <= px(1.),
                             "Report scroll surface must match its viewport: {scroll:?} in {viewport:?}");
@@ -692,7 +667,7 @@ fn run_checks(layout_only: bool) {
             cx.update_window(handle, |_, w, cx| {
                 w.click("run-actions-menu", cx);
                 w.render_frame(cx);
-                w.click(1usize, cx);
+                w.within("popup-menu").click(1usize, cx);
                 assert_eq!(app.read(cx).selected(), Some(steps[0]));
                 assert_eq!(app.read(cx).detail_scroll.offset(), task_scroll);
                 app.update(cx, |a, cx| a.navigate(Scope::Runs, w, cx));
@@ -803,7 +778,7 @@ fn run_checks(layout_only: bool) {
                     w.find_by_label("Archive task").visible(),
                     "Archive task menu item"
                 );
-                w.click(0usize, cx);
+                w.within("popup-menu").click(0usize, cx);
                 w.render_frame(cx);
                 assert!(app.read(cx).editing(), "menu opens the real Edit task form");
                 assert!(app.read(cx).draft.is_some());
@@ -1088,17 +1063,8 @@ fn run_checks(layout_only: bool) {
             screenshot(&mut cx, handle, &directory, "16-grouped-history.png");
             for (control, file) in [
                 ("run-topic-picker", "26-topic-menu.png"),
-                ("open-tasks-menu", "27-open-menu.png"),
             ] {
                 cx.update_window(handle, |_, w, cx| {
-                    if control == "open-tasks-menu" {
-                        let bounds = w.find(control).bounds();
-                        assert!(
-                            bounds.right() <= w.viewport_size().width,
-                            "Recently opened clipped before open: {bounds:?} viewport={:?}",
-                            w.viewport_size()
-                        );
-                    }
                     w.click(control, cx);
                 })
                 .unwrap();
@@ -1130,7 +1096,7 @@ fn run_checks(layout_only: bool) {
                     "Historical report can switch to latest"
                 );
                 w.click("run-project-picker", cx);
-                w.click(1usize, cx); // Other project
+                w.within("popup-menu").click(1usize, cx); // Other project
                 assert!(w.try_find(format!("run-{other_run_id}")).is_some());
                 assert_eq!(
                     app.read(cx).selected_run(),
@@ -1163,12 +1129,12 @@ fn run_checks(layout_only: bool) {
                     "Idle projects have no batch banner"
                 );
                 w.click("project-actions", cx);
-                assert_eq!(w.find(1usize).label(), Some("Working folder…"));
+                assert_eq!(w.within("popup-menu").find(1usize).label(), Some("Working folder…"));
             })
             .unwrap();
             screenshot(&mut cx, handle, &directory, "18-project-menu.png");
             cx.update_window(handle, |_, w, cx| {
-                w.click(1usize, cx);
+                w.within("popup-menu").click(1usize, cx);
                 assert_eq!(app.read(cx).directory_project, Some(1));
                 w.click("cancel-directory", cx);
             })
@@ -1293,7 +1259,7 @@ fn run_checks(layout_only: bool) {
                 w.render_frame(cx);
                 assert_eq!(w.find("collection-title").label(), Some("All research"));
                 w.click("all-status-filter", cx);
-                w.click(7usize, cx); // Done
+                w.within("popup-menu").click(7usize, cx); // Done
                 assert_eq!(
                     app.read(cx).all_status,
                     crate::app::AllStatus::Stage(Stage::Done)
@@ -1392,7 +1358,7 @@ fn run_checks(layout_only: bool) {
                     a.search.update(cx, |s, cx| s.set_value("", w, cx));
                 });
                 w.click("all-status-filter", cx);
-                w.click(1usize, cx); // Open
+                w.within("popup-menu").click(1usize, cx); // Open
                 assert!(
                     app.read(cx)
                         .visible_tasks()
@@ -1404,7 +1370,7 @@ fn run_checks(layout_only: bool) {
             cx.run_until_parked();
             cx.update_window(handle, |_, w, cx| {
                 w.click("all-status-filter", cx);
-                w.click(6usize, cx); // Cancelled
+                w.within("popup-menu").click(6usize, cx); // Cancelled
                 let ids: Vec<u64> = app.read(cx).visible_tasks().iter().map(|t| t.id).collect();
                 assert_eq!(ids, vec![done_ids.2]);
                 assert_eq!(app.read(cx).visible_tasks()[0].stage, Stage::Cancelled);
@@ -1477,24 +1443,10 @@ fn run_checks(layout_only: bool) {
                     );
                     assert!(bounds.size.height <= px(44.));
                 }
-                let menu = w.try_find("open-tasks-menu").unwrap_or_else(|| {
-                    panic!("missing open-tasks-menu; viewport={:?}", w.viewport_size())
-                });
-                let menu_bounds = menu.bounds();
-                assert!(
-                    menu.visible(),
-                    "Recently opened menu clipped: menu={menu_bounds:?} viewport={:?}",
-                    w.viewport_size()
-                );
-                assert!(menu_bounds.right() <= w.viewport_size().width);
-                assert!(menu_bounds.size.height <= px(44.));
+                assert!(w.try_find("open-tasks-menu").is_none());
                 let title = w.find("location-current").bounds();
                 assert!(title.size.height <= px(42.));
                 assert!(title.right() <= w.viewport_size().width);
-                assert!(
-                    title.right() <= menu_bounds.left(),
-                    "title={title:?} overlaps menu={menu_bounds:?}"
-                );
                 w.click("navigation-back", cx);
             })
             .unwrap();
@@ -1666,7 +1618,7 @@ fn choose_menu(cx: &mut HeadlessAppContext, handle: AnyWindowHandle, trigger: &s
     cx.run_until_parked();
     cx.update_window(handle, |_, w, cx| w.render_frame(cx))
         .unwrap();
-    cx.update_window(handle, |_, w, cx| w.click(item, cx))
+    cx.update_window(handle, |_, w, cx| w.within("popup-menu").click(item, cx))
         .unwrap();
     cx.run_until_parked();
 }

@@ -270,7 +270,7 @@ fn open_task_editor(w: &mut Window, cx: &mut App, id: u64) {
     w.render_frame(cx);
     w.click("task-actions-menu", cx);
     w.render_frame(cx);
-    w.click(0usize, cx);
+    w.within("popup-menu").click(0usize, cx);
     w.render_frame(cx);
 }
 
@@ -444,7 +444,7 @@ pub fn run() {
         w.render_frame(cx);
         w.click("task-actions-menu", cx);
         w.render_frame(cx);
-        w.click(0usize, cx);
+        w.within("popup-menu").click(0usize, cx);
         w.render_frame(cx);
         w.click("draft-title", cx);
         w.input(" changed", cx);
@@ -475,7 +475,7 @@ pub fn run() {
         w.render_frame(cx);
         w.click("task-actions-menu", cx);
         w.render_frame(cx);
-        w.click(0usize, cx);
+        w.within("popup-menu").click(0usize, cx);
         w.render_frame(cx);
         w.click("draft-title", cx);
         w.input(" saved", cx);
@@ -625,7 +625,7 @@ pub fn run() {
         w.click("project-plan-brief", cx);
         w.input("Dirty planning text", cx);
         let location = app.read(cx).scope().clone();
-        for blocked in ["navigation-back", "all", "location-all", "open-tasks-menu"] {
+        for blocked in ["navigation-back", "all", "location-all"] {
             if w.try_find(blocked).is_none() {
                 continue;
             }
@@ -958,7 +958,7 @@ pub fn run() {
         w.render_frame(cx);
         let location = app.read(cx).scope().clone();
         let selected = app.read(cx).selected();
-        for blocked in ["navigation-back", "all", "open-tasks-menu"] {
+        for blocked in ["navigation-back", "all"] {
             w.click(blocked, cx);
             w.render_frame(cx);
             assert!(
@@ -1136,7 +1136,7 @@ fn size_theme_pass(
         w.render_frame(cx);
         w.click("task-actions-menu", cx);
         w.render_frame(cx);
-        w.click(0usize, cx);
+        w.within("popup-menu").click(0usize, cx);
         w.render_frame(cx);
         w.click("draft-title", cx);
         w.input(" narrow", cx);

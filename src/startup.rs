@@ -384,7 +384,7 @@ impl TaskApp {
                 .flex_shrink_0()
                 .px_2()
                 .py_1()
-                .rounded_md()
+                .rounded(px(crate::appearance::CONTROL_RADIUS))
                 .bg(rgb(colors.tag_surface))
                 .text_xs()
                 .font_weight(FontWeight::MEDIUM)
@@ -402,9 +402,9 @@ impl TaskApp {
             col()
                 .gap_2()
                 .p_3()
-                .rounded_lg()
+                .rounded(px(crate::appearance::SURFACE_RADIUS))
                 .border_1()
-                .border_color(rgb(colors.line))
+                .border_color(rgb(colors.subtle_line))
                 .bg(rgb(colors.panel))
         };
         let chosen = self.directory_input.read(cx).value().trim().to_string();
@@ -437,7 +437,7 @@ impl TaskApp {
                         .child(button("browse-workspace", "Browse…").disabled(self.workspace_setup.is_some()).on_click(cx.listener(|this,_,_,cx| this.choose_workspace(cx))))
                         .child(button("setup-workspace", "Set workspace").disabled(self.workspace_setup.is_some()).on_click(cx.listener(|this,_,_,cx| this.setup_workspace(cx))))))
                     .when(self.workspace_required, |view| view.child(
-                        col().gap_1().p_2().rounded_md().bg(rgb(colors.tag_surface))
+                        col().gap_1().p_2().rounded(px(crate::appearance::CONTROL_RADIUS)).bg(rgb(colors.tag_surface))
                             .child(
                                 row().gap_1().items_center()
                                     .child(gpui_kit::component::Icon::new(assets::IconName::Folder).size_4().text_color(rgb(colors.muted)))

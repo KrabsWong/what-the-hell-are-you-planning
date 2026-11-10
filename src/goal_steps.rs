@@ -307,7 +307,7 @@ impl TaskApp {
                 .when(board, |b| {
                     b.h_auto()
                         .p_3()
-                        .rounded(px(7.))
+                        .rounded(px(crate::appearance::GROUP_RADIUS))
                         .border_1()
                         .border_color(rgb(border))
                         .bg(rgb(surface))

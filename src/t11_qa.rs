@@ -36,7 +36,7 @@ pub fn run() {
         }
     }
     println!(
-        "T11 QA PASSED: 1440/1000 × light/dark. Verified enabled-idle (Run manually primary, no Resume/Stop), draft (disabled Run manually), recovery (Needs attention, Resume primary, Stop danger), failed retry primary, destructive Cancel period, wrapped recent-menu values, passive status chip and selection vs primary. Screenshots: {}",
+        "T11 QA PASSED: 1440/1000 × light/dark. Verified enabled-idle (Run manually primary, no Resume/Stop), draft (disabled Run manually), recovery (Needs attention, Resume primary, Stop danger), failed retry primary, destructive Cancel period, absence of the recent menu, passive status chip and selection vs primary. Screenshots: {}",
         root.display()
     );
 }
@@ -94,36 +94,18 @@ fn enabled_idle(mode: Appearance, width: f32, height: f32, directory: &Path) {
     .unwrap();
     screenshot(&mut cx, handle, directory, "02-failed-retry.png");
 
-    // Recently opened: complete automation/period/task value, wrapped.
-    let step = read(&mut cx, &app, |store| {
-        let occurrence = store.occurrence(failed).unwrap();
-        store
-            .research_children(occurrence.research_goal_ids[0])
-            .first()
-            .copied()
-            .unwrap()
-    });
-    let full_label = read(&mut cx, &app, |store| store.task_navigation_label(step));
+    // Opening multiple tasks does not add a recent-task menu to the header.
     cx.update_window(handle, |_, w, cx| {
         app.update(cx, |a, cx| {
             a.close_occurrence_result(w, cx);
-            a.open_task(step, w, cx);
             a.open_task(2, w, cx);
         });
         w.render_frame(cx);
-        w.click("open-tasks-menu", cx);
-        w.render_frame(cx);
-        let snapshot = w.find(format!("recent-task-{step}"));
-        assert_eq!(snapshot.label(), Some(full_label.as_str()));
-        assert!(snapshot.bounds().size.width > px(380.));
-        assert!(
-            snapshot.bounds().size.height >= px(28.),
-            "a long recent label must wrap instead of collapsing to one ellipsized line"
-        );
+        assert!(w.try_find("open-tasks-menu").is_none());
+        assert!(w.find("location-trail").visible());
     })
     .unwrap();
-    screenshot(&mut cx, handle, directory, "03-recent-menu.png");
-    cx.update_window(handle, |_, w, cx| w.press("escape", cx)).unwrap();
+    screenshot(&mut cx, handle, directory, "03-task-header.png");
 
     // Ordinary task detail: status is a passive chip, not a focusable button.
     cx.update_window(handle, |_, w, cx| {

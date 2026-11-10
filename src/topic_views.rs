@@ -91,7 +91,7 @@ impl TaskApp {
             body = body.child(muted(format!("{} blocking items. Resolve these before moving; no tasks will be stopped automatically.", blockers.len()), cx));
             for (index, blocker) in blockers.iter().enumerate() {
                 let (title, remedy) = blocker.split_once('\n').unwrap_or((blocker, ""));
-                body = body.child(col().p_3().gap_2().rounded_md().bg(rgb(colors.side))
+                body = body.child(col().p_3().gap_2().rounded(px(crate::appearance::GROUP_RADIUS)).bg(rgb(colors.side))
                     .child(div().font_weight(FontWeight::SEMIBOLD).child(selectable(format!("{}. {title}", index + 1))))
                     .child(muted(remedy.trim().to_string(), cx)));
             }
@@ -115,7 +115,7 @@ impl TaskApp {
             ));
         }
         div().absolute().inset_0().occlude().bg(rgba(0x00000080)).flex().items_center().justify_center().p_4()
-            .child(col().w(px(600.)).max_w_full().p_6().gap_4().rounded_lg().bg(rgb(colors.panel))
+            .child(col().w(px(600.)).max_w_full().p_6().gap_4().map(|d| crate::appearance::floating_surface(d, cx))
                 .child(div().text_lg().font_weight(FontWeight::SEMIBOLD).child(if blocked { "Cannot move topic yet" } else { "Move topic" }))
                 .child(body)
                 .child(row().justify_end()
@@ -182,9 +182,8 @@ impl TaskApp {
 
     pub(crate) fn topic_editor_view(&self, cx: &mut Context<Self>) -> AnyElement {
         let (_, id, input) = self.topic_editor.as_ref().unwrap();
-        let colors = palette(cx);
         div().absolute().inset_0().occlude().bg(rgba(0x00000080)).flex().items_center().justify_center()
-            .child(col().w(px(460.)).p_6().gap_4().rounded_lg().bg(rgb(colors.panel))
+            .child(col().w(px(460.)).p_6().gap_4().map(|d| crate::appearance::floating_surface(d, cx))
                 .child(div().text_lg().font_weight(FontWeight::SEMIBOLD).child(selectable(if id.is_some() { "Rename topic" } else { "New topic" })))
                 .child(muted("Keep related research goals together around a company, subject or question.", cx))
                 .child(Input::new(input).id("topic-name"))
@@ -324,7 +323,7 @@ impl TaskApp {
             .gap_0()
             .mt_1()
             .min_w_0()
-            .rounded_md()
+            .rounded(px(crate::appearance::CONTROL_RADIUS))
             .hover(|d| d.bg(rgb(palette(cx).hover)))
             .child(
                 row_button(format!("topic-{id}"), "")
@@ -409,6 +408,7 @@ impl TaskApp {
                     button(format!("topic-link-{id}"), "")
                         .w(px(260.))
                         .h(px(64.))
+                        .rounded(px(crate::appearance::GROUP_RADIUS))
                         .flex_shrink_0()
                         .border_1()
                         .border_color(rgb(colors.line))

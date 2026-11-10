@@ -1174,7 +1174,7 @@ assert 'Read the attached file directly' in args[-1]
     }).unwrap();
     screenshot(&mut cx, handle, &root, "result-actions-menu.png");
     cx.update_window(handle, |_, w, cx| {
-        w.click(0usize, cx);
+        w.within("popup-menu").click(0usize, cx);
         assert!(app.read(cx).show_run_details);
     }).unwrap();
     cx.run_until_parked();
@@ -1184,7 +1184,7 @@ assert 'Read the attached file directly' in args[-1]
     cx.run_until_parked();
     cx.update_window(handle, |_, w, cx| {
         w.render_frame(cx);
-        w.click(3usize, cx);
+        w.within("popup-menu").click(3usize, cx);
         assert!(cx.read_from_clipboard().unwrap().text().unwrap().contains("Readable report fixture"));
     }).unwrap();
     cx.run_until_parked();
@@ -1192,7 +1192,7 @@ assert 'Read the attached file directly' in args[-1]
     cx.run_until_parked();
     cx.update_window(handle, |_, w, cx| {
         w.render_frame(cx);
-        w.click(1usize, cx);
+        w.within("popup-menu").click(1usize, cx);
         assert!(app.read(cx).selected().is_some());
     }).unwrap();
     println!("ATTACHMENT QA PASSED: paste shortcut, file drop, original bytes, blank PDF, inheritance, CLI --file; no OCR/cache. {}", root.display());

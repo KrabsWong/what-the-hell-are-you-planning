@@ -103,10 +103,10 @@ fn fixture(directory: &Path, mode: Appearance) -> Fixture {
     store.research_config_mut().models =
         ["qa/plan", "qa/collect", "qa/analyze", "qa/advise"].map(String::from);
     store.set_appearance(mode);
-    let topic = store.create_topic(1, "Memory supply").unwrap();
+    let topic = store.create_topic(1, "Memory supply, manufacturing capacity, demand forecasts and regional pricing across the semiconductor industry").unwrap();
     let goal = store
         .create_research_goal_in_topic(
-            "Semiconductor supply outlook".into(),
+            "Semiconductor supply outlook across memory, advanced packaging, manufacturing capacity and regional demand over the next several years".into(),
             "Compare DRAM, NAND and HBM demand.".into(),
             1,
             Some(topic),
@@ -356,6 +356,12 @@ fn research_list_origin(
             found.as_ref().and_then(|row| row.label()),
             Some(expected.as_str())
         );
+        let row_id = format!("global-search-result-research-{}", fixture.goal);
+        let bounds = w.find(row_id.clone()).bounds();
+        let detail = w.find(format!("{row_id}-detail")).bounds();
+        assert!(bounds.size.height <= px(68.), "Search results must remain compact two-line rows");
+        assert!(detail.size.width >= px(200.), "Search metadata must use the available row width");
+        assert!(detail.size.height <= px(24.), "Search metadata must stay on one line");
         let before = app.read(cx).global_search_ui.selected;
         w.press("down", cx);
         w.render_frame(cx);

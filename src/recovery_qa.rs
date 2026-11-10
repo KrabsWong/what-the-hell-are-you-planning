@@ -185,7 +185,7 @@ print(json.dumps({'type':'text','part':{'text':json.dumps(result)}}),flush=True)
         w.click("run-topic-filter", cx);
     }).unwrap();
     cx.run_until_parked();
-    cx.update_window(handle, |_, w, cx| w.click(1usize, cx)).unwrap();
+    cx.update_window(handle, |_, w, cx| w.within("popup-menu").click(1usize, cx)).unwrap();
     cx.run_until_parked();
     cx.update_window(handle, |_, w, cx| {
         let a = app.read(cx);
@@ -197,9 +197,9 @@ print(json.dumps({'type':'text','part':{'text':json.dumps(result)}}),flush=True)
     }).unwrap();
     cx.run_until_parked();
     cx.update_window(handle, |_, w, cx| {
-        assert!(w.try_find(0usize).is_some());
-        assert!(w.try_find(1usize).is_none(), "Goal menu must contain only the selected topic's goal");
-        w.click(0usize, cx);
+        assert!(w.within("popup-menu").try_find(0usize).is_some());
+        assert!(w.within("popup-menu").try_find(1usize).is_none(), "Goal menu must contain only the selected topic's goal");
+        w.within("popup-menu").click(0usize, cx);
     }).unwrap();
     cx.run_until_parked();
     cx.update_window(handle, |_, w, cx| {
@@ -538,7 +538,7 @@ print(json.dumps({'type':'text','part':{'text':json.dumps(result)}}),flush=True)
     }).unwrap();
     cx.run_until_parked();
     cx.update_window(handle, |_, w, cx| {
-        w.click(0usize, cx);
+        w.within("popup-menu").click(0usize, cx);
         assert_eq!(app.read(cx).selected_run(), Some(planning_run));
     }).unwrap();
     // Archiving a finished batch item must not prematurely finish the remaining goal.

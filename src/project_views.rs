@@ -1,4 +1,4 @@
-use crate::{app::TaskApp, appearance::palette, views::*};
+use crate::{app::TaskApp, views::*};
 use gpui_kit::{
     base::FocusTrapElement,
     component::{
@@ -44,9 +44,8 @@ impl TaskApp {
 
     pub(crate) fn project_rename_view(&self, cx: &mut Context<Self>) -> AnyElement {
         let (_, input) = self.project_rename.as_ref().unwrap();
-        let colors = palette(cx);
         div().absolute().inset_0().occlude().bg(rgba(0x00000080)).flex().items_center().justify_center().p_4()
-            .child(col().w(px(460.)).max_w_full().p_6().gap_4().rounded_lg().bg(rgb(colors.panel))
+            .child(col().w(px(460.)).max_w_full().p_6().gap_4().map(|d| crate::appearance::floating_surface(d, cx))
                 .child(div().text_lg().font_weight(FontWeight::SEMIBOLD).child(selectable("Rename project")))
                 .child(muted("Change the display name. Existing topics, tasks, files and running work stay connected.", cx))
                 .child(Input::new(input).id("rename-project-name"))
@@ -95,7 +94,6 @@ impl TaskApp {
     }
 
     pub fn project_plan_overlay(&self, cx: &mut Context<Self>) -> AnyElement {
-        let colors = palette(cx);
         let Some(mode) = self.planning_destination else {
             let message = self
                 .planning_destination_error
@@ -105,7 +103,7 @@ impl TaskApp {
                     "Choose a project before describing this research request.".into()
                 });
             return div().absolute().inset_0().occlude().bg(rgba(0x00000080)).flex().items_center().justify_center()
-                .child(col().w(px(520.)).max_w_full().p_6().gap_4().rounded_lg().bg(rgb(colors.panel))
+                .child(col().w(px(520.)).max_w_full().p_6().gap_4().map(|d| crate::appearance::floating_surface(d, cx))
                     .child(div().text_lg().font_weight(FontWeight::SEMIBOLD).child(selectable("New research")))
                     .child(crate::views::notice(crate::views::NoticeTone::Warning, message, cx))
                     .child(row().justify_end().child(button("planning-cancel", "Cancel").on_click(cx.listener(|a, _, w, cx| a.request_cancel_planning(w, cx)))))
@@ -181,7 +179,7 @@ impl TaskApp {
             .clone()
             .or_else(|| (!self.error.is_empty()).then(|| self.error.clone()));
         div().absolute().inset_0().occlude().bg(rgba(0x00000080)).flex().items_center().justify_center()
-            .child(col().w(px(580.)).max_h(relative(0.92)).p_6().gap_4().rounded_lg().bg(rgb(colors.panel))
+            .child(col().w(px(580.)).max_h(relative(0.92)).p_6().gap_4().map(|d| crate::appearance::floating_surface(d, cx))
                 .child(row().justify_between()
                     .child(div().text_lg().font_weight(FontWeight::SEMIBOLD).child(selectable(title)))
                     .child(tool_icon("close-project-plan", assets::IconName::Close, "Close planning").on_click(cx.listener(|a, _, w, cx| a.request_cancel_planning(w, cx)))))

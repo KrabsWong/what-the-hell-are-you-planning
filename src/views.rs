@@ -400,7 +400,7 @@ impl TaskApp {
             return if gpui_kit::component::Theme::global(cx).is_dark() {
                 rgba(0x3436388c).into()
             } else {
-                rgba(0xffffffa6).into()
+                rgba(0xffffff8c).into()
             };
         }
         rgb(palette(cx).canvas).into()
@@ -4310,7 +4310,7 @@ impl Render for TaskApp {
                     return root.bg(if gpui_kit::component::Theme::global(cx).is_dark() {
                         rgba(0x20222499)
                     } else {
-                        rgba(0xffffffb3)
+                        rgba(0xffffff99)
                     });
                 }
                 root

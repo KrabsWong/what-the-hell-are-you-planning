@@ -120,24 +120,22 @@ impl TaskApp {
             .map(|p| p.name.clone())
             .unwrap_or_else(|| "Project unavailable".into());
         let destination = match mode {
-            crate::navigation_context::CreationMode::NewTopic { .. } => {
-                format!("{project_name} · a new topic will be created from this request")
-            }
+            crate::navigation_context::CreationMode::NewTopic { .. } => None,
             crate::navigation_context::CreationMode::ExistingTopic { topic, .. } => {
                 let topic = self.store.topics().iter().find(|t| t.id == topic);
                 topic
-                    .map(|t| format!("{project_name} / {}", t.display_name()))
-                    .unwrap_or_else(|| format!("{project_name} · the selected topic is unavailable"))
+                    .map(|t| format!("Topic: {}", t.display_name()))
+                    .or_else(|| Some("The selected topic is unavailable".into()))
             }
             crate::navigation_context::CreationMode::Replan { source_topic, .. } => {
                 let source = self.store.topics().iter().find(|t| t.id == source_topic);
                 source
-                    .map(|t| format!("{project_name} / {} · creates a separate replanned topic", t.display_name()))
-                    .unwrap_or_else(|| format!("{project_name} · the source topic is unavailable"))
+                    .map(|t| format!("Source topic: {}", t.display_name()))
+                    .or_else(|| Some("The source topic is unavailable".into()))
             }
         };
         let title = match mode {
-            crate::navigation_context::CreationMode::NewTopic { .. } => "Create a topic from one sentence",
+            crate::navigation_context::CreationMode::NewTopic { .. } => "New research",
             crate::navigation_context::CreationMode::ExistingTopic { .. } => "Plan research in this topic",
             crate::navigation_context::CreationMode::Replan { .. } => "Replan topic",
         };
@@ -183,19 +181,16 @@ impl TaskApp {
                 .child(row().justify_between()
                     .child(div().text_lg().font_weight(FontWeight::SEMIBOLD).child(selectable(title)))
                     .child(tool_icon("close-project-plan", assets::IconName::Close, "Close planning").on_click(cx.listener(|a, _, w, cx| a.request_cancel_planning(w, cx)))))
-                .child(row().gap_2().items_center().flex_wrap()
-                    .child(label("TARGET", cx))
-                    .child(selector)
-                    .child(label(destination, cx)))
-                .when(mode.can_change_project(), |d| d.child(muted(
-                    "Choose the project before saving or generating. Changing it starts a new topic there.",
-                    cx,
-                )))
                 .when(matches!(mode, crate::navigation_context::CreationMode::Replan { .. }), |d| d.child(muted("Creates a separate topic marked Replanned. The original topic, goals and results are preserved. Review the request below, including any dates, and add your new requirements.", cx)))
-                .child(muted("Describe your research question (required). The planner will suggest the scope and output.", cx))
-                .child(div().id("project-plan-brief").child(Textarea::new(&self.project_brief)).map(observed))
-                .child(label("Example: Analyze Intel’s latest earnings and market reaction using official disclosures and accessible analyst commentary. Give me a source-linked report.", cx))
-                .child(muted("Goals and steps are saved under the topic. Goals appear in Backlog. Move a goal to Todo to approve all its steps, then click Run. Planning never starts the research.", cx))
+                .child(col().gap_2()
+                    .child(div().font_weight(FontWeight::MEDIUM).child(selectable("What do you want to research?")))
+                    .child(div().id("project-plan-brief").child(Textarea::new(&self.project_brief)).map(observed)))
+                .child(col().gap_1()
+                    .child(row().gap_2().items_center().flex_wrap()
+                        .child(label("Project", cx))
+                        .child(selector))
+                    .when_some(destination, |d, destination| d.child(label(destination, cx))))
+                .child(label("Generating a plan won’t start research.", cx))
                 .when_some(error, |d, message| d.child(crate::views::notice(
                     crate::views::NoticeTone::Danger,
                     message,
@@ -204,7 +199,7 @@ impl TaskApp {
                 .child(row().justify_between().gap_2()
                     .child(button("planning-cancel", "Cancel").on_click(cx.listener(|a, _, w, cx| a.request_cancel_planning(w, cx))))
                     .child(row().gap_2()
-                        .child(button("save-project-context", "Save request for later").on_click(cx.listener(move |a, _, _, cx| {
+                        .child(button("save-project-context", "Save for later").on_click(cx.listener(move |a, _, _, cx| {
                             let Some(mode) = a.planning_destination else { return; };
                             let input = a.project_brief.read(cx).value().to_string();
                             let topic = match mode {

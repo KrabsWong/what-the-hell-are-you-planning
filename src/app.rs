@@ -1028,7 +1028,7 @@ impl TaskApp {
             project_brief: cx.new(|cx| {
                 TextareaState::new(window, cx)
                     .rows(5)
-                    .placeholder("Required: what do you want to research? One sentence is enough…")
+                    .placeholder("e.g. Analyze Intel’s latest earnings and market reaction, with links to sources.")
             }),
             research_title: cx.new(|cx| {
                 InputState::new(window, cx)

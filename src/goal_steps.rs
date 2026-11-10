@@ -321,7 +321,7 @@ impl TaskApp {
                 })
                 .when(!board, |b| b.h_8().px_2())
                 .accessibility_label(format!("{} · {}", title, status.label()))
-                .when(!board, |b| b.tooltip(format!("{} · {}", status.label(), status.reason)))
+                .tooltip(format!("{} · {}", status.label(), status.reason))
                 .on_click(cx.listener(move |a, _, w, cx| {
                     a.request_task(id, false, w, cx)
                 }))
@@ -356,12 +356,12 @@ impl TaskApp {
                                 .line_height(relative(1.4))
                                 .child(selectable(task.title.clone())),
                         )
-                        .child(div().id(format!("goal-step-status-{id}"))
+                        .when(execution != ExecutionStatus::Done || status.display_label.is_some(), |card| card.child(div().id(format!("goal-step-status-{id}"))
                             .aria_label(status.label())
                             .text_xs().text_left().whitespace_normal()
-                            .text_color(rgb(execution.color(cx))).child(selectable(status.label())).map(observed))
-                        .child(div().text_xs().text_left().whitespace_normal()
-                            .text_color(rgb(colors.secondary)).child(selectable(status.reason.clone())))
+                            .text_color(rgb(execution.color(cx))).child(selectable(status.label())).map(observed)))
+                        .when(execution != ExecutionStatus::Done || status.reason != execution.hint(), |card| card.child(div().text_xs().text_left().whitespace_normal()
+                            .text_color(rgb(colors.secondary)).child(selectable(status.reason.clone()))))
                         .child(
                             row()
                                 .w_full()

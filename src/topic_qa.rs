@@ -209,6 +209,17 @@ pub fn run() {
             Some(goal),
         )
         .unwrap();
+    let completed = children[0];
+    let approval = fixture.goal_plan_signature(goal);
+    fixture.task_mut(goal).unwrap().approved_plan = approval;
+    fixture.task_mut(goal).unwrap().stage = crate::domain::Stage::Planned;
+    let mut result = fixture.prepare_run(completed).unwrap();
+    result.id = 3;
+    result.status = "Succeeded".into();
+    result.output = "# Completed research summary".into();
+    fixture.push_run(result);
+    fixture.task_mut(completed).unwrap().stage = crate::domain::Stage::Done;
+    assert_eq!(fixture.task_status(completed, None).execution, crate::execution_status::ExecutionStatus::Done);
     steps_screenshot(
         &fixture,
         goal,
@@ -455,6 +466,20 @@ fn steps_screenshot(
         }
         app.update(&mut cx, |a, cx| { a.store = store.clone(); cx.notify(); });
         cx.update_window(handle, |_, w, cx| w.render_frame(cx)).unwrap();
+    }
+    if !list {
+        cx.update_window(handle, |_, w, cx| {
+            for id in store.research_children(goal) {
+                let status = store.task_status(id, None);
+                if status.execution == crate::execution_status::ExecutionStatus::Done
+                    && status.display_label.is_none()
+                {
+                    assert!(w.try_find(format!("goal-step-status-{id}")).is_none());
+                    assert!(w.find(format!("goal-step-{id}")).label().unwrap().contains("Done"));
+                }
+            }
+            w.render_frame(cx);
+        }).unwrap();
     }
     cx.capture_screenshot(handle).unwrap().save(path).unwrap();
 }

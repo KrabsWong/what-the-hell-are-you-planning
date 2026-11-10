@@ -6,14 +6,23 @@ cd "$(dirname "$0")/.."
   echo 'This packaging script currently supports Apple Silicon macOS only.' >&2
   exit 1
 }
+# Requires Python 3.10+; this example uses Python 3.13.
+# Install once with: python3.13 -m venv target/dmg-tools &&
+# target/dmg-tools/bin/pip install -r script/requirements-dmg.txt
+dmgbuild="$PWD/target/dmg-tools/bin/dmgbuild"
+[[ -x "$dmgbuild" ]] || {
+  echo 'Install the packaging tools from script/requirements-dmg.txt into target/dmg-tools first.' >&2
+  exit 1
+}
 cargo build --release --locked --offline
 version=$(/usr/libexec/PlistBuddy -c 'Print :CFBundleShortVersionString' assets/brand/macos/Info.plist)
 build_id=$(date -u +%Y%m%d%H%M%S)
 output="$PWD/target/distribution"
+module_cache="$PWD/target/installer-cache/swift"
 staging=$(mktemp -d "$TMPDIR/planning-package.XXXXXX")
 trap 'rm -rf "$staging"' EXIT
 app="$staging/Planning.app"
-mkdir -p "$app/Contents/MacOS" "$app/Contents/Resources" "$output"
+mkdir -p "$app/Contents/MacOS" "$app/Contents/Resources" "$output" "$module_cache"
 cp target/release/what-the-hell-are-you-planning "$app/Contents/MacOS/"
 cp assets/brand/macos/Info.plist "$app/Contents/Info.plist"
 cp assets/brand/macos/Planning.icns "$app/Contents/Resources/"
@@ -25,42 +34,50 @@ if otool -L "$app/Contents/MacOS/what-the-hell-are-you-planning" | tail -n +2 | 
   echo 'Non-system dynamic dependency found; bundle it before distributing.' >&2
   exit 1
 fi
+mkdir -p "$staging/.background"
+cp LICENSE "$app/Contents/Resources/LICENSE.txt"
+cp assets/brand/macos/Planning.icns "$staging/.VolumeIcon.icns"
+swift -module-cache-path "$module_cache" script/generate_dmg_background.swift "$staging/.background/install.tiff"
+cat > "$app/Contents/Resources/Installation.txt" <<'GUIDE'
+Planning Beta | Apple Silicon
+
+Installation
+1. Drag Planning into Applications.
+2. Eject the disk image and open Planning from Applications.
+3. First launch checks for OpenCode, Codex, and ego(lite). Install at least
+   one of OpenCode or Codex, then choose your own workspace.
+4. After installing dependencies, click Check again, then Continue.
+   Configure your agent, model, and provider in Settings.
+
+Install dependencies separately
+OpenCode: https://opencode.ai
+Codex: https://developers.openai.com/codex/cli
+Install at least one of OpenCode or Codex.
+ego(lite): https://lite.ego.app
+Open ego(lite) and complete its initial setup after installation.
+Model providers may charge fees. Use your own accounts and configuration.
+
+Signing and first launch
+This beta is ad-hoc signed and has not been notarized by Apple.
+macOS may block an app downloaded from the internet. Only if you trust
+its distributor, follow the macOS prompts in System Settings > Privacy
+& Security to allow it to open. Organization-managed Macs may prohibit
+unnotarized apps; contact your administrator.
+Apple guidance: https://support.apple.com/en-us/102445
+
+Compatibility
+Apple Silicon (arm64) only; Intel Macs are not supported. The minimum
+build target is macOS 11. Validation covers the development machine only,
+not every older macOS release.
+
+Privacy
+This package contains no developer workspace, tasks, accounts, or credentials.
+Task execution uses the model providers you configure.
+GUIDE
 /usr/bin/codesign --force --sign - "$app"
 /usr/bin/codesign --verify --strict --verbose=2 "$app"
-ln -s /Applications "$staging/Applications"
-cp LICENSE "$staging/LICENSE.txt"
-cat > "$staging/安装说明.txt" <<'GUIDE'
-Planning 内测版 · Apple Silicon (M 系列芯片)
-
-安装
-1. 将 Planning.app 拖入 Applications（应用程序）。
-2. 推出磁盘映像，然后从 Applications 打开 Planning。
-3. 首次启动会自动检测 OpenCode、Codex 和 ego(lite)；OpenCode / Codex 至少安装一个，按提示选择自己的 Workspace。
-4. 安装依赖后点击 Check again；必需检查通过后点击 Continue，并在 Settings 配置 Agent、模型和服务商。
-
-依赖需单独安装
-OpenCode：https://opencode.ai
-Codex：https://developers.openai.com/codex/cli（与 OpenCode 至少安装一个）
-ego(lite)：https://lite.ego.app（安装后需打开并完成首次设置）
-模型服务商可能产生费用，请使用自己的账号与配置。
-
-签名与首次打开
-这是未经过 Apple 公证、仅使用临时签名的内测版本。
-从网络下载后 macOS 可能阻止打开。仅在确认文件来自可信分发者后，
-根据 macOS 提示在“系统设置 → 隐私与安全性”允许打开。
-受组织管理的 Mac 可能不允许运行未公证应用，请联系管理员。
-Apple 官方说明：https://support.apple.com/en-us/102445
-
-兼容性
-仅包含 arm64，不支持 Intel Mac。构建最低系统版本为 macOS 11；
-实际验证仅覆盖开发机系统，尚未在所有旧版本 macOS 上验证。
-
-隐私
-安装包不含开发者的工作区、任务、模型账号或凭据。
-任务执行会使用用户自行配置的模型服务商。
-GUIDE
 name="Planning-${version}-beta-${build_id}-arm64"
-hdiutil create -volname "Planning Beta" -srcfolder "$staging" -format UDZO -ov "$output/$name.dmg"
+"$dmgbuild" -s script/dmg_settings.py -D staging="$staging" "Planning Beta" "$output/$name.dmg"
 hdiutil verify "$output/$name.dmg"
 (cd "$output" && shasum -a 256 "$name.dmg" > "$name.dmg.sha256")
 printf '\nPackage: %s\nChecksum: %s\n' "$output/$name.dmg" "$output/$name.dmg.sha256"

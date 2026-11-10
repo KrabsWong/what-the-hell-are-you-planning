@@ -226,6 +226,7 @@ pub(crate) enum MetadataDelta {
     DefaultModel(String),
     OpenCodePath(String),
     Appearance(Appearance),
+    LiquidGlass(bool),
     LastActiveProject(Option<u64>),
     AutomationSchemaVersion(u32),
     MaxConcurrentRuns(usize),
@@ -250,6 +251,7 @@ impl MetadataDelta {
             Self::DefaultModel(_) => "default_model",
             Self::OpenCodePath(_) => "opencode_path",
             Self::Appearance(_) => "appearance",
+            Self::LiquidGlass(_) => "liquid_glass",
             Self::LastActiveProject(_) => "last_active_project",
             Self::AutomationSchemaVersion(_) => "automation_schema_version",
             Self::MaxConcurrentRuns(_) => "max_concurrent_runs",
@@ -1533,6 +1535,7 @@ fn metadata_heap(delta: &MetadataDelta) -> usize {
         MetadataDelta::NextId(_)
         | MetadataDelta::RunIdFloor(_)
         | MetadataDelta::Appearance(_)
+        | MetadataDelta::LiquidGlass(_)
         | MetadataDelta::LastActiveProject(_)
         | MetadataDelta::AutomationSchemaVersion(_)
         | MetadataDelta::MaxConcurrentRuns(_)

@@ -311,6 +311,8 @@ pub struct TaskApp {
     pub collapsed_sidebar_goals: Vec<u64>,
     pub sidebar_split: Entity<gpui_kit::base::ResizableState>,
     pub(crate) workspace_menu_open: bool,
+    #[cfg(target_os = "macos")]
+    pub(crate) native_glass: Option<std::rc::Rc<crate::native_glass::NativeGlass>>,
     pub results_split: Entity<gpui_kit::base::ResizableState>,
     pub search: Entity<InputState>,
     /// Global search overlay (footer Search / ⌘K), separate from the list-local
@@ -937,6 +939,8 @@ impl TaskApp {
             collapsed_sidebar_goals: vec![],
             sidebar_split: cx.new(|_| gpui_kit::base::ResizableState::default()),
             workspace_menu_open: false,
+            #[cfg(target_os = "macos")]
+            native_glass: None,
             results_split: cx.new(|_| gpui_kit::base::ResizableState::default()),
             search,
             global_search,
@@ -2479,6 +2483,7 @@ impl TaskApp {
                 }
                 self.undo_invalidation = None;
                 crate::appearance::apply(self.store.appearance(), None, cx);
+                self.refresh_liquid_glass(window, cx);
                 self.toast = "Last change undone".into();
                 self.error.clear();
                 cx.notify();

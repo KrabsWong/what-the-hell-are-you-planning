@@ -6,6 +6,7 @@ use crate::{
 use gpui_kit::{
     component::{
         Disableable,
+        switch::Switch,
         button::ButtonVariants,
         input::Input,
         menu::{DropdownMenu, PopupMenuItem},
@@ -417,6 +418,17 @@ impl TaskApp {
             );
             col().gap_6()
             .child(appearance)
+            .child(col().gap_2()
+                .child(Switch::new("settings-liquid-glass")
+                    .label("Liquid Glass")
+                    .checked(self.store.liquid_glass())
+                    .disabled(self.liquid_glass_unavailable_reason().is_some())
+                    .on_click(cx.listener(|app, enabled, window, cx| {
+                        app.set_liquid_glass(*enabled, window, cx);
+                    })))
+                .child(label(self.liquid_glass_unavailable_reason().unwrap_or(
+                    "Use native translucent surfaces. Off by default; changes are saved immediately."
+                ), cx)))
             .child(col().gap_2()
                 .child(div().font_weight(FontWeight::SEMIBOLD).child(selectable("Execution")))
                 .child(div().text_sm().child(selectable("Maximum simultaneous research tasks")))

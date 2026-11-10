@@ -761,6 +761,21 @@ mod tests {
     }
 
     #[test]
+    fn liquid_glass_round_trips_and_older_workspaces_default_off() {
+        let directory = TestDirectory::new();
+        let storage = directory.storage();
+        let mut store = Store::empty();
+        store.set_liquid_glass(true);
+        storage.save(&store).unwrap();
+        assert!(storage.load().unwrap().unwrap().liquid_glass());
+        let mut data: serde_json::Value =
+            serde_json::from_slice(&fs::read(storage.path()).unwrap()).unwrap();
+        data["workspace"].as_object_mut().unwrap().remove("liquid_glass");
+        fs::write(storage.path(), serde_json::to_vec(&data).unwrap()).unwrap();
+        assert!(!storage.load().unwrap().unwrap().liquid_glass());
+    }
+
+    #[test]
     fn workspace_lock_excludes_a_second_instance_until_released() {
         let directory = TestDirectory::new();
         let first = directory.storage();

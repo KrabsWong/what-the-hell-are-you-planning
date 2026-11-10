@@ -359,6 +359,62 @@ impl TaskApp {
         }
         cx.notify();
     }
+    pub(crate) fn liquid_glass_unavailable_reason(&self) -> Option<&'static str> {
+        #[cfg(target_os = "macos")]
+        {
+            crate::native_glass::NativeGlass::unavailable_reason().or_else(|| {
+                self.native_glass.is_none().then_some("Liquid Glass is unavailable for this window.")
+            })
+        }
+        #[cfg(not(target_os = "macos"))]
+        { Some("Liquid Glass requires macOS 26 or later.") }
+    }
+
+    pub(crate) fn set_liquid_glass(&mut self, enabled: bool, window: &mut Window, cx: &mut Context<Self>) {
+        if self.liquid_glass_unavailable_reason().is_some() { return; }
+        if self.apply_scoped_settings(crate::scoped_settings::SettingsChange::LiquidGlass(enabled), cx) {
+            self.refresh_liquid_glass(window, cx);
+        }
+        cx.notify();
+    }
+
+    pub(crate) fn refresh_liquid_glass(&self, _window: &Window, _cx: &mut App) {
+        #[cfg(target_os = "macos")]
+        if let Some(glass) = &self.native_glass {
+            glass.refresh(self.store.liquid_glass(), _window, _cx);
+        }
+    }
+
+    fn chrome_background(&self, cx: &App) -> Hsla {
+        #[cfg(target_os = "macos")]
+        if self.native_glass.as_ref().is_some_and(|glass| glass.enabled()) {
+            return transparent_black();
+        }
+        rgb(palette(cx).side).into()
+    }
+
+    fn workspace_background(&self, cx: &App) -> Hsla {
+        #[cfg(target_os = "macos")]
+        if self.native_glass.as_ref().is_some_and(|glass| glass.enabled()) {
+            // A dense wash over the native material protects reading contrast.
+            return if gpui_kit::component::Theme::global(cx).is_dark() {
+                rgba(0x3436388c).into()
+            } else {
+                rgba(0xffffffa6).into()
+            };
+        }
+        rgb(palette(cx).canvas).into()
+    }
+
+    fn glass_underlay(&self) -> Option<AnyElement> {
+        #[cfg(target_os = "macos")]
+        if let Some(glass) = self.native_glass.as_ref().filter(|glass| glass.enabled()).cloned() {
+            return Some(canvas(move |bounds, _, _| glass.layout(bounds), |_, _, _, _| {})
+                .absolute().top_0().left_0().size_full().into_any_element());
+        }
+        None
+    }
+
     /// Sidebar identity row at the bottom dock. It names the workspace, is the
     /// only entry point for the local data folder and replaces the separate
     /// Settings nav item; the menu's Settings item opens that page. Clicking the
@@ -486,13 +542,12 @@ impl TaskApp {
     /// reuse layout and paint; each real parent notification re-evaluates the
     /// whole-Store saved comparison and every command state.
     pub(crate) fn footer_bar(&self, cx: &mut Context<Self>) -> AnyElement {
-        let colors = palette(cx);
         row()
             .w_full()
             .min_w_0()
             .h(px(30.))
             .px_4()
-            .bg(rgb(colors.side))
+            .bg(self.chrome_background(cx))
             .justify_between()
             .gap_4()
             .text_xs()
@@ -699,7 +754,7 @@ impl TaskApp {
             .w_full()
             .flex_shrink_0()
             .h_full()
-            .bg(rgb(colors.side))
+            .bg(self.chrome_background(cx))
             .p_3();
         let identity = row()
             .h(px(60.))
@@ -1148,7 +1203,7 @@ impl TaskApp {
                         .h(px(32.))
                         .pl_0()
                         .border_b_0()
-                        .bg(rgb(colors.side)),
+                        .bg(self.chrome_background(cx)),
                 )
             })
             .child(identity)
@@ -1633,7 +1688,7 @@ impl TaskApp {
                 .h(px(44.))
                 .pl_0()
                 .border_b_0()
-                .bg(rgb(colors.side))
+                .bg(self.chrome_background(cx))
                 .child(
                     div()
                         .flex_1()
@@ -4242,11 +4297,24 @@ impl Render for TaskApp {
 
         let mut root = col()
             .id("app")
+            .children(self.glass_underlay())
             .tab_group()
             .track_focus(&self.focus)
             .size_full()
             .relative()
-            .bg(rgb(colors.side))
+            .bg(self.chrome_background(cx))
+            .map(|root| {
+                #[cfg(target_os = "macos")]
+                if self.native_glass.as_ref().is_some_and(|g| g.enabled()) {
+                    // Apply one neutral wash to the shell, not one per nested region.
+                    return root.bg(if gpui_kit::component::Theme::global(cx).is_dark() {
+                        rgba(0x20222499)
+                    } else {
+                        rgba(0xffffffb3)
+                    });
+                }
+                root
+            })
             .text_color(rgb(colors.text))
             .font_family(".AppleSystemUIFont")
             .text_sm()
@@ -4374,7 +4442,7 @@ impl Render for TaskApp {
                                                     .size_full().min_w_0().min_h_0()
                                                     .rounded(px(SURFACE_RADIUS))
                                                     .p(px(SURFACE_GUTTER))
-                                                    .bg(rgb(colors.canvas))
+                                                    .bg(self.workspace_background(cx))
                                                     .border_1().border_color(rgb(colors.subtle_line))
                                                     .shadow(crate::appearance::workspace_shadow(cx))
                                                     .overflow_hidden()

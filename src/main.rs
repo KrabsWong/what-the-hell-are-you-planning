@@ -5,6 +5,8 @@ mod render_qa;
 #[cfg(feature = "qa")]
 mod affordance_qa;
 mod app;
+#[cfg(target_os = "macos")]
+mod native_glass;
 mod automation;
 mod automation_activity;
 mod automation_execution;
@@ -268,6 +270,11 @@ fn main() {
         t19_qa::workspace_menu();
         return;
     }
+    #[cfg(all(feature = "qa", target_os = "macos"))]
+    if std::env::args().any(|arg| arg == "--qa-native-glass") {
+        native_glass::preview();
+        return;
+    }
     #[cfg(feature = "qa")]
     if std::env::args().any(|arg| arg == "--qa-recovery-scroll") { recovery_qa::scroll(); return; }
     #[cfg(feature = "qa")]
@@ -475,7 +482,8 @@ fn main() {
         cx.bind_keys([KeyBinding::new("cmd-q", Quit, None)]);
         appearance::apply(appearance::Appearance::default(), None, cx);
         let bounds = Bounds::centered(None, size(px(1440.), px(920.)), cx);
-        let handle = open_window(
+        let mut app_entity = None;
+        let handle = cx.open_window(
             WindowOptions {
                 window_bounds: Some(WindowBounds::Windowed(bounds)),
                 window_min_size: Some(size(px(1000.), px(680.))),
@@ -489,12 +497,45 @@ fn main() {
                 app_owns_titlebar_drag: cfg!(target_os = "macos"),
                 ..Default::default()
             },
-            cx,
-            |window, cx| cx.new(|cx| app::TaskApp::new(window, cx)),
+            |window, cx| {
+                let view = cx.new(|cx| {
+                    let mut app = app::TaskApp::new(window, cx);
+                    #[cfg(target_os = "macos")]
+                    {
+                        app.native_glass = native_glass::NativeGlass::install(window);
+                        if let Some(glass) = &app.native_glass { glass.refresh(app.store.liquid_glass(), window, cx); }
+                    }
+                    app
+                });
+                app_entity = Some(view.clone());
+                cx.new(|cx| {
+                    let root = base::Root::new(view, window, cx);
+                    #[cfg(target_os = "macos")]
+                    let root = root.bg(transparent_black());
+                    root
+                })
+            },
         )
         .expect("Could not open the application window");
         let (quit_tx, quit_rx) = std::sync::mpsc::channel::<bool>();
-        let app_entity = handle.1.clone();
+        let app_entity = app_entity.expect("application view initialized");
+        #[cfg(target_os = "macos")]
+        {
+            let app = app_entity.clone();
+            let window: AnyWindowHandle = handle.into();
+            cx.spawn(async move |cx| {
+                loop {
+                    cx.background_executor().timer(std::time::Duration::from_millis(500)).await;
+                    if cx.update_window(window, |_, w, cx| {
+                        app.update(cx, |app, cx| {
+                            if app.native_glass.as_ref().is_some_and(|glass| glass.refresh(app.store.liquid_glass(), w, cx)) {
+                                cx.notify();
+                            }
+                        });
+                    }).is_err() { break; }
+                }
+            }).detach();
+        }
         cx.on_action(move |_: &Quit, cx| {
             let _ = app_entity.update(cx, |app, cx| {
                 app.begin_graceful_quit(quit_tx.clone(), cx)

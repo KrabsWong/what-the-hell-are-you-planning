@@ -88,9 +88,15 @@ pub fn apply(appearance: Appearance, window: Option<&mut Window>, cx: &mut App) 
         window,
         cx,
     );
+    apply_component_colors(cx);
+}
+
+pub(crate) fn apply_component_colors(cx: &mut App) {
     // Update both solid colors and the component render tokens together.
     let p = palette(cx);
     let dark = Theme::global(cx).is_dark();
+    #[cfg(target_os = "macos")]
+    let glass_dark = dark && cx.try_global::<crate::native_glass::GlassPalette>().is_some_and(|g| g.0);
     Theme::update(cx, |theme| {
         theme.radius = px(CONTROL_RADIUS);
         theme.radius_lg = px(GROUP_RADIUS);
@@ -111,6 +117,17 @@ pub fn apply(appearance: Appearance, window: Option<&mut Window>, cx: &mut App) 
         theme.link_hover = theme.button_primary_hover;
         theme.link_active = theme.button_primary_active;
         theme.danger = rgb(p.danger).into();
+        #[cfg(target_os = "macos")]
+        if glass_dark {
+            theme.button = rgb(p.panel).into();
+            theme.button_hover = rgb(p.hover).into();
+            theme.button_active = rgb(0x505256).into();
+            theme.input = rgb(p.border_strong).into();
+            theme.tab_bar = rgb(p.canvas).into();
+            theme.tab_bar_segmented = rgb(0x303234).into();
+            theme.tab_active = rgb(0x515355).into();
+            theme.tab_active_foreground = rgb(p.text).into();
+        }
     });
 }
 #[derive(Clone, Copy)]
@@ -139,6 +156,18 @@ pub struct Palette {
 }
 pub fn palette(cx: &App) -> Palette {
     if Theme::global(cx).is_dark() {
+        #[cfg(target_os = "macos")]
+        if cx.try_global::<crate::native_glass::GlassPalette>().is_some_and(|g| g.0) {
+            return Palette {
+                tag_surface: 0x494c50, tag_text: 0xf0f1f2, tag_success: 0xb0e6c8,
+                canvas: 0x343638, side: 0x303234, panel: 0x414345,
+                line: 0x55575a, text: 0xf0f0f1, muted: 0xc2c3c5,
+                accent: 0xc8a875, sidebar_selected: 0xffcf83, accent_surface: 0x494236,
+                hover: 0x4b4d50, subtle_line: 0x55575a, border_strong: 0x777a7e,
+                secondary: 0xd0d1d3, warning: 0xe2b36a, success: 0x80b8a0,
+                danger: 0xe39790, review: 0xbca1df, cancelled: 0x9b7d82,
+            };
+        }
         Palette {
             tag_surface: 0x34383e,
             tag_text: 0xf0f1f3,

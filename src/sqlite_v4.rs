@@ -683,6 +683,7 @@ impl SqliteV4 {
             "research_config",
         )?));
         store.set_metadata(MetadataDelta::Appearance(parse_meta(&meta, "appearance")?));
+        store.set_metadata(MetadataDelta::LiquidGlass(parse_meta_or(&meta, "liquid_glass", false)?));
         store.set_metadata(MetadataDelta::LastActiveProject(parse_meta(
             &meta,
             "last_active_project",
@@ -1503,6 +1504,7 @@ fn metadata_value(delta: &MetadataDelta) -> Result<Value, String> {
         MetadataDelta::DefaultModel(value) => serde_json::to_value(value),
         MetadataDelta::OpenCodePath(value) => serde_json::to_value(value),
         MetadataDelta::Appearance(value) => serde_json::to_value(value),
+        MetadataDelta::LiquidGlass(value) => serde_json::to_value(value),
         MetadataDelta::LastActiveProject(value) => serde_json::to_value(value),
         MetadataDelta::AutomationSchemaVersion(value) => serde_json::to_value(value),
         MetadataDelta::MaxConcurrentRuns(value) => serde_json::to_value(value),
@@ -1543,6 +1545,7 @@ fn seed_metadata(
         ),
         ("research_config", serde_json::to_value(&store.research_config())),
         ("appearance", serde_json::to_value(store.appearance())),
+        ("liquid_glass", serde_json::to_value(store.liquid_glass())),
         (
             "last_active_project",
             serde_json::to_value(store.last_active_project()),
@@ -2493,6 +2496,31 @@ mod tests {
             .unwrap();
         // Missing field in an older v4 database means no reservation floor.
         assert_eq!(database.load_store().unwrap().run_id_floor(), 0);
+    }
+
+    #[test]
+    fn liquid_glass_survives_seed_incremental_write_and_defaults_off_when_missing() {
+        let root = temp_root("liquid-glass");
+        let mut store = fixture_store(&root);
+        store.set_liquid_glass(true);
+        let path = root.join("workspace.sqlite3");
+        let database = SqliteV4::create_seeded(&path, &root, INCARNATION, &store).unwrap();
+        assert!(database.load_store().unwrap().liquid_glass());
+        drop(database);
+        let mut database = SqliteV4::open(&path, &root, INCARNATION).unwrap();
+        assert!(database.load_store().unwrap().liquid_glass());
+        let mut journal = ChangeJournal::new(INCARNATION);
+        let group = journal.stage_with_metadata(
+            Vec::new(), vec![MetadataDelta::LiquidGlass(false)], Vec::new(),
+        ).unwrap();
+        database.commit_group(&group).unwrap();
+        drop(database);
+        let database = SqliteV4::open(&path, &root, INCARNATION).unwrap();
+        assert!(!database.load_store().unwrap().liquid_glass());
+        database.connection.execute("DELETE FROM meta WHERE key='liquid_glass'", []).unwrap();
+        assert!(!database.load_store().unwrap().liquid_glass());
+        database.connection.execute("INSERT INTO meta(key,payload) VALUES('liquid_glass','42')", []).unwrap();
+        assert!(database.load_store().is_err());
     }
 
     #[test]

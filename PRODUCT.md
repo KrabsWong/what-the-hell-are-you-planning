@@ -14,7 +14,9 @@ A native Rust / gpui-kit task workspace for automatic topic planning, manual Kan
 
 ## Brand Personality
 
-Keep the current native desktop direction: simple, restrained and practical, with opaque rounded workspace surfaces and softly elevated dialogs throughout the app. No glass effects or brand redesign. System fonts, compact layout, the existing warm neutral palette and light/dark themes are implementation constraints.
+Keep the current native desktop direction: simple, restrained and practical, with rounded workspace surfaces and softly elevated dialogs throughout the app. Liquid Glass is off by default. Settings > General offers an opt-in native macOS 26+ appearance with coordinated light/dark colors; unsupported platforms and Reduce Transparency disable the switch with an explanation. System fonts, compact layout, the existing warm neutral palette and light/dark themes are implementation constraints.
+
+When enabled on macOS 26+, the application uses native Liquid Glass in the sidebar, top navigation toolbar, bottom status bar and gutters around the rounded workspace. The rounded workspace uses a dense translucent wash over the same native material, with a lighter charcoal tone in dark mode and neutral frosted white in light mode; dialogs remain opaque. Normal startup uses the existing workspace and saved appearance. An isolated QA preview remains available with sample data.
 
 ## Anti-references
 

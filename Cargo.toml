@@ -23,6 +23,12 @@ chrono-tz = "0.10"
 [dev-dependencies]
 gpui-kit = { version = "=0.9.1", features = ["gpui-fast", "test-support"] }
 
+[target.'cfg(target_os = "macos")'.dependencies]
+objc2 = { version = "0.6.4" }
+objc2-foundation = { version = "0.3.2", default-features = false, features = ["std", "NSGeometry", "NSObject"] }
+objc2-app-kit = { version = "0.3.2", default-features = false, features = ["std", "NSGlassEffectView", "NSColor", "NSView", "NSResponder", "NSWindow", "NSWorkspace", "NSAccessibility", "objc2-core-foundation"] }
+raw-window-handle = { version = "0.6.2" }
+
 [profile.dev]
 debug = 0
 # The normal app launcher uses this profile; optimize UI layout and painting.

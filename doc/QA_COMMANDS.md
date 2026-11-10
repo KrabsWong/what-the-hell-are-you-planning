@@ -169,3 +169,24 @@ target/debug/what-the-hell-are-you-planning --qa-global-search
 - `--qa-execution-eligibility`: eligibility reason consistency across dispatch and display.
 - `--qa-planning`: planning ownership/revision and stale-response boundaries.
 - `--qa-global-search`: footer/⌘K search from every origin, domain filter, exact research/automation/period selection, deleted targets, dirty-form preservation, and Escape/focus restoration at 1440×920 and 1000×680 in both themes.
+
+## Native Liquid Glass preview
+
+Normal startup leaves Liquid Glass off unless enabled in Settings > General.
+The switch is available only on macOS 26+ native windows without Reduce
+Transparency; it uses the existing workspace and saved theme. Use `./script/build_and_run.sh` to build and restart the real app.
+
+On macOS 26 or newer, run `./script/preview_native_glass.sh`. It builds a separate
+`PlanningGlassPreview.app`, opens sample data without reading the real workspace
+or starting agents, and leaves the normal app running. The sidebar, top
+navigation header, bottom status bar and workspace gutters use one regular-style
+native `NSGlassEffectView`; the rounded body uses a dense translucent wash. Inspect both active
+and inactive windows over a text-heavy background to check readability and the
+exposed material around the body corners.
+
+- `./script/preview_native_glass.sh --glass-dark` starts in dark mode for reading-surface comparison.
+- `./script/preview_native_glass.sh --glass-opaque` opens the same layout with the original opaque shell and body for comparison.
+- `./script/preview_native_glass.sh --glass-verify` checks menu opening, Escape dismissal, material layout and forced-opaque fallback while exercising light, dark and compact states, and verifies the Settings switch, immediate updates and persisted values, then exits. Visual review is manual; this command does not capture the screen.
+- Preview logs and isolated sample workspaces live under `.local/native-glass/`.
+- Interactive previews refresh Reduce Transparency every 500 ms. Older systems or missing native handles retain opaque navigation. The forced-opaque case tests the fallback without changing system preferences.
+- Headless snapshots cannot verify the native glass layer. Successful testing on a later macOS version does not establish macOS 26 device coverage or scrolling-performance acceptance.

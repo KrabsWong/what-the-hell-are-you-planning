@@ -7,6 +7,7 @@ pub(crate) enum SettingsChange {
     ExecutionConcurrency(usize),
     AutomationConcurrency(usize),
     Appearance(crate::appearance::Appearance),
+    LiquidGlass(bool),
 }
 
 #[derive(Clone, Debug, PartialEq, Eq)]
@@ -44,6 +45,14 @@ pub(crate) fn apply_settings_change(
             store.set_max_concurrent_automations(limit);
             SettingsChange::AutomationConcurrency(before)
         }
+        SettingsChange::LiquidGlass(enabled) => {
+            if store.liquid_glass() == enabled {
+                return Err(SettingsError::NoChange);
+            }
+            let before = store.liquid_glass();
+            store.set_liquid_glass(enabled);
+            SettingsChange::LiquidGlass(before)
+        }
         SettingsChange::Appearance(mode) => {
             if store.appearance() == mode {
                 return Err(SettingsError::NoChange);
@@ -70,6 +79,7 @@ pub(crate) fn undo_settings_change(
         SettingsChange::AutomationConcurrency(limit) => {
             store.set_max_concurrent_automations(limit.clamp(1, crate::scheduler::MAX_CONCURRENT_RUNS));
         }
+        SettingsChange::LiquidGlass(enabled) => store.set_liquid_glass(enabled),
         SettingsChange::Appearance(mode) => {
             store.set_appearance(mode);
         }
@@ -80,6 +90,22 @@ pub(crate) fn undo_settings_change(
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn liquid_glass_defaults_off_and_undo_preserves_theme() {
+        let mut store = Store::empty();
+        assert!(!store.liquid_glass());
+        store.set_appearance(crate::appearance::Appearance::Dark);
+        let undo = apply_settings_change(&mut store, SettingsChange::LiquidGlass(true)).unwrap();
+        assert!(store.liquid_glass());
+        assert_eq!(apply_settings_change(&mut store, SettingsChange::LiquidGlass(true)), Err(SettingsError::NoChange));
+        assert!(store.pending_metadata_deltas().iter().any(|delta| matches!(
+            delta, crate::persistence_journal::MetadataDelta::LiquidGlass(true)
+        )));
+        undo_settings_change(&mut store, &undo).unwrap();
+        assert!(!store.liquid_glass());
+        assert_eq!(store.appearance(), crate::appearance::Appearance::Dark);
+    }
 
     #[test]
     fn settings_undo_restores_only_the_changed_limit() {

@@ -4,7 +4,7 @@
 
 Use [Lucide Icons](https://lucide.dev/icons/) for all application interface icons. Search the official catalog, open the candidate's detail page, and confirm its meaning at the intended size. Check that the icon exists in the project's pinned `gpui-kit-assets` dependency; the website can be newer than the dependency. Do not edit Cargo's registry cache or upgrade dependencies solely to access an unnecessary icon.
 
-The current `gpui-kit` dependency is 0.8.1. Its assets package records Lucide provenance in `lucide.json` and includes `LICENSE-LUCIDE`. Existing `IconName` components already use Lucide. `IconName::Close` is the package alias for Lucide's `x`.
+The current `gpui-kit` dependency is 0.9.1. Its assets package records Lucide provenance in `lucide.json` and includes `LICENSE-LUCIDE`. Existing `IconName` components already use Lucide. `IconName::Close` is the package alias for Lucide's `x`.
 
 ### Semantic choices
 

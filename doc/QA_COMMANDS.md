@@ -26,7 +26,7 @@ Build once and invoke the dispatch binary directly. Each entry uses an isolated 
 target/debug/what-the-hell-are-you-planning --qa-<entry>
 ```
 
-All 49 standalone offline `--qa*` entries in `src/main.rs` are covered below: 45 in the table and 4 named after it. The two crash-child modes are excluded from this list. Three entries share one intake-acceptance implementation: `--qa`, `--qa-intake` and `--qa-projects`. `--qa-workspace` is the empty-workspace/theme suite; the onboarding/upgrade suite is `--qa-onboarding`.
+The original 49-entry standalone offline baseline is listed below: 45 in the table and 4 named after it. Additional entries are documented under Supplemental focused entries and in the [application scrolling](qa/APPLICATION_SCROLL.md) and [automation dialog scrolling](qa/AUTOMATION_DIALOG_SCROLL.md) guides. The two crash-child modes are excluded from this list. Three entries share one intake-acceptance implementation: `--qa`, `--qa-intake` and `--qa-projects`. `--qa-workspace` is the empty-workspace/theme suite; the onboarding/upgrade suite is `--qa-onboarding`.
 
 | Entry | Runner / purpose |
 | --- | --- |
@@ -148,6 +148,10 @@ When a suite fails, classify the output before changing code:
 Keep assertions and the failing scenario. Do not raise a timeout to hide a fixture or product failure.
 
 ## Supplemental focused entries
+
+`--qa-workspace-menu` checks workspace-menu open state, Escape and trigger dismissal,
+rapid reversal, and reduced motion. It captures light/dark rotation frames at the
+compact window size in an isolated workspace.
 
 These are additional offline entries added during the current optimization work. They do not replace or renumber the original 33-entry baseline.
 

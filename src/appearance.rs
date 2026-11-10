@@ -18,8 +18,8 @@ pub const SURFACE_GUTTER: f32 = 6.;
 /// The workspace casts a soft leading-edge shadow onto the sidebar backdrop.
 pub fn workspace_shadow(cx: &App) -> Vec<gpui_kit::BoxShadow> {
     use gpui_kit::*;
-    let color = if Theme::global(cx).is_dark() { 0x00000048 } else { 0x00000016 };
-    vec![BoxShadow::new(px(-5.), px(0.), rgba(color).into()).blur_radius(px(18.))]
+    let color = if Theme::global(cx).is_dark() { 0x00000028 } else { 0x0000000c };
+    vec![BoxShadow::new(px(-2.), px(0.), rgba(color).into()).blur_radius(px(10.))]
 }
 
 /// Opaque elevated surface for application-owned dialogs and search.

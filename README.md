@@ -88,7 +88,7 @@ For a complete backup, quit the application and copy the entire workspace root, 
 
 ## Current scope
 
-This is an early desktop application, currently validated on Apple Silicon macOS. It uses Rust and GPUI / gpui-kit for its native interface. At least one local agent CLI (OpenCode or Codex) is required for agent execution; ego(lite) is required for browser-based research.
+This is an early desktop application, currently validated on Apple Silicon macOS. It uses Rust and pinned gpui-kit 0.9.1 with the GPUI Fast backend enabled for normal and test builds; Cargo.lock currently resolves GPUI Fast 0.1.14. At least one local agent CLI (OpenCode or Codex) is required for agent execution; ego(lite) is required for browser-based research.
 
 The application provides research workflows, not trading or order execution. Generated conclusions and source records still require human review. A project working directory organizes agent output; it is not a filesystem sandbox.
 

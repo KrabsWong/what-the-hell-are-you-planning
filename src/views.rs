@@ -363,7 +363,14 @@ impl TaskApp {
     /// only entry point for the local data folder and replaces the separate
     /// Settings nav item; the menu's Settings item opens that page. Clicking the
     /// row opens a menu instead of acting as a plain label.
-    fn workspace_switcher(&self, cx: &mut Context<Self>) -> AnyElement {
+    fn workspace_switcher(&self, window: &mut Window, cx: &mut Context<Self>) -> AnyElement {
+        let rotation = gpui_kit::base::motion::transition(
+            "workspace-menu-chevron",
+            if self.workspace_menu_open { std::f32::consts::PI } else { 0. },
+            gpui_kit::base::motion::Transition::new(std::time::Duration::from_millis(180)),
+            window,
+            cx,
+        );
         let colors = palette(cx);
         let path = self
             .storage
@@ -412,6 +419,7 @@ impl TaskApp {
                     )
                     .child(
                         gpui_kit::component::Icon::new(assets::IconName::ChevronDown)
+                            .rotate(radians(rotation))
                             .size(px(14.))
                             .flex_shrink_0()
                             .text_color(rgb(colors.muted)),
@@ -468,6 +476,10 @@ impl TaskApp {
                 );
                 menu
             })
+            .on_open_change(cx.listener(|app, open, _, cx| {
+                app.workspace_menu_open = *open;
+                cx.notify();
+            }))
             .into_any_element()
     }
     /// The retained footer surface. Its definite height lets the cached view
@@ -679,7 +691,7 @@ impl TaskApp {
     pub(crate) fn focus_search(&mut self, window: &mut Window, cx: &mut Context<Self>) {
         self.open_global_search(window, cx);
     }
-    pub(crate) fn sidebar_surface(&self, cx: &mut Context<Self>) -> AnyElement {
+    pub(crate) fn sidebar_surface(&self, window: &mut Window, cx: &mut Context<Self>) -> AnyElement {
         #[cfg(feature = "qa")]
         crate::brand::note_sidebar_render();
         let colors = palette(cx);
@@ -1147,7 +1159,7 @@ impl TaskApp {
                     .gap_0()
                     .mt_2()
                     .pt_2()
-                    .child(self.workspace_switcher(cx))
+                    .child(self.workspace_switcher(window, cx))
                     .child(
                         tool_icon(
                             "toggle-appearance",
@@ -4333,15 +4345,10 @@ impl Render for TaskApp {
                 div().flex_1().min_h_0().child(
                     h_resizable("workspace-split")
                         .with_state(&self.sidebar_split)
-                        .with_handle_appearance(std::rc::Rc::new(|handle, _, cx| {
-                            // Keep the library's drag target and cursor; paint only a
-                            // short grip on hover/drag instead of a full-height rule.
-                            Some(div().w_full().h_full().flex().items_center().justify_center()
-                                .when(!matches!(handle.state(), gpui_kit::base::ResizeHandleState::Idle), |d| {
-                                    d.child(div().w(px(2.)).h(px(48.)).rounded_full()
-                                        .bg(rgb(if handle.is_active() { palette(cx).accent } else { palette(cx).muted })))
-                                })
-                                .into_any_element())
+                        .with_handle_appearance(std::rc::Rc::new(|_, _, _| {
+                            // Keep the library's resize cursor and hit target without
+                            // adding another visible divider beside the surface shadow.
+                            Some(div().into_any_element())
                         }))
                         .child(
                             resizable_panel()

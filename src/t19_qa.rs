@@ -1009,6 +1009,67 @@ fn sidebar_retained_surface(root: &Path) {
         .unwrap();
 }
 
+/// Exercise the workspace menu through real pointer and keyboard dismissal.
+pub fn workspace_menu() {
+    let root = std::env::current_dir().unwrap()
+        .join(format!(".local/workspace-menu-qa/{}", std::process::id()));
+    for mode in [Appearance::Light, Appearance::Dark] {
+        let directory = root.join(format!("{mode:?}"));
+        std::fs::create_dir_all(&directory).unwrap();
+        let mut store = fixture(&directory);
+        store.set_appearance(mode);
+        let path = directory.join("workspace.sqlite3");
+        Storage::new(path.clone()).save(&store).unwrap();
+        let (mut cx, handle, app) = with_app(store, &path, 1000., 680., |_, _, _| {});
+        screenshot(&mut cx, handle, &directory, "closed.png");
+        cx.update_window(handle, |_, w, cx| {
+            assert!(!app.read(cx).workspace_menu_open);
+            w.click("workspace-menu", cx);
+            w.render_frame(cx);
+            assert!(app.read(cx).workspace_menu_open);
+        }).unwrap();
+        cx.advance_clock(Duration::from_millis(60));
+        screenshot(&mut cx, handle, &directory, "opening.png");
+        cx.advance_clock(Duration::from_millis(200));
+        screenshot(&mut cx, handle, &directory, "open.png");
+        cx.update_window(handle, |_, w, cx| {
+            w.press("escape", cx);
+            w.render_frame(cx);
+        }).unwrap();
+        cx.run_until_parked();
+        cx.update_window(handle, |_, w, cx| {
+            w.render_frame(cx);
+            assert!(!app.read(cx).workspace_menu_open);
+        }).unwrap();
+        cx.advance_clock(Duration::from_millis(60));
+        screenshot(&mut cx, handle, &directory, "closing.png");
+        // Reopen during the closing transition, then dismiss via the trigger.
+        cx.update_window(handle, |_, w, cx| {
+            w.click("workspace-menu", cx);
+            w.render_frame(cx);
+            assert!(app.read(cx).workspace_menu_open);
+        }).unwrap();
+        cx.advance_clock(Duration::from_millis(200));
+        screenshot(&mut cx, handle, &directory, "reopened.png");
+        cx.update_window(handle, |_, w, cx| {
+            w.click("workspace-menu", cx);
+            w.render_frame(cx);
+            assert!(!app.read(cx).workspace_menu_open);
+        }).unwrap();
+        cx.advance_clock(Duration::from_millis(200));
+        screenshot(&mut cx, handle, &directory, "closed-again.png");
+        cx.update_window(handle, |_, w, cx| {
+            cx.set_reduce_motion(true);
+            w.click("workspace-menu", cx);
+            w.render_frame(cx);
+            assert!(app.read(cx).workspace_menu_open);
+        }).unwrap();
+        screenshot(&mut cx, handle, &directory, "reduced-motion-open.png");
+        cx.update_window(handle, |_, w, _| w.remove_window()).unwrap();
+    }
+    println!("Workspace menu QA passed: {}", root.display());
+}
+
 fn startup_completion_scheduled(root: &Path) {
     use std::sync::atomic::Ordering;
     struct NotifyProbe {

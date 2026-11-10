@@ -310,6 +310,7 @@ pub struct TaskApp {
     pub expanded_sidebar_projects: Vec<u64>,
     pub collapsed_sidebar_goals: Vec<u64>,
     pub sidebar_split: Entity<gpui_kit::base::ResizableState>,
+    pub(crate) workspace_menu_open: bool,
     pub results_split: Entity<gpui_kit::base::ResizableState>,
     pub search: Entity<InputState>,
     /// Global search overlay (footer Search / ⌘K), separate from the list-local
@@ -935,6 +936,7 @@ impl TaskApp {
             expanded_sidebar_projects: vec![],
             collapsed_sidebar_goals: vec![],
             sidebar_split: cx.new(|_| gpui_kit::base::ResizableState::default()),
+            workspace_menu_open: false,
             results_split: cx.new(|_| gpui_kit::base::ResizableState::default()),
             search,
             global_search,

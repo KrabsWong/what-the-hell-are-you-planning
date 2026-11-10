@@ -104,12 +104,12 @@ impl SidebarSurface {
 }
 
 impl Render for SidebarSurface {
-    fn render(&mut self, _window: &mut Window, cx: &mut Context<Self>) -> impl IntoElement {
+    fn render(&mut self, window: &mut Window, cx: &mut Context<Self>) -> impl IntoElement {
         let Some(parent) = self.parent.upgrade() else {
             return div().into_any_element();
         };
         parent
-            .update(cx, |app, cx| app.sidebar_surface(cx))
+            .update(cx, |app, cx| app.sidebar_surface(window, cx))
             .into_any_element()
     }
 }

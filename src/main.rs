@@ -264,6 +264,11 @@ fn main() {
         return;
     }
     #[cfg(feature = "qa")]
+    if std::env::args().any(|arg| arg == "--qa-workspace-menu") {
+        t19_qa::workspace_menu();
+        return;
+    }
+    #[cfg(feature = "qa")]
     if std::env::args().any(|arg| arg == "--qa-recovery-scroll") { recovery_qa::scroll(); return; }
     #[cfg(feature = "qa")]
     if std::env::args().any(|arg| arg == "--qa-recovery") {

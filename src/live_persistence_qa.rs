@@ -28,10 +28,11 @@ fn run_root() -> PathBuf {
 const CASE_ENV: &str = "LIVE_PERSISTENCE_QA_CASE";
 const ROOT_ENV: &str = "LIVE_PERSISTENCE_QA_ROOT";
 const SEQUENTIAL_ENV: &str = "LIVE_PERSISTENCE_QA_SEQUENTIAL";
-const CASES: [&str; 36] = [
+const CASES: [&str; 37] = [
     "core",
     "reopen",
     "pending-quit",
+    "window-reopen",
     "startup-retry",
     "write-failure-retry",
     "reopened-identical-form",
@@ -76,6 +77,7 @@ fn run_case(case: &str) -> Result<(), String> {
         "core" => core_save_and_ack(&root.join("core")),
         "reopen" => reopen_after_quit(&root.join("core")),
         "pending-quit" => pending_quit_drain(&root.join("quit")),
+        "window-reopen" => window_reopen(&root.join("window-reopen")),
         "startup-retry" => startup_self_lock_retry(&root.join("startup-retry")),
         "write-failure-retry" => write_failure_retry(&root.join("write-failure-retry")),
         "reopened-identical-form" => {
@@ -3277,6 +3279,65 @@ fn measure_settings_save(root: &Path, label: &str) -> Result<(u128, u128), Strin
     }
     let _ = cx.update_window(handle, |_, w, _| w.remove_window());
     Ok((ui, total))
+}
+
+/// Exercise real macOS hide/activate APIs; the headless platform cannot hide.
+fn window_reopen(_root: &Path) -> Result<(), String> {
+    if !cfg!(target_os = "macos") {
+        return Ok(());
+    }
+    // NSApplication termination exits the process, so this native case cannot
+    // share the sequential suite's process with the remaining headless cases.
+    if std::env::var_os(SEQUENTIAL_ENV).is_some() {
+        let status = std::process::Command::new(std::env::current_exe().map_err(|e| e.to_string())?)
+            .arg("--qa-live-persistence")
+            .env(CASE_ENV, "window-reopen")
+            .env_remove(SEQUENTIAL_ENV)
+            .status()
+            .map_err(|e| e.to_string())?;
+        return if status.success() { Ok(()) } else { Err(format!("native window QA failed: {status}")) };
+    }
+    application().with_assets(crate::ui_assets::AppAssets).run(|cx| {
+        init(cx);
+        let (handle, app) = open_window(WindowOptions {
+            window_bounds: Some(WindowBounds::Windowed(Bounds::centered(
+                None, size(px(1000.), px(680.)), cx,
+            ))),
+            titlebar: Some(TitlebarOptions {
+                title: Some("Window reopen QA — isolated fixture".into()),
+                ..Default::default()
+            }),
+            ..Default::default()
+        }, cx, |w, cx| cx.new(|cx| TaskApp::new_mock(w, cx))).unwrap();
+        cx.spawn(async move |cx| {
+            for deferred in [false, true, false] {
+                cx.background_executor().timer(Duration::from_millis(150)).await;
+                cx.update_window(handle.into(), |_, w, cx| {
+                    app.update(cx, |a, cx| {
+                        assert!(a.can_close_window(cx));
+                        if deferred {
+                            a.window_close_ready = true;
+                            cx.notify();
+                        }
+                    });
+                    if !deferred {
+                        crate::close_workspace_window(w, cx);
+                    }
+                }).expect("close must retain the window");
+                cx.background_executor().timer(Duration::from_millis(150)).await;
+                cx.update(|cx| {
+                    crate::reopen_application(cx);
+                    assert_eq!(cx.windows().len(), 1, "reopen must not duplicate windows");
+                });
+                cx.update_window(handle.into(), |_, _, cx| {
+                    assert!(!app.read(cx).window_close_ready, "deferred close must finish");
+                }).expect("reopen must retain the original workspace");
+            }
+            println!("WINDOW_REOPEN_QA native close/reopen cycles passed");
+            cx.update(|cx| cx.quit());
+        }).detach();
+    });
+    Ok(())
 }
 
 /// A pending accepted write must drain before the window closes. This proves

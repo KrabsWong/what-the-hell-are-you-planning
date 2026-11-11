@@ -477,7 +477,20 @@ fn main() {
         );
         std::process::exit(2);
     }
-    application().with_assets(ui_assets::AppAssets).run(|cx| {
+    let application = application().with_assets(ui_assets::AppAssets);
+    let retained_app = std::rc::Rc::new(std::cell::RefCell::new(None::<Entity<app::TaskApp>>));
+    let reopen_entity = retained_app.clone();
+    application.on_reopen(move |cx| {
+        if let Some(app) = reopen_entity.borrow().as_ref() {
+            app.update(cx, |app, cx| {
+                if !app.window_close_requested && !app.quit_requested {
+                    app.arm_automation_timer(cx);
+                }
+            });
+        }
+        reopen_application(cx);
+    });
+    application.run(move |cx| {
         init(cx);
         cx.bind_keys([KeyBinding::new("cmd-q", Quit, None)]);
         appearance::apply(appearance::Appearance::default(), None, cx);
@@ -519,6 +532,7 @@ fn main() {
         .expect("Could not open the application window");
         let (quit_tx, quit_rx) = std::sync::mpsc::channel::<bool>();
         let app_entity = app_entity.expect("application view initialized");
+        *retained_app.borrow_mut() = Some(app_entity.clone());
         #[cfg(target_os = "macos")]
         {
             let app = app_entity.clone();
@@ -564,6 +578,29 @@ fn main() {
         quit_task.detach();
         cx.activate(true);
     });
+}
+
+/// Restore the retained workspace when macOS reopens the running application.
+fn reopen_application(cx: &mut App) {
+    cx.activate(true);
+    for handle in cx.windows() {
+        let _ = handle.update(cx, |_, window, _| window.activate_window());
+    }
+}
+
+/// Keep the macOS workspace and its window-bound inputs available for Dock reopen.
+/// Other platforms retain their existing window-close behavior.
+fn close_workspace_window(window: &mut Window, cx: &mut App) {
+    #[cfg(target_os = "macos")]
+    {
+        let _ = window;
+        cx.hide();
+    }
+    #[cfg(not(target_os = "macos"))]
+    {
+        let _ = cx;
+        window.remove_window();
+    }
 }
 
 #[cfg(test)]

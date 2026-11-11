@@ -4195,9 +4195,11 @@ impl Render for TaskApp {
         if !self.window_close_registered {
             self.window_close_registered = true;
             let weak = cx.weak_entity();
-            window.on_window_should_close(cx, move |_window, cx| {
-                weak.update(cx, |app, cx| app.can_close_window(cx))
-                    .unwrap_or(true)
+            window.on_window_should_close(cx, move |window, cx| {
+                if weak.update(cx, |app, cx| app.can_close_window(cx)).unwrap_or(true) {
+                    crate::close_workspace_window(window, cx);
+                }
+                false
             });
         }
         if self.window_close_requested && !self.quit_requested && self.live_clean_for_quit() {
@@ -4206,7 +4208,7 @@ impl Render for TaskApp {
         }
         if self.window_close_ready {
             self.window_close_ready = false;
-            window.remove_window();
+            crate::close_workspace_window(window, cx);
         }
         // Queue changes notify the app and invalidate statuses through the observer.
         // Merely having a batch must not invalidate every wheel/animation frame.

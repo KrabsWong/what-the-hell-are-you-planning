@@ -1539,11 +1539,11 @@ impl TaskApp {
             let _ = self.submit_pending_followups(Some(cx));
         }
         if self.live_clean_for_quit() {
+            let close_window = self.window_close_requested && !self.quit_requested;
             self.quit_requested = false;
             self.window_close_requested = false;
-            if self.window_close_registered {
-                // The window handler observes this in render and removes the
-                // window; clearing the request without closing would strand it.
+            if close_window && self.window_close_registered {
+                // Render completes the platform close after the durable drain.
                 self.window_close_ready = true;
             }
             if let Some(sender) = self.quit_sender.take() {

@@ -4184,6 +4184,7 @@ impl Render for TaskApp {
         // here because the pump has no Window.
         self.apply_deferred_ui(window, cx);
         self.apply_pending_result_navigation(window, cx);
+        self.apply_pending_period(window, cx);
         if self.navigation.pending_saved_exit.is_some() {
             let weak = cx.weak_entity();
             window.defer(cx, move |window, cx| {

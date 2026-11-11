@@ -944,7 +944,7 @@ impl TaskApp {
         if self.history_reader.is_none() {
             return false;
         }
-        if self.pending_result_navigation.is_some() { return true; }
+        if self.pending_result_navigation.is_some() || self.automation_ui.pending_period.is_some() { return true; }
         let state_pending = |run_id: u64| match self.run_body_state.get(&run_id) {
             None | Some(crate::history_reader::BodyLoad::NotRequested) => true,
             Some(crate::history_reader::BodyLoad::Loading { .. }) => true,
@@ -1256,6 +1256,9 @@ impl TaskApp {
             }
         }
         let mut body_targets: Vec<u64> = Vec::new();
+        if let Some(id) = self.automation_ui.pending_period {
+            body_targets.extend(self.pending_period_bodies(id));
+        }
         if let Some(pending) = &self.pending_result_navigation { body_targets.push(pending.run_id); }
         if let Some(run_id) = self.displayed_run_id() {
             body_targets.push(run_id);
@@ -1641,6 +1644,7 @@ impl TaskApp {
     /// adapter/ACK must never complete a form in the new workspace.
     pub(crate) fn reset_live_state(&mut self) {
         self.pending_result_navigation = None;
+        self.automation_ui.pending_period = None;
         self.live_primary = None;
         self.live_followups.clear();
         self.history_reader = None;

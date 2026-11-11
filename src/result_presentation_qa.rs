@@ -62,9 +62,15 @@ pub fn run() {
         refresh_preview(&root);
         return;
     }
+    if std::env::var("PLANNING_TECHNICAL_QA").as_deref() == Ok("1") {
+        atomic_period_navigation_check(&root);
+        technical_scroll_check(&root);
+        return;
+    }
     pure_checks();
     lazy_reader_check(&root);
     atomic_reader_navigation_check(&root);
+    atomic_period_navigation_check(&root);
     render_matrix(&root);
     copy_result_check(&root);
     export_parity_check(&root).unwrap();
@@ -1068,12 +1074,14 @@ fn screenshot_automation(
     });
     screenshot(&mut cx, handle, directory, name);
     cx.update_window(handle, |_, w, _| {
-        let state = w
-            .find("automation-result-state")
-            .label()
-            .map(str::to_string)
-            .unwrap_or_default();
-        assert_eq!(state, expected.state);
+        let state_element = w.try_find("automation-result-state");
+        let state = state_element.as_ref().and_then(|element| element.label())
+            .map(str::to_string).unwrap_or_default();
+        if name == "quick-complete.png" {
+            assert!(state_element.is_none(), "A single complete report should start with its body");
+        } else {
+            assert_eq!(state, expected.state);
+        }
         for run in &expected.report_runs {
             w.find(format!("automation-report-body-{occurrence}-{run}"));
         }
@@ -1103,6 +1111,97 @@ fn screenshot_automation(
         let body_name = name.replace(".png", &format!("-{suffix}.png"));
         screenshot(&mut cx, handle, directory, &body_name);
     }
+}
+
+fn technical_scroll_check(root: &Path) {
+    for (width, height) in [(1440., 920.), (1000., 680.)] {
+        for mode in [Appearance::Light, Appearance::Dark] {
+            let (mut store, occurrence) = automation_fixture(root, AutomationState::ResearchComplete);
+            store.set_appearance(mode);
+            let ids: Vec<_> = store.runs().iter()
+                .filter(|run| run.automation_occurrence_id == Some(occurrence))
+                .map(|run| run.id).collect();
+            assert!(ids.len() > 1);
+            for index in 0..store.runs().len() {
+                let run = store.run_at_mut(index).unwrap();
+                if ids.contains(&run.id) {
+                    run.logs = (0..40).map(|line| format!("Run #{} diagnostic line {line}: evidence collection and report processing.", run.id)).collect();
+                }
+            }
+            let first_step = store.runs().iter().find(|run| run.id == ids[0]).unwrap().task_id;
+            let latest = *ids.last().unwrap();
+            let first = ids[0];
+            let presentation = present_occurrence(&store, store.occurrence(occurrence).unwrap());
+            let source_run = presentation.reports.iter()
+                .find(|report| !report.presentation.sources.is_empty()).unwrap()
+                .presentation.run_id.unwrap();
+            let sources_toggle = format!("automation-sources-{occurrence}-report-{source_run}");
+            let source_link = format!("automation-source-{occurrence}-report-{source_run}-0");
+            let path = root.join(format!("technical-{mode:?}-{width}.sqlite3"));
+            Storage::new(path.clone()).save(&store).unwrap();
+            let (mut cx, handle) = with_app(store, &path, width, height, |a, _, _| {
+                a.set_scope_identity(Scope::AutomationRuns);
+                a.push_period_overlay(occurrence);
+                a.automation_ui.show_technical = false;
+            });
+            screenshot(&mut cx, handle, root, &format!("result-default-{mode:?}-{width}.png"));
+            cx.update_window(handle, |root, w, cx| {
+                w.render_frame(cx);
+                let app = root.downcast::<base::Root>().unwrap().read(cx).view().clone().downcast::<TaskApp>().unwrap();
+                let step_row = format!("automation-step-{first_step}");
+                assert!(w.try_find(step_row.clone()).is_none());
+                w.click("automation-completed-steps", cx);
+                w.render_frame(cx);
+                w.find(step_row.clone());
+                w.click("automation-completed-steps", cx);
+                w.render_frame(cx);
+                assert!(w.try_find(step_row).is_none());
+                assert!(w.try_find(source_link.clone()).is_none());
+                w.click(sources_toggle.clone(), cx);
+                w.render_frame(cx);
+                w.find(source_link.clone());
+                w.click(sources_toggle.clone(), cx);
+                w.render_frame(cx);
+                assert!(w.try_find(source_link.clone()).is_none());
+                assert!(w.try_find("automation-period-diagnostics").is_none());
+                app.update(cx, |a, cx| {
+                    a.automation_ui.show_technical = true;
+                    cx.notify();
+                });
+                w.render_frame(cx);
+                w.find("automation-period-diagnostics");
+                app.update(cx, |a, _| {
+                    a.automation_ui.dialog_scroll.set_offset(point(px(0.), -a.automation_ui.dialog_scroll.max_offset().y));
+                });
+                w.render_frame(cx);
+                let log_id = format!("automation-run-logs-{latest}");
+                assert!(w.find(log_id.clone()).visible());
+                assert!(w.try_find(format!("automation-run-logs-{first}")).is_none());
+                let before = app.read(cx).automation_ui.dialog_scroll.offset();
+                w.scroll(log_id.clone(), ScrollDelta::Pixels(point(px(0.), px(-90.))), cx);
+                w.render_frame(cx);
+                assert!(app.read(cx).automation_ui.technical_scroll.offset().y < px(0.));
+                assert_eq!(app.read(cx).automation_ui.dialog_scroll.offset(), before);
+                w.scroll(log_id.clone(), ScrollDelta::Pixels(point(px(0.), px(40.))), cx);
+                w.render_frame(cx);
+                assert_eq!(app.read(cx).automation_ui.dialog_scroll.offset(), before);
+                w.scroll(log_id.clone(), ScrollDelta::Pixels(point(px(0.), px(1000.))), cx);
+                w.render_frame(cx);
+                assert_eq!(app.read(cx).automation_ui.dialog_scroll.offset(), before);
+                w.scroll(log_id.clone(), ScrollDelta::Pixels(point(px(0.), px(100.))), cx);
+                w.render_frame(cx);
+                assert!(app.read(cx).automation_ui.dialog_scroll.offset().y > before.y);
+                w.click(format!("automation-run-tab-{first}"), cx);
+                w.render_frame(cx);
+                assert_eq!(app.read(cx).automation_ui.technical_run, Some(first));
+                assert_eq!(app.read(cx).automation_ui.technical_scroll.offset().y, px(0.));
+                assert!(w.try_find(log_id.clone()).is_none());
+                w.find(format!("automation-run-logs-{first}"));
+            }).unwrap();
+            screenshot(&mut cx, handle, root, &format!("technical-{mode:?}-{width}.png"));
+        }
+    }
+    println!("Technical run selection and scroll QA passed · {}", root.display());
 }
 
 fn screenshot_ordinary(
@@ -1275,6 +1374,95 @@ fn lazy_reader_check(root: &Path) {
     cx.capture_screenshot(handle).unwrap().save(directory.join("hydrated-report.png")).unwrap();
     cx.update_window(handle, |_, w, _| w.remove_window()).unwrap();
     println!("Lazy reader distinguishes loading, read failure and hydrated content without changing selection");
+}
+
+fn atomic_period_navigation_check(root: &Path) {
+    let directory = root.join("atomic-period");
+    std::fs::create_dir_all(&directory).unwrap();
+    let (mut store, first) = automation_fixture(&directory, AutomationState::ResearchComplete);
+    let mut next = store.occurrence(first).unwrap().clone();
+    next.id = 999;
+    next.trigger_key = "manual:999".into();
+    store.push_occurrence(next);
+    let final_run = store.occurrence(first).unwrap().final_run_id.unwrap();
+    let path = directory.join("workspace.sqlite3");
+    let database = crate::sqlite_v4::SqliteV4::create_seeded(&path, &directory, 732, &store).unwrap();
+    let lazy = database.load_store_lazy().unwrap();
+    let reader = crate::history_reader::HistoryReader::start(&path, &directory, 732).unwrap();
+    let mut cx = HeadlessAppContext::with_platform(
+        platform::current_platform(true).text_system(), Arc::new(crate::ui_assets::AppAssets),
+        platform::current_headless_renderer,
+    );
+    cx.update(init);
+    let handle: AnyWindowHandle = cx.open_window(size(px(1000.), px(680.)), |w, cx| {
+        let view = cx.new(|cx| TaskApp::new_mock(w, cx));
+        view.update(cx, |a, _| {
+            a.store = lazy;
+            a.history_reader = Some(reader);
+            a.set_scope_identity(Scope::AutomationRuns);
+        });
+        cx.new(|cx| base::Root::new(view, w, cx))
+    }).unwrap().into();
+    let mut app = None;
+    cx.update_window(handle, |root, w, cx| {
+        let view = root.downcast::<base::Root>().unwrap().read(cx).view().clone().downcast::<TaskApp>().unwrap();
+        view.update(cx, |a, cx| {
+            a.open_occurrence_result(999, w, cx);
+            assert_eq!(a.automation_ui.pending_period, Some(999));
+            assert_eq!(a.period_overlay(), None, "Do not reveal an incomplete dialog");
+            a.open_occurrence_result(first, w, cx);
+            assert_eq!(a.automation_ui.pending_period, Some(first));
+            assert_eq!(a.period_overlay(), None);
+        });
+        app = Some(view);
+    }).unwrap();
+    let app = app.unwrap();
+    let deadline = std::time::Instant::now() + Duration::from_secs(5);
+    loop {
+        cx.update_window(handle, |_, w, cx| {
+            app.update(cx, |a, cx| a.poll_history_io(cx));
+            w.render_frame(cx);
+            let a = app.read(cx);
+            assert_ne!(a.period_overlay(), Some(999), "Latest selection wins");
+            if a.period_overlay().is_some() {
+                assert!(a.pending_period_bodies(first).is_empty());
+                assert!(w.try_find("automation-report-loading").is_none());
+                let result = present_occurrence(&a.store, a.store.occurrence(first).unwrap());
+                assert_eq!(result.reports.len(), 2);
+                for report in &result.reports {
+                    assert!(report.presentation.has_reader_body());
+                    w.find(format!("automation-report-body-{first}-{}", report.presentation.run_id.unwrap()));
+                }
+            }
+        }).unwrap();
+        if cx.update(|cx| app.read(cx).period_overlay() == Some(first)) { break; }
+        assert!(std::time::Instant::now() < deadline);
+        std::thread::sleep(Duration::from_millis(5));
+    }
+    cx.update_window(handle, |_, w, cx| {
+        app.update(cx, |a, cx| {
+            a.close_occurrence_result(w, cx);
+            a.open_occurrence_result(first, w, cx);
+            assert_eq!(a.period_overlay(), Some(first), "Cached result opens immediately");
+            a.close_occurrence_result(w, cx);
+            a.store.run_mut(final_run).unwrap().output.clear();
+            a.store.mark_lazy_body(final_run);
+            a.run_body_state.remove(&final_run);
+            a.open_occurrence_result(first, w, cx);
+            assert_eq!(a.automation_ui.pending_period, Some(first));
+            a.navigate(Scope::Settings, w, cx);
+            assert_eq!(a.automation_ui.pending_period, None);
+            a.run_body_state.insert(final_run, crate::history_reader::BodyLoad::Failed {
+                error: "Isolated read failure".into(),
+                retry_at: std::time::Instant::now() + Duration::from_secs(60),
+            });
+            a.open_occurrence_result(first, w, cx);
+            assert_eq!(a.period_overlay(), Some(first), "Read failures must remain reachable");
+        });
+        w.render_frame(cx);
+        w.find("automation-report-unavailable");
+    }).unwrap();
+    println!("Period dialogs open after hydration; cached, superseded, cancelled and failed reads verified");
 }
 
 fn atomic_reader_navigation_check(root: &Path) {

@@ -2023,7 +2023,7 @@ pub fn automation_dialog_first_scroll() {
                     cx.background_executor().timer(Duration::from_millis(16)).await;
                     let geometry = cx.update_window(handle, |_, w, _| {
                         let body = w.try_find("automation-result-body")?;
-                        let marker = w.try_find("automation-result-state")?;
+                        let marker = w.try_find("automation-occurrence-detail")?;
                         Some((point(body.bounds().left() + px(2.), body.bounds().center().y), marker.bounds().top() - body.bounds().top()))
                     }).unwrap();
                     if let Some(geometry) = geometry { break geometry; }
@@ -2043,7 +2043,7 @@ pub fn automation_dialog_first_scroll() {
                     cx.background_executor().timer(Duration::from_millis(16)).await;
                     let (offset, painted_y) = cx.update_window(handle, |_, w, cx| {
                         (app.read(cx).automation_ui.dialog_scroll.offset().y,
-                         w.find("automation-result-state").bounds().top() - w.find("automation-result-body").bounds().top())
+                         w.find("automation-occurrence-detail").bounds().top() - w.find("automation-result-body").bounds().top())
                     }).unwrap();
                     if offset < px(-1.) && (painted_y - initial_y - offset).abs() < px(1.) && first_painted.is_none() {
                         first_painted = Some(opened.elapsed());

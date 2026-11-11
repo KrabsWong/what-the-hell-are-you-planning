@@ -770,6 +770,7 @@ impl TaskApp {
         cx: &mut Context<Self>,
     ) -> bool {
         self.pending_result_navigation = None;
+        self.automation_ui.pending_period = None;
         if self.navigation.pending_exit.is_some() {
             return false;
         }

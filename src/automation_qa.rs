@@ -5372,6 +5372,10 @@ fn ui_interaction(root: &Path) -> PathBuf {
     });
     cx.update_window(handle, |_, w, cx| {
         let open = format!("automation-step-{step}");
+        if w.try_find(open.clone()).is_none() && w.try_find("automation-completed-steps").is_some() {
+            w.click("automation-completed-steps", cx);
+            w.render_frame(cx);
+        }
         assert!(
             w.try_find(ElementId::Name(open.clone().into())).is_some(),
             "a research period lists its split steps"
@@ -5469,6 +5473,10 @@ fn ui_interaction(root: &Path) -> PathBuf {
         );
         w.click(format!("open-occurrence-{latest}"), cx);
         w.render_frame(cx);
+        if w.try_find(format!("automation-step-{step}")).is_none() && w.try_find("automation-completed-steps").is_some() {
+            w.click("automation-completed-steps", cx);
+            w.render_frame(cx);
+        }
         w.click(format!("automation-step-{step}"), cx);
         w.render_frame(cx);
         w.click("navigation-back", cx);

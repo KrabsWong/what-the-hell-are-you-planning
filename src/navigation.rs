@@ -373,6 +373,7 @@ impl TaskApp {
         project: Option<u64>, cx: &mut Context<Self>,
     ) -> bool {
         self.pending_result_navigation = None;
+        self.automation_ui.pending_period = None;
         if self.history_reader.is_none() || !self.store.run_body_is_lazy(run_id) {
             return false;
         }
@@ -392,6 +393,7 @@ impl TaskApp {
             || pending.context.is_some_and(|task| self.store.task(task).is_none())
         {
             self.pending_result_navigation = None;
+            self.automation_ui.pending_period = None;
             return;
         }
         let failed = matches!(self.run_body_state.get(&pending.run_id),

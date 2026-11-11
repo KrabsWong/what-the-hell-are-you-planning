@@ -291,6 +291,15 @@ fn click_in(w: &mut Window, cx: &mut App, scroll: &str, id: &str) {
     w.click(id.to_string(), cx);
 }
 
+fn open_period_step(w: &mut Window, cx: &mut App, task: u64) {
+    let step = format!("automation-step-{task}");
+    if w.try_find(step.clone()).is_none() {
+        click_in(w, cx, "automation-result-body", "automation-completed-steps");
+        w.render_frame(cx);
+    }
+    click_in(w, cx, "automation-result-body", &step);
+}
+
 pub fn run() {
     let root = std::env::temp_dir().join(format!("planning-navigation-context-qa-{}", std::process::id()));
     std::fs::create_dir_all(&root).unwrap();
@@ -760,7 +769,7 @@ pub fn run() {
         w.render_frame(cx);
         // Real click on the rendered analysis Open button focuses that modal
         // control before the task page replaces the dialog.
-        w.click(format!("automation-step-{analysis}"), cx);
+        open_period_step(w, cx, analysis);
         w.render_frame(cx);
         assert_eq!(app.read(cx).period_overlay(), None);
         assert_eq!(
@@ -777,7 +786,7 @@ pub fn run() {
         assert_eq!(app.read(cx).automation_ui.scroll.offset().y, before_scroll);
 
         // The same live-focus invariant keeps the global-search shortcut working.
-        w.click(format!("automation-step-{analysis}"), cx);
+        open_period_step(w, cx, analysis);
         w.render_frame(cx);
         assert_eq!(w.focused(cx), Some(app.read(cx).focus.clone()));
         w.press("cmd-k", cx);
@@ -791,7 +800,7 @@ pub fn run() {
         assert_eq!(app.read(cx).period_overlay(), Some(fixture.period));
 
         // Typing focus still follows the real input click after the transition.
-        w.click(format!("automation-step-{analysis}"), cx);
+        open_period_step(w, cx, analysis);
         w.render_frame(cx);
         click_in(w, cx, "detail-scroll", "task-activity-toggle");
         click_in(w, cx, "detail-scroll", "comment-input");
@@ -1182,7 +1191,7 @@ fn size_theme_pass(
         );
         w.click(format!("open-occurrence-{}", fixture.period), cx);
         w.render_frame(cx);
-        w.click(format!("automation-step-{}", fixture.period_steps[0]), cx);
+        open_period_step(w, cx, fixture.period_steps[0]);
         w.render_frame(cx);
         w.click("navigation-back", cx);
         w.render_frame(cx);

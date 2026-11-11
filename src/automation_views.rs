@@ -23,7 +23,7 @@ use gpui_kit::{
     prelude::*,
     *,
 };
-use std::{cell::RefCell, collections::HashMap, io::Read};
+use std::{cell::RefCell, collections::{HashMap, HashSet}, io::Read};
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub enum AutomationKind {
@@ -429,7 +429,12 @@ pub struct AutomationUi {
     pub(crate) result_scroll_target: std::cell::Cell<Option<f32>>,
     pub(crate) result_scroll_attempts: std::cell::Cell<u8>,
     pub(crate) result_list_width: std::rc::Rc<std::cell::Cell<Option<f32>>>,
+    pub pending_period: Option<u64>,
     pub show_technical: bool,
+    pub show_completed_steps: bool,
+    pub expanded_sources: HashSet<String>,
+    pub technical_run: Option<u64>,
+    pub technical_scroll: ScrollHandle,
     pub show_cleanup: bool,
     pub cleanup_preview: String,
     pub feedback: Option<Result<String, String>>,
@@ -717,7 +722,12 @@ impl AutomationUi {
             result_scroll_target: std::cell::Cell::new(None),
             result_scroll_attempts: std::cell::Cell::new(0),
             result_list_width: std::rc::Rc::new(std::cell::Cell::new(None)),
+            pending_period: None,
             show_technical: false,
+            show_completed_steps: false,
+            expanded_sources: HashSet::new(),
+            technical_run: None,
+            technical_scroll: ScrollHandle::new(),
             show_cleanup: false,
             cleanup_preview: String::new(),
             feedback: None,
@@ -1224,6 +1234,10 @@ impl TaskApp {
         // the history, and a row opens its result in a dialog.
         let _ = self.close_period_overlay();
         self.automation_ui.show_technical = false;
+        self.automation_ui.show_completed_steps = false;
+        self.automation_ui.expanded_sources.clear();
+        self.automation_ui.technical_run = None;
+        self.automation_ui.technical_scroll = ScrollHandle::new();
         self.automation_ui.feedback = None;
         self.automation_ui.scroll.set_offset(point(px(0.), px(0.)));
         cx.notify();
@@ -1251,10 +1265,23 @@ impl TaskApp {
         if self.store.occurrence(id).is_none() {
             return;
         }
+        self.automation_ui.pending_period = None;
+        self.pending_result_navigation = None;
+        if self.history_reader.is_some() && !self.pending_period_bodies(id).is_empty() {
+            self.automation_ui.pending_period = Some(id);
+            self.poll_history_io(cx);
+            self.start_pump(cx);
+            cx.notify();
+            return;
+        }
         self.remember_dialog_opener(window, cx);
         let _ = self.push_period_overlay(id);
         let _ = self.close_settings_overlay();
         self.automation_ui.show_technical = false;
+        self.automation_ui.show_completed_steps = false;
+        self.automation_ui.expanded_sources.clear();
+        self.automation_ui.technical_run = None;
+        self.automation_ui.technical_scroll = ScrollHandle::new();
         self.automation_ui.feedback = None;
         if self
             .store
@@ -1266,6 +1293,43 @@ impl TaskApp {
         }
         window.focus(&self.dialog_first_focus, cx);
         cx.notify();
+    }
+
+    /// Prepare only this period's retained results before revealing its dialog.
+    pub(crate) fn pending_period_bodies(&self, id: u64) -> Vec<u64> {
+        let Some(occurrence) = self.store.occurrence(id) else { return vec![]; };
+        let mut runs: Vec<_> = occurrence.final_run_id
+            .or_else(|| occurrence.run_ids.last().copied()).into_iter().collect();
+        let goals = if occurrence.research_goal_ids.is_empty() {
+            occurrence.research_goal_id.into_iter().collect()
+        } else { occurrence.research_goal_ids.clone() };
+        for goal in goals {
+            for task in self.store.research_children(goal) {
+                if let Some(run) = self.store.research_result_body_pending(task) { runs.push(run); }
+            }
+        }
+        // Include earlier attempts: a historical report may be the chosen fallback.
+        runs.extend(self.store.runs().iter()
+            .filter(|run| run.automation_occurrence_id == Some(id)).map(|run| run.id));
+        runs.sort_unstable();
+        runs.dedup();
+        runs.retain(|id| self.store.run_body_is_lazy(*id)
+            && self.store.runs().iter().any(|run| run.id == *id && run.output.is_empty())
+            && !matches!(self.run_body_state.get(id),
+                Some(crate::history_reader::BodyLoad::Failed { .. }
+                    | crate::history_reader::BodyLoad::Absent
+                    | crate::history_reader::BodyLoad::Loaded)));
+        runs
+    }
+
+    pub(crate) fn apply_pending_period(&mut self, window: &mut Window, cx: &mut Context<Self>) {
+        let Some(id) = self.automation_ui.pending_period else { return; };
+        if self.store.occurrence(id).is_none() {
+            self.automation_ui.pending_period = None;
+        } else if self.pending_period_bodies(id).is_empty() {
+            self.automation_ui.pending_period = None;
+            self.open_occurrence_result(id, window, cx);
+        }
     }
 
     /// Explicit progress action for an automation-owned step: open the period
@@ -1297,8 +1361,13 @@ impl TaskApp {
     }
 
     pub fn close_occurrence_result(&mut self, window: &mut Window, cx: &mut Context<Self>) {
+        self.automation_ui.pending_period = None;
         let _ = self.close_period_overlay();
         self.automation_ui.show_technical = false;
+        self.automation_ui.show_completed_steps = false;
+        self.automation_ui.expanded_sources.clear();
+        self.automation_ui.technical_run = None;
+        self.automation_ui.technical_scroll = ScrollHandle::new();
         self.restore_dialog_opener(window, cx);
         cx.notify();
     }
@@ -4134,15 +4203,7 @@ impl TaskApp {
             .p_4()
             .gap_3()
             .rounded(px(crate::appearance::GROUP_RADIUS))
-            .bg(rgb(colors.side))
-            .child(label(
-                occurrence_context(
-                    self.store.automation(occurrence.automation_id),
-                    occurrence,
-                    &self.store,
-                ),
-                cx,
-            ));
+            .bg(rgb(colors.side));
         if let Some(reason) = &occurrence.reason {
             panel = panel.child(crate::views::notice(
                 crate::views::NoticeTone::Warning,
@@ -4156,7 +4217,7 @@ impl TaskApp {
             panel = panel.child(crate::views::notice(
                 crate::views::NoticeTone::Warning,
                 format!(
-                    "This period keeps its original approved version v{}. The automation is now v{}; retrying runs the original plan, not the current template.",
+                    "This period keeps its original approved version v{}. The automation is now v{}; retrying runs the original plan, not the current template. To use the current version, close this result and choose Run manually on the automation page.",
                     occurrence.definition_version, definition.version
                 ),
                 cx,
@@ -4265,15 +4326,25 @@ impl TaskApp {
                 .map(observed),
             );
         }
+        let single_complete_report = presentation.reports.len() == 1
+            && presentation.has_final_report
+            && presentation.quality == crate::result_presentation::EvidenceQuality::Complete;
+        let show_state = !single_complete_report
+            || presentation.freshness.stale_input
+            || presentation.freshness.regenerating
+            || presentation.freshness.historical
+            || presentation.freshness.legacy_contract;
         let state_label = presentation.state_label();
-        panel = panel.child(
-            div()
-                .id("automation-result-state")
-                .aria_label(state_label.clone())
-                .text_xs()
-                .child(selectable(state_label))
-                .map(observed),
-        );
+        if show_state {
+            panel = panel.child(
+                div()
+                    .id("automation-result-state")
+                    .aria_label(state_label.clone())
+                    .text_xs()
+                    .child(selectable(state_label))
+                    .map(observed),
+            );
+        }
         if presentation.reports.is_empty() && presentation.has_reader_body() {
             panel = panel.child(
                 div().p_3().rounded(px(crate::appearance::GROUP_RADIUS)).bg(rgb(colors.panel)).child(
@@ -4301,16 +4372,22 @@ impl TaskApp {
                 ));
                 continue;
             }
-            let mut heading = format!("{} · {}", report.owner_label, result.kind.label());
-            if let Some(suffix) = result.status_suffix() {
-                heading.push_str(&format!(" · {suffix}"));
+            if !single_complete_report {
+                let mut heading = format!("{} · {}", report.owner_label, result.kind.label());
+                if let Some(suffix) = result.status_suffix() {
+                    heading.push_str(&format!(" · {suffix}"));
+                }
+                panel = panel.child(
+                    div()
+                        .font_weight(FontWeight::SEMIBOLD)
+                        .child(selectable(heading)),
+                );
             }
-            panel = panel.child(
-                div()
-                    .font_weight(FontWeight::SEMIBOLD)
-                    .child(selectable(heading)),
-            );
-            let freshness = result.freshness.labels();
+            // The version warning above already explains the frozen instructions.
+            let freshness = crate::result_presentation::Freshness {
+                previous_version: false,
+                ..result.freshness
+            }.labels();
             if !freshness.is_empty() {
                 panel = panel.child(muted(freshness.join(" · "), cx));
             }
@@ -4392,6 +4469,7 @@ impl TaskApp {
             .collect();
         panel = panel.child(
             quiet_button("automation-technical", "Technical details")
+                .px_0()
                 .self_start()
                 .icon(if self.automation_ui.show_technical {
                     assets::IconName::ChevronDown
@@ -4404,7 +4482,39 @@ impl TaskApp {
                 })),
         );
         if self.automation_ui.show_technical {
-            for run in runs {
+            let mut technical = col().pl_6().gap_3();
+            technical = technical.child(
+                col().id("automation-period-diagnostics").gap_1()
+                    .child(label(occurrence_context(
+                        self.store.automation(occurrence.automation_id), occurrence, &self.store,
+                    ), cx))
+                    .child(label("Saved task instructions", cx))
+                    .child(selectable(occurrence.snapshot.objective.clone()))
+                    .child(label("Saved expected result", cx))
+                    .child(selectable(occurrence.snapshot.expected_result.clone()))
+                    .map(observed),
+            );
+            let selected = self.automation_ui.technical_run
+                .and_then(|id| runs.iter().copied().find(|run| run.id == id))
+                .or_else(|| runs.last().copied());
+            if runs.len() > 1 {
+                let mut tabs = row().flex_wrap().gap_1();
+                for run in &runs {
+                    let run_id = run.id;
+                    tabs = tabs.child(select_button(
+                        format!("automation-run-tab-{run_id}"),
+                        format!("Run #{run_id} · {}", run.status),
+                        selected.is_some_and(|selected| selected.id == run_id),
+                        cx,
+                    ).on_click(cx.listener(move |app, _, _, cx| {
+                        app.automation_ui.technical_run = Some(run_id);
+                        app.automation_ui.technical_scroll = ScrollHandle::new();
+                        cx.notify();
+                    })));
+                }
+                technical = technical.child(tabs);
+            }
+            if let Some(run) = selected {
                 let logs = run
                     .logs
                     .iter()
@@ -4416,9 +4526,40 @@ impl TaskApp {
                     .rev()
                     .collect::<Vec<_>>()
                     .join("\n");
-                // Keep a long log from stretching the whole period panel; the
-                // log body scrolls inside the run card instead.
-                panel = panel.child(
+                let inner = self.automation_ui.technical_scroll.clone();
+                let outer = self.automation_ui.dialog_scroll.clone();
+                // Capture before either scroll container handles the wheel.
+                let scroll_guard = canvas(|_, _, _| (), move |bounds, _, window, _| {
+                    let visible = bounds.intersect(&window.content_mask().bounds);
+                    let inner = inner.clone();
+                    let outer = outer.clone();
+                    window.on_mouse_event(move |event: &ScrollEvent, phase, window, cx| {
+                        if phase != DispatchPhase::Capture || !visible.contains(&event.position) { return; }
+                        let delta = event.delta.pixel_delta(window.line_height());
+                        if delta.y == px(0.) || delta.x.abs() > delta.y.abs() { return; }
+                        let reveal = if delta.y < px(0.) && bounds.bottom() > visible.bottom() {
+                            delta.y.max(visible.bottom() - bounds.bottom())
+                        } else if delta.y > px(0.) && bounds.top() < visible.top() {
+                            delta.y.min(visible.top() - bounds.top())
+                        } else { px(0.) };
+                        let outer_next = (outer.offset().y + reveal).clamp(-outer.max_offset().y, px(0.));
+                        if reveal != px(0.) && outer_next != outer.offset().y {
+                            outer.set_offset(point(outer.offset().x, outer_next));
+                        } else {
+                            let offset = inner.offset();
+                            let next = (offset.y + delta.y).clamp(-inner.max_offset().y, px(0.));
+                            if next != offset.y {
+                                inner.set_offset(point(offset.x, next));
+                            } else {
+                                outer.set_offset(point(outer.offset().x,
+                                    (outer.offset().y + delta.y).clamp(-outer.max_offset().y, px(0.))));
+                            }
+                        }
+                        window.refresh();
+                        cx.stop_propagation();
+                    });
+                }).absolute().inset_0();
+                technical = technical.child(
                     col()
                         .p_3()
                         .gap_1()
@@ -4445,17 +4586,19 @@ impl TaskApp {
                             cx,
                         ))
                         .child(
-                            div()
+                            div().relative().w_full().child(scroll_guard).child(div()
                                 .id(format!("automation-run-logs-{}", run.id))
                                 .w_full()
                                 .min_h_0()
-                                .max_h(px(320.))
+                                .max_h(reader_height)
                                 .overflow_y_scroll()
+                                .track_scroll(&self.automation_ui.technical_scroll)
                                 .restrict_scroll_to_axis()
-                                .child(label(logs, cx)),
+                                .child(label(logs, cx)).map(observed)),
                         ),
                 );
             }
+            panel = panel.child(technical);
         }
         panel.map(observed).into_any_element()
     }
@@ -4467,15 +4610,25 @@ impl TaskApp {
         sources: &[crate::research::Source],
         cx: &mut Context<Self>,
     ) -> AnyElement {
-        let mut list = col().gap_1();
         if sources.is_empty() {
-            return list.into_any_element();
+            return div().into_any_element();
         }
-        list = list.child(
-            div()
-                .font_weight(FontWeight::SEMIBOLD)
-                .child(selectable(format!("Sources · {}", sources.len()))),
+        let disclosure_id = format!("automation-sources-{occurrence_id}-{key}");
+        let expanded = self.automation_ui.expanded_sources.contains(&disclosure_id);
+        let toggle_id = disclosure_id.clone();
+        let mut section = col().gap_1().child(
+            quiet_button(disclosure_id, format!("Sources · {}", sources.len()))
+                .px_0().self_start()
+                .icon(if expanded { assets::IconName::ChevronDown } else { assets::IconName::ChevronRight })
+                .on_click(cx.listener(move |app, _, _, cx| {
+                    if !app.automation_ui.expanded_sources.remove(&toggle_id) {
+                        app.automation_ui.expanded_sources.insert(toggle_id.clone());
+                    }
+                    cx.notify();
+                })),
         );
+        if !expanded { return section.into_any_element(); }
+        let mut list = col().pl_6().gap_1();
         for (index, source) in sources.iter().enumerate() {
             let url = source.url.clone();
             let source_id = format!("automation-source-{occurrence_id}-{key}-{index}");
@@ -4493,7 +4646,8 @@ impl TaskApp {
                     )),
             );
         }
-        list.into_any_element()
+        section = section.child(list);
+        section.into_any_element()
     }
 
     /// The period's split research work as a readable list: status, kind and
@@ -4542,7 +4696,8 @@ impl TaskApp {
         } else {
             format!("Research steps · {completed}/{total}")
         };
-        let mut list = col().gap_0p5();
+        let expanded = completed < total || self.automation_ui.show_completed_steps;
+        let mut list = col().gap_0p5().when(completed == total, |d| d.pl_6());
         for task_id in task_ids {
             let Some(task) = self.store.task(task_id) else {
                 continue;
@@ -4621,17 +4776,25 @@ impl TaskApp {
             );
         }
         col()
+            .when(completed < total, |d| d.pl_6())
             .gap_2()
             .child(
                 row()
                     .justify_between()
                     .flex_wrap()
                     .gap_2()
-                    .child(
-                        div()
-                            .font_weight(FontWeight::SEMIBOLD)
-                            .child(selectable(heading)),
-                    )
+                    .child(if completed == total {
+                        quiet_button("automation-completed-steps", heading)
+                            .px_0()
+                            .icon(if expanded { assets::IconName::ChevronDown } else { assets::IconName::ChevronRight })
+                            .on_click(cx.listener(|app, _, _, cx| {
+                                app.automation_ui.show_completed_steps = !app.automation_ui.show_completed_steps;
+                                cx.notify();
+                            })).into_any_element()
+                    } else {
+                        div().font_weight(FontWeight::SEMIBOLD)
+                            .child(selectable(heading)).into_any_element()
+                    })
                     .when(completed < total && resumable, |d| {
                         // An ended period can still have a background session
                         // shutting down. That is not "running"; say "Stopping…"
@@ -4673,7 +4836,7 @@ impl TaskApp {
                         )
                     }),
             )
-            .child(list)
+            .when(expanded, |d| d.child(list))
             .into_any_element()
     }
 

@@ -520,7 +520,7 @@ impl TaskApp {
                     .gap_2()
                     .child(muted(status, cx))
                     .child(row().flex_wrap().gap_2().child(browser).when(
-                        !archived && !children.is_empty(),
+                        !archived && !pending_approval && !children.is_empty(),
                         |d| d.child(self.goal_run_button(id, "research-all", cx)),
                     )),
             );

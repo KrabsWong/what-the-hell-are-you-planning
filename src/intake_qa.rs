@@ -285,6 +285,9 @@ pub fn run() {
                 a.open_task(goal, w, cx);
             });
             w.render_frame(cx);
+            assert!(w.try_find("goal-resume").is_none(), "Pending goals have one approval action, no disabled header action");
+            assert!(w.try_find("research-all").is_none(), "Pending goals have no duplicate disabled progress action");
+            assert!(w.try_find("approve-research-topic").is_some());
             let status = w.find("task-execution-status").bounds();
             assert!(status.size.height <= px(30.), "Task status must remain on one line: {status:?}");
             let original = w.find("request-brief-toggle").bounds();

@@ -2815,7 +2815,7 @@ impl TaskApp {
         head = head.child(
             row()
                 .flex_wrap()
-                .when(is_goal && !archived, |d| d.child(self.goal_run_button(id, "goal-resume", cx).h(px(28.)).px_2().text_sm()))
+                .when(is_goal && !archived && !self.store.research_pending_approval(id), |d| d.child(self.goal_run_button(id, "goal-resume", cx).h(px(28.)).px_2().text_sm()))
                 .when(is_goal && !archived, |d| d.child(button("goal-export", "Export ZIP").h(px(28.)).px_2().text_sm()
                     .disabled(!self.store.goal_tasks_complete(id) || self.goal_busy(id))
                     .tooltip("Export completed evidence, analysis and reports as a ZIP. All steps must have current results.")

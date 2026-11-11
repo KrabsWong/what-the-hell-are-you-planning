@@ -454,9 +454,9 @@ impl TaskApp {
         let history = archived.then(|| crate::archive_presentation::goal_history(&self.store, id));
         let mut panel = col().gap_2();
         if !archived {
-            panel = panel.child(label(
-                format!("Next run · {} · Model · {}", self.store.research_agent(research.kind), if next_model.is_empty() { "Not configured" } else { next_model }),
-                cx,
+            panel = panel.child(execution_metadata(
+                "Next run".into(), self.store.research_agent(research.kind).to_string(),
+                if next_model.is_empty() { "Not configured" } else { next_model }, cx,
             ));
         }
         if archived {
@@ -472,10 +472,9 @@ impl TaskApp {
             );
         }
         if let Some(run) = self.store.runs().iter().rev().find(|run| run.project_plan.is_none() && run.task_id == id) {
-            panel = panel.child(label(
-                format!("{} #{} · {} · Model · {}", if archived { "Latest retained run" } else { "Latest run" }, run.id, run.agent,
-                    if run.model.is_empty() { "Not recorded" } else { run.model.as_str() }),
-                cx,
+            panel = panel.child(execution_metadata(
+                format!("{} #{}", if archived { "Latest retained run" } else { "Latest run" }, run.id),
+                run.agent.to_string(), if run.model.is_empty() { "Not recorded" } else { run.model.as_str() }, cx,
             ));
         }
         if pending_approval && !archived {

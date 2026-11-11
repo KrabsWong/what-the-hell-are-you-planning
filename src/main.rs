@@ -124,6 +124,8 @@ mod research_views;
 #[cfg(feature = "qa")]
 mod result_presentation_qa;
 mod rich_markdown;
+mod diagram_renderer;
+mod diagram_viewer;
 mod run_views;
 mod run_errors;
 mod scheduler;
@@ -225,6 +227,8 @@ fn main() {
     if std::env::args().any(|arg| arg == "--qa-board-scroll") { workflow_qa::scroll_benchmark(); return; }
     #[cfg(feature = "qa")]
     if std::env::args().any(|arg| arg == "--qa-workflow") { workflow_qa::run(); return; }
+    #[cfg(feature = "qa")]
+    if std::env::args().any(|arg| arg == "--qa-diagram-viewer") { diagram_viewer::verify(); return; }
     #[cfg(feature = "qa")]
     if std::env::args().any(|arg| arg == "--qa-rich-markdown") { rich_markdown::verify_frames(); return; }
     #[cfg(feature = "qa")]

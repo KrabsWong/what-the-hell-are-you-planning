@@ -1,4 +1,4 @@
-//! Isolated end-to-end acceptance for sentence -> Backlog -> approved Goal -> report.
+//! Isolated end-to-end acceptance for sentence -> understanding -> confirmation -> Backlog -> approved Goal -> report.
 use crate::{
     app::{Layout, Scope, TaskApp},
     domain::{Stage, Store},
@@ -16,18 +16,22 @@ import json, sys, time
 from pathlib import Path
 prompt = sys.argv[-1]
 root = Path(__file__).parent
-if 'expanding ONE saved research request' in prompt:
+if 'clarifying ONE saved research request' in prompt:
     marker = root / 'planning-retried'
     if not marker.exists():
         marker.write_text('first attempt failed')
         print('Temporary fixture connection failure', file=sys.stderr)
         sys.exit(1)
+    revised = 'Focus on operating results' in prompt
+    result = {'summary':'Explain Intel earnings using official data and accessible analyst views. Deliver a sourced report and an independent peer comparison and disclose evidence gaps.' + (' Focus on operating results.' if revised else ''), 'questions':[] if revised or 'Research guidance for the next quarter.' in prompt else ['Should the research focus on operating results or trading decisions?']}
+elif 'expanding ONE saved research request' in prompt:
+    assert 'Focus on operating results' in prompt or 'Research guidance for the next quarter.' in prompt
     steps = [
-        {'title':'获取官方财报', 'instructions':'获取官方公告，核对报告期、单位和口径。', 'kind':'collect', 'depends_on':[]},
-        {'title':'采集可访问的机构观点', 'instructions':'区分研报原文和媒体转述。', 'kind':'collect', 'depends_on':[]},
-        {'title':'分析基本面与预期差异', 'instructions':'对照两类证据，区分事实和推断。', 'kind':'analyze', 'depends_on':[0,1]},
-        {'title':'生成最终研究报告', 'instructions':'给出摘要、关键数据和来源，不足之处明确披露。', 'kind':'advise', 'depends_on':[2]}]
-    result = {'topic_name':'Intel 财报研究','brief':{'objective':'解释财报后的市场反应','deliverable':'中文报告与关键数据表','scope':'官方财报及可访问的机构观点','assumptions':['默认使用中文'],'facts_to_verify':['核实用户所说的昨日财报和股价下跌']}, 'goals':[{'title':'Intel 财报与市场反应','brief':'回答经营变化和市场反应。','tasks':steps}, {'title':'同行比较（可选）','brief':'独立比较同行。','tasks':steps}]}
+        {'title':'Collect official earnings', 'instructions':'Collect official releases and verify period, units and accounting basis.', 'kind':'collect', 'depends_on':[]},
+        {'title':'Collect accessible analyst views', 'instructions':'Distinguish original research from media summaries.', 'kind':'collect', 'depends_on':[]},
+        {'title':'Analyze fundamentals and expectations', 'instructions':'Compare both evidence sets and distinguish facts from inferences.', 'kind':'analyze', 'depends_on':[0,1]},
+        {'title':'Write the final report', 'instructions':'Provide a summary, key data and sources, disclosing evidence gaps.', 'kind':'advise', 'depends_on':[2]}]
+    result = {'topic_name':'Intel earnings research','brief':{'objective':'Explain the market reaction after earnings','deliverable':'English report and key data table','scope':'Official earnings and accessible analyst views','assumptions':['Use English by default'],'facts_to_verify':['Verify the claimed earnings date and price decline']}, 'goals':[{'title':'Intel earnings and market reaction','brief':'Explain operating changes and the market reaction.','tasks':steps}, {'title':'Independent peer comparison','brief':'Compare peers independently.','tasks':steps}]}
     if not (root / 'plan-schema-repaired').exists():
         (root / 'plan-schema-repaired').write_text('missing fields fixture')
         for goal in result['goals']:
@@ -38,7 +42,7 @@ if 'expanding ONE saved research request' in prompt:
         assert 'missing field' in prompt and 'previous_output' in prompt
 else:
     time.sleep(.65)
-    result = {'status':'complete','report':'# 研究结论\n\n这是隔离验收数据，不是真实财报分析。\n\n[原始资料](https://example.com/fixture)','sources':[{'title':'QA fixture source','url':'https://example.com/fixture','published_at':'unknown'}]}
+    result = {'status':'complete','report':'# Research findings\n\nThis is isolated acceptance data, not real earnings analysis.\n\n[Original source](https://example.com/fixture)','sources':[{'title':'QA fixture source','url':'https://example.com/fixture','published_at':'unknown'}]}
     if 'blocked-once-proof' in prompt and not (root / 'branch-resumed').exists():
         (root / 'branch-resumed').write_text('blocked once')
         result = {'status':'blocked','report':'Fixture source temporarily unavailable; retry after access is restored.','sources':[]}
@@ -55,7 +59,7 @@ pub fn run() {
         "#!/bin/sh\nprintf '%s\\n' 'QA browser instructions' '[ego-browser:skill] end of guide'\n",
     );
     let mut store = Store::empty();
-    store.project_at_mut(0).unwrap().name = "投资研究".into();
+    store.project_at_mut(0).unwrap().name = "Investment research".into();
     store.project_at_mut(0).unwrap().directory = root.join("project").to_string_lossy().into();
     std::fs::create_dir_all(&store.projects()[0].directory).unwrap();
     store.set_opencode_path(root.join("opencode-fixture").to_string_lossy().into());
@@ -68,7 +72,10 @@ pub fn run() {
         Arc::new(crate::ui_assets::AppAssets),
         platform::current_headless_renderer,
     );
-    cx.update(init);
+    cx.update(|cx| {
+        init(cx);
+        component::Theme::change(component::ThemeMode::Light, None, cx);
+    });
     let mut app = None;
     let window = cx
         .open_window(size(px(1440.), px(920.)), |w, cx| {
@@ -93,7 +100,7 @@ pub fn run() {
             assert_eq!(a.planning_topic, None);
         });
         w.render_frame(cx);
-        w.click("project-plan-brief",cx); w.input("分析 Intel 昨天财报后大跌的原因，结合官方数据和机构观点，输出中文报告，也考虑独立做同行比较。",cx);
+        w.click("project-plan-brief",cx); w.input("Explain the decline after Intel earnings yesterday using official data and analyst views. Deliver an English report and an independent peer comparison.",cx);
         w.click("generate-project-plan",cx);
         assert_eq!(app.read(cx).store.research_requests().len(),1);
         let state = app.read(cx);
@@ -119,6 +126,48 @@ pub fn run() {
         app.update(cx, |a, cx| a.retry_research_request(1, cx));
     })
     .unwrap();
+    wait(&mut cx, handle, &app);
+    // Understanding is a durable stopping point: no goal plan is generated yet.
+    let pending = snapshot(&mut cx, &app);
+    assert!(pending.research_requests()[0].goal_ids.is_empty());
+    assert!(!root.join("plan-schema-repaired").exists());
+    let mut restored = Storage::new(path.clone()).load().unwrap().unwrap();
+    assert!(restored.research_requests()[0].goal_ids.is_empty());
+    assert!(restored.request_understanding_ready(1));
+    assert_eq!(restored.research_requests()[0].understanding.as_ref().unwrap().questions.len(), 1);
+    assert!(!restored.request_understanding_confirmed(1));
+    assert!(restored.confirm_request_understanding(1).is_err(),
+        "An unanswered direction question must prevent confirmation after reload");
+    cx.update_window(handle, |_, w, cx| {
+        w.render_frame(cx);
+        assert!(w.find("understanding-confirm-1").visible());
+    }).unwrap();
+    screenshot(&mut cx, handle, &root, "00-understanding-question-light.png");
+    cx.update(|cx| component::Theme::change(component::ThemeMode::Dark, None, cx));
+    screenshot(&mut cx, handle, &root, "00-understanding-question-dark.png");
+    cx.update(|cx| component::Theme::change(component::ThemeMode::Light, None, cx));
+    cx.update_window(handle, |_, w, cx| {
+        w.click("understanding-edit-1", cx);
+        w.render_frame(cx);
+        w.click("input-state", cx);
+        w.input("Focus on operating results, not trading decisions.", cx);
+        w.click("understanding-refine-1", cx);
+    }).unwrap();
+    wait(&mut cx, handle, &app);
+    assert!(snapshot(&mut cx, &app).research_requests()[0].goal_ids.is_empty());
+    assert!(!root.join("plan-schema-repaired").exists());
+    assert!(snapshot(&mut cx, &app).request_understanding_ready(1));
+    assert!(!snapshot(&mut cx, &app).request_understanding_confirmed(1));
+    screenshot(&mut cx, handle, &root, "00-understanding-review-light.png");
+    cx.update(|cx| component::Theme::change(component::ThemeMode::Dark, None, cx));
+    screenshot(&mut cx, handle, &root, "00-understanding-review-dark.png");
+    let compact_store = snapshot(&mut cx, &app);
+    compact_understanding_screenshots(&mut cx, &compact_store, &root);
+    cx.update(|cx| component::Theme::change(component::ThemeMode::Light, None, cx));
+    cx.update_window(handle, |_, w, cx| {
+        w.render_frame(cx);
+        w.click("understanding-confirm-1", cx);
+    }).unwrap();
     wait(&mut cx, handle, &app);
     let repaired = snapshot(&mut cx, &app);
     assert_eq!(repaired.runs().iter().filter(|r| r.logs.iter().any(|l| l.starts_with("[plan repair]"))).count(), 1);
@@ -208,7 +257,7 @@ pub fn run() {
                 .task_mut(children[2])
                 .unwrap()
                 .description
-                .push_str(" 补充指引敏感性分析。");
+                .push_str(" Add guidance sensitivity analysis.");
             a.persist_if_changed(true);
             assert_eq!(a.store.task(goal).unwrap().stage, Stage::Backlog);
             assert!(a.store.prepare_run(children[2]).is_err());
@@ -232,10 +281,15 @@ pub fn run() {
     // A second request in the same Topic gets a separate durable plan, no project one-shot gate.
     cx.update_window(handle, |_, _, cx| {
         app.update(cx, |a, cx| {
-            assert!(a.submit_research_request(1, Some(topic), "继续研究下一季度的指引".into(), cx));
+            assert!(a.submit_research_request(1, Some(topic), "Research guidance for the next quarter.".into(), cx));
         });
     })
     .unwrap();
+    wait(&mut cx, handle, &app);
+    assert!(snapshot(&mut cx, &app).research_requests()[1].goal_ids.is_empty());
+    cx.update_window(handle, |_, _, cx| {
+        app.update(cx, |a, cx| a.save_research_understanding(2, None, cx));
+    }).unwrap();
     wait(&mut cx, handle, &app);
     assert_eq!(snapshot(&mut cx, &app).research_requests().len(), 2);
     assert!(
@@ -298,7 +352,7 @@ pub fn run() {
     // Compact display fixture: check navigation order and disclosure interaction.
     cx.update_window(handle, |_, w, cx| {
         app.update(cx, |a, cx| {
-            a.store.task_mut(goal).unwrap().description = "解释财报后的市场反应，交付有来源的研究报告。".into();
+            a.store.task_mut(goal).unwrap().description = "Explain the market reaction after earnings, delivering a sourced research report.".into();
             a.open_task(goal, w, cx);
         });
         w.render_frame(cx);
@@ -326,10 +380,38 @@ pub fn run() {
     }).unwrap();
     screenshot(&mut cx, handle, &root, "05-evidence-header.png");
     println!(
-        "INTAKE QA PASSED: saved failure/retry, missing-field auto repair, complete plan, required Topic, Goal-only drag approval, peak concurrency {peak}, final report, reapproval and selective rerun, repeated request, blocked branch/resume, persistence. {}",
+        "INTAKE QA PASSED: understanding failure/retry, pending understanding persistence, clarification feedback, explicit confirmation, light/dark understanding screenshots, missing-field auto repair, complete plan, required Topic, Goal-only drag approval, peak concurrency {peak}, final report, reapproval and selective rerun, repeated request, blocked branch/resume, persistence. {}",
         root.display()
     );
 }
+fn compact_understanding_screenshots(cx: &mut HeadlessAppContext, store: &Store, root: &Path) {
+    // Fresh windows avoid retained pane dimensions from the headless resize harness.
+    let run = store.research_requests()[0].planning_run_id;
+    let window = cx.open_window(size(px(1000.), px(680.)), |w, cx| {
+        let view = cx.new(|cx| TaskApp::new_mock(w, cx));
+        view.update(cx, |a, cx| {
+            a.store = store.clone();
+            a.set_result_selection(None, run);
+            a.show_run_result = true;
+            cx.notify();
+        });
+        cx.new(|cx| base::Root::new(view, w, cx))
+    }).unwrap();
+    let handle = window.into();
+    for (theme, name) in [
+        (component::ThemeMode::Light, "00-understanding-review-compact-light.png"),
+        (component::ThemeMode::Dark, "00-understanding-review-compact-dark.png"),
+    ] {
+        cx.update(|cx| component::Theme::change(theme, None, cx));
+        screenshot(cx, handle, root, name);
+        cx.update_window(handle, |_, w, _| {
+            let confirm = w.find("understanding-confirm-1").bounds();
+            assert!(confirm.right() <= w.viewport_size().width,
+                "Understanding confirmation must remain inside the compact window");
+        }).unwrap();
+    }
+}
+
 fn wait(cx: &mut HeadlessAppContext, handle: AnyWindowHandle, app: &Entity<TaskApp>) -> usize {
     let start = Instant::now();
     let mut peak = 0;

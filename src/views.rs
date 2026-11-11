@@ -86,6 +86,52 @@ pub(crate) fn chip(text: impl Into<SharedString>, color: u32, cx: &App) -> Div {
         .child(selectable(text))
 }
 
+// The button tooltip renderer preserves newlines but does not wrap long prose.
+pub(crate) fn wrapped_tooltip(text: &str) -> String {
+    let mut output = String::new();
+    let mut column = 0;
+    for word in text.split_whitespace() {
+        if column > 0 {
+            if column + 1 + word.chars().count() > 56 {
+                output.push('\n');
+                column = 0;
+            } else {
+                output.push(' ');
+                column += 1;
+            }
+        }
+        for character in word.chars() {
+            if column == 56 { output.push('\n'); column = 0; }
+            output.push(character);
+            column += 1;
+        }
+    }
+    output
+}
+
+
+/// Passive execution metadata; field names remain available on hover and to accessibility.
+pub(crate) fn metadata_tag(id: String, field: &str, value: String, cx: &App) -> AnyElement {
+    let colors = palette(cx);
+    let description = format!("{field}: {value}");
+    let tooltip = wrapped_tooltip(&description);
+    chip(value, colors.muted, cx)
+        .bg(rgb(colors.tag_surface))
+        .max_w_full().min_w_0()
+        .whitespace_nowrap().overflow_hidden().text_ellipsis()
+        .id(id)
+        .aria_label(description)
+        .tooltip(move |w, cx| component::tooltip::Tooltip::new(tooltip.clone()).build(w, cx))
+        .map(observed)
+}
+
+pub(crate) fn execution_metadata(context: String, agent: String, model: &str, cx: &App) -> Div {
+    row().flex_wrap().gap_2().min_w_0()
+        .when(!context.is_empty(), |row| row.child(label(context.clone(), cx)))
+        .child(metadata_tag(format!("{context}-agent"), "Agent", agent, cx))
+        .child(metadata_tag(format!("{context}-model"), "Model", model.into(), cx))
+}
+
 /// Semantic tones for inline notices. Every notice uses a tinted surface of its
 /// own tone so light and dark themes stay readable without extra branching.
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
@@ -200,6 +246,21 @@ pub(crate) fn board_card_colors(stage: Stage, cx: &App) -> (u32, u32, u32) {
         (true, Stage::Cancelled) => (0x442c33, 0x543740, 0x754c57),
     }
 }
+/// Card actions keep the card's semantic hue while remaining visible at rest.
+pub(crate) fn board_action_style(stage: Stage, cx: &App) -> gpui_kit::component::button::ButtonCustomVariant {
+    let (surface, hover, border) = board_card_colors(stage, cx);
+    let darken = |color: u32, percent: u32| {
+        let channel = |shift: u32| (((color >> shift) & 255_u32) * percent / 100) << shift;
+        channel(16) | channel(8) | channel(0)
+    };
+    let dark = gpui_kit::component::Theme::global(cx).is_dark();
+    gpui_kit::component::button::ButtonCustomVariant::new(cx)
+        .color(rgb(if dark { darken(surface, 72) } else { hover }).into())
+        .foreground(rgb(palette(cx).text).into())
+        .hover(rgb(if dark { surface } else { border }).into())
+        .active(rgb(if dark { darken(surface, 55) } else { darken(border, 92) }).into())
+}
+
 // Tree rows own hover feedback so the title and disclosure read as one item.
 pub(crate) fn sidebar_variant(
     active: bool,
@@ -2193,7 +2254,7 @@ impl TaskApp {
                             t.title
                         );
                         d.child(
-                            row_button(format!("goal-steps-{id}"), format!("{done}/{child_count}"))
+                            button(format!("goal-steps-{id}"), format!("Steps · {done}/{child_count}"))
                                 .icon(assets::IconName::ChevronRight)
                                 .tooltip(step_name.clone())
                                 .accessibility_label(step_name)
@@ -2266,17 +2327,12 @@ impl TaskApp {
             })
             .when(!archived, |d| {
                 d.child(
-                    row_button(format!("task-created-{id}"), "")
+                    div().id(format!("task-created-{id}"))
                         .w(px(156.))
                         .flex_shrink_0()
-                        .p_0()
                         .text_xs()
                         .text_color(rgb(colors.muted))
-                        .tooltip(if t.created_at.is_empty() {
-                            "Creation time was not recorded for this older task.".to_string()
-                        } else {
-                            format!("Created: {}", t.created_at)
-                        })
+                        .cursor_default()
                         .child(div().w_full().whitespace_nowrap().text_xs().child(
                             if t.created_at.is_empty() {
                                 "Not recorded".to_string()
@@ -2403,9 +2459,20 @@ impl TaskApp {
         let dark = gpui_kit::component::Theme::global(cx).is_dark();
         let archived = self.store.task_is_archived(t.id);
         let status = self.display_task_status(t.id);
+        let completed = status.execution == crate::execution_status::ExecutionStatus::Done;
+        let generic_completion = status.reason == status.execution.hint()
+            || status.reason == format!(
+                "{} done. {}",
+                self.store.research_children(t.id).len(),
+                status.execution.hint(),
+            );
         let (surface, hover, border) = board_card_colors(status.phase, cx);
-        let mut metadata = t.labels.iter().take(2).cloned().collect::<Vec<_>>();
-        if !t.bucket.is_empty() {
+        let is_goal = t.research.as_ref()
+            .is_some_and(|research| research.kind == crate::research::ResearchKind::Goal);
+        let mut metadata = t.labels.iter()
+            .filter(|label| !is_goal || label.as_str() != "Research")
+            .take(2).cloned().collect::<Vec<_>>();
+        if !t.bucket.is_empty() && (!is_goal || t.bucket != "Now") {
             metadata.push(t.bucket.clone());
         }
         if let Some(cycle) = &t.cycle {
@@ -2484,13 +2551,17 @@ impl TaskApp {
                     .line_height(relative(1.4))
                     .child(selectable(t.title.clone())),
             )
-            .child(
-                chip(status.label(), status.execution.color(cx), cx)
-                    .id(format!("card-status-{id}"))
-                    .aria_label(status.label())
-                    .map(observed),
-            )
-            .child(label(status.reason.clone(), cx))
+            .when(!completed || status.display_label.is_some(), |card| {
+                card.child(
+                    chip(status.label(), status.execution.color(cx), cx)
+                        .id(format!("card-status-{id}"))
+                        .aria_label(status.label())
+                        .map(observed),
+                )
+            })
+            .when(!completed || !generic_completion, |card| {
+                card.child(label(status.reason.clone(), cx))
+            })
             .when_some(
                 self.store
                     .research_requests()
@@ -2522,38 +2593,6 @@ impl TaskApp {
                     )
                 },
             )
-            .when(
-                t.research
-                    .as_ref()
-                    .is_some_and(|r| r.kind == crate::research::ResearchKind::Goal),
-                |d| {
-                    d.child(
-                        row_button(format!("goal-progress-{id}"), "")
-                            .icon(assets::IconName::ArrowRight)
-                            .h_auto()
-                            .px_0()
-                            .py_1()
-                            .w_full()
-                            .child(
-                                div()
-                                    .w_full()
-                                    .min_w_0()
-                                    .text_xs()
-                                    .whitespace_normal()
-                                    .text_left()
-                                    .child(format!(
-                                        "Open {} steps",
-                                        self.store.research_children(id).len()
-                                    )),
-                            )
-                            .on_click(cx.listener(move |a, _, w, cx| {
-                                cx.stop_propagation();
-                                a.record_goal_origin(id);
-                                a.open_goal_steps(id, w, cx);
-                            })),
-                    )
-                },
-            )
             .when(!metadata.is_empty(), |d| {
                 d.child(
                     div()
@@ -2564,31 +2603,28 @@ impl TaskApp {
                 )
             })
             .child(
-                row_button(format!("card-created-{id}"), "")
-                    .self_start()
-                    .h_5()
-                    .px_0()
-                    .py_0()
-                    .text_xs()
-                    .text_color(rgb(colors.secondary))
-                    .tooltip(if t.created_at.is_empty() {
-                        "Creation time was not recorded for this older task.".to_string()
-                    } else {
-                        format!("Created: {}", t.created_at)
-                    })
-                    .child(div().text_xs().child(format!(
-                        "Created · {}",
-                        if t.created_at.is_empty() {
-                            "Not recorded".to_string()
-                        } else {
-                            t.created_at
-                                .split_whitespace()
-                                .take(2)
-                                .collect::<Vec<_>>()
-                                .join(" ")
-                        }
-                    ))),
+                label(format!("Created · {}", if t.created_at.is_empty() {
+                    "Not recorded".to_string()
+                } else {
+                    t.created_at.split_whitespace().take(2).collect::<Vec<_>>().join(" ")
+                }), cx)
+                    .id(format!("card-created-{id}"))
+                    .cursor_default(),
             )
+            .when(is_goal, |card| {
+                card.child(
+                    button(format!("goal-progress-{id}"), format!("Open {} steps", self.store.research_children(id).len()))
+                        .custom(board_action_style(status.phase, cx))
+                        .border_1().border_color(rgb(border))
+                        .icon(assets::IconName::ArrowRight)
+                        .w_full()
+                        .on_click(cx.listener(move |a, _, w, cx| {
+                            cx.stop_propagation();
+                            a.record_goal_origin(id);
+                            a.open_goal_steps(id, w, cx);
+                        })),
+                )
+            })
             .when(archived, |d| {
                 d.child(
                     quiet_button(format!("restore-archived-{id}"), "Restore")
@@ -3369,7 +3405,13 @@ impl TaskApp {
                         .map(observed),
                 ),
         );
-        properties = properties.child(label(status.reason.clone(), cx));
+        if execution != crate::execution_status::ExecutionStatus::Done
+            || status.display_label.is_some()
+            || (status.reason != execution.hint()
+                && status.reason != format!("{} done. {}", self.store.research_children(id).len(), execution.hint()))
+        {
+            properties = properties.child(label(status.reason.clone(), cx));
+        }
         if t.parent_id.is_none() {
             properties = properties.child(
                 row()

@@ -64,6 +64,7 @@ impl LiveCompletion {
 pub(crate) enum LiveCompletion {
     None,
     Status(String),
+    ResearchUnderstanding { request: u64, signature: String },
     TaskEdit {
         task: u64,
         /// Form identity captured at submit. The editor closes only if the same
@@ -250,6 +251,7 @@ impl LiveCompletion {
         matches!(
             self,
             Self::Command { .. }
+                | Self::ResearchUnderstanding { .. }
                 | Self::AutomationTicks { .. }
                 | Self::EnqueueNext { .. }
                 | Self::ClearStopIntent { .. }
@@ -264,6 +266,7 @@ impl LiveCompletion {
         match self {
             Self::None => 0,
             Self::Status(message) => base.saturating_add(message.capacity()),
+            Self::ResearchUnderstanding { signature, .. } => base.saturating_add(signature.capacity()),
             Self::AutomationTicks {
                 queued,
                 superseded,
@@ -1718,6 +1721,9 @@ impl TaskApp {
     ) {
         match completion {
             LiveCompletion::None => {}
+            LiveCompletion::ResearchUnderstanding { request, signature } => {
+                self.continue_confirmed_understanding(request, &signature, cx);
+            }
             LiveCompletion::Status(message) => {
                 self.toast = message;
                 self.error.clear();
@@ -1848,12 +1854,12 @@ impl TaskApp {
                     self.planning_opener_focus = None;
                     self.navigation.planning_baseline.clear();
                     self.error.clear();
-                    self.toast = "Request saved · generate a plan when ready".into();
+                    self.toast = "Request saved · review the research understanding when ready".into();
                 } else if self.planning_destination.is_none() {
                     // The original form is gone and nothing newer owns the
                     // surface; a passive acknowledgement is safe.
                     self.error.clear();
-                    self.toast = "Request saved · generate a plan when ready".into();
+                    self.toast = "Request saved · review the research understanding when ready".into();
                 }
                 if start {
                     // Starting a saved request never moves the user's route.

@@ -1,0 +1,9 @@
+flowchart TD
+    A[**Start**] -->|Check| B{Ready?}
+    B -->|Yes| C([Publish]):::success
+    B -.->|No| D((Wait))
+    D ==> A
+    E[[Archive]] --- F[(Storage)]
+    G{{Review}} <--> H>Route]
+    classDef success fill:#e0f2e9,stroke:#39745a,color:#183d2c
+    linkStyle 1 stroke:#39745a,stroke-width:2

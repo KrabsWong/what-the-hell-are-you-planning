@@ -1,0 +1,16 @@
+sequenceDiagram
+    actor U as Researcher
+    participant A as Assistant
+    participant S as Sources
+    U->>+A: Research topic
+    loop Collect evidence
+        A->>+S: Search
+        S-->>-A: Evidence
+        Note right of S: Retain citations
+    end
+    alt Sufficient evidence
+        A->>A: Review findings
+        A-->>-U: Report
+    else Evidence gaps
+        A--)U: Explain limitations
+    end

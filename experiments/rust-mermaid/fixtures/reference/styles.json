@@ -1,0 +1,975 @@
+{
+  "upstream": "beautiful-mermaid@1.1.3 / elkjs@0.11.1",
+  "graph": {
+    "direction": "TD",
+    "nodes": [
+      {
+        "id": "A",
+        "label": "<b>Start</b>",
+        "shape": "rectangle"
+      },
+      {
+        "id": "B",
+        "label": "Ready?",
+        "shape": "diamond"
+      },
+      {
+        "id": "C",
+        "label": "Publish",
+        "shape": "stadium"
+      },
+      {
+        "id": "D",
+        "label": "Wait",
+        "shape": "circle"
+      },
+      {
+        "id": "E",
+        "label": "Archive",
+        "shape": "subroutine"
+      },
+      {
+        "id": "F",
+        "label": "Storage",
+        "shape": "cylinder"
+      },
+      {
+        "id": "G",
+        "label": "Review",
+        "shape": "hexagon"
+      },
+      {
+        "id": "H",
+        "label": "Route",
+        "shape": "asymmetric"
+      }
+    ],
+    "edges": [
+      {
+        "source": "A",
+        "target": "B",
+        "label": "Check",
+        "style": "solid",
+        "hasArrowStart": false,
+        "hasArrowEnd": true
+      },
+      {
+        "source": "B",
+        "target": "C",
+        "label": "Yes",
+        "style": "solid",
+        "hasArrowStart": false,
+        "hasArrowEnd": true
+      },
+      {
+        "source": "B",
+        "target": "D",
+        "label": "No",
+        "style": "dotted",
+        "hasArrowStart": false,
+        "hasArrowEnd": true
+      },
+      {
+        "source": "D",
+        "target": "A",
+        "style": "thick",
+        "hasArrowStart": false,
+        "hasArrowEnd": true
+      },
+      {
+        "source": "E",
+        "target": "F",
+        "style": "solid",
+        "hasArrowStart": false,
+        "hasArrowEnd": false
+      },
+      {
+        "source": "G",
+        "target": "H",
+        "style": "solid",
+        "hasArrowStart": true,
+        "hasArrowEnd": true
+      }
+    ],
+    "subgraphs": [],
+    "classDefs": {
+      "success": {
+        "fill": "#e0f2e9",
+        "stroke": "#39745a",
+        "color": "#183d2c"
+      }
+    },
+    "classAssignments": {
+      "C": "success"
+    },
+    "nodeStyles": {},
+    "linkStyles": {
+      "1": {
+        "stroke": "#39745a",
+        "stroke-width": "2"
+      }
+    }
+  },
+  "input": {
+    "id": "root",
+    "layoutOptions": {
+      "elk.algorithm": "layered",
+      "elk.direction": "DOWN",
+      "elk.spacing.nodeNode": "28",
+      "elk.layered.spacing.nodeNodeBetweenLayers": "48",
+      "elk.spacing.edgeEdge": "12",
+      "elk.layered.spacing.edgeEdgeBetweenLayers": "12",
+      "elk.layered.spacing.edgeNodeBetweenLayers": "12",
+      "elk.padding": "[top=40,left=40,bottom=40,right=40]",
+      "elk.edgeRouting": "ORTHOGONAL",
+      "elk.layered.nodePlacement.bk.fixedAlignment": "BALANCED",
+      "elk.contentAlignment": "H_CENTER V_CENTER",
+      "elk.layered.thoroughness": "3",
+      "elk.layered.highDegreeNodes.treatment": "true",
+      "elk.layered.highDegreeNodes.threshold": "8",
+      "elk.layered.compaction.postCompaction.strategy": "LEFT_RIGHT_CONSTRAINT_LOCKING",
+      "elk.layered.considerModelOrder.strategy": "NODES_AND_EDGES",
+      "elk.layered.wrapping.strategy": "OFF",
+      "elk.hierarchyHandling": "INCLUDE_CHILDREN"
+    },
+    "children": [
+      {
+        "id": "A",
+        "width": 70.108,
+        "height": 36.900000000000006,
+        "labels": [
+          {
+            "text": "<b>Start</b>"
+          }
+        ]
+      },
+      {
+        "id": "B",
+        "width": 111.892,
+        "height": 111.892,
+        "labels": [
+          {
+            "text": "Ready?"
+          }
+        ]
+      },
+      {
+        "id": "C",
+        "width": 86.41,
+        "height": 36.900000000000006,
+        "labels": [
+          {
+            "text": "Publish"
+          }
+        ]
+      },
+      {
+        "id": "D",
+        "width": 84,
+        "height": 84,
+        "labels": [
+          {
+            "text": "Wait"
+          }
+        ]
+      },
+      {
+        "id": "E",
+        "width": 89.374,
+        "height": 36.900000000000006,
+        "labels": [
+          {
+            "text": "Archive"
+          }
+        ]
+      },
+      {
+        "id": "F",
+        "width": 89.374,
+        "height": 50.900000000000006,
+        "labels": [
+          {
+            "text": "Storage"
+          }
+        ]
+      },
+      {
+        "id": "G",
+        "width": 104.928,
+        "height": 36.900000000000006,
+        "labels": [
+          {
+            "text": "Review"
+          }
+        ]
+      },
+      {
+        "id": "H",
+        "width": 88.036,
+        "height": 36.900000000000006,
+        "labels": [
+          {
+            "text": "Route"
+          }
+        ]
+      }
+    ],
+    "edges": [
+      {
+        "id": "e0",
+        "sources": [
+          "A"
+        ],
+        "targets": [
+          "B"
+        ],
+        "labels": [
+          {
+            "text": "Check",
+            "width": 40.538000000000004,
+            "height": 20.3,
+            "layoutOptions": {
+              "elk.edgeLabels.inline": "true",
+              "elk.edgeLabels.placement": "CENTER"
+            }
+          }
+        ]
+      },
+      {
+        "id": "e1",
+        "sources": [
+          "B"
+        ],
+        "targets": [
+          "C"
+        ],
+        "labels": [
+          {
+            "text": "Yes",
+            "width": 28.658,
+            "height": 20.3,
+            "layoutOptions": {
+              "elk.edgeLabels.inline": "true",
+              "elk.edgeLabels.placement": "CENTER"
+            }
+          }
+        ]
+      },
+      {
+        "id": "e2",
+        "sources": [
+          "B"
+        ],
+        "targets": [
+          "D"
+        ],
+        "labels": [
+          {
+            "text": "No",
+            "width": 22.718000000000004,
+            "height": 20.3,
+            "layoutOptions": {
+              "elk.edgeLabels.inline": "true",
+              "elk.edgeLabels.placement": "CENTER"
+            }
+          }
+        ]
+      },
+      {
+        "id": "e3",
+        "sources": [
+          "D"
+        ],
+        "targets": [
+          "A"
+        ]
+      },
+      {
+        "id": "e4",
+        "sources": [
+          "E"
+        ],
+        "targets": [
+          "F"
+        ]
+      },
+      {
+        "id": "e5",
+        "sources": [
+          "G"
+        ],
+        "targets": [
+          "H"
+        ]
+      }
+    ]
+  },
+  "raw": {
+    "id": "root",
+    "layoutOptions": {
+      "elk.algorithm": "layered",
+      "elk.direction": "DOWN",
+      "elk.spacing.nodeNode": "28",
+      "elk.layered.spacing.nodeNodeBetweenLayers": "48",
+      "elk.spacing.edgeEdge": "12",
+      "elk.layered.spacing.edgeEdgeBetweenLayers": "12",
+      "elk.layered.spacing.edgeNodeBetweenLayers": "12",
+      "elk.padding": "[top=40,left=40,bottom=40,right=40]",
+      "elk.edgeRouting": "ORTHOGONAL",
+      "elk.layered.nodePlacement.bk.fixedAlignment": "BALANCED",
+      "elk.contentAlignment": "H_CENTER V_CENTER",
+      "elk.layered.thoroughness": "3",
+      "elk.layered.highDegreeNodes.treatment": "true",
+      "elk.layered.highDegreeNodes.threshold": "8",
+      "elk.layered.compaction.postCompaction.strategy": "LEFT_RIGHT_CONSTRAINT_LOCKING",
+      "elk.layered.considerModelOrder.strategy": "NODES_AND_EDGES",
+      "elk.layered.wrapping.strategy": "OFF",
+      "elk.hierarchyHandling": "INCLUDE_CHILDREN"
+    },
+    "children": [
+      {
+        "id": "A",
+        "width": 70.108,
+        "height": 36.900000000000006,
+        "labels": [
+          {
+            "text": "<b>Start</b>",
+            "x": 0,
+            "y": 0,
+            "width": 0,
+            "height": 0
+          }
+        ],
+        "$H": 3060,
+        "x": 121.0778333333333,
+        "y": 40
+      },
+      {
+        "id": "B",
+        "width": 111.892,
+        "height": 111.892,
+        "labels": [
+          {
+            "text": "Ready?",
+            "x": 0,
+            "y": 0,
+            "width": 0,
+            "height": 0
+          }
+        ],
+        "$H": 3063,
+        "x": 67.21283333333332,
+        "y": 193.2
+      },
+      {
+        "id": "C",
+        "width": 86.41,
+        "height": 36.900000000000006,
+        "labels": [
+          {
+            "text": "Publish",
+            "x": 0,
+            "y": 0,
+            "width": 0,
+            "height": 0
+          }
+        ],
+        "$H": 3066,
+        "x": 40,
+        "y": 421.39200000000005
+      },
+      {
+        "id": "D",
+        "width": 84,
+        "height": 84,
+        "labels": [
+          {
+            "text": "Wait",
+            "x": 0,
+            "y": 0,
+            "width": 0,
+            "height": 0
+          }
+        ],
+        "$H": 3069,
+        "x": 154.40999999999997,
+        "y": 421.392
+      },
+      {
+        "id": "E",
+        "width": 89.374,
+        "height": 36.900000000000006,
+        "labels": [
+          {
+            "text": "Archive",
+            "x": 0,
+            "y": 0,
+            "width": 0,
+            "height": 0
+          }
+        ],
+        "$H": 3072,
+        "x": 238.20366666666666,
+        "y": 237.59199999999998
+      },
+      {
+        "id": "F",
+        "width": 89.374,
+        "height": 50.900000000000006,
+        "labels": [
+          {
+            "text": "Storage",
+            "x": 0,
+            "y": 0,
+            "width": 0,
+            "height": 0
+          }
+        ],
+        "$H": 3075,
+        "x": 238.20366666666666,
+        "y": 322.49199999999996
+      },
+      {
+        "id": "G",
+        "width": 104.928,
+        "height": 36.900000000000006,
+        "labels": [
+          {
+            "text": "Review",
+            "x": 0,
+            "y": 0,
+            "width": 0,
+            "height": 0
+          }
+        ],
+        "$H": 3078,
+        "x": 355.57766666666663,
+        "y": 40.000000000000014
+      },
+      {
+        "id": "H",
+        "width": 88.036,
+        "height": 36.900000000000006,
+        "labels": [
+          {
+            "text": "Route",
+            "x": 0,
+            "y": 0,
+            "width": 0,
+            "height": 0
+          }
+        ],
+        "$H": 3081,
+        "x": 364.02366666666666,
+        "y": 124.90000000000002
+      }
+    ],
+    "edges": [
+      {
+        "id": "e0",
+        "sources": [
+          "A"
+        ],
+        "targets": [
+          "B"
+        ],
+        "labels": [
+          {
+            "text": "Check",
+            "width": 40.538000000000004,
+            "height": 20.3,
+            "layoutOptions": {
+              "elk.edgeLabels.inline": "true",
+              "elk.edgeLabels.placement": "CENTER"
+            },
+            "x": 102.65883333333332,
+            "y": 124.9
+          }
+        ],
+        "sections": [
+          {
+            "id": "e0_s0",
+            "startPoint": {
+              "x": 144.44716666666665,
+              "y": 76.9
+            },
+            "endPoint": {
+              "x": 123.15883333333332,
+              "y": 193.2
+            },
+            "bendPoints": [
+              {
+                "x": 144.44716666666665,
+                "y": 112.9
+              },
+              {
+                "x": 123.15883333333332,
+                "y": 112.9
+              }
+            ],
+            "incomingShape": "A",
+            "outgoingShape": "B"
+          }
+        ],
+        "container": "root"
+      },
+      {
+        "id": "e1",
+        "sources": [
+          "B"
+        ],
+        "targets": [
+          "C"
+        ],
+        "labels": [
+          {
+            "text": "Yes",
+            "width": 28.658,
+            "height": 20.3,
+            "layoutOptions": {
+              "elk.edgeLabels.inline": "true",
+              "elk.edgeLabels.placement": "CENTER"
+            },
+            "x": 68.70499999999998,
+            "y": 353.09200000000004
+          }
+        ],
+        "sections": [
+          {
+            "id": "e1_s0",
+            "startPoint": {
+              "x": 104.51016666666665,
+              "y": 305.092
+            },
+            "endPoint": {
+              "x": 83.205,
+              "y": 421.39200000000005
+            },
+            "bendPoints": [
+              {
+                "x": 104.51016666666665,
+                "y": 341.09200000000004
+              },
+              {
+                "x": 83.20499999999998,
+                "y": 341.09200000000004
+              }
+            ],
+            "incomingShape": "B",
+            "outgoingShape": "C"
+          }
+        ],
+        "container": "root"
+      },
+      {
+        "id": "e2",
+        "sources": [
+          "B"
+        ],
+        "targets": [
+          "D"
+        ],
+        "labels": [
+          {
+            "text": "No",
+            "width": 22.718000000000004,
+            "height": 20.3,
+            "layoutOptions": {
+              "elk.edgeLabels.inline": "true",
+              "elk.edgeLabels.placement": "CENTER"
+            },
+            "x": 161.2613333333333,
+            "y": 353.092
+          }
+        ],
+        "sections": [
+          {
+            "id": "e2_s0",
+            "startPoint": {
+              "x": 141.80749999999998,
+              "y": 305.092
+            },
+            "endPoint": {
+              "x": 182.40999999999997,
+              "y": 421.392
+            },
+            "bendPoints": [
+              {
+                "x": 141.80749999999998,
+                "y": 341.092
+              },
+              {
+                "x": 172.7613333333333,
+                "y": 341.092
+              },
+              {
+                "x": 172.7613333333333,
+                "y": 409.392
+              },
+              {
+                "x": 182.40999999999997,
+                "y": 409.392
+              }
+            ],
+            "incomingShape": "B",
+            "outgoingShape": "D"
+          }
+        ],
+        "container": "root"
+      },
+      {
+        "id": "e3",
+        "sources": [
+          "D"
+        ],
+        "targets": [
+          "A"
+        ],
+        "sections": [
+          {
+            "id": "e3_s0",
+            "startPoint": {
+              "x": 210.40999999999997,
+              "y": 421.392
+            },
+            "endPoint": {
+              "x": 167.81649999999996,
+              "y": 76.9
+            },
+            "bendPoints": [
+              {
+                "x": 210.40999999999997,
+                "y": 409.392
+              },
+              {
+                "x": 207.01899999999998,
+                "y": 409.392
+              },
+              {
+                "x": 207.01899999999998,
+                "y": 181.2
+              },
+              {
+                "x": 167.81649999999996,
+                "y": 181.2
+              }
+            ],
+            "incomingShape": "D",
+            "outgoingShape": "A"
+          }
+        ],
+        "container": "root"
+      },
+      {
+        "id": "e4",
+        "sources": [
+          "E"
+        ],
+        "targets": [
+          "F"
+        ],
+        "sections": [
+          {
+            "id": "e4_s0",
+            "startPoint": {
+              "x": 282.8906666666667,
+              "y": 274.49199999999996
+            },
+            "endPoint": {
+              "x": 282.8906666666667,
+              "y": 322.49199999999996
+            },
+            "incomingShape": "E",
+            "outgoingShape": "F"
+          }
+        ],
+        "container": "root"
+      },
+      {
+        "id": "e5",
+        "sources": [
+          "G"
+        ],
+        "targets": [
+          "H"
+        ],
+        "sections": [
+          {
+            "id": "e5_s0",
+            "startPoint": {
+              "x": 408.04166666666663,
+              "y": 76.90000000000002
+            },
+            "endPoint": {
+              "x": 408.0416666666667,
+              "y": 124.90000000000002
+            },
+            "incomingShape": "G",
+            "outgoingShape": "H"
+          }
+        ],
+        "container": "root"
+      }
+    ],
+    "$H": 3058,
+    "x": 0,
+    "y": 0,
+    "width": 500.5056666666666,
+    "height": 545.392
+  },
+  "positioned": {
+    "width": 500.5056666666666,
+    "height": 545.392,
+    "nodes": [
+      {
+        "id": "A",
+        "label": "<b>Start</b>",
+        "shape": "rectangle",
+        "x": 121.0778333333333,
+        "y": 40,
+        "width": 70.108,
+        "height": 36.900000000000006
+      },
+      {
+        "id": "B",
+        "label": "Ready?",
+        "shape": "diamond",
+        "x": 67.21283333333332,
+        "y": 193.2,
+        "width": 111.892,
+        "height": 111.892
+      },
+      {
+        "id": "C",
+        "label": "Publish",
+        "shape": "stadium",
+        "x": 40,
+        "y": 421.39200000000005,
+        "width": 86.41,
+        "height": 36.900000000000006,
+        "inlineStyle": {
+          "fill": "#e0f2e9",
+          "stroke": "#39745a",
+          "color": "#183d2c"
+        }
+      },
+      {
+        "id": "D",
+        "label": "Wait",
+        "shape": "circle",
+        "x": 154.40999999999997,
+        "y": 421.392,
+        "width": 84,
+        "height": 84
+      },
+      {
+        "id": "E",
+        "label": "Archive",
+        "shape": "subroutine",
+        "x": 238.20366666666666,
+        "y": 237.59199999999998,
+        "width": 89.374,
+        "height": 36.900000000000006
+      },
+      {
+        "id": "F",
+        "label": "Storage",
+        "shape": "cylinder",
+        "x": 238.20366666666666,
+        "y": 322.49199999999996,
+        "width": 89.374,
+        "height": 50.900000000000006
+      },
+      {
+        "id": "G",
+        "label": "Review",
+        "shape": "hexagon",
+        "x": 355.57766666666663,
+        "y": 40.000000000000014,
+        "width": 104.928,
+        "height": 36.900000000000006
+      },
+      {
+        "id": "H",
+        "label": "Route",
+        "shape": "asymmetric",
+        "x": 364.02366666666666,
+        "y": 124.90000000000002,
+        "width": 88.036,
+        "height": 36.900000000000006
+      }
+    ],
+    "edges": [
+      {
+        "source": "A",
+        "target": "B",
+        "label": "Check",
+        "style": "solid",
+        "hasArrowStart": false,
+        "hasArrowEnd": true,
+        "points": [
+          {
+            "x": 144.44716666666665,
+            "y": 76.9
+          },
+          {
+            "x": 144.44716666666665,
+            "y": 112.9
+          },
+          {
+            "x": 123.15883333333332,
+            "y": 112.9
+          },
+          {
+            "x": 123.15883333333332,
+            "y": 193.2
+          }
+        ],
+        "labelPosition": {
+          "x": 122.92783333333333,
+          "y": 135.05
+        }
+      },
+      {
+        "source": "B",
+        "target": "C",
+        "label": "Yes",
+        "style": "solid",
+        "hasArrowStart": false,
+        "hasArrowEnd": true,
+        "points": [
+          {
+            "x": 104.51016666666665,
+            "y": 286.4433333333333
+          },
+          {
+            "x": 104.51016666666665,
+            "y": 341.09200000000004
+          },
+          {
+            "x": 83.20499999999998,
+            "y": 341.09200000000004
+          },
+          {
+            "x": 83.205,
+            "y": 421.39200000000005
+          }
+        ],
+        "labelPosition": {
+          "x": 83.03399999999999,
+          "y": 363.242
+        },
+        "inlineStyle": {
+          "stroke": "#39745a",
+          "stroke-width": "2"
+        }
+      },
+      {
+        "source": "B",
+        "target": "D",
+        "label": "No",
+        "style": "dotted",
+        "hasArrowStart": false,
+        "hasArrowEnd": true,
+        "points": [
+          {
+            "x": 141.80749999999998,
+            "y": 286.4433333333333
+          },
+          {
+            "x": 141.80749999999998,
+            "y": 341.092
+          },
+          {
+            "x": 172.7613333333333,
+            "y": 341.092
+          },
+          {
+            "x": 172.7613333333333,
+            "y": 409.392
+          },
+          {
+            "x": 182.40999999999997,
+            "y": 409.392
+          },
+          {
+            "x": 182.40999999999997,
+            "y": 421.392
+          }
+        ],
+        "labelPosition": {
+          "x": 172.62033333333332,
+          "y": 363.24199999999996
+        }
+      },
+      {
+        "source": "D",
+        "target": "A",
+        "style": "thick",
+        "hasArrowStart": false,
+        "hasArrowEnd": true,
+        "points": [
+          {
+            "x": 210.40999999999997,
+            "y": 421.392
+          },
+          {
+            "x": 210.40999999999997,
+            "y": 409.392
+          },
+          {
+            "x": 207.01899999999998,
+            "y": 409.392
+          },
+          {
+            "x": 207.01899999999998,
+            "y": 181.2
+          },
+          {
+            "x": 167.81649999999996,
+            "y": 181.2
+          },
+          {
+            "x": 167.81649999999996,
+            "y": 76.9
+          }
+        ]
+      },
+      {
+        "source": "E",
+        "target": "F",
+        "style": "solid",
+        "hasArrowStart": false,
+        "hasArrowEnd": false,
+        "points": [
+          {
+            "x": 282.8906666666667,
+            "y": 274.49199999999996
+          },
+          {
+            "x": 282.8906666666667,
+            "y": 322.49199999999996
+          }
+        ]
+      },
+      {
+        "source": "G",
+        "target": "H",
+        "style": "solid",
+        "hasArrowStart": true,
+        "hasArrowEnd": true,
+        "points": [
+          {
+            "x": 408.04166666666663,
+            "y": 76.90000000000002
+          },
+          {
+            "x": 408.0416666666667,
+            "y": 124.90000000000002
+          }
+        ]
+      }
+    ],
+    "groups": []
+  }
+}

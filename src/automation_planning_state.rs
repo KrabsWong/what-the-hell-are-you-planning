@@ -13,6 +13,10 @@ use crate::domain::Store;
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub(crate) enum AutomationPlanningState {
+    /// The request is being summarized before goal planning is permitted.
+    Understanding,
+    /// A generated understanding awaits explicit confirmation or clarification.
+    UnderstandingReady,
     /// At least one attempt for the latest request is queued, running or
     /// cancelling.
     Planning,
@@ -29,6 +33,8 @@ pub(crate) enum AutomationPlanningState {
 impl AutomationPlanningState {
     pub(crate) fn label(self) -> &'static str {
         match self {
+            Self::Understanding => "Understanding research…",
+            Self::UnderstandingReady => "Understanding ready to review",
             Self::Planning => "Planning…",
             Self::PlanReady => "Plan ready to review",
             Self::RetryNeeded => "Planning needs attention",
@@ -37,7 +43,7 @@ impl AutomationPlanningState {
     }
 
     pub(crate) fn is_actionable(self) -> bool {
-        matches!(self, Self::PlanReady | Self::RetryNeeded)
+        matches!(self, Self::UnderstandingReady | Self::PlanReady | Self::RetryNeeded)
     }
 }
 
@@ -75,6 +81,18 @@ pub(crate) fn automation_planning_state(
             AutomationPlanningState::None
         };
     };
+    if store.request_needs_understanding(request.id) {
+        if store.request_understanding_ready(request.id) {
+            return AutomationPlanningState::UnderstandingReady;
+        }
+        return if store.latest_request_attempt(request.id).is_some_and(|run| {
+            crate::request_planning::is_understanding_run(run) && attempt_is_active(&run.status)
+        }) {
+            AutomationPlanningState::Understanding
+        } else {
+            AutomationPlanningState::RetryNeeded
+        };
+    }
     let Some(authoritative) = store.latest_request_attempt(request.id) else {
         return AutomationPlanningState::RetryNeeded;
     };
@@ -147,15 +165,19 @@ mod tests {
             .unwrap()
     }
 
+    fn confirm_understanding(store: &mut Store, request: u64) {
+        store.apply_request_understanding(request,
+            r#"{"summary":"Track public filings and deliver a concise sourced note.","questions":[]}"#,
+        ).unwrap();
+        store.confirm_request_understanding(request).unwrap();
+    }
+
     fn request(store: &mut Store, automation: u64) -> u64 {
-        store
-            .create_automation_request(
-                automation,
-                1,
-                "Track public filings",
-                "A cited note",
-            )
-            .unwrap()
+        let id = store.create_automation_request(
+            automation, 1, "Track public filings", "A cited note",
+        ).unwrap();
+        confirm_understanding(store, id);
+        id
     }
 
     fn attempt(store: &mut Store, request: u64) -> u64 {
@@ -168,9 +190,10 @@ mod tests {
     }
 
     fn request_with(store: &mut Store, automation: u64, input: &str) -> u64 {
-        store
-            .create_automation_request(automation, 1, input, "A cited note")
-            .unwrap()
+        store.automation_mut(automation).unwrap().objective = input.into();
+        let id = store.create_automation_request(automation, 1, input, "A cited note").unwrap();
+        confirm_understanding(store, id);
+        id
     }
 
     /// Simulate the reviewed apply step so the definition carries a valid plan
@@ -224,6 +247,45 @@ mod tests {
 
     fn set_status(store: &mut Store, run: u64, status: &str) {
         store.run_mut(run).unwrap().status = status.into();
+    }
+
+    #[test]
+    fn understanding_is_reviewable_before_any_goal_plan_exists() {
+        let mut store = store();
+        let id = automation(&mut store);
+        let request = store.create_automation_request(
+            id, 1, "Track public filings", "A cited note",
+        ).unwrap();
+        let run = attempt(&mut store, request);
+        assert_eq!(automation_planning_state(&store, id), AutomationPlanningState::Understanding);
+        set_status(&mut store, run, "Succeeded");
+        store.apply_request_understanding(request,
+            r#"{"summary":"Track filings and explain material changes with sources.","questions":[]}"#,
+        ).unwrap();
+        assert_eq!(automation_planning_state(&store, id), AutomationPlanningState::UnderstandingReady);
+        assert!(AutomationPlanningState::UnderstandingReady.is_actionable());
+        assert!(store.automation(id).unwrap().template.is_none());
+        assert!(store.prepare_request_plan(request).is_err());
+        store.confirm_request_understanding(request).unwrap();
+        let plan = store.prepare_request_plan(request).unwrap();
+        assert!(!crate::request_planning::is_understanding_run(&plan));
+    }
+
+    #[test]
+    fn changed_request_requires_a_new_understanding() {
+        let mut store = store();
+        let id = automation(&mut store);
+        let original = request(&mut store, id);
+        apply_plan(&mut store, id, original);
+        approve_current(&mut store, id, original);
+        let revised = store.create_automation_request(
+            id, 1, "Compare filing risks", "A comparison",
+        ).unwrap();
+        assert!(store.request_needs_understanding(revised));
+        assert_eq!(automation_planning_state(&store, id), AutomationPlanningState::RetryNeeded);
+        let run = attempt(&mut store, revised);
+        assert!(crate::request_planning::is_understanding_run(store.runs().iter().find(|r| r.id == run).unwrap()));
+        assert_eq!(automation_planning_state(&store, id), AutomationPlanningState::Understanding);
     }
 
     #[test]

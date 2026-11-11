@@ -277,7 +277,7 @@ impl TaskApp {
                 .map(|t| {
                     let name =
                         t.id.and_then(|id| self.store.task(id))
-                            .map(|task| format!("{} · {}", self.store.identifier(task), task.title))
+                            .map(|task| task.title.clone())
                             .unwrap_or_else(|| {
                                 if t.id.is_none() {
                                     "Project planning".into()
@@ -307,7 +307,7 @@ impl TaskApp {
             let entity = cx.entity().downgrade();
             let topic_entity = entity.clone();
             let filter_entity = entity.clone();
-            let goal_title = topic_task.map(|t| format!("{} · {}", self.store.identifier(t), t.title))
+            let goal_title = topic_task.map(|t| t.title.clone())
                 .unwrap_or(topic_title);
             history = history.child(
                 col().flex_shrink_0().px_3().py_3().gap_2()
@@ -499,7 +499,9 @@ impl TaskApp {
         let active = selected
             .is_some_and(|s| s.task_id == run.task_id && s.project_plan == run.project_plan);
         let planning = run.project_plan.is_some() || run.research_kind == Some(ResearchKind::Goal);
-        let title = if run.project_plan.is_some() {
+        let title = if crate::request_planning::is_understanding_run(run) {
+            "Understand research".into()
+        } else if run.project_plan.is_some() {
             "Generate research topics".into()
         } else if planning {
             "Break down research goal".into()
@@ -512,14 +514,7 @@ impl TaskApp {
             Some(ResearchKind::Advise) => "Final report",
             _ => "Task",
         };
-        let identity = if planning {
-            "Planning record".into()
-        } else {
-            self.store
-                .task(run.task_id)
-                .map(|t| format!("{} · {kind}", self.store.identifier(t)))
-                .unwrap_or_else(|| format!("Task {} · saved activity", run.task_id))
-        };
+        let identity = if planning { "Planning record" } else { kind };
         row_button(format!("run-{rid}"), "")
             .custom(
                 gpui_kit::component::button::ButtonCustomVariant::new(cx)
@@ -688,6 +683,10 @@ impl TaskApp {
             "Cancelling" => (
                 "Stopping this task",
                 "Waiting for the current process to stop.",
+            ),
+            "Succeeded" if crate::request_planning::is_understanding_run(run) => (
+                "Research understanding saved",
+                "Review the understanding above before generating goals and tasks.",
             ),
             "Succeeded" if planning => (
                 "Your research tasks are ready",
@@ -971,8 +970,10 @@ impl TaskApp {
                         } else {
                             result_presentation.kind.label()
                         }.to_string();
-                        if let Some(suffix) = result_presentation.status_suffix() {
-                            kind.push_str(&format!(" · {suffix}"));
+                        if result_presentation.notice.is_none() {
+                            if let Some(suffix) = result_presentation.status_suffix() {
+                                kind.push_str(&format!(" · {suffix}"));
+                            }
                         }
                         let freshness = result_presentation.freshness.labels();
                         if !freshness.is_empty() {
@@ -981,8 +982,8 @@ impl TaskApp {
                         }
                         d.child(label(kind.clone(), cx).id("run-result-kind").aria_label(kind).map(observed))
                     })
-                    .child(label(format!("Run #{} · {} · {}", run.id, run.agent,
-                        if run.model.is_empty() { "Not recorded" } else { run.model.as_str() }), cx))
+                    .child(execution_metadata(String::new(), run.agent.to_string(),
+                        if run.model.is_empty() { "Not recorded" } else { run.model.as_str() }, cx))
                     .child(self.run_version_picker(run, cx))
                     .when(!self.show_run_details && readable, |d| d.child(label(
                         format!("{} sources · {} materials", run.sources.len(), run.attachments.len()), cx)))
@@ -992,6 +993,11 @@ impl TaskApp {
                 d.child(label(queue_explanation.clone(), cx))
             })
             .map(observed);
+        if let Some(request) = self.store.request_for_run_record(run)
+            && request.understanding_required && request.goal_ids.is_empty() {
+            progress = col().gap_3().child(progress)
+                .child(self.research_understanding_view(request.id, cx)).into_any_element();
+        }
         if let Some((source_id, input)) = &self.report_regeneration {
             if *source_id == run.id {
                 let source_id = *source_id;
@@ -1099,6 +1105,9 @@ impl TaskApp {
                         .tooltip(if result_run.is_some() { "Open result" } else { "Open task details" })
                         .child(div().w_full().min_w_0().text_sm().text_left().truncate()
                             .text_color(rgb(colors.text)).child(selectable(task.title.clone())))
+                        .child(div().flex_shrink_0().child(row().gap_1()
+                            .child(label(if result_run.is_some() { "View result" } else { "Open task" }, cx))
+                            .child(gpui_kit::component::Icon::new(assets::IconName::ChevronRight).size_4())))
                         .on_click(cx.listener(move |a, _, w, cx| {
                             if let Some(run_id) = result_run {
                                 a.show_task_result(run_id, cx);
@@ -1217,16 +1226,13 @@ impl TaskApp {
                     .flex_shrink_0()
                     .gap_1()
                     .text_xs()
-                    .child(label(
-                        format!(
-                            "Run {} · {} · {} · {}",
-                            run.id,
-                            run.agent,
-                            run.stage.label(),
-                            run.model
-                        ),
-                        cx,
+                    .child(execution_metadata(
+                        format!("Run {} · {}", run.id, run.stage.label()), run.agent.to_string(),
+                        if run.model.is_empty() { "Not recorded" } else { run.model.as_str() }, cx,
                     ))
+                    .when_some(self.store.task(run.task_id), |details, task| {
+                        details.child(label(format!("Task: {}", self.store.identifier(task)), cx))
+                    })
                     .child(label(format!("Folder: {}", run.directory), cx))
                     .child(label(
                         format!(

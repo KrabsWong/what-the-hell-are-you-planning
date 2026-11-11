@@ -19,6 +19,16 @@ pub fn run() {
         .join(format!(".local/automation-qa/{}", std::process::id()));
     let _ = std::fs::remove_dir_all(&root);
     std::fs::create_dir_all(&root).unwrap();
+    if std::env::var_os("PLANNING_QA_SETTINGS_ONLY").is_some() {
+        settings_hierarchy_fixture(&root);
+        println!("Automation settings QA passed · {}", root.display());
+        return;
+    }
+    if std::env::var_os("PLANNING_QA_LIST_ONLY").is_some() {
+        list_hierarchy_fixture(&root);
+        println!("Automation list QA passed · {}", root.display());
+        return;
+    }
     pure_checks(&root);
     instruction_validation_check(&root);
     planning_chain(&root);
@@ -56,6 +66,11 @@ pub fn run_planning() {
         .join(format!(".local/planning-qa/{}", std::process::id()));
     let _ = std::fs::remove_dir_all(&root);
     std::fs::create_dir_all(&root).unwrap();
+    if std::env::var_os("PLANNING_QA_UNDERSTANDING_ONLY").is_some() {
+        planning_cli_flow_check(&root);
+        println!("Research understanding QA passed · {}", root.display());
+        return;
+    }
     pure_checks(&root);
     instruction_validation_check(&root);
     planning_chain(&root);
@@ -234,6 +249,7 @@ fn planning_chain(root: &Path) {
     let request = store
         .create_automation_request(id, automation_project, "Track the semiconductor supply chain", "A sourced note")
         .unwrap();
+    confirm_fixture_understanding(&mut store, request);
     let mut run = store.prepare_request_plan(request).unwrap();
     run.status = "Succeeded".into();
     run.ended_at = Some(crate::opencode::timestamp());
@@ -335,6 +351,13 @@ fn planning_chain(root: &Path) {
 }
 
 
+fn confirm_fixture_understanding(store: &mut Store, request: u64) {
+    store.apply_request_understanding(request,
+        r#"{"summary":"Review the requested subject and deliver a sourced report within the stated scope.","questions":[]}"#,
+    ).unwrap();
+    store.confirm_request_understanding(request).unwrap();
+}
+
 fn model_store(directory: &Path) -> Store {
     let mut store = Store::empty();
     store.project_at_mut(0).unwrap().name = "Automation QA project".into();
@@ -345,8 +368,8 @@ fn model_store(directory: &Path) -> Store {
 
 fn draft(store: &mut Store, name: &str) -> u64 {
     let template = crate::automation_execution::build_template(
-        "追踪公开信息中值得注意的变化，并保留来源与时间。",
-        "一份带来源和证据缺口的简短报告。",
+        "Track notable changes in public information, preserving sources and dates.",
+        "A concise report with sources and evidence gaps.",
     )
     .unwrap();
     let schedule = crate::automation_schedule::Schedule {
@@ -358,8 +381,8 @@ fn draft(store: &mut Store, name: &str) -> u64 {
             1,
             crate::automation::AutomationShape::Research,
             name.into(),
-            "追踪公开信息中值得注意的变化，并保留来源与时间。".into(),
-            "一份带来源和证据缺口的简短报告。".into(),
+            "Track notable changes in public information, preserving sources and dates.".into(),
+            "A concise report with sources and evidence gaps.".into(),
             schedule,
             Default::default(),
             Some(template),
@@ -385,7 +408,7 @@ fn pure_checks(root: &Path) {
     let path = directory.join("workspace.sqlite3");
     let storage = Storage::new(path.clone());
     let mut store = model_store(&directory);
-    let id = draft(&mut store, "十分钟检查");
+    let id = draft(&mut store, "Ten-minute check");
     enable(&mut store, id);
     let now = now();
     store.automation_mut(id).unwrap().policy.allowed_delay_seconds = 1;
@@ -453,7 +476,7 @@ fn pure_checks(root: &Path) {
 
     // Large history remains bounded and readable.
     let mut history_store = model_store(&directory);
-    let history_id = draft(&mut history_store, "历史容量检查");
+    let history_id = draft(&mut history_store, "Historical capacity check");
     enable(&mut history_store, history_id);
     for index in 0..500 {
         let mut occurrence = {
@@ -845,7 +868,7 @@ print(json.dumps({'type':'text','part':{'text':json.dumps({'status':'complete','
     cx.update_window(handle, |_, _, cx| {
         app.update(cx, |a, cx| {
             a.error.clear();
-            a.regenerate_report(source, "更清楚一些", cx);
+            a.regenerate_report(source, "Make the explanation clearer", cx);
         });
     })
     .unwrap();
@@ -2660,7 +2683,7 @@ fn queue_chain(root: &Path) {
         r#"#!/usr/bin/python3
 import json,sys,time
 prompt=sys.argv[-1]
-if '队列 A1' in prompt and 'Collect current evidence' in prompt:
+if 'Queue A1' in prompt and 'Collect current evidence' in prompt:
     time.sleep(2.2)
 print(json.dumps({'type':'text','part':{'text':json.dumps({'status':'complete','report':'Queue chain report','sources':[{'title':'Queue source','url':'https://example.com/queue-chain','published_at':'unknown'}]})}}),flush=True)
 "#,
@@ -2681,8 +2704,8 @@ print(json.dumps({'type':'text','part':{'text':json.dumps({'status':'complete','
     };
     let mut make = |name: &str, objective: &str| {
         let template = crate::automation_execution::build_template(
-            &format!("{objective} 昨天的公开信息"),
-            "简报",
+            &format!("{objective} yesterday’s public information"),
+            "Brief",
         )
         .unwrap();
         let id = store
@@ -2690,8 +2713,8 @@ print(json.dumps({'type':'text','part':{'text':json.dumps({'status':'complete','
                 1,
                 crate::automation::AutomationShape::Research,
                 name.into(),
-                format!("{objective} 昨天的公开信息"),
-                "简报".into(),
+                format!("{objective} yesterday’s public information"),
+                "Brief".into(),
                 schedule.clone(),
                 Default::default(),
                 Some(template),
@@ -2701,7 +2724,7 @@ print(json.dumps({'type':'text','part':{'text':json.dumps({'status':'complete','
         enable(&mut store, id);
         id
     };
-    let a1 = make("Queue A1", "队列 A1");
+    let a1 = make("Queue A1", "Queue A1");
     let path = directory.join("workspace.sqlite3");
     Storage::new(path.clone()).save(&store).unwrap();
 
@@ -3685,6 +3708,7 @@ fn planning_revision_completion_check(root: &Path) {
         .create_automation_request(id, automation_project, "Objective A", "Expected A")
         .unwrap();
     let plan = r#"{"topic_name":"Revision plan","brief":{"objective":"Objective A","deliverable":"Expected A","scope":"Scope","assumptions":[],"facts_to_verify":[]},"goals":[{"title":"Goal","brief":"Brief","tasks":[{"title":"Collect","instructions":"Collect","kind":"collect","depends_on":[]},{"title":"Analyze","instructions":"Analyze","kind":"analyze","depends_on":[0]},{"title":"Report","instructions":"Report","kind":"advise","depends_on":[1]}]}]}"#;
+    confirm_fixture_understanding(&mut store, request);
     let mut first = store.prepare_request_plan(request).unwrap();
     first.status = "Succeeded".into();
     first.output = plan.into();
@@ -3767,6 +3791,7 @@ fn planning_revision_completion_check(root: &Path) {
                     .create_automation_request(id, automation_project, "Objective A", "Expected B")
                     .unwrap();
                 let plan = r#"{"topic_name":"Expected B plan","brief":{"objective":"Objective A","deliverable":"Expected B","scope":"Scope","assumptions":[],"facts_to_verify":[]},"goals":[{"title":"Goal","brief":"Brief","tasks":[{"title":"Collect","instructions":"Collect","kind":"collect","depends_on":[]},{"title":"Analyze","instructions":"Analyze","kind":"analyze","depends_on":[0]},{"title":"Report","instructions":"Report","kind":"advise","depends_on":[1]}]}]}"#;
+                confirm_fixture_understanding(&mut a.store, request);
                 let mut run = a.store.prepare_request_plan(request).unwrap();
                 run.status = "Succeeded".into();
                 run.output = plan.into();
@@ -3823,6 +3848,33 @@ fn wait_for_planning_run(
     }
 }
 
+fn confirm_wizard_understanding(cx: &mut HeadlessAppContext, app: &Entity<TaskApp>, handle: AnyWindowHandle) {
+    let request = read_state(cx, app, |a| {
+        a.store.latest_planning_request(a.automation_ui.editing.unwrap()).unwrap().id
+    });
+    assert!(read_state(cx, app, |a| a.store.request_understanding_ready(request)));
+    assert!(!read_state(cx, app, |a| a.store.request_understanding_confirmed(request)));
+    cx.update_window(handle, |_, w, cx| {
+        w.click(format!("understanding-confirm-{request}"), cx);
+        w.render_frame(cx);
+    }).unwrap();
+    let deadline = std::time::Instant::now() + Duration::from_secs(30);
+    let run = loop {
+        cx.update_window(handle, |_, w, cx| {
+            app.update(cx, |a, cx| a.poll_runtime(cx));
+            w.render_frame(cx);
+        }).unwrap();
+        if let Some(run) = read_state(cx, app, |a| a.store.latest_request_attempt(request)
+            .filter(|run| !crate::request_planning::is_understanding_run(run)).map(|run| run.id)) {
+            break run;
+        }
+        assert!(std::time::Instant::now() < deadline, "confirmation did not start goal planning");
+        std::thread::sleep(Duration::from_millis(10));
+    };
+    wait_for_planning_run(cx, app, handle, run);
+    assert!(read_state(cx, app, |a| a.store.request_understanding_confirmed(request)));
+}
+
 fn latest_prompt(directory: &Path) -> String {
     let mut files: Vec<_> = std::fs::read_dir(directory.join("prompts"))
         .unwrap()
@@ -3850,6 +3902,8 @@ if 'FAIL_ONCE' in prompt and not os.path.exists(state):
     open(state, 'w').write('1')
     sys.exit(7)
 plan = {"topic_name":"Captured plan","brief":{"objective":"Captured","deliverable":"Expected","scope":"Latest","assumptions":[],"facts_to_verify":[]},"goals":[{"title":"Captured goal","brief":"Brief","tasks":[{"title":"Collect","instructions":"Collect","kind":"collect","depends_on":[]},{"title":"Analyze","instructions":"Analyze","kind":"analyze","depends_on":[0]},{"title":"Report","instructions":"Report","kind":"advise","depends_on":[1]}]}]}
+if 'You are clarifying ONE saved research request' in prompt:
+    plan = {'summary':'Review the requested subject, focus on the stated scope, and deliver a concise sourced report. Do not expand into unrelated recommendations.', 'questions':[]}
 print(json.dumps({'type':'text','part':{'text':json.dumps(plan)}}), flush=True)
 "#,
     )
@@ -3908,6 +3962,12 @@ print(json.dumps({'type':'text','part':{'text':json.dumps(plan)}}), flush=True)
         )
     });
     wait_for_planning_run(&mut cx, &app, handle, run_a);
+    assert!(read_state(&mut cx, &app, |a| a.store.automation(automation).unwrap().template.is_none()));
+    screenshot(&mut cx, handle, &directory, "understanding-light.png");
+    cx.update_window(handle, |_, w, cx| { w.click("toggle-appearance", cx); w.render_frame(cx); }).unwrap();
+    screenshot(&mut cx, handle, &directory, "understanding-dark.png");
+    cx.update_window(handle, |_, w, cx| { w.click("toggle-appearance", cx); w.render_frame(cx); }).unwrap();
+    confirm_wizard_understanding(&mut cx, &app, handle);
     let prompt = latest_prompt(&directory);
     assert!(prompt.contains("Objective A"));
     assert!(prompt.contains("Expected A"));
@@ -3961,6 +4021,7 @@ print(json.dumps({'type':'text','part':{'text':json.dumps(plan)}}), flush=True)
     .unwrap();
     let run_b = read_state(&mut cx, &app, |a| a.automation_ui.planning_run.expect("replan started"));
     wait_for_planning_run(&mut cx, &app, handle, run_b);
+    confirm_wizard_understanding(&mut cx, &app, handle);
     let prompt = latest_prompt(&directory);
     assert!(prompt.contains("Objective B"));
     assert!(prompt.contains("Expected B"));
@@ -4006,6 +4067,7 @@ print(json.dumps({'type':'text','part':{'text':json.dumps(plan)}}), flush=True)
         a.automation_ui.planning_run.expect("expected-only replan started")
     });
     wait_for_planning_run(&mut cx, &app, handle, run_expected);
+    confirm_wizard_understanding(&mut cx, &app, handle);
     let prompt = latest_prompt(&directory);
     assert!(prompt.contains("Objective B"));
     assert!(prompt.contains("Expected C"));
@@ -4097,6 +4159,7 @@ print(json.dumps({'type':'text','part':{'text':json.dumps(plan)}}), flush=True)
     );
     let retry_id = retry_id.expect("retry started");
     wait_for_planning_run(&mut cx, &app, handle, retry_id);
+    confirm_wizard_understanding(&mut cx, &app, handle);
     let prompt = latest_prompt(&directory);
     assert!(prompt.contains("FAIL_ONCE"));
     assert!(prompt.contains("Failure contract"));
@@ -4104,6 +4167,11 @@ print(json.dumps({'type':'text','part':{'text':json.dumps(plan)}}), flush=True)
         read_state(&mut cx, &app, |a| a.store.latest_planning_request(automation).unwrap().id),
         failed_request
     );
+
+    if std::env::var_os("PLANNING_QA_UNDERSTANDING_ONLY").is_some() {
+        println!("Understanding confirmation, revised scope and retry checks passed");
+        return;
+    }
 
     let attempt_ids = read_state(&mut cx, &app, |a| {
         let mut ids: Vec<_> = a
@@ -4228,8 +4296,20 @@ print(json.dumps({'type':'text','part':{'text':json.dumps(plan)}}), flush=True)
         }
     })
     .unwrap();
-    let scroll_before = read_state(&mut cx, &app, |a| a.automation_ui.settings_scroll.offset().y);
     for (run_id, objective, expected) in &expected_content {
+        cx.update_window(handle, |_, w, cx| {
+            w.within("automation-settings-focus").scroll("automation-settings-body",
+                ScrollDelta::Pixels(point(px(0.), px(10_000.))), cx);
+            for _ in 0..20 {
+                w.render_frame(cx);
+                if w.try_find(format!("planning-attempt-{run_id}")).is_some_and(|item| item.visible()) {
+                    break;
+                }
+                w.within("automation-settings-focus").scroll("automation-settings-body",
+                    ScrollDelta::Pixels(point(px(0.), px(-120.))), cx);
+            }
+        }).unwrap();
+        let scroll_before = read_state(&mut cx, &app, |a| a.automation_ui.settings_scroll.offset().y);
         cx.update_window(handle, |_, w, cx| {
             w.click(format!("planning-attempt-{run_id}"), cx);
             w.render_frame(cx);
@@ -4485,6 +4565,7 @@ fn late_planning_completion_check(root: &Path) {
     let request = store
         .create_automation_request(id, automation_project, "Track the semiconductor supply chain", "A sourced note")
         .unwrap();
+    confirm_fixture_understanding(&mut store, request);
     let mut run = store.prepare_request_plan(request).unwrap();
     run.status = "Succeeded".into();
     run.ended_at = Some(crate::opencode::timestamp());
@@ -4714,7 +4795,7 @@ fn ui_interaction(root: &Path) -> PathBuf {
     })
     .unwrap();
 
-    let long_name = "每日行业简报与异常变化追踪（面向非技术读者，包含来源、时间范围和证据缺口）";
+    let long_name = "Daily industry brief and unusual changes for nontechnical readers with sources, time range and evidence gaps";
     cx.update_window(handle, |_, w, cx| {
         w.click("new-automation", cx);
         w.render_frame(cx);
@@ -4725,9 +4806,9 @@ fn ui_interaction(root: &Path) -> PathBuf {
         w.click("automation-name", cx);
         w.input(long_name, cx);
         w.click("automation-objective", cx);
-        w.input("追踪公开信息中值得注意的变化，说明来源、时间范围和不确定性。", cx);
+        w.input("Track notable public information changes with sources, time range and uncertainty.", cx);
         w.click("automation-expected", cx);
-        w.input("一份三分钟可读完、带来源和证据缺口的简报。", cx);
+        w.input("A three-minute brief with sources and evidence gaps.", cx);
         w.click("automation-next-step", cx);
     })
     .unwrap();
@@ -4854,9 +4935,9 @@ fn ui_interaction(root: &Path) -> PathBuf {
         w.click("edit-automation", cx);
         w.render_frame(cx);
         w.click("automation-name", cx);
-        w.input("（第二版）", cx);
+        w.input(" (second version)", cx);
         w.click("automation-objective", cx);
-        w.input("补充：记录证据缺口。", cx);
+        w.input("Also record evidence gaps.", cx);
         w.render_frame(cx);
         w.click("automation-next-step", cx);
         w.render_frame(cx);
@@ -4872,7 +4953,7 @@ fn ui_interaction(root: &Path) -> PathBuf {
     });
     assert_eq!(version, 2);
     assert_eq!(status, DefinitionStatus::Enabled);
-    assert!(name.ends_with("（第二版）"), "{name}");
+    assert!(name.ends_with(" (second version)"), "{name}");
 
     // Pause, resume, manual run, stop current period, copy and archive.
     cx.update_window(handle, |_, w, cx| { w.render_frame(cx); w.click("pause-automation", cx); }).unwrap();
@@ -5008,9 +5089,9 @@ fn ui_interaction(root: &Path) -> PathBuf {
     std::fs::write(&blocked, "file blocks directory creation").unwrap();
     cx.update_window(handle, |_, w, cx| {
         w.click("automation-objective", cx);
-        w.input("测试存储失败时不能显示已保存。", cx);
+        w.input("Verify that failed storage does not show a saved status.", cx);
         w.click("automation-expected", cx);
-        w.input("保留草稿并显示错误。", cx);
+        w.input("Keep the draft and show the error.", cx);
         app.update(cx, |a, _| {
             a.storage = Some(Storage::new(blocked.join("workspace.sqlite3")));
             a.storage_error.clear();
@@ -5116,7 +5197,7 @@ fn ui_interaction(root: &Path) -> PathBuf {
         w.drag(start, end, cx);
         let selected = gpui_kit::base::TextSelection::selected_text(w, cx);
         assert!(
-            selected.contains('追'),
+            selected.contains("Track"),
             "the objective should be selectable, got {selected:?}"
         );
         w.press("cmd-c", cx);
@@ -5125,7 +5206,7 @@ fn ui_interaction(root: &Path) -> PathBuf {
             .and_then(|item| item.text())
             .unwrap_or_default();
         assert!(
-            copied.contains('追'),
+            copied.contains("Track"),
             "Cmd+C should copy the selection, got {copied:?}"
         );
     })
@@ -5643,6 +5724,142 @@ fn ui_interaction(root: &Path) -> PathBuf {
     path
 }
 
+/// Settings metadata remains readable without crowding the task or footer actions.
+fn settings_hierarchy_fixture(root: &Path) {
+    use gpui_kit::test::TestEventExt;
+    for shape in [AutomationShape::Quick, AutomationShape::Research] {
+        for (width, height) in [(1440., 920.), (900., 620.)] {
+            for mode in [Appearance::Light, Appearance::Dark] {
+                let name = format!("settings-{}-{}-{}",
+                    if shape == AutomationShape::Quick { "quick" } else { "research" },
+                    if mode == Appearance::Light { "light" } else { "dark" }, width as u32);
+                let directory = root.join(name);
+                std::fs::create_dir_all(&directory).unwrap();
+                let path = directory.join("workspace.sqlite3");
+                let mut store = model_store(&directory);
+                store.set_appearance(mode);
+                let objective = "Compare fuel prices across two cities and summarize recent changes with dated sources.";
+                let expected = "A concise comparison table with dates, sources and evidence gaps.";
+                let template = if shape == AutomationShape::Quick {
+                    crate::automation_execution::build_quick_template(objective, expected).unwrap()
+                } else {
+                    crate::automation_execution::build_template(objective, expected).unwrap()
+                };
+                let id = store.create_automation_draft(1, shape, "Fuel price review".into(),
+                    objective.into(), expected.into(), crate::automation_schedule::Schedule {
+                        spec: crate::automation_schedule::ScheduleSpec::Daily { hour: 10, minute: 0 },
+                        timezone: "Asia/Shanghai".into(),
+                    }, Default::default(), Some(template), now()).unwrap();
+                enable(&mut store, id);
+                let mut definition = store.automation_mut(id).unwrap();
+                let approval = definition.approval.as_mut().unwrap();
+                approval.models = std::array::from_fn(|_| "provider-with-a-long-name/research-model-with-an-extended-version-identifier".into());
+                approval.agents = std::array::from_fn(|_| Some("OpenCode".into()));
+                drop(definition);
+                Storage::new(path.clone()).save(&store).unwrap();
+                let mut cx = HeadlessAppContext::with_platform(
+                    platform::current_platform(true).text_system(),
+                    Arc::new(crate::ui_assets::AppAssets), platform::current_headless_renderer);
+                cx.update(init);
+                let mut app = None;
+                let handle: AnyWindowHandle = cx.open_window(size(px(width), px(height)), |w, cx| {
+                    let view = cx.new(|cx| TaskApp::new_mock(w, cx));
+                    view.update(cx, |a, cx| {
+                        a.attach_storage(Storage::new(path.clone()), w, cx);
+                        a.automation_fake_mode = true;
+                        a.open_automation(id, w, cx);
+                        cx.notify();
+                    });
+                    app = Some(view.clone());
+                    cx.new(|cx| base::Root::new(view, w, cx))
+                }).unwrap().into();
+                let app = app.unwrap();
+                cx.update_window(handle, |_, w, cx| {
+                    w.render_frame(cx);
+                    w.click("automation-settings", cx);
+                    w.render_frame(cx);
+                    assert!(w.find("edit-automation").visible());
+                    let schedule = w.find("automation-settings-schedule");
+                    assert!(schedule.visible());
+                    assert!(schedule.bounds().right() < px(width));
+                    if shape == AutomationShape::Quick {
+                        assert!(w.try_find("planning-attempt-history").is_none(),
+                            "quick tasks should not show irrelevant empty planning history");
+                    }
+                }).unwrap();
+                screenshot(&mut cx, handle, &directory, "settings-top.png");
+                cx.update_window(handle, |_, w, cx| {
+                    app.update(cx, |a, cx| {
+                        a.automation_ui.settings_scroll.set_offset(point(px(0.), px(-4000.)));
+                        cx.notify();
+                    });
+                    w.render_frame(cx);
+                }).unwrap();
+                screenshot(&mut cx, handle, &directory, "settings-execution.png");
+                cx.update_window(handle, |_, w, cx| {
+                    assert!(w.find("automation-execution-help").visible());
+                    assert!(w.find("edit-automation").visible());
+                    let model = w.find("automation-execution-model-3");
+                    let agent = w.find("automation-execution-agent-3");
+                    assert!(model.visible() && agent.visible());
+                    assert!(model.bounds().right() <= px(width) && agent.bounds().right() <= px(width),
+                        "long model names must remain within the dialog viewport");
+                    let help = w.find("automation-execution-help").bounds();
+                    w.pointer_move(help.center(), None, cx);
+                }).unwrap();
+                cx.run_until_parked();
+                cx.advance_clock(Duration::from_millis(600));
+                cx.run_until_parked();
+                cx.update_window(handle, |_, w, cx| w.render_frame(cx)).unwrap();
+                screenshot(&mut cx, handle, &directory, "settings-help.png");
+                cx.update_window(handle, |_, w, cx| {
+                    let model = w.find("automation-execution-model-3").bounds();
+                    w.pointer_move(model.center(), None, cx);
+                }).unwrap();
+                cx.run_until_parked();
+                cx.advance_clock(Duration::from_millis(600));
+                cx.run_until_parked();
+                cx.update_window(handle, |_, w, cx| w.render_frame(cx)).unwrap();
+                screenshot(&mut cx, handle, &directory, "settings-model-help.png");
+                cx.update_window(handle, |_, w, cx| {
+                    w.click("close-automation-settings", cx);
+                    w.render_frame(cx);
+                    assert!(!app.read(cx).settings_overlay());
+                }).unwrap();
+                cx.update(|cx| cx.quit());
+            }
+        }
+    }
+}
+
+/// A compact list matrix isolates schedule metadata from current run state.
+fn list_hierarchy_fixture(root: &Path) {
+    let directory = root.join("list-fixture");
+    std::fs::create_dir_all(&directory).unwrap();
+    let mut store = model_store(&directory);
+    for (name, status, paused) in [
+        ("Daily market summary", Some(OccurrenceStatus::Succeeded), false),
+        ("A long automation name that must leave room for its type and enabled status", Some(OccurrenceStatus::Failed), false),
+        ("New automation", None, false),
+        ("Paused weekly review", Some(OccurrenceStatus::Succeeded), true),
+    ] {
+        let id = draft(&mut store, name);
+        enable(&mut store, id);
+        if let Some(status) = status {
+            let occurrence = store.request_manual_occurrence(id, &format!("list-{id}"), now() - 600).unwrap();
+            let mut occurrence = store.occurrence_mut(occurrence.id).unwrap();
+            occurrence.status = status;
+            occurrence.actual_started_at = Some(now() - 590);
+        }
+        if paused {
+            store.pause_automation(id, now()).unwrap();
+        }
+    }
+    let path = directory.join("workspace.sqlite3");
+    Storage::new(path.clone()).save(&store).unwrap();
+    render_matrix(root, &path);
+}
+
 fn render_matrix(root: &Path, source: &Path) {
     let base = Storage::new(source.to_path_buf()).load().unwrap().unwrap();
     for (width, height) in [(1440., 920.), (1000., 680.)] {
@@ -5682,6 +5899,26 @@ fn render_matrix(root: &Path, source: &Path) {
             let app = app.unwrap();
             let handle: AnyWindowHandle = window.into();
             screenshot(&mut cx, handle, &directory, "list.png");
+            cx.update_window(handle, |_, w, cx| {
+                for definition in app.read(cx).store.automations() {
+                    let schedule = w.find(format!("automation-schedule-{}", definition.id));
+                    let latest = w.find(format!("automation-latest-{}", definition.id));
+                    assert!(schedule.bounds().origin.y < latest.bounds().origin.y,
+                        "schedule and runtime information occupy separate rows");
+                    assert!(latest.bounds().right() <= px(width),
+                        "runtime summary stays inside the compact window");
+                }
+            }).unwrap();
+            if width == 1000. && std::env::var_os("PLANNING_QA_LIST_ONLY").is_some() {
+                cx.update_window(handle, |_, w, cx| {
+                    app.update(cx, |a, cx| {
+                        a.automation_ui.scroll.set_offset(point(px(0.), px(-1000.)));
+                        cx.notify();
+                    });
+                    w.render_frame(cx);
+                }).unwrap();
+                screenshot(&mut cx, handle, &directory, "list-scrolled.png");
+            }
             let id = read_state(&mut cx, &app, |a| a.store.automations()[0].id);
             cx.update_window(handle, |_, w, cx| {
                 app.update(cx, |a, cx| {
@@ -5717,14 +5954,14 @@ pub fn performance_fixture() {
         spec: crate::automation_schedule::ScheduleSpec::Interval { minutes: 1 },
         timezone: "UTC".into(),
     };
-    let template = crate::automation_execution::build_template("容量检查", "简短报告").unwrap();
+    let template = crate::automation_execution::build_template("Capacity check", "Concise report").unwrap();
     let id = store
         .create_automation_draft(
             1,
             crate::automation::AutomationShape::Research,
-            "30 天分钟级容量检查".into(),
-            "容量检查".into(),
-            "简短报告".into(),
+            "Thirty-day minute-level capacity check".into(),
+            "Capacity check".into(),
+            "Concise report".into(),
             schedule.clone(),
             Default::default(),
             Some(template.clone()),
@@ -5767,8 +6004,8 @@ pub fn performance_fixture() {
                 "QA fixture previous day",
             ),
             snapshot: crate::automation::AutomationOccurrenceSnapshot {
-                objective: "容量检查".into(),
-                expected_result: "简短报告".into(),
+                objective: "Capacity check".into(),
+                expected_result: "Concise report".into(),
                 shape: Some(crate::automation::AutomationShape::Research),
                 template: template.clone(),
                 models: std::array::from_fn(|_| "qa/automation".to_string()),

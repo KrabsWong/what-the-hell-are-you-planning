@@ -1,0 +1,276 @@
+{
+  "upstream": "beautiful-mermaid@1.1.3 / elkjs@0.11.1",
+  "graph": {
+    "actors": [
+      {
+        "id": "U",
+        "label": "Researcher",
+        "type": "actor"
+      },
+      {
+        "id": "A",
+        "label": "Assistant",
+        "type": "participant"
+      },
+      {
+        "id": "S",
+        "label": "Sources",
+        "type": "participant"
+      }
+    ],
+    "messages": [
+      {
+        "from": "U",
+        "to": "A",
+        "label": "Research topic",
+        "lineStyle": "solid",
+        "arrowHead": "filled",
+        "activate": true
+      },
+      {
+        "from": "A",
+        "to": "S",
+        "label": "Search",
+        "lineStyle": "solid",
+        "arrowHead": "filled",
+        "activate": true
+      },
+      {
+        "from": "S",
+        "to": "A",
+        "label": "Evidence",
+        "lineStyle": "dashed",
+        "arrowHead": "filled",
+        "deactivate": true
+      },
+      {
+        "from": "A",
+        "to": "A",
+        "label": "Review findings",
+        "lineStyle": "solid",
+        "arrowHead": "filled"
+      },
+      {
+        "from": "A",
+        "to": "U",
+        "label": "Report",
+        "lineStyle": "dashed",
+        "arrowHead": "filled",
+        "deactivate": true
+      },
+      {
+        "from": "A",
+        "to": "U",
+        "label": "Explain limitations",
+        "lineStyle": "dashed",
+        "arrowHead": "open"
+      }
+    ],
+    "blocks": [
+      {
+        "type": "loop",
+        "label": "Collect evidence",
+        "startIndex": 1,
+        "endIndex": 2,
+        "dividers": []
+      },
+      {
+        "type": "alt",
+        "label": "Sufficient evidence",
+        "startIndex": 3,
+        "endIndex": 5,
+        "dividers": [
+          {
+            "index": 5,
+            "label": "Evidence gaps"
+          }
+        ]
+      }
+    ],
+    "notes": [
+      {
+        "actorIds": [
+          "S"
+        ],
+        "text": "Retain citations",
+        "position": "right",
+        "afterIndex": 2
+      }
+    ]
+  },
+  "positioned": {
+    "width": 552.53,
+    "height": 485,
+    "actors": [
+      {
+        "id": "U",
+        "label": "Researcher",
+        "type": "actor",
+        "x": 93.28399999999999,
+        "y": 30,
+        "width": 106.568,
+        "height": 40
+      },
+      {
+        "id": "A",
+        "label": "Assistant",
+        "type": "participant",
+        "x": 233.284,
+        "y": 30,
+        "width": 88.78399999999999,
+        "height": 40
+      },
+      {
+        "id": "S",
+        "label": "Sources",
+        "type": "participant",
+        "x": 373.284,
+        "y": 30,
+        "width": 85.82,
+        "height": 40
+      }
+    ],
+    "lifelines": [
+      {
+        "actorId": "U",
+        "x": 93.28399999999999,
+        "topY": 70,
+        "bottomY": 455
+      },
+      {
+        "actorId": "A",
+        "x": 233.284,
+        "topY": 70,
+        "bottomY": 455
+      },
+      {
+        "actorId": "S",
+        "x": 373.284,
+        "topY": 70,
+        "bottomY": 455
+      }
+    ],
+    "messages": [
+      {
+        "from": "U",
+        "to": "A",
+        "label": "Research topic",
+        "lineStyle": "solid",
+        "arrowHead": "filled",
+        "x1": 93.28399999999999,
+        "x2": 233.284,
+        "y": 90,
+        "isSelf": false
+      },
+      {
+        "from": "A",
+        "to": "S",
+        "label": "Search",
+        "lineStyle": "solid",
+        "arrowHead": "filled",
+        "x1": 233.284,
+        "x2": 373.284,
+        "y": 158,
+        "isSelf": false
+      },
+      {
+        "from": "S",
+        "to": "A",
+        "label": "Evidence",
+        "lineStyle": "dashed",
+        "arrowHead": "filled",
+        "x1": 373.284,
+        "x2": 233.284,
+        "y": 198,
+        "isSelf": false
+      },
+      {
+        "from": "A",
+        "to": "A",
+        "label": "Review findings",
+        "lineStyle": "solid",
+        "arrowHead": "filled",
+        "x1": 233.284,
+        "x2": 233.284,
+        "y": 281,
+        "isSelf": true
+      },
+      {
+        "from": "A",
+        "to": "U",
+        "label": "Report",
+        "lineStyle": "dashed",
+        "arrowHead": "filled",
+        "x1": 233.284,
+        "x2": 93.28399999999999,
+        "y": 351,
+        "isSelf": false
+      },
+      {
+        "from": "A",
+        "to": "U",
+        "label": "Explain limitations",
+        "lineStyle": "dashed",
+        "arrowHead": "open",
+        "x1": 233.284,
+        "x2": 93.28399999999999,
+        "y": 415,
+        "isSelf": false
+      }
+    ],
+    "activations": [
+      {
+        "actorId": "S",
+        "x": 368.284,
+        "topY": 158,
+        "bottomY": 198,
+        "width": 10
+      },
+      {
+        "actorId": "A",
+        "x": 228.284,
+        "topY": 90,
+        "bottomY": 351,
+        "width": 10
+      }
+    ],
+    "blocks": [
+      {
+        "type": "loop",
+        "label": "Collect evidence",
+        "x": 178.892,
+        "y": 118,
+        "width": 247.30199999999996,
+        "height": 100,
+        "dividers": []
+      },
+      {
+        "type": "alt",
+        "label": "Sufficient evidence",
+        "x": 30,
+        "y": 241,
+        "width": 257.676,
+        "height": 194,
+        "dividers": [
+          {
+            "y": 387,
+            "label": "Evidence gaps"
+          }
+        ]
+      }
+    ],
+    "notes": [
+      {
+        "text": "Retain citations",
+        "x": 426.19399999999996,
+        "y": 206,
+        "width": 96.33600000000003,
+        "height": 23,
+        "position": "right",
+        "actors": [
+          "S"
+        ]
+      }
+    ]
+  }
+}

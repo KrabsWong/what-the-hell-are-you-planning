@@ -190,7 +190,7 @@ impl TaskApp {
                         .child(label("Project", cx))
                         .child(selector))
                     .when_some(destination, |d, destination| d.child(label(destination, cx))))
-                .child(label("Generating a plan won’t start research.", cx))
+                .child(label("First review a short understanding of your request. Goals are generated only after you confirm.", cx))
                 .when_some(error, |d, message| d.child(crate::views::notice(
                     crate::views::NoticeTone::Danger,
                     message,
@@ -208,7 +208,7 @@ impl TaskApp {
                             };
                             a.capture_research_request(mode.project(), topic, input, false, cx);
                         })))
-                        .child(primary_button("generate-project-plan", "Generate plan").on_click(cx.listener(|a, _, _, cx| a.start_project_plan(cx))))))
+                        .child(primary_button("generate-project-plan", "Understand research").on_click(cx.listener(|a, _, _, cx| a.start_project_plan(cx))))))
             )
             .focus_trap("project-plan-focus", &self.modal_focus).into_any_element()
     }

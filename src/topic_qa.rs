@@ -933,6 +933,8 @@ pub fn board_directory() {
             let app = cx.new(|cx| TaskApp::new_mock(w, cx));
             app.update(cx, |a, cx| {
                 a.store = Store::empty();
+                a.store.set_default_model("qa/model".into());
+                a.store.project_at_mut(0).unwrap().directory = root.to_string_lossy().into();
                 for title in [
                     "Anthropic IPO and the AI capex cycle: fundamentals, debate and scenarios",
                     "Bond, FX and equity primary/secondary market instruments, mechanics and global share",
@@ -1024,6 +1026,39 @@ pub fn board_directory() {
             w.render_frame(cx);
             assert_eq!(w.find("replan-topic").label(), Some("Replan"));
             assert!(w.try_find("regenerate-topic-plan").is_none());
+        }).unwrap();
+        cx.update_window(handle, |_, w, cx| {
+            app.update(cx, |a, cx| {
+                let goals: Vec<_> = a.store.tasks().iter()
+                    .filter(|task| task.topic_id == Some(topics[4]) && task.parent_id.is_none())
+                    .map(|task| task.id).collect();
+                for goal in goals {
+                    let steps = a.store.apply_research_plan(goal,
+                        r#"{"tasks":[{"title":"Collect evidence","instructions":"Collect evidence","kind":"collect","depends_on":[]},{"title":"Analyze evidence","instructions":"Analyze evidence","kind":"analyze","depends_on":[0]},{"title":"Completed report","instructions":"Summarize the evidence","kind":"advise","depends_on":[1]}]}"#).unwrap();
+                    let signature = a.store.goal_plan_signature(goal);
+                    a.store.task_mut(goal).unwrap().approved_plan = signature;
+                    for step in steps {
+                        let mut run = a.store.prepare_run(step).unwrap();
+                        run.status = "Succeeded".into();
+                        run.output = "Completed report with supporting evidence.".into();
+                        a.store.push_run(run);
+                        a.store.task_mut(step).unwrap().stage = crate::domain::Stage::Done;
+                    }
+                    a.store.task_mut(goal).unwrap().stage = crate::domain::Stage::Done;
+                    assert_eq!(a.store.task_status(goal, None).execution,
+                        crate::execution_status::ExecutionStatus::Done);
+                }
+                a.layout = crate::app::Layout::Board;
+                a.navigation.board_scroll.set_offset(point(px(-4000.), px(0.)));
+                cx.notify();
+            });
+            w.render_frame(cx);
+            for goal in app.read(cx).store.tasks().iter().filter(|task| {
+                task.topic_id == Some(topics[4]) && task.parent_id.is_none()
+            }) {
+                assert!(w.try_find(format!("card-status-{}", goal.id)).is_none(),
+                    "Completed goal cards must not repeat the completion icon as a status label");
+            }
         }).unwrap();
         cx.capture_screenshot(handle).unwrap()
             .save(root.join(format!("replanned-{width}-{dark}.png"))).unwrap();

@@ -1,0 +1,581 @@
+{
+  "upstream": "beautiful-mermaid@1.1.3 / elkjs@0.11.1",
+  "graph": {
+    "direction": "TD",
+    "nodes": [
+      {
+        "id": "A",
+        "label": "Collect evidence",
+        "shape": "rectangle"
+      },
+      {
+        "id": "B",
+        "label": "Review evidence",
+        "shape": "rectangle"
+      },
+      {
+        "id": "C",
+        "label": "Publish report",
+        "shape": "rectangle"
+      },
+      {
+        "id": "D",
+        "label": "Independent task",
+        "shape": "rectangle"
+      }
+    ],
+    "edges": [
+      {
+        "source": "A",
+        "target": "B",
+        "label": "Ready",
+        "style": "solid",
+        "hasArrowStart": false,
+        "hasArrowEnd": true
+      },
+      {
+        "source": "B",
+        "target": "C",
+        "label": "Complete",
+        "style": "solid",
+        "hasArrowStart": false,
+        "hasArrowEnd": true
+      },
+      {
+        "source": "C",
+        "target": "A",
+        "label": "New evidence",
+        "style": "solid",
+        "hasArrowStart": false,
+        "hasArrowEnd": true
+      }
+    ],
+    "subgraphs": [],
+    "classDefs": {},
+    "classAssignments": {},
+    "nodeStyles": {},
+    "linkStyles": {}
+  },
+  "input": {
+    "id": "root",
+    "layoutOptions": {
+      "elk.algorithm": "layered",
+      "elk.direction": "DOWN",
+      "elk.spacing.nodeNode": "28",
+      "elk.layered.spacing.nodeNodeBetweenLayers": "48",
+      "elk.spacing.edgeEdge": "12",
+      "elk.layered.spacing.edgeEdgeBetweenLayers": "12",
+      "elk.layered.spacing.edgeNodeBetweenLayers": "12",
+      "elk.padding": "[top=40,left=40,bottom=40,right=40]",
+      "elk.edgeRouting": "ORTHOGONAL",
+      "elk.layered.nodePlacement.bk.fixedAlignment": "BALANCED",
+      "elk.contentAlignment": "H_CENTER V_CENTER",
+      "elk.layered.thoroughness": "3",
+      "elk.layered.highDegreeNodes.treatment": "true",
+      "elk.layered.highDegreeNodes.threshold": "8",
+      "elk.layered.compaction.postCompaction.strategy": "LEFT_RIGHT_CONSTRAINT_LOCKING",
+      "elk.layered.considerModelOrder.strategy": "NODES_AND_EDGES",
+      "elk.layered.wrapping.strategy": "OFF",
+      "elk.hierarchyHandling": "INCLUDE_CHILDREN"
+    },
+    "children": [
+      {
+        "id": "A",
+        "width": 139.021,
+        "height": 36.900000000000006,
+        "labels": [
+          {
+            "text": "Collect evidence"
+          }
+        ]
+      },
+      {
+        "id": "B",
+        "width": 141.985,
+        "height": 36.900000000000006,
+        "labels": [
+          {
+            "text": "Review evidence"
+          }
+        ]
+      },
+      {
+        "id": "C",
+        "width": 125.68299999999999,
+        "height": 36.900000000000006,
+        "labels": [
+          {
+            "text": "Publish report"
+          }
+        ]
+      },
+      {
+        "id": "D",
+        "width": 141.985,
+        "height": 36.900000000000006,
+        "labels": [
+          {
+            "text": "Independent task"
+          }
+        ]
+      }
+    ],
+    "edges": [
+      {
+        "id": "e0",
+        "sources": [
+          "A"
+        ],
+        "targets": [
+          "B"
+        ],
+        "labels": [
+          {
+            "text": "Ready",
+            "width": 40.538000000000004,
+            "height": 20.3,
+            "layoutOptions": {
+              "elk.edgeLabels.inline": "true",
+              "elk.edgeLabels.placement": "CENTER"
+            }
+          }
+        ]
+      },
+      {
+        "id": "e1",
+        "sources": [
+          "B"
+        ],
+        "targets": [
+          "C"
+        ],
+        "labels": [
+          {
+            "text": "Complete",
+            "width": 52.41800000000001,
+            "height": 20.3,
+            "layoutOptions": {
+              "elk.edgeLabels.inline": "true",
+              "elk.edgeLabels.placement": "CENTER"
+            }
+          }
+        ]
+      },
+      {
+        "id": "e2",
+        "sources": [
+          "C"
+        ],
+        "targets": [
+          "A"
+        ],
+        "labels": [
+          {
+            "text": "New evidence",
+            "width": 75.58400000000002,
+            "height": 20.3,
+            "layoutOptions": {
+              "elk.edgeLabels.inline": "true",
+              "elk.edgeLabels.placement": "CENTER"
+            }
+          }
+        ]
+      }
+    ]
+  },
+  "raw": {
+    "id": "root",
+    "layoutOptions": {
+      "elk.algorithm": "layered",
+      "elk.direction": "DOWN",
+      "elk.spacing.nodeNode": "28",
+      "elk.layered.spacing.nodeNodeBetweenLayers": "48",
+      "elk.spacing.edgeEdge": "12",
+      "elk.layered.spacing.edgeEdgeBetweenLayers": "12",
+      "elk.layered.spacing.edgeNodeBetweenLayers": "12",
+      "elk.padding": "[top=40,left=40,bottom=40,right=40]",
+      "elk.edgeRouting": "ORTHOGONAL",
+      "elk.layered.nodePlacement.bk.fixedAlignment": "BALANCED",
+      "elk.contentAlignment": "H_CENTER V_CENTER",
+      "elk.layered.thoroughness": "3",
+      "elk.layered.highDegreeNodes.treatment": "true",
+      "elk.layered.highDegreeNodes.threshold": "8",
+      "elk.layered.compaction.postCompaction.strategy": "LEFT_RIGHT_CONSTRAINT_LOCKING",
+      "elk.layered.considerModelOrder.strategy": "NODES_AND_EDGES",
+      "elk.layered.wrapping.strategy": "OFF",
+      "elk.hierarchyHandling": "INCLUDE_CHILDREN"
+    },
+    "children": [
+      {
+        "id": "A",
+        "width": 139.021,
+        "height": 36.900000000000006,
+        "labels": [
+          {
+            "text": "Collect evidence",
+            "x": 0,
+            "y": 0,
+            "width": 0,
+            "height": 0
+          }
+        ],
+        "$H": 465,
+        "x": 109.97825000000002,
+        "y": 40
+      },
+      {
+        "id": "B",
+        "width": 141.985,
+        "height": 36.900000000000006,
+        "labels": [
+          {
+            "text": "Review evidence",
+            "x": 0,
+            "y": 0,
+            "width": 0,
+            "height": 0
+          }
+        ],
+        "$H": 468,
+        "x": 40,
+        "y": 193.2
+      },
+      {
+        "id": "C",
+        "width": 125.68299999999999,
+        "height": 36.900000000000006,
+        "labels": [
+          {
+            "text": "Publish report",
+            "x": 0,
+            "y": 0,
+            "width": 0,
+            "height": 0
+          }
+        ],
+        "$H": 471,
+        "x": 116.64724999999999,
+        "y": 346.40000000000003
+      },
+      {
+        "id": "D",
+        "width": 141.985,
+        "height": 36.900000000000006,
+        "labels": [
+          {
+            "text": "Independent task",
+            "x": 0,
+            "y": 0,
+            "width": 0,
+            "height": 0
+          }
+        ],
+        "$H": 474,
+        "x": 276.99925,
+        "y": 193.2
+      }
+    ],
+    "edges": [
+      {
+        "id": "e0",
+        "sources": [
+          "A"
+        ],
+        "targets": [
+          "B"
+        ],
+        "labels": [
+          {
+            "text": "Ready",
+            "width": 40.538000000000004,
+            "height": 20.3,
+            "layoutOptions": {
+              "elk.edgeLabels.inline": "true",
+              "elk.edgeLabels.placement": "CENTER"
+            },
+            "x": 90.4925,
+            "y": 124.9
+          }
+        ],
+        "sections": [
+          {
+            "id": "e0_s0",
+            "startPoint": {
+              "x": 156.31858333333332,
+              "y": 76.9
+            },
+            "endPoint": {
+              "x": 110.9925,
+              "y": 193.2
+            },
+            "bendPoints": [
+              {
+                "x": 156.31858333333332,
+                "y": 112.9
+              },
+              {
+                "x": 110.9925,
+                "y": 112.9
+              }
+            ],
+            "incomingShape": "A",
+            "outgoingShape": "B"
+          }
+        ],
+        "container": "root"
+      },
+      {
+        "id": "e1",
+        "sources": [
+          "B"
+        ],
+        "targets": [
+          "C"
+        ],
+        "labels": [
+          {
+            "text": "Complete",
+            "width": 52.41800000000001,
+            "height": 20.3,
+            "layoutOptions": {
+              "elk.edgeLabels.inline": "true",
+              "elk.edgeLabels.placement": "CENTER"
+            },
+            "x": 84.4925,
+            "y": 278.1
+          }
+        ],
+        "sections": [
+          {
+            "id": "e1_s0",
+            "startPoint": {
+              "x": 110.9925,
+              "y": 230.10000000000002
+            },
+            "endPoint": {
+              "x": 158.54158333333334,
+              "y": 346.40000000000003
+            },
+            "bendPoints": [
+              {
+                "x": 110.9925,
+                "y": 334.40000000000003
+              },
+              {
+                "x": 158.54158333333334,
+                "y": 334.40000000000003
+              }
+            ],
+            "incomingShape": "B",
+            "outgoingShape": "C"
+          }
+        ],
+        "container": "root"
+      },
+      {
+        "id": "e2",
+        "sources": [
+          "C"
+        ],
+        "targets": [
+          "A"
+        ],
+        "labels": [
+          {
+            "text": "New evidence",
+            "width": 75.58400000000002,
+            "height": 20.3,
+            "layoutOptions": {
+              "elk.edgeLabels.inline": "true",
+              "elk.edgeLabels.placement": "CENTER"
+            },
+            "x": 209.985,
+            "y": 278.1
+          }
+        ],
+        "sections": [
+          {
+            "id": "e2_s0",
+            "startPoint": {
+              "x": 200.43591666666666,
+              "y": 346.40000000000003
+            },
+            "endPoint": {
+              "x": 202.65891666666667,
+              "y": 76.9
+            },
+            "bendPoints": [
+              {
+                "x": 200.43591666666666,
+                "y": 334.40000000000003
+              },
+              {
+                "x": 247.985,
+                "y": 334.40000000000003
+              },
+              {
+                "x": 247.985,
+                "y": 266.1
+              },
+              {
+                "x": 202.65891666666667,
+                "y": 266.1
+              }
+            ],
+            "incomingShape": "C",
+            "outgoingShape": "A"
+          }
+        ],
+        "container": "root"
+      }
+    ],
+    "$H": 463,
+    "x": 0,
+    "y": 0,
+    "width": 458.98425000000003,
+    "height": 423.3
+  },
+  "positioned": {
+    "width": 458.98425000000003,
+    "height": 423.3,
+    "nodes": [
+      {
+        "id": "A",
+        "label": "Collect evidence",
+        "shape": "rectangle",
+        "x": 109.97825000000002,
+        "y": 40,
+        "width": 139.021,
+        "height": 36.900000000000006
+      },
+      {
+        "id": "B",
+        "label": "Review evidence",
+        "shape": "rectangle",
+        "x": 40,
+        "y": 193.2,
+        "width": 141.985,
+        "height": 36.900000000000006
+      },
+      {
+        "id": "C",
+        "label": "Publish report",
+        "shape": "rectangle",
+        "x": 116.64724999999999,
+        "y": 346.40000000000003,
+        "width": 125.68299999999999,
+        "height": 36.900000000000006
+      },
+      {
+        "id": "D",
+        "label": "Independent task",
+        "shape": "rectangle",
+        "x": 276.99925,
+        "y": 193.2,
+        "width": 141.985,
+        "height": 36.900000000000006
+      }
+    ],
+    "edges": [
+      {
+        "source": "A",
+        "target": "B",
+        "label": "Ready",
+        "style": "solid",
+        "hasArrowStart": false,
+        "hasArrowEnd": true,
+        "points": [
+          {
+            "x": 156.31858333333332,
+            "y": 76.9
+          },
+          {
+            "x": 156.31858333333332,
+            "y": 112.9
+          },
+          {
+            "x": 110.9925,
+            "y": 112.9
+          },
+          {
+            "x": 110.9925,
+            "y": 193.2
+          }
+        ],
+        "labelPosition": {
+          "x": 110.76150000000001,
+          "y": 135.05
+        }
+      },
+      {
+        "source": "B",
+        "target": "C",
+        "label": "Complete",
+        "style": "solid",
+        "hasArrowStart": false,
+        "hasArrowEnd": true,
+        "points": [
+          {
+            "x": 110.9925,
+            "y": 230.10000000000002
+          },
+          {
+            "x": 110.9925,
+            "y": 334.40000000000003
+          },
+          {
+            "x": 158.54158333333334,
+            "y": 334.40000000000003
+          },
+          {
+            "x": 158.54158333333334,
+            "y": 346.40000000000003
+          }
+        ],
+        "labelPosition": {
+          "x": 110.70150000000001,
+          "y": 288.25
+        }
+      },
+      {
+        "source": "C",
+        "target": "A",
+        "label": "New evidence",
+        "style": "solid",
+        "hasArrowStart": false,
+        "hasArrowEnd": true,
+        "points": [
+          {
+            "x": 200.43591666666666,
+            "y": 346.40000000000003
+          },
+          {
+            "x": 200.43591666666666,
+            "y": 334.40000000000003
+          },
+          {
+            "x": 247.985,
+            "y": 334.40000000000003
+          },
+          {
+            "x": 247.985,
+            "y": 266.1
+          },
+          {
+            "x": 202.65891666666667,
+            "y": 266.1
+          },
+          {
+            "x": 202.65891666666667,
+            "y": 76.9
+          }
+        ],
+        "labelPosition": {
+          "x": 247.77700000000002,
+          "y": 288.25
+        }
+      }
+    ],
+    "groups": []
+  }
+}

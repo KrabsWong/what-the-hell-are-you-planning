@@ -1,6 +1,6 @@
 //! Automation management surface: list, three-step creation, settings, history and results.
 use crate::appearance::palette;
-use crate::views::{chip, col, label, muted, observed, row, selectable};
+use crate::views::{chip, col, label, metadata_tag, muted, observed, row, selectable, wrapped_tooltip};
 use crate::{
     app::{Scope, TaskApp},
     automation::{
@@ -1049,35 +1049,18 @@ pub fn overview_heading(text: impl Into<SharedString>) -> Div {
         .child(selectable(text))
 }
 
-/// Status, shape, version and project as one meta line under the schedule.
-/// These are read-only facts, so they must not look like tabs or filters.
-pub fn overview_meta_line(definition: &AutomationDefinition, project: &str, cx: &App) -> Div {
-    let colors = palette(cx);
+/// Schedule and secondary facts stay below the title and lifecycle status.
+pub fn overview_meta_line(definition: &AutomationDefinition, cx: &App) -> Div {
     row()
         .flex_wrap()
-        .gap_1()
-        .text_xs()
-        .child(
-            div()
-                .font_weight(FontWeight::MEDIUM)
-                .text_color(rgb(crate::views::stage_color_for_definition(
-                    definition.status,
-                    cx,
-                )))
-                .child(selectable(definition.status.label())),
-        )
-        .child(
-            div()
-                .text_color(rgb(colors.muted))
-                .child(selectable(format!(
-                    "· {} · Version {} · {project}",
-                    definition.shape.label(),
-                    definition.version
-                ))),
-        )
+        .gap_x_3()
+        .gap_y_1()
+        .child(muted(schedule_summary(&definition.schedule), cx).text_sm())
+        .child(muted(format!("Version {}", definition.version), cx).text_xs())
 }
 
 /// Plain-language run limits, one sentence per line.
+
 pub fn run_policy_summary(policy: &AutomationPolicy) -> String {
     let delay = human_duration(policy.allowed_delay_seconds);
     let limit = human_duration(policy.timeout_seconds);
@@ -1477,8 +1460,9 @@ impl TaskApp {
         let state = self.effective_planning_state(id);
         self.edit_automation(id, window, cx);
         self.automation_ui.step = 3;
-        let planning = state
-            == crate::automation_planning_state::AutomationPlanningState::Planning;
+        let planning = matches!(state,
+            crate::automation_planning_state::AutomationPlanningState::Planning
+                | crate::automation_planning_state::AutomationPlanningState::Understanding);
         self.automation_ui.planning_automation = planning.then_some(id);
         // Restore the in-flight attempt token only while planning is actually
         // active; a terminal or needs-review request must show the retry path,
@@ -1609,6 +1593,19 @@ impl TaskApp {
 
     pub fn automation_wizard_next(&mut self, window: &mut Window, cx: &mut Context<Self>) {
         self.automation_ui.feedback = None;
+        if self.automation_ui.shape == AutomationShape::Research
+            && self.automation_ui.plan.is_some()
+        {
+            let current = self.automation_ui.editing
+                .and_then(|id| self.store.automation(id))
+                .is_some_and(|definition| {
+                    definition.objective.trim() == self.automation_ui.objective.read(cx).value().trim()
+                        && definition.expected_result.trim() == self.automation_ui.expected.read(cx).value().trim()
+                });
+            if !current {
+                self.automation_ui.plan = None;
+            }
+        }
         match self.automation_ui.step {
             1 => {
                 if let Err(error) = self.automation_validate_step_one(cx) {
@@ -1704,7 +1701,7 @@ impl TaskApp {
                                 self.automation_ui.preview_error.clear();
                                 self.automation_ui.step = 3;
                                 self.automation_ui.feedback = Some(Ok(
-                                    "Saving… the planner starts after the draft is durable."
+                                    "Saving… research preparation starts after the draft is durable."
                                         .into(),
                                 ));
                             }
@@ -1727,7 +1724,7 @@ impl TaskApp {
                             self.automation_ui.preview_error.clear();
                             self.automation_ui.step = 3;
                             self.automation_ui.feedback = Some(Ok(
-                                "Saving… the planner starts after the draft is durable.".into(),
+                                "Saving… research preparation starts after the draft is durable.".into(),
                             ));
                         }
                         Err(error) => self.automation_ui.preview_error = error,
@@ -1787,8 +1784,8 @@ impl TaskApp {
                 self.automation_ui.selected = Some(id);
                 self.begin_automation_planning(id, cx)?;
                 self.automation_ui.feedback =
-                    Some(Ok("Plan request submitted · one planner run is queued.".into()));
-                self.toast = "Automation plan requested".into();
+                    Some(Ok("Research request submitted. Confirm its understanding before goals are generated.".into()));
+                self.toast = "Research preparation requested".into();
                 Ok(AutomationPlanningStart::Started(id))
             }
             AutomationSaveOutcome::Saving {
@@ -1843,6 +1840,15 @@ impl TaskApp {
         let request = self
             .store
             .create_automation_request(id, project, &objective, &expected)?;
+        // Returning to an already prepared understanding must not start another
+        // model run or skip the user's confirmation.
+        if self.store.request_needs_understanding(request)
+            && self.store.request_understanding_ready(request)
+        {
+            self.automation_ui.planning_automation = None;
+            self.automation_ui.planning_run = None;
+            return Ok(id);
+        }
         let run = self.store.prepare_request_plan(request)?;
         let run_id = run.id;
         // The typed request-plan dispatch commits the request mapping and the
@@ -1908,8 +1914,8 @@ impl TaskApp {
                 self.automation_ui.preview_error.clear();
                 self.automation_ui.step = 3;
                 self.automation_ui.feedback =
-                    Some(Ok("Plan request submitted · one planner run is queued.".into()));
-                self.toast = "Automation plan requested".into();
+                    Some(Ok("Research request submitted. Confirm its understanding before goals are generated.".into()));
+                self.toast = "Research preparation requested".into();
                 cx.notify();
             }
             Err(error) => {
@@ -2048,6 +2054,23 @@ impl TaskApp {
 
     pub(crate) fn automation_planning_pending(&self) -> bool {
         self.automation_ui.pending_planning.is_some()
+    }
+
+    pub(crate) fn automation_understanding_ready(
+        &mut self,
+        automation: u64,
+        run_id: u64,
+        cx: &App,
+    ) {
+        if self.automation_ui.planning_run == Some(run_id)
+            && self.automation_ui.planning_automation == Some(automation)
+            && self.automation_ui.shape == AutomationShape::Research
+        {
+            self.automation_ui.planning_automation = None;
+            self.automation_ui.planning_run = None;
+            self.automation_ui.feedback = None;
+        }
+        let _ = cx;
     }
 
     /// Called when the planner run finishes so the review step shows the frozen
@@ -2831,7 +2854,7 @@ impl TaskApp {
                 DefinitionStatus::NeedsAttention => "Needs attention",
                 DefinitionStatus::Archived => "Archived",
             };
-            let latest_label = latest
+            let (latest_label, latest_activity) = latest
                 .map(|occurrence| {
                     let activity = occurrence_activity(occurrence);
                     let presentation =
@@ -2840,14 +2863,16 @@ impl TaskApp {
                         .status_suffix()
                         .map(|suffix| format!(" · {suffix}"))
                         .unwrap_or_default();
-                    format!(
-                        "{} · {} {}{suffix}",
-                        occurrence.status.label(),
-                        activity.kind.label(),
-                        format_in_zone_precise(activity.utc, &occurrence.timezone)
+                    (
+                        format!("{}{suffix}", occurrence.status.label()),
+                        format!(
+                            "{} {}",
+                            activity.kind.label(),
+                            format_in_zone_precise(activity.utc, &occurrence.timezone)
+                        ),
                     )
                 })
-                .unwrap_or_else(|| "Not run yet".into());
+                .unwrap_or_else(|| ("Not run yet".into(), String::new()));
             let planning_state = self.effective_planning_state(id);
             let planning = planning_state
                 != crate::automation_planning_state::AutomationPlanningState::None;
@@ -2856,10 +2881,12 @@ impl TaskApp {
             } else {
                 latest_label
             };
-            let summary = format!(
-                "{} · Next: {next} · Latest: {latest_label}",
-                schedule_summary(&definition.schedule)
-            );
+            let latest_color = if planning {
+                colors.accent
+            } else {
+                latest.map(|occurrence| occurrence_status_color(occurrence.status, &colors))
+                    .unwrap_or(colors.secondary)
+            };
             content = content.child(
                 row()
                     .id(format!("automation-row-{id}"))
@@ -2888,15 +2915,32 @@ impl TaskApp {
                                     .gap_2()
                                     .items_center()
                                     .child(
-                                        div()
+                                        row()
                                             .flex_1()
                                             .min_w_0()
-                                            .text_base()
-                                            .font_weight(FontWeight::SEMIBOLD)
-                                            .whitespace_nowrap()
-                                            .overflow_hidden()
-                                            .text_ellipsis()
-                                            .child(definition.name.clone()),
+                                            .flex_wrap()
+                                            .gap_x_3()
+                                            .gap_y_1()
+                                            .items_center()
+                                            .child(
+                                                div()
+                                                    .min_w_0()
+                                                    .max_w_full()
+                                                    .text_base()
+                                                    .font_weight(FontWeight::SEMIBOLD)
+                                                    .whitespace_nowrap()
+                                                    .overflow_hidden()
+                                                    .text_ellipsis()
+                                                    .child(definition.name.clone()),
+                                            )
+                                            .child(
+                                                muted(schedule_summary(&definition.schedule), cx)
+                                                    .id(format!("automation-schedule-{id}"))
+                                                    .text_sm()
+                                                    .min_w_0()
+                                                    .max_w_full()
+                                                    .map(observed),
+                                            ),
                                     )
                                     .child(
                                         row()
@@ -2932,14 +2976,34 @@ impl TaskApp {
                                     ),
                             )
                             .child(
-                                muted(summary.clone(), cx)
-                                    .id(format!("automation-latest-{id}"))
-                                    .w_full()
-                                    .min_w_0()
-                                    .whitespace_nowrap()
-                                    .overflow_hidden()
-                                    .text_ellipsis()
-                                    .map(observed),
+                                row()
+                                    .mt_2()
+                                    .pt_2()
+                                    .border_t_1()
+                                    .border_color(rgb(colors.subtle_line))
+                                    .items_start()
+                                    .flex_wrap()
+                                    .gap_x_8()
+                                    .gap_y_2()
+                                    .child(
+                                        col().min_w(px(144.)).gap_1()
+                                            .child(label("Next run", cx))
+                                            .child(div().font_weight(FontWeight::MEDIUM).child(next)),
+                                    )
+                                    .child(
+                                        col().min_w_0().gap_1()
+                                            .id(format!("automation-latest-{id}"))
+                                            .child(label("Latest run", cx))
+                                            .child(
+                                                row().flex_wrap().gap_x_3().gap_y_1()
+                                                    .child(div().font_weight(FontWeight::MEDIUM)
+                                                        .text_color(rgb(latest_color)).child(latest_label))
+                                                    .when(!planning && !latest_activity.is_empty(), |d| {
+                                                        d.child(muted(latest_activity.clone(), cx).text_sm())
+                                                    }),
+                                            )
+                                            .map(observed),
+                                    ),
                             ),
                     )
                     .child(
@@ -3350,13 +3414,11 @@ impl TaskApp {
             return self.automation_list(cx);
         };
         let colors = palette(cx);
-        let project = self
-            .store
-            .projects()
-            .iter()
-            .find(|p| p.id == definition.project_id)
-            .map(|p| p.name.clone())
-            .unwrap_or_else(|| "Project unavailable".into());
+        let description = wrapped_tooltip(if definition.shape.is_quick() {
+            "One informational answer per period, saved in Automations without creating a project, topic or planning chain."
+        } else {
+            "Each period repeats the approved research plan and saves its results in Automations."
+        });
         let active = self.store.automation_active(id).map(|o| o.id);
         let mut actions = row().flex_wrap().gap_2();
         if definition.status == DefinitionStatus::Draft {
@@ -3460,23 +3522,30 @@ impl TaskApp {
         panel = panel
             // Back is the app-level breadcrumb action; the page does not repeat it.
             .child(
-                col().min_w_0().gap_1()
+                col().min_w_0().gap_2()
                     .child(
-                        div()
-                            .w_full()
-                            .text_lg()
-                            .font_weight(FontWeight::SEMIBOLD)
-                            .line_height(relative(1.3))
-                            .child(selectable(definition.name.clone())),
+                        row().flex_wrap().gap_3()
+                            .child(
+                                div()
+                                    .min_w_0()
+                                    .text_lg()
+                                    .font_weight(FontWeight::SEMIBOLD)
+                                    .line_height(relative(1.3))
+                                    .child(selectable(definition.name.clone())),
+                            )
+                            .child(
+                                chip(definition.shape.label(), colors.muted, cx)
+                                    .bg(rgb(colors.tag_surface))
+                                    .id("automation-detail-shape")
+                                    .tooltip(move |w, cx| gpui_kit::component::tooltip::Tooltip::new(description.clone()).build(w, cx)),
+                            )
+                            .child(chip(
+                                definition.status.label(),
+                                crate::views::stage_color_for_definition(definition.status, cx),
+                                cx,
+                            ).bg(rgb(colors.tag_surface))),
                     )
-                    .child(muted(schedule_summary(&definition.schedule), cx))
-                    .child(overview_meta_line(definition, &project, cx))
-                    .when(definition.shape.is_quick(), |d| {
-                        d.child(overview_note(
-                            "One informational answer per period, stored under Automations — no project, topic or planning chain.",
-                            cx,
-                        ))
-                    }),
+                    .child(overview_meta_line(definition, cx)),
             )
             // Planning is durable: a closed wizard, a list visit and a restart
             // keep the state and its review path visible.
@@ -3491,6 +3560,18 @@ impl TaskApp {
                             "Planning the research plan…",
                             "You can leave this page; planning continues in the background. When it finishes, review the generated goals and steps before enabling this draft.",
                             "Review planning",
+                        ),
+                        crate::automation_planning_state::AutomationPlanningState::Understanding => (
+                            crate::views::NoticeTone::Info,
+                            "Understanding your research…",
+                            "You can leave this page. Review the short understanding when it is ready; goals and tasks are generated only after confirmation.",
+                            "Review understanding",
+                        ),
+                        crate::automation_planning_state::AutomationPlanningState::UnderstandingReady => (
+                            crate::views::NoticeTone::Info,
+                            "Research understanding ready",
+                            "Confirm the direction or refine it before generating goals and tasks.",
+                            "Review understanding",
                         ),
                         crate::automation_planning_state::AutomationPlanningState::PlanReady => (
                             crate::views::NoticeTone::Info,
@@ -3697,6 +3778,7 @@ impl TaskApp {
                     .map(move |run| (request.revision, run.id, run.status.clone()))
             })
             .collect();
+        let show_plan_history = definition.shape == AutomationShape::Research || !attempts.is_empty();
         attempts.sort_by_key(|(revision, run, _)| (*revision, *run));
         let mut plan_history = col()
             .gap_2()
@@ -3735,14 +3817,13 @@ impl TaskApp {
         }
         let mut body = col().id("automation-settings-body").flex_1().min_h_0().overflow_y_scroll().gap_3()
             .track_scroll(&self.automation_ui.settings_scroll)
-            .child(overview_heading("What it does"))
-            .child(
-                overview_body(definition.objective.clone(), cx)
-                    .id("automation-objective")
-                    .map(observed),
-            )
-            .child(overview_heading("Expected result"))
-            .child(overview_body(definition.expected_result.clone(), cx))
+            .child(col().gap_2()
+                .child(overview_heading("What it does"))
+                .child(overview_body(definition.objective.clone(), cx)
+                    .id("automation-objective").map(observed)))
+            .child(col().gap_2()
+                .child(overview_heading("Expected result"))
+                .child(overview_body(definition.expected_result.clone(), cx)))
             .when_some(
                 definition
                     .template
@@ -3760,7 +3841,7 @@ impl TaskApp {
                         ))
                 },
             )
-            .child(plan_history.map(observed))
+
             .child(
                 row().items_center().gap_2()
                     .child(overview_heading("Next runs"))
@@ -3794,8 +3875,17 @@ impl TaskApp {
             )
             .child(
                 col().gap_2().pt_3().border_t_1().border_color(rgb(colors.subtle_line))
-                    .child(overview_heading("Run policy"))
-                    .child(overview_note(run_policy_summary(&definition.policy), cx)),
+                    .child(row().items_center().gap_1()
+                        .child(overview_heading("Run limits"))
+                        .child(tool_icon("automation-policy-help", assets::IconName::CircleQuestionMark,
+                            "About run limits").tooltip(wrapped_tooltip(&run_policy_summary(&definition.policy)))))
+                    .child(row().flex_wrap().gap_2()
+                        .child(chip(format!("Timeout: {}", human_duration(definition.policy.timeout_seconds)), colors.text, cx).bg(rgb(colors.tag_surface)))
+                        .child(chip(format!("Pause after {} consecutive failures", definition.policy.max_consecutive_failures), colors.text, cx).bg(rgb(colors.tag_surface))))
+                    .child(overview_note(match definition.policy.catch_up {
+                        CatchUp::LatestOnly => format!("Catch up: latest missed run, within {}", human_duration(definition.policy.allowed_delay_seconds)),
+                        CatchUp::SkipAll => "Catch up: skip all missed runs".into(),
+                    }, cx)),
             );
         if let Some(approval) = &definition.approval {
             let required = definition
@@ -3803,35 +3893,26 @@ impl TaskApp {
                 .as_ref()
                 .map(|template| template.kinds())
                 .unwrap_or_else(|| vec![crate::research::ResearchKind::Advise]);
-            let models = ResearchKinds::labels()
-                .iter()
-                .enumerate()
-                .filter(|(index, _)| {
-                    index != &0
-                        && crate::research::ResearchKind::ALL
-                            .get(*index)
-                            .is_some_and(|kind| required.contains(kind))
-                })
-                .map(|(index, label)| {
-                    format!(
-                        "{label}: {} · {}",
-                        approval.models[index],
-                        approval.agents[index].clone().unwrap_or_else(|| self
-                            .store
-                            .research_config()
-                            .default_agent
-                            .clone())
-                    )
-                })
-                .collect::<Vec<_>>()
-                .join("\n");
-            body = body.child(
-                col().pt_3().gap_2().border_t_1().border_color(rgb(colors.subtle_line))
-                    .child(overview_heading("Approved execution snapshot"))
-                    .child(overview_body(models, cx))
-                    .child(overview_note("Each period runs through the same research pipeline as a manual run, with the agent and model shown above. Global model changes do not alter this enabled automation; editing the plan or the agent requires a new version and approval.", cx)),
-            );
+            let mut execution = col().pt_3().gap_2().border_t_1().border_color(rgb(colors.subtle_line))
+                .child(row().items_center().gap_1()
+                    .child(overview_heading("Execution"))
+                    .child(tool_icon("automation-execution-help", assets::IconName::CircleQuestionMark,
+                        "About approved execution settings")
+                        .tooltip(wrapped_tooltip("Each period uses the approved agent and model shown here. Global model changes do not alter this automation. Editing the plan or agent creates a new version that requires approval."))));
+            for (index, stage) in ResearchKinds::labels().iter().enumerate() {
+                if index == 0 || !crate::research::ResearchKind::ALL.get(index)
+                    .is_some_and(|kind| required.contains(kind)) { continue; }
+                let agent = approval.agents[index].clone()
+                    .unwrap_or_else(|| self.store.research_config().default_agent.clone());
+                execution = execution.child(row().flex_wrap().items_center().gap_2()
+                    .child(label(*stage, cx))
+                    .child(metadata_tag(format!("automation-execution-agent-{index}"), "Agent", agent.to_string(), cx))
+                    .child(metadata_tag(format!("automation-execution-model-{index}"), "Model", approval.models[index].clone(), cx)));
+            }
+            body = body.child(execution);
         }
+        if show_plan_history { body = body.child(plan_history.map(observed)); }
+
         let footer = row().justify_between().items_center().gap_2()
             .child(
                 if definition.shape == AutomationShape::Research && !archived {
@@ -3890,15 +3971,17 @@ impl TaskApp {
                             .items_start()
                             .gap_4()
                             .child(
-                                col()
-                                    .gap_1()
+                                row()
+                                    .flex_1().min_w_0().flex_wrap().items_center()
+                                    .gap_x_3().gap_y_1()
                                     .child(
                                         div()
                                             .text_lg()
                                             .font_weight(FontWeight::SEMIBOLD)
                                             .child(selectable("Settings")),
                                     )
-                                    .child(muted(schedule_summary(&definition.schedule), cx)),
+                                    .child(muted(schedule_summary(&definition.schedule), cx)
+                                        .text_sm().id("automation-settings-schedule").map(observed)),
                             )
                             .child(
                                 tool_icon(
@@ -4187,6 +4270,16 @@ impl TaskApp {
             }).absolute().inset_0()).child(view).map(observed).into_any_element()
     }
 
+    fn result_owner_title(&self, owner: &str) -> String {
+        for task in self.store.tasks() {
+            let prefix = format!("{} · ", self.store.identifier(task));
+            if let Some(title) = owner.strip_prefix(&prefix) {
+                return title.to_string();
+            }
+        }
+        owner.to_string()
+    }
+
     fn automation_occurrence_detail(
         &self,
         id: u64,
@@ -4214,14 +4307,17 @@ impl TaskApp {
         if let Some(definition) = self.store.automation(occurrence.automation_id)
             && definition.version != occurrence.definition_version
         {
-            panel = panel.child(crate::views::notice(
-                crate::views::NoticeTone::Warning,
-                format!(
-                    "This period keeps its original approved version v{}. The automation is now v{}; retrying runs the original plan, not the current template. To use the current version, close this result and choose Run manually on the automation page.",
-                    occurrence.definition_version, definition.version
-                ),
-                cx,
+            let explanation = wrapped_tooltip(&format!(
+                "This result used version {}. The current automation is version {}. Retrying keeps the original plan. To use the current settings, close this result and choose Run manually.",
+                occurrence.definition_version, definition.version,
             ));
+            panel = panel.child(
+                row().flex_wrap().gap_2()
+                    .child(chip(format!("Saved version {}", occurrence.definition_version), colors.muted, cx)
+                        .id("automation-saved-version")
+                        .tooltip(move |w, cx| gpui_kit::component::tooltip::Tooltip::new(explanation.clone()).build(w, cx)))
+                    .child(label(format!("Current version {}", definition.version), cx)),
+            );
         }
         if matches!(
             occurrence.status,
@@ -4326,10 +4422,9 @@ impl TaskApp {
                 .map(observed),
             );
         }
-        let single_complete_report = presentation.reports.len() == 1
-            && presentation.has_final_report
-            && presentation.quality == crate::result_presentation::EvidenceQuality::Complete;
-        let show_state = !single_complete_report
+        let single_final_report = presentation.reports.len() == 1
+            && presentation.has_final_report;
+        let show_state = !single_final_report
             || presentation.freshness.stale_input
             || presentation.freshness.regenerating
             || presentation.freshness.historical
@@ -4367,15 +4462,17 @@ impl TaskApp {
                 && result.kind == crate::result_presentation::ResultKind::None
             {
                 panel = panel.child(muted(
-                    format!("{} · No final report yet", report.owner_label),
+                    format!("{} · No final report yet", self.result_owner_title(&report.owner_label)),
                     cx,
                 ));
                 continue;
             }
-            if !single_complete_report {
-                let mut heading = format!("{} · {}", report.owner_label, result.kind.label());
-                if let Some(suffix) = result.status_suffix() {
-                    heading.push_str(&format!(" · {suffix}"));
+            if presentation.reports.len() > 1 {
+                let mut heading = format!("{} · {}", self.result_owner_title(&report.owner_label), result.kind.label());
+                if result.notice.is_none() {
+                    if let Some(suffix) = result.status_suffix() {
+                        heading.push_str(&format!(" · {suffix}"));
+                    }
                 }
                 panel = panel.child(
                     div()
@@ -4383,11 +4480,14 @@ impl TaskApp {
                         .child(selectable(heading)),
                 );
             }
-            // The version warning above already explains the frozen instructions.
+            // The saved-version tooltip explains the frozen instructions.
             let freshness = crate::result_presentation::Freshness {
                 previous_version: false,
                 ..result.freshness
             }.labels();
+            let freshness: Vec<_> = freshness.into_iter()
+                .filter(|label| !show_state || !presentation.freshness.labels().contains(label))
+                .collect();
             if !freshness.is_empty() {
                 panel = panel.child(muted(freshness.join(" · "), cx));
             }
@@ -4450,7 +4550,7 @@ impl TaskApp {
                         .border_1()
                         .border_color(rgb(colors.line))
                         .child(label(
-                            format!("{} · {}", progress.owner_label, progress.step_label),
+                            format!("{} · {}", self.result_owner_title(&progress.owner_label), progress.step_label),
                             cx,
                         ))
                         .child(selectable(progress.text.clone())),
@@ -4494,6 +4594,9 @@ impl TaskApp {
                     .child(selectable(occurrence.snapshot.expected_result.clone()))
                     .map(observed),
             );
+            for report in &presentation.reports {
+                technical = technical.child(label(report.owner_label.clone(), cx));
+            }
             let selected = self.automation_ui.technical_run
                 .and_then(|id| runs.iter().copied().find(|run| run.id == id))
                 .or_else(|| runs.last().copied());
@@ -4854,10 +4957,9 @@ impl TaskApp {
         let Some(occurrence) = self.store.occurrence(id) else {
             return div().into_any_element();
         };
-        let status_label = match presentation.status_suffix() {
-            Some(suffix) => format!("{} · {suffix}", occurrence.status.label()),
-            None => occurrence.status.label().to_string(),
-        };
+        let title = self.store.automation(occurrence.automation_id)
+            .map(|definition| definition.name.clone())
+            .unwrap_or_else(|| "Automation result".into());
         let activity = occurrence_activity(occurrence);
         let activity_text = format!(
             "{} {}",
@@ -4890,13 +4992,10 @@ impl TaskApp {
                                 col()
                                     .gap_1()
                                     .child(div().text_lg().font_weight(FontWeight::SEMIBOLD).child(
-                                        selectable(format!(
-                                            "Period {} · {}",
-                                            occurrence.id, status_label
-                                        )),
+                                        selectable(title),
                                     ))
                                     .child(muted(
-                                        format!("{activity_text} · {}", occurrence.source.label()),
+                                        format!("Period {} · {} · {activity_text} · {}", occurrence.id, occurrence.status.label(), occurrence.source.label()),
                                         cx,
                                     )),
                             )
@@ -5101,6 +5200,17 @@ impl TaskApp {
     fn automation_wizard(&self, cx: &mut Context<Self>) -> AnyElement {
         let colors = palette(cx);
         let step = self.automation_ui.step;
+        let understanding_request = (!self.automation_ui.shape.is_quick())
+            .then(|| self.automation_ui.editing.or(self.automation_ui.selected))
+            .flatten()
+            .and_then(|id| self.store.latest_planning_request(id))
+            .filter(|request| {
+                request.input.trim() == self.automation_ui.objective.read(cx).value().trim()
+                    && request.expected_result.as_deref().unwrap_or_default().trim()
+                        == self.automation_ui.expected.read(cx).value().trim()
+                    && self.store.request_needs_understanding(request.id)
+            })
+            .map(|request| request.id);
         let mut content = col()
             .id("automation-wizard-scroll")
             .track_scroll(&self.automation_ui.scroll)
@@ -5156,7 +5266,7 @@ impl TaskApp {
                             app.select_automation_shape(AutomationShape::Quick, cx);
                         })))
                     .child(select_button("automation-shape-research", "Research automation", self.automation_ui.shape == AutomationShape::Research, cx)
-                        .tooltip("Describe it once; review the generated goals, then run the same approved plan each period.")
+                        .tooltip("Describe it once; confirm the research understanding, review the goals, then repeat the approved plan.")
                         .on_click(cx.listener(|app, _, _, cx| {
                             app.select_automation_shape(AutomationShape::Research, cx);
                         }))),
@@ -5164,7 +5274,7 @@ impl TaskApp {
             content = content.child(muted(if self.automation_ui.shape.is_quick() {
                 "Quick tasks live under Automations and keep one short answer per period. They never create a project or topic."
             } else {
-                "Research automations plan once, when you create them. Each period runs that approved plan inside its own topic under Automations."
+                "Confirm the research understanding before generating goals. Each period then runs the approved plan inside its own topic under Automations."
             }, cx));
             content = content.child(self.automation_field(
                 "Name (optional)",
@@ -5401,16 +5511,20 @@ impl TaskApp {
             let quick = self.automation_ui.shape.is_quick();
             let review_heading = if quick {
                 "Review and authorization"
+            } else if understanding_request.is_some() {
+                "Review research understanding"
             } else {
                 "Review generated plan"
             };
-            content = content.child(crate::views::observed(
-                div()
-                    .id("automation-review-heading")
-                    .aria_label(review_heading)
-                    .font_weight(FontWeight::SEMIBOLD)
-                    .child(selectable(review_heading)),
-            ));
+            if understanding_request.is_none() {
+                content = content.child(crate::views::observed(
+                    div()
+                        .id("automation-review-heading")
+                        .aria_label(review_heading)
+                        .font_weight(FontWeight::SEMIBOLD)
+                        .child(selectable(review_heading)),
+                ));
+            }
             if quick {
                 let objective = self
                     .automation_ui
@@ -5450,6 +5564,8 @@ impl TaskApp {
                         cx,
                     ));
                 }
+            } else if let Some(request) = understanding_request {
+                content = content.child(self.research_understanding_view(request, cx));
             } else if let Some(template) = &self.automation_ui.plan {
                 for (goal_index, goal) in template.goals.iter().enumerate() {
                     content = content.child(crate::views::observed(
@@ -5520,8 +5636,8 @@ impl TaskApp {
             } else if self.automation_ui.planning_automation.is_some() {
                 content = content.child(crate::views::notice_panel(
                     crate::views::NoticeTone::Info,
-                    "Planning your research plan…",
-                    "The planner splits the request into goals and steps once. You will review it before anything is enabled. This can take a minute.",
+                    "Preparing your research…",
+                    "The request is being prepared. Goals and tasks are generated only after you confirm the research understanding. Nothing is enabled automatically.",
                     cx,
                 ));
             } else {
@@ -5543,7 +5659,7 @@ impl TaskApp {
                                 }
                                 Ok(AutomationPlanningStart::WaitingForDraft) => {
                                     app.automation_ui.feedback = Some(Ok(
-                                        "Saving… the planner starts after the draft is durable."
+                                        "Saving… research preparation starts after the draft is durable."
                                             .into(),
                                     ));
                                 }
@@ -5608,7 +5724,7 @@ impl TaskApp {
                 .on_click(cx.listener(|app, _, _, cx| app.automation_wizard_back(cx))),
             div().into_any_element(),
         ));
-        let plan_ready = self.automation_ui.plan.is_some();
+        let plan_ready = self.automation_ui.plan.is_some() && understanding_request.is_none();
         let mut actions = row().gap_2();
         // Saving the reviewed plan as a draft stays available at every step, so a
         // plan can be kept without enabling it.
@@ -5634,11 +5750,11 @@ impl TaskApp {
             actions = actions.child(
                 primary_button(
                     "automation-next-step",
-                    if planning_now { "Generate plan" } else { "Continue" },
+                    if planning_now { "Understand research" } else { "Continue" },
                 )
                     .icon(assets::IconName::ArrowRight)
                     .tooltip(if planning_now {
-                        "Saves a draft and plans the research once. You review it before anything is enabled."
+                        "Saves a draft and prepares a short research understanding. Confirm it before generating goals and tasks."
                     } else if quick {
                         if step == 1 {
                             "Continue to the schedule"

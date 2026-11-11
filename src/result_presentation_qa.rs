@@ -1077,8 +1077,10 @@ fn screenshot_automation(
         let state_element = w.try_find("automation-result-state");
         let state = state_element.as_ref().and_then(|element| element.label())
             .map(str::to_string).unwrap_or_default();
-        if name == "quick-complete.png" {
-            assert!(state_element.is_none(), "A single complete report should start with its body");
+        if expected.report_runs.len() == 1 && !expected.no_final
+            && matches!(name, "quick-complete.png" | "quick-partial.png" | "research-complete.png" | "research-partial.png")
+        {
+            assert!(state_element.is_none(), "Single final reports must not repeat quality/type metadata above the reader");
         } else {
             assert_eq!(state, expected.state);
         }

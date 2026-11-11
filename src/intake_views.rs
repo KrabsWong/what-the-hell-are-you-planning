@@ -4,9 +4,70 @@ use crate::{
     domain::Task,
     views::*,
 };
-use gpui_kit::{component::Disableable, prelude::FluentBuilder, *};
+use gpui_kit::{component::{Disableable, input::{Textarea, TextareaState}}, prelude::FluentBuilder, *};
 
 impl TaskApp {
+    pub(crate) fn research_understanding_view(&self, id: u64, cx: &mut Context<Self>) -> AnyElement {
+        let Some(request) = self.store.research_requests().iter().find(|r| r.id == id) else {
+            return div().into_any_element();
+        };
+        if !request.understanding_required { return div().into_any_element(); }
+        let active = self.store.request_attempts(id).iter().any(|run|
+            matches!(run.status.as_str(), "Queued" | "Running" | "Cancelling" | "Recovering"));
+        let busy = active || self.live_has_pending_receipts();
+        let confirmed = self.store.request_understanding_confirmed(id);
+        let mut body = col().gap_3()
+            .child(div().font_weight(FontWeight::SEMIBOLD).child(selectable("Research understanding")));
+        if let Some(understanding) = request.understanding.as_ref().filter(|_| self.store.request_understanding_ready(id)) {
+            body = body.child(div().child(selectable(understanding.summary.clone())))
+                .children(understanding.questions.iter().map(|question|
+                    div().child(selectable(question.clone()))));
+            if confirmed {
+                body = body.child(muted("Confirmed · the plan follows this understanding.", cx));
+            } else {
+                body = body.child(muted(if understanding.questions.is_empty() {
+                    "Confirm the direction before generating goals and tasks. Research will not start yet."
+                } else { "Use Refine understanding to answer these questions before confirming." }, cx));
+                if let Some((editor_id, input)) = &self.understanding_editor
+                    && *editor_id == id {
+                    let input = input.clone();
+                    let feedback = input.clone();
+                    body = body.child(div().id(format!("understanding-feedback-{id}"))
+                            .child(Textarea::new(&input)))
+                        .child(row().gap_2().flex_wrap()
+                            .child(primary_button(format!("understanding-refine-{id}"), "Update understanding")
+                                .disabled(busy)
+                                .on_click(cx.listener(move |a, _, _, cx| {
+                                    let value = feedback.read(cx).value().to_string();
+                                    a.save_research_understanding(id, Some(value), cx);
+                                })))
+                            .child(button(format!("understanding-cancel-{id}"), "Cancel")
+                                .on_click(cx.listener(|a, _, _, cx| { a.understanding_editor = None; cx.notify(); }))));
+                } else {
+                    body = body.child(row().gap_2().flex_wrap()
+                        .child(primary_button(format!("understanding-confirm-{id}"), "Confirm and generate plan")
+                            .disabled(busy || !understanding.questions.is_empty())
+                            .on_click(cx.listener(move |a, _, _, cx| a.save_research_understanding(id, None, cx))))
+                        .child(button(format!("understanding-edit-{id}"), "Refine understanding")
+                            .disabled(busy)
+                            .on_click(cx.listener(move |a, _, window, cx| {
+                                let input = cx.new(|cx| TextareaState::new(window, cx).rows(3)
+                                    .placeholder("Answer a question or explain what should change…"));
+                                a.understanding_editor = Some((id, input));
+                                cx.notify();
+                            }))));
+                }
+            }
+        } else {
+            body = body.child(button(format!("understanding-retry-{id}"), "Understand research")
+                .disabled(busy)
+                .on_click(cx.listener(move |a, _, _, cx| a.retry_research_request_without_navigation(id, cx))))
+                .child(muted(if active { "Understanding your request…" }
+                else { "Generate a short understanding first, then confirm the direction." }, cx));
+        }
+        body.into_any_element()
+    }
+
     pub(crate) fn topic_grouped_cards(
         &self,
         cards: &[Task],
@@ -93,9 +154,15 @@ impl TaskApp {
                 .planning_run_id
                 .and_then(|id| self.store.runs().iter().find(|r| r.id == id));
             let active = run
-                .is_some_and(|r| matches!(r.status.as_str(), "Queued" | "Running" | "Cancelling"));
+                .is_some_and(|r| matches!(r.status.as_str(), "Queued" | "Running" | "Cancelling" | "Recovering"));
             let planned = !request.goal_ids.is_empty();
-            let status = if active {
+            let needs_understanding = request.understanding_required && !self.store.request_understanding_confirmed(id);
+            let awaiting_confirmation = needs_understanding && self.store.request_understanding_ready(id);
+            let status = if active && needs_understanding {
+                "Understanding request…"
+            } else if awaiting_confirmation {
+                "Understanding ready to review"
+            } else if active {
                 "Planning…"
             } else if planned {
                 "Plan generated"
@@ -111,10 +178,11 @@ impl TaskApp {
                     .border_color(rgb(colors.line))
                     .child(div().child(selectable(request.input.clone())))
                     .child(label(format!("{} · {status}", request.submitted_at), cx))
+                    .child(self.research_understanding_view(id, cx))
                     .child(
                         row()
                             .flex_wrap()
-                            .when(!planned || self.store.can_regenerate_request_plan(id), |d| {
+                            .when(!needs_understanding && (!planned || self.store.can_regenerate_request_plan(id)), |d| {
                                 d.child(
                                     button(
                                         format!("retry-request-{id}"),

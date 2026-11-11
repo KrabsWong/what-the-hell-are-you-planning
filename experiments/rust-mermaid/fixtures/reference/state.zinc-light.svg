@@ -1,0 +1,65 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 523.5450000000001 248.74999999999997" width="523.5450000000001" height="248.74999999999997" style="--bg:#FFFFFF;--fg:#27272A;background:var(--bg)">
+<style>
+  @import url('https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&amp;display=swap');
+  text { font-family: 'Inter', system-ui, sans-serif; }
+  svg {
+    /* Derived from --bg and --fg (overridable via --line, --accent, etc.) */
+    --_text:          var(--fg);
+    --_text-sec:      var(--muted, color-mix(in srgb, var(--fg) 60%, var(--bg)));
+    --_text-muted:    var(--muted, color-mix(in srgb, var(--fg) 40%, var(--bg)));
+    --_text-faint:    color-mix(in srgb, var(--fg) 25%, var(--bg));
+    --_line:          var(--line, color-mix(in srgb, var(--fg) 50%, var(--bg)));
+    --_arrow:         var(--accent, color-mix(in srgb, var(--fg) 85%, var(--bg)));
+    --_node-fill:     var(--surface, color-mix(in srgb, var(--fg) 3%, var(--bg)));
+    --_node-stroke:   var(--border, color-mix(in srgb, var(--fg) 20%, var(--bg)));
+    --_group-fill:    var(--bg);
+    --_group-hdr:     color-mix(in srgb, var(--fg) 5%, var(--bg));
+    --_inner-stroke:  color-mix(in srgb, var(--fg) 12%, var(--bg));
+    --_key-badge:     color-mix(in srgb, var(--fg) 10%, var(--bg));
+  }
+</style>
+<defs>
+  <marker id="arrowhead" markerWidth="8" markerHeight="5" refX="7" refY="2.5" orient="auto">
+    <polygon points="0 0, 8 2.5, 0 5" fill="var(--_arrow)" stroke="var(--_arrow)" stroke-width="0.75" stroke-linejoin="round" />
+  </marker>
+  <marker id="arrowhead-start" markerWidth="8" markerHeight="5" refX="1" refY="2.5" orient="auto-start-reverse">
+    <polygon points="8 0, 0 2.5, 8 5" fill="var(--_arrow)" stroke="var(--_arrow)" stroke-width="0.75" stroke-linejoin="round" />
+  </marker>
+</defs>
+<polyline class="edge" data-from="_start" data-to="Ready" data-style="solid" data-arrow-start="false" data-arrow-end="true" points="329.91,136.6 337.71100000000007,136.6 337.71100000000007,93.525 349.71100000000007,93.525" fill="none" stroke="var(--_line)" stroke-width="1" marker-end="url(#arrowhead)" />
+<polyline class="edge" data-from="Ready" data-to="Review" data-style="solid" data-arrow-start="false" data-arrow-end="true" data-label="collected" points="349.71100000000007,75.07499999999999 337.71100000000007,75.07499999999999 337.71100000000007,51 216.50300000000007,51 216.50300000000007,73.73749999999998 180.503,73.73749999999998" fill="none" stroke="var(--_line)" stroke-width="1" marker-end="url(#arrowhead)" />
+<polyline class="edge" data-from="Review" data-to="Ready" data-style="solid" data-arrow-start="false" data-arrow-end="true" data-label="evidence gap" points="180.503,82.96249999999999 216.50300000000007,82.96249999999999 216.50300000000007,84.3 349.71100000000007,84.3" fill="none" stroke="var(--_line)" stroke-width="1" marker-end="url(#arrowhead)" />
+<polyline class="edge" data-from="Review" data-to="Complete" data-style="solid" data-arrow-start="false" data-arrow-end="true" data-label="accepted" points="180.503,92.1875 192.503,92.1875 192.503,189.59999999999997 301.91,189.59999999999997" fill="none" stroke="var(--_line)" stroke-width="1" marker-end="url(#arrowhead)" />
+<polyline class="edge" data-from="Complete" data-to="_end" data-style="solid" data-arrow-start="false" data-arrow-end="true" points="397.21200000000005,189.59999999999997 449.411,189.59999999999997" fill="none" stroke="var(--_line)" stroke-width="1" marker-end="url(#arrowhead)" />
+<g class="edge-label" data-from="Ready" data-to="Review" data-label="collected">
+  <rect x="245.29300000000006" y="35" width="60.418000000000006" height="30.3" rx="2" ry="2" fill="var(--bg)" stroke="var(--_inner-stroke)" stroke-width="1" />
+  <text x="275.50200000000007" y="50.15" text-anchor="middle" font-size="11" font-weight="400" fill="var(--_text-sec)" dy="3.8499999999999996">collected</text>
+</g>
+<g class="edge-label" data-from="Review" data-to="Ready" data-label="evidence gap">
+  <rect x="224.5030000000001" y="68.3" width="81.208" height="30.3" rx="2" ry="2" fill="var(--bg)" stroke="var(--_inner-stroke)" stroke-width="1" />
+  <text x="265.1070000000001" y="83.45" text-anchor="middle" font-size="11" font-weight="400" fill="var(--_text-sec)" dy="3.8499999999999996">evidence gap</text>
+</g>
+<g class="edge-label" data-from="Review" data-to="Complete" data-label="accepted">
+  <rect x="200.503" y="173.59999999999997" width="61.606" height="30.3" rx="2" ry="2" fill="var(--bg)" stroke="var(--_inner-stroke)" stroke-width="1" />
+  <text x="231.30599999999998" y="188.74999999999997" text-anchor="middle" font-size="11" font-weight="400" fill="var(--_text-sec)" dy="3.8499999999999996">accepted</text>
+</g>
+<g class="node" data-id="Ready" data-label="Ready to collect" data-shape="rounded">
+  <rect x="349.71100000000007" y="65.85" width="133.834" height="36.900000000000006" rx="6" ry="6" fill="var(--_node-fill)" stroke="var(--_node-stroke)" stroke-width="0.75" />
+  <text x="416.62800000000004" y="84.3" text-anchor="middle" font-size="13" font-weight="500" fill="var(--_text)" dy="4.55">Ready to collect</text>
+</g>
+<g class="node" data-id="Review" data-label="Evidence review" data-shape="rounded">
+  <rect x="40" y="64.51249999999999" width="140.503" height="36.900000000000006" rx="6" ry="6" fill="var(--_node-fill)" stroke="var(--_node-stroke)" stroke-width="0.75" />
+  <text x="110.2515" y="82.96249999999999" text-anchor="middle" font-size="13" font-weight="500" fill="var(--_text)" dy="4.55">Evidence review</text>
+</g>
+<g class="node" data-id="_start" data-label="" data-shape="state-start">
+  <circle cx="315.91" cy="136.6" r="12" fill="var(--_text)" stroke="none" />
+</g>
+<g class="node" data-id="Complete" data-label="Complete" data-shape="rounded">
+  <rect x="301.91" y="171.14999999999998" width="95.30199999999999" height="36.900000000000006" rx="6" ry="6" fill="var(--_node-fill)" stroke="var(--_node-stroke)" stroke-width="0.75" />
+  <text x="349.56100000000004" y="189.59999999999997" text-anchor="middle" font-size="13" font-weight="500" fill="var(--_text)" dy="4.55">Complete</text>
+</g>
+<g class="node" data-id="_end" data-label="" data-shape="state-end">
+  <circle cx="463.411" cy="189.59999999999997" r="12" fill="none" stroke="var(--_text)" stroke-width="1.5" />
+  <circle cx="463.411" cy="189.59999999999997" r="8" fill="var(--_text)" stroke="none" />
+</g>
+</svg>

@@ -26,6 +26,10 @@ Internal labels such as `advise`, “News collection” or “Investment brief�
 
 Users should not need to write a detailed research prompt or specify the output methodology. Planning expands an informal, incomplete or verbose description into an explicit, reviewable contract.
 
+All new ordinary Research and Research automation requests first generate a short **Research understanding**. It states the question, intended result, boundaries and material assumptions without generating goals or tasks. Up to two direction-changing clarification questions may be asked; factual uncertainty belongs to the later research. Users can refine the understanding with answers or corrections, then explicitly choose **Confirm and generate plan**. Confirmation is saved before the goal planner starts. It does not authorize research execution or enable a schedule.
+
+The understanding, feedback and confirmation are durable request data, bound to the original request and expected result. Editing the automation objective or expected result requires a new understanding for that revision. Failed generation can be retried; leaving the page or restarting preserves a ready understanding. An unanswered clarification cannot be confirmed, and stale responses cannot replace a newer request. The confirmed summary accompanies every ordinary goal and automation template goal through execution and report delivery. Existing legacy plans and approvals retain their historical signatures. Quick tasks keep their direct authorization flow.
+
 The plan records:
 
 - The question to understand or decision to inform.
@@ -45,7 +49,7 @@ A manually created child task that has no research metadata has no execution pat
 
 ### Regenerating an unapproved request plan
 
-A saved request can regenerate its plan while all generated goals remain unarchived in Backlog, without approval or research execution history. This replaces all goals from that request, not only the currently viewed goal. The original request remains the planning input. The current plan stays available during generation; invalid output or a failed run leaves it unchanged. After successful validation, previous goals are archived with their tasks and annotations preserved, and replacement goals remain in Backlog awaiting approval.
+A saved request can regenerate its plan while all generated goals remain unarchived in Backlog, without approval or research execution history. This replaces all goals from that request, not only the currently viewed goal. The original request and its confirmed understanding remain the planning input. The current plan stays available during generation; invalid output or a failed run leaves it unchanged. After successful validation, previous goals are archived with their tasks and annotations preserved, and replacement goals remain in Backlog awaiting approval.
 
 Regeneration rechecks eligibility when applying output. The input signature includes the existing plan content and approval state, so edits or approval during generation prevent stale replacement. This differs from **Replan topic**, which creates a separate topic linked to its original; a compact status icon identifies that relationship without adding text to the topic name.
 
@@ -195,7 +199,7 @@ Our current adaptation is deliberately specific:
 - Borrow plain wording, consistent terminology and focused sentences/paragraphs across all research stages.
 - Preserve technical meaning and uncertainty while simplifying expression.
 - Do not claim ASD-STE100 compliance or impose its controlled English vocabulary, grammar or word-count rules on Chinese or other languages. The “80%” suggestion is inspiration, not a measurable quality threshold.
-- Use Markdown tables and Mermaid diagrams when they clarify the evidence. Explain symbols and label diagrams; do not invent data or add decorative graphics.
+- Use Markdown tables and Mermaid diagrams when they clarify the evidence. Explain symbols and label diagrams; do not invent data or add decorative graphics. The reader and published reports share native Rust rendering for flowchart, state, sequence, class, ER and XY diagrams, with a compatibility fallback and original source preserved.
 - Render the report through the application's HTML template, including navigation and supported math/diagrams. The model returns Markdown, not arbitrary executable HTML.
 
 Custom interactive explainers, generated illustrations and narrated videos are not implemented workflow requirements. They remain possible future output formats, not promised features. Clarity helps readers assess evidence; it does not replace evidence verification.

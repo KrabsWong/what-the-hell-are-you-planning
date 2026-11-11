@@ -1,0 +1,956 @@
+{
+  "upstream": "beautiful-mermaid@1.1.3 / elkjs@0.11.1",
+  "graph": {
+    "direction": "TD",
+    "nodes": [
+      {
+        "id": "_start",
+        "label": "",
+        "shape": "state-start"
+      },
+      {
+        "id": "Ready",
+        "label": "Ready",
+        "shape": "rounded"
+      },
+      {
+        "id": "_start2",
+        "label": "",
+        "shape": "state-start"
+      },
+      {
+        "id": "Collect",
+        "label": "Collect",
+        "shape": "rounded"
+      },
+      {
+        "id": "Analyze",
+        "label": "Analyze",
+        "shape": "rounded"
+      },
+      {
+        "id": "_end",
+        "label": "",
+        "shape": "state-end"
+      },
+      {
+        "id": "Done",
+        "label": "Done",
+        "shape": "rounded"
+      },
+      {
+        "id": "_end2",
+        "label": "",
+        "shape": "state-end"
+      }
+    ],
+    "edges": [
+      {
+        "source": "_start",
+        "target": "Ready",
+        "style": "solid",
+        "hasArrowStart": false,
+        "hasArrowEnd": true
+      },
+      {
+        "source": "_start2",
+        "target": "Collect",
+        "style": "solid",
+        "hasArrowStart": false,
+        "hasArrowEnd": true
+      },
+      {
+        "source": "Collect",
+        "target": "Analyze",
+        "style": "solid",
+        "hasArrowStart": false,
+        "hasArrowEnd": true
+      },
+      {
+        "source": "Analyze",
+        "target": "_end",
+        "style": "solid",
+        "hasArrowStart": false,
+        "hasArrowEnd": true
+      },
+      {
+        "source": "Ready",
+        "target": "Processing",
+        "label": "start",
+        "style": "solid",
+        "hasArrowStart": false,
+        "hasArrowEnd": true
+      },
+      {
+        "source": "Processing",
+        "target": "Done",
+        "label": "finish",
+        "style": "solid",
+        "hasArrowStart": false,
+        "hasArrowEnd": true
+      },
+      {
+        "source": "Done",
+        "target": "_end2",
+        "style": "solid",
+        "hasArrowStart": false,
+        "hasArrowEnd": true
+      }
+    ],
+    "subgraphs": [
+      {
+        "id": "Processing",
+        "label": "Processing",
+        "nodeIds": [
+          "_start2",
+          "Collect",
+          "Analyze",
+          "_end"
+        ],
+        "children": []
+      }
+    ],
+    "classDefs": {},
+    "classAssignments": {},
+    "nodeStyles": {},
+    "linkStyles": {}
+  },
+  "input": {
+    "id": "root",
+    "layoutOptions": {
+      "elk.algorithm": "layered",
+      "elk.direction": "DOWN",
+      "elk.spacing.nodeNode": "28",
+      "elk.layered.spacing.nodeNodeBetweenLayers": "48",
+      "elk.spacing.edgeEdge": "12",
+      "elk.layered.spacing.edgeEdgeBetweenLayers": "12",
+      "elk.layered.spacing.edgeNodeBetweenLayers": "12",
+      "elk.padding": "[top=40,left=40,bottom=40,right=40]",
+      "elk.edgeRouting": "ORTHOGONAL",
+      "elk.layered.nodePlacement.bk.fixedAlignment": "BALANCED",
+      "elk.contentAlignment": "H_CENTER V_CENTER",
+      "elk.layered.thoroughness": "3",
+      "elk.layered.highDegreeNodes.treatment": "true",
+      "elk.layered.highDegreeNodes.threshold": "8",
+      "elk.layered.compaction.postCompaction.strategy": "LEFT_RIGHT_CONSTRAINT_LOCKING",
+      "elk.layered.considerModelOrder.strategy": "NODES_AND_EDGES",
+      "elk.layered.wrapping.strategy": "OFF",
+      "elk.hierarchyHandling": "INCLUDE_CHILDREN"
+    },
+    "children": [
+      {
+        "id": "_start",
+        "width": 28,
+        "height": 28,
+        "labels": [
+          {
+            "text": ""
+          }
+        ]
+      },
+      {
+        "id": "Ready",
+        "width": 80.482,
+        "height": 36.900000000000006,
+        "labels": [
+          {
+            "text": "Ready"
+          }
+        ]
+      },
+      {
+        "id": "Done",
+        "width": 73.072,
+        "height": 36.900000000000006,
+        "labels": [
+          {
+            "text": "Done"
+          }
+        ]
+      },
+      {
+        "id": "_end2",
+        "width": 28,
+        "height": 28,
+        "labels": [
+          {
+            "text": ""
+          }
+        ]
+      },
+      {
+        "id": "Processing",
+        "layoutOptions": {
+          "elk.algorithm": "layered",
+          "elk.padding": "[top=44,left=16,bottom=16,right=16]",
+          "elk.edgeRouting": "ORTHOGONAL",
+          "elk.contentAlignment": "H_CENTER V_CENTER",
+          "elk.spacing.edgeEdge": "12",
+          "elk.layered.spacing.edgeEdgeBetweenLayers": "12",
+          "elk.layered.spacing.edgeNodeBetweenLayers": "12",
+          "elk.layered.nodePlacement.bk.fixedAlignment": "BALANCED",
+          "elk.layered.spacing.nodeNodeBetweenLayers": "48",
+          "elk.spacing.nodeNode": "28"
+        },
+        "labels": [
+          {
+            "text": "Processing"
+          }
+        ],
+        "children": [
+          {
+            "id": "_start2",
+            "width": 28,
+            "height": 28,
+            "labels": [
+              {
+                "text": ""
+              }
+            ]
+          },
+          {
+            "id": "Collect",
+            "width": 81.964,
+            "height": 36.900000000000006,
+            "labels": [
+              {
+                "text": "Collect"
+              }
+            ]
+          },
+          {
+            "id": "Analyze",
+            "width": 90.856,
+            "height": 36.900000000000006,
+            "labels": [
+              {
+                "text": "Analyze"
+              }
+            ]
+          },
+          {
+            "id": "_end",
+            "width": 28,
+            "height": 28,
+            "labels": [
+              {
+                "text": ""
+              }
+            ]
+          }
+        ],
+        "edges": [
+          {
+            "id": "e1",
+            "sources": [
+              "_start2"
+            ],
+            "targets": [
+              "Collect"
+            ]
+          },
+          {
+            "id": "e2",
+            "sources": [
+              "Collect"
+            ],
+            "targets": [
+              "Analyze"
+            ]
+          },
+          {
+            "id": "e3",
+            "sources": [
+              "Analyze"
+            ],
+            "targets": [
+              "_end"
+            ]
+          }
+        ]
+      }
+    ],
+    "edges": [
+      {
+        "id": "e0",
+        "sources": [
+          "_start"
+        ],
+        "targets": [
+          "Ready"
+        ]
+      },
+      {
+        "id": "e4",
+        "sources": [
+          "Ready"
+        ],
+        "targets": [
+          "Processing"
+        ],
+        "labels": [
+          {
+            "text": "start",
+            "width": 31.034000000000002,
+            "height": 20.3,
+            "layoutOptions": {
+              "elk.edgeLabels.inline": "true",
+              "elk.edgeLabels.placement": "CENTER"
+            }
+          }
+        ]
+      },
+      {
+        "id": "e5",
+        "sources": [
+          "Processing"
+        ],
+        "targets": [
+          "Done"
+        ],
+        "labels": [
+          {
+            "text": "finish",
+            "width": 34.598,
+            "height": 20.3,
+            "layoutOptions": {
+              "elk.edgeLabels.inline": "true",
+              "elk.edgeLabels.placement": "CENTER"
+            }
+          }
+        ]
+      },
+      {
+        "id": "e6",
+        "sources": [
+          "Done"
+        ],
+        "targets": [
+          "_end2"
+        ]
+      }
+    ]
+  },
+  "raw": {
+    "id": "root",
+    "layoutOptions": {
+      "elk.algorithm": "layered",
+      "elk.direction": "DOWN",
+      "elk.spacing.nodeNode": "28",
+      "elk.layered.spacing.nodeNodeBetweenLayers": "48",
+      "elk.spacing.edgeEdge": "12",
+      "elk.layered.spacing.edgeEdgeBetweenLayers": "12",
+      "elk.layered.spacing.edgeNodeBetweenLayers": "12",
+      "elk.padding": "[top=40,left=40,bottom=40,right=40]",
+      "elk.edgeRouting": "ORTHOGONAL",
+      "elk.layered.nodePlacement.bk.fixedAlignment": "BALANCED",
+      "elk.contentAlignment": "H_CENTER V_CENTER",
+      "elk.layered.thoroughness": "3",
+      "elk.layered.highDegreeNodes.treatment": "true",
+      "elk.layered.highDegreeNodes.threshold": "8",
+      "elk.layered.compaction.postCompaction.strategy": "LEFT_RIGHT_CONSTRAINT_LOCKING",
+      "elk.layered.considerModelOrder.strategy": "NODES_AND_EDGES",
+      "elk.layered.wrapping.strategy": "OFF",
+      "elk.hierarchyHandling": "INCLUDE_CHILDREN"
+    },
+    "children": [
+      {
+        "id": "_start",
+        "width": 28,
+        "height": 28,
+        "labels": [
+          {
+            "text": "",
+            "x": 0,
+            "y": 0,
+            "width": 0,
+            "height": 0
+          }
+        ],
+        "$H": 2308,
+        "x": 87.428,
+        "y": 40
+      },
+      {
+        "id": "Ready",
+        "width": 80.482,
+        "height": 36.900000000000006,
+        "labels": [
+          {
+            "text": "Ready",
+            "x": 0,
+            "y": 0,
+            "width": 0,
+            "height": 0
+          }
+        ],
+        "$H": 2311,
+        "x": 61.187,
+        "y": 116
+      },
+      {
+        "id": "Done",
+        "width": 73.072,
+        "height": 36.900000000000006,
+        "labels": [
+          {
+            "text": "Done",
+            "x": 0,
+            "y": 0,
+            "width": 0,
+            "height": 0
+          }
+        ],
+        "$H": 2314,
+        "x": 64.892,
+        "y": 719.3
+      },
+      {
+        "id": "_end2",
+        "width": 28,
+        "height": 28,
+        "labels": [
+          {
+            "text": "",
+            "x": 0,
+            "y": 0,
+            "width": 0,
+            "height": 0
+          }
+        ],
+        "$H": 2317,
+        "x": 87.428,
+        "y": 804.1999999999999
+      },
+      {
+        "id": "Processing",
+        "layoutOptions": {
+          "elk.algorithm": "layered",
+          "elk.padding": "[top=44,left=16,bottom=16,right=16]",
+          "elk.edgeRouting": "ORTHOGONAL",
+          "elk.contentAlignment": "H_CENTER V_CENTER",
+          "elk.spacing.edgeEdge": "12",
+          "elk.layered.spacing.edgeEdgeBetweenLayers": "12",
+          "elk.layered.spacing.edgeNodeBetweenLayers": "12",
+          "elk.layered.nodePlacement.bk.fixedAlignment": "BALANCED",
+          "elk.layered.spacing.nodeNodeBetweenLayers": "48",
+          "elk.spacing.nodeNode": "28"
+        },
+        "labels": [
+          {
+            "text": "Processing",
+            "x": 0,
+            "y": 0,
+            "width": 0,
+            "height": 0
+          }
+        ],
+        "children": [
+          {
+            "id": "_start2",
+            "width": 28,
+            "height": 28,
+            "labels": [
+              {
+                "text": "",
+                "x": 0,
+                "y": 0,
+                "width": 0,
+                "height": 0
+              }
+            ],
+            "$H": 2323,
+            "x": 47.428,
+            "y": 44
+          },
+          {
+            "id": "Collect",
+            "width": 81.964,
+            "height": 36.900000000000006,
+            "labels": [
+              {
+                "text": "Collect",
+                "x": 0,
+                "y": 0,
+                "width": 0,
+                "height": 0
+              }
+            ],
+            "$H": 2326,
+            "x": 20.445999999999998,
+            "y": 120
+          },
+          {
+            "id": "Analyze",
+            "width": 90.856,
+            "height": 36.900000000000006,
+            "labels": [
+              {
+                "text": "Analyze",
+                "x": 0,
+                "y": 0,
+                "width": 0,
+                "height": 0
+              }
+            ],
+            "$H": 2329,
+            "x": 16,
+            "y": 204.9
+          },
+          {
+            "id": "_end",
+            "width": 28,
+            "height": 28,
+            "labels": [
+              {
+                "text": "",
+                "x": 0,
+                "y": 0,
+                "width": 0,
+                "height": 0
+              }
+            ],
+            "$H": 2332,
+            "x": 47.428,
+            "y": 289.8
+          }
+        ],
+        "edges": [
+          {
+            "id": "e1",
+            "sources": [
+              "_start2"
+            ],
+            "targets": [
+              "Collect"
+            ],
+            "sections": [
+              {
+                "id": "e1_s0",
+                "startPoint": {
+                  "x": 61.428,
+                  "y": 72
+                },
+                "endPoint": {
+                  "x": 61.428,
+                  "y": 120
+                },
+                "incomingShape": "_start2",
+                "outgoingShape": "Collect"
+              }
+            ],
+            "container": "Processing"
+          },
+          {
+            "id": "e2",
+            "sources": [
+              "Collect"
+            ],
+            "targets": [
+              "Analyze"
+            ],
+            "sections": [
+              {
+                "id": "e2_s0",
+                "startPoint": {
+                  "x": 61.428,
+                  "y": 156.9
+                },
+                "endPoint": {
+                  "x": 61.428,
+                  "y": 204.9
+                },
+                "incomingShape": "Collect",
+                "outgoingShape": "Analyze"
+              }
+            ],
+            "container": "Processing"
+          },
+          {
+            "id": "e3",
+            "sources": [
+              "Analyze"
+            ],
+            "targets": [
+              "_end"
+            ],
+            "sections": [
+              {
+                "id": "e3_s0",
+                "startPoint": {
+                  "x": 61.428,
+                  "y": 241.8
+                },
+                "endPoint": {
+                  "x": 61.428,
+                  "y": 289.8
+                },
+                "incomingShape": "Analyze",
+                "outgoingShape": "_end"
+              }
+            ],
+            "container": "Processing"
+          }
+        ],
+        "$H": 2320,
+        "x": 40,
+        "y": 269.20000000000005,
+        "width": 122.856,
+        "height": 333.8
+      }
+    ],
+    "edges": [
+      {
+        "id": "e0",
+        "sources": [
+          "_start"
+        ],
+        "targets": [
+          "Ready"
+        ],
+        "sections": [
+          {
+            "id": "e0_s0",
+            "startPoint": {
+              "x": 101.428,
+              "y": 68
+            },
+            "endPoint": {
+              "x": 101.428,
+              "y": 116
+            },
+            "incomingShape": "_start",
+            "outgoingShape": "Ready"
+          }
+        ],
+        "container": "root"
+      },
+      {
+        "id": "e4",
+        "sources": [
+          "Ready"
+        ],
+        "targets": [
+          "Processing"
+        ],
+        "labels": [
+          {
+            "text": "start",
+            "width": 31.034000000000002,
+            "height": 20.3,
+            "layoutOptions": {
+              "elk.edgeLabels.inline": "true",
+              "elk.edgeLabels.placement": "CENTER"
+            },
+            "x": 85.428,
+            "y": 200.9
+          }
+        ],
+        "sections": [
+          {
+            "id": "e4_s0",
+            "startPoint": {
+              "x": 101.428,
+              "y": 152.9
+            },
+            "endPoint": {
+              "x": 101.428,
+              "y": 269.20000000000005
+            },
+            "incomingShape": "Ready",
+            "outgoingShape": "Processing"
+          }
+        ],
+        "container": "root"
+      },
+      {
+        "id": "e5",
+        "sources": [
+          "Processing"
+        ],
+        "targets": [
+          "Done"
+        ],
+        "labels": [
+          {
+            "text": "finish",
+            "width": 34.598,
+            "height": 20.3,
+            "layoutOptions": {
+              "elk.edgeLabels.inline": "true",
+              "elk.edgeLabels.placement": "CENTER"
+            },
+            "x": 83.928,
+            "y": 651
+          }
+        ],
+        "sections": [
+          {
+            "id": "e5_s0",
+            "startPoint": {
+              "x": 101.428,
+              "y": 603
+            },
+            "endPoint": {
+              "x": 101.428,
+              "y": 719.3
+            },
+            "incomingShape": "Processing",
+            "outgoingShape": "Done"
+          }
+        ],
+        "container": "root"
+      },
+      {
+        "id": "e6",
+        "sources": [
+          "Done"
+        ],
+        "targets": [
+          "_end2"
+        ],
+        "sections": [
+          {
+            "id": "e6_s0",
+            "startPoint": {
+              "x": 101.428,
+              "y": 756.1999999999999
+            },
+            "endPoint": {
+              "x": 101.428,
+              "y": 804.1999999999999
+            },
+            "incomingShape": "Done",
+            "outgoingShape": "_end2"
+          }
+        ],
+        "container": "root"
+      }
+    ],
+    "$H": 2306,
+    "x": 0,
+    "y": 0,
+    "width": 202.856,
+    "height": 872.1999999999999
+  },
+  "positioned": {
+    "width": 202.856,
+    "height": 872.1999999999999,
+    "nodes": [
+      {
+        "id": "_start",
+        "label": "",
+        "shape": "state-start",
+        "x": 87.428,
+        "y": 40,
+        "width": 28,
+        "height": 28
+      },
+      {
+        "id": "Ready",
+        "label": "Ready",
+        "shape": "rounded",
+        "x": 61.187,
+        "y": 116,
+        "width": 80.482,
+        "height": 36.900000000000006
+      },
+      {
+        "id": "Done",
+        "label": "Done",
+        "shape": "rounded",
+        "x": 64.892,
+        "y": 719.3,
+        "width": 73.072,
+        "height": 36.900000000000006
+      },
+      {
+        "id": "_end2",
+        "label": "",
+        "shape": "state-end",
+        "x": 87.428,
+        "y": 804.1999999999999,
+        "width": 28,
+        "height": 28
+      },
+      {
+        "id": "_start2",
+        "label": "",
+        "shape": "state-start",
+        "x": 87.428,
+        "y": 313.20000000000005,
+        "width": 28,
+        "height": 28
+      },
+      {
+        "id": "Collect",
+        "label": "Collect",
+        "shape": "rounded",
+        "x": 60.446,
+        "y": 389.20000000000005,
+        "width": 81.964,
+        "height": 36.900000000000006
+      },
+      {
+        "id": "Analyze",
+        "label": "Analyze",
+        "shape": "rounded",
+        "x": 56,
+        "y": 474.1,
+        "width": 90.856,
+        "height": 36.900000000000006
+      },
+      {
+        "id": "_end",
+        "label": "",
+        "shape": "state-end",
+        "x": 87.428,
+        "y": 559,
+        "width": 28,
+        "height": 28
+      }
+    ],
+    "edges": [
+      {
+        "source": "_start",
+        "target": "Ready",
+        "style": "solid",
+        "hasArrowStart": false,
+        "hasArrowEnd": true,
+        "points": [
+          {
+            "x": 101.428,
+            "y": 68
+          },
+          {
+            "x": 101.428,
+            "y": 116
+          }
+        ]
+      },
+      {
+        "source": "Ready",
+        "target": "Processing",
+        "label": "start",
+        "style": "solid",
+        "hasArrowStart": false,
+        "hasArrowEnd": true,
+        "points": [
+          {
+            "x": 101.428,
+            "y": 152.9
+          },
+          {
+            "x": 101.428,
+            "y": 269.20000000000005
+          }
+        ],
+        "labelPosition": {
+          "x": 100.945,
+          "y": 211.05
+        }
+      },
+      {
+        "source": "Processing",
+        "target": "Done",
+        "label": "finish",
+        "style": "solid",
+        "hasArrowStart": false,
+        "hasArrowEnd": true,
+        "points": [
+          {
+            "x": 101.428,
+            "y": 603
+          },
+          {
+            "x": 101.428,
+            "y": 719.3
+          }
+        ],
+        "labelPosition": {
+          "x": 101.227,
+          "y": 661.15
+        }
+      },
+      {
+        "source": "Done",
+        "target": "_end2",
+        "style": "solid",
+        "hasArrowStart": false,
+        "hasArrowEnd": true,
+        "points": [
+          {
+            "x": 101.428,
+            "y": 756.1999999999999
+          },
+          {
+            "x": 101.428,
+            "y": 804.1999999999999
+          }
+        ]
+      },
+      {
+        "source": "_start2",
+        "target": "Collect",
+        "style": "solid",
+        "hasArrowStart": false,
+        "hasArrowEnd": true,
+        "points": [
+          {
+            "x": 101.428,
+            "y": 341.20000000000005
+          },
+          {
+            "x": 101.428,
+            "y": 389.20000000000005
+          }
+        ]
+      },
+      {
+        "source": "Collect",
+        "target": "Analyze",
+        "style": "solid",
+        "hasArrowStart": false,
+        "hasArrowEnd": true,
+        "points": [
+          {
+            "x": 101.428,
+            "y": 426.1
+          },
+          {
+            "x": 101.428,
+            "y": 474.1
+          }
+        ]
+      },
+      {
+        "source": "Analyze",
+        "target": "_end",
+        "style": "solid",
+        "hasArrowStart": false,
+        "hasArrowEnd": true,
+        "points": [
+          {
+            "x": 101.428,
+            "y": 511.00000000000006
+          },
+          {
+            "x": 101.428,
+            "y": 559
+          }
+        ]
+      }
+    ],
+    "groups": [
+      {
+        "id": "Processing",
+        "label": "Processing",
+        "x": 40,
+        "y": 269.20000000000005,
+        "width": 122.856,
+        "height": 333.8,
+        "children": []
+      }
+    ]
+  }
+}

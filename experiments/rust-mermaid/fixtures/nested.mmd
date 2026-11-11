@@ -1,0 +1,16 @@
+flowchart LR
+    Start[Receive request]
+    subgraph Pipeline [Research pipeline]
+        Intake[Prepare materials]
+        subgraph Analysis [Evidence analysis]
+            Extract[Extract facts]
+            Review{Evidence sufficient?}
+            Extract --> Review
+        end
+        Draft[Write report]
+        Intake --> Extract
+        Review -->|Yes| Draft
+        Review -->|More evidence| Intake
+    end
+    Start --> Intake
+    Draft --> Done([Publish])

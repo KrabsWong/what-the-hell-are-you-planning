@@ -72,7 +72,7 @@ fn render_diagrams(html: &str) -> String {
         match diagram_images(&source) {
             Ok(images) => output.push_str(&images),
             Err(_) => {
-                output.push_str("<div class=\"diagram-fallback\"><p>图表暂时无法渲染，以下保留 Mermaid 源码。</p>");
+                output.push_str("<div class=\"diagram-fallback\"><p>Diagram preview unavailable. Mermaid source is preserved below.</p>");
                 output.push_str(&rest[start..end + CLOSE.len()]);
                 output.push_str("</div>");
             }
@@ -87,12 +87,9 @@ fn diagram_images(source: &str) -> Result<String, String> {
     if source.len() > 16_384 || source.lines().count() > 256 {
         return Err("Diagram exceeds rendering limits".into());
     }
-    let parsed = mermaid_rs_renderer::parse_mermaid_strict(source).map_err(|e| e.to_string())?;
-    let options = mermaid_rs_renderer::RenderOptions::default();
-    let layout = mermaid_rs_renderer::compute_layout(&parsed.graph, &options.theme, &options.layout);
+    let (light, dark) = crate::diagram_renderer::render_pair(source)?;
     let mut images = String::from("<figure class=\"report-diagram\">");
-    for (name, theme) in [("light", options.theme), ("dark", mermaid_rs_renderer::Theme::dark())] {
-        let svg = mermaid_rs_renderer::render_svg(&layout, &theme, &options.layout);
+    for (name, svg) in [("light", light), ("dark", dark)] {
         let tree = usvg::Tree::from_str(&svg, &usvg::Options::default()).map_err(|e| e.to_string())?;
         let size = tree.size();
         if size.width() > 8192. || size.height() > 8192. || size.width() * size.height() > 16_000_000. {
@@ -100,9 +97,9 @@ fn diagram_images(source: &str) -> Result<String, String> {
         }
         // SVGs are isolated image documents, not active inline HTML. Encode every byte.
         let data: String = svg.bytes().map(|byte| format!("%{byte:02X}")).collect();
-        images.push_str(&format!("<img class=\"diagram-{name}\" alt=\"研究报告流程图\" src=\"data:image/svg+xml,{data}\">"));
+        images.push_str(&format!("<img class=\"diagram-{name}\" alt=\"Research report diagram\" src=\"data:image/svg+xml,{data}\">"));
     }
-    images.push_str("<details><summary>查看 Mermaid 源码</summary><pre><code>");
+    images.push_str("<details><summary>View Mermaid source</summary><pre><code>");
     images.push_str(&escape(source));
     images.push_str("</code></pre></details></figure>");
     Ok(images)
@@ -183,7 +180,7 @@ pub fn render(title: &str, markdown: &str) -> String {
         remaining = &remaining[content_start + end + closing.len()..];
     }
     body.push_str(remaining);
-    let body = body.replace("<table>", "<div class=\"table-wrap\" tabindex=\"0\" role=\"region\" aria-label=\"报告数据表\"><table>")
+    let body = body.replace("<table>", "<div class=\"table-wrap\" tabindex=\"0\" role=\"region\" aria-label=\"Report data table\"><table>")
         .replace("</table>", "</table></div>");
     let title = escape(title);
     let picker = include_str!("../assets/report/theme-picker.html");
@@ -198,11 +195,11 @@ pub fn render(title: &str, markdown: &str) -> String {
 <meta name="robots" content="noindex,nofollow,noarchive"><meta name="referrer" content="no-referrer">
 <meta http-equiv="Content-Security-Policy" content="default-src 'none'; style-src 'unsafe-inline'; script-src 'unsafe-inline'; font-src https://gw.alipayobjects.com; img-src https: http: data:; base-uri 'none'; form-action 'none'">
 <title>{title} · Report Something</title><style>{fonts}{base}{style}</style></head>
-<body><a class="skip" href="#report">跳转到报告</a><div class="shell">
+<body><a class="skip" href="#report">Skip to report</a><div class="shell">
 <aside class="sidebar"><div class="brandline"><span class="brand-mark">R</span>Report Something</div>
-<div class="side-tools"><input id="toc-search" type="search" placeholder="查找章节" aria-label="查找章节">{picker}</div>
-<p class="side-title">{title}</p><p class="sidebar-title">本页目录</p><nav aria-label="报告目录">{toc}</nav></aside>
-<main id="report">{mobile_picker}<details class="mobile-toc"><summary>本页目录</summary><nav>{toc}</nav></details>
+<div class="side-tools"><input id="toc-search" type="search" placeholder="Find sections" aria-label="Find sections">{picker}</div>
+<p class="side-title">{title}</p><p class="sidebar-title">On this page</p><nav aria-label="Report contents">{toc}</nav></aside>
+<main id="report">{mobile_picker}<details class="mobile-toc"><summary>On this page</summary><nav>{toc}</nav></details>
 <header class="report-head"><p class="eyebrow">RESEARCH REPORT</p><h1 class="report-title">{title}</h1></header>
 {body}</main></div><script>{script}</script></body></html>"##,
         fonts = include_str!("../assets/report/fonts.css"),
@@ -220,7 +217,7 @@ mod tests {
     fn mermaid_exports_isolated_theme_images_and_preserves_source() {
         let page = render("Diagram", "```mermaid\nflowchart LR\n A[客户] --> B[律师]\n```\n\n```rust\nlet a = 1;\n```");
         assert_eq!(page.matches("src=\"data:image/svg+xml,").count(), 2);
-        assert!(page.contains("查看 Mermaid 源码"));
+        assert!(page.contains("View Mermaid source"));
         assert!(page.contains("A[客户] --&gt; B[律师]"));
         assert!(page.contains("language-rust"));
         assert!(!page.split("<figure class=\"report-diagram\">").nth(1).unwrap().split("</figure>").next().unwrap().contains("<svg"));
@@ -234,7 +231,7 @@ mod tests {
     fn invalid_and_oversized_diagrams_keep_readable_code() {
         for source in ["not a diagram".to_string(), format!("flowchart LR\n A[{}]", "x".repeat(16_385))] {
             let page = render("Fallback", &format!("```mermaid\n{source}\n```"));
-            assert!(page.contains("图表暂时无法渲染"));
+            assert!(page.contains("Diagram preview unavailable"));
             assert!(page.contains("language-mermaid"));
             assert!(!page.contains("src=\"data:image/svg+xml,"));
         }

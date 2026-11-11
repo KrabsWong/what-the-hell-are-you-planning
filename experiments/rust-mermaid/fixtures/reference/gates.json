@@ -1,0 +1,972 @@
+{
+  "upstream": "beautiful-mermaid@1.1.3 / elkjs@0.11.1",
+  "graph": {
+    "direction": "LR",
+    "nodes": [
+      {
+        "id": "G0",
+        "label": "Gate 0 交付形态\n2 周 / 10 家访谈",
+        "shape": "rectangle"
+      },
+      {
+        "id": "G1",
+        "label": "Gate 1 价值\n4 周 / 3 家 / 6 件",
+        "shape": "rectangle"
+      },
+      {
+        "id": "STOP",
+        "label": "停止 A",
+        "shape": "rectangle"
+      },
+      {
+        "id": "G2",
+        "label": "Gate 2 付费\n4 周 / 12 家",
+        "shape": "rectangle"
+      },
+      {
+        "id": "GO",
+        "label": "进入 6 个月产品化",
+        "shape": "rectangle"
+      }
+    ],
+    "edges": [
+      {
+        "source": "G0",
+        "target": "G1",
+        "label": "≥4/10 愿给已结案件",
+        "style": "solid",
+        "hasArrowStart": false,
+        "hasArrowEnd": true
+      },
+      {
+        "source": "G0",
+        "target": "STOP",
+        "label": "≤3/10",
+        "style": "solid",
+        "hasArrowStart": false,
+        "hasArrowEnd": true
+      },
+      {
+        "source": "G1",
+        "target": "G2",
+        "label": "五项全部达标",
+        "style": "solid",
+        "hasArrowStart": false,
+        "hasArrowEnd": true
+      },
+      {
+        "source": "G1",
+        "target": "STOP",
+        "label": "任一项未达",
+        "style": "solid",
+        "hasArrowStart": false,
+        "hasArrowEnd": true
+      },
+      {
+        "source": "G2",
+        "target": "GO",
+        "label": "≥3 家付款且活跃 ≥70%",
+        "style": "solid",
+        "hasArrowStart": false,
+        "hasArrowEnd": true
+      },
+      {
+        "source": "G2",
+        "target": "STOP",
+        "label": "≤2 家或活跃 <70%",
+        "style": "solid",
+        "hasArrowStart": false,
+        "hasArrowEnd": true
+      }
+    ],
+    "subgraphs": [],
+    "classDefs": {},
+    "classAssignments": {},
+    "nodeStyles": {},
+    "linkStyles": {}
+  },
+  "input": {
+    "id": "root",
+    "layoutOptions": {
+      "elk.algorithm": "layered",
+      "elk.direction": "RIGHT",
+      "elk.spacing.nodeNode": "28",
+      "elk.layered.spacing.nodeNodeBetweenLayers": "48",
+      "elk.spacing.edgeEdge": "12",
+      "elk.layered.spacing.edgeEdgeBetweenLayers": "12",
+      "elk.layered.spacing.edgeNodeBetweenLayers": "12",
+      "elk.padding": "[top=40,left=40,bottom=40,right=40]",
+      "elk.edgeRouting": "ORTHOGONAL",
+      "elk.layered.nodePlacement.bk.fixedAlignment": "BALANCED",
+      "elk.contentAlignment": "H_CENTER V_CENTER",
+      "elk.layered.thoroughness": "3",
+      "elk.layered.highDegreeNodes.treatment": "true",
+      "elk.layered.highDegreeNodes.threshold": "8",
+      "elk.layered.compaction.postCompaction.strategy": "LEFT_RIGHT_CONSTRAINT_LOCKING",
+      "elk.layered.considerModelOrder.strategy": "NODES_AND_EDGES",
+      "elk.layered.wrapping.strategy": "OFF",
+      "elk.hierarchyHandling": "INCLUDE_CHILDREN"
+    },
+    "children": [
+      {
+        "id": "G0",
+        "width": 139.762,
+        "height": 53.800000000000004,
+        "labels": [
+          {
+            "text": "Gate 0 交付形态\n2 周 / 10 家访谈"
+          }
+        ]
+      },
+      {
+        "id": "G1",
+        "width": 131.611,
+        "height": 53.800000000000004,
+        "labels": [
+          {
+            "text": "Gate 1 价值\n4 周 / 3 家 / 6 件"
+          }
+        ]
+      },
+      {
+        "id": "STOP",
+        "width": 82.705,
+        "height": 36.900000000000006,
+        "labels": [
+          {
+            "text": "停止 A"
+          }
+        ]
+      },
+      {
+        "id": "G2",
+        "width": 110.122,
+        "height": 53.800000000000004,
+        "labels": [
+          {
+            "text": "Gate 2 付费\n4 周 / 12 家"
+          }
+        ]
+      },
+      {
+        "id": "GO",
+        "width": 157.546,
+        "height": 36.900000000000006,
+        "labels": [
+          {
+            "text": "进入 6 个月产品化"
+          }
+        ]
+      }
+    ],
+    "edges": [
+      {
+        "id": "e0",
+        "sources": [
+          "G0"
+        ],
+        "targets": [
+          "G1"
+        ],
+        "labels": [
+          {
+            "text": "≥4/10 愿给已结案件",
+            "width": 105.878,
+            "height": 20.3,
+            "layoutOptions": {
+              "elk.edgeLabels.inline": "true",
+              "elk.edgeLabels.placement": "CENTER"
+            }
+          }
+        ]
+      },
+      {
+        "id": "e1",
+        "sources": [
+          "G0"
+        ],
+        "targets": [
+          "STOP"
+        ],
+        "labels": [
+          {
+            "text": "≤3/10",
+            "width": 32.816,
+            "height": 20.3,
+            "layoutOptions": {
+              "elk.edgeLabels.inline": "true",
+              "elk.edgeLabels.placement": "CENTER"
+            }
+          }
+        ]
+      },
+      {
+        "id": "e2",
+        "sources": [
+          "G1"
+        ],
+        "targets": [
+          "G2"
+        ],
+        "labels": [
+          {
+            "text": "五项全部达标",
+            "width": 80.93,
+            "height": 20.3,
+            "layoutOptions": {
+              "elk.edgeLabels.inline": "true",
+              "elk.edgeLabels.placement": "CENTER"
+            }
+          }
+        ]
+      },
+      {
+        "id": "e3",
+        "sources": [
+          "G1"
+        ],
+        "targets": [
+          "STOP"
+        ],
+        "labels": [
+          {
+            "text": "任一项未达",
+            "width": 69.05000000000001,
+            "height": 20.3,
+            "layoutOptions": {
+              "elk.edgeLabels.inline": "true",
+              "elk.edgeLabels.placement": "CENTER"
+            }
+          }
+        ]
+      },
+      {
+        "id": "e4",
+        "sources": [
+          "G2"
+        ],
+        "targets": [
+          "GO"
+        ],
+        "labels": [
+          {
+            "text": "≥3 家付款且活跃 ≥70%",
+            "width": 121.32200000000002,
+            "height": 20.3,
+            "layoutOptions": {
+              "elk.edgeLabels.inline": "true",
+              "elk.edgeLabels.placement": "CENTER"
+            }
+          }
+        ]
+      },
+      {
+        "id": "e5",
+        "sources": [
+          "G2"
+        ],
+        "targets": [
+          "STOP"
+        ],
+        "labels": [
+          {
+            "text": "≤2 家或活跃 <70%",
+            "width": 97.56200000000001,
+            "height": 20.3,
+            "layoutOptions": {
+              "elk.edgeLabels.inline": "true",
+              "elk.edgeLabels.placement": "CENTER"
+            }
+          }
+        ]
+      }
+    ]
+  },
+  "raw": {
+    "id": "root",
+    "layoutOptions": {
+      "elk.algorithm": "layered",
+      "elk.direction": "RIGHT",
+      "elk.spacing.nodeNode": "28",
+      "elk.layered.spacing.nodeNodeBetweenLayers": "48",
+      "elk.spacing.edgeEdge": "12",
+      "elk.layered.spacing.edgeEdgeBetweenLayers": "12",
+      "elk.layered.spacing.edgeNodeBetweenLayers": "12",
+      "elk.padding": "[top=40,left=40,bottom=40,right=40]",
+      "elk.edgeRouting": "ORTHOGONAL",
+      "elk.layered.nodePlacement.bk.fixedAlignment": "BALANCED",
+      "elk.contentAlignment": "H_CENTER V_CENTER",
+      "elk.layered.thoroughness": "3",
+      "elk.layered.highDegreeNodes.treatment": "true",
+      "elk.layered.highDegreeNodes.threshold": "8",
+      "elk.layered.compaction.postCompaction.strategy": "LEFT_RIGHT_CONSTRAINT_LOCKING",
+      "elk.layered.considerModelOrder.strategy": "NODES_AND_EDGES",
+      "elk.layered.wrapping.strategy": "OFF",
+      "elk.hierarchyHandling": "INCLUDE_CHILDREN"
+    },
+    "children": [
+      {
+        "id": "G0",
+        "width": 139.762,
+        "height": 53.800000000000004,
+        "labels": [
+          {
+            "text": "Gate 0 交付形态\n2 周 / 10 家访谈",
+            "x": 0,
+            "y": 0,
+            "width": 0,
+            "height": 0
+          }
+        ],
+        "$H": 1180,
+        "x": 40,
+        "y": 99.6
+      },
+      {
+        "id": "G1",
+        "width": 131.611,
+        "height": 53.800000000000004,
+        "labels": [
+          {
+            "text": "Gate 1 价值\n4 周 / 3 家 / 6 件",
+            "x": 0,
+            "y": 0,
+            "width": 0,
+            "height": 0
+          }
+        ],
+        "$H": 1183,
+        "x": 381.64,
+        "y": 81.15
+      },
+      {
+        "id": "STOP",
+        "width": 82.705,
+        "height": 36.900000000000006,
+        "labels": [
+          {
+            "text": "停止 A",
+            "x": 0,
+            "y": 0,
+            "width": 0,
+            "height": 0
+          }
+        ],
+        "$H": 1186,
+        "x": 969.865,
+        "y": 124.35000000000001
+      },
+      {
+        "id": "G2",
+        "width": 110.122,
+        "height": 53.800000000000004,
+        "labels": [
+          {
+            "text": "Gate 2 付费\n4 周 / 12 家",
+            "x": 0,
+            "y": 0,
+            "width": 0,
+            "height": 0
+          }
+        ],
+        "$H": 1189,
+        "x": 690.181,
+        "y": 48.199999999999996
+      },
+      {
+        "id": "GO",
+        "width": 157.546,
+        "height": 36.900000000000006,
+        "labels": [
+          {
+            "text": "进入 6 个月产品化",
+            "x": 0,
+            "y": 0,
+            "width": 0,
+            "height": 0
+          }
+        ],
+        "$H": 1192,
+        "x": 1017.625,
+        "y": 40
+      }
+    ],
+    "edges": [
+      {
+        "id": "e0",
+        "sources": [
+          "G0"
+        ],
+        "targets": [
+          "G1"
+        ],
+        "labels": [
+          {
+            "text": "≥4/10 愿给已结案件",
+            "width": 105.878,
+            "height": 20.3,
+            "layoutOptions": {
+              "elk.edgeLabels.inline": "true",
+              "elk.edgeLabels.placement": "CENTER"
+            },
+            "x": 227.762,
+            "y": 97.05000000000001
+          }
+        ],
+        "sections": [
+          {
+            "id": "e0_s0",
+            "startPoint": {
+              "x": 179.762,
+              "y": 117.53333333333333
+            },
+            "endPoint": {
+              "x": 381.64,
+              "y": 108.05
+            },
+            "bendPoints": [
+              {
+                "x": 215.762,
+                "y": 117.53333333333333
+              },
+              {
+                "x": 215.762,
+                "y": 108.05000000000001
+              }
+            ],
+            "incomingShape": "G0",
+            "outgoingShape": "G1"
+          }
+        ],
+        "container": "root"
+      },
+      {
+        "id": "e1",
+        "sources": [
+          "G0"
+        ],
+        "targets": [
+          "STOP"
+        ],
+        "labels": [
+          {
+            "text": "≤3/10",
+            "width": 32.816,
+            "height": 20.3,
+            "layoutOptions": {
+              "elk.edgeLabels.inline": "true",
+              "elk.edgeLabels.placement": "CENTER"
+            },
+            "x": 807.999,
+            "y": 154.96666666666667
+          }
+        ],
+        "sections": [
+          {
+            "id": "e1_s0",
+            "startPoint": {
+              "x": 179.762,
+              "y": 135.46666666666667
+            },
+            "endPoint": {
+              "x": 969.865,
+              "y": 152.025
+            },
+            "bendPoints": [
+              {
+                "x": 369.64,
+                "y": 135.46666666666667
+              },
+              {
+                "x": 369.64,
+                "y": 165.96666666666667
+              },
+              {
+                "x": 957.865,
+                "y": 165.96666666666667
+              },
+              {
+                "x": 957.865,
+                "y": 152.025
+              }
+            ],
+            "incomingShape": "G0",
+            "outgoingShape": "STOP"
+          }
+        ],
+        "container": "root"
+      },
+      {
+        "id": "e2",
+        "sources": [
+          "G1"
+        ],
+        "targets": [
+          "G2"
+        ],
+        "labels": [
+          {
+            "text": "五项全部达标",
+            "width": 80.93,
+            "height": 20.3,
+            "layoutOptions": {
+              "elk.edgeLabels.inline": "true",
+              "elk.edgeLabels.placement": "CENTER"
+            },
+            "x": 561.251,
+            "y": 64.1
+          }
+        ],
+        "sections": [
+          {
+            "id": "e2_s0",
+            "startPoint": {
+              "x": 513.251,
+              "y": 99.08333333333333
+            },
+            "endPoint": {
+              "x": 690.181,
+              "y": 75.1
+            },
+            "bendPoints": [
+              {
+                "x": 549.251,
+                "y": 99.08333333333333
+              },
+              {
+                "x": 549.251,
+                "y": 75.1
+              }
+            ],
+            "incomingShape": "G1",
+            "outgoingShape": "G2"
+          }
+        ],
+        "container": "root"
+      },
+      {
+        "id": "e3",
+        "sources": [
+          "G1"
+        ],
+        "targets": [
+          "STOP"
+        ],
+        "labels": [
+          {
+            "text": "任一项未达",
+            "width": 69.05000000000001,
+            "height": 20.3,
+            "layoutOptions": {
+              "elk.edgeLabels.inline": "true",
+              "elk.edgeLabels.placement": "CENTER"
+            },
+            "x": 852.815,
+            "y": 130
+          }
+        ],
+        "sections": [
+          {
+            "id": "e3_s0",
+            "startPoint": {
+              "x": 513.251,
+              "y": 117.01666666666667
+            },
+            "endPoint": {
+              "x": 969.865,
+              "y": 142.8
+            },
+            "bendPoints": [
+              {
+                "x": 840.815,
+                "y": 117.01666666666667
+              },
+              {
+                "x": 840.815,
+                "y": 141
+              },
+              {
+                "x": 957.865,
+                "y": 141
+              },
+              {
+                "x": 957.865,
+                "y": 142.8
+              }
+            ],
+            "incomingShape": "G1",
+            "outgoingShape": "STOP"
+          }
+        ],
+        "container": "root"
+      },
+      {
+        "id": "e4",
+        "sources": [
+          "G2"
+        ],
+        "targets": [
+          "GO"
+        ],
+        "labels": [
+          {
+            "text": "≥3 家付款且活跃 ≥70%",
+            "width": 121.32200000000002,
+            "height": 20.3,
+            "layoutOptions": {
+              "elk.edgeLabels.inline": "true",
+              "elk.edgeLabels.placement": "CENTER"
+            },
+            "x": 848.303,
+            "y": 47.45
+          }
+        ],
+        "sections": [
+          {
+            "id": "e4_s0",
+            "startPoint": {
+              "x": 800.303,
+              "y": 66.13333333333333
+            },
+            "endPoint": {
+              "x": 1017.625,
+              "y": 58.45
+            },
+            "bendPoints": [
+              {
+                "x": 836.303,
+                "y": 66.13333333333333
+              },
+              {
+                "x": 836.303,
+                "y": 58.45
+              }
+            ],
+            "incomingShape": "G2",
+            "outgoingShape": "GO"
+          }
+        ],
+        "container": "root"
+      },
+      {
+        "id": "e5",
+        "sources": [
+          "G2"
+        ],
+        "targets": [
+          "STOP"
+        ],
+        "labels": [
+          {
+            "text": "≤2 家或活跃 <70%",
+            "width": 97.56200000000001,
+            "height": 20.3,
+            "layoutOptions": {
+              "elk.edgeLabels.inline": "true",
+              "elk.edgeLabels.placement": "CENTER"
+            },
+            "x": 848.303,
+            "y": 80.75
+          }
+        ],
+        "sections": [
+          {
+            "id": "e5_s0",
+            "startPoint": {
+              "x": 800.303,
+              "y": 84.06666666666666
+            },
+            "endPoint": {
+              "x": 969.865,
+              "y": 133.57500000000002
+            },
+            "bendPoints": [
+              {
+                "x": 836.303,
+                "y": 84.06666666666666
+              },
+              {
+                "x": 836.303,
+                "y": 91.75
+              },
+              {
+                "x": 957.865,
+                "y": 91.75
+              },
+              {
+                "x": 957.865,
+                "y": 133.57500000000002
+              }
+            ],
+            "incomingShape": "G2",
+            "outgoingShape": "STOP"
+          }
+        ],
+        "container": "root"
+      }
+    ],
+    "$H": 1178,
+    "x": 0,
+    "y": 0,
+    "width": 1215.171,
+    "height": 216.26666666666665
+  },
+  "positioned": {
+    "width": 1215.171,
+    "height": 225.11666666666667,
+    "nodes": [
+      {
+        "id": "G0",
+        "label": "Gate 0 交付形态\n2 周 / 10 家访谈",
+        "shape": "rectangle",
+        "x": 40,
+        "y": 99.6,
+        "width": 139.762,
+        "height": 53.800000000000004
+      },
+      {
+        "id": "G1",
+        "label": "Gate 1 价值\n4 周 / 3 家 / 6 件",
+        "shape": "rectangle",
+        "x": 381.64,
+        "y": 81.15,
+        "width": 131.611,
+        "height": 53.800000000000004
+      },
+      {
+        "id": "STOP",
+        "label": "停止 A",
+        "shape": "rectangle",
+        "x": 969.865,
+        "y": 124.35000000000001,
+        "width": 82.705,
+        "height": 36.900000000000006
+      },
+      {
+        "id": "G2",
+        "label": "Gate 2 付费\n4 周 / 12 家",
+        "shape": "rectangle",
+        "x": 690.181,
+        "y": 48.199999999999996,
+        "width": 110.122,
+        "height": 53.800000000000004
+      },
+      {
+        "id": "GO",
+        "label": "进入 6 个月产品化",
+        "shape": "rectangle",
+        "x": 1017.625,
+        "y": 40,
+        "width": 157.546,
+        "height": 36.900000000000006
+      }
+    ],
+    "edges": [
+      {
+        "source": "G0",
+        "target": "G1",
+        "label": "≥4/10 愿给已结案件",
+        "style": "solid",
+        "hasArrowStart": false,
+        "hasArrowEnd": true,
+        "points": [
+          {
+            "x": 179.762,
+            "y": 117.53333333333333
+          },
+          {
+            "x": 215.762,
+            "y": 117.53333333333333
+          },
+          {
+            "x": 215.762,
+            "y": 108.05000000000001
+          },
+          {
+            "x": 381.64,
+            "y": 108.05
+          }
+        ],
+        "labelPosition": {
+          "x": 280.701,
+          "y": 107.20000000000002
+        }
+      },
+      {
+        "source": "G0",
+        "target": "STOP",
+        "label": "≤3/10",
+        "style": "solid",
+        "hasArrowStart": false,
+        "hasArrowEnd": true,
+        "points": [
+          {
+            "x": 179.762,
+            "y": 135.46666666666667
+          },
+          {
+            "x": 369.64,
+            "y": 135.46666666666667
+          },
+          {
+            "x": 369.64,
+            "y": 165.96666666666667
+          },
+          {
+            "x": 957.865,
+            "y": 165.96666666666667
+          },
+          {
+            "x": 957.865,
+            "y": 152.025
+          },
+          {
+            "x": 969.865,
+            "y": 152.025
+          }
+        ],
+        "labelPosition": {
+          "x": 824.407,
+          "y": 165.11666666666667
+        }
+      },
+      {
+        "source": "G1",
+        "target": "G2",
+        "label": "五项全部达标",
+        "style": "solid",
+        "hasArrowStart": false,
+        "hasArrowEnd": true,
+        "points": [
+          {
+            "x": 513.251,
+            "y": 99.08333333333333
+          },
+          {
+            "x": 549.251,
+            "y": 99.08333333333333
+          },
+          {
+            "x": 549.251,
+            "y": 75.1
+          },
+          {
+            "x": 690.181,
+            "y": 75.1
+          }
+        ],
+        "labelPosition": {
+          "x": 601.716,
+          "y": 74.25
+        }
+      },
+      {
+        "source": "G1",
+        "target": "STOP",
+        "label": "任一项未达",
+        "style": "solid",
+        "hasArrowStart": false,
+        "hasArrowEnd": true,
+        "points": [
+          {
+            "x": 513.251,
+            "y": 117.01666666666667
+          },
+          {
+            "x": 840.815,
+            "y": 117.01666666666667
+          },
+          {
+            "x": 840.815,
+            "y": 141
+          },
+          {
+            "x": 957.865,
+            "y": 141
+          },
+          {
+            "x": 957.865,
+            "y": 142.8
+          },
+          {
+            "x": 969.865,
+            "y": 142.8
+          }
+        ],
+        "labelPosition": {
+          "x": 887.34,
+          "y": 140.15
+        }
+      },
+      {
+        "source": "G2",
+        "target": "GO",
+        "label": "≥3 家付款且活跃 ≥70%",
+        "style": "solid",
+        "hasArrowStart": false,
+        "hasArrowEnd": true,
+        "points": [
+          {
+            "x": 800.303,
+            "y": 66.13333333333333
+          },
+          {
+            "x": 836.303,
+            "y": 66.13333333333333
+          },
+          {
+            "x": 836.303,
+            "y": 58.45
+          },
+          {
+            "x": 1017.625,
+            "y": 58.45
+          }
+        ],
+        "labelPosition": {
+          "x": 908.964,
+          "y": 57.6
+        }
+      },
+      {
+        "source": "G2",
+        "target": "STOP",
+        "label": "≤2 家或活跃 <70%",
+        "style": "solid",
+        "hasArrowStart": false,
+        "hasArrowEnd": true,
+        "points": [
+          {
+            "x": 800.303,
+            "y": 84.06666666666666
+          },
+          {
+            "x": 836.303,
+            "y": 84.06666666666666
+          },
+          {
+            "x": 836.303,
+            "y": 91.75
+          },
+          {
+            "x": 957.865,
+            "y": 91.75
+          },
+          {
+            "x": 957.865,
+            "y": 133.57500000000002
+          },
+          {
+            "x": 969.865,
+            "y": 133.57500000000002
+          }
+        ],
+        "labelPosition": {
+          "x": 897.0840000000001,
+          "y": 90.9
+        }
+      }
+    ],
+    "groups": []
+  }
+}

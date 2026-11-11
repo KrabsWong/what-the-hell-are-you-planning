@@ -1,0 +1,959 @@
+{
+  "upstream": "beautiful-mermaid@1.1.3 / elkjs@0.11.1",
+  "graph": {
+    "direction": "LR",
+    "nodes": [
+      {
+        "id": "Start",
+        "label": "Receive request",
+        "shape": "rectangle"
+      },
+      {
+        "id": "Intake",
+        "label": "Prepare materials",
+        "shape": "rectangle"
+      },
+      {
+        "id": "Extract",
+        "label": "Extract facts",
+        "shape": "rectangle"
+      },
+      {
+        "id": "Review",
+        "label": "Evidence sufficient?",
+        "shape": "diamond"
+      },
+      {
+        "id": "Draft",
+        "label": "Write report",
+        "shape": "rectangle"
+      },
+      {
+        "id": "Done",
+        "label": "Publish",
+        "shape": "stadium"
+      }
+    ],
+    "edges": [
+      {
+        "source": "Extract",
+        "target": "Review",
+        "style": "solid",
+        "hasArrowStart": false,
+        "hasArrowEnd": true
+      },
+      {
+        "source": "Intake",
+        "target": "Extract",
+        "style": "solid",
+        "hasArrowStart": false,
+        "hasArrowEnd": true
+      },
+      {
+        "source": "Review",
+        "target": "Draft",
+        "label": "Yes",
+        "style": "solid",
+        "hasArrowStart": false,
+        "hasArrowEnd": true
+      },
+      {
+        "source": "Review",
+        "target": "Intake",
+        "label": "More evidence",
+        "style": "solid",
+        "hasArrowStart": false,
+        "hasArrowEnd": true
+      },
+      {
+        "source": "Start",
+        "target": "Intake",
+        "style": "solid",
+        "hasArrowStart": false,
+        "hasArrowEnd": true
+      },
+      {
+        "source": "Draft",
+        "target": "Done",
+        "style": "solid",
+        "hasArrowStart": false,
+        "hasArrowEnd": true
+      }
+    ],
+    "subgraphs": [
+      {
+        "id": "Pipeline",
+        "label": "Research pipeline",
+        "nodeIds": [
+          "Intake",
+          "Draft"
+        ],
+        "children": [
+          {
+            "id": "Analysis",
+            "label": "Evidence analysis",
+            "nodeIds": [
+              "Extract",
+              "Review"
+            ],
+            "children": []
+          }
+        ]
+      }
+    ],
+    "classDefs": {},
+    "classAssignments": {},
+    "nodeStyles": {},
+    "linkStyles": {}
+  },
+  "input": {
+    "id": "root",
+    "layoutOptions": {
+      "elk.algorithm": "layered",
+      "elk.direction": "RIGHT",
+      "elk.spacing.nodeNode": "28",
+      "elk.layered.spacing.nodeNodeBetweenLayers": "48",
+      "elk.spacing.edgeEdge": "12",
+      "elk.layered.spacing.edgeEdgeBetweenLayers": "12",
+      "elk.layered.spacing.edgeNodeBetweenLayers": "12",
+      "elk.padding": "[top=40,left=40,bottom=40,right=40]",
+      "elk.edgeRouting": "ORTHOGONAL",
+      "elk.layered.nodePlacement.bk.fixedAlignment": "BALANCED",
+      "elk.contentAlignment": "H_CENTER V_CENTER",
+      "elk.layered.thoroughness": "3",
+      "elk.layered.highDegreeNodes.treatment": "true",
+      "elk.layered.highDegreeNodes.threshold": "8",
+      "elk.layered.compaction.postCompaction.strategy": "LEFT_RIGHT_CONSTRAINT_LOCKING",
+      "elk.layered.considerModelOrder.strategy": "NODES_AND_EDGES",
+      "elk.layered.wrapping.strategy": "OFF",
+      "elk.hierarchyHandling": "INCLUDE_CHILDREN"
+    },
+    "children": [
+      {
+        "id": "Start",
+        "width": 139.021,
+        "height": 36.900000000000006,
+        "labels": [
+          {
+            "text": "Receive request"
+          }
+        ]
+      },
+      {
+        "id": "Done",
+        "width": 86.41,
+        "height": 36.900000000000006,
+        "labels": [
+          {
+            "text": "Publish"
+          }
+        ]
+      },
+      {
+        "id": "Pipeline",
+        "layoutOptions": {
+          "elk.algorithm": "layered",
+          "elk.padding": "[top=44,left=16,bottom=16,right=16]",
+          "elk.edgeRouting": "ORTHOGONAL",
+          "elk.contentAlignment": "H_CENTER V_CENTER",
+          "elk.spacing.edgeEdge": "12",
+          "elk.layered.spacing.edgeEdgeBetweenLayers": "12",
+          "elk.layered.spacing.edgeNodeBetweenLayers": "12",
+          "elk.layered.nodePlacement.bk.fixedAlignment": "BALANCED",
+          "elk.layered.spacing.nodeNodeBetweenLayers": "48",
+          "elk.spacing.nodeNode": "28"
+        },
+        "labels": [
+          {
+            "text": "Research pipeline"
+          }
+        ],
+        "children": [
+          {
+            "id": "Intake",
+            "width": 147.913,
+            "height": 36.900000000000006,
+            "labels": [
+              {
+                "text": "Prepare materials"
+              }
+            ]
+          },
+          {
+            "id": "Draft",
+            "width": 111.604,
+            "height": 36.900000000000006,
+            "labels": [
+              {
+                "text": "Write report"
+              }
+            ]
+          },
+          {
+            "id": "Analysis",
+            "layoutOptions": {
+              "elk.algorithm": "layered",
+              "elk.padding": "[top=44,left=16,bottom=16,right=16]",
+              "elk.edgeRouting": "ORTHOGONAL",
+              "elk.contentAlignment": "H_CENTER V_CENTER",
+              "elk.spacing.edgeEdge": "12",
+              "elk.layered.spacing.edgeEdgeBetweenLayers": "12",
+              "elk.layered.spacing.edgeNodeBetweenLayers": "12",
+              "elk.layered.nodePlacement.bk.fixedAlignment": "BALANCED",
+              "elk.layered.spacing.nodeNodeBetweenLayers": "48",
+              "elk.spacing.nodeNode": "28"
+            },
+            "labels": [
+              {
+                "text": "Evidence analysis"
+              }
+            ],
+            "children": [
+              {
+                "id": "Extract",
+                "width": 115.30900000000001,
+                "height": 36.900000000000006,
+                "labels": [
+                  {
+                    "text": "Extract facts"
+                  }
+                ]
+              },
+              {
+                "id": "Review",
+                "width": 183.769,
+                "height": 183.769,
+                "labels": [
+                  {
+                    "text": "Evidence sufficient?"
+                  }
+                ]
+              }
+            ],
+            "edges": [
+              {
+                "id": "e0",
+                "sources": [
+                  "Extract"
+                ],
+                "targets": [
+                  "Review"
+                ]
+              }
+            ]
+          }
+        ],
+        "edges": []
+      }
+    ],
+    "edges": [
+      {
+        "id": "e1",
+        "sources": [
+          "Intake"
+        ],
+        "targets": [
+          "Extract"
+        ]
+      },
+      {
+        "id": "e2",
+        "sources": [
+          "Review"
+        ],
+        "targets": [
+          "Draft"
+        ],
+        "labels": [
+          {
+            "text": "Yes",
+            "width": 28.658,
+            "height": 20.3,
+            "layoutOptions": {
+              "elk.edgeLabels.inline": "true",
+              "elk.edgeLabels.placement": "CENTER"
+            }
+          }
+        ]
+      },
+      {
+        "id": "e3",
+        "sources": [
+          "Review"
+        ],
+        "targets": [
+          "Intake"
+        ],
+        "labels": [
+          {
+            "text": "More evidence",
+            "width": 80.93,
+            "height": 20.3,
+            "layoutOptions": {
+              "elk.edgeLabels.inline": "true",
+              "elk.edgeLabels.placement": "CENTER"
+            }
+          }
+        ]
+      },
+      {
+        "id": "e4",
+        "sources": [
+          "Start"
+        ],
+        "targets": [
+          "Intake"
+        ]
+      },
+      {
+        "id": "e5",
+        "sources": [
+          "Draft"
+        ],
+        "targets": [
+          "Done"
+        ]
+      }
+    ]
+  },
+  "raw": {
+    "id": "root",
+    "layoutOptions": {
+      "elk.algorithm": "layered",
+      "elk.direction": "RIGHT",
+      "elk.spacing.nodeNode": "28",
+      "elk.layered.spacing.nodeNodeBetweenLayers": "48",
+      "elk.spacing.edgeEdge": "12",
+      "elk.layered.spacing.edgeEdgeBetweenLayers": "12",
+      "elk.layered.spacing.edgeNodeBetweenLayers": "12",
+      "elk.padding": "[top=40,left=40,bottom=40,right=40]",
+      "elk.edgeRouting": "ORTHOGONAL",
+      "elk.layered.nodePlacement.bk.fixedAlignment": "BALANCED",
+      "elk.contentAlignment": "H_CENTER V_CENTER",
+      "elk.layered.thoroughness": "3",
+      "elk.layered.highDegreeNodes.treatment": "true",
+      "elk.layered.highDegreeNodes.threshold": "8",
+      "elk.layered.compaction.postCompaction.strategy": "LEFT_RIGHT_CONSTRAINT_LOCKING",
+      "elk.layered.considerModelOrder.strategy": "NODES_AND_EDGES",
+      "elk.layered.wrapping.strategy": "OFF",
+      "elk.hierarchyHandling": "INCLUDE_CHILDREN"
+    },
+    "children": [
+      {
+        "id": "Start",
+        "width": 139.021,
+        "height": 36.900000000000006,
+        "labels": [
+          {
+            "text": "Receive request",
+            "x": 0,
+            "y": 0,
+            "width": 0,
+            "height": 0
+          }
+        ],
+        "$H": 1764,
+        "x": 40,
+        "y": 332.319
+      },
+      {
+        "id": "Done",
+        "width": 86.41,
+        "height": 36.900000000000006,
+        "labels": [
+          {
+            "text": "Publish",
+            "x": 0,
+            "y": 0,
+            "width": 0,
+            "height": 0
+          }
+        ],
+        "$H": 1767,
+        "x": 1058.942,
+        "y": 170.80633333333333
+      },
+      {
+        "id": "Pipeline",
+        "layoutOptions": {
+          "elk.algorithm": "layered",
+          "elk.padding": "[top=44,left=16,bottom=16,right=16]",
+          "elk.edgeRouting": "ORTHOGONAL",
+          "elk.contentAlignment": "H_CENTER V_CENTER",
+          "elk.spacing.edgeEdge": "12",
+          "elk.layered.spacing.edgeEdgeBetweenLayers": "12",
+          "elk.layered.spacing.edgeNodeBetweenLayers": "12",
+          "elk.layered.nodePlacement.bk.fixedAlignment": "BALANCED",
+          "elk.layered.spacing.nodeNodeBetweenLayers": "48",
+          "elk.spacing.nodeNode": "28"
+        },
+        "labels": [
+          {
+            "text": "Research pipeline",
+            "x": 0,
+            "y": 0,
+            "width": 0,
+            "height": 0
+          }
+        ],
+        "children": [
+          {
+            "id": "Intake",
+            "width": 147.913,
+            "height": 36.900000000000006,
+            "labels": [
+              {
+                "text": "Prepare materials",
+                "x": 0,
+                "y": 0,
+                "width": 0,
+                "height": 0
+              }
+            ],
+            "$H": 1773,
+            "x": 608.008,
+            "y": 277.09400000000005
+          },
+          {
+            "id": "Draft",
+            "width": 111.604,
+            "height": 36.900000000000006,
+            "labels": [
+              {
+                "text": "Write report",
+                "x": 0,
+                "y": 0,
+                "width": 0,
+                "height": 0
+              }
+            ],
+            "$H": 1776,
+            "x": 626.1625,
+            "y": 130.80633333333333
+          },
+          {
+            "id": "Analysis",
+            "layoutOptions": {
+              "elk.algorithm": "layered",
+              "elk.padding": "[top=44,left=16,bottom=16,right=16]",
+              "elk.edgeRouting": "ORTHOGONAL",
+              "elk.contentAlignment": "H_CENTER V_CENTER",
+              "elk.spacing.edgeEdge": "12",
+              "elk.layered.spacing.edgeEdgeBetweenLayers": "12",
+              "elk.layered.spacing.edgeNodeBetweenLayers": "12",
+              "elk.layered.nodePlacement.bk.fixedAlignment": "BALANCED",
+              "elk.layered.spacing.nodeNodeBetweenLayers": "48",
+              "elk.spacing.nodeNode": "28"
+            },
+            "labels": [
+              {
+                "text": "Evidence analysis",
+                "x": 0,
+                "y": 0,
+                "width": 0,
+                "height": 0
+              }
+            ],
+            "children": [
+              {
+                "id": "Extract",
+                "width": 115.30900000000001,
+                "height": 36.900000000000006,
+                "labels": [
+                  {
+                    "text": "Extract facts",
+                    "x": 0,
+                    "y": 0,
+                    "width": 0,
+                    "height": 0
+                  }
+                ],
+                "$H": 1782,
+                "x": 16,
+                "y": 117.4345
+              },
+              {
+                "id": "Review",
+                "width": 183.769,
+                "height": 183.769,
+                "labels": [
+                  {
+                    "text": "Evidence sufficient?",
+                    "x": 0,
+                    "y": 0,
+                    "width": 0,
+                    "height": 0
+                  }
+                ],
+                "$H": 1785,
+                "x": 179.30900000000003,
+                "y": 44
+              }
+            ],
+            "edges": [
+              {
+                "id": "e0",
+                "sources": [
+                  "Extract"
+                ],
+                "targets": [
+                  "Review"
+                ],
+                "sections": [
+                  {
+                    "id": "e0_s0",
+                    "startPoint": {
+                      "x": 131.30900000000003,
+                      "y": 135.8845
+                    },
+                    "endPoint": {
+                      "x": 179.30900000000003,
+                      "y": 135.8845
+                    },
+                    "incomingShape": "Extract",
+                    "outgoingShape": "Review"
+                  }
+                ],
+                "container": "Analysis"
+              }
+            ],
+            "$H": 1779,
+            "x": 46,
+            "y": 44,
+            "width": 379.07800000000003,
+            "height": 243.769
+          }
+        ],
+        "edges": [],
+        "$H": 1770,
+        "x": 233.021,
+        "y": 40,
+        "width": 771.921,
+        "height": 329.994
+      }
+    ],
+    "edges": [
+      {
+        "id": "e1",
+        "sources": [
+          "Intake"
+        ],
+        "targets": [
+          "Extract"
+        ],
+        "sections": [
+          {
+            "id": "e1_s0",
+            "startPoint": {
+              "x": 608.008,
+              "y": 295.544
+            },
+            "endPoint": {
+              "x": 62,
+              "y": 179.8845
+            },
+            "bendPoints": [
+              {
+                "x": 572.008,
+                "y": 295.544
+              },
+              {
+                "x": 572.008,
+                "y": 297.769
+              },
+              {
+                "x": 28,
+                "y": 297.769
+              },
+              {
+                "x": 28,
+                "y": 179.8845
+              }
+            ],
+            "incomingShape": "Intake",
+            "outgoingShape": "Extract"
+          }
+        ],
+        "container": "Pipeline"
+      },
+      {
+        "id": "e2",
+        "sources": [
+          "Review"
+        ],
+        "targets": [
+          "Draft"
+        ],
+        "labels": [
+          {
+            "text": "Yes",
+            "width": 28.658,
+            "height": 20.3,
+            "layoutOptions": {
+              "elk.edgeLabels.inline": "true",
+              "elk.edgeLabels.placement": "CENTER"
+            },
+            "x": 505.21400000000006,
+            "y": 138.25633333333332
+          }
+        ],
+        "sections": [
+          {
+            "id": "e2_s0",
+            "startPoint": {
+              "x": 409.07800000000003,
+              "y": 149.25633333333334
+            },
+            "endPoint": {
+              "x": 626.1625,
+              "y": 149.25633333333332
+            },
+            "incomingShape": "Review",
+            "outgoingShape": "Draft"
+          }
+        ],
+        "container": "Pipeline"
+      },
+      {
+        "id": "e3",
+        "sources": [
+          "Review"
+        ],
+        "targets": [
+          "Intake"
+        ],
+        "labels": [
+          {
+            "text": "More evidence",
+            "width": 80.93,
+            "height": 20.3,
+            "layoutOptions": {
+              "elk.edgeLabels.inline": "true",
+              "elk.edgeLabels.placement": "CENTER"
+            },
+            "x": 479.0780000000001,
+            "y": 199.5126666666667
+          }
+        ],
+        "sections": [
+          {
+            "id": "e3_s0",
+            "startPoint": {
+              "x": 409.07800000000003,
+              "y": 210.5126666666667
+            },
+            "endPoint": {
+              "x": 608.008,
+              "y": 286.319
+            },
+            "bendPoints": [
+              {
+                "x": 572.008,
+                "y": 210.5126666666667
+              },
+              {
+                "x": 572.008,
+                "y": 286.319
+              }
+            ],
+            "incomingShape": "Review",
+            "outgoingShape": "Intake"
+          }
+        ],
+        "container": "Pipeline"
+      },
+      {
+        "id": "e4",
+        "sources": [
+          "Start"
+        ],
+        "targets": [
+          "Intake"
+        ],
+        "sections": [
+          {
+            "id": "e4_s0",
+            "startPoint": {
+              "x": 179.021,
+              "y": 350.769
+            },
+            "endPoint": {
+              "x": 841.029,
+              "y": 344.769
+            },
+            "bendPoints": [
+              {
+                "x": 805.029,
+                "y": 350.769
+              },
+              {
+                "x": 805.029,
+                "y": 344.769
+              }
+            ],
+            "incomingShape": "Start",
+            "outgoingShape": "Intake"
+          }
+        ],
+        "container": "root"
+      },
+      {
+        "id": "e5",
+        "sources": [
+          "Draft"
+        ],
+        "targets": [
+          "Done"
+        ],
+        "sections": [
+          {
+            "id": "e5_s0",
+            "startPoint": {
+              "x": 970.7875,
+              "y": 189.25633333333332
+            },
+            "endPoint": {
+              "x": 1058.942,
+              "y": 189.25633333333332
+            },
+            "incomingShape": "Draft",
+            "outgoingShape": "Done"
+          }
+        ],
+        "container": "root"
+      }
+    ],
+    "$H": 1762,
+    "x": 0,
+    "y": 0,
+    "width": 1185.352,
+    "height": 409.994
+  },
+  "positioned": {
+    "width": 1185.352,
+    "height": 409.994,
+    "nodes": [
+      {
+        "id": "Start",
+        "label": "Receive request",
+        "shape": "rectangle",
+        "x": 40,
+        "y": 332.319,
+        "width": 139.021,
+        "height": 36.900000000000006
+      },
+      {
+        "id": "Done",
+        "label": "Publish",
+        "shape": "stadium",
+        "x": 1058.942,
+        "y": 170.80633333333333,
+        "width": 86.41,
+        "height": 36.900000000000006
+      },
+      {
+        "id": "Intake",
+        "label": "Prepare materials",
+        "shape": "rectangle",
+        "x": 850.10625,
+        "y": 317.09400000000005,
+        "width": 147.913,
+        "height": 36.900000000000006
+      },
+      {
+        "id": "Draft",
+        "label": "Write report",
+        "shape": "rectangle",
+        "x": 850.10625,
+        "y": 170.80633333333333,
+        "width": 111.604,
+        "height": 36.900000000000006
+      },
+      {
+        "id": "Extract",
+        "label": "Extract facts",
+        "shape": "rectangle",
+        "x": 295.02099999999996,
+        "y": 201.4345,
+        "width": 115.30900000000001,
+        "height": 36.900000000000006
+      },
+      {
+        "id": "Review",
+        "label": "Evidence sufficient?",
+        "shape": "diamond",
+        "x": 458.33,
+        "y": 128,
+        "width": 183.769,
+        "height": 183.769
+      }
+    ],
+    "edges": [
+      {
+        "source": "Intake",
+        "target": "Extract",
+        "style": "solid",
+        "hasArrowStart": false,
+        "hasArrowEnd": true,
+        "points": [
+          {
+            "x": 617.0852500000001,
+            "y": 295.544
+          },
+          {
+            "x": 572.008,
+            "y": 295.544
+          },
+          {
+            "x": 572.008,
+            "y": 297.769
+          },
+          {
+            "x": 28,
+            "y": 297.769
+          },
+          {
+            "x": 28,
+            "y": 179.8845
+          },
+          {
+            "x": 62,
+            "y": 179.8845
+          }
+        ]
+      },
+      {
+        "source": "Review",
+        "target": "Draft",
+        "label": "Yes",
+        "style": "solid",
+        "hasArrowStart": false,
+        "hasArrowEnd": true,
+        "points": [
+          {
+            "x": 571.4708333333334,
+            "y": 149.25633333333334
+          },
+          {
+            "x": 617.0852500000001,
+            "y": 149.25633333333332
+          }
+        ],
+        "labelPosition": {
+          "x": 519.543,
+          "y": 148.40633333333332
+        }
+      },
+      {
+        "source": "Review",
+        "target": "Intake",
+        "label": "More evidence",
+        "style": "solid",
+        "hasArrowStart": false,
+        "hasArrowEnd": true,
+        "points": [
+          {
+            "x": 632.7271666666667,
+            "y": 210.5126666666667
+          },
+          {
+            "x": 572.008,
+            "y": 210.5126666666667
+          },
+          {
+            "x": 572.008,
+            "y": 286.319
+          },
+          {
+            "x": 617.0852500000001,
+            "y": 286.319
+          }
+        ],
+        "labelPosition": {
+          "x": 519.5430000000001,
+          "y": 209.6626666666667
+        }
+      },
+      {
+        "source": "Start",
+        "target": "Intake",
+        "style": "solid",
+        "hasArrowStart": false,
+        "hasArrowEnd": true,
+        "points": [
+          {
+            "x": 179.021,
+            "y": 350.769
+          },
+          {
+            "x": 805.029,
+            "y": 350.769
+          },
+          {
+            "x": 805.029,
+            "y": 344.769
+          },
+          {
+            "x": 850.10625,
+            "y": 344.769
+          }
+        ]
+      },
+      {
+        "source": "Draft",
+        "target": "Done",
+        "style": "solid",
+        "hasArrowStart": false,
+        "hasArrowEnd": true,
+        "points": [
+          {
+            "x": 961.7102500000001,
+            "y": 189.25633333333332
+          },
+          {
+            "x": 1058.942,
+            "y": 189.25633333333332
+          }
+        ]
+      },
+      {
+        "source": "Extract",
+        "target": "Review",
+        "style": "solid",
+        "hasArrowStart": false,
+        "hasArrowEnd": true,
+        "points": [
+          {
+            "x": 410.33,
+            "y": 219.8845
+          },
+          {
+            "x": 458.33,
+            "y": 219.8845
+          }
+        ]
+      }
+    ],
+    "groups": [
+      {
+        "id": "Pipeline",
+        "label": "Research pipeline",
+        "x": 233.021,
+        "y": 40,
+        "width": 771.921,
+        "height": 329.994,
+        "children": [
+          {
+            "id": "Analysis",
+            "label": "Evidence analysis",
+            "x": 279.02099999999996,
+            "y": 84,
+            "width": 379.07800000000003,
+            "height": 243.769,
+            "children": []
+          }
+        ]
+      }
+    ]
+  }
+}

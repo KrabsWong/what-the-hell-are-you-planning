@@ -1,0 +1,13 @@
+erDiagram
+    CUSTOMER {
+        int id PK
+        string name
+        string email UK "Contact address"
+    }
+    ORDER {
+        int id PK
+        int customer_id FK
+        float total
+    }
+    CUSTOMER ||--o{ ORDER : places
+    ORDER }|..|| INVOICE : billed

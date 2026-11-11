@@ -1,0 +1,9 @@
+stateDiagram-v2
+    direction LR
+    state "Ready to collect" as Ready
+    state "Evidence review" as Review
+    [*] --> Ready
+    Ready --> Review : collected
+    Review --> Ready : evidence gap
+    Review --> Complete : accepted
+    Complete --> [*]

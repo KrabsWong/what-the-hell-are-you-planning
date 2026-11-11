@@ -1,0 +1,79 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 202.856 872.1999999999999" width="202.856" height="872.1999999999999" style="--bg:#FFFFFF;--fg:#27272A;background:var(--bg)">
+<style>
+  @import url('https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&amp;display=swap');
+  text { font-family: 'Inter', system-ui, sans-serif; }
+  svg {
+    /* Derived from --bg and --fg (overridable via --line, --accent, etc.) */
+    --_text:          var(--fg);
+    --_text-sec:      var(--muted, color-mix(in srgb, var(--fg) 60%, var(--bg)));
+    --_text-muted:    var(--muted, color-mix(in srgb, var(--fg) 40%, var(--bg)));
+    --_text-faint:    color-mix(in srgb, var(--fg) 25%, var(--bg));
+    --_line:          var(--line, color-mix(in srgb, var(--fg) 50%, var(--bg)));
+    --_arrow:         var(--accent, color-mix(in srgb, var(--fg) 85%, var(--bg)));
+    --_node-fill:     var(--surface, color-mix(in srgb, var(--fg) 3%, var(--bg)));
+    --_node-stroke:   var(--border, color-mix(in srgb, var(--fg) 20%, var(--bg)));
+    --_group-fill:    var(--bg);
+    --_group-hdr:     color-mix(in srgb, var(--fg) 5%, var(--bg));
+    --_inner-stroke:  color-mix(in srgb, var(--fg) 12%, var(--bg));
+    --_key-badge:     color-mix(in srgb, var(--fg) 10%, var(--bg));
+  }
+</style>
+<defs>
+  <marker id="arrowhead" markerWidth="8" markerHeight="5" refX="7" refY="2.5" orient="auto">
+    <polygon points="0 0, 8 2.5, 0 5" fill="var(--_arrow)" stroke="var(--_arrow)" stroke-width="0.75" stroke-linejoin="round" />
+  </marker>
+  <marker id="arrowhead-start" markerWidth="8" markerHeight="5" refX="1" refY="2.5" orient="auto-start-reverse">
+    <polygon points="8 0, 0 2.5, 8 5" fill="var(--_arrow)" stroke="var(--_arrow)" stroke-width="0.75" stroke-linejoin="round" />
+  </marker>
+</defs>
+<g class="subgraph" data-id="Processing" data-label="Processing">
+  <rect x="40" y="269.20000000000005" width="122.856" height="333.8" rx="0" ry="0" fill="var(--_group-fill)" stroke="var(--_node-stroke)" stroke-width="1" />
+  <rect x="40" y="269.20000000000005" width="122.856" height="28" rx="0" ry="0" fill="var(--_group-hdr)" stroke="var(--_node-stroke)" stroke-width="1" />
+  <text x="52" y="283.20000000000005" font-size="12" font-weight="600" fill="var(--_text-sec)" dy="4.199999999999999">Processing</text>
+</g>
+<polyline class="edge" data-from="_start" data-to="Ready" data-style="solid" data-arrow-start="false" data-arrow-end="true" points="101.428,68 101.428,116" fill="none" stroke="var(--_line)" stroke-width="1" marker-end="url(#arrowhead)" />
+<polyline class="edge" data-from="Ready" data-to="Processing" data-style="solid" data-arrow-start="false" data-arrow-end="true" data-label="start" points="101.428,152.9 101.428,269.20000000000005" fill="none" stroke="var(--_line)" stroke-width="1" marker-end="url(#arrowhead)" />
+<polyline class="edge" data-from="Processing" data-to="Done" data-style="solid" data-arrow-start="false" data-arrow-end="true" data-label="finish" points="101.428,603 101.428,719.3" fill="none" stroke="var(--_line)" stroke-width="1" marker-end="url(#arrowhead)" />
+<polyline class="edge" data-from="Done" data-to="_end2" data-style="solid" data-arrow-start="false" data-arrow-end="true" points="101.428,756.1999999999999 101.428,804.1999999999999" fill="none" stroke="var(--_line)" stroke-width="1" marker-end="url(#arrowhead)" />
+<polyline class="edge" data-from="_start2" data-to="Collect" data-style="solid" data-arrow-start="false" data-arrow-end="true" points="101.428,341.20000000000005 101.428,389.20000000000005" fill="none" stroke="var(--_line)" stroke-width="1" marker-end="url(#arrowhead)" />
+<polyline class="edge" data-from="Collect" data-to="Analyze" data-style="solid" data-arrow-start="false" data-arrow-end="true" points="101.428,426.1 101.428,474.1" fill="none" stroke="var(--_line)" stroke-width="1" marker-end="url(#arrowhead)" />
+<polyline class="edge" data-from="Analyze" data-to="_end" data-style="solid" data-arrow-start="false" data-arrow-end="true" points="101.428,511.00000000000006 101.428,559" fill="none" stroke="var(--_line)" stroke-width="1" marker-end="url(#arrowhead)" />
+<g class="edge-label" data-from="Ready" data-to="Processing" data-label="start">
+  <rect x="81.428" y="195.9" width="39.034000000000006" height="30.3" rx="2" ry="2" fill="var(--bg)" stroke="var(--_inner-stroke)" stroke-width="1" />
+  <text x="100.945" y="211.05" text-anchor="middle" font-size="11" font-weight="400" fill="var(--_text-sec)" dy="3.8499999999999996">start</text>
+</g>
+<g class="edge-label" data-from="Processing" data-to="Done" data-label="finish">
+  <rect x="79.928" y="646" width="42.598" height="30.3" rx="2" ry="2" fill="var(--bg)" stroke="var(--_inner-stroke)" stroke-width="1" />
+  <text x="101.227" y="661.15" text-anchor="middle" font-size="11" font-weight="400" fill="var(--_text-sec)" dy="3.8499999999999996">finish</text>
+</g>
+<g class="node" data-id="_start" data-label="" data-shape="state-start">
+  <circle cx="101.428" cy="54" r="12" fill="var(--_text)" stroke="none" />
+</g>
+<g class="node" data-id="Ready" data-label="Ready" data-shape="rounded">
+  <rect x="61.187" y="116" width="80.482" height="36.900000000000006" rx="6" ry="6" fill="var(--_node-fill)" stroke="var(--_node-stroke)" stroke-width="0.75" />
+  <text x="101.428" y="134.45" text-anchor="middle" font-size="13" font-weight="500" fill="var(--_text)" dy="4.55">Ready</text>
+</g>
+<g class="node" data-id="Done" data-label="Done" data-shape="rounded">
+  <rect x="64.892" y="719.3" width="73.072" height="36.900000000000006" rx="6" ry="6" fill="var(--_node-fill)" stroke="var(--_node-stroke)" stroke-width="0.75" />
+  <text x="101.428" y="737.75" text-anchor="middle" font-size="13" font-weight="500" fill="var(--_text)" dy="4.55">Done</text>
+</g>
+<g class="node" data-id="_end2" data-label="" data-shape="state-end">
+  <circle cx="101.428" cy="818.1999999999999" r="12" fill="none" stroke="var(--_text)" stroke-width="1.5" />
+  <circle cx="101.428" cy="818.1999999999999" r="8" fill="var(--_text)" stroke="none" />
+</g>
+<g class="node" data-id="_start2" data-label="" data-shape="state-start">
+  <circle cx="101.428" cy="327.20000000000005" r="12" fill="var(--_text)" stroke="none" />
+</g>
+<g class="node" data-id="Collect" data-label="Collect" data-shape="rounded">
+  <rect x="60.446" y="389.20000000000005" width="81.964" height="36.900000000000006" rx="6" ry="6" fill="var(--_node-fill)" stroke="var(--_node-stroke)" stroke-width="0.75" />
+  <text x="101.428" y="407.65000000000003" text-anchor="middle" font-size="13" font-weight="500" fill="var(--_text)" dy="4.55">Collect</text>
+</g>
+<g class="node" data-id="Analyze" data-label="Analyze" data-shape="rounded">
+  <rect x="56" y="474.1" width="90.856" height="36.900000000000006" rx="6" ry="6" fill="var(--_node-fill)" stroke="var(--_node-stroke)" stroke-width="0.75" />
+  <text x="101.428" y="492.55" text-anchor="middle" font-size="13" font-weight="500" fill="var(--_text)" dy="4.55">Analyze</text>
+</g>
+<g class="node" data-id="_end" data-label="" data-shape="state-end">
+  <circle cx="101.428" cy="573" r="12" fill="none" stroke="var(--_text)" stroke-width="1.5" />
+  <circle cx="101.428" cy="573" r="8" fill="var(--_text)" stroke="none" />
+</g>
+</svg>

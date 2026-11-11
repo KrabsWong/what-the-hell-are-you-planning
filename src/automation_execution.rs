@@ -274,8 +274,17 @@ impl Store {
         if self.request_plan_signature(request_id)? != input_signature {
             return Err("The planning inputs changed after this plan was generated.".into());
         }
+        if self.request_needs_understanding(request_id) {
+            return Err("Confirm the research understanding before applying a goal plan.".into());
+        }
         let plan = crate::request_planning::parse_request_plan(text)?;
-        let template = template_from_plan(&plan)?;
+        let mut template = template_from_plan(&plan)?;
+        if let Some(understanding) = &request.understanding {
+            for goal in &mut template.goals {
+                goal.brief = format!("{}\n\nConfirmed research understanding\n{}", goal.brief, understanding.summary);
+            }
+            template.validate(crate::automation::AutomationShape::Research)?;
+        }
         let binding = crate::automation::AutomationPlanBinding {
             request_id,
             revision,
@@ -1493,6 +1502,11 @@ mod tests {
             .create_automation_request(id, 1, "Objective A", "Expected A")
             .unwrap();
         let plan = r#"{"topic_name":"Plan","brief":{"objective":"A","deliverable":"A","scope":"A","assumptions":[],"facts_to_verify":[]},"goals":[{"title":"Goal","brief":"Brief","tasks":[{"title":"Collect","instructions":"Collect","kind":"collect","depends_on":[]},{"title":"Analyze","instructions":"Analyze","kind":"analyze","depends_on":[0]},{"title":"Report","instructions":"Report","kind":"advise","depends_on":[1]}]}]}"#;
+        let unconfirmed_signature = store.request_plan_signature(request).unwrap();
+        assert!(store.apply_automation_template(id, request, 1, &unconfirmed_signature, plan, 2_000)
+            .unwrap_err().contains("Confirm the research understanding"));
+        assert!(store.automation(id).unwrap().template.is_none());
+        crate::request_planning::confirm_test_request(&mut store, request);
         let signature = store.request_plan_signature(request).unwrap();
         store
             .apply_automation_template(id, request, 1, &signature, plan, 2_000)
@@ -1571,6 +1585,7 @@ mod tests {
         let request_a = store
             .create_automation_request(id, 1, "Objective A", "Expected A")
             .unwrap();
+        crate::request_planning::confirm_test_request(&mut store, request_a);
         let signature_a = store.request_plan_signature(request_a).unwrap();
         store
             .apply_automation_template(id, request_a, 1, &signature_a, plan_a, 2_000)
@@ -1628,6 +1643,7 @@ mod tests {
 
         // A matching reviewed Expected B plan is required and then enables normally.
         let plan_b = r#"{"topic_name":"Plan B","brief":{"objective":"Objective A","deliverable":"Expected B","scope":"Scope","assumptions":[],"facts_to_verify":[]},"goals":[{"title":"Goal B","brief":"Brief","tasks":[{"title":"Collect","instructions":"Collect","kind":"collect","depends_on":[]},{"title":"Analyze","instructions":"Analyze","kind":"analyze","depends_on":[0]},{"title":"Report","instructions":"Report","kind":"advise","depends_on":[1]}]}]}"#;
+        crate::request_planning::confirm_test_request(&mut store, request_b);
         let signature_b = store.request_plan_signature(request_b).unwrap();
         let revision_b = store
             .research_requests()
@@ -1997,6 +2013,7 @@ mod tests {
             .create_automation_request(id, 1, "Track the topic", "A cited note")
             .unwrap();
         let revision = store.research_requests().iter().find(|r| r.id == request).unwrap().revision;
+        crate::request_planning::confirm_test_request(&mut store, request);
         let signature = store.request_plan_signature(request).unwrap();
         let plan = r#"{"topic_name":"Semiconductor supply","brief":{"objective":"Track supply","deliverable":"Sourced note","scope":"Latest quarter","assumptions":[],"facts_to_verify":[]},"goals":[{"title":"Foundry capacity","brief":"Track announced capacity","tasks":[{"title":"Collect","instructions":"Collect filings","kind":"collect","depends_on":[]},{"title":"Analyze","instructions":"Compare capacity","kind":"analyze","depends_on":[0]},{"title":"Report","instructions":"Write the note","kind":"advise","depends_on":[1]}]},{"title":"Equipment orders","brief":"Track equipment bookings","tasks":[{"title":"Collect","instructions":"Collect orders","kind":"collect","depends_on":[]},{"title":"Analyze","instructions":"Compare orders","kind":"analyze","depends_on":[0]},{"title":"Report","instructions":"Write the note","kind":"advise","depends_on":[1]}]}]}"#;
         assert_eq!(

@@ -2113,6 +2113,11 @@ mod tests {
             planning_run_id: Some(planning_run_id),
             goal_ids: Vec::new(),
             brief: None,
+            understanding_required: false,
+            understanding: None,
+            understanding_confirmed: false,
+            understanding_feedback: String::new(),
+            understanding_source_signature: String::new(),
         });
         fresh.research_config_mut().models = store.research_config().models.clone();
         fresh.set_default_model(store.default_model().clone());

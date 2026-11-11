@@ -284,7 +284,7 @@ impl TaskApp {
             self.planning_opener_focus = None;
             self.navigation.planning_baseline.clear();
             self.error.clear();
-            self.toast = "Request saved · generate a plan when ready".into();
+            self.toast = "Request saved · review the research understanding when ready".into();
             if start {
                 self.retry_research_request(id, cx);
             }
@@ -333,6 +333,45 @@ impl TaskApp {
 
     pub(crate) fn retry_research_request(&mut self, id: u64, cx: &mut Context<Self>) {
         self.dispatch_research_request(id, true, cx);
+    }
+
+    pub(crate) fn save_research_understanding(
+        &mut self, id: u64, feedback: Option<String>, cx: &mut Context<Self>,
+    ) {
+        let mut staged = self.store.clone();
+        let result = match feedback {
+            Some(feedback) => staged.revise_request_understanding(id, feedback),
+            None => staged.confirm_request_understanding(id),
+        };
+        let result = result.and_then(|_| staged.request_plan_signature(id));
+        let signature = match result {
+            Ok(signature) => signature,
+            Err(error) => { self.error = error; cx.notify(); return; }
+        };
+        let live = self.live_persistence_active();
+        let completion = if live {
+            crate::live_save_app::LiveCompletion::ResearchUnderstanding { request: id, signature: signature.clone() }
+        } else { crate::live_save_app::LiveCompletion::None };
+        match self.save_staged_store(&staged, completion, cx) {
+            Ok(acceptance) if acceptance.is_durable() => {
+                if !live {
+                    self.adopt_saved_store(staged);
+                    self.continue_confirmed_understanding(id, &signature, cx);
+                }
+            }
+            Ok(_) => { self.toast = "Saving research understanding…".into(); }
+            Err(error) => { self.error = error; }
+        }
+        cx.notify();
+    }
+
+    pub(crate) fn continue_confirmed_understanding(
+        &mut self, id: u64, signature: &str, cx: &mut Context<Self>,
+    ) {
+        if self.store.request_plan_signature(id).ok().as_deref() != Some(signature) { return; }
+        self.understanding_editor = None;
+        self.dispatch_research_request(id, false, cx);
+
     }
 
     /// Start a request whose save was just acknowledged without moving the
@@ -395,6 +434,13 @@ impl TaskApp {
                     crate::app::LaunchIntent::RequestPlan { request_id: id },
                     cx,
                 );
+                if (self.store.runs().iter().any(|r| r.id == run_id)
+                    || self.dispatch_awaiting.as_ref().is_some_and(|pending| pending.run_id == run_id))
+                    && let Some(automation) = self.store.research_requests().iter()
+                        .find(|r| r.id == id).and_then(|r| r.automation_id) {
+                    self.automation_ui.planning_automation = Some(automation);
+                    self.automation_ui.planning_run = Some(run_id);
+                }
                 if navigate && let Some(dispatch) = dispatch {
                     self.open_run_progress(dispatch);
                 }
@@ -430,6 +476,7 @@ impl TaskApp {
             }
             return;
         }
+        let mut understood_request = None;
         let mut planned_automation = None;
         let plan_automation = self
             .store
@@ -444,11 +491,16 @@ impl TaskApp {
             {
                 self.store.run_mut(self.store.runs()[index].id).unwrap().status = "Stale".into();
                 Err("Research destination changed during planning. Review the saved request and generate again.".into())
-            } else if automation.is_some()
+            } else if (automation.is_some() || request.understanding_required)
                 && !self.store.planning_attempt_is_current(run.id)
             {
                 self.store.run_mut(self.store.runs()[index].id).unwrap().status = "Stale".into();
                 Err("A newer planning attempt or revision is current. This saved plan was kept as history and was not applied.".into())
+            } else if crate::request_planning::is_understanding_run(&run) {
+                self.store.apply_request_understanding(request_id, &run.output).map(|_| {
+                    understood_request = Some((request_id, automation));
+                    vec![]
+                })
             } else if let Some(automation) = automation {
                 // The reviewed plan becomes the frozen template for this automation.
                 // No topic or goal is created here; each period instantiates them.
@@ -485,6 +537,14 @@ impl TaskApp {
         };
         match result {
             Ok(ids) => {
+                if let Some((_, automation)) = understood_request {
+                    self.toast = "Research understanding ready · confirm it before generating goals".into();
+                    self.error.clear();
+                    if let (Some(automation), Some(cx)) = (automation, cx) {
+                        self.automation_understanding_ready(automation, run.id, cx);
+                    }
+                    return;
+                }
                 // A plan is a durable external result, not part of a UI undo entry.
                 if let Some(automation) = planned_automation {
                     if let Some(cx) = cx {

@@ -1,0 +1,241 @@
+{
+  "upstream": "beautiful-mermaid@1.1.3 / elkjs@0.11.1",
+  "graph": {
+    "classes": [
+      {
+        "id": "Animal",
+        "label": "Animal",
+        "attributes": [
+          {
+            "visibility": "+",
+            "name": "name",
+            "type": "String",
+            "isStatic": false,
+            "isAbstract": false,
+            "isMethod": false
+          }
+        ],
+        "methods": [
+          {
+            "visibility": "+",
+            "name": "eat",
+            "type": "void",
+            "isStatic": false,
+            "isAbstract": false,
+            "isMethod": true,
+            "params": "food"
+          }
+        ],
+        "annotation": "abstract"
+      },
+      {
+        "id": "Dog",
+        "label": "Dog",
+        "attributes": [
+          {
+            "visibility": "+",
+            "name": "age",
+            "type": "int",
+            "isStatic": false,
+            "isAbstract": false,
+            "isMethod": false
+          }
+        ],
+        "methods": [
+          {
+            "visibility": "+",
+            "name": "bark",
+            "type": "void",
+            "isStatic": false,
+            "isAbstract": false,
+            "isMethod": true
+          }
+        ]
+      },
+      {
+        "id": "Kennel",
+        "label": "Kennel",
+        "attributes": [],
+        "methods": []
+      }
+    ],
+    "relationships": [
+      {
+        "from": "Animal",
+        "to": "Dog",
+        "type": "inheritance",
+        "markerAt": "from"
+      },
+      {
+        "from": "Kennel",
+        "to": "Dog",
+        "type": "aggregation",
+        "markerAt": "from",
+        "label": "houses",
+        "fromCardinality": "1",
+        "toCardinality": "*"
+      },
+      {
+        "from": "Dog",
+        "to": "Animal",
+        "type": "dependency",
+        "markerAt": "to",
+        "label": "uses"
+      }
+    ],
+    "namespaces": []
+  },
+  "positioned": {
+    "width": 208.2,
+    "height": 600.6,
+    "classes": [
+      {
+        "id": "Animal",
+        "label": "Animal",
+        "annotation": "abstract",
+        "attributes": [
+          {
+            "visibility": "+",
+            "name": "name",
+            "type": "String",
+            "isStatic": false,
+            "isAbstract": false,
+            "isMethod": false
+          }
+        ],
+        "methods": [
+          {
+            "visibility": "+",
+            "name": "eat",
+            "type": "void",
+            "isStatic": false,
+            "isAbstract": false,
+            "isMethod": true,
+            "params": "food"
+          }
+        ],
+        "x": 40,
+        "y": 456.6,
+        "width": 128.2,
+        "height": 104,
+        "headerHeight": 48,
+        "attrHeight": 28,
+        "methodHeight": 28
+      },
+      {
+        "id": "Dog",
+        "label": "Dog",
+        "attributes": [
+          {
+            "visibility": "+",
+            "name": "age",
+            "type": "int",
+            "isStatic": false,
+            "isAbstract": false,
+            "isMethod": false
+          }
+        ],
+        "methods": [
+          {
+            "visibility": "+",
+            "name": "bark",
+            "type": "void",
+            "isStatic": false,
+            "isAbstract": false,
+            "isMethod": true
+          }
+        ],
+        "x": 42.73333333333333,
+        "y": 228.3,
+        "width": 120,
+        "height": 88,
+        "headerHeight": 32,
+        "attrHeight": 28,
+        "methodHeight": 28
+      },
+      {
+        "id": "Kennel",
+        "label": "Kennel",
+        "attributes": [],
+        "methods": [],
+        "x": 42.73333333333333,
+        "y": 40,
+        "width": 120,
+        "height": 48,
+        "headerHeight": 32,
+        "attrHeight": 8,
+        "methodHeight": 8
+      }
+    ],
+    "relationships": [
+      {
+        "from": "Animal",
+        "to": "Dog",
+        "type": "inheritance",
+        "markerAt": "from",
+        "points": [
+          {
+            "x": 125.46666666666665,
+            "y": 456.6
+          },
+          {
+            "x": 125.46666666666665,
+            "y": 406.6
+          },
+          {
+            "x": 122.73333333333332,
+            "y": 406.6
+          },
+          {
+            "x": 122.73333333333332,
+            "y": 316.3
+          }
+        ]
+      },
+      {
+        "from": "Kennel",
+        "to": "Dog",
+        "type": "aggregation",
+        "markerAt": "from",
+        "label": "houses",
+        "fromCardinality": "1",
+        "toCardinality": "*",
+        "points": [
+          {
+            "x": 102.73333333333332,
+            "y": 88
+          },
+          {
+            "x": 102.73333333333332,
+            "y": 228.3
+          }
+        ],
+        "labelPosition": {
+          "x": 78.08833333333332,
+          "y": 158.15
+        }
+      },
+      {
+        "from": "Dog",
+        "to": "Animal",
+        "type": "dependency",
+        "markerAt": "to",
+        "label": "uses",
+        "points": [
+          {
+            "x": 82.73333333333332,
+            "y": 316.3
+          },
+          {
+            "x": 82.73333333333332,
+            "y": 456.6
+          }
+        ],
+        "labelPosition": {
+          "x": 64.02833333333334,
+          "y": 386.45
+        }
+      }
+    ]
+  }
+}

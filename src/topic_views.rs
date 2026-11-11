@@ -520,7 +520,7 @@ impl TaskApp {
                     )
                     .when_some(report, |d, report| {
                         d.child(
-                            quiet_button(format!("topic-report-{goal_id}"), "Report").icon(assets::IconName::ChevronRight)
+                            button(format!("topic-report-{goal_id}"), "Report").icon(assets::IconName::ChevronRight)
                                 .h_8()
                                 .px_2()
                                 .on_click(
@@ -604,7 +604,7 @@ impl TaskApp {
             .when_some(self.store.topic_planning_status(id), |d, status| d.child(
                 col().px_6().py_3().gap_2()
                     .child(label(status, cx))
-                    .child(muted("Goals and plan details will appear here when planning finishes.", cx))
+                    .child(muted("Confirm the research understanding first. Goals and tasks appear after plan generation.", cx))
                     .child(col().id("topic-planning-requests").max_h(px(260.)).overflow_y_scroll().child(self.request_history(Some(project), cx)))
             ))
             .child(self.todo_batch_bar(Some(project), cx))

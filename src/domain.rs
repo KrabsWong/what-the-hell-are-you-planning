@@ -3724,6 +3724,11 @@ mod tests {
             planning_run_id: None,
             goal_ids: Vec::new(),
             brief: None,
+            understanding_required: false,
+            understanding: None,
+            understanding_confirmed: false,
+            understanding_feedback: String::new(),
+            understanding_source_signature: String::new(),
         });
         store.remove_project(2);
 

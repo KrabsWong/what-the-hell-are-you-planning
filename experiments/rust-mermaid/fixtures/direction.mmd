@@ -1,0 +1,10 @@
+flowchart LR
+    subgraph Collect [Collection]
+        direction TB
+        A[Find sources] --> B[Read sources]
+    end
+    subgraph Write [Writing]
+        direction TB
+        C[Draft report] --> D[Review report]
+    end
+    B --> C

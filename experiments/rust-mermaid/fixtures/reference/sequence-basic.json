@@ -1,0 +1,232 @@
+{
+  "upstream": "beautiful-mermaid@1.1.3 / elkjs@0.11.1",
+  "graph": {
+    "actors": [
+      {
+        "id": "U",
+        "label": "Researcher",
+        "type": "participant"
+      },
+      {
+        "id": "A",
+        "label": "Assistant",
+        "type": "participant"
+      },
+      {
+        "id": "S",
+        "label": "Sources",
+        "type": "participant"
+      }
+    ],
+    "messages": [
+      {
+        "from": "U",
+        "to": "A",
+        "label": "Research topic",
+        "lineStyle": "solid",
+        "arrowHead": "filled",
+        "activate": true
+      },
+      {
+        "from": "A",
+        "to": "S",
+        "label": "Search",
+        "lineStyle": "solid",
+        "arrowHead": "filled",
+        "activate": true
+      },
+      {
+        "from": "S",
+        "to": "A",
+        "label": "Evidence",
+        "lineStyle": "dashed",
+        "arrowHead": "filled",
+        "deactivate": true
+      },
+      {
+        "from": "A",
+        "to": "A",
+        "label": "Review findings",
+        "lineStyle": "solid",
+        "arrowHead": "filled"
+      },
+      {
+        "from": "A",
+        "to": "U",
+        "label": "Report",
+        "lineStyle": "dashed",
+        "arrowHead": "filled",
+        "deactivate": true
+      }
+    ],
+    "blocks": [
+      {
+        "type": "loop",
+        "label": "Collect evidence",
+        "startIndex": 1,
+        "endIndex": 2,
+        "dividers": []
+      }
+    ],
+    "notes": [
+      {
+        "actorIds": [
+          "S"
+        ],
+        "text": "Retain citations",
+        "position": "right",
+        "afterIndex": 2
+      }
+    ]
+  },
+  "positioned": {
+    "width": 542.53,
+    "height": 393,
+    "actors": [
+      {
+        "id": "U",
+        "label": "Researcher",
+        "type": "participant",
+        "x": 83.28399999999999,
+        "y": 30,
+        "width": 106.568,
+        "height": 40
+      },
+      {
+        "id": "A",
+        "label": "Assistant",
+        "type": "participant",
+        "x": 223.284,
+        "y": 30,
+        "width": 88.78399999999999,
+        "height": 40
+      },
+      {
+        "id": "S",
+        "label": "Sources",
+        "type": "participant",
+        "x": 363.284,
+        "y": 30,
+        "width": 85.82,
+        "height": 40
+      }
+    ],
+    "lifelines": [
+      {
+        "actorId": "U",
+        "x": 83.28399999999999,
+        "topY": 70,
+        "bottomY": 363
+      },
+      {
+        "actorId": "A",
+        "x": 223.284,
+        "topY": 70,
+        "bottomY": 363
+      },
+      {
+        "actorId": "S",
+        "x": 363.284,
+        "topY": 70,
+        "bottomY": 363
+      }
+    ],
+    "messages": [
+      {
+        "from": "U",
+        "to": "A",
+        "label": "Research topic",
+        "lineStyle": "solid",
+        "arrowHead": "filled",
+        "x1": 83.28399999999999,
+        "x2": 223.284,
+        "y": 90,
+        "isSelf": false
+      },
+      {
+        "from": "A",
+        "to": "S",
+        "label": "Search",
+        "lineStyle": "solid",
+        "arrowHead": "filled",
+        "x1": 223.284,
+        "x2": 363.284,
+        "y": 158,
+        "isSelf": false
+      },
+      {
+        "from": "S",
+        "to": "A",
+        "label": "Evidence",
+        "lineStyle": "dashed",
+        "arrowHead": "filled",
+        "x1": 363.284,
+        "x2": 223.284,
+        "y": 198,
+        "isSelf": false
+      },
+      {
+        "from": "A",
+        "to": "A",
+        "label": "Review findings",
+        "lineStyle": "solid",
+        "arrowHead": "filled",
+        "x1": 223.284,
+        "x2": 223.284,
+        "y": 253,
+        "isSelf": true
+      },
+      {
+        "from": "A",
+        "to": "U",
+        "label": "Report",
+        "lineStyle": "dashed",
+        "arrowHead": "filled",
+        "x1": 223.284,
+        "x2": 83.28399999999999,
+        "y": 323,
+        "isSelf": false
+      }
+    ],
+    "activations": [
+      {
+        "actorId": "S",
+        "x": 358.284,
+        "topY": 158,
+        "bottomY": 198,
+        "width": 10
+      },
+      {
+        "actorId": "A",
+        "x": 218.284,
+        "topY": 90,
+        "bottomY": 323,
+        "width": 10
+      }
+    ],
+    "blocks": [
+      {
+        "type": "loop",
+        "label": "Collect evidence",
+        "x": 168.892,
+        "y": 118,
+        "width": 247.30199999999996,
+        "height": 100,
+        "dividers": []
+      }
+    ],
+    "notes": [
+      {
+        "text": "Retain citations",
+        "x": 416.19399999999996,
+        "y": 206,
+        "width": 96.33600000000003,
+        "height": 23,
+        "position": "right",
+        "actors": [
+          "S"
+        ]
+      }
+    ]
+  }
+}

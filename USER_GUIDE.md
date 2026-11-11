@@ -190,12 +190,16 @@ Document names include the type, task number and title. The export uses the comp
 
 **Automations** in the sidebar is a separate area with **All automations** (the list of definitions) and **Automation results** (results for every period), kept apart from research projects, Topics and Research results. The Automation results header has an automation filter that narrows the list to one automation's periods, and the heading shows how many of the total are shown.
 
+Each list item separates its fixed schedule and time zone from live information: the next run, latest outcome and activity time. Paused and draft states remain visible without implying a scheduled run.
+
 When you create one, the wizard has three steps: task and instruction, schedule with three trigger previews, then review and authorization. Both shapes use it:
 
 - **Quick task**: enter one checking instruction, an optional expected answer and a schedule; you do not need to choose a project, and the final step is authorization rather than plan review. Each period runs a single answer step intended for an information check and returns a direct value or conclusion, an as-of time, 2–5 original sources and at most one or two key caveats.
-- **Research automation**: describe what you need in one sentence and optionally state the expected result; the Agent generates reviewable goals once at creation, the final step reviews those goals, and each period after that reuses the same approved template and produces a full report.
+- **Research automation**: describe what you need in one sentence and optionally state the expected result; the Agent first summarizes its research understanding, you can refine and confirm it, and only then does it generate reviewable goals; the final step reviews those goals, and each period after that reuses the same approved template and produces a full report.
 
 Automations are intended for information collection, analysis and local reports. The app rejects obvious external-action requests as input validation, including planner-generated goal and step text, but the selected agent keeps its normal permissions; review results before acting.
+
+In an automation’s Settings, the schedule sits beside the title. Task content and upcoming runs come first; approved Agent and Model values appear as tags. Hover over a question-mark icon for explanations, or a shortened tag for its complete value. Run limits remain visible.
 
 Schedules can be a fixed interval, a set time each day, or chosen weekdays, using IANA time zones; the page previews the next three trigger times using the same calculation as the real schedule. Saving a draft or generating a plan never runs research. Turning it on means you approve the current template and schedule; later changes to the scope, steps, Agent/model, materials, schedule or limits create a new version that needs approving again. For Research, the request and optional expected result are captured together as one immutable planning revision: changing either field requires **Replan** and a new review, and periods already frozen keep their original revision. The plan is not regenerated every period. If you leave the creation page while a plan is being generated, the saved draft keeps a **Planning…** state in the Automations list and shows the in-flight plan on its detail page; return there to review and enable it when planning finishes.
 
@@ -271,10 +275,12 @@ Queue details show which resources are in use and which tasks are blocked, and d
 
 The results area draws Mermaid charts and LaTeX math formulas locally, without installing a browser, Node.js or TeX. Where it helps, research reports use these formats to explain structures, processes and calculations.
 
-- Charts: use a code block marked `mermaid`; common flowcharts, sequence diagrams and so on are supported.
+- Charts: use a code block marked `mermaid`; flowcharts, state diagrams, sequence diagrams, class diagrams, ER diagrams and XY charts use the native Rust renderer with light/dark themes. Other supported syntax uses a compatibility renderer.
 - Inline formulas: `$E=mc^2$`.
 - Standalone formulas: wrap the formula in `$$` on their own lines, or use a `math` / `latex` code block.
 - Ordinary code blocks are not treated as formulas; a dollar sign in a currency amount can be written as `\$`.
+
+Use the **Expand** icon button (tooltip: **Open diagram**) in the top-right corner of a chart to inspect it in a separate native window. Zoom in or out, drag the diagram to pan, and use **Fit** to show the whole diagram again. Normal report scrolling is unchanged.
 
 Example:
 
@@ -310,3 +316,7 @@ The app passes evidence, citations and results between stages, so the two Agents
 ### Verification limits
 
 The maintained checks use fake agents and isolated workspaces. They cover the app's planning, execution, materials, export, recovery and scheduling paths, but they do not prove real provider answer quality, a real GitHub/EdgeOne publication, actual OS sleep or daylight-saving transitions, native scrolling smoothness on long reports, sources, history, boards, settings, materials or dialogs under concurrent updates and saves, or the complete keyboard and narrow-window matrix. Scrolling smoothness is a release gate, not a claim in this guide; static screenshots and average latency do not prove it. Treat generated conclusions and publishing actions accordingly; see [full feature coverage and native review evidence](doc/review-2026-11-08/COVERAGE.md) for the exact boundaries.
+
+### Confirm the research direction
+
+For ordinary Research and Research automation, enter your request and choose **Understand research**. Review the short summary of the question, intended result and scope. Use **Refine understanding** to answer any questions or correct the direction. When it matches your intent, choose **Confirm and generate plan**. No goals or tasks are generated before confirmation, and confirming does not start research. You still review and approve the resulting plan. Saved requests retain their understanding after leaving the page or reopening the app. Changing an automation's objective or expected result requires reviewing a new understanding. Quick tasks do not have this step.

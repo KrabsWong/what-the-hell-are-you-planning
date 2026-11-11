@@ -5,7 +5,8 @@ use gpui_kit::{
         InlineElement, InlineRenderContext, MarkdownExtensions, MarkdownNode, MarkdownParseContext,
         MarkdownPlugin, markdown_ast::Node,
     },
-    component::Theme,
+    component::{Theme, button::ButtonVariants},
+    prelude::FluentBuilder,
     *,
 };
 use std::sync::{Arc, LazyLock};
@@ -25,6 +26,7 @@ struct Graphic {
     width: f32,
     height: f32,
     baseline: f32,
+    diagram_svg: Option<(Arc<str>, Arc<str>)>,
 }
 
 impl Graphic {
@@ -43,19 +45,7 @@ fn prepare(source: &str, diagram: bool, display: bool) -> Result<Graphic, String
         return Err("This expression is too large to preview.".into());
     }
     let (light, dark, baseline) = if diagram {
-        // Strict mode reports unsupported/invalid syntax instead of drawing an error diagram.
-        let parsed =
-            mermaid_rs_renderer::parse_mermaid_strict(source).map_err(|e| e.to_string())?;
-        let options = mermaid_rs_renderer::RenderOptions::default();
-        let layout =
-            mermaid_rs_renderer::compute_layout(&parsed.graph, &options.theme, &options.layout);
-        let light = mermaid_rs_renderer::render_svg(&layout, &options.theme, &options.layout);
-        let dark_theme = mermaid_rs_renderer::Theme {
-            font_family: options.theme.font_family.clone(),
-            font_size: options.theme.font_size,
-            ..mermaid_rs_renderer::Theme::dark()
-        };
-        let dark = mermaid_rs_renderer::render_svg(&layout, &dark_theme, &options.layout);
+        let (light, dark) = crate::diagram_renderer::render_pair(source)?;
         (light, dark, 0.)
     } else {
         let font = latex_rust::MathFont::stix_two_math().map_err(|e| e.to_string())?;
@@ -85,12 +75,14 @@ fn prepare(source: &str, diagram: bool, display: bool) -> Result<Graphic, String
     if size.width() > 8192. || size.height() > 8192. || size.width() * size.height() > 16_000_000. {
         return Err("This diagram or formula is too large to preview.".into());
     }
+    let diagram_svg = diagram.then(|| (Arc::from(light.as_str()), Arc::from(dark.as_str())));
     Ok(Graphic {
         light: Arc::new(Image::from_bytes(ImageFormat::Svg, light.into_bytes())),
         dark: Arc::new(Image::from_bytes(ImageFormat::Svg, dark.into_bytes())),
         width: size.width(),
         height: size.height(),
         baseline,
+        diagram_svg,
     })
 }
 
@@ -143,16 +135,52 @@ impl MarkdownPlugin for RichBlock {
                 .py_2()
                 .child(
                     div()
-                        .w(px(graphic.width))
-                        .max_w_full()
-                        .rounded_md()
-                        .overflow_hidden()
+                        .w_full()
+                        .when(graphic.diagram_svg.is_some(), |d| {
+                            d.border_1()
+                                .border_color(rgb(crate::appearance::palette(cx).border_strong))
+                                .rounded(px(crate::appearance::GROUP_RADIUS))
+                                .overflow_hidden()
+                        })
+                        .children(graphic.diagram_svg.as_ref().map(|(light, dark)| {
+                            let (light, dark) = (light.clone(), dark.clone());
+                            let (width, height) = (graphic.width, graphic.height);
+                            div()
+                                .flex()
+                                .justify_end()
+                                .items_center()
+                                .px_2()
+                                .pt_1()
+                                .child(
+                                    crate::controls::tool_icon(
+                                        format!("open-diagram-{}", node.as_text()),
+                                        assets::IconName::Expand,
+                                        "Open diagram",
+                                    )
+                                    .secondary()
+                                    .outline()
+                                    .flex_shrink_0()
+                                    .tooltip("Open diagram: zoom and pan")
+                                    .on_click(move |_, _, cx| {
+                                        crate::diagram_viewer::open(
+                                            light.clone(), dark.clone(), width, height, cx,
+                                        )
+                                    }),
+                                )
+                        }))
                         .child(
-                            img(graphic.image(cx))
+                            div()
                                 .w(px(graphic.width))
                                 .max_w_full()
-                                .aspect_ratio(graphic.width / graphic.height)
-                                .object_fit(ObjectFit::Contain),
+                                .rounded_md()
+                                .overflow_hidden()
+                                .child(
+                                    img(graphic.image(cx))
+                                        .w(px(graphic.width))
+                                        .max_w_full()
+                                        .aspect_ratio(graphic.width / graphic.height)
+                                        .object_fit(ObjectFit::Contain),
+                                ),
                         ),
                 )
                 .into_any_element(),
@@ -227,13 +255,20 @@ mod tests {
     #[test]
     fn renders_diagrams_and_latex_offline() {
         for source in [
-            "flowchart LR\n A[输入] --> B[处理] --> C[输出]",
-            "sequenceDiagram\n participant A\n participant B\n A->>B: Hello",
+            include_str!("../experiments/rust-mermaid/fixtures/gates.mmd"),
+            include_str!("../experiments/rust-mermaid/fixtures/state.mmd"),
+            include_str!("../experiments/rust-mermaid/fixtures/sequence.mmd"),
+            include_str!("../experiments/rust-mermaid/fixtures/class.mmd"),
+            include_str!("../experiments/rust-mermaid/fixtures/er.mmd"),
+            include_str!("../experiments/rust-mermaid/fixtures/xychart.mmd"),
         ] {
             let g = prepare(source, true, true).unwrap();
             assert!(g.width > 10. && g.height > 10.);
             // Exercise the same SVG decoder used by the application, including labels.
             g.light
+                .to_image_data(SvgRenderer::new(Arc::new(())))
+                .unwrap();
+            g.dark
                 .to_image_data(SvgRenderer::new(Arc::new(())))
                 .unwrap();
         }
@@ -265,14 +300,14 @@ mod tests {
 #[cfg(feature = "qa")]
 pub fn verify_frames() {
     use gpui_kit::test::TestWindowExt;
-    const SAMPLE: &str = r#"# 图表与公式 · Rendering acceptance
+    const SAMPLE: &str = r#"# Charts and formulas · Rendering acceptance
 
-Architecture / 架构图：
+Architecture:
 
 ```mermaid
 flowchart LR
-    A[用户请求] --> B[研究引擎]
-    B --> C[证据与结论]
+    A[User request] --> B[Research engine]
+    B --> C[Evidence and conclusions]
 ```
 
 Inline math: $E=mc^2$ and $\frac{1}{2}$ beside normal text.
@@ -281,9 +316,9 @@ $$
 \sigma^2 = \frac{1}{n}\sum_{i=1}^{n}(x_i-\bar{x})^2
 $$
 
-| 类型 | 内容 |
+| Type | Content |
 | --- | --- |
-| 公式 | $x^2+y^2=z^2$ |
+| Formula | $x^2+y^2=z^2$ |
 
 Literal code: `$x^2$`. Currency: \$5 and \$10.
 
@@ -291,7 +326,7 @@ Literal code: `$x^2$`. Currency: \$5 and \$10.
 \notARealCommand{x}
 ```
 "#;
-    struct Preview;
+    struct Preview(String);
     impl Render for Preview {
         fn render(&mut self, _: &mut Window, cx: &mut Context<Self>) -> impl IntoElement {
             div()
@@ -300,45 +335,87 @@ Literal code: `$x^2$`. Currency: \$5 and \$10.
                 .bg(rgb(crate::appearance::palette(cx).panel))
                 .text_color(rgb(crate::appearance::palette(cx).text))
                 .child(
-                    base::text::TextView::markdown("preview", SAMPLE)
+                    base::text::TextView::markdown("preview", self.0.clone())
                         .markdown_extensions(extensions())
                         .w_full(),
                 )
         }
     }
     std::fs::create_dir_all(".local/rich-markdown-qa").unwrap();
-    for (name, appearance, width) in [
-        ("light", crate::appearance::Appearance::Light, 900.),
-        ("dark", crate::appearance::Appearance::Dark, 900.),
-        ("narrow", crate::appearance::Appearance::Light, 420.),
+    let mut cases = vec![("markdown", SAMPLE.to_owned())];
+    for (name, source) in [
+        (
+            "flowchart",
+            include_str!("../experiments/rust-mermaid/fixtures/gates.mmd"),
+        ),
+        (
+            "state",
+            include_str!("../experiments/rust-mermaid/fixtures/state.mmd"),
+        ),
+        (
+            "sequence",
+            include_str!("../experiments/rust-mermaid/fixtures/sequence.mmd"),
+        ),
+        (
+            "class",
+            include_str!("../experiments/rust-mermaid/fixtures/class.mmd"),
+        ),
+        (
+            "er",
+            include_str!("../experiments/rust-mermaid/fixtures/er.mmd"),
+        ),
+        (
+            "xychart",
+            include_str!("../experiments/rust-mermaid/fixtures/xychart.mmd"),
+        ),
     ] {
-        let mut cx = HeadlessAppContext::with_platform(
-            platform::current_platform(true).text_system(),
-            Arc::new(crate::ui_assets::AppAssets),
-            platform::current_headless_renderer,
-        );
-        cx.update(|cx| {
-            init(cx);
-            crate::appearance::apply(appearance, None, cx);
-        });
-        let handle: AnyWindowHandle = cx
-            .open_window(size(px(width), px(1000.)), |w, cx| {
-                let view = cx.new(|_| Preview);
-                cx.new(|cx| base::Root::new(view, w, cx))
-            })
-            .unwrap()
-            .into();
-        for _ in 0..60 {
-            cx.update_window(handle, |_, w, cx| w.render_frame(cx))
+        cases.push((
+            name,
+            format!("# {name} rendering\n\n```mermaid\n{source}\n```"),
+        ));
+    }
+    for (case_name, source) in cases {
+        for (name, appearance, width) in [
+            ("light", crate::appearance::Appearance::Light, 900.),
+            ("dark", crate::appearance::Appearance::Dark, 900.),
+            ("dark-glass", crate::appearance::Appearance::Dark, 900.),
+            ("narrow", crate::appearance::Appearance::Light, 420.),
+        ] {
+            let mut cx = HeadlessAppContext::with_platform(
+                platform::current_platform(true).text_system(),
+                Arc::new(crate::ui_assets::AppAssets),
+                platform::current_headless_renderer,
+            );
+            cx.update(|cx| {
+                init(cx);
+                #[cfg(target_os = "macos")]
+                cx.set_global(crate::native_glass::GlassPalette(name == "dark-glass"));
+                crate::appearance::apply(appearance, None, cx);
+            });
+            let handle: AnyWindowHandle = cx
+                .open_window(size(px(width), px(1000.)), |w, cx| {
+                    let view = cx.new(|_| Preview(source.clone()));
+                    cx.new(|cx| base::Root::new(view, w, cx))
+                })
+                .unwrap()
+                .into();
+            for _ in 0..60 {
+                cx.update_window(handle, |_, w, cx| w.render_frame(cx))
+                    .unwrap();
+                cx.run_until_parked();
+                std::thread::sleep(std::time::Duration::from_millis(30));
+            }
+            let filename = if case_name == "markdown" {
+                name.to_owned()
+            } else {
+                format!("{case_name}-{name}")
+            };
+            cx.capture_screenshot(handle)
+                .unwrap()
+                .save(format!(".local/rich-markdown-qa/{filename}.png"))
                 .unwrap();
-            cx.run_until_parked();
-            std::thread::sleep(std::time::Duration::from_millis(30));
+            cx.update(|cx| cx.quit());
         }
-        cx.capture_screenshot(handle)
-            .unwrap()
-            .save(format!(".local/rich-markdown-qa/{name}.png"))
-            .unwrap();
-        cx.update(|cx| cx.quit());
     }
     println!("Rich Markdown frames saved in .local/rich-markdown-qa");
 }

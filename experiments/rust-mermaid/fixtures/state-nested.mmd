@@ -1,0 +1,10 @@
+stateDiagram-v2
+    [*] --> Ready
+    state Processing {
+        [*] --> Collect
+        Collect --> Analyze
+        Analyze --> [*]
+    }
+    Ready --> Processing : start
+    Processing --> Done : finish
+    Done --> [*]

@@ -267,6 +267,32 @@ pub(crate) fn transform_paths(value: &mut Value, root: &Path, encode: bool) -> R
         }
         Ok(())
     }
+    fn signature_path(original: &str, root: &Path, encode: bool, project: bool, depth: usize) -> Result<String, String> {
+        let Ok(mut signature) = serde_json::from_str::<Value>(original) else { return Ok(original.into()); };
+        let Some(fields) = signature.as_array() else { return Ok(original.into()); };
+        // Request signatures can wrap their original tuple with understanding
+        // state and, during regeneration, with the existing plan snapshot.
+        // Only the first field is an operational signature; summary, feedback,
+        // source bindings and historical evidence remain byte-for-byte intact.
+        if project && depth < 2
+            && (fields.len() == 2 || (fields.len() == 6 && fields[1] == "understanding-v1"))
+            && let Some(inner) = fields[0].as_str()
+        {
+            let rewritten = signature_path(inner, root, encode, project, depth + 1)?;
+            return if rewritten == inner { Ok(original.into()) }
+                else { replace_signature_path(original, 0, &Value::String(rewritten)) };
+        }
+        let index = match (project, fields.len()) {
+            (true, 7 | 8) => 5,
+            (true, 5) => 3,
+            (false, 5) => 2,
+            _ => return Ok(original.into()),
+        };
+        let before = signature[index].clone();
+        path(&mut signature[index], root, encode)?;
+        if signature[index] == before { Ok(original.into()) }
+        else { replace_signature_path(original, index, &signature[index]) }
+    }
     if let Some(projects) = value.get_mut("projects").and_then(Value::as_array_mut) {
         for project in projects { if let Some(directory) = project.get_mut("directory") { path(directory, root, encode)?; } }
     }
@@ -275,25 +301,12 @@ pub(crate) fn transform_paths(value: &mut Value, root: &Path, encode: bool) -> R
             for field in ["directory", "workspace_source"] {
                 if let Some(directory) = run.get_mut(field).filter(|v| !v.is_null()) { path(directory, root, encode)?; }
             }
-            // Known signature tuples: request plan (7), project plan (5), research (5).
-            // Convert the saved snapshot, never regenerate it from current inputs: stale results
-            // must remain stale after relocation.
-            let original_signature = run.get("input_signature").and_then(Value::as_str).unwrap_or_default().to_string();
-            if let Ok(mut signature) = serde_json::from_str::<Value>(&original_signature) {
-                let index = if run.get("project_plan").is_some_and(|v| !v.is_null()) {
-                    match signature.as_array().map(Vec::len) {
-                        Some(8) | Some(7) => Some(5),
-                        Some(5) => Some(3),
-                        _ => None,
-                    }
-                } else if run.get("research_kind").is_some_and(|v| !v.is_null()) && signature.as_array().is_some_and(|v| v.len() == 5) {
-                    Some(2)
-                } else { None };
-                if let Some(index) = index {
-                    let before = signature[index].clone();
-                    path(&mut signature[index], root, encode)?;
-                    if signature[index] != before { run["input_signature"] = Value::String(replace_signature_path(&original_signature, index, &signature[index])?); }
-                }
+            // Rewrite saved paths without recomputing signatures from current inputs.
+            let original = run.get("input_signature").and_then(Value::as_str).unwrap_or_default();
+            let project = run.get("project_plan").is_some_and(|value| !value.is_null());
+            if project || run.get("research_kind").is_some_and(|value| !value.is_null()) {
+                let rewritten = signature_path(original, root, encode, project, 0)?;
+                if rewritten != original { run["input_signature"] = Value::String(rewritten); }
             }
         }
     }
@@ -301,18 +314,8 @@ pub(crate) fn transform_paths(value: &mut Value, root: &Path, encode: bool) -> R
         for automation in automations {
             let Some(binding) = automation.get_mut("plan_binding") else { continue; };
             let Some(signature) = binding.get("input_signature").and_then(Value::as_str).map(str::to_string) else { continue; };
-            let Ok(mut parsed) = serde_json::from_str::<Value>(&signature) else { continue; };
-            let index = match parsed.as_array().map(Vec::len) {
-                Some(8) | Some(7) => Some(5),
-                _ => None,
-            };
-            if let Some(index) = index {
-                let before = parsed[index].clone();
-                path(&mut parsed[index], root, encode)?;
-                if parsed[index] != before {
-                    binding["input_signature"] = Value::String(replace_signature_path(&signature, index, &parsed[index])?);
-                }
-            }
+            let rewritten = signature_path(&signature, root, encode, true, 0)?;
+            if rewritten != signature { binding["input_signature"] = Value::String(rewritten); }
         }
     }
     Ok(())
@@ -434,10 +437,14 @@ mod tests {
                 "Expected A",
             )
             .unwrap();
+        crate::request_planning::confirm_test_request(&mut store, request);
         let mut run = store.prepare_request_plan(request).unwrap();
         let signature = store.request_plan_signature(request).unwrap();
         assert_eq!(run.input_signature, signature);
-        assert_eq!(signature.as_bytes().iter().filter(|byte| **byte == b',').count(), 7);
+        let parsed: Value = serde_json::from_str(&signature).unwrap();
+        assert_eq!(parsed[1], "understanding-v1");
+        let source: Value = serde_json::from_str(parsed[0].as_str().unwrap()).unwrap();
+        assert_eq!(source.as_array().unwrap().len(), 8);
         let plan = r#"{"topic_name":"Plan","brief":{"objective":"Objective A","deliverable":"Expected A","scope":"Scope","assumptions":[],"facts_to_verify":[]},"goals":[{"title":"Goal","brief":"Brief","tasks":[{"title":"Collect","instructions":"Collect","kind":"collect","depends_on":[]},{"title":"Analyze","instructions":"Analyze","kind":"analyze","depends_on":[0]},{"title":"Report","instructions":"Report","kind":"advise","depends_on":[1]}]}]}"#;
         run.status = "Succeeded".into();
         run.output = plan.into();
@@ -717,6 +724,37 @@ mod tests {
             let mut expected = signature;
             expected[[3, 5, 2][index]] = Value::String("/new/workspace/projects/p".into());
             assert_eq!(restored, expected);
+        }
+    }
+
+    #[test]
+    fn understanding_signature_relocation_preserves_free_text_and_stale_state() {
+        let inner = r#"[1, 2, "old request /old/workspace/projects/p", "date", "name", "/old/workspace/projects/p", null]"#;
+        let understanding = serde_json::json!([
+            inner, "understanding-v1", {"summary":"Read /old/workspace/projects/p", "questions":[]},
+            false, "Keep /old/workspace/projects/p", "old source binding"
+        ]).to_string();
+        for original in [understanding.clone(), serde_json::json!([understanding, [[1,"old plan snapshot"]]]).to_string()] {
+            let mut value = serde_json::json!({"runs":[{"project_plan":2,"input_signature":original}],
+                "automations":[{"plan_binding":{"input_signature":original}}]});
+            transform_paths(&mut value, Path::new("/old/workspace"), true).unwrap();
+            transform_paths(&mut value, Path::new("/new/workspace"), false).unwrap();
+            let moved = value["runs"][0]["input_signature"].as_str().unwrap();
+            assert_eq!(value["automations"][0]["plan_binding"]["input_signature"], moved);
+            let parsed: Value = serde_json::from_str(moved).unwrap();
+            let wrapped: Value = if parsed.as_array().unwrap().len() == 2 {
+                serde_json::from_str(parsed[0].as_str().unwrap()).unwrap()
+            } else { parsed };
+            assert_eq!(wrapped[2]["summary"], "Read /old/workspace/projects/p");
+            assert_eq!(wrapped[3], false);
+            assert_eq!(wrapped[4], "Keep /old/workspace/projects/p");
+            assert_eq!(wrapped[5], "old source binding");
+            let source: Value = serde_json::from_str(wrapped[0].as_str().unwrap()).unwrap();
+            assert_eq!(source[2], "old request /old/workspace/projects/p");
+            assert_eq!(source[5], "/new/workspace/projects/p");
+            transform_paths(&mut value, Path::new("/new/workspace"), true).unwrap();
+            transform_paths(&mut value, Path::new("/old/workspace"), false).unwrap();
+            assert_eq!(value["runs"][0]["input_signature"], original);
         }
     }
 

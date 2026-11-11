@@ -17,6 +17,8 @@ The current `gpui-kit` dependency is 0.9.1. Its assets package records Lucide pr
 | Completed / selected | `check` / `Check` |
 | Pending / running / blocked | `Circle` / `CircleDot` / `CircleAlert` |
 | Close | `x` / `Close` |
+| Contextual help | `circle-question-mark` / `CircleQuestionMark`, with a topic-specific accessible name and tooltip |
+| Inspect a diagram | `expand` / `Expand`, with an Open diagram accessible name |
 | External link | `external-link` / `ExternalLink` |
 | Drill down / advance | `ChevronRight` / `ArrowRight` |
 | Priority: none, low, medium, high, urgent | `Minus`, `ArrowDown`, `Equal`, `ArrowUp`, `CircleAlert` |
@@ -30,6 +32,8 @@ Replanned means a revised research plan, not a Git branch or an operation curren
 3. Use `controls::tool_icon(id, icon, accessible_name)` for icon-only actions. Use `.icon(icon)` on labeled buttons. Use `component::Icon::new(icon).size_4()` for passive indicators. Keep a fixed footprint and theme-derived color. Icon-only actions use the main-branch ghost appearance: the icon stays visible without a permanent button surface or border, while its full hit area, hover/focus feedback, tooltip and accessible name remain intact.
 4. Reuse `ExecutionStatus::icon()` for stage/status mappings rather than duplicating glyph mappings. Property menus accept `Option<IconName>`.
 5. Do not draw UI icons with Unicode characters, emoji, custom SVG paths, or geometric `Div` shapes. Ordinary text punctuation and shortcut symbols remain text.
+
+The diagram Expand control is an explicit visual exception: retain a small secondary button fill and outline at rest so its click target is clear inside the diagram frame.
 
 Do not replace the product logo, Dock artwork, native macOS window controls, user content, charts, or mathematical rendering with Lucide icons.
 

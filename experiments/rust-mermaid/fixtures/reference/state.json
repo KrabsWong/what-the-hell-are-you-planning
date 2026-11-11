@@ -1,0 +1,756 @@
+{
+  "upstream": "beautiful-mermaid@1.1.3 / elkjs@0.11.1",
+  "graph": {
+    "direction": "LR",
+    "nodes": [
+      {
+        "id": "Ready",
+        "label": "Ready to collect",
+        "shape": "rounded"
+      },
+      {
+        "id": "Review",
+        "label": "Evidence review",
+        "shape": "rounded"
+      },
+      {
+        "id": "_start",
+        "label": "",
+        "shape": "state-start"
+      },
+      {
+        "id": "Complete",
+        "label": "Complete",
+        "shape": "rounded"
+      },
+      {
+        "id": "_end",
+        "label": "",
+        "shape": "state-end"
+      }
+    ],
+    "edges": [
+      {
+        "source": "_start",
+        "target": "Ready",
+        "style": "solid",
+        "hasArrowStart": false,
+        "hasArrowEnd": true
+      },
+      {
+        "source": "Ready",
+        "target": "Review",
+        "label": "collected",
+        "style": "solid",
+        "hasArrowStart": false,
+        "hasArrowEnd": true
+      },
+      {
+        "source": "Review",
+        "target": "Ready",
+        "label": "evidence gap",
+        "style": "solid",
+        "hasArrowStart": false,
+        "hasArrowEnd": true
+      },
+      {
+        "source": "Review",
+        "target": "Complete",
+        "label": "accepted",
+        "style": "solid",
+        "hasArrowStart": false,
+        "hasArrowEnd": true
+      },
+      {
+        "source": "Complete",
+        "target": "_end",
+        "style": "solid",
+        "hasArrowStart": false,
+        "hasArrowEnd": true
+      }
+    ],
+    "subgraphs": [],
+    "classDefs": {},
+    "classAssignments": {},
+    "nodeStyles": {},
+    "linkStyles": {}
+  },
+  "input": {
+    "id": "root",
+    "layoutOptions": {
+      "elk.algorithm": "layered",
+      "elk.direction": "RIGHT",
+      "elk.spacing.nodeNode": "28",
+      "elk.layered.spacing.nodeNodeBetweenLayers": "48",
+      "elk.spacing.edgeEdge": "12",
+      "elk.layered.spacing.edgeEdgeBetweenLayers": "12",
+      "elk.layered.spacing.edgeNodeBetweenLayers": "12",
+      "elk.padding": "[top=40,left=40,bottom=40,right=40]",
+      "elk.edgeRouting": "ORTHOGONAL",
+      "elk.layered.nodePlacement.bk.fixedAlignment": "BALANCED",
+      "elk.contentAlignment": "H_CENTER V_CENTER",
+      "elk.layered.thoroughness": "3",
+      "elk.layered.highDegreeNodes.treatment": "true",
+      "elk.layered.highDegreeNodes.threshold": "8",
+      "elk.layered.compaction.postCompaction.strategy": "LEFT_RIGHT_CONSTRAINT_LOCKING",
+      "elk.layered.considerModelOrder.strategy": "NODES_AND_EDGES",
+      "elk.layered.wrapping.strategy": "OFF",
+      "elk.hierarchyHandling": "INCLUDE_CHILDREN"
+    },
+    "children": [
+      {
+        "id": "Ready",
+        "width": 133.834,
+        "height": 36.900000000000006,
+        "labels": [
+          {
+            "text": "Ready to collect"
+          }
+        ]
+      },
+      {
+        "id": "Review",
+        "width": 140.503,
+        "height": 36.900000000000006,
+        "labels": [
+          {
+            "text": "Evidence review"
+          }
+        ]
+      },
+      {
+        "id": "_start",
+        "width": 28,
+        "height": 28,
+        "labels": [
+          {
+            "text": ""
+          }
+        ]
+      },
+      {
+        "id": "Complete",
+        "width": 95.30199999999999,
+        "height": 36.900000000000006,
+        "labels": [
+          {
+            "text": "Complete"
+          }
+        ]
+      },
+      {
+        "id": "_end",
+        "width": 28,
+        "height": 28,
+        "labels": [
+          {
+            "text": ""
+          }
+        ]
+      }
+    ],
+    "edges": [
+      {
+        "id": "e0",
+        "sources": [
+          "_start"
+        ],
+        "targets": [
+          "Ready"
+        ]
+      },
+      {
+        "id": "e1",
+        "sources": [
+          "Ready"
+        ],
+        "targets": [
+          "Review"
+        ],
+        "labels": [
+          {
+            "text": "collected",
+            "width": 52.418000000000006,
+            "height": 20.3,
+            "layoutOptions": {
+              "elk.edgeLabels.inline": "true",
+              "elk.edgeLabels.placement": "CENTER"
+            }
+          }
+        ]
+      },
+      {
+        "id": "e2",
+        "sources": [
+          "Review"
+        ],
+        "targets": [
+          "Ready"
+        ],
+        "labels": [
+          {
+            "text": "evidence gap",
+            "width": 73.208,
+            "height": 20.3,
+            "layoutOptions": {
+              "elk.edgeLabels.inline": "true",
+              "elk.edgeLabels.placement": "CENTER"
+            }
+          }
+        ]
+      },
+      {
+        "id": "e3",
+        "sources": [
+          "Review"
+        ],
+        "targets": [
+          "Complete"
+        ],
+        "labels": [
+          {
+            "text": "accepted",
+            "width": 53.606,
+            "height": 20.3,
+            "layoutOptions": {
+              "elk.edgeLabels.inline": "true",
+              "elk.edgeLabels.placement": "CENTER"
+            }
+          }
+        ]
+      },
+      {
+        "id": "e4",
+        "sources": [
+          "Complete"
+        ],
+        "targets": [
+          "_end"
+        ]
+      }
+    ]
+  },
+  "raw": {
+    "id": "root",
+    "layoutOptions": {
+      "elk.algorithm": "layered",
+      "elk.direction": "RIGHT",
+      "elk.spacing.nodeNode": "28",
+      "elk.layered.spacing.nodeNodeBetweenLayers": "48",
+      "elk.spacing.edgeEdge": "12",
+      "elk.layered.spacing.edgeEdgeBetweenLayers": "12",
+      "elk.layered.spacing.edgeNodeBetweenLayers": "12",
+      "elk.padding": "[top=40,left=40,bottom=40,right=40]",
+      "elk.edgeRouting": "ORTHOGONAL",
+      "elk.layered.nodePlacement.bk.fixedAlignment": "BALANCED",
+      "elk.contentAlignment": "H_CENTER V_CENTER",
+      "elk.layered.thoroughness": "3",
+      "elk.layered.highDegreeNodes.treatment": "true",
+      "elk.layered.highDegreeNodes.threshold": "8",
+      "elk.layered.compaction.postCompaction.strategy": "LEFT_RIGHT_CONSTRAINT_LOCKING",
+      "elk.layered.considerModelOrder.strategy": "NODES_AND_EDGES",
+      "elk.layered.wrapping.strategy": "OFF",
+      "elk.hierarchyHandling": "INCLUDE_CHILDREN"
+    },
+    "children": [
+      {
+        "id": "Ready",
+        "width": 133.834,
+        "height": 36.900000000000006,
+        "labels": [
+          {
+            "text": "Ready to collect",
+            "x": 0,
+            "y": 0,
+            "width": 0,
+            "height": 0
+          }
+        ],
+        "$H": 2708,
+        "x": 349.71100000000007,
+        "y": 65.85
+      },
+      {
+        "id": "Review",
+        "width": 140.503,
+        "height": 36.900000000000006,
+        "labels": [
+          {
+            "text": "Evidence review",
+            "x": 0,
+            "y": 0,
+            "width": 0,
+            "height": 0
+          }
+        ],
+        "$H": 2711,
+        "x": 40,
+        "y": 64.51249999999999
+      },
+      {
+        "id": "_start",
+        "width": 28,
+        "height": 28,
+        "labels": [
+          {
+            "text": "",
+            "x": 0,
+            "y": 0,
+            "width": 0,
+            "height": 0
+          }
+        ],
+        "$H": 2714,
+        "x": 297.71100000000007,
+        "y": 122.6
+      },
+      {
+        "id": "Complete",
+        "width": 95.30199999999999,
+        "height": 36.900000000000006,
+        "labels": [
+          {
+            "text": "Complete",
+            "x": 0,
+            "y": 0,
+            "width": 0,
+            "height": 0
+          }
+        ],
+        "$H": 2717,
+        "x": 306.109,
+        "y": 171.14999999999998
+      },
+      {
+        "id": "_end",
+        "width": 28,
+        "height": 28,
+        "labels": [
+          {
+            "text": "",
+            "x": 0,
+            "y": 0,
+            "width": 0,
+            "height": 0
+          }
+        ],
+        "$H": 2720,
+        "x": 449.411,
+        "y": 175.59999999999997
+      }
+    ],
+    "edges": [
+      {
+        "id": "e0",
+        "sources": [
+          "_start"
+        ],
+        "targets": [
+          "Ready"
+        ],
+        "sections": [
+          {
+            "id": "e0_s0",
+            "startPoint": {
+              "x": 325.71100000000007,
+              "y": 136.6
+            },
+            "endPoint": {
+              "x": 349.71100000000007,
+              "y": 93.525
+            },
+            "bendPoints": [
+              {
+                "x": 337.71100000000007,
+                "y": 136.6
+              },
+              {
+                "x": 337.71100000000007,
+                "y": 93.525
+              }
+            ],
+            "incomingShape": "_start",
+            "outgoingShape": "Ready"
+          }
+        ],
+        "container": "root"
+      },
+      {
+        "id": "e1",
+        "sources": [
+          "Ready"
+        ],
+        "targets": [
+          "Review"
+        ],
+        "labels": [
+          {
+            "text": "collected",
+            "width": 52.418000000000006,
+            "height": 20.3,
+            "layoutOptions": {
+              "elk.edgeLabels.inline": "true",
+              "elk.edgeLabels.placement": "CENTER"
+            },
+            "x": 249.29300000000006,
+            "y": 40
+          }
+        ],
+        "sections": [
+          {
+            "id": "e1_s0",
+            "startPoint": {
+              "x": 349.71100000000007,
+              "y": 75.07499999999999
+            },
+            "endPoint": {
+              "x": 180.503,
+              "y": 73.73749999999998
+            },
+            "bendPoints": [
+              {
+                "x": 337.71100000000007,
+                "y": 75.07499999999999
+              },
+              {
+                "x": 337.71100000000007,
+                "y": 51
+              },
+              {
+                "x": 216.50300000000007,
+                "y": 51
+              },
+              {
+                "x": 216.50300000000007,
+                "y": 73.73749999999998
+              }
+            ],
+            "incomingShape": "Ready",
+            "outgoingShape": "Review"
+          }
+        ],
+        "container": "root"
+      },
+      {
+        "id": "e2",
+        "sources": [
+          "Review"
+        ],
+        "targets": [
+          "Ready"
+        ],
+        "labels": [
+          {
+            "text": "evidence gap",
+            "width": 73.208,
+            "height": 20.3,
+            "layoutOptions": {
+              "elk.edgeLabels.inline": "true",
+              "elk.edgeLabels.placement": "CENTER"
+            },
+            "x": 228.50300000000007,
+            "y": 73.3
+          }
+        ],
+        "sections": [
+          {
+            "id": "e2_s0",
+            "startPoint": {
+              "x": 180.503,
+              "y": 82.96249999999999
+            },
+            "endPoint": {
+              "x": 349.71100000000007,
+              "y": 84.3
+            },
+            "bendPoints": [
+              {
+                "x": 216.50300000000007,
+                "y": 82.96249999999999
+              },
+              {
+                "x": 216.50300000000007,
+                "y": 84.3
+              }
+            ],
+            "incomingShape": "Review",
+            "outgoingShape": "Ready"
+          }
+        ],
+        "container": "root"
+      },
+      {
+        "id": "e3",
+        "sources": [
+          "Review"
+        ],
+        "targets": [
+          "Complete"
+        ],
+        "labels": [
+          {
+            "text": "accepted",
+            "width": 53.606,
+            "height": 20.3,
+            "layoutOptions": {
+              "elk.edgeLabels.inline": "true",
+              "elk.edgeLabels.placement": "CENTER"
+            },
+            "x": 204.503,
+            "y": 178.59999999999997
+          }
+        ],
+        "sections": [
+          {
+            "id": "e3_s0",
+            "startPoint": {
+              "x": 180.503,
+              "y": 92.1875
+            },
+            "endPoint": {
+              "x": 306.109,
+              "y": 189.59999999999997
+            },
+            "bendPoints": [
+              {
+                "x": 192.503,
+                "y": 92.1875
+              },
+              {
+                "x": 192.503,
+                "y": 189.59999999999997
+              }
+            ],
+            "incomingShape": "Review",
+            "outgoingShape": "Complete"
+          }
+        ],
+        "container": "root"
+      },
+      {
+        "id": "e4",
+        "sources": [
+          "Complete"
+        ],
+        "targets": [
+          "_end"
+        ],
+        "sections": [
+          {
+            "id": "e4_s0",
+            "startPoint": {
+              "x": 401.411,
+              "y": 189.59999999999997
+            },
+            "endPoint": {
+              "x": 449.411,
+              "y": 189.59999999999997
+            },
+            "incomingShape": "Complete",
+            "outgoingShape": "_end"
+          }
+        ],
+        "container": "root"
+      }
+    ],
+    "$H": 2706,
+    "x": 0,
+    "y": 0,
+    "width": 523.5450000000001,
+    "height": 248.04999999999998
+  },
+  "positioned": {
+    "width": 523.5450000000001,
+    "height": 248.74999999999997,
+    "nodes": [
+      {
+        "id": "Ready",
+        "label": "Ready to collect",
+        "shape": "rounded",
+        "x": 349.71100000000007,
+        "y": 65.85,
+        "width": 133.834,
+        "height": 36.900000000000006
+      },
+      {
+        "id": "Review",
+        "label": "Evidence review",
+        "shape": "rounded",
+        "x": 40,
+        "y": 64.51249999999999,
+        "width": 140.503,
+        "height": 36.900000000000006
+      },
+      {
+        "id": "_start",
+        "label": "",
+        "shape": "state-start",
+        "x": 301.91,
+        "y": 122.6,
+        "width": 28,
+        "height": 28
+      },
+      {
+        "id": "Complete",
+        "label": "Complete",
+        "shape": "rounded",
+        "x": 301.91,
+        "y": 171.14999999999998,
+        "width": 95.30199999999999,
+        "height": 36.900000000000006
+      },
+      {
+        "id": "_end",
+        "label": "",
+        "shape": "state-end",
+        "x": 449.411,
+        "y": 175.59999999999997,
+        "width": 28,
+        "height": 28
+      }
+    ],
+    "edges": [
+      {
+        "source": "_start",
+        "target": "Ready",
+        "style": "solid",
+        "hasArrowStart": false,
+        "hasArrowEnd": true,
+        "points": [
+          {
+            "x": 329.91,
+            "y": 136.6
+          },
+          {
+            "x": 337.71100000000007,
+            "y": 136.6
+          },
+          {
+            "x": 337.71100000000007,
+            "y": 93.525
+          },
+          {
+            "x": 349.71100000000007,
+            "y": 93.525
+          }
+        ]
+      },
+      {
+        "source": "Ready",
+        "target": "Review",
+        "label": "collected",
+        "style": "solid",
+        "hasArrowStart": false,
+        "hasArrowEnd": true,
+        "points": [
+          {
+            "x": 349.71100000000007,
+            "y": 75.07499999999999
+          },
+          {
+            "x": 337.71100000000007,
+            "y": 75.07499999999999
+          },
+          {
+            "x": 337.71100000000007,
+            "y": 51
+          },
+          {
+            "x": 216.50300000000007,
+            "y": 51
+          },
+          {
+            "x": 216.50300000000007,
+            "y": 73.73749999999998
+          },
+          {
+            "x": 180.503,
+            "y": 73.73749999999998
+          }
+        ],
+        "labelPosition": {
+          "x": 275.50200000000007,
+          "y": 50.15
+        }
+      },
+      {
+        "source": "Review",
+        "target": "Ready",
+        "label": "evidence gap",
+        "style": "solid",
+        "hasArrowStart": false,
+        "hasArrowEnd": true,
+        "points": [
+          {
+            "x": 180.503,
+            "y": 82.96249999999999
+          },
+          {
+            "x": 216.50300000000007,
+            "y": 82.96249999999999
+          },
+          {
+            "x": 216.50300000000007,
+            "y": 84.3
+          },
+          {
+            "x": 349.71100000000007,
+            "y": 84.3
+          }
+        ],
+        "labelPosition": {
+          "x": 265.1070000000001,
+          "y": 83.45
+        }
+      },
+      {
+        "source": "Review",
+        "target": "Complete",
+        "label": "accepted",
+        "style": "solid",
+        "hasArrowStart": false,
+        "hasArrowEnd": true,
+        "points": [
+          {
+            "x": 180.503,
+            "y": 92.1875
+          },
+          {
+            "x": 192.503,
+            "y": 92.1875
+          },
+          {
+            "x": 192.503,
+            "y": 189.59999999999997
+          },
+          {
+            "x": 301.91,
+            "y": 189.59999999999997
+          }
+        ],
+        "labelPosition": {
+          "x": 231.30599999999998,
+          "y": 188.74999999999997
+        }
+      },
+      {
+        "source": "Complete",
+        "target": "_end",
+        "style": "solid",
+        "hasArrowStart": false,
+        "hasArrowEnd": true,
+        "points": [
+          {
+            "x": 397.21200000000005,
+            "y": 189.59999999999997
+          },
+          {
+            "x": 449.411,
+            "y": 189.59999999999997
+          }
+        ]
+      }
+    ],
+    "groups": []
+  }
+}

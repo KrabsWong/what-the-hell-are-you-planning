@@ -1,0 +1,199 @@
+{
+  "upstream": "beautiful-mermaid@1.1.3 / elkjs@0.11.1",
+  "graph": {
+    "entities": [
+      {
+        "id": "CUSTOMER",
+        "label": "CUSTOMER",
+        "attributes": [
+          {
+            "type": "int",
+            "name": "id",
+            "keys": [
+              "PK"
+            ]
+          },
+          {
+            "type": "string",
+            "name": "name",
+            "keys": []
+          },
+          {
+            "type": "string",
+            "name": "email",
+            "keys": [
+              "UK"
+            ],
+            "comment": "Contact address"
+          }
+        ]
+      },
+      {
+        "id": "ORDER",
+        "label": "ORDER",
+        "attributes": [
+          {
+            "type": "int",
+            "name": "id",
+            "keys": [
+              "PK"
+            ]
+          },
+          {
+            "type": "int",
+            "name": "customer_id",
+            "keys": [
+              "FK"
+            ]
+          },
+          {
+            "type": "float",
+            "name": "total",
+            "keys": []
+          }
+        ]
+      },
+      {
+        "id": "INVOICE",
+        "label": "INVOICE",
+        "attributes": []
+      }
+    ],
+    "relationships": [
+      {
+        "entity1": "CUSTOMER",
+        "entity2": "ORDER",
+        "cardinality1": "one",
+        "cardinality2": "zero-many",
+        "label": "places",
+        "identifying": true
+      },
+      {
+        "entity1": "ORDER",
+        "entity2": "INVOICE",
+        "cardinality1": "many",
+        "cardinality2": "one",
+        "label": "billed",
+        "identifying": false
+      }
+    ]
+  },
+  "positioned": {
+    "width": 956.5239999999999,
+    "height": 180,
+    "entities": [
+      {
+        "id": "CUSTOMER",
+        "label": "CUSTOMER",
+        "attributes": [
+          {
+            "type": "int",
+            "name": "id",
+            "keys": [
+              "PK"
+            ]
+          },
+          {
+            "type": "string",
+            "name": "name",
+            "keys": []
+          },
+          {
+            "type": "string",
+            "name": "email",
+            "keys": [
+              "UK"
+            ],
+            "comment": "Contact address"
+          }
+        ],
+        "x": 40,
+        "y": 40,
+        "width": 140.2,
+        "height": 100,
+        "headerHeight": 34,
+        "rowHeight": 22
+      },
+      {
+        "id": "ORDER",
+        "label": "ORDER",
+        "attributes": [
+          {
+            "type": "int",
+            "name": "id",
+            "keys": [
+              "PK"
+            ]
+          },
+          {
+            "type": "int",
+            "name": "customer_id",
+            "keys": [
+              "FK"
+            ]
+          },
+          {
+            "type": "float",
+            "name": "total",
+            "keys": []
+          }
+        ],
+        "x": 401.926,
+        "y": 40,
+        "width": 160,
+        "height": 100,
+        "headerHeight": 34,
+        "rowHeight": 22
+      },
+      {
+        "id": "INVOICE",
+        "label": "INVOICE",
+        "attributes": [],
+        "x": 776.5239999999999,
+        "y": 62,
+        "width": 140,
+        "height": 56,
+        "headerHeight": 34,
+        "rowHeight": 22
+      }
+    ],
+    "relationships": [
+      {
+        "entity1": "CUSTOMER",
+        "entity2": "ORDER",
+        "cardinality1": "one",
+        "cardinality2": "zero-many",
+        "label": "places",
+        "identifying": true,
+        "points": [
+          {
+            "x": 180.2,
+            "y": 90
+          },
+          {
+            "x": 401.926,
+            "y": 90
+          }
+        ]
+      },
+      {
+        "entity1": "ORDER",
+        "entity2": "INVOICE",
+        "cardinality1": "many",
+        "cardinality2": "one",
+        "label": "billed",
+        "identifying": false,
+        "points": [
+          {
+            "x": 561.9259999999999,
+            "y": 90
+          },
+          {
+            "x": 776.5239999999999,
+            "y": 90
+          }
+        ]
+      }
+    ]
+  }
+}

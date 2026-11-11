@@ -1471,8 +1471,19 @@ fn request_heap(request: &ResearchRequest) -> usize {
         planning_run_id: _,
         goal_ids,
         brief,
+        understanding_required: _,
+        understanding_confirmed: _,
+        understanding,
+        understanding_feedback,
+        understanding_source_signature,
     } = request;
     let mut value = size_of::<ResearchRequest>();
+    value = text(value, understanding_feedback);
+    value = text(value, understanding_source_signature);
+    if let Some(understanding) = understanding {
+        value = text(value, &understanding.summary);
+        value = texts(value, &understanding.questions);
+    }
     value = opt_text(value, expected_result);
     value = opt_text(value, provisional_topic_name);
     value = text(value, input);
@@ -2333,6 +2344,11 @@ mod tests {
             planning_run_id: None,
             goal_ids: Vec::new(),
             brief: None,
+            understanding_required: false,
+            understanding: None,
+            understanding_confirmed: false,
+            understanding_feedback: String::new(),
+            understanding_source_signature: String::new(),
         });
         requests.push(ResearchRequest {
             id: 2,
@@ -2347,6 +2363,11 @@ mod tests {
             planning_run_id: None,
             goal_ids: Vec::new(),
             brief: None,
+            understanding_required: false,
+            understanding: None,
+            understanding_confirmed: false,
+            understanding_feedback: String::new(),
+            understanding_source_signature: String::new(),
         });
         let request_group = profile_journal
             .stage_with_metadata(

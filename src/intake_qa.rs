@@ -23,7 +23,7 @@ if 'clarifying ONE saved research request' in prompt:
         print('Temporary fixture connection failure', file=sys.stderr)
         sys.exit(1)
     revised = 'Focus on operating results' in prompt
-    result = {'summary':'Explain Intel earnings using official data and accessible analyst views. Deliver a sourced report and an independent peer comparison and disclose evidence gaps.' + (' Focus on operating results.' if revised else ''), 'questions':[] if revised or 'Research guidance for the next quarter.' in prompt else ['Should the research focus on operating results or trading decisions?']}
+    result = {'summary':'Explain Intel earnings using official data and accessible analyst views. Deliver a sourced report and an independent peer comparison and disclose evidence gaps.' + (' Focus on operating results.' if revised else ''), 'questions':[] if revised or 'Research guidance for the next quarter.' in prompt else [{'question':'Should the research focus on operating results or trading decisions?', 'header':'Research direction', 'options':[{'label':'Operating results','description':'Evaluate company performance'},{'label':'Trading decisions','description':'Evaluate market implications'}]}]}
 elif 'expanding ONE saved research request' in prompt:
     assert 'Focus on operating results' in prompt or 'Research guidance for the next quarter.' in prompt
     steps = [
@@ -119,6 +119,11 @@ pub fn run() {
             .is_empty()
     );
     assert_eq!(snapshot(&mut cx, &app).runs()[0].status, "Failed");
+    let failed_store = snapshot(&mut cx, &app);
+    topic_understanding_screenshots(&mut cx, &failed_store, &root, "failed");
+    let mut active_store = failed_store.clone();
+    active_store.last_run_mut().unwrap().status = "Running".into();
+    topic_understanding_screenshots(&mut cx, &active_store, &root, "active");
     cx.update_window(handle, |_, w, cx| {
         app.update(cx, |a, cx| a.navigate(Scope::Research, w, cx));
         w.render_frame(cx);
@@ -151,6 +156,49 @@ pub fn run() {
         w.render_frame(cx);
         w.click("input-state", cx);
         w.input("Focus on operating results, not trading decisions.", cx);
+    }).unwrap();
+    cx.run_until_parked();
+    assert_eq!(Storage::new(path.clone()).load().unwrap().unwrap().research_requests()[0].understanding_draft,
+        "Focus on operating results, not trading decisions.", "Typing must persist before the editor closes");
+    cx.update_window(handle, |_, w, cx| {
+        w.render_frame(cx);
+        w.click("understanding-cancel-1", cx);
+    }).unwrap();
+    let draft_store = Storage::new(path.clone()).load().unwrap().unwrap();
+    assert_eq!(draft_store.research_requests()[0].understanding_draft,
+        "Focus on operating results, not trading decisions.");
+    assert!(draft_store.research_requests()[0].understanding_turns.is_empty());
+    cx.update_window(handle, |_, w, cx| {
+        // Rehydrate the persisted state and recreate the editor as after restart.
+        app.update(cx, |a, _| a.store = draft_store.clone());
+        w.render_frame(cx);
+        w.click("understanding-edit-1", cx);
+        assert_eq!(app.read(cx).understanding_editor.as_ref().unwrap().1.read(cx).value().as_str(),
+            "Focus on operating results, not trading decisions.");
+        app.update(cx, |a, _| {
+            a.live_followups.push_back(crate::live_save_app::LiveGroup {
+                generation: 1, epoch: 0, workspace: 0, completions: Vec::new(),
+            });
+        });
+        w.render_frame(cx);
+        assert_ne!(w.find("understanding-refine-1").disabled(), Some(true),
+            "Draft autosave must not disable the update button");
+        app.update(cx, |a, _| { a.live_followups.clear(); });
+        app.update(cx, |a, _| {
+            a.live_primary = Some(crate::live_save_app::LivePending {
+                generation: 0, epoch: 0, workspace: 0, durable: false,
+                completion: crate::live_save_app::LiveCompletion::ResearchUnderstanding {
+                    request: 1, signature: String::new(),
+                },
+            });
+        });
+        w.render_frame(cx);
+        assert_eq!(w.find("understanding-refine-1").disabled(), Some(true),
+            "Submitted understanding must prevent duplicate updates");
+        w.click("understanding-cancel-1", cx);
+        assert!(app.read(cx).understanding_editor.is_some(), "Pending submission must not re-save submitted editor text");
+        app.update(cx, |a, _| a.live_primary = None);
+        w.render_frame(cx);
         w.click("understanding-refine-1", cx);
     }).unwrap();
     wait(&mut cx, handle, &app);
@@ -158,11 +206,51 @@ pub fn run() {
     assert!(!root.join("plan-schema-repaired").exists());
     assert!(snapshot(&mut cx, &app).request_understanding_ready(1));
     assert!(!snapshot(&mut cx, &app).request_understanding_confirmed(1));
+    cx.update_window(handle, |_, w, cx| {
+        w.render_frame(cx);
+        w.click("understanding-edit-1", cx);
+        w.render_frame(cx);
+        w.click("input-state", cx);
+        w.input("Also distinguish verified findings from assumptions.", cx);
+        w.click("understanding-refine-1", cx);
+    }).unwrap();
+    wait(&mut cx, handle, &app);
+    let rounds = Storage::new(path.clone()).load().unwrap().unwrap();
+    assert_eq!(rounds.research_requests()[0].understanding_turns.len(), 2);
+    assert!(rounds.research_requests()[0].understanding_draft.is_empty());
+    assert!(!rounds.request_understanding_confirmed(1));
+    cx.update_window(handle, |_, w, cx| {
+        w.render_frame(cx);
+        w.click("understanding-history-1", cx);
+        w.render_frame(cx);
+        assert!(w.find("understanding-turns-1").visible());
+        assert!(w.find("understanding-round-1-1").bounds().top()
+            < w.find("understanding-round-1-0").bounds().top(),
+            "Newest clarification must appear first");
+        for index in 0..2 {
+            let number = w.find(format!("understanding-round-1-{index}-number"));
+            assert_eq!(number.label(), Some(format!("#{index}").as_str()));
+            assert!(number.bounds().right() < w.find(format!("understanding-round-1-{index}-content")).bounds().left(),
+                "Round numbers must sit outside the content rule");
+        }
+        assert!(w.try_find("understanding-snapshot-1-0").is_some());
+        assert!(w.try_find("understanding-snapshot-1-1").is_some());
+        assert!(w.try_find("understanding-turn-1-0").is_none());
+    }).unwrap();
+    screenshot(&mut cx, handle, &root, "00-understanding-history-light.png");
+    cx.update(|cx| component::Theme::change(component::ThemeMode::Dark, None, cx));
+    screenshot(&mut cx, handle, &root, "00-understanding-history-dark.png");
+    cx.update_window(handle, |_, w, cx| {
+        w.click("understanding-history-1", cx);
+    }).unwrap();
+    cx.update(|cx| component::Theme::change(component::ThemeMode::Light, None, cx));
     screenshot(&mut cx, handle, &root, "00-understanding-review-light.png");
     cx.update(|cx| component::Theme::change(component::ThemeMode::Dark, None, cx));
     screenshot(&mut cx, handle, &root, "00-understanding-review-dark.png");
     let compact_store = snapshot(&mut cx, &app);
     compact_understanding_screenshots(&mut cx, &compact_store, &root);
+    topic_understanding_screenshots(&mut cx, &compact_store, &root, "ready");
+    interrupted_understanding_resume(&mut cx, &compact_store, &root);
     cx.update(|cx| component::Theme::change(component::ThemeMode::Light, None, cx));
     cx.update_window(handle, |_, w, cx| {
         w.render_frame(cx);
@@ -189,6 +277,22 @@ pub fn run() {
     let other = goals[1];
     let children = snapshot(&mut cx, &app).research_children(goal);
     let topic = snapshot(&mut cx, &app).task_topic(goal).unwrap().id;
+    for (appearance, name) in [(crate::appearance::Appearance::Light, "light"), (crate::appearance::Appearance::Dark, "dark")] {
+        cx.update_window(handle, |_, w, cx| {
+            app.update(cx, |a, cx| {
+                a.store.set_appearance(appearance);
+                crate::appearance::apply(appearance, Some(w), cx);
+                a.open_task(goal, w, cx);
+            });
+            w.render_frame(cx);
+            let status = w.find("task-execution-status").bounds();
+            assert!(status.size.height <= px(30.), "Task status must remain on one line: {status:?}");
+            let original = w.find("request-brief-toggle").bounds();
+            let regenerate = w.find("regenerate-request-plan").bounds();
+            assert!((original.top() - regenerate.top()).abs() <= px(1.), "Planning actions share a compact row");
+        }).unwrap();
+        screenshot(&mut cx, handle, &root, &format!("01-backlog-overview-{name}.png"));
+    }
     cx.update_window(handle, |_, w, cx| {
         app.update(cx, |a, cx| {
             a.navigate(Scope::Project(1), w, cx);
@@ -384,6 +488,86 @@ pub fn run() {
         root.display()
     );
 }
+fn interrupted_understanding_resume(cx: &mut HeadlessAppContext, store: &Store, root: &Path) {
+    let mut interrupted = store.clone();
+    interrupted.revise_request_understanding(1, "Keep the comparison focused.".into()).unwrap();
+    let mut run = interrupted.prepare_request_plan(1).unwrap();
+    run.session_id = Some("alignment-resume-fixture".into());
+    let run_id = run.id;
+    interrupted.push_run(run);
+    interrupted.request_mut(1).unwrap().planning_run_id = Some(run_id);
+    let path = root.join("alignment-resume.sqlite3");
+    Storage::new(path.clone()).save(&interrupted).unwrap();
+    let mut reopened = Storage::new(path.clone()).load().unwrap().unwrap();
+    reopened.recover_interrupted_runs();
+    let mut entity = None;
+    let window = cx.open_window(size(px(1000.), px(680.)), |w, cx| {
+        let view = cx.new(|cx| TaskApp::new_mock(w, cx));
+        view.update(cx, |a, cx| {
+            a.store = reopened.clone();
+            a.storage = Some(Storage::new(path.clone()));
+            a.navigate(Scope::Topic(reopened.research_requests()[0].topic_id.unwrap()), w, cx);
+            a.layout = Layout::List;
+            a.recovery.checks.insert(run_id, crate::recovery::SessionCheck::Running);
+            a.resume_request_understanding(1, cx);
+            assert_eq!(a.store.runs().len(), reopened.runs().len(), "Never duplicate a running session");
+            a.error.clear();
+            a.recovery.checks.insert(run_id, crate::recovery::SessionCheck::Stopped);
+        });
+        entity = Some(view.clone());
+        cx.new(|cx| base::Root::new(view, w, cx))
+    }).unwrap();
+    let handle = window.into();
+    let app = entity.unwrap();
+    cx.update_window(handle, |_, w, cx| {
+        w.render_frame(cx);
+        w.click("understanding-retry-1", cx);
+        assert!(app.read(cx).error.is_empty(), "{}", app.read(cx).error);
+    }).unwrap();
+    wait(cx, handle, &app);
+    let resumed = snapshot(cx, &app);
+    let latest = resumed.latest_request_attempt(1).unwrap();
+    assert_ne!(latest.id, run_id);
+    assert_eq!(latest.session_id.as_deref(), Some("alignment-resume-fixture"));
+    assert!(latest.prompt.contains("Keep the comparison focused."));
+    assert_eq!(resumed.research_requests()[0].understanding_turns.len(), 3);
+    assert!(resumed.request_understanding_ready(1));
+    assert!(!resumed.request_understanding_confirmed(1));
+    assert!(resumed.research_requests()[0].goal_ids.is_empty());
+}
+
+fn topic_understanding_screenshots(cx: &mut HeadlessAppContext, store: &Store, root: &Path, state: &str) {
+    let request = &store.research_requests()[0];
+    for (width, height) in [(1440., 920.), (1000., 680.)] {
+        let window = cx.open_window(size(px(width), px(height)), |w, cx| {
+            let view = cx.new(|cx| TaskApp::new_mock(w, cx));
+            view.update(cx, |a, cx| {
+                a.store = store.clone();
+                a.navigate(Scope::Topic(request.topic_id.unwrap()), w, cx);
+                a.layout = Layout::List;
+                cx.notify();
+            });
+            cx.new(|cx| base::Root::new(view, w, cx))
+        }).unwrap();
+        let handle = window.into();
+        for (theme, name) in [(component::ThemeMode::Light, "light"), (component::ThemeMode::Dark, "dark")] {
+            cx.update(|cx| component::Theme::change(theme, None, cx));
+            screenshot(cx, handle, root, &format!("topic-understanding-{state}-{width}-{name}.png"));
+            cx.update_window(handle, |_, w, cx| {
+                if state == "active" {
+                    let progress = w.find(format!("understanding-retry-{}", request.id));
+                    assert_eq!(progress.label(), Some("Understanding your request…"));
+                }
+                let panel = w.find("topic-planning-panel").bounds();
+                let details = w.find(format!("request-run-{}", request.id)).bounds();
+                assert!(panel.size.height > px(260.), "Pending research must use the available workspace height");
+                assert!(details.top() >= panel.top() && details.bottom() <= panel.bottom(),
+                    "Planning details must stay accessible beside request metadata");
+            }).unwrap();
+        }
+    }
+}
+
 fn compact_understanding_screenshots(cx: &mut HeadlessAppContext, store: &Store, root: &Path) {
     // Fresh windows avoid retained pane dimensions from the headless resize harness.
     let run = store.research_requests()[0].planning_run_id;
@@ -408,6 +592,22 @@ fn compact_understanding_screenshots(cx: &mut HeadlessAppContext, store: &Store,
             let confirm = w.find("understanding-confirm-1").bounds();
             assert!(confirm.right() <= w.viewport_size().width,
                 "Understanding confirmation must remain inside the compact window");
+        }).unwrap();
+        cx.update_window(handle, |_, w, cx| {
+            w.click("understanding-history-1", cx);
+            w.render_frame(cx);
+        }).unwrap();
+        screenshot(cx, handle, root, &name.replace("review-compact", "history-compact"));
+        cx.update_window(handle, |_, w, cx| {
+            w.scroll("run-content", ScrollDelta::Pixels(point(px(0.), px(-800.))), cx);
+            w.render_frame(cx);
+            let last = w.find("understanding-feedback-history-1-0").bounds();
+            let viewport = w.find("run-content").bounds();
+            assert!(last.top() >= viewport.top() && last.bottom() <= viewport.bottom(),
+                "Older clarification details must remain reachable in a compact window");
+            w.scroll("run-content", ScrollDelta::Pixels(point(px(0.), px(800.))), cx);
+            w.render_frame(cx);
+            w.click("understanding-history-1", cx);
         }).unwrap();
     }
 }

@@ -17,7 +17,10 @@ pub fn activity_display(event: &str, created_at: &str) -> String {
         } else {
             "Time not recorded"
         };
-        return format!("{message} · {time}");
+        return format!("{message} · {}", crate::time_display::timestamp(time));
+    }
+    if let Some((message, time)) = event.rsplit_once(" · ") {
+        return format!("{message} · {}", crate::time_display::timestamp(time));
     }
     event.to_string()
 }
@@ -3729,6 +3732,8 @@ mod tests {
             understanding_confirmed: false,
             understanding_feedback: String::new(),
             understanding_source_signature: String::new(),
+            understanding_turns: Vec::new(),
+            understanding_draft: String::new(),
         });
         store.remove_project(2);
 
@@ -3894,7 +3899,7 @@ mod activity_time_tests {
         chrono::DateTime::parse_from_str(time, "%Y-%m-%d %H:%M:%S %:z").unwrap();
         let saved = serde_json::to_string(&event).unwrap();
         let restored: String = serde_json::from_str(&saved).unwrap();
-        assert_eq!(activity_display(&restored, ""), event);
+        assert_eq!(activity_display(&restored, ""), format!("Todo → In progress · {}", crate::time_display::timestamp(time)));
     }
 
     #[test]
@@ -3902,7 +3907,7 @@ mod activity_time_tests {
         let time = "2026-10-29 20:07:14 +08:00";
         assert_eq!(
             activity_display("Task created · Just now", time),
-            format!("Task created · {time}")
+            format!("Task created · {}", crate::time_display::timestamp(time))
         );
         assert_eq!(
             activity_display("Task created · Just now", ""),

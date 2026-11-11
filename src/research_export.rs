@@ -70,8 +70,8 @@ impl Store {
             "# {}\n\nGoal: {}\n\nExported: {}\n\n{}\n\n## Documents\n\n",
             task.title,
             identifier,
-            crate::opencode::timestamp(),
-            task.description
+            crate::time_display::timestamp(&crate::opencode::timestamp()),
+            crate::time_display::original_request(&task.description, self.research_requests().iter().find(|r| r.goal_ids.contains(&goal)))
         );
         let mut materials = task.attachments.clone();
         for id in self.research_children(goal) {
@@ -116,15 +116,15 @@ impl Store {
                     "- {}\n  - URL: <{}>\n  - Published: {}\n",
                     markdown_text(&source.title),
                     source.url,
-                    markdown_text(&source.published_at)
+                    markdown_text(&crate::time_display::timestamp(&source.published_at))
                 ));
             }
             files.push((document.clone(), markdown.into_bytes()));
             index.push_str(&format!(
                 "  - Run: {} · Started: {} · Finished: {}\n",
                 result.id,
-                result.started_at,
-                result.ended_at.as_deref().unwrap_or("unknown")
+                crate::time_display::timestamp(&result.started_at),
+                crate::time_display::timestamp(result.ended_at.as_deref().unwrap_or("unknown"))
             ));
             materials.extend(step.attachments.clone());
             materials.extend(result.attachments.clone());

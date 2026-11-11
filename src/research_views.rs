@@ -695,7 +695,7 @@ impl TaskApp {
                                             .child(link_button(format!("result-source-{i}"), source.title.clone()).icon(assets::IconName::ExternalLink)
                                                 .justify_start().on_click(move |_, _, cx| cx.open_url(&url)))
                                             .child(label(source.url.clone(), cx))
-                                            .child(label(format!("Published: {}", source.published_at), cx))
+                                            .child(label(format!("Published: {}", crate::time_display::timestamp(&source.published_at)), cx))
                                     })).map(observed)))
                         ))
                         .map(observed),

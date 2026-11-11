@@ -370,6 +370,7 @@ impl TaskApp {
     ) {
         if self.store.request_plan_signature(id).ok().as_deref() != Some(signature) { return; }
         self.understanding_editor = None;
+        self.understanding_editor_subscription = None;
         self.dispatch_research_request(id, false, cx);
 
     }

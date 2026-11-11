@@ -2390,6 +2390,8 @@ mod tests {
             understanding_confirmed: false,
             understanding_feedback: String::new(),
             understanding_source_signature: String::new(),
+            understanding_turns: Vec::new(),
+            understanding_draft: String::new(),
         });
         let next_id = store
             .runs()

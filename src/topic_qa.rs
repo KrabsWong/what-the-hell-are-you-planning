@@ -989,7 +989,7 @@ pub fn board_directory() {
         cx.run_until_parked();
         cx.update_window(handle, |_, w, cx| {
             w.render_frame(cx);
-            assert_eq!(w.find(format!("topic-{}", topics[4])).label(), Some(format!("Replanned topic · {}", app.read(cx).store.topics().iter().find(|t| t.id == topics[4]).unwrap().display_name()).as_str()));
+            assert_eq!(w.find(format!("topic-{}", topics[4])).label(), Some(format!("Copy · {}", app.read(cx).store.topics().iter().find(|t| t.id == topics[4]).unwrap().display_name()).as_str()));
         }).unwrap();
         cx.update_window(handle, |_, w, cx| {
             assert!(w.try_find("replan-topic").is_none(), "Todo goals must hide Replan");
@@ -1063,5 +1063,81 @@ pub fn board_directory() {
         cx.capture_screenshot(handle).unwrap()
             .save(root.join(format!("replanned-{width}-{dark}.png"))).unwrap();
     }
+    topic_intake_badges(&mut cx, &root);
     println!("Board and List topic layout and navigation passed: {}", root.display());
+}
+
+fn topic_intake_badges(cx: &mut HeadlessAppContext, root: &std::path::Path) {
+    for (width, height) in [(1000., 680.), (1440., 920.)] {
+        let mut topics = Vec::new();
+        let handle: AnyWindowHandle = cx.open_window(size(px(width), px(height)), |w, cx| {
+            let app = cx.new(|cx| TaskApp::new_mock(w, cx));
+            app.update(cx, |a, cx| {
+                a.store = Store::empty();
+                a.store.set_default_model("qa/model".into());
+                a.store.project_at_mut(0).unwrap().directory = root.to_string_lossy().into();
+                let source = a.store.create_topic(1, "Original research").unwrap();
+                for (index, state) in ["Draft", "Understanding", "Needs review", "Planning", "Needs attention", "Interrupted"].into_iter().enumerate() {
+                    let request = a.store.create_research_request(1, None,
+                        &format!("{state}: a long research topic title whose status must remain readable")).unwrap();
+                    let topic = a.store.research_requests().iter().find(|r| r.id == request).unwrap().topic_id.unwrap();
+                    if index == 0 { a.store.topic_mut(topic).unwrap().replanned_from = Some(source); }
+                    if state == "Needs review" || state == "Planning" {
+                        a.store.apply_request_understanding(request,
+                            r#"{"summary":"Compare approaches using reliable evidence.","questions":[]}"#).unwrap();
+                    }
+                    if state == "Planning" { a.store.confirm_request_understanding(request).unwrap(); }
+                    if matches!(state, "Understanding" | "Planning" | "Needs attention" | "Interrupted") {
+                        let mut run = a.store.prepare_request_plan(request).unwrap();
+                        run.status = match state { "Needs attention" => "Failed", "Interrupted" => "Interrupted", _ => "Running" }.into();
+                        let run_id = run.id;
+                        a.store.push_run(run);
+                        a.store.request_mut(request).unwrap().planning_run_id = Some(run_id);
+                    }
+                    topics.push((topic, state));
+                    a.collapsed_sidebar_topics.push(topic);
+                }
+                a.expanded_sidebar_projects.push(1);
+                a.navigate(Scope::Topic(topics[0].0), w, cx);
+                a.layout = crate::app::Layout::List;
+            });
+            cx.new(|cx| base::Root::new(app, w, cx))
+        }).unwrap().into();
+        for (mode, name, glass) in [
+            (component::ThemeMode::Light, "light", false),
+            (component::ThemeMode::Dark, "dark", false),
+            (component::ThemeMode::Light, "glass-light", true),
+            (component::ThemeMode::Dark, "glass-dark", true),
+        ] {
+            cx.update(|cx| {
+                component::Theme::change(mode, None, cx);
+                #[cfg(target_os = "macos")]
+                cx.set_global(crate::native_glass::GlassPalette(glass));
+                let _ = glass;
+            });
+            cx.update_window(handle, |_, w, cx| {
+                w.render_frame(cx);
+                let copy = w.find(format!("topic-copy-{}", topics[0].0)).bounds();
+                let title = w.find(format!("topic-name-{}", topics[0].0)).bounds();
+                assert!(copy.right() <= w.find(format!("topic-intake-{}", topics[0].0)).bounds().left(), "Copy and status tags must form a leading group");
+                assert!(copy.right() <= title.left(), "Copy tag must precede the topic title");
+                for (topic, state) in &topics {
+                    let row = w.find(format!("topic-{topic}")).bounds();
+                    let title = w.find(format!("topic-name-{topic}")).bounds();
+                    let status = w.find(format!("topic-intake-{topic}"));
+                    assert_eq!(status.label(), Some(*state));
+                    let tag = status.bounds();
+                    assert!(tag.right() <= title.left(), "Status must precede the title");
+                    assert!(tag.top() < title.bottom() && tag.bottom() > title.top(), "Status must share the title line");
+                    assert_eq!(row.size.height, px(32.), "Topic rows must keep a uniform compact height");
+                    assert!(title.size.width >= px(40.), "The title must retain readable space");
+                    assert!(tag.left() >= row.left() && tag.right() <= row.right(), "Status must fit the sidebar row");
+                    assert!(tag.bottom() <= row.bottom(), "Status must not overlap the next topic");
+                }
+                assert!(w.find("topic-copy-indicator").visible());
+                assert_eq!(w.find("topic-intake-status").label(), Some("Draft"));
+            }).unwrap();
+            cx.capture_screenshot(handle).unwrap().save(root.join(format!("topic-intake-{width}-{name}.png"))).unwrap();
+        }
+    }
 }

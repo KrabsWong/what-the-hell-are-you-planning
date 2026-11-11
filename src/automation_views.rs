@@ -4744,7 +4744,7 @@ impl TaskApp {
                             .on_click(move |_, _, cx| cx.open_url(&url)),
                     )
                     .child(muted(
-                        format!("{} · published {}", source.url, source.published_at),
+                        format!("{} · published {}", source.url, crate::time_display::timestamp(&source.published_at)),
                         cx,
                     )),
             );
@@ -5151,7 +5151,7 @@ impl TaskApp {
                                 .child(muted(format!(
                                     "Revision {} · {} · plan history, not a research report",
                                     revision.map(|value| value.to_string()).unwrap_or_else(|| "legacy".into()),
-                                    run.ended_at.clone().or(Some(run.started_at.clone())).unwrap_or_default()
+                                    crate::time_display::timestamp(run.ended_at.as_deref().unwrap_or(&run.started_at))
                                 ), cx)
                                     .id(revision_id)
                                     .aria_label(format!(

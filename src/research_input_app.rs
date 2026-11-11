@@ -607,11 +607,11 @@ pub(crate) fn previous_version_document(
         "# {} — Previous version\n\nRun #{} · {} · Input revision {}\n\n",
         entry.task_title,
         run.id,
-        if entry.version.started_at.is_empty() {
+        crate::time_display::timestamp(if entry.version.started_at.is_empty() {
             "recorded time unavailable"
         } else {
             entry.version.started_at.as_str()
-        },
+        }),
         entry
             .version
             .revision_digest
@@ -630,7 +630,7 @@ pub(crate) fn previous_version_document(
                 "- {}\n  - URL: <{}>\n  - Published: {}\n",
                 source.title.replace(['\n', '\r'], " "),
                 source.url,
-                source.published_at.replace(['\n', '\r'], " ")
+                crate::time_display::timestamp(&source.published_at).replace(['\n', '\r'], " ")
             ));
         }
     }

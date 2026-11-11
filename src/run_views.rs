@@ -267,7 +267,7 @@ impl TaskApp {
                     || (topic.id.is_some() && run.task_id == topic.id.unwrap()
                         && run.research_kind == Some(ResearchKind::Goal)))
                 .map(|run| (run.id, format!("{} · {} · {}", if run.project_plan.is_some() { "Project plan" } else { "Goal plan" },
-                    if run.started_at.is_empty() { &run.queued_at } else { &run.started_at }, status_label(&run.status))))
+                    crate::time_display::timestamp(if run.started_at.is_empty() { &run.queued_at } else { &run.started_at }), status_label(&run.status))))
                 .collect();
             let planning_entity = cx.entity().downgrade();
             let topic_options: Vec<_> = project
@@ -581,14 +581,11 @@ impl TaskApp {
             .filter(|r| r.task_id == run.task_id && r.project_plan == run.project_plan)
             .collect();
         let caption =
-            (if run.started_at.is_empty() {
+            crate::time_display::timestamp(if run.started_at.is_empty() {
                 &run.queued_at
             } else {
                 &run.started_at
-            })
-            .chars()
-            .take(16)
-            .collect::<String>();
+            });
         if attempts.len() < 2 {
             return label(caption, cx).into_any_element();
         }
@@ -601,14 +598,11 @@ impl TaskApp {
                     format!(
                         "Run #{} · {} · {}",
                         r.id,
-                        (if r.started_at.is_empty() {
+                        crate::time_display::timestamp(if r.started_at.is_empty() {
                             &r.queued_at
                         } else {
                             &r.started_at
-                        })
-                        .chars()
-                        .take(16)
-                        .collect::<String>(),
+                        }),
                         status_label(&r.status)
                     ),
                 )
@@ -993,9 +987,12 @@ impl TaskApp {
                 d.child(label(queue_explanation.clone(), cx))
             })
             .map(observed);
+        let understanding_review = self.store.request_for_run_record(run)
+            .is_some_and(|request| request.understanding_required && request.goal_ids.is_empty()
+                && self.store.request_understanding_ready(request.id));
         if let Some(request) = self.store.request_for_run_record(run)
             && request.understanding_required && request.goal_ids.is_empty() {
-            progress = col().gap_3().child(progress)
+            progress = col().gap_3().flex_shrink_0().child(progress)
                 .child(self.research_understanding_view(request.id, cx)).into_any_element();
         }
         if let Some((source_id, input)) = &self.report_regeneration {
@@ -1133,10 +1130,12 @@ impl TaskApp {
             stages = stages.child(entries.map(observed));
         }
         col()
+            .id("run-content")
             .flex_1()
             .w_full()
             .min_w_0()
             .h_full()
+            .when(understanding_review && !self.show_run_details, |d| d.min_h_0().overflow_y_scroll())
             .gap_1()
             .px_4()
             .py_2()
@@ -1147,7 +1146,7 @@ impl TaskApp {
             .when(!self.show_run_details && readable, |d| {
                 d.child(self.run_result_panel(run, cx))
             })
-            .when(!self.show_run_details && !readable, |d| {
+            .when(!self.show_run_details && !readable && !(understanding_review && run.status == "Succeeded"), |d| {
                 d.child(
                     col()
                         .id("run-waiting")
@@ -1206,7 +1205,7 @@ impl TaskApp {
                         .map(observed),
                 )
             })
-            .into_any_element()
+            .map(observed)
     }
 
     fn run_technical_panel(&self, run: &AgentRun, cx: &mut Context<Self>) -> AnyElement {
@@ -1237,17 +1236,17 @@ impl TaskApp {
                     .child(label(
                         format!(
                             "Queued: {} · Started: {} · Finished: {}",
-                            if run.queued_at.is_empty() {
+                            crate::time_display::timestamp(if run.queued_at.is_empty() {
                                 "Not recorded"
                             } else {
                                 &run.queued_at
-                            },
-                            if run.status == "Queued" || run.started_at.is_empty() {
+                            }),
+                            crate::time_display::timestamp(if run.status == "Queued" || run.started_at.is_empty() {
                                 "Not started"
                             } else {
                                 &run.started_at
-                            },
-                            run.ended_at
+                            }),
+                            crate::time_display::timestamp(run.ended_at
                                 .as_deref()
                                 .unwrap_or(if run.status == "Queued" {
                                     "—"
@@ -1255,7 +1254,7 @@ impl TaskApp {
                                     "In progress"
                                 } else {
                                     "Not recorded"
-                                })
+                                }))
                         ),
                         cx,
                     ))

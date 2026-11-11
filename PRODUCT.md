@@ -35,7 +35,7 @@ Keep action labels and icons visible at rest and distinct from explanatory copy.
 
 ## Research intake
 
-Ordinary Research and Research automations begin with a one-sentence request. The app first generates a short research understanding describing the question, result, scope and assumptions. Users can correct it or answer up to two material clarification questions. **Confirm and generate plan** saves confirmation before generating any goals or tasks. Review and execution approval remain separate. Requests, feedback and confirmation survive navigation and restart; changed research inputs require a current confirmed understanding. Quick tasks retain their existing authorization flow.
+Ordinary Research and Research automations begin with a one-sentence request. The app first generates a short research understanding describing the question, result, scope and assumptions. Users can correct it or answer up to two material clarification questions. **Confirm and generate plan** saves confirmation before generating any goals or tasks. Review and execution approval remain separate. Each submitted clarification round retains its feedback, timestamp and preceding understanding. Unsubmitted clarification drafts save locally and can be reopened after interruption. An interrupted understanding can resume its stopped agent session, or restart the same round from saved context when no compatible session remains; background sessions are checked before another attempt starts. Requests, feedback and confirmation survive navigation and restart; changed research inputs require a current confirmed understanding. Quick tasks retain their existing authorization flow.
 
 ## Automations
 

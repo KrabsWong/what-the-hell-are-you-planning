@@ -1,5 +1,6 @@
 #![recursion_limit = "256"]
 mod startup;
+mod time_display;
 #[cfg(feature = "qa")]
 mod render_qa;
 #[cfg(feature = "qa")]

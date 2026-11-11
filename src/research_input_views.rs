@@ -259,11 +259,11 @@ pub(crate) fn previous_versions_dialog(app: &TaskApp, cx: &mut Context<TaskApp>)
             .revision_digest
             .as_deref()
             .unwrap_or("revision unavailable");
-        let recorded = if entry.version.started_at.is_empty() {
+        let recorded = crate::time_display::timestamp(if entry.version.started_at.is_empty() {
             "time unavailable"
         } else {
             entry.version.started_at.as_str()
-        };
+        });
         list = list.child(
             row_button(format!("previous-version-row-{run}"), "")
                 .custom(

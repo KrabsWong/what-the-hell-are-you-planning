@@ -17,6 +17,87 @@ use gpui_kit::{
     *,
 };
 
+fn topic_copy_tag(id: impl Into<SharedString>, cx: &App) -> AnyElement {
+    chip("Copy", palette(cx).muted, cx)
+        .id(id.into()).role(Role::Label).aria_label("Copy of another topic")
+        .bg(rgb(palette(cx).tag_surface)).border_1().border_color(rgb(palette(cx).border_strong)).font_weight(FontWeight::NORMAL)
+        .flex_shrink_0().whitespace_nowrap()
+        .tooltip(|w, cx| component::tooltip::Tooltip::new("Created from another topic; open the topic to view its source.").build(w, cx))
+        .map(observed)
+}
+
+fn topic_intake_tag(id: impl Into<SharedString>, status: crate::request_planning::TopicIntakeStatus, compact: bool, cx: &App) -> AnyElement {
+    use crate::request_planning::TopicIntakeStatus;
+    let colors = palette(cx);
+    let color = match status {
+        TopicIntakeStatus::Draft => colors.muted,
+        TopicIntakeStatus::Understanding | TopicIntakeStatus::Planning => colors.accent,
+        TopicIntakeStatus::NeedsReview | TopicIntakeStatus::Interrupted => colors.warning,
+        TopicIntakeStatus::NeedsAttention => colors.danger,
+    };
+    let label = if compact {
+        match status {
+            TopicIntakeStatus::Understanding => "Aligning",
+            TopicIntakeStatus::NeedsReview => "Review",
+            TopicIntakeStatus::NeedsAttention => "Attention",
+            TopicIntakeStatus::Interrupted => "Paused",
+            _ => status.label(),
+        }
+    } else { status.label() };
+    chip(label, color, cx)
+        .when(compact, |d| d.px_1().text_size(px(11.)))
+        .id(id.into()).role(Role::Label).aria_label(status.label())
+        .tooltip(move |w, cx| component::tooltip::Tooltip::new(status.label()).build(w, cx))
+        .bg(rgb(colors.tag_surface)).border_1().border_color(rgb(colors.border_strong)).font_weight(FontWeight::NORMAL)
+        .flex_shrink_0().whitespace_nowrap().map(observed)
+}
+
+struct TopicTitleTags(Option<crate::request_planning::TopicIntakeStatus>);
+
+impl gpui_kit::base::text::MarkdownPlugin for TopicTitleTags {
+    fn name(&self) -> &str { "topic-title-tag" }
+
+    fn parse(&self, node: &gpui_kit::base::text::markdown_ast::Node,
+        _: &gpui_kit::base::text::MarkdownParseContext<'_>) -> Option<gpui_kit::base::text::MarkdownNode> {
+        use gpui_kit::base::text::{MarkdownNode, markdown_ast::Node};
+        let Node::Link(link) = node else { return None; };
+        match link.url.as_str() {
+            "topic-tag:copy" => Some(MarkdownNode::new(self.name(), true).text("Copy")),
+            "topic-tag:status" => self.0.map(|status|
+                MarkdownNode::new(self.name(), false).text(status.label())),
+            _ => None,
+        }
+    }
+
+    fn render_inline(&self, node: &gpui_kit::base::text::MarkdownNode,
+        _: &gpui_kit::base::text::InlineRenderContext, _: &mut Window, cx: &mut App)
+        -> Option<gpui_kit::base::text::InlineElement> {
+        let tag = if *node.data::<bool>()? {
+            topic_copy_tag("topic-copy-indicator", cx)
+        } else {
+            topic_intake_tag("topic-intake-status", self.0?, false, cx)
+        };
+        Some(gpui_kit::base::text::InlineElement::new(tag))
+    }
+}
+
+fn topic_inline_title(topic: &Topic, status: Option<crate::request_planning::TopicIntakeStatus>) -> AnyElement {
+    let mut text = String::new();
+    if topic.replanned_from.is_some() { text.push_str("[Copy](topic-tag:copy) "); }
+    if let Some(status) = status {
+        text.push_str(&format!("[{}](topic-tag:status) ", status.label()));
+    }
+    // Treat the user-authored title as literal text, never Markdown syntax.
+    for ch in topic.display_name().chars() {
+        if ch.is_ascii_punctuation() { text.push('\\'); }
+        text.push(if ch == '\n' || ch == '\r' { ' ' } else { ch });
+    }
+    gpui_kit::base::text::TextView::markdown("topic-inline-title", text)
+        .plugin(TopicTitleTags(status))
+        .text_lg().font_weight(FontWeight::SEMIBOLD)
+        .into_any_element()
+}
+
 #[derive(Clone)]
 pub(crate) struct ProjectChoice { pub id: u64, pub title: SharedString }
 impl SelectItem for ProjectChoice {
@@ -319,7 +400,11 @@ impl TaskApp {
                 .or(self.task_result_context())
                 .and_then(|id| self.store.task_topic(id))
                 .is_some_and(|t| t.id == id);
+        let status = self.store.topic_intake_status(id);
+        let description = format!("{}{}{}", if topic.replanned_from.is_some() { "Copy · " } else { "" },
+            topic.display_name(), status.map(|status| format!(" · {}", status.label())).unwrap_or_default());
         row()
+            .items_center()
             .gap_0()
             .mt_1()
             .min_w_0()
@@ -332,15 +417,13 @@ impl TaskApp {
                     .flex_1()
                     .min_w_0()
                     .h_8()
-                    .tooltip(if topic.replanned_from.is_some() { format!("Replanned topic · {}", topic.display_name()) } else { topic.display_name() })
-                    .accessibility_label(if topic.replanned_from.is_some() { format!("Replanned topic · {}", topic.display_name()) } else { topic.display_name() })
-                    .when(topic.replanned_from.is_some(), |b| b.child(
-                        gpui_kit::component::Icon::new(assets::IconName::NotebookPen)
-                            .size_4().flex_shrink_0().text_color(rgb(palette(cx).accent))))
-                    .child(single_line_text(
-                        format!("topic-name-{id}"),
-                        self.store.topic_planning_status(id).map(|status| format!("{} · {status}", topic.display_name())).unwrap_or_else(|| topic.display_name()),
-                    ))
+                    .tooltip(description.clone())
+                    .accessibility_label(description)
+                    .child(row().w_full().min_w_0().gap_1()
+                        .when(topic.replanned_from.is_some(), |d| d.child(topic_copy_tag(format!("topic-copy-{id}"), cx)))
+                        .when_some(status, |d, status| d.child(
+                            topic_intake_tag(format!("topic-intake-{id}"), status, true, cx)))
+                        .child(single_line_text(format!("topic-name-{id}"), topic.display_name()).map(observed)))
                     .on_click(cx.listener(move |a, _, w, cx| a.navigate(Scope::Topic(id), w, cx))),
             )
             .child(
@@ -547,13 +630,12 @@ impl TaskApp {
         let can_queue = !archived && self.store.todo_batch_items(project).iter().any(|goal|
             self.store.task_topic(*goal).is_some_and(|topic| topic.id == id)
                 && self.todo_batch.as_ref().is_none_or(|batch| !batch.contains_pending(*goal)));
+        let planning_status = self.store.topic_planning_status(id);
+        let planning_only = goals.is_empty() && planning_status.is_some();
         let entity = cx.entity().downgrade();
         col().size_full()
-            .child(row().px_6().pt_4().pb_2().flex_wrap().child(row().gap_2().flex_1().min_w_0().text_lg().font_weight(FontWeight::SEMIBOLD)
-                .when(topic.replanned_from.is_some(), |d| d.child(div().id("topic-replanned-indicator").role(Role::Label).aria_label("Replanned topic")
-                    .flex_shrink_0().child(gpui_kit::component::Icon::new(assets::IconName::NotebookPen)
-                        .size_4().text_color(rgb(palette(cx).accent)))))
-                .child(div().flex_1().min_w_0().child(selectable(topic.display_name()))))
+            .child(row().px_6().pt_4().pb_2().gap_2().flex_wrap()
+                .child(div().flex_1().min_w_0().child(topic_inline_title(topic, self.store.topic_intake_status(id))))
                 .when(can_queue, |d| d.child(button("queue-topic", "Queue topic")
                     .tooltip("Queue all approved unfinished goals in this topic. Topics execute one at a time.")
                     .on_click(cx.listener(move |a, _, _, cx| a.start_topic_batch(id, cx)))))
@@ -593,7 +675,9 @@ impl TaskApp {
                     })))
             .child(row().px_6().pb_2().gap_3()
                 .child(self.layout_switch(cx))
-                .child(div().flex_1().min_w_0().child(label(format!("{} research goal{}{}", goals.len(), if goals.len() == 1 { "" } else { "s" }, if archived { " · Archived topic. Existing goals and results remain available." } else { " · Open a goal to explore its steps and materials." }), cx))))
+                .child(div().flex_1().min_w_0().child(label(format!("{} research goal{}{}", goals.len(), if goals.len() == 1 { "" } else { "s" }, if archived { " · Archived topic. Existing goals and results remain available." } else { "" }), cx)
+                    .id("topic-goal-count")
+                    .tooltip(|w, cx| component::tooltip::Tooltip::new("Open a goal to explore its steps and materials.").build(w, cx)))))
             .when_some(topic.replanned_from, |d, source| d.child(row().px_6().pb_2()
                 .child(link_button("replan-source", self.store.topics().iter().find(|t| t.id == source)
                     .map(|t| format!("From {} · Open original topic", t.display_name()))
@@ -601,15 +685,18 @@ impl TaskApp {
                     .disabled(!self.store.topics().iter().any(|t| t.id == source))
                     .on_click(cx.listener(move |a, _, w, cx| a.navigate(Scope::Topic(source), w, cx))))))
             .child(self.topic_publication_panel(id, cx))
-            .when_some(self.store.topic_planning_status(id), |d, status| d.child(
-                col().px_6().py_3().gap_2()
-                    .child(label(status, cx))
-                    .child(muted("Confirm the research understanding first. Goals and tasks appear after plan generation.", cx))
-                    .child(col().id("topic-planning-requests").max_h(px(260.)).overflow_y_scroll().child(self.request_history(Some(project), cx)))
+            .when_some(planning_status, |d, _| d.child(
+                col().id("topic-planning-panel").px_6().py_3().gap_2()
+                    .when(goals.is_empty(), |d| d.flex_1().min_h_0().overflow_y_scroll())
+                    .child(col().flex_shrink_0().gap_2()
+                        .child(col().id("topic-planning-requests")
+                            .when(!goals.is_empty(), |d| d.max_h(px(260.)).overflow_y_scroll())
+                            .child(self.request_history(Some(project), cx))))
+                    .map(observed)
             ))
             .child(self.todo_batch_bar(Some(project), cx))
-            .when(self.layout == Layout::Board, |d| d.child(self.board(&goals.iter().map(|t| (*t).clone()).collect::<Vec<_>>(), cx)))
-            .when(self.layout == Layout::List, |d| d.child(col().id("topic-goals").track_scroll(&self.navigation.topic_scroll).px_6().pt_3().pb_5().overflow_y_scroll().flex_1().min_h_0()
+            .when(self.layout == Layout::Board && !planning_only, |d| d.child(self.board(&goals.iter().map(|t| (*t).clone()).collect::<Vec<_>>(), cx)))
+            .when(self.layout == Layout::List && !planning_only, |d| d.child(col().id("topic-goals").track_scroll(&self.navigation.topic_scroll).px_6().pt_3().pb_5().overflow_y_scroll().flex_1().min_h_0()
                 .when(goals.is_empty(), |d| d.child(muted("No research goals yet. Create one here or assign an existing goal using its Topic property.", cx)))
                 .child(list)))
             .into_any_element()

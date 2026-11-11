@@ -2118,6 +2118,8 @@ mod tests {
             understanding_confirmed: false,
             understanding_feedback: String::new(),
             understanding_source_signature: String::new(),
+            understanding_turns: Vec::new(),
+            understanding_draft: String::new(),
         });
         fresh.research_config_mut().models = store.research_config().models.clone();
         fresh.set_default_model(store.default_model().clone());

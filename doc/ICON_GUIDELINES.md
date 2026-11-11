@@ -10,7 +10,6 @@ The current `gpui-kit` dependency is 0.9.1. Its assets package records Lucide pr
 
 | Purpose | Lucide icon / Rust variant |
 | --- | --- |
-| Replanned research | `notebook-pen` / `NotebookPen`, with a Replanned tooltip |
 | Edit a document | `file-pen-line` / `FilePenLine` |
 | Refresh a resource | `refresh-cw` / `RefreshCw` |
 | Retry execution | `rotate-cw` / `RotateCw` |
@@ -23,7 +22,7 @@ The current `gpui-kit` dependency is 0.9.1. Its assets package records Lucide pr
 | Drill down / advance | `ChevronRight` / `ArrowRight` |
 | Priority: none, low, medium, high, urgent | `Minus`, `ArrowDown`, `Equal`, `ArrowUp`, `CircleAlert` |
 
-Replanned means a revised research plan, not a Git branch or an operation currently refreshing. Notebook-and-pen is a visual cue, not a complete explanation: retain the Replanned tooltip, accessible label, and original-topic context. Use the existing theme accent rather than inventing another status color.
+A topic created from another topic uses a passive `Copy` text tag before its title, not an icon. Keep the source-topic link in its detail view. Sidebar project rows omit folder icons; their names and disclosure controls identify the hierarchy. Unfinished intake states use text tags so their meaning remains visible without relying on color.
 
 ## Native app implementation
 

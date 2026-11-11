@@ -197,8 +197,7 @@ impl Store {
         matches!(run.status.as_str(), "Interrupted" | "Recovering")
             && !self.runs().iter().any(|newer| {
                 newer.id > run.id
-                    && newer.task_id == run.task_id
-                    && newer.project_plan == run.project_plan
+                    && crate::scheduler::same_task(newer, run)
             })
     }
     pub(crate) fn paused_project_goals(&self) -> Vec<(u64, Vec<u64>)> {
@@ -236,6 +235,39 @@ impl Store {
     }
 }
 impl TaskApp {
+    pub(crate) fn resume_request_understanding(&mut self, id: u64, cx: &mut Context<Self>) {
+        let eligible = self.store.latest_request_attempt(id).filter(|run| {
+            run.status == "Interrupted"
+                && crate::request_planning::is_understanding_run(run)
+                && self.store.request_needs_understanding(id)
+                && self.store.planning_attempt_is_current(run.id)
+        });
+        let Some(previous) = eligible else {
+            self.error = "This understanding attempt is no longer available to resume. Review the current research request.".into();
+            cx.notify();
+            return;
+        };
+        if !matches!(self.recovery.checks.get(&previous.id), Some(SessionCheck::Stopped)) {
+            self.error = "Check the previous session before resuming the understanding.".into();
+            self.check_interrupted_sessions(cx);
+            cx.notify();
+            return;
+        }
+        match self.store.prepare_request_plan(id) {
+            Ok(run) => {
+                let restarting = self.store.resume_candidate(&run).is_none();
+                self.retry_research_request_without_navigation(id, cx);
+                if restarting && self.error.is_empty() {
+                    self.toast = "Restarting interrupted understanding from saved context".into();
+                }
+            }
+            Err(error) => {
+                self.error = error;
+                cx.notify();
+            }
+        }
+    }
+
     pub(crate) fn check_interrupted_sessions(&mut self, cx: &mut Context<Self>) {
         if self.recovery.receiver.is_some() {
             return;
@@ -274,7 +306,7 @@ impl TaskApp {
             .runs()
             .iter()
             .rev()
-            .find(|r| r.task_id == run.task_id && r.project_plan == run.project_plan)
+            .find(|r| crate::scheduler::same_task(r, run))
             .is_some_and(|r| {
                 matches!(r.status.as_str(), "Interrupted" | "Recovering")
                     && !matches!(self.recovery.checks.get(&r.id), Some(SessionCheck::Stopped))
@@ -802,9 +834,7 @@ impl TaskApp {
                 };
                 let detail = request
                     .map(|r| {
-                        let date = chrono::DateTime::parse_from_rfc3339(&r.submitted_at)
-                            .map(|date| date.format("%Y-%m-%d %H:%M").to_string())
-                            .unwrap_or_else(|_| r.submitted_at.clone());
+                        let date = crate::time_display::timestamp(&r.submitted_at);
                         format!("{date} · {status}")
                     })
                     .unwrap_or_else(|| status.into());
@@ -847,6 +877,28 @@ mod tests {
     use super::{SessionCheck, parse_transcript, request_matches};
     use crate::domain::{Stage, Store};
     use serde_json::json;
+    #[test]
+    fn recovery_checks_independent_requests_in_the_same_project() {
+        let mut store = Store::empty();
+        store.project_at_mut(0).unwrap().directory = std::env::temp_dir().to_string_lossy().into_owned();
+        store.set_default_model("fixture/model".into());
+        let first = store.create_research_request(1, None, "Compare storage engines").unwrap();
+        let second = store.create_research_request(1, None, "Compare network protocols").unwrap();
+        let mut first_run = store.prepare_request_plan(first).unwrap();
+        first_run.status = "Interrupted".into();
+        store.push_run(first_run.clone());
+        let mut second_run = store.prepare_request_plan(second).unwrap();
+        second_run.status = "Interrupted".into();
+        store.push_run(second_run.clone());
+        assert!(store.is_recovery_candidate(&first_run));
+        assert!(store.is_recovery_candidate(&second_run));
+        let mut replacement = store.prepare_request_plan(first).unwrap();
+        replacement.status = "Succeeded".into();
+        store.push_run(replacement);
+        assert!(!store.is_recovery_candidate(&first_run));
+        assert!(store.is_recovery_candidate(&second_run));
+    }
+
     #[test]
     fn codex_recovery_uses_attempt_lease_even_before_session_event() {
         let mut store = Store::empty();

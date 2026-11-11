@@ -282,7 +282,8 @@ pub(crate) fn sidebar_variant(
 }
 
 fn section(title: &str, cx: &App) -> Div {
-    label(title.to_string(), cx).pt_3().pb_1().px_3()
+    label(title.to_string(), cx).text_sm().font_weight(FontWeight::SEMIBOLD)
+        .text_color(rgb(palette(cx).text)).pt_3().pb_1().px_3()
 }
 
 impl TaskApp {
@@ -905,21 +906,16 @@ impl TaskApp {
                 .count();
             side = side.child(self.nav(format!("cycle-{i}"), name, scope, count, cx));
         }
-        // Projects are part of the Research domain; the left border and indent
-        // keep them visually subordinate to All research.
-        let mut projects_block = col()
-            .gap_0()
-            .ml_2()
-            .pl_1()
-            .border_l_1()
-            .border_color(rgb(colors.line));
+        // Separate navigation groups vertically without consuming title width.
+        let mut projects_block = col().gap_0().mt_3();
         projects_block = projects_block.child(
             row()
                 .justify_between()
-                .pl_1()
+                .pl_3()
                 .pr_3()
                 .pt_2()
-                .child(label("Projects", cx))
+                .child(label("Projects", cx).text_sm().font_weight(FontWeight::SEMIBOLD)
+                    .text_color(rgb(colors.text)))
                 .child(
                     tool_icon("new-project", assets::IconName::Plus, "Create project")
                         .tooltip("Create project")
@@ -966,7 +962,7 @@ impl TaskApp {
                             .flex_1()
                             .min_w_0()
                             .h_8()
-                            .px_3()
+                            .px_1()
                             .tooltip(project.name.clone())
                             .accessibility_label(project.name.clone())
                             .child(
@@ -974,11 +970,6 @@ impl TaskApp {
                                     .w_full()
                                     .min_w_0()
                                     .gap_2()
-                                    .child(
-                                        gpui_kit::component::Icon::new(assets::IconName::Folder)
-                                            .size(px(20.))
-                                            .flex_shrink_0(),
-                                    )
                                     .child(single_line_text(
                                         format!("sidebar-project-title-{pid}"),
                                         project.name.clone(),
@@ -2337,11 +2328,7 @@ impl TaskApp {
                             if t.created_at.is_empty() {
                                 "Not recorded".to_string()
                             } else {
-                                t.created_at
-                                    .split_whitespace()
-                                    .take(2)
-                                    .collect::<Vec<_>>()
-                                    .join(" ")
+                                crate::time_display::timestamp(&t.created_at)
                             },
                         )),
                 )
@@ -2606,7 +2593,7 @@ impl TaskApp {
                 label(format!("Created · {}", if t.created_at.is_empty() {
                     "Not recorded".to_string()
                 } else {
-                    t.created_at.split_whitespace().take(2).collect::<Vec<_>>().join(" ")
+                    crate::time_display::timestamp(&t.created_at)
                 }), cx)
                     .id(format!("card-created-{id}"))
                     .cursor_default(),
@@ -3002,7 +2989,7 @@ impl TaskApp {
                     .child(selectable(if t.description.is_empty() {
                         "Add a description to give this task more context.".into()
                     } else {
-                        t.description.clone()
+                        crate::time_display::original_request(&t.description, self.store.research_requests().iter().find(|r| r.goal_ids.contains(&id)))
                     })),
             )
             .when(is_goal, |d| d.child(self.request_brief_view(id, cx)))
@@ -3136,7 +3123,7 @@ impl TaskApp {
                                         .font_weight(FontWeight::SEMIBOLD)
                                         .child(selectable(comment.author.clone())),
                                 )
-                                .child(label(comment.created_at.clone(), cx)),
+                                .child(label(crate::time_display::timestamp(&comment.created_at), cx)),
                         )
                         .child(selectable(comment.body.clone())),
                 );
@@ -3371,17 +3358,17 @@ impl TaskApp {
                 .w_full()
                 .min_w_0()
                 .child(label("Status", cx).id("task-status-label").flex_shrink_0().map(observed))
-                // Keep the read-only value aligned with the other properties.
-                // Longer status labels can wrap within the value column.
+                // Keep the status on one line without consuming space with button padding.
                 .child(
                     div()
                         .id("task-execution-status")
                         .role(Role::Label)
                         .aria_label(status.label())
-                        .max_w(px(164.))
+                        .flex_1()
                         .min_w_0()
                         .py_0p5()
-                        .px_2()
+                        .text_sm()
+                        .justify_end()
                         .flex()
                         .items_center()
                         .gap_2()
@@ -3398,7 +3385,7 @@ impl TaskApp {
                             div()
                                 .min_w_0()
                                 .text_right()
-                                .whitespace_normal()
+                                .whitespace_nowrap()
                                 .line_height(relative(1.3))
                                 .child(selectable(status.label())),
                         )

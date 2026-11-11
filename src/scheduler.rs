@@ -126,6 +126,10 @@ impl Store {
             .is_some_and(|s| !s.trim().is_empty())
             && previous.agent == request.agent
             && previous.model == request.model
+            && (request.project_plan.is_none()
+                || (previous.input_signature == request.input_signature
+                    && crate::request_planning::is_understanding_run(previous)
+                        == crate::request_planning::is_understanding_run(request)))
             && previous.research_kind == request.research_kind
             && (request.research_kind.is_some() || previous.stage == request.stage)
             && (normalized_path(&previous.directory) == normalized_path(&request.directory)
@@ -166,9 +170,10 @@ impl Store {
 
 }
 
-fn same_task(a: &AgentRun, b: &AgentRun) -> bool {
+pub(crate) fn same_task(a: &AgentRun, b: &AgentRun) -> bool {
     match (a.project_plan, b.project_plan) {
-        (Some(a), Some(b)) => a == b,
+        (Some(project_a), Some(project_b)) => project_a == project_b
+            && a.planning_owner == b.planning_owner,
         (None, None) => a.task_id == b.task_id,
         _ => false,
     }
@@ -350,6 +355,44 @@ mod tests {
         evidence.directory = isolated.to_string_lossy().into_owned();
         store.push_run(evidence);
         assert_eq!(store.execution_directory(steps[1]).unwrap(), isolated);
+    }
+
+    #[test]
+    fn understanding_resume_isolates_requests_revisions_inputs_and_phase() {
+        let (mut store, _, _) = setup();
+        let first = store.create_research_request(1, None, "Compare storage engines").unwrap();
+        let second = store.create_research_request(1, None, "Compare network protocols").unwrap();
+        let mut interrupted = store.prepare_request_plan(first).unwrap();
+        interrupted.status = "Interrupted".into();
+        interrupted.session_id = Some("first-understanding-session".into());
+        store.push_run(interrupted.clone());
+        let mut unrelated = store.prepare_request_plan(second).unwrap();
+        unrelated.status = "Interrupted".into();
+        unrelated.session_id = Some("second-understanding-session".into());
+        store.push_run(unrelated);
+        let next = store.prepare_request_plan(first).unwrap();
+        assert_eq!(store.resume_candidate(&next).unwrap().session_id.as_deref(),
+            Some("first-understanding-session"));
+        let mut changed = next.clone();
+        changed.planning_owner.as_mut().unwrap().revision += 1;
+        assert!(store.resume_candidate(&changed).is_none());
+        changed = next.clone();
+        changed.input_signature.push_str("changed feedback");
+        assert!(store.resume_candidate(&changed).is_none());
+        changed = next.clone();
+        changed.prompt = "Generate goals after confirmation".into();
+        changed.logs.clear();
+        assert!(store.resume_candidate(&changed).is_none());
+        changed = next.clone();
+        changed.agent = "Another agent".into();
+        assert!(store.resume_candidate(&changed).is_none());
+        changed = next.clone();
+        changed.model = "other/model".into();
+        assert!(store.resume_candidate(&changed).is_none());
+        let mut completed = next.clone();
+        completed.status = "Succeeded".into();
+        store.push_run(completed);
+        assert!(store.resume_candidate(&next).is_none());
     }
 
     #[test]

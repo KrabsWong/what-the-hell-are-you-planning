@@ -1476,10 +1476,22 @@ fn request_heap(request: &ResearchRequest) -> usize {
         understanding,
         understanding_feedback,
         understanding_source_signature,
+        understanding_turns,
+        understanding_draft,
     } = request;
     let mut value = size_of::<ResearchRequest>();
     value = text(value, understanding_feedback);
     value = text(value, understanding_source_signature);
+    value = text(value, understanding_draft);
+    value = slots::<crate::request_planning::UnderstandingTurn>(value, understanding_turns.capacity());
+    for turn in understanding_turns {
+        value = text(value, &turn.submitted_at);
+        value = text(value, &turn.feedback);
+        if let Some(understanding) = &turn.previous_understanding {
+            value = text(value, &understanding.summary);
+            value = texts(value, &understanding.questions);
+        }
+    }
     if let Some(understanding) = understanding {
         value = text(value, &understanding.summary);
         value = texts(value, &understanding.questions);
@@ -2349,6 +2361,8 @@ mod tests {
             understanding_confirmed: false,
             understanding_feedback: String::new(),
             understanding_source_signature: String::new(),
+            understanding_turns: Vec::new(),
+            understanding_draft: String::new(),
         });
         requests.push(ResearchRequest {
             id: 2,
@@ -2368,6 +2382,8 @@ mod tests {
             understanding_confirmed: false,
             understanding_feedback: String::new(),
             understanding_source_signature: String::new(),
+            understanding_turns: Vec::new(),
+            understanding_draft: String::new(),
         });
         let request_group = profile_journal
             .stage_with_metadata(

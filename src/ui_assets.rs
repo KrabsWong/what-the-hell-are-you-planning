@@ -39,7 +39,6 @@ assets::icon_assets!(
         Expand,
         Folder,
         HardDrive,
-        NotebookPen,
         Loader,
         FileText,
         Layers,
@@ -111,7 +110,6 @@ mod tests {
         for icon in [
             assets::IconName::Play,
             assets::IconName::Folder,
-            assets::IconName::NotebookPen,
             assets::IconName::Search,
             assets::IconName::Settings,
             assets::IconName::Pencil,

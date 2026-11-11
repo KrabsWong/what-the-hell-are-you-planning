@@ -444,6 +444,8 @@ pub struct TaskApp {
     pub(crate) planning_opener_focus: Option<gpui_kit::FocusHandle>,
     pub project_brief: Entity<TextareaState>,
     pub(crate) understanding_editor: Option<(u64, Entity<TextareaState>)>,
+    pub(crate) understanding_editor_subscription: Option<Subscription>,
+    pub(crate) understanding_history_expanded: Option<u64>,
     pub storage: Option<Storage>,
     /// Ordinary and command writes are submitted as typed groups to the existing
     /// bounded persistence worker; the legacy writer is never used in this mode.
@@ -1027,6 +1029,8 @@ impl TaskApp {
             planning_destination_error: None,
             planning_opener_focus: None,
             understanding_editor: None,
+            understanding_editor_subscription: None,
+            understanding_history_expanded: None,
             project_brief: cx.new(|cx| {
                 TextareaState::new(window, cx)
                     .rows(5)

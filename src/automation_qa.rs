@@ -867,6 +867,18 @@ print(json.dumps({'type':'text','part':{'text':json.dumps({'status':'complete','
     });
     cx.update_window(handle, |_, _, cx| {
         app.update(cx, |a, cx| {
+            let task = a
+                .store
+                .runs()
+                .iter()
+                .find(|run| run.id == source)
+                .map(|run| run.task_id)
+                .unwrap();
+            a.store
+                .task_mut(task)
+                .unwrap()
+                .description
+                .push_str("\nQA input changed after the saved report finished.");
             a.error.clear();
             a.regenerate_report(source, "Make the explanation clearer", cx);
         });
@@ -899,15 +911,18 @@ print(json.dumps({'type':'text','part':{'text':json.dumps({'status':'complete','
         }
         std::thread::sleep(Duration::from_millis(10));
     };
-    let (final_run_id, regenerated_model, regenerated_dir) = read_state(&mut cx, &app, |a| {
+    let (final_run_id, regenerated_model, regenerated_dir, historical_regeneration) =
+        read_state(&mut cx, &app, |a| {
         let run = a.store.runs().iter().find(|run| run.id == regenerated).unwrap();
         (
             a.store.occurrence(occurrence).unwrap().final_run_id,
             run.model.clone(),
             run.directory.clone(),
+            crate::research::is_historical_report_regeneration(run),
         )
     });
     assert_eq!(final_run_id, Some(regenerated));
+    assert!(historical_regeneration);
     assert_eq!(regenerated_model, "fixture/advise");
     // Regeneration keeps the occurrence's own working directory and leaves no
     // automation-only agent configuration behind.

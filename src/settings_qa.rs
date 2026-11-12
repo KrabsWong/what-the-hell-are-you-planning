@@ -116,7 +116,28 @@ pub fn run() {
             })
             .unwrap();
             screenshot(&mut cx, handle, &directory, "00-settings-appearance.png");
+            profile_menu(&mut cx, handle, "output-language-picker", 2);
             cx.update_window(handle, |_, w, cx| {
+                assert_eq!(
+                    app.read(cx).store.output_language(),
+                    crate::research::OutputLanguage::SimplifiedChinese
+                );
+                assert_eq!(
+                    Storage::new(path.clone())
+                        .load()
+                        .unwrap()
+                        .unwrap()
+                        .output_language(),
+                    crate::research::OutputLanguage::SimplifiedChinese
+                );
+            })
+            .unwrap();
+            profile_menu(&mut cx, handle, "output-language-picker", 0);
+            cx.update_window(handle, |_, w, cx| {
+                assert_eq!(
+                    app.read(cx).store.output_language(),
+                    crate::research::OutputLanguage::Auto
+                );
                 assert_eq!(app.read(cx).store.concurrency_limit(), 3);
                 for limit in 4..=10 {
                     w.click("concurrency-increase", cx);

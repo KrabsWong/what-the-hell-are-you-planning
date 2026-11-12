@@ -961,9 +961,14 @@ impl TaskApp {
             && !self.store.task_is_archived(run.task_id)
         {
             let source_id = run.id;
+            let regeneration_notice =
+                crate::research::report_regeneration_input_notice(&self.store, source_id);
+            let regeneration_tooltip = regeneration_notice.unwrap_or_else(|| {
+                "Rewrite this report using existing evidence and analysis".into()
+            });
             actions = actions.child(primary_button("regenerate-report", "Regenerate")
                 .disabled(self.task_running(id))
-                .tooltip("Rewrite this report using existing evidence and analysis")
+                .tooltip(regeneration_tooltip)
                 .on_click(cx.listener(move |a, _, w, cx| {
                     a.report_regeneration = Some((source_id, cx.new(|cx|
                         gpui_kit::component::input::TextareaState::new(w, cx)
@@ -1149,12 +1154,24 @@ impl TaskApp {
                 let source_id = *source_id;
                 let input = input.clone();
                 let preferences = input.clone();
+                let regeneration_notice =
+                    crate::research::report_regeneration_input_notice(&self.store, source_id);
+                let regeneration_tooltip = regeneration_notice.clone().unwrap_or_else(|| {
+                    "Rewrite only the report text; upstream research stays unchanged".into()
+                });
                 progress = col().gap_2().child(progress).child(col().gap_2()
                     .child(label("Rewrite only the final report. Existing evidence, analysis and earlier report versions are kept.", cx))
+                    .when_some(regeneration_notice, |panel, reason| {
+                        panel.child(
+                            crate::views::notice(crate::views::NoticeTone::Warning, reason, cx)
+                                .id("report-regeneration-history-notice"),
+                        )
+                    })
                     .child(gpui_kit::component::input::Textarea::new(&input))
                     .child(row().gap_2()
                         .child(primary_button("confirm-regenerate-report", "Regenerate report")
                             .disabled(self.task_running(id))
+                            .tooltip(regeneration_tooltip)
                             .on_click(cx.listener(move |a, _, _, cx| {
                                 let style = preferences.read(cx).value().to_string();
                                 a.regenerate_report(source_id, &style, cx);

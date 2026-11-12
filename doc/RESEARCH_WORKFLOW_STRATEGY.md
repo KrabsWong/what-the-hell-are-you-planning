@@ -89,9 +89,9 @@ For example, a pricing page establishes an advertised price; it does not establi
 
 ### Language of generated content
 
-Generated planning text follows the requester, not the application. The understanding, clarification questions, topic name, goal titles, briefs and step instructions use the language the request was written in; application labels, logs and workflow status text stay English.
+Generated planning text follows the global **Output language** setting. Its default, **Match request**, uses the language the request was written in; an explicit English, Simplified Chinese, Traditional Chinese, Japanese, Korean, Spanish, French, German, Portuguese or Italian choice overrides the request for generated summaries, plans, task instructions and reports across ordinary Research and Automations. Application labels, logs and workflow status text stay English.
 
-Every research step writes reader-facing prose in the goal language. A Chinese goal produces Chinese collection notes, analysis and final report, including headings, table headers, captions and the Appendix label. English evidence, tool output or earlier notes never justify switching the output to English; quoted source text, source titles, URLs and proper nouns keep their original language.
+Every research step writes reader-facing prose in the configured output language. A Chinese override produces Chinese collection notes, analysis and final report, including headings, table headers, captions and the Appendix label. Evidence, tool output or earlier notes in another language never justify switching the output; quoted source text, source titles, URLs, proper nouns, JSON keys and protocol enum values keep their original form.
 
 ## 2. Shared writing and fidelity rules
 
@@ -198,7 +198,9 @@ Write a connected explanation rather than a compressed analysis outline. Develop
 
 Completed final reports expose **Regenerate** in the result view. Users may supply writing preferences (audience, tone, structure or length) or leave them blank to apply the current clarity guidance. This creates one new final-report attempt using the validated dependency evidence/analysis and the selected prior report; it does not modify task instructions or start upstream tasks. Preferences are saved in that attempt's prompt. Earlier versions remain available through the run version picker, including after a failed regeneration.
 
-Regeneration requires the selected report's input signature to still match current research inputs. Changed or invalid upstream results are rejected instead of silently triggering new research. Existing execution, material validation and result validation checks still apply. The prompt confines the model to existing evidence, preserving citations, findings and limitations; it forbids fresh browsing and provider queries. This is prompt guidance, not a separate tool-access sandbox or automated semantic equivalence check.
+Regeneration always uses the selected report's saved evidence snapshot rather than rerunning research or reading later task/material edits. When current upstream inputs differ from that snapshot, the editor states inline that the later changes are not included but still permits a rewrite. The new attempt keeps the source report's input signature so it remains historical, and never presents old evidence as a result of the changed inputs.
+
+Regeneration is not an alternate path for applying current research changes. Normal execution still requires current input signatures, approved dependencies and valid materials. A historical rewrite preserves citations, findings and limitations from its source snapshot; it forbids fresh browsing and provider queries. This is prompt guidance, not a separate tool-access sandbox or automated semantic equivalence check.
 
 ### Inspiration from Karpathy's X post
 

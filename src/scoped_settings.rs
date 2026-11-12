@@ -8,6 +8,7 @@ pub(crate) enum SettingsChange {
     AutomationConcurrency(usize),
     Appearance(crate::appearance::Appearance),
     LiquidGlass(bool),
+    OutputLanguage(crate::research::OutputLanguage),
 }
 
 #[derive(Clone, Debug, PartialEq, Eq)]
@@ -61,6 +62,14 @@ pub(crate) fn apply_settings_change(
             store.set_appearance(mode);
             SettingsChange::Appearance(before)
         }
+        SettingsChange::OutputLanguage(language) => {
+            if store.output_language() == language {
+                return Err(SettingsError::NoChange);
+            }
+            let before = store.output_language();
+            store.set_output_language(language);
+            SettingsChange::OutputLanguage(before)
+        }
     };
     Ok(SettingsUndo {
         before,
@@ -83,6 +92,7 @@ pub(crate) fn undo_settings_change(
         SettingsChange::Appearance(mode) => {
             store.set_appearance(mode);
         }
+        SettingsChange::OutputLanguage(language) => store.set_output_language(language),
     }
     Ok(())
 }
@@ -133,6 +143,26 @@ mod tests {
         assert_eq!(store.appearance(), crate::appearance::Appearance::Dark);
         undo_settings_change(&mut store, &undo).unwrap();
         assert_eq!(store.appearance(), crate::appearance::Appearance::Light);
+    }
+
+    #[test]
+    fn output_language_undo_restores_only_the_language() {
+        let mut store = Store::empty();
+        store.set_output_language(crate::research::OutputLanguage::SimplifiedChinese);
+        let undo = apply_settings_change(
+            &mut store,
+            SettingsChange::OutputLanguage(crate::research::OutputLanguage::English),
+        )
+        .unwrap();
+        assert_eq!(
+            store.output_language(),
+            crate::research::OutputLanguage::English
+        );
+        undo_settings_change(&mut store, &undo).unwrap();
+        assert_eq!(
+            store.output_language(),
+            crate::research::OutputLanguage::SimplifiedChinese
+        );
     }
 
     #[test]

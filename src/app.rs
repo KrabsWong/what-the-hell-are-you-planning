@@ -3654,6 +3654,8 @@ impl TaskApp {
                     .store
                     .task(run.task_id)
                     .is_some_and(|task| task.automation_id.is_some());
+            let historical_report_regeneration =
+                crate::research::is_historical_report_regeneration(&run);
             let valid = !automation_owned_without_occurrence
                 && if let Some(request) = self.store.request_for_run(run.id) {
                     self.store.request_plan_signature(request.id).ok().as_ref()
@@ -3662,12 +3664,19 @@ impl TaskApp {
                     self.store.project_plan_signature(project).ok().as_ref()
                         == Some(&run.input_signature)
                 } else if run.research_kind.is_some() {
-                    self.store.research_signature(run.task_id).as_ref()
-                        == Some(&run.input_signature)
-                        && !self.store.research_pending_approval(run.task_id)
-                        && self.store.task(run.task_id).is_some_and(|t| {
-                            !t.archived && !matches!(t.stage, Stage::Backlog | Stage::Cancelled)
-                        })
+                    if historical_report_regeneration {
+                        self.store
+                            .task(run.task_id)
+                            .is_some_and(|task| !task.archived)
+                    } else {
+                        self.store.research_signature(run.task_id).as_ref()
+                            == Some(&run.input_signature)
+                            && !self.store.research_pending_approval(run.task_id)
+                            && self.store.task(run.task_id).is_some_and(|t| {
+                                !t.archived
+                                    && !matches!(t.stage, Stage::Backlog | Stage::Cancelled)
+                            })
+                    }
                 } else {
                     false
                 };

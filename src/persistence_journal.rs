@@ -1427,6 +1427,7 @@ fn research_config_heap(config: &ResearchConfig) -> usize {
         agents,
         models,
         ego_path,
+        output_language: _,
     } = config;
     let mut value = size_of::<ResearchConfig>();
     value = text(value, default_agent);

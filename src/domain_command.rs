@@ -1533,7 +1533,9 @@ fn apply_dispatch_regeneration(
             "The regeneration run does not match its report source.".into(),
         ));
     }
-    if staged.research_signature(source.task_id).as_ref() != Some(&source.input_signature) {
+    if staged.research_signature(source.task_id).as_ref() != Some(&source.input_signature)
+        && !crate::research::is_historical_report_regeneration(&run)
+    {
         return Err(CommandError::Rejected(
             "The report inputs changed; complete the updated research before regenerating."
                 .into(),

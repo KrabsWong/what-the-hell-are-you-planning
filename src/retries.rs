@@ -35,7 +35,12 @@ impl Store {
             return None;
         }
         // Retry the approved snapshot only. Dispatch checks it again after the delay.
-        if failed.research_kind.is_none() || self.research_signature(task.id).as_ref() != Some(&failed.input_signature) {
+        let historical_report_regeneration =
+            crate::research::is_historical_report_regeneration(failed);
+        if failed.research_kind.is_none()
+            || (!historical_report_regeneration
+                && self.research_signature(task.id).as_ref() != Some(&failed.input_signature))
+        {
             return None;
         }
         let mut retry = failed.clone();
@@ -56,6 +61,13 @@ impl Store {
             "[retry] Attempt {}/{} scheduled after {} seconds because run {} failed. Stop task cancels this retry.",
             retry.auto_retry_attempt, MAX_AUTO_RETRIES, RETRY_DELAY_SECONDS, failed.id
         )];
+        retry.logs.extend(
+            failed
+                .logs
+                .iter()
+                .filter(|line| line.starts_with("[research] Regenerating report from run #"))
+                .cloned(),
+        );
         // Preserve the original evidence and session, with actionable validation feedback.
         Some(retry)
     }

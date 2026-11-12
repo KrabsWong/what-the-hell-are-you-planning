@@ -495,8 +495,7 @@ impl TaskApp {
                 if self.task_running(run.task_id) || self.recovery_blocks_task(run.task_id) {
                     return Err("Wait for this task to finish or resolve its previous session before regenerating.".into());
                 }
-                let files = self.prepare_run_materials(run.task_id, &mut run)?;
-                Ok((run, files))
+                Ok((run, Vec::new()))
             });
         match result {
             Ok((run, files)) => {
@@ -641,7 +640,10 @@ impl TaskApp {
             }
             return;
         }
-        if self.store.research_signature(run.task_id).as_ref() != Some(&run.input_signature) {
+        let historical_report_regeneration = research::is_historical_report_regeneration(&run);
+        if !historical_report_regeneration
+            && self.store.research_signature(run.task_id).as_ref() != Some(&run.input_signature)
+        {
             {
                 let mut stored = self.store.run_at_mut(index).unwrap();
                 stored.status = "Stale".into();

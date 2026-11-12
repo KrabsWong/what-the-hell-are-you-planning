@@ -85,12 +85,17 @@ mod tests {
         store.create_model_profile("Fast").unwrap();
         store.research_config_mut().ego_path = "custom-browser".into();
         store.research_config_mut().codex_path = "custom-codex".into();
+        store.set_output_language(crate::research::OutputLanguage::SimplifiedChinese);
         store.apply_model_profile("Mixed");
         assert!(!store.model_profile_changed(&original));
         assert_eq!(store.research_model(crate::research::ResearchKind::ALL[0]), "provider/global");
         assert_eq!(store.research_model(crate::research::ResearchKind::ALL[1]), "codex-model");
         assert_eq!(store.research_config().ego_path, "custom-browser");
         assert_eq!(store.research_config().codex_path, "custom-codex");
+        assert_eq!(
+            store.output_language(),
+            crate::research::OutputLanguage::SimplifiedChinese
+        );
         store.set_default_model("provider/updated".into());
         assert!(store.model_profile_changed(&original));
         store.update_model_profile("Mixed");

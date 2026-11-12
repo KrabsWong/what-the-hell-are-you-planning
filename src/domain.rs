@@ -3001,6 +3001,10 @@ mod tests {
         let legacy: crate::research::ResearchConfig = serde_json::from_str(r#"{"models":["test/plan","","",""],"ego_path":"ego-browser"}"#).unwrap();
         assert_eq!(legacy.default_agent, "OpenCode");
         assert!(legacy.agents.iter().all(Option::is_none));
+        assert_eq!(
+            legacy.output_language,
+            crate::research::OutputLanguage::Auto
+        );
         let mut store = Store::empty();
         store.set_default_model("test/global".into());
         store.set_research_config(legacy);

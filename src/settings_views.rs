@@ -1,6 +1,7 @@
 use crate::{
     app::{Scope, TaskApp},
     appearance::palette,
+    research::OutputLanguage,
     views::*,
 };
 use gpui_kit::{
@@ -275,6 +276,17 @@ impl TaskApp {
         cx.notify();
     }
 
+    pub fn set_output_language(&mut self, language: OutputLanguage, cx: &mut Context<Self>) {
+        if self.store.output_language() == language {
+            return;
+        }
+        self.apply_scoped_settings(
+            crate::scoped_settings::SettingsChange::OutputLanguage(language),
+            cx,
+        );
+        cx.notify();
+    }
+
     pub fn open_model_settings(&mut self, w: &mut Window, cx: &mut Context<Self>) {
         self.record_origin();
         self.set_settings_tab(SettingsTab::Models);
@@ -380,6 +392,46 @@ impl TaskApp {
         let build_general = || {
             #[cfg(feature = "qa")]
             crate::brand::note_general_render();
+            let language = self.store.output_language();
+            let language_entity = cx.entity().downgrade();
+            let content = col()
+                .gap_2()
+                .child(
+                    div()
+                        .font_weight(FontWeight::SEMIBOLD)
+                        .child(selectable("Content")),
+                )
+                .child(label(
+                    "Used for generated summaries, plans, task instructions and reports across Research and Automations. Match request follows the language you write in.",
+                    cx,
+                ))
+                .child(
+                    row()
+                        .flex_wrap()
+                        .gap_2()
+                        .child(div().text_sm().w(px(140.)).child(selectable("Output language")))
+                        .child(
+                            button("output-language-picker", language.label())
+                                .w(px(240.))
+                                .dropdown_caret(true)
+                                .tooltip("Choose the language for generated research output")
+                                .dropdown_menu(move |mut menu, _, _| {
+                                    for option in OutputLanguage::ALL {
+                                        let entity = language_entity.clone();
+                                        menu = menu.item(
+                                            PopupMenuItem::new(option.label())
+                                                .checked(option == language)
+                                                .on_click(move |_, _, cx| {
+                                                    let _ = entity.update(cx, |app, cx| {
+                                                        app.set_output_language(option, cx);
+                                                    });
+                                                }),
+                                        );
+                                    }
+                                    menu
+                                }),
+                        ),
+                );
             let appearance = col()
             .gap_2()
             .child(div().font_weight(FontWeight::SEMIBOLD).child(selectable("Appearance")))
@@ -417,6 +469,7 @@ impl TaskApp {
                 ),
             );
             col().gap_6()
+            .child(content)
             .child(appearance)
             .child(col().gap_2()
                 .child(Switch::new("settings-liquid-glass")

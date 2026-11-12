@@ -132,10 +132,12 @@ impl Store {
             "scope": project.research_brief,
             "existing_task_titles": existing,
         });
+        let output_language_rule = self.output_language_rule();
         let mut prompt = format!(
             "You are planning research topics for a project in What the hell are you planning? Today is {}.\n\
+             {}\n\
              Produce 1–8 distinct, independently useful research questions that the human can choose from. \
-             Match the language of the project name and scope; write titles and briefs in the language the user wrote them in rather than defaulting to English. Use its name as the scope when no additional scope is given. \
+             Apply the output language rule above to every generated title and brief. Use its name as the scope when no additional scope is given. \
              A broad project usually benefits from focused questions suited to its research type. \
              Each topic must be able to run independently after approval; do not create cross-topic dependencies. \
              These are proposed research goals, not collect/analyze/report phase tasks. \
@@ -151,6 +153,7 @@ impl Store {
              Titles must be at most 160 characters and briefs at most 12,000 UTF-8 bytes each. \
              All topics will enter Backlog awaiting explicit human approval; do not mark anything approved or complete. The application manages approval state. Do not embed transient workflow status or reapproval requirements in generated titles or briefs.",
             chrono::Local::now().format("%Y-%m-%d %:z"),
+            output_language_rule.as_str(),
         );
         prompt.push_str(crate::research::RESEARCH_TYPE_GUIDANCE);
         prompt.push_str(crate::research::RESEARCH_PLAN_GUIDANCE);
@@ -332,6 +335,7 @@ mod tests {
     fn planner_uses_saved_model_and_name_only_scope_without_starting_work() {
         let mut store = workspace();
         store.project_at_mut(0).unwrap().research_brief.clear();
+        store.set_output_language(crate::research::OutputLanguage::English);
         let run = store.prepare_project_plan(1).unwrap();
         assert_eq!(run.project_plan, Some(1));
         assert_eq!(run.task_id, 0);
@@ -342,6 +346,11 @@ mod tests {
         assert!(run.prompt.contains(crate::research::RESEARCH_TYPE_GUIDANCE));
         assert!(run.prompt.contains(crate::research::RESEARCH_PLAN_GUIDANCE));
         assert!(run.prompt.contains(crate::research::REPORT_DELIVERY_GUIDANCE));
+        assert!(
+            run.prompt.contains(
+                "Write every generated field and all reader-facing output in English"
+            )
+        );
         assert_eq!(
             run.input_signature,
             store.project_plan_signature(1).unwrap()

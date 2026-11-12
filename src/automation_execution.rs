@@ -2057,6 +2057,7 @@ mod tests {
         let mut store = store();
         store.research_config_mut().models = ["test/plan", "test/collect", "test/analyze", "test/advise"]
             .map(String::from);
+        store.set_output_language(crate::research::OutputLanguage::English);
         let id = definition(&mut store);
         store
             .approve_and_enable(
@@ -2082,6 +2083,12 @@ mod tests {
         assert!(run.prompt.contains("AUTOMATION OCCURRENCE CONTEXT"));
         assert!(run.prompt.contains("Reference time:"));
         assert!(run.prompt.contains("Previous local day"));
+        assert!(
+            run.prompt.contains(
+                "Write every generated field and all reader-facing output in English"
+            ),
+            "automation steps must use the global output language"
+        );
         assert_eq!(run.research_kind, Some(ResearchKind::Collect));
         // The approved snapshot still wins after a global model and agent change.
         store.set_default_model("test/changed".into());

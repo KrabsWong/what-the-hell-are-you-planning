@@ -337,6 +337,59 @@ fn run_checks(layout_only: bool) {
                     assert_eq!(app.read(cx).store.runs().len(), store.runs().len());
                 })
                 .unwrap();
+                let stale_task = steps[0];
+                let original_description = cx
+                    .update_window(handle, |_, _, cx| {
+                        app.read(cx)
+                            .store
+                            .task(stale_task)
+                            .unwrap()
+                            .description
+                            .clone()
+                    })
+                    .unwrap();
+                cx.update_window(handle, |_, w, cx| {
+                    app.update(cx, |a, cx| {
+                        a.store
+                            .task_mut(stale_task)
+                            .unwrap()
+                            .description
+                            .push_str("\nChanged after the report finished.");
+                        cx.notify();
+                    });
+                    assert!(crate::research::report_regeneration_input_notice(
+                        &app.read(cx).store,
+                        report_id,
+                    )
+                    .is_some());
+                    w.render_frame(cx);
+                    w.click("regenerate-report", cx);
+                    w.render_frame(cx);
+                    let source = app.read(cx).report_regeneration.as_ref().unwrap().0;
+                    assert_eq!(source, report_id);
+                    assert!(crate::research::report_regeneration_input_notice(
+                        &app.read(cx).store,
+                        source,
+                    )
+                    .is_some());
+                    assert_ne!(w.find("confirm-regenerate-report").disabled(), Some(true));
+                })
+                .unwrap();
+                screenshot(
+                    &mut cx,
+                    handle,
+                    &directory,
+                    "regenerate-report-stale-inputs.png",
+                );
+                cx.update_window(handle, |_, w, cx| {
+                    w.click("cancel-regenerate-report", cx);
+                    app.update(cx, |a, cx| {
+                        a.store.task_mut(stale_task).unwrap().description =
+                            original_description;
+                        cx.notify();
+                    });
+                })
+                .unwrap();
 
                 cx.update_window(handle, |_, w, cx| {
                     assert!(w.find("research-result-scroll").visible());

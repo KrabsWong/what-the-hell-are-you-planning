@@ -948,6 +948,11 @@ impl TaskApp {
             return false;
         }
         if self.pending_result_navigation.is_some() || self.automation_ui.pending_period.is_some() { return true; }
+        if self.todo_batch.as_ref().is_some_and(|batch| batch.state == crate::batch::BatchState::Running)
+            && !self.batch_result_bodies_pending().is_empty()
+        {
+            return true;
+        }
         let state_pending = |run_id: u64| match self.run_body_state.get(&run_id) {
             None | Some(crate::history_reader::BodyLoad::NotRequested) => true,
             Some(crate::history_reader::BodyLoad::Loading { .. }) => true,

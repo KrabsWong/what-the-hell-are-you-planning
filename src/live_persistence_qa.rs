@@ -28,7 +28,7 @@ fn run_root() -> PathBuf {
 const CASE_ENV: &str = "LIVE_PERSISTENCE_QA_CASE";
 const ROOT_ENV: &str = "LIVE_PERSISTENCE_QA_ROOT";
 const SEQUENTIAL_ENV: &str = "LIVE_PERSISTENCE_QA_SEQUENTIAL";
-const CASES: [&str; 37] = [
+const CASES: [&str; 40] = [
     "core",
     "reopen",
     "pending-quit",
@@ -51,6 +51,9 @@ const CASES: [&str; 37] = [
     "editor-43200",
     "history-43200",
     "lazy-period-hydration",
+    "lazy-research-queue",
+    "lazy-research-queue-retry",
+    "lazy-research-queue-pause",
     "lazy-body-missing-retry",
     "lazy-latest-failed",
     "t04-automation-lifecycle-undo",
@@ -160,6 +163,9 @@ fn run_case(case: &str) -> Result<(), String> {
             }
             Ok(())
         }
+        "lazy-research-queue" => lazy_research_queue(&root.join("lazy-research-queue"), "normal"),
+        "lazy-research-queue-retry" => lazy_research_queue(&root.join("lazy-research-queue-retry"), "retry"),
+        "lazy-research-queue-pause" => lazy_research_queue(&root.join("lazy-research-queue-pause"), "pause"),
         "lazy-period-hydration" => lazy_period_hydrates_on_open(&root.join("lazy-period")),
         "lazy-body-missing-retry" => lazy_body_missing_and_retry(&root.join("lazy-missing")),
         "lazy-latest-failed" => lazy_latest_attempt_invalidates(&root.join("lazy-failed")),
@@ -3805,6 +3811,76 @@ fn lazy_latest_attempt_invalidates(root: &Path) -> Result<(), String> {
         }
         Ok::<(), String>(())
     })?;
+    let _ = cx.update_window(handle, |_, w, _| w.remove_window());
+    Ok(())
+}
+
+fn lazy_research_queue(root: &Path, mode: &str) -> Result<(), String> {
+    std::fs::create_dir_all(root).map_err(|error| error.to_string())?;
+    let mut store = Store::empty();
+    store.set_default_model("fixture/model".into());
+    store.project_mut(1).unwrap().directory = root.to_string_lossy().into_owned();
+    let goal = store.create_research_goal("Lazy queue".into(), "Reuse saved evidence".into(), 1)?;
+    let plan = r#"{"tasks":[{"title":"Collect","instructions":"Find evidence","kind":"collect","depends_on":[]},{"title":"Collect more","instructions":"Extend evidence","kind":"collect","depends_on":[0]},{"title":"Analyze","instructions":"Use both results","kind":"analyze","depends_on":[0,1]},{"title":"Report","instructions":"Report","kind":"advise","depends_on":[2]}]}"#;
+    let steps = store.apply_research_plan(goal, plan)?;
+    let mut saved = Vec::new();
+    for step in &steps[..2] {
+        let mut run = store.prepare_run(*step)?;
+        run.status = "Succeeded".into();
+        run.output = format!("Saved evidence for step {step}");
+        saved.push((run.id, run.output.clone()));
+        store.push_run(run);
+        store.set_stage(*step, Stage::Done)?;
+    }
+    let path = seed_store(root, &store)?;
+    let (mut cx, handle, app) = open_live(root, &path)?;
+    cx.update(|cx| app.update(cx, |a, cx| {
+        a.qa_dispatch_fake = Some(crate::dispatch_admission::FakeDispatchRunner::default());
+        assert!(saved.iter().all(|(id, _)| a.store.run_body_is_lazy(*id)));
+        assert!(a.store.ready_research_tasks(goal).unwrap().is_empty());
+        if mode == "retry" {
+            a.run_body_state.insert(saved[0].0, crate::history_reader::BodyLoad::Failed {
+                error: "Fixture read failure".into(),
+                retry_at: Instant::now() + Duration::from_secs(60),
+            });
+        }
+        a.start_goal_batch(goal, cx);
+        if mode == "retry" {
+            assert!(matches!(&a.todo_batch.as_ref().unwrap().state,
+                crate::batch::BatchState::Paused(reason) if reason.contains("Fixture read failure")));
+            assert_eq!(a.store.runs().len(), saved.len());
+            a.resume_todo_batch(cx);
+        }
+        assert_eq!(a.todo_batch.as_ref().unwrap().state, crate::batch::BatchState::Running);
+        assert_eq!(a.store.runs().len(), saved.len(), "no launch before hydration");
+        assert!(a.history_needs_pump(), "body loading must keep the runtime alive");
+    }));
+    if mode == "pause" {
+        cx.update(|cx| app.update(cx, |a, cx| a.pause_todo_batch(cx)));
+        pump_until(&mut cx, handle, &app, "paused body reads", |a| {
+            saved.iter().all(|(id, _)| !a.store.run_body_is_lazy(*id))
+        })?;
+        cx.update(|cx| app.update(cx, |a, cx| {
+            assert!(matches!(a.todo_batch.as_ref().unwrap().state, crate::batch::BatchState::Paused(_)));
+            assert_eq!(a.store.runs().len(), saved.len(), "hydration must respect pause");
+            a.resume_todo_batch(cx);
+        }));
+    }
+    advance_until(&mut cx, &app, "lazy research admission", |a| {
+        a.qa_dispatch_fake.as_ref().is_some_and(|fake| !fake.starts.is_empty())
+    })?;
+    cx.update(|cx| {
+        let a = app.read(cx);
+        assert_eq!(a.qa_dispatch_fake.as_ref().unwrap().starts.len(), 1);
+        assert_eq!(a.store.runs().len(), saved.len() + 1, "completed steps must not rerun");
+        let run = a.store.runs().last().unwrap();
+        assert_eq!(run.task_id, steps[2]);
+        for (id, body) in &saved {
+            assert!(!a.store.run_body_is_lazy(*id));
+            assert!(run.prompt.contains(body), "dependent prompt must include saved evidence");
+        }
+        assert_eq!(a.todo_batch.as_ref().unwrap().state, crate::batch::BatchState::Running);
+    });
     let _ = cx.update_window(handle, |_, w, _| w.remove_window());
     Ok(())
 }

@@ -8,6 +8,15 @@ use crate::{
 use gpui_kit::{component::Disableable, prelude::FluentBuilder, *};
 
 impl TaskApp {
+    pub(crate) fn batch_result_bodies_pending(&self) -> Vec<u64> {
+        self.todo_batch.as_ref().map(|batch| {
+            batch.current_items(&self.store).into_iter()
+                .flat_map(|goal| self.store.research_children(goal))
+                .filter_map(|step| self.store.research_result_body_pending(step))
+                .collect()
+        }).unwrap_or_default()
+    }
+
     pub fn start_todo_batch(&mut self, project: u64, cx: &mut Context<Self>) {
         if !self.ready_to_run(cx) {
             return;
@@ -142,6 +151,11 @@ impl TaskApp {
         if !self.ready_to_run(cx) {
             return;
         }
+        for run_id in self.batch_result_bodies_pending() {
+            if matches!(self.run_body_state.get(&run_id), Some(crate::history_reader::BodyLoad::Failed { .. })) {
+                self.run_body_state.remove(&run_id);
+            }
+        }
         // Settle already completed work after durable saving, without executing it again.
         let completed: Vec<_> = self
             .todo_batch
@@ -187,6 +201,7 @@ impl TaskApp {
             batch.state = BatchState::Running;
         }
         self.advance_todo_batch(cx);
+        self.start_pump(cx);
     }
     pub fn cancel_todo_batch(&mut self, cx: &mut Context<Self>) {
         self.stop_recovery_queue();
@@ -225,6 +240,25 @@ impl TaskApp {
         loop {
             let items = self.todo_batch.as_ref().unwrap().current_items(&self.store);
             if items.is_empty() { break; }
+            // Saved results survive restart without their bodies in memory.
+            // Hydrate the current topic before strict dependency/admission checks.
+            let bodies = self.batch_result_bodies_pending();
+            if !bodies.is_empty() {
+                let mut sent = 0;
+                for run_id in bodies {
+                    if let Some(crate::history_reader::BodyLoad::Failed { error, .. }) = self.run_body_state.get(&run_id) {
+                        self.todo_batch.as_mut().unwrap().state = BatchState::Paused(format!(
+                            "Could not load a saved research result: {error}. Continue to retry."));
+                        cx.notify();
+                        return;
+                    }
+                    if self.request_run_body(run_id) {
+                        sent += 1;
+                        if sent >= 32 { break; }
+                    }
+                }
+                return;
+            }
             'items: for item in &items {
                 let item = *item;
                 let Some(task) = self.store.task(item).filter(|task|

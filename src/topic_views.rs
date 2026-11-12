@@ -456,7 +456,12 @@ impl TaskApp {
             .topics()
             .iter()
             .filter(|t| project.is_none_or(|id| t.project_id == id)
-                && t.archived == project.is_none())
+                && t.archived == project.is_none()
+                // The Archive topic strip omits topics left without goals.
+                // Deleting the last goal also removes the empty topic itself.
+                && (project.is_some() || self.store.tasks().iter().any(|task|
+                    task.parent_id.is_none()
+                        && self.store.task_topic(task.id).is_some_and(|topic| topic.id == t.id))))
             .collect();
         if topics.is_empty() {
             return div().into_any_element();
@@ -652,6 +657,7 @@ impl TaskApp {
                         }));
                         let rename = entity.clone();
                         let archive = entity.clone();
+                        let delete = entity.clone();
                         menu.item(PopupMenuItem::new("Rename topic").on_click(move |_, w, cx| {
                             let _ = rename.update(cx, |a, cx| a.open_topic_editor(project, Some(id), w, cx));
                         }))
@@ -672,6 +678,9 @@ impl TaskApp {
                                 }
                             });
                         }))
+                        .when(archived, |menu| menu.item(PopupMenuItem::new("Delete topic permanently…").on_click(move |_, w, cx| {
+                            let _ = delete.update(cx, |a, cx| a.request_delete_archived(crate::archive_app::ArchiveTarget::Topic(id), w, cx));
+                        })))
                     })))
             .child(row().px_6().pb_2().gap_3()
                 .child(self.layout_switch(cx))

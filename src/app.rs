@@ -2118,6 +2118,9 @@ impl TaskApp {
         self.property = None;
         self.error.clear();
         self.restore_task_comment(id, window, cx);
+        // A research step may need lazy prerequisite bodies before its retry can
+        // be admitted, so opening it must wake the bounded runtime pump.
+        self.start_pump(cx);
         cx.notify();
     }
     pub fn title(&self) -> String {

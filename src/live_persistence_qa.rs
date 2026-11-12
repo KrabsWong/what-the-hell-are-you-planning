@@ -28,7 +28,7 @@ fn run_root() -> PathBuf {
 const CASE_ENV: &str = "LIVE_PERSISTENCE_QA_CASE";
 const ROOT_ENV: &str = "LIVE_PERSISTENCE_QA_ROOT";
 const SEQUENTIAL_ENV: &str = "LIVE_PERSISTENCE_QA_SEQUENTIAL";
-const CASES: [&str; 40] = [
+const CASES: [&str; 42] = [
     "core",
     "reopen",
     "pending-quit",
@@ -52,6 +52,8 @@ const CASES: [&str; 40] = [
     "history-43200",
     "lazy-period-hydration",
     "lazy-research-queue",
+    "lazy-dependency-view",
+    "archive-permanent-delete",
     "lazy-research-queue-retry",
     "lazy-research-queue-pause",
     "lazy-body-missing-retry",
@@ -163,6 +165,8 @@ fn run_case(case: &str) -> Result<(), String> {
             }
             Ok(())
         }
+        "archive-permanent-delete" => archive_permanent_delete(&root.join("archive-permanent-delete")),
+        "lazy-dependency-view" => lazy_dependency_view(&root.join("lazy-dependency-view")),
         "lazy-research-queue" => lazy_research_queue(&root.join("lazy-research-queue"), "normal"),
         "lazy-research-queue-retry" => lazy_research_queue(&root.join("lazy-research-queue-retry"), "retry"),
         "lazy-research-queue-pause" => lazy_research_queue(&root.join("lazy-research-queue-pause"), "pause"),
@@ -3881,6 +3885,106 @@ fn lazy_research_queue(root: &Path, mode: &str) -> Result<(), String> {
         }
         assert_eq!(a.todo_batch.as_ref().unwrap().state, crate::batch::BatchState::Running);
     });
+    let _ = cx.update_window(handle, |_, w, _| w.remove_window());
+    Ok(())
+}
+
+fn lazy_dependency_view(root: &Path) -> Result<(), String> {
+    std::fs::create_dir_all(root).map_err(|error| error.to_string())?;
+    let mut store = Store::empty();
+    store.set_default_model("fixture/model".into());
+    store.project_mut(1).unwrap().directory = root.to_string_lossy().into_owned();
+    let goal = store.create_research_goal("Lazy dependency".into(), "Reuse saved evidence".into(), 1)?;
+    let steps = store.apply_research_plan(goal, r#"{"tasks":[{"title":"Collect","instructions":"Find evidence","kind":"collect","depends_on":[]},{"title":"Analyze","instructions":"Use evidence","kind":"analyze","depends_on":[0]},{"title":"Report","instructions":"Report","kind":"advise","depends_on":[1]}]}"#)?;
+    let mut run = store.prepare_run(steps[0])?;
+    run.status = "Succeeded".into();
+    run.output = "Saved prerequisite evidence".into();
+    let run_id = run.id;
+    store.push_run(run);
+    store.set_stage(steps[0], Stage::Done)?;
+    // A newer ordinary result supersedes the lazy prerequisite as the startup
+    // hydration target, matching a workspace whose latest attempt has no body.
+    let other = store.create_research_goal("Newer attempt".into(), "Keep startup target off the prerequisite".into(), 1)?;
+    let other_steps = store.apply_research_plan(other, r#"{"tasks":[{"title":"Collect","instructions":"Collect","kind":"collect","depends_on":[]},{"title":"Analyze","instructions":"Analyze","kind":"analyze","depends_on":[0]},{"title":"Report","instructions":"Report","kind":"advise","depends_on":[1]}]}"#)?;
+    let mut newer = store.prepare_run(other_steps[0])?;
+    newer.status = "Succeeded".into();
+    assert!(newer.output.is_empty());
+    store.push_run(newer);
+    let path = seed_store(root, &store)?;
+    let (mut cx, handle, app) = open_live(root, &path)?;
+    pump_until(&mut cx, handle, &app, "startup before dependency view", |a| {
+        !a.live_has_pending_receipts() && startup_gate_clear(a)
+    })?;
+    cx.update(|cx| {
+        let a = app.read(cx);
+        assert!(a.store.run_body_is_lazy(run_id));
+        assert!(a.store.research_result(steps[0]).is_none());
+        assert!(a.store.ready_research_tasks(goal).unwrap().is_empty());
+    });
+    cx.update_window(handle, |_, w, cx| {
+        app.update(cx, |a, cx| a.open_task(steps[1], w, cx));
+    }).map_err(|error| error.to_string())?;
+    cx.update(|cx| assert!(
+        app.read(cx).history_needs_pump(),
+        "opening a dependent step must keep the runtime pump alive while the prerequisite body loads"
+    ));
+    advance_until(&mut cx, &app, "dependency body hydration", |a| {
+        !a.store.run_body_is_lazy(run_id) && a.store.research_result(steps[0]).is_some()
+    })?;
+    cx.update_window(handle, |_, w, cx| {
+        w.render_frame(cx);
+        assert!(
+            w.find("step-run").disabled().is_none(),
+            "retry must unlock after the prerequisite body loads"
+        );
+    }).map_err(|error| error.to_string())?;
+    let _ = cx.update_window(handle, |_, w, _| w.remove_window());
+    Ok(())
+}
+
+fn archive_permanent_delete(root: &Path) -> Result<(), String> {
+    use crate::archive_app::ArchiveTarget;
+    std::fs::create_dir_all(root).map_err(|error| error.to_string())?;
+    let mut store = Store::empty();
+    store.set_default_model("fixture/model".into());
+    store.project_mut(1).unwrap().directory = root.to_string_lossy().into_owned();
+    let topic = store.create_topic(1, "Delete fixture topic")?;
+    let goal = store.create_research_goal_in_topic("Delete fixture".into(), "Scope".into(), 1, Some(topic))?;
+    let steps = store.apply_research_plan(goal, r#"{"tasks":[{"title":"Collect","instructions":"Find evidence","kind":"collect","depends_on":[]},{"title":"Analyze","instructions":"Analyze","kind":"analyze","depends_on":[0]},{"title":"Report","instructions":"Report","kind":"advise","depends_on":[1]}]}"#)?;
+    let mut run = store.prepare_run(steps[0])?;
+    run.status = "Succeeded".into();
+    run.output = "Saved evidence to delete".into();
+    let run_id = run.id;
+    store.push_run(run);
+    store.set_stage(steps[0], Stage::Done)?;
+    store.set_topic_archived(topic, true)?;
+    let other = store.create_task("Unrelated", 1, Stage::Planned, None)?;
+    let path = seed_store(root, &store)?;
+    let (mut cx, handle, app) = open_live(root, &path)?;
+    pump_until(&mut cx, handle, &app, "startup receipts before deletion", |a| {
+        !a.live_has_pending_receipts() && startup_gate_clear(a)
+    })?;
+    cx.update(|cx| app.update(cx, |a, cx| {
+        assert!(a.store.run_body_is_lazy(run_id));
+        let target = ArchiveTarget::Task(goal);
+        let reviewed = a.store.archive_deletion(target).unwrap();
+        a.confirm_delete_archived(target, reviewed, cx);
+        assert!(a.error.is_empty(), "{}", a.error);
+        assert!(a.store.task(goal).is_none(), "deletion must be accepted");
+        assert_ne!(a.toast, "Archived research permanently deleted", "wait for durable receipt");
+    }));
+    advance_until(&mut cx, &app, "durable archived deletion", |a| {
+        !a.live_has_pending_receipts() && a.toast == "Archived research permanently deleted"
+    })?;
+    let disk = read_v4_store(root, &path)?;
+    assert!(disk.task(goal).is_none());
+    assert!(steps.iter().all(|id| disk.task(*id).is_none()));
+    assert!(!disk.runs().iter().any(|run| run.id == run_id));
+    assert!(disk.task(other).is_some());
+    assert!(disk.topic(topic).is_none(), "the emptied archived topic is removed with its last goal");
+    let database = crate::sqlite_v4::SqliteV4::open(&path, root, INCARNATION)?;
+    assert!(database.body(run_id)?.is_none(), "delete saved body, not just its index");
+    cx.update(|cx| assert!(app.read(cx).undo.is_empty()));
     let _ = cx.update_window(handle, |_, w, _| w.remove_window());
     Ok(())
 }

@@ -46,3 +46,5 @@ Automation periods run only while the app is open and the computer is awake; the
 ## Accessibility & Inclusion
 
 No specific certification standard was requested. Check text and control contrast, keep keyboard focus visible, give icons accessible names and tooltips, and never rely on color alone to distinguish buttons. Desktop pointer targets are about 32 px; compact windows may scroll; Chinese text and long labels need real-device testing.
+
+Archive supports permanent deletion of an archived goal/task and its descendants, or an entire archived topic. Confirmation names the target and counts tasks, planning requests and runs. Related saved results and local publication snapshots are removed; shared planning requests retain surviving goals. Deleting the last goal of an archived topic removes the emptied topic and its planning history; an archived topic that still has goals remains, and the Archive topic directory omits topics without goals. Active or recoverable sessions and external research dependencies block deletion. Deletion is not undoable. Exported files, original materials and remotely published pages remain outside this local operation.

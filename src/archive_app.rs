@@ -35,6 +35,83 @@ impl ArchiveTarget {
     }
 }
 impl TaskApp {
+    fn deletion_ready(&self) -> Result<(), String> {
+        self.live_can_accept_primary()?;
+        if !self.storage_error.is_empty() {
+            return Err(self.storage_error.clone());
+        }
+        if self.live_has_pending_receipts() || self.pending_dispatch.is_some()
+            || self.pending_dispatch_reserved.is_some() || self.dispatch_awaiting.is_some()
+            || self.pending_material_job.is_some() || self.pending_material_edit.is_some()
+            || self.publishing_job.is_some()
+        {
+            return Err("Wait for pending saves, submissions, material changes and publishing to finish before deleting.".into());
+        }
+        Ok(())
+    }
+
+    pub(crate) fn request_delete_archived(&mut self, target: ArchiveTarget, w: &mut Window, cx: &mut Context<Self>) {
+        let reviewed = match self.deletion_ready().and_then(|_| self.store.archive_deletion(target)) {
+            Ok(reviewed) => reviewed,
+            Err(error) => { self.show_save_error(error, cx); return; }
+        };
+        if w.has_active_prompt() { return; }
+        let topic_note = if reviewed.empty_topics.is_empty() {
+            ""
+        } else if reviewed.empty_topics.len() == 1 {
+            " The archived topic left empty by this deletion is removed as well."
+        } else {
+            " The archived topics left empty by this deletion are removed as well."
+        };
+        let detail = format!("{}\nPermanently delete {} tasks, {} planning requests and {} runs, including saved results and local publication snapshots. This cannot be undone. Exported files, original materials and remote pages are not removed.{}",
+            reviewed.name, reviewed.tasks.len(), reviewed.requests.len(), reviewed.runs.len(), topic_note);
+        let answer = w.prompt(PromptLevel::Warning, "Permanently delete archived research?", Some(&detail),
+            &["Cancel", "Delete permanently"], cx);
+        let workspace = self.live_workspace;
+        let path = self.storage.as_ref().map(|storage| storage.path().to_path_buf());
+        cx.spawn(async move |this, cx| {
+            if answer.await == Ok(1) {
+                let _ = this.update(cx, |a, cx| {
+                    if a.live_workspace != workspace || a.storage.as_ref().map(|storage| storage.path().to_path_buf()) != path {
+                        a.show_save_error("The workspace changed. Review the deletion again.", cx);
+                        return;
+                    }
+                    a.confirm_delete_archived(target, reviewed, cx);
+                });
+            }
+        }).detach();
+    }
+
+    pub(crate) fn confirm_delete_archived(&mut self, target: ArchiveTarget, reviewed: crate::archive_delete::ArchiveDeletion, cx: &mut Context<Self>) {
+        if let Err(error) = self.deletion_ready() {
+            self.show_save_error(error, cx);
+            return;
+        }
+        let mut staged = self.store.clone();
+        if let Err(error) = staged.delete_archived(target, &reviewed) {
+            self.show_save_error(error, cx);
+            return;
+        }
+        let acceptance = match self.save_staged_store(&staged, crate::live_save_app::LiveCompletion::ArchiveDeleted, cx) {
+            Ok(acceptance) => acceptance,
+            Err(error) => { self.show_save_error(error, cx); return; }
+        };
+        if !self.live_persistence_active() { self.adopt_saved_store(staged); }
+        self.research_sequences.retain(|id| !reviewed.tasks.contains(id));
+        if let Some(batch) = &mut self.todo_batch {
+            batch.items.retain(|id| !reviewed.tasks.contains(id));
+            batch.done_items.retain(|id| !reviewed.tasks.contains(id));
+            batch.failed_items.retain(|id| !reviewed.tasks.contains(id));
+            batch.failed_tasks.retain(|id| !reviewed.tasks.contains(id));
+            batch.completed = batch.done_items.len();
+        }
+        self.run_body_state.retain(|id, _| !reviewed.runs.contains(id));
+        self.pending_result_navigation = None;
+        self.set_scope_identity(crate::app::Scope::Archive);
+        if !acceptance.is_durable() { self.toast = "Deleting archived research…".into(); }
+        cx.notify();
+    }
+
     pub(crate) fn restore_archived(&mut self, id: u64, cx: &mut Context<Self>) {
         self.apply_domain_command_undoable(
             crate::scoped_domain::DomainCommand::RestoreArchived { task: id },

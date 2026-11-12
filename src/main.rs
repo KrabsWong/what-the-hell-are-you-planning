@@ -20,6 +20,9 @@ mod archive_presentation;
 #[cfg(feature = "qa")]
 mod archive_qa;
 mod archive_app;
+mod archive_delete;
+#[cfg(test)]
+mod archive_delete_tests;
 mod appearance;
 mod attachments;
 mod batch;

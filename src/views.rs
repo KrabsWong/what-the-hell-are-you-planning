@@ -2006,7 +2006,7 @@ impl TaskApp {
             return main.child(self.board(&tasks, cx)).into_any_element();
         }
         let ordered = self.order_visible_tasks(&tasks);
-        let row_height = if self.compact { 32. } else { 38. };
+        let row_height = if self.scope() == Scope::Archive { 72. } else if self.compact { 32. } else { 38. };
         let mut rows = Vec::new();
         let grouped = !matches!(self.scope(), Scope::Project(_));
         let mut last_project = None;
@@ -2061,9 +2061,10 @@ impl TaskApp {
                 .gap_3()
                 .text_xs()
                 .text_color(rgb(colors.muted))
-                .child(div().w(px(156.)).flex_shrink_0().child(selectable("PRIORITY / ID")))
+                .child(div().w(px(if archive { 96. } else { 156. })).flex_shrink_0().child(selectable("PRIORITY / ID")))
                 .child(div().flex_1().min_w_0().child(selectable("TASK")))
-                .child(div().w(px(150.)).flex_shrink_0().child(selectable("STATUS")))
+                .child(div().w(px(if archive { 125. } else { 150. })).flex_shrink_0().child(selectable("STATUS")))
+                .when(archive, |d| d.child(div().w(px(176.)).flex_shrink_0()))
                 .when(!archive, |d| d
                     .child(div().w(px(84.)).flex_shrink_0().child(selectable("LABELS")))
                     .child(div().w_16().flex_shrink_0().child(selectable("DUE")))
@@ -2191,7 +2192,7 @@ impl TaskApp {
             .hover(|d| d.bg(rgb(colors.hover)).rounded(px(CONTROL_RADIUS)))
             .on_click(cx.listener(move |this, _, w, cx| this.request_task(id, false, w, cx)))
             .child(
-                div().w(px(156.)).flex_shrink_0().child(
+                div().w(px(if archived { 96. } else { 156. })).flex_shrink_0().child(
                     row()
                         .child(
                             div()
@@ -2224,12 +2225,15 @@ impl TaskApp {
                 row()
                     .flex_1()
                     .min_w_0()
+                    .when(archived, |d| d.flex_col().items_start().gap_1())
                     .when(t.parent_id.is_some(), |d| d.pl_5())
                     .child(
                         row()
                             .flex_1()
                             .min_w_0()
                             .items_center()
+                            .when(archived, |d| d.w_full())
+                            .id(format!("task-title-container-{id}"))
                             .child(self.execution_indicator(id, cx))
                             .child(
                                 single_line_text(format!("task-title-{id}"), t.title.clone())
@@ -2237,7 +2241,7 @@ impl TaskApp {
                                         d.text_color(rgb(colors.muted))
                                     })
                                     .when(child_count > 0, |d| d.font_weight(FontWeight::MEDIUM)),
-                            ),
+                            ).map(observed),
                     )
                     .when(child_count > 0, |d| {
                         let step_name = format!(
@@ -2259,7 +2263,7 @@ impl TaskApp {
             )
             .child(
                 div()
-                    .w(px(150.))
+                    .w(px(if archived { 125. } else { 150. }))
                     .flex_shrink_0()
                     .text_xs()
                     .id(format!("task-status-{id}"))
@@ -2278,6 +2282,14 @@ impl TaskApp {
                         .on_click(cx.listener(move |this, _, _, cx| {
                             cx.stop_propagation();
                             this.restore_archived(id, cx);
+                        })),
+                ).child(
+                    danger_button(format!("delete-archived-{id}"), "Delete…")
+                        .h(px(28.)).px_2().flex_shrink_0()
+                        .tooltip("Permanently delete this archived research and its saved history")
+                        .on_click(cx.listener(move |this, _, w, cx| {
+                            cx.stop_propagation();
+                            this.request_delete_archived(crate::archive_app::ArchiveTarget::Task(id), w, cx);
                         })),
                 )
             })
@@ -2621,6 +2633,14 @@ impl TaskApp {
                             cx.stop_propagation();
                             this.restore_archived(id, cx);
                         })),
+                ).child(
+                    danger_button(format!("delete-archived-{id}"), "Delete…")
+                        .h(px(28.)).px_2().flex_shrink_0()
+                        .tooltip("Permanently delete this archived research and its saved history")
+                        .on_click(cx.listener(move |this, _, w, cx| {
+                            cx.stop_propagation();
+                            this.request_delete_archived(crate::archive_app::ArchiveTarget::Task(id), w, cx);
+                        })),
                 )
             })
             .when(!archived && self.store.research_pending_approval(id), |d| {
@@ -2666,6 +2686,11 @@ impl TaskApp {
             .store
             .task(id)
             .is_some_and(|task| task.automation_id.is_some());
+        let is_goal = self
+            .store
+            .task(id)
+            .is_some_and(|task| task.research.as_ref()
+                .is_some_and(|research| research.kind == crate::research::ResearchKind::Goal));
         let allowed_stages = Stage::ALL
             .into_iter()
             .filter(|stage| {
@@ -2711,7 +2736,7 @@ impl TaskApp {
                         menu = menu
                             .separator()
                             .item(
-                                PopupMenuItem::new("Archive task").on_click(move |_, w, cx| {
+                                PopupMenuItem::new(if is_goal { "Archive goal" } else { "Archive task" }).on_click(move |_, w, cx| {
                                     let _ =
                                         target.update(cx, |this, cx| this.archive_task(id, w, cx));
                                 }),
@@ -2908,10 +2933,11 @@ impl TaskApp {
                                 );
                             if !automation_owned {
                                 menu = menu.separator().item(
-                                    PopupMenuItem::new(if archived {
-                                        "Restore task"
-                                    } else {
-                                        "Archive task"
+                                    PopupMenuItem::new(match (archived, is_goal) {
+                                        (true, true) => "Restore goal",
+                                        (true, false) => "Restore task",
+                                        (false, true) => "Archive goal",
+                                        (false, false) => "Archive task",
                                     })
                                     .on_click(move |_, w, cx| {
                                         let _ = archive.update(cx, |a, cx| {

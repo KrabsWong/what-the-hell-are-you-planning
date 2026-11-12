@@ -7,7 +7,7 @@ use crate::{
     persistence::Storage,
     views::{label, row},
 };
-use gpui_kit::{test::TestWindowExt, *};
+use gpui_kit::{test::{TestQueryExt, TestWindowExt}, *};
 use std::{
     path::Path,
     sync::Arc,
@@ -23,11 +23,28 @@ pub fn run() {
     let _ = std::fs::remove_dir_all(&root);
     std::fs::create_dir_all(&root).unwrap();
     pure_checks();
+    if std::env::var("ARCHIVE_QA_CASE").as_deref() == Ok("permanent-delete") {
+        for (width, height) in [(1440., 920.), (1000., 680.)] {
+            for mode in [Appearance::Light, Appearance::Dark] {
+                let directory = root.join(format!("{mode:?}-{width}"));
+                std::fs::create_dir_all(&directory).unwrap();
+                list_and_board(&directory, mode, width, height);
+            }
+        }
+        permanent_delete_confirmation(&root);
+        goal_menu_labels(&root);
+        topic_directory_visibility(&root);
+        println!("Archive deletion QA passed · {}", root.display());
+        return;
+    }
+    goal_menu_labels(&root);
+    topic_directory_visibility(&root);
     render_matrix(&root);
     archived_in_progress_board(&root);
     ordinary_goal_steps_back(&root);
     ancestor_archive_material_check(&root);
     active_archive_confirmation(&root);
+    permanent_delete_confirmation(&root);
     println!("Archive QA passed · {}", root.display());
 }
 
@@ -338,8 +355,10 @@ fn list_and_board(directory: &Path, mode: Appearance, width: f32, height: f32) {
             };
             let status = status.unwrap_or_default();
             assert!(status.contains("Archived · 3/3 complete"), "{status}");
+            assert!(w.find(format!("delete-archived-{goal}")).visible());
             if layout == Layout::List {
                 assert!(w.find(format!("task-row-{goal}")).visible());
+                assert!(w.find(format!("task-title-container-{goal}")).bounds().size.width > px(60.), "archive actions must leave room for the title");
                 assert!(w.find(format!("restore-archived-{goal}")).visible());
             } else {
                 assert!(w.find(format!("card-{goal}")).visible());
@@ -738,4 +757,118 @@ fn screenshot(cx: &mut HeadlessAppContext, handle: AnyWindowHandle, directory: &
         .unwrap()
         .save(directory.join(name))
         .unwrap();
+}
+
+fn goal_menu_labels(root: &Path) {
+    for archived in [false, true] {
+        let directory = root.join(format!("goal-menu-{archived}"));
+        std::fs::create_dir_all(&directory).unwrap();
+        let (mut store, goal, _) = completed_goal(&directory);
+        if archived {
+            store.archive(goal).unwrap();
+        }
+        let path = directory.join("workspace.sqlite3");
+        Storage::new(path.clone()).save(&store).unwrap();
+        let (mut cx, handle, app) = with_app(store, &path, 1000., 680., |a, _, _| {
+            a.set_scope_identity(if archived { Scope::Archive } else { Scope::All });
+            a.fixture_select_task(Some(goal));
+        });
+        cx.update_window(handle, |_, w, cx| {
+            assert_eq!(app.read(cx).selected(), Some(goal));
+            w.render_frame(cx);
+            w.click("task-actions-menu", cx);
+            w.render_frame(cx);
+            let expected = if archived { "Restore goal" } else { "Archive goal" };
+            assert!(w.find_by_label(expected).visible(), "goal menu must say {expected}");
+            w.press("escape", cx);
+            w.render_frame(cx);
+        })
+        .unwrap();
+        drop(cx);
+    }
+}
+
+fn topic_directory_visibility(root: &Path) {
+    let directory = root.join("topic-directory");
+    std::fs::create_dir_all(&directory).unwrap();
+    let (mut store, goal, _) = completed_goal(&directory);
+    let listed = store.task_topic(goal).map(|topic| topic.id).unwrap();
+    store.set_topic_archived(listed, true).unwrap();
+    let empty = store.create_topic(1, "Empty archived topic").unwrap();
+    store.set_topic_archived(empty, true).unwrap();
+    let path = directory.join("workspace.sqlite3");
+    Storage::new(path.clone()).save(&store).unwrap();
+    let (mut cx, handle, app) = with_app(store, &path, 1000., 680., |a, _, _| {
+        a.set_scope_identity(Scope::Archive);
+    });
+    cx.update_window(handle, |_, w, cx| {
+        w.render_frame(cx);
+        assert!(w.find(format!("topic-link-{listed}")).visible());
+        assert!(
+            w.try_find(format!("topic-link-{empty}")).is_none(),
+            "an archived topic without goals must leave the Archive topic strip"
+        );
+        assert!(app.read(cx).store.topic(empty).is_some(), "hiding must not delete the topic");
+        assert!(app.read(cx).store.topic(listed).is_some());
+    })
+    .unwrap();
+    drop(cx);
+}
+
+fn permanent_delete_confirmation(root: &Path) {
+    let directory = root.join("delete-confirmation");
+    std::fs::create_dir_all(&directory).unwrap();
+    let (mut store, goal, steps) = completed_goal(&directory);
+    store.archive(goal).unwrap();
+    let path = directory.join("workspace.sqlite3");
+    Storage::new(path.clone()).save(&store).unwrap();
+    let (mut cx, handle, app) = with_app(store, &path, 1000., 680., |a, _, _| {
+        a.set_scope_identity(Scope::Archive);
+        a.layout = Layout::List;
+    });
+    cx.update(|cx| cx.set_prompt_builder(qa_prompt_builder));
+    // An unavailable save must leave the entire deletion scope intact.
+    cx.update(|cx| app.update(cx, |a, cx| {
+        let target = crate::archive_app::ArchiveTarget::Task(goal);
+        let reviewed = a.store.archive_deletion(target).unwrap();
+        let storage = a.storage.take();
+        a.confirm_delete_archived(target, reviewed, cx);
+        assert!(a.store.task(goal).is_some());
+        assert!(steps.iter().all(|id| a.store.task(*id).is_some()));
+        assert!(!a.error.is_empty());
+        a.storage = storage;
+    }));
+    for action in ["cancel", "switch-workspace", "delete"] {
+        let confirm = action == "delete";
+        cx.update_window(handle, |_, w, cx| {
+            app.update(cx, |a, _| a.set_scope_identity(Scope::Archive));
+            assert!(app.read(cx).store.task_is_archived(goal), "{action}: target must stay archived");
+            w.render_frame(cx);
+            w.click(format!("delete-archived-{goal}"), cx);
+        }).unwrap();
+        cx.run_until_parked();
+        cx.update_window(handle, |_, w, cx| {
+            w.render_frame(cx);
+            assert!(w.has_active_prompt());
+            assert!(app.read(cx).store.task(goal).is_some(), "confirmation must precede deletion");
+            if action == "switch-workspace" {
+                app.update(cx, |a, _| a.storage = Some(Storage::new(directory.join("different-workspace.sqlite3"))));
+            }
+            w.click(if action == "cancel" { "qa-prompt-0" } else { "qa-prompt-1" }, cx);
+        }).unwrap();
+        cx.run_until_parked();
+        cx.update_window(handle, |_, w, cx| {
+            w.render_frame(cx);
+            let a = app.read(cx);
+            assert_eq!(a.store.task(goal).is_none(), confirm);
+            assert!(steps.iter().all(|id| a.store.task(*id).is_none() == confirm));
+            if confirm { assert!(a.undo.is_empty()); }
+            if action == "switch-workspace" {
+                assert!(a.error.contains("workspace changed"));
+                app.update(cx, |a, _| a.storage = Some(Storage::new(path.clone())));
+            }
+        }).unwrap();
+        let disk = Storage::new(path.clone()).load().unwrap().unwrap();
+        assert_eq!(disk.task(goal).is_none(), confirm);
+    }
 }

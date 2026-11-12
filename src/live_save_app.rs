@@ -7,7 +7,7 @@
 //! the ordered journal writes it next.
 
 use crate::app::TaskApp;
-use crate::domain::{Store, Task};
+use crate::domain::{Stage, Store, Task};
 use gpui_kit::{Context, Window};
 
 /// Stable instance identity for an open task editor. Reopening the same task
@@ -64,6 +64,7 @@ impl LiveCompletion {
 pub(crate) enum LiveCompletion {
     None,
     Status(String),
+    ArchiveDeleted,
     ResearchUnderstanding { request: u64, signature: String },
     TaskEdit {
         task: u64,
@@ -265,6 +266,7 @@ impl LiveCompletion {
         let base = std::mem::size_of::<Self>();
         match self {
             Self::None => 0,
+            Self::ArchiveDeleted => base,
             Self::Status(message) => base.saturating_add(message.capacity()),
             Self::ResearchUnderstanding { signature, .. } => base.saturating_add(signature.capacity()),
             Self::AutomationTicks {
@@ -973,6 +975,13 @@ impl TaskApp {
                 return true;
             }
         }
+        if self
+            .visible_dependency_bodies()
+            .iter()
+            .any(|run_id| self.store.run_body_is_lazy(*run_id) && state_pending(*run_id))
+        {
+            return true;
+        }
         if let Some(occurrence) = self
             .period_overlay()
             .and_then(|id| self.store.occurrence(id))
@@ -1058,12 +1067,14 @@ impl TaskApp {
         let request = match self.run_body_state.get(&run_id) {
             None => true,
             Some(crate::history_reader::BodyLoad::NotRequested) => true,
+            // A stale reply can be marked Loaded without hydrating when the run
+            // revision changed. Retry while the marker still says lazy.
+            Some(crate::history_reader::BodyLoad::Loaded) => self.store.run_body_is_lazy(run_id),
             Some(crate::history_reader::BodyLoad::Failed { retry_at, .. }) => {
                 retry_at <= &std::time::Instant::now()
             }
             Some(
                 crate::history_reader::BodyLoad::Loading { .. }
-                | crate::history_reader::BodyLoad::Loaded
                 | crate::history_reader::BodyLoad::Absent,
             ) => false,
         };
@@ -1104,6 +1115,34 @@ impl TaskApp {
             },
         );
         sent
+    }
+
+    /// Saved prerequisite bodies needed by unfinished steps of the visible
+    /// research goal. Presentation-only: these bodies are never reused as a
+    /// research result until they are hydrated and validated.
+    pub(crate) fn visible_dependency_bodies(&self) -> Vec<u64> {
+        let Some(goal) = self
+            .selected()
+            .and_then(|id| self.store.task(id))
+            .and_then(|task| task.research.as_ref())
+            .map(|research| research.goal_id)
+        else {
+            return Vec::new();
+        };
+        let mut bodies = Vec::new();
+        for step in self.store.research_children(goal) {
+            let Some(task) = self.store.task(step) else { continue };
+            if task.stage == Stage::Done { continue; }
+            let Some(research) = task.research.as_ref() else { continue };
+            for dep in &research.depends_on {
+                if let Some(run_id) = self.store.research_result_body_pending(*dep) {
+                    bodies.push(run_id);
+                }
+            }
+        }
+        bodies.sort_unstable();
+        bodies.dedup();
+        bodies
     }
 
     /// Bounded poll of indexed pages and lazy report bodies. Never blocks.
@@ -1271,6 +1310,11 @@ impl TaskApp {
         if let Some(run_id) = self.displayed_run_id() {
             body_targets.push(run_id);
         }
+        // A visible research goal needs its prerequisites' saved bodies before
+        // dependency gates can admit a retry or resume. Hydrate them on demand
+        // instead of leaving a completed upstream step looking missing after
+        // restart.
+        body_targets.extend(self.visible_dependency_bodies());
         if let Some(occurrence) = self
             .period_overlay()
             .and_then(|id| self.store.occurrence(id))
@@ -1728,6 +1772,12 @@ impl TaskApp {
             LiveCompletion::None => {}
             LiveCompletion::ResearchUnderstanding { request, signature } => {
                 self.continue_confirmed_understanding(request, &signature, cx);
+            }
+            LiveCompletion::ArchiveDeleted => {
+                self.undo.clear();
+                self.undo_invalidation = Some("Permanently deleted research cannot be restored with Undo.".into());
+                self.toast = "Archived research permanently deleted".into();
+                self.error.clear();
             }
             LiveCompletion::Status(message) => {
                 self.toast = message;

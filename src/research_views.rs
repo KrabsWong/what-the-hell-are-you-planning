@@ -550,11 +550,21 @@ impl TaskApp {
                 .iter()
                 .filter(|dep| self.store.research_result(**dep).is_none())
                 .count();
+            let loading = research
+                .depends_on
+                .iter()
+                .filter(|dep| {
+                    self.store.research_result(**dep).is_none()
+                        && self.store.research_result_body_pending(**dep).is_some()
+                })
+                .count();
             if waiting > 0 {
-                panel = panel.child(label(
-                    format!("Waiting for {waiting} earlier step(s) before this task can start."),
-                    cx,
-                ));
+                let message = if loading == waiting {
+                    format!("Loading saved results from {waiting} earlier step(s)…")
+                } else {
+                    format!("Waiting for {waiting} earlier step(s) before this task can start.")
+                };
+                panel = panel.child(label(message, cx));
             }
             for dep in &research.depends_on {
                 let dep = *dep;

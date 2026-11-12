@@ -221,7 +221,7 @@ fn ordinary_progress_matrix(root: &Path) {
             cx.update_window(handle, |_, w, cx| {
                 w.render_frame(cx);
                 let collect_row = w
-                    .try_find(format!("progress-task-status-{}", steps[0]))
+                    .try_find(format!("progress-task-{}", steps[0]))
                     .unwrap_or_else(|| panic!("missing ordinary progress row for the running step"));
                 assert!(
                     collect_row.label().unwrap_or_default().contains("Running"),
@@ -229,7 +229,7 @@ fn ordinary_progress_matrix(root: &Path) {
                     collect_row.label()
                 );
                 let analysis_row = w
-                    .try_find(format!("progress-task-status-{analysis}"))
+                    .try_find(format!("progress-task-{analysis}"))
                     .unwrap_or_else(|| panic!("missing ordinary progress row for analysis"));
                 assert!(
                     analysis_row.label().unwrap_or_default().contains("Waiting"),

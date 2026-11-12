@@ -135,7 +135,7 @@ impl Store {
         let mut prompt = format!(
             "You are planning research topics for a project in What the hell are you planning? Today is {}.\n\
              Produce 1–8 distinct, independently useful research questions that the human can choose from. \
-             Match the language of the project. Use its name as the scope when no additional scope is given. \
+             Match the language of the project name and scope; write titles and briefs in the language the user wrote them in rather than defaulting to English. Use its name as the scope when no additional scope is given. \
              A broad project usually benefits from focused questions suited to its research type. \
              Each topic must be able to run independently after approval; do not create cross-topic dependencies. \
              These are proposed research goals, not collect/analyze/report phase tasks. \

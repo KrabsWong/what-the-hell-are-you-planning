@@ -1134,6 +1134,12 @@ assert 'Read the attached file directly' in args[-1]
         w.render_frame(cx);
         w.click(format!("progress-task-title-{}", steps[1]), cx);
         assert_eq!(app.read(cx).selected(), Some(steps[1]));
+        assert!(app.read(cx).has_return_frames());
+        w.click("navigation-back", cx);
+        assert_eq!(app.read(cx).displayed_run_id(), Some(running),
+            "Back from a progress task must restore the originating run");
+        assert!(app.read(cx).show_run_result);
+        assert!(!app.read(cx).show_run_details);
         app.update(cx, |a, cx| { a.show_task_result(running, cx); });
         w.render_frame(cx);
         assert_eq!(app.read(cx).displayed_run_id(), Some(running),

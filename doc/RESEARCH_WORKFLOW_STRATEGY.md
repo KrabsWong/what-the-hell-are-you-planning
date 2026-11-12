@@ -87,6 +87,12 @@ State what must be established before a strong conclusion is justified. Plan aro
 
 For example, a pricing page establishes an advertised price; it does not establish willingness to pay. A vendor statement establishes what the vendor claims; it does not independently validate performance. Missing private or customer evidence becomes a disclosed gap or proposed next step, never fabricated interviews, payments or usage.
 
+### Language of generated content
+
+Generated planning text follows the requester, not the application. The understanding, clarification questions, topic name, goal titles, briefs and step instructions use the language the request was written in; application labels, logs and workflow status text stay English.
+
+Every research step writes reader-facing prose in the goal language. A Chinese goal produces Chinese collection notes, analysis and final report, including headings, table headers, captions and the Appendix label. English evidence, tool output or earlier notes never justify switching the output to English; quoted source text, source titles, URLs and proper nouns keep their original language.
+
 ## 2. Shared writing and fidelity rules
 
 These rules apply throughout evidence collection, analysis and final reporting:
@@ -351,6 +357,8 @@ If an application termination cannot wait for the worker, startup reapplies a ty
 - **2026-11-08:** Reconciled lifecycle wording with the target contracts: one three-step creation flow for Quick and Research, planner-generated Research templates bound to immutable request revisions, compact expanded automation history, LatestOnly catch-up with expiry versus SkipAll, separate Continue/Retry/Resume/Run-manually effects, and typed result quality, progress and freshness labels. Route and action details now live in the maintained [Route and action matrix](ROUTE_ACTION_MATRIX.md).
 
 - **2026-11-09:** Corrected the SkipAll/expiry distinction, clarified that a Quick period keeps its one-step Goal without a Topic, and scoped the Undo description to the command paths that are actually enabled. Material task-edit QA now passes at r27, but remaining material paths, settings/context/archive command migration and final legacy-snapshot removal are still required; this document does not claim a completed whole-workspace Undo migration.
+
+- **2026-11-12:** Made generated research content follow the requester's language. Planning no longer defaults to English, and every step must write its reader-facing prose, headings, tables and final report in the goal language even when the evidence is English.
 
 ## Deferred result loading
 

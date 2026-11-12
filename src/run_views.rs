@@ -156,6 +156,92 @@ fn run_location(store: &Store, run: &AgentRun) -> (Option<u64>, Option<u64>) {
     (project, topic)
 }
 
+fn context_value_field(
+    id: impl Into<ElementId>,
+    text_id: impl Into<ElementId>,
+    title: String,
+    copied: bool,
+    cx: &App,
+) -> AnyElement {
+    let colors = palette(cx);
+    let accessible = if copied {
+        format!("Copy. {title}")
+    } else {
+        title.clone()
+    };
+    let tooltip = accessible.clone();
+    div()
+        .id(id)
+        .w_full()
+        .h(px(36.))
+        .px_2()
+        .rounded(px(crate::appearance::CONTROL_RADIUS))
+        .border_1()
+        .border_color(rgb(colors.line))
+        .bg(rgb(colors.panel))
+        .aria_label(accessible)
+        .tooltip(move |window, cx| {
+            gpui_kit::component::tooltip::Tooltip::new(tooltip.clone()).build(window, cx)
+        })
+        .child(context_value_content(text_id, title, copied, cx))
+        .into_any_element()
+}
+
+fn context_value_content(
+    id: impl Into<ElementId>,
+    title: String,
+    copied: bool,
+    cx: &App,
+) -> AnyElement {
+    row()
+        .w_full()
+        .min_w_0()
+        .gap_1()
+        .when(copied, |row| {
+            row.child(crate::topic_views::topic_copy_tag(
+                "run-context-value-copy",
+                cx,
+            ))
+        })
+        .child(single_line_text(id, title))
+        .into_any_element()
+}
+
+fn topic_menu_item(
+    id: impl Into<ElementId>,
+    text_id: impl Into<ElementId>,
+    title: String,
+    copied: bool,
+) -> gpui_kit::component::menu::PopupMenuItem {
+    let id = id.into();
+    let text_id = text_id.into();
+    gpui_kit::component::menu::PopupMenuItem::element(move |window, _cx| {
+        let label = if copied {
+            format!("Copy. {title}")
+        } else {
+            title.clone()
+        };
+        row_button(id.clone(), "")
+            .w((window.viewport_size().width - px(100.)).min(px(440.)))
+            .h_auto()
+            .min_h(px(20.))
+            .p_0()
+            .min_w_0()
+            .tooltip(label.clone())
+            .accessibility_label(label)
+            .child(
+                div()
+                    .w_full()
+                    .min_w_0()
+                    .child(crate::topic_views::topic_context_title(
+                        text_id.clone(),
+                        title.clone(),
+                        copied,
+                    )),
+            )
+    })
+}
+
 impl TaskApp {
     pub fn reveal_selected_run(&mut self) {
         if let Some(project) = self.displayed_run_id()
@@ -257,8 +343,13 @@ impl TaskApp {
             let mut topic_filters = Vec::new();
             for group in &project.topics {
                 if let Some(t) = group.id.and_then(|id| self.store.task_topic(id)) {
-                    if !topic_filters.iter().any(|(id, _, _)| *id == t.id) {
-                        topic_filters.push((t.id, t.display_name(), group.runs[0].id));
+                    if !topic_filters.iter().any(|(id, _, _, _)| *id == t.id) {
+                        topic_filters.push((
+                            t.id,
+                            t.display_name(),
+                            t.replanned_from.is_some(),
+                            group.runs[0].id,
+                        ));
                     }
                 }
             }
@@ -304,6 +395,10 @@ impl TaskApp {
                 .collect();
             let pid = project.id;
             let tid = topic.id;
+            let topic_value = actual_topic
+                .map(|topic| topic.display_name())
+                .unwrap_or_else(|| "Choose topic".into());
+            let topic_copied = actual_topic.is_some_and(|topic| topic.replanned_from.is_some());
             let entity = cx.entity().downgrade();
             let topic_entity = entity.clone();
             let filter_entity = entity.clone();
@@ -313,52 +408,106 @@ impl TaskApp {
                 col().flex_shrink_0().px_3().py_3().gap_2()
                     .border_b_1().border_color(rgb(colors.line))
                     .child(label("Project", cx).text_xs())
-                    .child(button("run-project-picker", name.clone()).w_full()
-                        .dropdown_caret(true).tooltip("Choose project")
-                        .dropdown_menu_with_anchor(Anchor::TopLeft, move |mut menu, _, _| {
-                            for (id, name, rid) in &project_options {
-                                let entity = entity.clone(); let rid = *rid;
-                                menu = menu.item(task_menu_item(name.clone()).checked(*id == pid)
-                                    .on_click(move |_, _, cx| { let _ = entity.update(cx, |a, cx| a.select_run(rid, cx)); }));
-                            }
-                            menu
-                        }))
+                    .child(if project_options.len() == 1 {
+                        context_value_field(
+                            "run-project-static",
+                            "run-project-static-title",
+                            name.clone(),
+                            false,
+                            cx,
+                        )
+                    } else {
+                        button("run-project-picker", name.clone()).w_full().h(px(36.)).py_0().px_2()
+                            .dropdown_caret(true).tooltip("Choose project")
+                            .dropdown_menu_with_anchor(Anchor::TopLeft, move |mut menu, _, _| {
+                                for (id, name, rid) in &project_options {
+                                    let entity = entity.clone(); let rid = *rid;
+                                    menu = menu.item(task_menu_item(name.clone()).checked(*id == pid)
+                                        .on_click(move |_, _, cx| { let _ = entity.update(cx, |a, cx| a.select_run(rid, cx)); }));
+                                }
+                                menu
+                            })
+                            .into_any_element()
+                    })
                     .child(label("Topic", cx).text_xs())
-                    .child(gpui_kit::component::button::Button::new("run-topic-filter")
-                        .w_full().h_auto().py_2().px_2().dropdown_caret(true)
-                        .disabled(topic_filters.is_empty())
-                        .child(div().flex_1().min_w_0().text_left().whitespace_normal()
-                            .child(actual_topic.map(|t| t.display_name()).unwrap_or_else(|| "Choose topic".into())))
-                        .dropdown_menu_with_anchor(Anchor::TopLeft, move |mut menu, _, _| {
-                            for (id, name, rid) in &topic_filters {
-                                let entity = filter_entity.clone(); let rid = *rid;
-                                menu = menu.item(task_menu_item(name.clone()).checked(Some(*id) == selected_topic)
-                                    .on_click(move |_, _, cx| { let _ = entity.update(cx, |a, cx| a.select_run(rid, cx)); }));
-                            }
-                            menu
-                        }))
+                    .child(if topic_filters.len() == 1 {
+                        context_value_field(
+                            "run-topic-static",
+                            "run-topic-static-title",
+                            topic_value.clone(),
+                            topic_copied,
+                            cx,
+                        )
+                    } else {
+                        gpui_kit::component::button::Button::new("run-topic-filter")
+                            .w_full().h(px(36.)).py_0().px_2().dropdown_caret(true)
+                            .disabled(topic_filters.is_empty())
+                            .tooltip(if topic_copied {
+                                format!("Copy. {topic_value}")
+                            } else {
+                                topic_value.clone()
+                            })
+                            .child(context_value_content(
+                                "run-topic-selected-title",
+                                topic_value.clone(),
+                                topic_copied,
+                                cx,
+                            ))
+                            .dropdown_menu_with_anchor(Anchor::TopLeft, move |mut menu, _, _| {
+                                for (id, name, copied, rid) in &topic_filters {
+                                    let entity = filter_entity.clone(); let rid = *rid;
+                                    menu = menu.item(topic_menu_item(
+                                        format!("run-topic-choice-{id}"),
+                                        format!("run-topic-choice-title-{id}"),
+                                        name.clone(),
+                                        *copied,
+                                    ).checked(Some(*id) == selected_topic)
+                                        .on_click(move |_, _, cx| { let _ = entity.update(cx, |a, cx| a.select_run(rid, cx)); }));
+                                }
+                                menu
+                            })
+                            .into_any_element()
+                    })
                     .when(topic_task.is_some(), |d| d
                     .child(label(if research { "Goal" } else { "Activity" }, cx).text_xs())
-                    .child(gpui_kit::component::button::Button::new("run-topic-picker")
-                        .w_full().h_auto().py_2().px_2().dropdown_caret(true)
-                        .child(div().flex_1().min_w_0().text_left().whitespace_normal()
-                            .text_sm().line_height(relative(1.4)).child(selectable(goal_title)))
-                        .tooltip("Choose goal or planning activity")
-                        .dropdown_menu_with_anchor(Anchor::TopLeft, move |mut menu, _, _| {
-                            for (id, name, rid) in &topic_options {
-                                let entity = topic_entity.clone(); let rid = *rid;
-                                menu = menu.item(task_menu_item(name.clone()).checked(*id == tid)
-                                    .on_click(move |_, _, cx| { let _ = entity.update(cx, |a, cx| a.select_run(rid, cx)); }));
-                            }
-                            menu
-                        }))
+                    .child(if topic_options.len() == 1 {
+                        context_value_field(
+                            "run-goal-static",
+                            "run-goal-static-title",
+                            goal_title.clone(),
+                            false,
+                            cx,
+                        )
+                    } else {
+                        gpui_kit::component::button::Button::new("run-topic-picker")
+                            .w_full().h(px(36.)).py_0().px_2().dropdown_caret(true)
+                            .child(context_value_content(
+                                "run-goal-selected-title",
+                                goal_title.clone(),
+                                false,
+                                cx,
+                            ))
+                            .tooltip("Choose goal or planning activity")
+                            .dropdown_menu_with_anchor(Anchor::TopLeft, move |mut menu, _, _| {
+                                for (id, name, rid) in &topic_options {
+                                    let entity = topic_entity.clone(); let rid = *rid;
+                                    menu = menu.item(task_menu_item(name.clone()).checked(*id == tid)
+                                        .on_click(move |_, _, cx| { let _ = entity.update(cx, |a, cx| a.select_run(rid, cx)); }));
+                                }
+                                menu
+                            })
+                            .into_any_element()
+                    })
                     )
                     .child(row().flex_wrap().gap_3()
                         .when_some(topic_task, |d, task| {
                             let id = task.id;
                             d.child(link_button("open-run-goal", "Goal details").icon(assets::IconName::ArrowRight)
                                 .h_6().px_0().text_xs().text_color(rgb(colors.accent))
-                                .on_click(cx.listener(move |a, _, w, cx| a.open_task(id, w, cx))))
+                                .on_click(cx.listener(move |a, _, w, cx| {
+                                    a.record_origin();
+                                    a.open_task(id, w, cx);
+                                })))
                         })
                         .when(!planning_options.is_empty(), |d| d.child(
                             quiet_button("run-project-planning", "Planning history")
@@ -1088,13 +1237,16 @@ impl TaskApp {
                 let result_run = (status.execution == ExecutionStatus::Done)
                     .then(|| self.store.research_result(task_id).map(|r| r.id)).flatten();
                 let current = task_id == run.task_id;
-                let title = task.title.clone();
+                let status_label = status.label();
+                let row_label = format!("{} · {status_label}", task.title);
+                let row_tooltip = format!("{}\n{}", task.title, status_label);
                 let latest_run = self.store.runs().iter().rev()
                     .find(|r| r.task_id == task_id && r.project_plan.is_none()).map(|r| r.id);
                 entries = entries.child(row().id(format!("progress-task-{task_id}"))
                     .min_w_0().gap_2().px_2().h(px(32.)).rounded(px(crate::appearance::CONTROL_RADIUS))
                     .when(current, |d| d.bg(rgb(colors.accent_surface)))
-                    .tooltip(move |w, cx| gpui_kit::component::tooltip::Tooltip::new(title.clone()).build(w, cx))
+                    .aria_label(row_label)
+                    .tooltip(move |w, cx| gpui_kit::component::tooltip::Tooltip::new(row_tooltip.clone()).build(w, cx))
                     .child(status.execution.icon_view(format!("progress-task-icon-{task_id}"), cx))
                     .child(row_button(format!("progress-task-title-{task_id}"), "")
                         .flex_1().min_w_0().h(px(28.)).px_1()
@@ -1106,6 +1258,7 @@ impl TaskApp {
                             .child(label(if result_run.is_some() { "View result" } else { "Open task" }, cx))
                             .child(gpui_kit::component::Icon::new(assets::IconName::ChevronRight).size_4())))
                         .on_click(cx.listener(move |a, _, w, cx| {
+                            a.record_origin();
                             if let Some(run_id) = result_run {
                                 a.show_task_result(run_id, cx);
                             } else {
@@ -1122,9 +1275,6 @@ impl TaskApp {
                                     cx.notify();
                                 }))))
                     )
-                    .child(label(status.label(), cx).id(format!("progress-task-status-{task_id}"))
-                        .aria_label(status.label()).w(px(64.)).text_right().flex_shrink_0()
-                        .text_color(rgb(status.execution.color(cx))).map(observed))
                     .map(observed));
             }
             stages = stages.child(entries.map(observed));
@@ -1193,7 +1343,10 @@ impl TaskApp {
                         })
                         .when(!ongoing && can_open && project_plan.is_none(), |d| {
                             d.child(primary_button("run-resolve-task", "Open task & resolve").self_start()
-                                .on_click(cx.listener(move |a, _, w, cx| a.open_task(id, w, cx))))
+                                .on_click(cx.listener(move |a, _, w, cx| {
+                                    a.record_origin();
+                                    a.open_task(id, w, cx);
+                                })))
                         })
                         .when(ongoing, |d| d.child(stages))
                         .when(ongoing, |d| {

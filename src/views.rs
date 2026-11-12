@@ -907,6 +907,8 @@ impl TaskApp {
             side = side.child(self.nav(format!("cycle-{i}"), name, scope, count, cx));
         }
         // Separate navigation groups vertically without consuming title width.
+        // Project rows sit one 12 px step right of the heading, and every
+        // expanded level adds the same step, so the tree reads as one ladder.
         let mut projects_block = col().gap_0().mt_3();
         projects_block = projects_block.child(
             row()
@@ -962,7 +964,7 @@ impl TaskApp {
                             .flex_1()
                             .min_w_0()
                             .h_8()
-                            .px_1()
+                            .px_4()
                             .tooltip(project.name.clone())
                             .accessibility_label(project.name.clone())
                             .child(
@@ -1027,7 +1029,6 @@ impl TaskApp {
                 let mut list = col()
                     .gap_0()
                     .ml_4()
-                    .pl_1()
                     .border_l_1()
                     .border_color(rgb(colors.line));
                 let mut groups: Vec<_> = self
@@ -1104,7 +1105,7 @@ impl TaskApp {
                             .flex_1()
                             .min_w_0()
                             .h_7()
-                            .px_2()
+                            .px_3()
                             .map(|mut button| {
                                 button.interactivity().tooltip(move |window, cx| {
                                     let width =
@@ -1139,8 +1140,8 @@ impl TaskApp {
                                 row()
                                     .w_full()
                                     .min_w_0()
-                                    .gap_2()
-                                    .child(execution.icon_view(format!("task-state-icon-{tid}"), cx))
+                                    .gap(px(6.))
+                                    .child(execution.compact_icon_view(format!("task-state-icon-{tid}"), cx))
                                     .child(single_line_text(
                                         format!("sidebar-task-title-{tid}"),
                                         format!(
@@ -1162,17 +1163,17 @@ impl TaskApp {
                             .on_click(cx.listener(move |a, _, w, cx| {
                                 a.request_sidebar_task(pid, tid, w, cx);
                             }));
+                        // One 12 px ladder for every tree level: topics sit one
+                        // step in, a goal two, its research steps three. The
+                        // leading status icon stays inside the row's own inset so
+                        // the step columns line up regardless of nesting.
+                        let level = depth + if topic_id.is_some() { 2 } else { 1 };
                         list = list.child(
                             row()
                                 .gap_0()
                                 .min_w_0()
-                                .ml(px((depth as f32
-                                    + if topic_id.is_some() { 1. } else { 0. })
-                                    * 10.))
-                                .when(nested, |d| {
-                                    d.pl_1().border_l_1().border_color(rgb(colors.line))
-                                })
-                                .when(!nested, |d| d.rounded(px(CONTROL_RADIUS)))
+                                .ml(px(12. * (level - 1) as f32))
+                                .rounded(px(CONTROL_RADIUS))
                                 .hover(|d| d.bg(rgb(colors.hover)))
                                 .id(format!("sidebar-task-row-{tid}"))
                                 .when(active, |d| d.track_scroll(&self.sidebar_selected_row))
@@ -1211,14 +1212,18 @@ impl TaskApp {
             }
         }
         side = side.child(projects_block);
+        // Give the paused bucket its own band: it is a destination for projects,
+        // not another project in the list above it.
         side = side
-            .child(self.nav(
-                "recovery",
-                "Paused projects",
-                Scope::Recovery,
-                self.store.paused_project_goals().len(),
-                cx,
-            ))
+            .child(
+                col().w_full().mt_3().child(self.nav(
+                    "recovery",
+                    "Paused projects",
+                    Scope::Recovery,
+                    self.store.paused_project_goals().len(),
+                    cx,
+                )),
+            )
             .child(self.nav(
                 "runs",
                 "Research results",
@@ -1725,10 +1730,14 @@ impl TaskApp {
                         .flex_shrink_0()
                         .disabled(!back_available)
                         .tooltip(
-                            destination
-                                .clone()
-                                .map(|name| format!("Back to {name} · ⌘["))
-                                .unwrap_or_else(|| "Back to previous page · ⌘[".into()),
+                            if self.show_run_details {
+                                "Back to result · ⌘[".into()
+                            } else {
+                                destination
+                                    .clone()
+                                    .map(|name| format!("Back to {name} · ⌘["))
+                                    .unwrap_or_else(|| "Back to previous page · ⌘[".into())
+                            },
                         )
                         .on_click(cx.listener(|a, _, w, cx| a.request_back(w, cx))),
                 )
@@ -2061,9 +2070,9 @@ impl TaskApp {
                 .gap_3()
                 .text_xs()
                 .text_color(rgb(colors.muted))
-                .child(div().w(px(if archive { 96. } else { 156. })).flex_shrink_0().child(selectable("PRIORITY / ID")))
+                .child(div().w(px(if archive { 96. } else { 112. })).flex_shrink_0().child(selectable("ID")))
                 .child(div().flex_1().min_w_0().child(selectable("TASK")))
-                .child(div().w(px(if archive { 125. } else { 150. })).flex_shrink_0().child(selectable("STATUS")))
+                .child(div().w(px(128.)).flex_shrink_0().child(selectable("STATUS")))
                 .when(archive, |d| d.child(div().w(px(176.)).flex_shrink_0()))
                 .when(!archive, |d| d
                     .child(div().w(px(84.)).flex_shrink_0().child(selectable("LABELS")))
@@ -2166,6 +2175,13 @@ impl TaskApp {
         let colors = palette(cx);
         let id = t.id;
         let archived = self.store.task_is_archived(id);
+        let priority_label = format!("{} priority", t.priority.label());
+        let status = self.display_task_status(id);
+        let full_status_label = status.label();
+        let status_label = status
+            .display_label
+            .clone()
+            .unwrap_or_else(|| status.execution.label().to_string());
         let child_count = self
             .store
             .tasks()
@@ -2192,34 +2208,24 @@ impl TaskApp {
             .hover(|d| d.bg(rgb(colors.hover)).rounded(px(CONTROL_RADIUS)))
             .on_click(cx.listener(move |this, _, w, cx| this.request_task(id, false, w, cx)))
             .child(
-                div().w(px(if archived { 96. } else { 156. })).flex_shrink_0().child(
-                    row()
-                        .child(
-                            div()
-                                .w_5()
-                                .flex_shrink_0()
-                                .whitespace_nowrap()
-                                .text_xs()
-                                .text_color(rgb(if t.priority == Priority::Urgent {
-                                    colors.danger
-                                } else {
-                                    colors.muted
-                                }))
-                                .child(
-                                    gpui_kit::component::Icon::new(priority_icon(t.priority))
-                                        .size_4(),
-                                ),
-                        )
-                        .child(
-                            row()
-                                .gap_1()
-                                .child(label(self.store.identifier(t), cx))
-                                .child(
-                                    gpui_kit::component::Icon::new(assets::IconName::ChevronRight)
-                                        .size_4(),
-                                ),
-                        ),
-                ),
+                div()
+                    .w(px(if archived { 96. } else { 112. }))
+                    .flex_shrink_0()
+                    .id(format!("task-id-{id}"))
+                    .aria_label(priority_label.clone())
+                    .tooltip(move |window, cx| {
+                        component::tooltip::Tooltip::new(priority_label.clone())
+                            .build(window, cx)
+                    })
+                    .child(
+                        label(self.store.identifier(t), cx).text_color(rgb(
+                            if t.priority == Priority::Urgent {
+                                colors.danger
+                            } else {
+                                colors.muted
+                            },
+                        )),
+                    ),
             )
             .child(
                 row()
@@ -2234,7 +2240,6 @@ impl TaskApp {
                             .items_center()
                             .when(archived, |d| d.w_full())
                             .id(format!("task-title-container-{id}"))
-                            .child(self.execution_indicator(id, cx))
                             .child(
                                 single_line_text(format!("task-title-{id}"), t.title.clone())
                                     .when(matches!(t.stage, Stage::Done | Stage::Cancelled), |d| {
@@ -2249,8 +2254,16 @@ impl TaskApp {
                             t.title
                         );
                         d.child(
-                            button(format!("goal-steps-{id}"), format!("Steps · {done}/{child_count}"))
-                                .icon(assets::IconName::ChevronRight)
+                            quiet_button(
+                                format!("goal-steps-{id}"),
+                                format!("{done}/{child_count} steps"),
+                            )
+                                .h(px(24.))
+                                .px_1()
+                                .text_xs()
+                                .text_color(rgb(colors.muted))
+                                .font_weight(FontWeight::NORMAL)
+                                .flex_shrink_0()
                                 .tooltip(step_name.clone())
                                 .accessibility_label(step_name)
                                 .on_click(cx.listener(move |this, _, w, cx| {
@@ -2263,12 +2276,17 @@ impl TaskApp {
             )
             .child(
                 div()
-                    .w(px(if archived { 125. } else { 150. }))
+                    .w(px(128.))
                     .flex_shrink_0()
                     .text_xs()
+                    .text_color(rgb(status.execution.color(cx)))
                     .id(format!("task-status-{id}"))
-                    .aria_label(self.display_task_status(id).label())
-                    .child(self.display_task_status(id).label())
+                    .aria_label(full_status_label.clone())
+                    .tooltip(move |window, cx| {
+                        component::tooltip::Tooltip::new(full_status_label.clone())
+                            .build(window, cx)
+                    })
+                    .child(status_label)
                     .map(observed),
             )
             .when(archived, |d| {
@@ -4653,15 +4671,6 @@ pub(crate) fn stage_color_for_definition(
     }
 }
 
-fn priority_icon(p: Priority) -> assets::IconName {
-    match p {
-        Priority::None => assets::IconName::Minus,
-        Priority::Low => assets::IconName::ArrowDown,
-        Priority::Medium => assets::IconName::Equal,
-        Priority::High => assets::IconName::ArrowUp,
-        Priority::Urgent => assets::IconName::CircleAlert,
-    }
-}
 fn append_children(tasks: &[Task], id: u64, collapsed: &[u64], out: &mut Vec<Task>) {
     for t in tasks.iter().filter(|t| t.parent_id == Some(id)) {
         out.push(t.clone());

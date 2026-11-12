@@ -153,12 +153,37 @@ impl TaskApp {
             "The previous session has not been confirmed stopped. Check its progress before retrying to avoid a duplicate run.".into()
         } else { status.reason.clone() };
         let colors = crate::appearance::palette(cx);
-        let mut panel = col().id("step-execution-panel").w_full().min_w_0().gap_2().py_2().pl_3()
-            .border_l_2().border_color(rgb(state.color(cx)))
-            .child(div().id("step-execution-status").aria_label(self.display_task_status(id).label())
-                .text_sm().font_weight(FontWeight::SEMIBOLD)
-                .text_color(rgb(state.color(cx))).child(self.display_task_status(id).label()).map(observed))
-            .child(div().id("step-execution-reason").text_sm().text_color(rgb(colors.secondary)).child(selectable(reason)).map(observed));
+        let mut panel = col()
+            .id("step-execution-panel")
+            .w_full()
+            .min_w_0()
+            .gap_2()
+            .py_2()
+            .pl_3()
+            .when(state != ExecutionStatus::Done, |panel| {
+                panel.border_l_2().border_color(rgb(state.color(cx)))
+            });
+        if state != ExecutionStatus::Done {
+            panel = panel
+                .child(
+                    div()
+                        .id("step-execution-status")
+                        .aria_label(self.display_task_status(id).label())
+                        .text_sm()
+                        .font_weight(FontWeight::SEMIBOLD)
+                        .text_color(rgb(state.color(cx)))
+                        .child(self.display_task_status(id).label())
+                        .map(observed),
+                )
+                .child(
+                    div()
+                        .id("step-execution-reason")
+                        .text_sm()
+                        .text_color(rgb(colors.secondary))
+                        .child(selectable(reason))
+                        .map(observed),
+                );
+        }
         if state == ExecutionStatus::Blocked {
             if let Some(run) = latest {
                 let detail = run.logs.iter().rev().find(|line| {

@@ -17,7 +17,7 @@ use gpui_kit::{
     *,
 };
 
-fn topic_copy_tag(id: impl Into<SharedString>, cx: &App) -> AnyElement {
+pub(crate) fn topic_copy_tag(id: impl Into<SharedString>, cx: &App) -> AnyElement {
     chip("Copy", palette(cx).muted, cx)
         .id(id.into()).role(Role::Label).aria_label("Copy of another topic")
         .bg(rgb(palette(cx).tag_surface)).border_1().border_color(rgb(palette(cx).border_strong)).font_weight(FontWeight::NORMAL)
@@ -95,6 +95,28 @@ fn topic_inline_title(topic: &Topic, status: Option<crate::request_planning::Top
     gpui_kit::base::text::TextView::markdown("topic-inline-title", text)
         .plugin(TopicTitleTags(status))
         .text_lg().font_weight(FontWeight::SEMIBOLD)
+        .into_any_element()
+}
+
+pub(crate) fn topic_context_title(
+    id: impl Into<ElementId>,
+    title: String,
+    copied: bool,
+) -> AnyElement {
+    let mut text = String::new();
+    if copied {
+        text.push_str("[Copy](topic-tag:copy) ");
+    }
+    for ch in title.chars() {
+        if ch.is_ascii_punctuation() {
+            text.push('\\');
+        }
+        text.push(if ch == '\n' || ch == '\r' { ' ' } else { ch });
+    }
+    gpui_kit::base::text::TextView::markdown(id, text)
+        .plugin(TopicTitleTags(None))
+        .text_sm()
+        .line_height(relative(1.35))
         .into_any_element()
 }
 

@@ -61,6 +61,58 @@ impl ExecutionStatus {
     /// `id` scopes the animation so each row can animate on its own. Live work
     /// pulses and a retry turns, which reads as "still working" at a glance;
     /// every other state stays a static glyph.
+    /// Compact variant for dense sidebar tree rows. The shared frame reserves
+    /// 24 px for the running ripple; the tree cannot afford that, so it keeps
+    /// the 16 px glyph, drops the ripple and lets indentation carry the state
+    /// change. Retry still rotates so live work stays visible.
+    pub(crate) fn compact_icon_view(
+        self,
+        id: impl Into<gpui_kit::ElementId>,
+        cx: &gpui_kit::App,
+    ) -> gpui_kit::AnyElement {
+        use gpui_kit::*;
+        let color = self.color(cx);
+        let frame = div()
+            .w(px(16.))
+            .h(px(16.))
+            .flex_shrink_0()
+            .flex()
+            .items_center()
+            .justify_center()
+            .text_color(rgb(color));
+        let icon = self.icon();
+        match self {
+            Self::Retrying => frame
+                .with_animation(
+                    id,
+                    Animation::new(std::time::Duration::from_millis(1400)).repeat_synced(),
+                    move |element, phase| {
+                        element.child(
+                            component::Icon::new(icon)
+                                .size(px(16.))
+                                .rotate(radians(phase * std::f32::consts::TAU)),
+                        )
+                    },
+                )
+                .into_any_element(),
+            Self::Running => frame
+                .with_animation(
+                    id,
+                    Animation::new(std::time::Duration::from_millis(1500)).repeat_synced(),
+                    move |element, phase| {
+                        element.child(
+                            component::Icon::new(icon)
+                                .size(px(16.))
+                                .opacity(0.55 + 0.45 * (std::f32::consts::PI * phase).sin().abs()),
+                        )
+                    },
+                )
+                .into_any_element(),
+            _ => frame
+                .child(component::Icon::new(icon).size(px(16.)))
+                .into_any_element(),
+        }
+    }
     pub(crate) fn icon_view(
         self,
         id: impl Into<gpui_kit::ElementId>,

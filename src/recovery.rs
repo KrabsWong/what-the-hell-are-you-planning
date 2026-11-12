@@ -777,6 +777,7 @@ impl TaskApp {
                         let task = self.store.task(child).unwrap();
                         let state = self.store.execution_status(child, self.todo_batch.as_ref());
                         let title = format!("{} · {}", self.store.identifier(task), task.title);
+                        let row_label = format!("{title} · {}", state.label());
                         let hint = self
                             .store
                             .step_block_reason(child)
@@ -786,6 +787,8 @@ impl TaskApp {
                                 .pl_4()
                                 .gap_2()
                                 .min_h(px(28.))
+                                .id(format!("recovery-step-row-{child}"))
+                                .aria_label(row_label)
                                 .child(
                                     state.icon_view(format!("recovery-step-icon-{child}"), cx),
                                 )
@@ -797,11 +800,6 @@ impl TaskApp {
                                         .on_click(cx.listener(move |a, _, w, cx| {
                                             a.open_task(child, w, cx)
                                         })),
-                                )
-                                .child(
-                                    label(state.label(), cx)
-                                        .flex_shrink_0()
-                                        .text_color(rgb(state.color(cx))),
                                 ),
                         );
                     }

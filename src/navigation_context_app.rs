@@ -1351,6 +1351,12 @@ impl TaskApp {
     }
 
     pub(crate) fn request_back(&mut self, w: &mut Window, cx: &mut Context<Self>) {
+        if self.show_run_details {
+            self.show_run_details = false;
+            self.show_run_result = true;
+            cx.notify();
+            return;
+        }
         self.request_exit(ExitTarget::Back, w, cx);
     }
 

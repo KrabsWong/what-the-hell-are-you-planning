@@ -780,6 +780,21 @@ pub fn reconcile_occurrence(
             }
         }
         SessionState::Unknown => {
+            // An explicit user retry is a durable choice to start a fresh attempt
+            // without resuming the unconfirmed session. It must survive a restart.
+            if occurrence.retry_pending() {
+                if occurrence.status != OccurrenceStatus::Queued {
+                    store.occurrence_mut(id).unwrap().transition(
+                        OccurrenceStatus::Queued,
+                        Some(OccurrenceReason::new(
+                            SkipCode::VerificationRequired,
+                            "The explicit retry will start a fresh attempt; the previous session is not resumed.",
+                        )),
+                    )?;
+                }
+                commit.retry.push(id);
+                return Ok(commit);
+            }
             if store
                 .occurrence(id)
                 .is_some_and(|occurrence| occurrence.status != OccurrenceStatus::Verifying)
@@ -907,6 +922,42 @@ mod tests {
             timezone: "UTC".into(),
         }
     }
+
+    #[test]
+    fn unconfirmed_interrupted_session_blocks_period_retry() {
+        let (mut store, automation) = store_with(true);
+        let occurrence = store
+            .request_manual_occurrence(automation, "unknown-session", 1_000)
+            .unwrap();
+        let mut run = store.prepare_occurrence_run(&occurrence, 1_000).unwrap();
+        run.status = "Interrupted".into();
+        run.started_at = "2026-11-12 10:00:00".into();
+        let run_id = run.id;
+        store.push_run(run);
+        let mut value = store.occurrence(occurrence.id).unwrap().clone();
+        value.status = OccurrenceStatus::Interrupted;
+        value.run_ids.push(run_id);
+        *store.occurrence_mut(occurrence.id).unwrap() = value.clone();
+
+        let mut checks = std::collections::BTreeMap::from([(
+            run_id,
+            crate::recovery::SessionCheck::Unknown("session not found".into()),
+        )]);
+        assert!(occurrence_recovery_blocker_for(&store, &value, &checks, true).is_none());
+        assert!(occurrence_recovery_blocker_for(&store, &value, &checks, false).is_some());
+        value.retry_requested_at = Some(2_000);
+        assert!(occurrence_recovery_blocker_for(&store, &value, &checks, false).is_some());
+        value.status = OccurrenceStatus::Queued;
+        assert!(occurrence_recovery_blocker_for(&store, &value, &checks, false).is_none());
+        checks.insert(run_id, crate::recovery::SessionCheck::Running);
+        assert!(occurrence_recovery_blocker_for(&store, &value, &checks, true).is_some());
+        checks.insert(run_id, crate::recovery::SessionCheck::Stopped);
+        assert!(occurrence_recovery_blocker_for(&store, &value, &checks, false).is_none());
+        checks.insert(run_id, crate::recovery::SessionCheck::Unknown("later interruption".into()));
+        value.status = OccurrenceStatus::Running;
+        assert!(occurrence_recovery_blocker_for(&store, &value, &checks, false).is_some());
+    }
+
     fn store_with(automation: bool) -> (Store, u64) {
         let mut store = Store::empty();
         store.project_at_mut(0).unwrap().directory = std::env::temp_dir().to_string_lossy().into();
@@ -1505,6 +1556,12 @@ mod tests {
             }
         }
         let (mut store, id) = store_with(true);
+        let occurrence = store.request_manual_occurrence(id, "explicit-retry", 1000).unwrap();
+        store.occurrence_mut(occurrence.id).unwrap().retry_requested_at = Some(1500);
+        let commit = reconcile_occurrence(&mut store, occurrence.id, SessionState::Unknown, 2000).unwrap();
+        assert_eq!(commit.retry, vec![occurrence.id]);
+        assert_eq!(store.occurrence(occurrence.id).unwrap().status, OccurrenceStatus::Queued);
+        let (mut store, id) = store_with(true);
         let occurrence = store.request_manual_occurrence(id, "r", 1000).unwrap();
         let commit = reconcile_occurrence(&mut store, occurrence.id, SessionState::Stopped, 2000).unwrap();
         assert_eq!(commit.retry, vec![occurrence.id]);
@@ -1632,6 +1689,47 @@ pub(crate) fn expired_regeneration(
                 .occurrence(id)
                 .is_some_and(|occurrence| occurrence.status.is_terminal())
         })
+}
+
+fn occurrence_recovery_blocker_for(
+    store: &Store,
+    occurrence: &crate::automation::AutomationOccurrence,
+    checks: &std::collections::BTreeMap<u64, crate::recovery::SessionCheck>,
+    allow_unknown_retry: bool,
+) -> Option<String> {
+    let mut latest_by_task = std::collections::BTreeSet::new();
+    for run in occurrence.run_ids.iter().rev().filter_map(|id| {
+        store.runs().iter().find(|run| run.id == *id)
+    }) {
+        if !latest_by_task.insert(run.task_id) {
+            continue;
+        }
+        if !matches!(run.status.as_str(), "Interrupted" | "Recovering") {
+            continue;
+        }
+        match checks.get(&run.id) {
+            Some(crate::recovery::SessionCheck::Stopped) => {}
+            Some(crate::recovery::SessionCheck::Unknown(_))
+                if allow_unknown_retry || occurrence.retry_pending() => {}
+            Some(crate::recovery::SessionCheck::Running)
+            | Some(crate::recovery::SessionCheck::Complete(_)) => {
+                return Some(
+                    "The previous session is still running. Stop it before retrying this period."
+                        .into(),
+                );
+            }
+            Some(crate::recovery::SessionCheck::Checking) | None => {
+                return Some("Checking the previous session before retrying this period.".into());
+            }
+            Some(crate::recovery::SessionCheck::Unknown(_)) => {
+                return Some(
+                    "The previous session could not be confirmed. Review its result, then retry the period explicitly."
+                        .into(),
+                );
+            }
+        }
+    }
+    None
 }
 
 /// Application glue: due scan, transactional cursor advances, queue hand-off and
@@ -1850,6 +1948,13 @@ impl TaskApp {
         true
     }
 
+    pub(crate) fn occurrence_recovery_blocker(
+        &self,
+        occurrence: &crate::automation::AutomationOccurrence,
+    ) -> Option<String> {
+        occurrence_recovery_blocker_for(&self.store, occurrence, &self.recovery.checks, true)
+    }
+
     /// Load a queued occurrence into the app queue. The scheduler admits it only
     /// through the automation concurrency pool; the occurrence stays Queued until
     /// the queue actually starts the process.
@@ -1888,6 +1993,25 @@ impl TaskApp {
             occurrence.status,
             OccurrenceStatus::Queued | OccurrenceStatus::Running | OccurrenceStatus::WaitingRetry
         ) {
+            return;
+        }
+        if let Some(reason) =
+            occurrence_recovery_blocker_for(&self.store, &occurrence, &self.recovery.checks, false)
+        {
+            if let Some(mut value) = self.store.occurrence_mut(occurrence_id) {
+                let _ = value.transition(
+                    OccurrenceStatus::Verifying,
+                    Some(OccurrenceReason::new(
+                        SkipCode::VerificationRequired,
+                        reason.clone(),
+                    )),
+                );
+            }
+            self.store
+                .mark_automation_attention(occurrence.automation_id, reason.clone());
+            self.error = reason;
+            self.persist_if_changed(true);
+            cx.notify();
             return;
         }
         // A durable Queued run that is not in the in-memory queue is a lost

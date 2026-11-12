@@ -23,6 +23,7 @@ pub fn run() {
             let path = directory.join("workspace.sqlite3");
             let mut initial = Store::empty();
             initial.set_appearance(appearance);
+            initial.set_default_model("test/model".into());
             initial.project_at_mut(0).unwrap().directory = directory.to_string_lossy().into();
             let topic = initial.create_topic(1, "Gold research and investment observations").unwrap();
             let goal = initial
@@ -134,7 +135,19 @@ pub fn run() {
                 // Exercise the real enabled click handler, but reject configuration before any IO.
                 let repository = app.read(cx).store.report_publishing().repository.clone();
                 app.update(cx, |a, cx| {
-                    a.store.task_mut(goal).unwrap().stage = Stage::Done;
+                    let steps = a.store.apply_research_plan(goal, r#"{"tasks":[{"title":"Collect evidence","instructions":"Collect","kind":"collect","depends_on":[]},{"title":"Analyze evidence","instructions":"Analyze","kind":"analyze","depends_on":[0]},{"title":"Write report","instructions":"Report","kind":"advise","depends_on":[1]}]}"#).unwrap();
+                    let goal_task = a.store.task_mut(goal).unwrap();
+                    goal_task.stage = Stage::Planned;
+                    goal_task.approved_plan = None;
+                    goal_task.research.as_mut().unwrap().requires_approval = false;
+                    for (index, step) in steps.iter().enumerate() {
+                        let mut run = a.store.prepare_run(*step).unwrap();
+                        run.status = "Succeeded".into();
+                        run.output = if index + 1 == steps.len() { "Public final report".into() } else { "Working evidence".into() };
+                        a.store.push_run(run);
+                        a.store.task_mut(*step).unwrap().stage = Stage::Done;
+                    }
+                    a.store.sync_goal_progress(goal);
                     a.store.report_publishing_mut().repository = "invalid-fixture-repository".into();
                     cx.notify();
                 });
@@ -142,6 +155,7 @@ pub fn run() {
                 assert_ne!(w.find("publish-topic-report").disabled(), Some(true));
                 w.click("publish-topic-report", cx);
                 assert!(!app.read(cx).error.is_empty(), "Enabled click must reach configuration validation");
+                assert!(app.read(cx).save_feedback.is_none(), "Publish validation is an action error, not a save failure");
                 assert!(app.read(cx).publishing_job.is_none());
                 assert!(app.read(cx).store.publications().is_empty());
                 app.update(cx, |a, cx| {

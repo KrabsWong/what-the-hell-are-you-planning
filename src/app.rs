@@ -1213,6 +1213,11 @@ impl TaskApp {
         self.save_feedback = Some(Err(self.error.clone()));
         cx.notify();
     }
+    pub fn show_action_error(&mut self, message: impl Into<String>, cx: &mut Context<Self>) {
+        self.error = message.into();
+        self.save_feedback = None;
+        cx.notify();
+    }
     pub fn confirm_save(&mut self, message: &str, cx: &mut Context<Self>) {
         self.persist_if_changed(true);
         if !self.storage_error.is_empty() {
@@ -3225,7 +3230,25 @@ impl TaskApp {
             cx.notify();
             return None;
         }
-        if self.recovery_blocks_run(&run) {
+        let retry_pending_unknown = run
+            .automation_occurrence_id
+            .and_then(|id| self.store.occurrence(id))
+            .is_some_and(|occurrence| {
+                occurrence.retry_pending()
+                    && self
+                        .store
+                        .runs()
+                        .iter()
+                        .rev()
+                        .find(|previous| crate::scheduler::same_task(previous, &run))
+                        .is_some_and(|previous| {
+                            matches!(
+                                self.recovery.checks.get(&previous.id),
+                                Some(crate::recovery::SessionCheck::Unknown(_))
+                            )
+                        })
+            });
+        if self.recovery_blocks_run(&run) && !retry_pending_unknown {
             self.error =
                 "Check the previous session in Paused projects before starting again.".into();
             cx.notify();

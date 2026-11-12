@@ -1281,20 +1281,18 @@ fn apply_dispatch_run(
     let research = task.research.as_ref().ok_or_else(|| {
         CommandError::Rejected("A dispatch run must target a research step.".into())
     })?;
-    if research.kind == ResearchKind::Goal {
+    let research_kind = research.kind;
+    let task_automation_id = task.automation_id;
+    if research_kind == ResearchKind::Goal {
         return Err(CommandError::Rejected(
             "A research goal is not an executable step.".into(),
         ));
     }
-    if run.research_kind != Some(research.kind) {
+    if run.research_kind != Some(research_kind) {
         return Err(CommandError::Rejected(
             "The run's research kind does not match its task.".into(),
         ));
     }
-
-    // The shared eligibility result is the dispatch contract. Do not recreate a
-    // second status/approval/dependency gate here.
-    let eligibility = staged.execution_eligibility(run.task_id);
 
     match occurrence {
         Some(id) => {
@@ -1302,7 +1300,31 @@ fn apply_dispatch_run(
                 .all_occurrences()
                 .iter()
                 .find(|candidate| candidate.id == id)
+                .cloned()
                 .ok_or_else(|| CommandError::Rejected("Automation period not found.".into()))?;
+            if link.retry_pending() {
+                let old_runs: Vec<u64> = link
+                    .run_ids
+                    .iter()
+                    .copied()
+                    .filter(|run_id| {
+                        staged.runs().iter().any(|old| {
+                            old.id == *run_id
+                                && matches!(old.status.as_str(), "Interrupted" | "Recovering")
+                        })
+                    })
+                    .collect();
+                for run_id in old_runs {
+                    if let Some(old) = staged.run_mut(run_id) {
+                        old.status = "Cancelled".into();
+                        old.ended_at = Some(crate::opencode::timestamp());
+                        let note = "[automation] User retried this period without resuming the unconfirmed previous session; no prior work was replayed.";
+                        if !old.logs.iter().any(|line| line == note) {
+                            old.logs.push(note.into());
+                        }
+                    }
+                }
+            }
             // Verifying is a fail-closed recovery state. The shared eligibility
             // already returns Waiting for it; this check gives the caller the
             // precise reason instead of silently treating it as dispatchable.
@@ -1317,7 +1339,7 @@ fn apply_dispatch_run(
                     "The dispatch run does not belong to the selected automation period.".into(),
                 ));
             }
-            if task.automation_id != Some(link.automation_id) {
+            if task_automation_id != Some(link.automation_id) {
                 return Err(CommandError::Rejected(
                     "The dispatch task belongs to another automation.".into(),
                 ));
@@ -1330,6 +1352,26 @@ fn apply_dispatch_run(
                     "The dispatch task belongs to another automation period.".into(),
                 ));
             }
+        }
+        None => {
+            if run.automation_occurrence_id.is_some() {
+                return Err(CommandError::Rejected(
+                    "An automation-owned run must name its period.".into(),
+                ));
+            }
+            if task_automation_id.is_some() {
+                return Err(CommandError::Rejected(
+                    "An automation-owned step cannot use ordinary dispatch.".into(),
+                ));
+            }
+        }
+    }
+    // The shared eligibility result is the dispatch contract. Do not recreate a
+    // second status/approval/dependency gate here.
+    let eligibility = staged.execution_eligibility(run.task_id);
+    match occurrence {
+        Some(id) => {
+            let link = staged.occurrence(id).unwrap();
             if !eligibility.is_executable_for_preparation() {
                 return Err(CommandError::Rejected(
                     "The shared execution eligibility does not allow preparing this step.".into(),
@@ -1343,11 +1385,8 @@ fn apply_dispatch_run(
                     ));
                 }
             }
-            // This delegates phase order, dependency readiness and the
-            // one-active-attempt rule to the shared selector instead of copying
-            // a divergent subset.
             match staged
-                .next_occurrence_step(link)
+                .next_occurrence_step(&link)
                 .map_err(CommandError::Rejected)?
             {
                 Some(next) if next == run.task_id => {}
@@ -1364,16 +1403,6 @@ fn apply_dispatch_run(
             }
         }
         None => {
-            if run.automation_occurrence_id.is_some() {
-                return Err(CommandError::Rejected(
-                    "An automation-owned run must name its period.".into(),
-                ));
-            }
-            if task.automation_id.is_some() {
-                return Err(CommandError::Rejected(
-                    "An automation-owned step cannot use ordinary dispatch.".into(),
-                ));
-            }
             if !matches!(eligibility.owner, EligibilityOwner::OrdinaryResearch { .. }) {
                 return Err(CommandError::Rejected(
                     "The ordinary dispatch target has ambiguous automation ownership.".into(),
@@ -2440,6 +2469,34 @@ mod tests {
         assert_eq!(
             prepared.staged.occurrence(occ.id).unwrap().run_ids,
             vec![run.id]
+        );
+        assert_eq!(prepared.staged.runs().last().unwrap().status, "Queued");
+    }
+
+    #[test]
+    fn explicit_retry_cancels_the_unconfirmed_attempt_in_the_dispatch_commit() {
+        let (mut store, occ, mut interrupted) = automation_fixture();
+        interrupted.status = "Interrupted".into();
+        interrupted.started_at = "2026-11-08T00:00:00Z".into();
+        interrupted.ended_at = Some("2026-11-08T00:01:00Z".into());
+        let interrupted_id = interrupted.id;
+        store.push_run(interrupted);
+        {
+            let link = store.occurrence_mut(occ.id).unwrap();
+            link.run_ids.push(interrupted_id);
+            link.retry_requested_at = Some(1_000);
+        }
+        let mut retry = store.prepare_occurrence_run(&occ, 1_000).unwrap();
+        mark_queued(&mut retry);
+
+        let prepared = prepare_dispatch(&store, Some(occ.id), retry.clone()).unwrap();
+        assert_eq!(
+            prepared.staged.runs().iter().find(|run| run.id == interrupted_id).unwrap().status,
+            "Cancelled"
+        );
+        assert_eq!(
+            prepared.staged.occurrence(occ.id).unwrap().run_ids,
+            vec![interrupted_id, retry.id]
         );
         assert_eq!(prepared.staged.runs().last().unwrap().status, "Queued");
     }

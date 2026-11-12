@@ -2492,7 +2492,11 @@ impl TaskApp {
         let Some(occurrence) = self.store.occurrence(occurrence).cloned() else {
             return;
         };
-        if let Some(blocker) = self.store.occurrence_retry_blocker(&occurrence) {
+        if let Some(blocker) = self
+            .store
+            .occurrence_retry_blocker(&occurrence)
+            .or_else(|| self.occurrence_recovery_blocker(&occurrence))
+        {
             self.automation_ui.feedback = Some(Err(blocker));
             cx.notify();
             return;
@@ -4784,7 +4788,10 @@ impl TaskApp {
             .filter(|task| self.store.research_result_available_or_pending(**task))
             .count();
         let busy = occurrence.status.is_active() || goals.iter().any(|goal| self.goal_busy(*goal));
-        let retry_blocker = self.store.occurrence_retry_blocker(occurrence);
+        let retry_blocker = self
+            .store
+            .occurrence_retry_blocker(occurrence)
+            .or_else(|| self.occurrence_recovery_blocker(occurrence));
         let runnable = retry_blocker.is_none();
         let resumable = occurrence.status.is_active()
             || matches!(

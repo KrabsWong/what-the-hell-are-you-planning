@@ -585,6 +585,16 @@ pub struct AutomationOccurrence {
     pub retry_requested_at: Option<i64>,
 }
 impl AutomationOccurrence {
+    pub fn retry_pending(&self) -> bool {
+        self.retry_requested_at.is_some()
+            && matches!(
+                self.status,
+                OccurrenceStatus::Queued
+                    | OccurrenceStatus::WaitingRetry
+                    | OccurrenceStatus::Verifying
+            )
+    }
+
     pub fn transition(
         &mut self,
         target: OccurrenceStatus,

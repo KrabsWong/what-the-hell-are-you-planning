@@ -113,23 +113,113 @@ fn publication_action(publication: Option<&Publication>, changed: bool) -> Publi
 
 impl Store {
     pub(crate) fn topic_share_content(&self, topic: u64) -> Option<(String, String)> {
+        self.topic_publication_content(topic).ok()
+    }
+
+    pub(crate) fn topic_publication_blocker(&self, topic_id: u64) -> Option<String> {
+        let Some(topic) = self.topics().iter().find(|topic| topic.id == topic_id) else {
+            return Some("Choose an active research topic before publishing.".into());
+        };
+        if topic.archived { return Some("Restore this topic before publishing.".into()); }
+        if topic.automation_id.is_some() { return Some("Automation topics cannot be published from Research.".into()); }
+        if let Some(status) = self.topic_planning_status(topic.id) {
+            return Some(format!("Finish topic planning before publishing. Current planning status: {status}."));
+        }
+        let goals: Vec<_> = self.tasks().iter().filter(|task| task.topic_id == Some(topic.id)
+            && task.research.as_ref().is_some_and(|research| research.kind == ResearchKind::Goal)
+            && !self.task_is_archived(task.id)).collect();
+        if goals.is_empty() { return Some("Add at least one research goal before publishing.".into()); }
+        for goal in goals {
+            if goal.stage != crate::domain::Stage::Done {
+                return Some(format!("Complete the research goal \"{}\" before publishing. Current status: {}.",
+                    goal.title.replace(['\n', '\r'], " "), goal.stage.label()));
+            }
+            if let Some(blocker) = self.goal_publication_blocker(goal.id) { return Some(blocker); }
+            let reports: Vec<_> = self.research_children(goal.id).into_iter().filter(|id| self.task(*id)
+                .and_then(|task| task.research.as_ref())
+                .is_some_and(|research| research.kind == ResearchKind::Advise)).collect();
+            if reports.is_empty() {
+                return Some(format!("The research goal \"{}\" has no final report step.", goal.title.replace(['\n', '\r'], " ")));
+            }
+            for report in reports {
+                if !self.publication_result_available_or_loadable(report) {
+                    return Some(format!("The final report \"{}\" does not have a current saved result. Wait for its rerun to finish, or rerun the report after its inputs change.",
+                        self.task(report).map(|task| task.title.replace(['\n', '\r'], " ")).unwrap_or_else(|| "Final report".into())));
+                }
+            }
+        }
+        None
+    }
+
+    fn goal_publication_blocker(&self, goal_id: u64) -> Option<String> {
+        let goal_title = self.task(goal_id).map(|task| task.title.replace(['\n', '\r'], " "))
+            .unwrap_or_else(|| "Research goal".into());
+        if !self.has_research_plan(goal_id) {
+            return Some(format!("Generate and approve a research plan for \"{goal_title}\" before publishing."));
+        }
+        for step in self.research_children(goal_id) {
+            let Some(task) = self.task(step) else { continue };
+            if task.stage != crate::domain::Stage::Done {
+                return Some(format!("Wait for the research step \"{}\" to finish before publishing. Current status: {}.",
+                    task.title.replace(['\n', '\r'], " "), task.stage.label()));
+            }
+            if !self.publication_result_available_or_loadable(step) {
+                return Some(format!("The research step \"{}\" does not have a current saved result. Rerun it after its inputs change, then publish.",
+                    task.title.replace(['\n', '\r'], " ")));
+            }
+        }
+        None
+    }
+
+    fn publication_result_available_or_loadable(&self, task_id: u64) -> bool {
+        self.research_result_available_or_pending(task_id)
+            || self
+                .runs()
+                .iter()
+                .rev()
+                .find(|run| run.task_id == task_id && run.status != "Simulated")
+                .is_some_and(|run| run.status == "Succeeded" && run.output.is_empty())
+    }
+
+    pub(crate) fn topic_publication_result_run_ids(&self, topic_id: u64) -> Vec<u64> {
+        let Some(topic) = self.topics().iter().find(|topic| topic.id == topic_id) else { return vec![] };
+        let mut ids = std::collections::BTreeSet::new();
+        let goals = self.tasks().iter().filter(|task| task.topic_id == Some(topic.id)
+            && task.research.as_ref().is_some_and(|research| research.kind == ResearchKind::Goal)
+            && !self.task_is_archived(task.id));
+        for goal in goals {
+            for step in self.research_children(goal.id) {
+                if let Some(run) = self.runs().iter().rev()
+                    .find(|run| run.task_id == step && run.status != "Simulated")
+                    && run.status == "Succeeded"
+                {
+                    ids.insert(run.id);
+                }
+            }
+        }
+        ids.into_iter().collect()
+    }
+
+    pub(crate) fn topic_publication_content(&self, topic_id: u64) -> Result<(String, String), String> {
+        if let Some(blocker) = self.topic_publication_blocker(topic_id) { return Err(blocker); }
         let topic = self
             .topics()
             .iter()
-            .find(|t| t.id == topic && !t.archived && t.automation_id.is_none())?;
-        if self.topic_planning_status(topic.id).is_some() { return None; }
+            .find(|t| t.id == topic_id)
+            .ok_or("Choose an active research topic before publishing.")?;
         let goals: Vec<_> = self.tasks().iter().filter(|t| t.topic_id == Some(topic.id)
             && t.research.as_ref().is_some_and(|r| r.kind == ResearchKind::Goal)
             && !self.task_is_archived(t.id)).collect();
-        if goals.is_empty() || goals.iter().any(|g| !self.goal_tasks_complete(g.id)) { return None; }
         let mut markdown = String::new();
         for goal in goals {
             let reports: Vec<_> = self.research_children(goal.id).into_iter().filter(|id| self.task(*id)
                 .and_then(|t| t.research.as_ref()).is_some_and(|r| r.kind == ResearchKind::Advise)).collect();
-            if reports.is_empty() { return None; }
             markdown.push_str(&format!("## {}\n\n", goal.title.replace(['\n', '\r'], " ")));
             for report in reports {
-                let run = self.research_result(report)?;
+                let run = self.research_result(report).ok_or_else(|| format!(
+                    "The final report \"{}\" does not have a current saved result.",
+                    self.task(report).map(|task| task.title.replace(['\n', '\r'], " ")).unwrap_or_else(|| "Final report".into())
+                ))?;
                 markdown.push_str(&run.output);
                 markdown.push_str("\n\n### Sources\n\n");
                 for source in &run.sources {
@@ -139,7 +229,7 @@ impl Store {
                 markdown.push('\n');
             }
         }
-        Some((topic.name.clone(), markdown))
+        Ok((topic.name.clone(), markdown))
     }
 }
 fn fingerprint(config: &PublishingConfig, title: &str, markdown: &str) -> String {
@@ -275,16 +365,57 @@ impl TaskApp {
     pub(crate) fn request_topic_publication(&mut self, topic: u64, cx: &mut Context<Self>) {
         if self.publishing_job.is_some() { return; }
         let config = self.store.report_publishing().clone();
-        if let Err(error) = config.validate() { self.show_save_error(error, cx); return; }
-        let Some((title, markdown)) = self.store.topic_share_content(topic) else {
-            self.show_save_error("Finish all active goals and planning requests with current reports before publishing this topic.", cx); return;
+        if let Err(error) = config.validate() { self.show_action_error(error, cx); return; }
+        if let Err(error) = self.prepare_topic_publication_bodies(topic) { self.show_action_error(error, cx); return; }
+        let (title, markdown) = match self.store.topic_publication_content(topic) {
+            Ok(content) => content,
+            Err(error) => { self.show_action_error(error, cx); return; }
         };
         let fingerprint = fingerprint(&config, &title, &markdown);
+        if let Some(index) = current_publication_index(&self.store.publications(), topic) {
+            let current = self.store.publications()[index].clone();
+            if current.fingerprint == fingerprint {
+                if current.status == "Online" {
+                    self.toast = "Published report is already current".into();
+                    self.error.clear();
+                    cx.notify();
+                } else if current.commit.is_some() {
+                    self.start_publication_mode(&current.id, true, cx);
+                } else {
+                    self.start_publication(&current.id, cx);
+                }
+                return;
+            }
+        }
         let id = match claim_publication(&mut self.store, topic, config, title, markdown, fingerprint) {
             Ok(id) => id,
             Err(error) => { self.show_save_error(error, cx); return; }
         };
         self.start_publication(&id, cx);
+    }
+    fn prepare_topic_publication_bodies(&mut self, topic: u64) -> Result<(), String> {
+        let targets = self.store.topic_publication_result_run_ids(topic)
+            .into_iter()
+            .filter(|run_id| self.store.runs().iter()
+                .find(|run| run.id == *run_id)
+                .is_some_and(|run| run.output.is_empty()))
+            .collect::<Vec<_>>();
+        if targets.is_empty() { return Ok(()); }
+        let Some((path, root, incarnation)) = self.live_attach.clone() else {
+            return Err("Saved final report content is not loaded. Reopen the workspace and try again.".into());
+        };
+        let database = crate::sqlite_v4::SqliteV4::open(&path, &root, incarnation)
+            .map_err(|error| format!("Could not open saved report content: {error}"))?;
+        for run_id in targets {
+            let Some(body) = database.body(run_id).map_err(|error| format!("Could not load saved research result {run_id}: {error}"))? else {
+                return Err(format!("The saved result body for run {run_id} is missing from durable storage. Open that result to verify it, or rerun the step."));
+            };
+            if !self.store.hydrate_run_body(run_id, body) {
+                return Err("The saved final report changed while it was loading. Try publishing again.".into());
+            }
+            self.run_body_state.insert(run_id, crate::history_reader::BodyLoad::Loaded);
+        }
+        Ok(())
     }
     fn start_publication(&mut self, id: &str, cx: &mut Context<Self>) {
         self.start_publication_mode(id, false, cx);
@@ -347,14 +478,19 @@ impl TaskApp {
         if !self.publishing_scan_requested || self.publishing_job.is_some() || !self.store.report_publishing().automatic || self.store.report_publishing().repository.is_empty()
             || self.workspace_root.is_none() || self.storage.is_none() || !self.storage_error.is_empty() { return; }
         self.publishing_scan_requested = false;
-        let ready = self.store.topics().iter().find_map(|topic| {
-            let (title, markdown) = self.store.topic_share_content(topic.id)?;
+        let topics: Vec<u64> = self.store.topics().iter().map(|topic| topic.id).collect();
+        for topic in topics {
+            if self.store.topic_publication_blocker(topic).is_some() { continue; }
+            if self.prepare_topic_publication_bodies(topic).is_err() { continue; }
+            let Some((title, markdown)) = self.store.topic_share_content(topic) else { continue; };
             let fingerprint = fingerprint(&self.store.report_publishing(), &title, &markdown);
-            let current = current_publication_index(&self.store.publications(), topic.id)
+            let current = current_publication_index(&self.store.publications(), topic)
                 .map(|index| &self.store.publications()[index]);
-            (current.is_none_or(|p| p.fingerprint != fingerprint)).then_some(topic.id)
-        });
-        if let Some(topic) = ready { self.request_topic_publication(topic, cx); }
+            if current.is_none_or(|p| p.fingerprint != fingerprint) {
+                self.request_topic_publication(topic, cx);
+                return;
+            }
+        }
     }
     pub(crate) fn publishing_settings_panel(&self, cx: &mut Context<Self>) -> Div {
         col().gap_4()
@@ -390,28 +526,28 @@ impl TaskApp {
             .child(label("Import your existing reports into the repository before connecting EdgeOne. Git pushes never force-overwrite remote history. Keep the repository private and configure EdgeOne to deploy this branch.", cx))
     }
     pub(crate) fn topic_publish_button(&self, topic: u64, cx: &mut Context<Self>) -> impl IntoElement {
-        // Rendering only checks workflow state; exact input signatures are validated on publish.
-        let goals: Vec<_> = self.store.tasks().iter().filter(|t| t.topic_id == Some(topic)
-            && t.research.as_ref().is_some_and(|r| r.kind == ResearchKind::Goal)
-            && !self.store.task_is_archived(t.id)).collect();
-        let ready = !goals.is_empty() && goals.iter().all(|g| g.stage == crate::domain::Stage::Done)
-            && self.store.topic_planning_status(topic).is_none()
-            && self.store.topics().iter().any(|t| t.id == topic && !t.archived);
+        let blocker = self.store.topic_publication_blocker(topic);
+        let ready = blocker.is_none();
         let publication = current_publication_index(&self.store.publications(), topic)
             .map(|index| &self.store.publications()[index]);
         let busy = self.publishing_job.as_ref().is_some_and(|(id, _)| publication.is_some_and(|p| &p.id == id));
-        let changed = !busy && ready && publication.is_some_and(|p| self.store.topic_share_content(topic)
+        let body_pending = self.store.topic_publication_result_run_ids(topic).iter().any(|run_id| {
+            self.store.runs().iter().find(|run| run.id == *run_id)
+                .is_some_and(|run| run.output.is_empty())
+        });
+        let changed = !busy && ready && publication.is_some_and(|p| body_pending || self.store.topic_share_content(topic)
             .is_some_and(|(title, markdown)| fingerprint(&self.store.report_publishing(), &title, &markdown) != p.fingerprint));
         let action = publication_action(publication, changed);
         let text = if busy {
             if publication.is_some_and(|p| p.status == "Pushed · verifying live page") { "Checking…" } else { "Publishing…" }
         } else { action.label() };
+        let tooltip = blocker.unwrap_or_else(|| action.help().into());
         button("publish-topic-report", text)
             .when(busy, |b| b.icon(assets::IconName::Loader))
             .loading_icon(assets::IconName::Loader)
             .loading(busy)
             .disabled(self.publishing_job.is_some() || (!ready && matches!(action, PublicationAction::Publish(_))))
-            .tooltip(action.help())
+            .tooltip(tooltip)
             .on_click(cx.listener(move |a, _, _, cx| match &action {
                 PublicationAction::Publish(_) => a.request_topic_publication(topic, cx),
                 PublicationAction::Retry(id) => a.start_publication(id, cx),
@@ -602,6 +738,7 @@ mod tests {
         store.create_research_goal_in_topic("Goal".into(), "Brief".into(), 1, Some(topic)).unwrap();
         assert!(store.topic_share_content(topic).is_none());
     }
+
     #[test]
     fn only_current_complete_topic_reports_are_shared_and_snapshots_persist() {
         let mut store = Store::empty();
@@ -621,6 +758,28 @@ mod tests {
         let (title, markdown) = store.topic_share_content(topic).unwrap();
         assert!(markdown.contains("Public final report"));
         assert!(!markdown.contains("PRIVATE_WORKING_NOTES"));
+        let bodies: Vec<_> = store.runs().iter().map(|run| (run.id, run.output.clone())).collect();
+        for (run_id, _) in &bodies {
+            store.run_mut(*run_id).unwrap().output.clear();
+        }
+        for (run_id, _) in &bodies {
+            store.mark_lazy_body(*run_id);
+        }
+        assert!(store.topic_publication_blocker(topic).is_none());
+        assert_eq!(store.topic_publication_result_run_ids(topic).len(), bodies.len());
+        assert!(store.topic_share_content(topic).is_none());
+        for (run_id, body) in bodies {
+            assert!(store.hydrate_run_body(run_id, body));
+        }
+        assert!(store.topic_share_content(topic).is_some());
+        store.task_mut(ids[2]).unwrap().stage = Stage::InProgress;
+        store.last_run_mut().unwrap().status = "Running".into();
+        assert_eq!(store.task(goal).unwrap().stage, Stage::Done);
+        let blocker = store.topic_publication_blocker(topic).unwrap();
+        assert!(blocker.contains("Wait for the research step"));
+        assert!(blocker.contains("Current status: In progress"));
+        store.task_mut(ids[2]).unwrap().stage = Stage::Done;
+        store.last_run_mut().unwrap().status = "Succeeded".into();
         let config = PublishingConfig::default();
         store.push_publication(super::Publication { id: "a".repeat(32), topic,
             fingerprint: fingerprint(&config, &title, &markdown), config, title, markdown,

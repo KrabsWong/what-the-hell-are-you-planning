@@ -458,7 +458,7 @@ impl TaskApp {
         }
     }
     /// Session verification must advance the owning automation, not only update the
-    /// research step. Unknown remains blocked for explicit review.
+    /// research step. Unknown stays blocked unless an explicit retry already exists.
     fn apply_automation_recovery(
         &mut self,
         run_id: u64,
@@ -545,13 +545,20 @@ impl TaskApp {
             }
             SessionCheck::Checking => {}
             SessionCheck::Unknown(_) => {
-                let _ = crate::automation_runtime::reconcile_occurrence(
+                let retry = crate::automation_runtime::reconcile_occurrence(
                     &mut self.store,
                     occurrence,
                     crate::automation_runtime::SessionState::Unknown,
                     now,
                 );
-                self.persist_if_changed(true);
+                if let Ok(commit) = retry {
+                    self.persist_if_changed(true);
+                    if self.storage_error.is_empty() {
+                        for id in commit.retry {
+                            self.enqueue_automation_occurrence(id, cx);
+                        }
+                    }
+                }
             }
         }
     }

@@ -3424,7 +3424,7 @@ impl TaskApp {
             "Each period repeats the approved research plan and saves its results in Automations."
         });
         let active = self.store.automation_active(id).map(|o| o.id);
-        let mut actions = row().flex_wrap().gap_2();
+        let mut actions = row().flex_wrap().justify_end().gap_2().flex_shrink_0();
         if definition.status == DefinitionStatus::Draft {
             actions = actions.child(
                 primary_button("enable-draft-automation", "Review and enable")
@@ -3526,30 +3526,43 @@ impl TaskApp {
         panel = panel
             // Back is the app-level breadcrumb action; the page does not repeat it.
             .child(
-                col().min_w_0().gap_2()
+                row()
+                    .w_full()
+                    .min_w_0()
+                    .flex_wrap()
+                    .items_start()
+                    .justify_between()
+                    .gap_4()
                     .child(
-                        row().flex_wrap().gap_3()
+                        col()
+                            .flex_1()
+                            .min_w_0()
+                            .gap_2()
                             .child(
-                                div()
-                                    .min_w_0()
-                                    .text_lg()
-                                    .font_weight(FontWeight::SEMIBOLD)
-                                    .line_height(relative(1.3))
-                                    .child(selectable(definition.name.clone())),
+                                row().flex_wrap().gap_3()
+                                    .child(
+                                        div()
+                                            .min_w_0()
+                                            .text_lg()
+                                            .font_weight(FontWeight::SEMIBOLD)
+                                            .line_height(relative(1.3))
+                                            .child(selectable(definition.name.clone())),
+                                    )
+                                    .child(
+                                        chip(definition.shape.label(), colors.muted, cx)
+                                            .bg(rgb(colors.tag_surface))
+                                            .id("automation-detail-shape")
+                                            .tooltip(move |w, cx| gpui_kit::component::tooltip::Tooltip::new(description.clone()).build(w, cx)),
+                                    )
+                                    .child(chip(
+                                        definition.status.label(),
+                                        crate::views::stage_color_for_definition(definition.status, cx),
+                                        cx,
+                                    ).bg(rgb(colors.tag_surface))),
                             )
-                            .child(
-                                chip(definition.shape.label(), colors.muted, cx)
-                                    .bg(rgb(colors.tag_surface))
-                                    .id("automation-detail-shape")
-                                    .tooltip(move |w, cx| gpui_kit::component::tooltip::Tooltip::new(description.clone()).build(w, cx)),
-                            )
-                            .child(chip(
-                                definition.status.label(),
-                                crate::views::stage_color_for_definition(definition.status, cx),
-                                cx,
-                            ).bg(rgb(colors.tag_surface))),
+                            .child(overview_meta_line(definition, cx)),
                     )
-                    .child(overview_meta_line(definition, cx)),
+                    .child(actions),
             )
             // Planning is durable: a closed wizard, a list visit and a restart
             // keep the state and its review path visible.
@@ -3614,7 +3627,6 @@ impl TaskApp {
                     cx,
                 ))
             })
-            .child(actions)
             .when(definition.status == DefinitionStatus::Draft, |d| {
                 d.child(overview_note(
                     "Pause and Run manually unlock once you review and enable this draft.",
@@ -4302,11 +4314,24 @@ impl TaskApp {
             .rounded(px(crate::appearance::GROUP_RADIUS))
             .bg(rgb(colors.side));
         if let Some(reason) = &occurrence.reason {
-            panel = panel.child(crate::views::notice(
-                crate::views::NoticeTone::Warning,
-                reason.detail.clone(),
-                cx,
-            ));
+            panel = panel.child(
+                if occurrence.status == OccurrenceStatus::WaitingRetry
+                    && reason.code == crate::automation::SkipCode::RetryScheduled
+                {
+                    crate::views::notice_panel(
+                        crate::views::NoticeTone::Info,
+                        "Retrying automatically",
+                        "The previous attempt did not finish. The retry will start automatically; no action is needed.",
+                        cx,
+                    )
+                } else {
+                    crate::views::notice(
+                        crate::views::NoticeTone::Warning,
+                        reason.detail.clone(),
+                        cx,
+                    )
+                },
+            );
         }
         if let Some(definition) = self.store.automation(occurrence.automation_id)
             && definition.version != occurrence.definition_version
@@ -4323,18 +4348,10 @@ impl TaskApp {
                     .child(label(format!("Current version {}", definition.version), cx)),
             );
         }
-        if matches!(
-            occurrence.status,
-            OccurrenceStatus::Queued | OccurrenceStatus::WaitingRetry
-        ) {
-            let retry = if occurrence.status == OccurrenceStatus::WaitingRetry {
-                " The retry starts automatically and does not take a research slot."
-            } else {
-                " The research queue and its limit are separate."
-            };
+        if occurrence.status == OccurrenceStatus::Queued {
             panel = panel.child(overview_note(
                 format!(
-                    "Automation slots: {} of {} running.{retry}",
+                    "Waiting for an automation slot. {} of {} slots are in use; this starts automatically.",
                     self.automation_slots_used(),
                     self.store.automation_concurrency_limit()
                 ),
@@ -4351,6 +4368,13 @@ impl TaskApp {
             .final_run_id
             .or_else(|| occurrence.run_ids.last().copied());
         let body_state = final_run.and_then(|run_id| self.run_body_state.get(&run_id));
+        let final_report_body_available = final_run.is_some_and(|run_id| {
+            presentation.reports.iter().any(|report| {
+                report.presentation.run_id == Some(run_id)
+                    && report.presentation.has_reader_body()
+            })
+        }) || (presentation.reports.len() <= 1 && presentation.has_reader_body());
+        let active = occurrence.status.is_active();
         let lazy_final_run = final_run
             .filter(|run_id| self.store.run_body_is_lazy(*run_id))
             .filter(|_| {
@@ -4360,7 +4384,7 @@ impl TaskApp {
                         | Some(crate::history_reader::BodyLoad::Failed { .. })
                 )
             });
-        if lazy_final_run.is_some() {
+        if lazy_final_run.is_some() && !final_report_body_available {
             let message = if occurrence.status == OccurrenceStatus::Succeeded {
                 "Loading the saved report body… The period is complete; only its saved result text is being fetched."
             } else {
@@ -4375,14 +4399,16 @@ impl TaskApp {
         } else if matches!(
             body_state,
             Some(crate::history_reader::BodyLoad::Failed { .. })
-        ) {
+        ) && !final_report_body_available
+        {
             let occurrence_id = occurrence.id;
             panel = panel.child(
                 col().gap_2()
                     .child(
-                        crate::views::notice(
+                        crate::views::notice_panel(
                             crate::views::NoticeTone::Warning,
-                            "The saved report body could not be loaded. Dependent work will not use an empty body; retry just this report read.",
+                            "Report could not be loaded",
+                            "The run finished and its report is saved, but the app could not read it. Try loading it again.",
                             cx,
                         )
                         .id("automation-report-unavailable")
@@ -4390,9 +4416,9 @@ impl TaskApp {
                         .map(observed),
                     )
                     .child(
-                        quiet_button("automation-report-retry", "Retry loading report")
+                        quiet_button("automation-report-retry", "Try again")
                             .icon(assets::IconName::RefreshCw)
-                            .tooltip("Retry reading this saved report body only; persistence and the period are unchanged.")
+                            .tooltip("Read the saved report again. This does not rerun the automation.")
                             .on_click(cx.listener(move |app, _, _, cx| {
                                 if app.retry_occurrence_body(occurrence_id) {
                                     cx.notify();
@@ -4403,22 +4429,25 @@ impl TaskApp {
         } else if matches!(
             body_state,
             Some(crate::history_reader::BodyLoad::Absent)
-        ) {
+        ) && !final_report_body_available
+            && !active
+        {
             panel = panel.child(
-                crate::views::notice(
+                crate::views::notice_panel(
                     crate::views::NoticeTone::Warning,
-                    "No saved report body exists for this run. Existing step results remain available; this run is not presented as complete.",
+                    "No report was saved",
+                    "No report text was saved for this run. Review any completed steps below if you need the details.",
                     cx,
                 )
                 .id("automation-report-missing")
                 .aria_label("Saved report body missing")
                 .map(observed),
             );
-        } else if !presentation.has_final_report {
+        } else if !presentation.has_final_report && !active {
             panel = panel.child(
                 crate::views::notice(
                     crate::views::NoticeTone::Info,
-                    "No final report yet. Completed steps and any earlier results remain available below; live progress is not a validated answer.",
+                    "No final report is available. Review the completed steps below.",
                     cx,
                 )
                 .id("automation-no-final-notice")
@@ -4428,11 +4457,12 @@ impl TaskApp {
         }
         let single_final_report = presentation.reports.len() == 1
             && presentation.has_final_report;
-        let show_state = !single_final_report
-            || presentation.freshness.stale_input
-            || presentation.freshness.regenerating
-            || presentation.freshness.historical
-            || presentation.freshness.legacy_contract;
+        let show_state = !active
+            && (!single_final_report
+                || presentation.freshness.stale_input
+                || presentation.freshness.regenerating
+                || presentation.freshness.historical
+                || presentation.freshness.legacy_contract);
         let state_label = presentation.state_label();
         if show_state {
             panel = panel.child(

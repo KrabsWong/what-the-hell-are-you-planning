@@ -87,15 +87,20 @@ struct ExpectedRender {
 
 fn expected_render(store: &Store, occurrence: &AutomationOccurrence) -> ExpectedRender {
     let presentation = present_occurrence(store, occurrence);
+    let active = presentation.attempt.is_active();
     ExpectedRender {
-        state: presentation.state_label(),
+        state: if active {
+            String::new()
+        } else {
+            presentation.state_label()
+        },
         report_runs: presentation
             .reports
             .iter()
             .filter(|report| report.presentation.has_reader_body())
             .filter_map(|report| report.presentation.run_id)
             .collect(),
-        no_final: !presentation.has_final_report,
+        no_final: !presentation.has_final_report && !active,
         progress: !presentation.progress.is_empty(),
     }
 }
@@ -1077,7 +1082,12 @@ fn screenshot_automation(
         let state_element = w.try_find("automation-result-state");
         let state = state_element.as_ref().and_then(|element| element.label())
             .map(str::to_string).unwrap_or_default();
-        if expected.report_runs.len() == 1 && !expected.no_final
+        if expected.state.is_empty() {
+            assert!(
+                state_element.is_none(),
+                "Active results keep state in progress rows and notices instead of repeating it"
+            );
+        } else if expected.report_runs.len() == 1 && !expected.no_final
             && matches!(name, "quick-complete.png" | "quick-partial.png" | "research-complete.png" | "research-partial.png")
         {
             assert!(state_element.is_none(), "Single final reports must not repeat quality/type metadata above the reader");

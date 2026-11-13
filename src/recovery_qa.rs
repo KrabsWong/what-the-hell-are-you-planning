@@ -486,7 +486,7 @@ print(json.dumps({'type':'text','part':{'text':json.dumps(result)}}),flush=True)
         );
     })
     .unwrap();
-    let planning_run = cx
+    let (planning_run, planning_topic) = cx
         .update_window(handle, |_, w, cx| {
             app.update(cx, |a, cx| {
                 let request = a
@@ -503,16 +503,25 @@ print(json.dumps({'type':'text','part':{'text':json.dumps(result)}}),flush=True)
                 a.store.request_mut(request).unwrap()
                     .planning_run_id = Some(id);
                 a.store.push_run(run);
+                let topic = a
+                    .store
+                    .request_for_run(id)
+                    .and_then(|request| request.topic_id)
+                    .unwrap();
                 a.navigate(Scope::Recovery, w, cx);
-                id
+                (id, topic)
             })
         })
         .unwrap();
     cx.update_window(handle, |_, w, cx| {
         w.render_frame(cx);
         assert!(
-            w.try_find(("recovery-request", planning_run)).is_some(),
-            "planning-only projects must show their specific request"
+            w.try_find(("recovery-request-plan", planning_run)).is_some(),
+            "planning-only projects must expose a retry action"
+        );
+        assert!(
+            w.try_find(("recovery-request-destination", planning_run)).is_some(),
+            "planning-only projects must expose their owning topic"
         );
     })
     .unwrap();
@@ -521,25 +530,8 @@ print(json.dumps({'type':'text','part':{'text':json.dumps(result)}}),flush=True)
         .save(root.join("recovery-hierarchy.png"))
         .unwrap();
     cx.update_window(handle, |_, w, cx| {
-        w.click(("recovery-request", planning_run), cx);
-        assert_eq!(app.read(cx).selected_run(), Some(planning_run));
-        assert_eq!(app.read(cx).scope(), Scope::Runs);
-    })
-    .unwrap();
-    cx.update_window(handle, |_, w, cx| {
-        app.update(cx, |a, cx| {
-            a.set_result_selection(None, a.selected_run());
-            a.show_run_details = false;
-            cx.notify();
-        });
-        w.render_frame(cx);
-        assert!(w.try_find("run-planning-toggle").is_none());
-        w.click("run-project-planning", cx);
-    }).unwrap();
-    cx.run_until_parked();
-    cx.update_window(handle, |_, w, cx| {
-        w.within("popup-menu").click(0usize, cx);
-        assert_eq!(app.read(cx).selected_run(), Some(planning_run));
+        w.click(("recovery-request-destination", planning_run), cx);
+        assert_eq!(app.read(cx).scope(), Scope::Topic(planning_topic));
     }).unwrap();
     // Archiving a finished batch item must not prematurely finish the remaining goal.
     cx.update_window(handle, |_, _, cx| {

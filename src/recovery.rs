@@ -233,6 +233,25 @@ impl Store {
         }
         projects.into_iter().collect()
     }
+
+    /// Only the current interrupted planning attempt belongs in recovery. A
+    /// request that already produced goals, or whose newer attempt superseded an
+    /// older interruption, is history rather than paused work.
+    pub(crate) fn paused_planning_attempts(&self) -> Vec<&AgentRun> {
+        self.runs()
+            .iter()
+            .filter(|run| {
+                run.project_plan.is_some()
+                    && !self.run_is_automation_owned(run)
+                    && !self.run_is_archived(run)
+                    && matches!(run.status.as_str(), "Interrupted" | "Recovering")
+                    && self.planning_attempt_is_current(run.id)
+                    && self.request_for_run(run.id).is_some_and(|request| {
+                        request.goal_ids.is_empty() && !self.request_is_archived(request)
+                    })
+            })
+            .collect()
+    }
 }
 impl TaskApp {
     pub(crate) fn resume_request_understanding(&mut self, id: u64, cx: &mut Context<Self>) {
@@ -626,18 +645,7 @@ impl TaskApp {
     }
     pub(crate) fn recovery_view(&self, cx: &mut Context<Self>) -> AnyElement {
         let mut projects = self.store.paused_project_goals();
-        let planning: Vec<_> = self
-            .store
-            .runs()
-            .iter()
-            .filter(|r| {
-                r.project_plan.is_some()
-                    && !self.store.run_is_archived(r)
-                    && matches!(r.status.as_str(), "Interrupted" | "Recovering")
-                    && (self.store.request_for_run(r.id).is_some()
-                        || self.store.is_recovery_candidate(r))
-            })
-            .collect();
+        let planning = self.store.paused_planning_attempts();
         for run in &planning {
             let project = run.project_plan.unwrap();
             if !projects.iter().any(|(id, _)| *id == project) {
@@ -829,6 +837,28 @@ impl TaskApp {
             for run in requests {
                 let run_id = run.id;
                 let request = self.store.request_for_run(run_id);
+                let request_id = request.map(|request| request.id);
+                let topic_id = request.and_then(|request| request.topic_id);
+                let needs_understanding = request.is_some_and(|request| {
+                    request.understanding_required
+                        && !self.store.request_understanding_confirmed(request.id)
+                });
+                let session_stopped = matches!(
+                    self.recovery.checks.get(&run_id),
+                    Some(SessionCheck::Stopped)
+                );
+                let retry_disabled = checking || run.status == "Recovering";
+                let destination = topic_id
+                    .filter(|topic| {
+                        self.store
+                            .topics()
+                            .iter()
+                            .any(|candidate| candidate.id == *topic && !candidate.archived)
+                    })
+                    .map(|topic| ("Open topic", Scope::Topic(topic)))
+                    .or_else(|| {
+                        request.map(|_| ("Open project", Scope::Project(project)))
+                    });
                 let title = request
                     .map(|r| format!("Request {} · {}", r.id, r.input))
                     .unwrap_or_else(|| run.task_title.clone());
@@ -851,22 +881,59 @@ impl TaskApp {
                         .child(
                             row()
                                 .gap_3()
+                                .flex_wrap()
                                 .child(div().flex_1().min_w_0().whitespace_normal().child(selectable(title)))
-                                .child(
-                                    quiet_button(
-                                        ("recovery-request", run_id),
-                                        "Planning details",
-                                    ).icon(assets::IconName::ArrowRight)
-                                    .on_click(cx.listener(
-                                        move |a, _, w, cx| {
-                                            a.set_result_selection(None, Some(run_id));
-                                            a.show_run_result = true;
-                                            a.show_run_details = false;
-                                            a.reveal_selected_run();
-                                            cx.notify();
-                                        },
-                                    )),
-                                ),
+                                .when_some(request_id, |row, request_id| {
+                                    row.child(
+                                        primary_button(
+                                            ("recovery-request-plan", run_id),
+                                            if checking {
+                                                "Checking…"
+                                            } else if !session_stopped {
+                                                "Check progress"
+                                            } else if needs_understanding {
+                                                "Continue understanding"
+                                            } else {
+                                                "Retry planning"
+                                            },
+                                        )
+                                        .icon(assets::IconName::Play)
+                                        .disabled(retry_disabled)
+                                        .tooltip(if checking {
+                                            "Checking whether the previous planning session is still running."
+                                        } else if retry_disabled {
+                                            "The previous planning session is still being verified."
+                                        } else if !session_stopped {
+                                            "Check whether the previous planning session is still running before retrying."
+                                        } else if needs_understanding {
+                                            "Continue the current research understanding before goals are generated."
+                                        } else {
+                                            "Retry this saved request. Goals are not created until a valid plan is reviewed."
+                                        })
+                                        .on_click(cx.listener(move |a, _, _, cx| {
+                                            if !session_stopped {
+                                                a.check_interrupted_sessions(cx);
+                                            } else if needs_understanding {
+                                                a.resume_request_understanding(request_id, cx);
+                                            } else {
+                                                a.retry_research_request(request_id, cx);
+                                            }
+                                        })),
+                                    )
+                                })
+                                .when_some(destination, |row, (label, scope)| {
+                                    row.child(
+                                        quiet_button(
+                                            ("recovery-request-destination", run_id),
+                                            label,
+                                        )
+                                        .icon(assets::IconName::ArrowRight)
+                                        .tooltip("Open the owning research area to review, replan, or archive this request.")
+                                        .on_click(cx.listener(move |a, _, w, cx| {
+                                            a.navigate(scope.clone(), w, cx)
+                                        })),
+                                    )
+                                }),
                         )
                         .child(label(detail, cx)),
                 );
@@ -880,6 +947,8 @@ impl TaskApp {
 #[cfg(test)]
 mod tests {
     use super::{SessionCheck, parse_transcript, request_matches};
+    use crate::automation::{AutomationPolicy, AutomationShape};
+    use crate::automation_schedule::{Schedule, ScheduleSpec};
     use crate::domain::{Stage, Store};
     use serde_json::json;
     #[test]
@@ -902,6 +971,84 @@ mod tests {
         store.push_run(replacement);
         assert!(!store.is_recovery_candidate(&first_run));
         assert!(store.is_recovery_candidate(&second_run));
+    }
+
+    #[test]
+    fn paused_planning_only_lists_current_unplanned_requests() {
+        let mut store = Store::empty();
+        store.project_at_mut(0).unwrap().directory =
+            std::env::temp_dir().to_string_lossy().into_owned();
+        store.set_default_model("fixture/model".into());
+        let request = store
+            .create_research_request(1, None, "Compare storage engines")
+            .unwrap();
+
+        let mut first = store.prepare_request_plan(request).unwrap();
+        first.status = "Interrupted".into();
+        let first_id = first.id;
+        store.push_run(first);
+        store.request_mut(request).unwrap().planning_run_id = Some(first_id);
+        assert_eq!(
+            store
+                .paused_planning_attempts()
+                .into_iter()
+                .map(|run| run.id)
+                .collect::<Vec<_>>(),
+            vec![first_id]
+        );
+
+        let mut replacement = store.prepare_request_plan(request).unwrap();
+        replacement.status = "Succeeded".into();
+        let replacement_id = replacement.id;
+        store.push_run(replacement);
+        store.request_mut(request).unwrap().planning_run_id = Some(replacement_id);
+        assert!(
+            store.paused_planning_attempts().is_empty(),
+            "a later attempt supersedes the interrupted history row"
+        );
+
+        let mut current_with_goals = store.prepare_request_plan(request).unwrap();
+        current_with_goals.status = "Interrupted".into();
+        let current_id = current_with_goals.id;
+        store.push_run(current_with_goals);
+        store.request_mut(request).unwrap().planning_run_id = Some(current_id);
+        store.request_mut(request).unwrap().goal_ids.push(1);
+        assert!(
+            store.paused_planning_attempts().is_empty(),
+            "a request that already produced goals is no longer paused planning"
+        );
+
+        let automation = store
+            .create_automation_draft(
+                1,
+                AutomationShape::Research,
+                "Filings".into(),
+                "Track filings".into(),
+                "A cited note".into(),
+                Schedule {
+                    spec: ScheduleSpec::Interval { minutes: 60 },
+                    timezone: "UTC".into(),
+                },
+                AutomationPolicy::default(),
+                None,
+                1,
+            )
+            .unwrap();
+        let automation_request = store
+            .create_automation_request(automation, 1, "Track filings", "A cited note")
+            .unwrap();
+        let mut automation_run = store.prepare_request_plan(automation_request).unwrap();
+        automation_run.status = "Interrupted".into();
+        let automation_run_id = automation_run.id;
+        store.push_run(automation_run);
+        store
+            .request_mut(automation_request)
+            .unwrap()
+            .planning_run_id = Some(automation_run_id);
+        assert!(
+            store.paused_planning_attempts().is_empty(),
+            "automation planning belongs under Automations, not Paused projects"
+        );
     }
 
     #[test]

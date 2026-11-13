@@ -433,6 +433,7 @@ pub struct AutomationUi {
     pub show_technical: bool,
     pub show_completed_steps: bool,
     pub expanded_sources: HashSet<String>,
+    pub expanded_appendices: HashSet<String>,
     pub technical_run: Option<u64>,
     pub technical_scroll: ScrollHandle,
     pub show_cleanup: bool,
@@ -726,6 +727,7 @@ impl AutomationUi {
             show_technical: false,
             show_completed_steps: false,
             expanded_sources: HashSet::new(),
+            expanded_appendices: HashSet::new(),
             technical_run: None,
             technical_scroll: ScrollHandle::new(),
             show_cleanup: false,
@@ -1219,6 +1221,7 @@ impl TaskApp {
         self.automation_ui.show_technical = false;
         self.automation_ui.show_completed_steps = false;
         self.automation_ui.expanded_sources.clear();
+        self.automation_ui.expanded_appendices.clear();
         self.automation_ui.technical_run = None;
         self.automation_ui.technical_scroll = ScrollHandle::new();
         self.automation_ui.feedback = None;
@@ -1263,6 +1266,7 @@ impl TaskApp {
         self.automation_ui.show_technical = false;
         self.automation_ui.show_completed_steps = false;
         self.automation_ui.expanded_sources.clear();
+        self.automation_ui.expanded_appendices.clear();
         self.automation_ui.technical_run = None;
         self.automation_ui.technical_scroll = ScrollHandle::new();
         self.automation_ui.feedback = None;
@@ -1349,6 +1353,7 @@ impl TaskApp {
         self.automation_ui.show_technical = false;
         self.automation_ui.show_completed_steps = false;
         self.automation_ui.expanded_sources.clear();
+        self.automation_ui.expanded_appendices.clear();
         self.automation_ui.technical_run = None;
         self.automation_ui.technical_scroll = ScrollHandle::new();
         self.restore_dialog_opener(window, cx);
@@ -4286,6 +4291,68 @@ impl TaskApp {
             }).absolute().inset_0()).child(view).map(observed).into_any_element()
     }
 
+    fn automation_report_section(
+        &self,
+        key: String,
+        markdown: String,
+        height: Pixels,
+        cx: &mut Context<Self>,
+    ) -> AnyElement {
+        let (body, appendix) =
+            crate::result_presentation::split_report_appendix(&markdown);
+        let appendix = appendix.map(str::to_string);
+        let disclosure_id = format!("automation-appendix-{key}");
+        let expanded = self
+            .automation_ui
+            .expanded_appendices
+            .contains(&disclosure_id);
+        let mut section = col()
+            .w_full()
+            .min_w_0()
+            .gap_2()
+            .child(self.automation_report_reader(
+                format!("{key}-body"),
+                body.to_string(),
+                height,
+                cx,
+            ));
+        if let Some(appendix) = appendix {
+            let toggle_id = disclosure_id.clone();
+            section = section.child(
+                quiet_button(disclosure_id, "Appendix")
+                    .self_start()
+                    .px_0()
+                    .icon(if expanded {
+                        assets::IconName::ChevronDown
+                    } else {
+                        assets::IconName::ChevronRight
+                    })
+                    .tooltip(if expanded {
+                        "Hide detailed verification notes"
+                    } else {
+                        "Show detailed verification notes"
+                    })
+                    .on_click(cx.listener(move |app, _, _, cx| {
+                        if !app.automation_ui.expanded_appendices.remove(&toggle_id) {
+                            app.automation_ui
+                                .expanded_appendices
+                                .insert(toggle_id.clone());
+                        }
+                        cx.notify();
+                    })),
+            );
+            if expanded {
+                section = section.child(self.automation_report_reader(
+                    format!("{key}-appendix"),
+                    appendix,
+                    height,
+                    cx,
+                ));
+            }
+        }
+        section.into_any_element()
+    }
+
     fn result_owner_title(&self, owner: &str) -> String {
         for task in self.store.tasks() {
             let prefix = format!("{} · ", self.store.identifier(task));
@@ -4477,7 +4544,7 @@ impl TaskApp {
         if presentation.reports.is_empty() && presentation.has_reader_body() {
             panel = panel.child(
                 div().p_3().rounded(px(crate::appearance::GROUP_RADIUS)).bg(rgb(colors.panel)).child(
-                    self.automation_report_reader(
+                    self.automation_report_section(
                         format!("automation-result-{id}-fallback"),
                         presentation.reader_markdown.clone(), reader_height, cx,
                     ),
@@ -4539,7 +4606,7 @@ impl TaskApp {
                         .id(format!("automation-report-body-{id}-{run_key}"))
                         .aria_label("Retained report body")
                         .p_3().rounded(px(crate::appearance::GROUP_RADIUS)).bg(rgb(colors.panel)).child(
-                        self.automation_report_reader(
+                        self.automation_report_section(
                             format!("automation-result-{id}-{run_key}"),
                             result.reader_markdown.clone(), reader_height, cx,
                         ),

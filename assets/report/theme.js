@@ -8,4 +8,7 @@ document.addEventListener('click',e=>document.querySelectorAll('.theme-picker[op
 document.addEventListener('keydown',e=>{if(e.key==='Escape')document.querySelectorAll('.theme-picker[open]').forEach(d=>{d.open=false;d.querySelector('summary').focus()})});
 document.getElementById('toc-search').addEventListener('input',e=>document.querySelectorAll('.sidebar nav a').forEach(a=>a.hidden=!a.textContent.toLowerCase().includes(e.target.value.toLowerCase())));
 const observer=new IntersectionObserver(entries=>entries.forEach(e=>{if(e.isIntersecting)document.querySelectorAll('.sidebar nav a').forEach(a=>a.classList.toggle('active',a.getAttribute('href')==='#'+e.target.id))}),{rootMargin:'0px 0px -65% 0px'});
-document.querySelectorAll('main h1[id], main h2[id], main h3[id]').forEach(e=>observer.observe(e));
+document.querySelectorAll('main h1[id], main h2[id], main h3[id], main details.report-detail[id]').forEach(e=>observer.observe(e));
+function openHashDetail(){const id=decodeURIComponent(location.hash.slice(1));if(!id)return;const target=document.getElementById(id);if(target instanceof HTMLDetailsElement)target.open=true}
+addEventListener('hashchange',openHashDetail);openHashDetail();
+const printDetails=[];addEventListener('beforeprint',()=>{document.querySelectorAll('details.report-detail').forEach(detail=>{printDetails.push([detail,detail.open]);detail.open=true})});addEventListener('afterprint',()=>{printDetails.splice(0).forEach(([detail,open])=>detail.open=open)});

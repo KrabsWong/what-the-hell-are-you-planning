@@ -590,7 +590,10 @@ impl TaskApp {
     pub fn run_result_panel(&self, run: &AgentRun, cx: &mut Context<Self>) -> AnyElement {
         let colors = palette(cx);
         let presentation = crate::result_presentation::present_run(&self.store, run);
-        let output = presentation.reader_markdown.clone();
+        let (body, appendix) =
+            crate::result_presentation::split_report_appendix(&presentation.reader_markdown);
+        let output = body.to_string();
+        let appendix = appendix.map(str::to_string);
         let body_unavailable = self.report_body_error(run).is_some();
         let reader_placeholder = if body_unavailable {
             "The saved report could not be loaded. Retry loading this report."
@@ -598,6 +601,7 @@ impl TaskApp {
             presentation.reader_placeholder()
         };
         let sources_open = self.expanded_run_sources == Some(run.id);
+        let appendix_open = self.expanded_run_appendix == Some(run.id);
         let archived_run = self.store.task_is_archived(run.task_id);
         let run_id = run.id;
         col()
@@ -689,6 +693,59 @@ impl TaskApp {
                                     cx.notify();
                                 })),
                         ))
+                        .when(appendix.is_some(), |d| {
+                            let appendix = appendix.clone();
+                            d.child(
+                                col()
+                                    .flex_shrink_0()
+                                    .gap_2()
+                                    .child(
+                                        quiet_button("toggle-result-appendix", "Appendix")
+                                            .self_start()
+                                            .px_2()
+                                            .text_color(rgb(colors.muted))
+                                            .icon(if appendix_open {
+                                                assets::IconName::ChevronDown
+                                            } else {
+                                                assets::IconName::ChevronRight
+                                            })
+                                            .tooltip(if appendix_open {
+                                                "Hide detailed verification notes"
+                                            } else {
+                                                "Show detailed verification notes"
+                                            })
+                                            .on_click(cx.listener(move |a, _, _, cx| {
+                                                a.expanded_run_appendix = if appendix_open {
+                                                    None
+                                                } else {
+                                                    Some(run_id)
+                                                };
+                                                cx.notify();
+                                            })),
+                                    )
+                                    .when(appendix_open, |d| {
+                                        d.child(
+                                            gpui_kit::base::text::TextView::markdown(
+                                                format!("result-appendix-{}", run.id),
+                                                appendix.clone().unwrap_or_default(),
+                                            )
+                                            .markdown_extensions(
+                                                crate::rich_markdown::extensions(),
+                                            )
+                                            .w_full()
+                                            .min_w_0()
+                                            .flex_shrink_0()
+                                            .on_link_click(|url, _, _, cx| {
+                                                if url.starts_with("https://")
+                                                    || url.starts_with("http://")
+                                                {
+                                                    cx.open_url(url);
+                                                }
+                                            }),
+                                        )
+                                    })
+                            )
+                        })
                         .when(!presentation.sources.is_empty(), |d| d.child(
                             col().flex_shrink_0().border_t_1().border_color(rgb(colors.line)).pt_3()
                                 .child(quiet_button("toggle-result-sources", format!("Sources · {}", presentation.sources.len()))

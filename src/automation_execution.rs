@@ -1957,7 +1957,7 @@ mod tests {
         assert!(run.prompt.contains("smallest complete answer"));
         assert!(run.prompt.contains("FINAL RESPONSE CONTRACT"));
         assert!(!run.prompt.contains("FINAL REPORT EDITORIAL CHECK"));
-        assert!(!run.prompt.contains("two to three pages"));
+        assert!(!run.prompt.contains("roughly three pages"));
         assert!(!run.prompt.contains("RICH REPORT FORMAT"));
         assert!(!run.prompt.contains("clearly labeled Appendix"));
     }

@@ -302,6 +302,123 @@ pub fn reader_text(markdown: &str, notice: Option<&str>) -> String {
     }
 }
 
+fn normalized_heading(text: &str) -> String {
+    text.trim()
+        .trim_matches('#')
+        .trim()
+        .trim_matches('*')
+        .trim()
+        .trim_end_matches(&[':', '：'][..])
+        .trim()
+        .to_lowercase()
+}
+
+fn heading_matches(text: &str, labels: &[&str]) -> bool {
+    let text = normalized_heading(text);
+    labels.iter().any(|label| {
+        text == *label
+            || text
+                .strip_prefix(label)
+                .is_some_and(|rest| rest.starts_with(&[' ', ':', '：', '-', '–'][..]))
+    })
+}
+
+pub(crate) fn is_appendix_heading(text: &str) -> bool {
+    heading_matches(
+        text,
+        &[
+            "appendix",
+            "annex",
+            "annexe",
+            "anhang",
+            "apéndice",
+            "apendice",
+            "apêndice",
+            "anexo",
+            "appendice",
+            "附录",
+            "附錄",
+            "付録",
+            "부록",
+        ],
+    )
+}
+
+pub(crate) fn is_source_heading(text: &str) -> bool {
+    heading_matches(
+        text,
+        &[
+            "sources",
+            "references",
+            "source references",
+            "来源",
+            "參考來源",
+            "参考来源",
+            "信息来源",
+            "信息來源",
+            "출처",
+            "참고 자료",
+            "fuentes",
+            "références",
+            "referencias",
+            "quellen",
+            "fontes",
+            "fonti",
+            "情報源",
+            "出典",
+        ],
+    )
+}
+
+/// Split the reader-facing answer from an optional, explicitly labeled appendix.
+/// The returned appendix omits its heading because the reader supplies a disclosure label.
+/// The full Markdown remains unchanged for copy and export.
+pub(crate) fn split_report_appendix(markdown: &str) -> (&str, Option<&str>) {
+    let mut offset = 0;
+    let mut fence: Option<&str> = None;
+    for line in markdown.split_inclusive('\n') {
+        let trimmed = line.trim_start();
+        if let Some(marker) = fence {
+            if trimmed.starts_with(marker) {
+                fence = None;
+            }
+            offset += line.len();
+            continue;
+        }
+        if trimmed.starts_with("```") {
+            fence = Some("```");
+            offset += line.len();
+            continue;
+        }
+        if trimmed.starts_with("~~~") {
+            fence = Some("~~~");
+            offset += line.len();
+            continue;
+        }
+        let hashes = trimmed
+            .chars()
+            .take_while(|character| *character == '#')
+            .count();
+        if (1..=3).contains(&hashes)
+            && trimmed
+                .chars()
+                .nth(hashes)
+                .is_some_and(char::is_whitespace)
+        {
+            let heading = trimmed[hashes..].trim();
+            if is_appendix_heading(heading) && offset > 0 {
+                let body = markdown[..offset].trim_end();
+                let appendix = markdown[offset + line.len()..].trim();
+                if !body.is_empty() && !appendix.is_empty() {
+                    return (body, Some(appendix));
+                }
+            }
+        }
+        offset += line.len();
+    }
+    (markdown.trim_end(), None)
+}
+
 /// Historical validation for archived work. This uses the same report parsing
 /// and quality rules as the reader selector, but treats a signature-matched run
 /// as the current historical revision. It never admits execution.
@@ -1915,6 +2032,22 @@ mod tests {
         assert!(changed.freshness.stale_input, "real changed input must remain stale");
         assert!(!changed.freshness.is_current());
         let _ = std::fs::remove_dir_all(root);
+    }
+
+    #[test]
+    fn localized_appendix_is_split_without_losing_the_full_reader_text() {
+        let report = "## 结论\n\n建议继续验证付费意愿。\n\n## 附录\n\n| 编号 | 证据 |\n| --- | --- |\n| 1 | 访谈记录 |";
+        let (body, appendix) = split_report_appendix(report);
+        assert_eq!(body, "## 结论\n\n建议继续验证付费意愿。");
+        assert!(appendix.unwrap().starts_with("| 编号 | 证据 |"));
+        assert!(reader_text(report, None).contains("访谈记录"));
+
+        let fenced = "## 结论\n\n```markdown\n## 附录\n不作为章节\n```\n\n继续说明。";
+        assert_eq!(split_report_appendix(fenced), (fenced, None));
+        assert_eq!(
+            split_report_appendix("## Appendix\n\nOnly appendix"),
+            ("## Appendix\n\nOnly appendix", None)
+        );
     }
 
 }

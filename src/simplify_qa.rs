@@ -18,6 +18,7 @@ use std::{
 
 const PLAN: &str = r#"{"tasks":[{"title":"Collect demand-side evidence: capital expenditure and data-center plans across hyperscalers, second-tier clouds, enterprise builds and sovereign AI","instructions":"Isolated UI acceptance only; record original evidence.","kind":"collect","depends_on":[]},{"title":"Analyze supply and demand changes and risks","instructions":"Verify the prior materials.","kind":"analyze","depends_on":[0]},{"title":"Write the final research report","instructions":"Separate facts from assumptions.","kind":"advise","depends_on":[1]}]}"#;
 const REPORT: &str = "## Semiconductor industry research\n\nThis is an isolated UI acceptance report, not actual market analysis.\n\n### Key conclusion\n\nThe result body should be the main reading surface. Raw logs, session IDs, model identifiers and run directories remain under technical details.\n\n### Items to verify\n\n- Compare the data definitions used by different companies.\n- Retain original sources and supplemental materials.\n- Let the user decide whether to continue the research.";
+const APPENDIX: &str = "## Appendix\n\n| Claim | Evidence |\n| --- | --- |\n| Isolated layout check | Fixture-only verification detail |";
 const CLI: &str = r#"#!/usr/bin/python3
 import json,time
 print(json.dumps({'type':'text','part':{'text':'{"status":"complete","report":"RAW_PROTOCOL_SENTINEL"}'}}),flush=True)
@@ -228,7 +229,7 @@ fn run_checks(layout_only: bool) {
                     run.task_title = "Write the final research report with supporting evidence, scenario comparisons, observations, and clearly disclosed uncertainties".into();
                 }
                 run.output = if layout_only {
-                    format!("{}\n\n| Field | Value |\n| --- | --- |\n| File | `/Users/fixture/workspace/research/attachments/2026-11-09-evidence-source-document-with-a-long-filename-and-original-metadata.pdf` |\n\n{}", REPORT, REPORT.repeat(12))
+                    format!("{}\n\n| Field | Value |\n| --- | --- |\n| File | `/Users/fixture/workspace/research/attachments/2026-11-09-evidence-source-document-with-a-long-filename-and-original-metadata.pdf` |\n\n{}\n\n{}", REPORT, REPORT.repeat(12), APPENDIX)
                 } else {
                     REPORT.into()
                 };
@@ -282,6 +283,27 @@ fn run_checks(layout_only: bool) {
             let app = entity.unwrap();
             if layout_only {
                 screenshot(&mut cx, handle, &directory, "compact-result.png");
+                cx.update_window(handle, |_, w, cx| {
+                    w.scroll(
+                        "research-result-scroll",
+                        ScrollDelta::Pixels(point(px(0.), px(-100000.))),
+                        cx,
+                    );
+                    w.render_frame(cx);
+                    assert!(w.find("toggle-result-appendix").visible());
+                    assert_eq!(app.read(cx).expanded_run_appendix, None);
+                    w.click("toggle-result-appendix", cx);
+                    w.render_frame(cx);
+                    assert_eq!(app.read(cx).expanded_run_appendix, Some(report_id));
+                })
+                .unwrap();
+                screenshot(&mut cx, handle, &directory, "appendix-expanded.png");
+                cx.update_window(handle, |_, w, cx| {
+                    w.click("toggle-result-appendix", cx);
+                    w.render_frame(cx);
+                    assert_eq!(app.read(cx).expanded_run_appendix, None);
+                })
+                .unwrap();
                 for sidebar_width in [480., 260.] {
                     cx.update_window(handle, |_, w, cx| {
                         let sidebar = app.read(cx).sidebar_split.clone();
@@ -1658,6 +1680,7 @@ fn navigation_checks(
             a.note_selected_run(Some(report));
             a.navigate(Scope::Runs, w, cx);
             a.expanded_run_sources = None;
+            a.expanded_run_appendix = None;
             a.result_scroll.set_offset(point(px(0.), px(0.)));
         });
     })

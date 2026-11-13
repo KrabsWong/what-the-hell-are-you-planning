@@ -426,6 +426,7 @@ impl TaskApp {
             .set_offset(point(px(0.), px(0.)));
         self.refresh_previous_version_text(run, cx);
         self.expanded_run_sources = None;
+        self.expanded_run_appendix = None;
         self.result_scroll.set_offset(point(px(0.), px(0.)));
         cx.notify();
     }

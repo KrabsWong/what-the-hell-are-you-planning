@@ -148,6 +148,95 @@ fn normalize_headings(title: &str, html: &str) -> String {
     result
 }
 
+fn next_html_heading(html: &str) -> Option<(usize, usize, String, Option<String>)> {
+    let (start, level) = (1..=4)
+        .filter_map(|level| html.find(&format!("<h{level}")).map(|start| (start, level)))
+        .min_by_key(|(start, _)| *start)?;
+    let open_end = start + html[start..].find('>')? + 1;
+    if !html[start..open_end].ends_with(&format!("<h{level}>"))
+        && !html[start..open_end].contains(" id=\"")
+    {
+        return None;
+    }
+    let close = format!("</h{level}>");
+    let close_start = open_end + html[open_end..].find(&close)?;
+    let end = close_start + close.len();
+    let content = &html[open_end..close_start];
+    let id = html[start..open_end]
+        .split_once("id=\"")
+        .and_then(|(_, rest)| rest.split_once('"'))
+        .map(|(id, _)| id.to_string());
+    Some((start, end, heading_text(content), id))
+}
+
+fn next_detail_boundary(html: &str, appendix: bool, heading_level: usize) -> Option<usize> {
+    let mut rest = html;
+    let mut offset = 0;
+    while let Some((start, end, text, _)) = next_html_heading(rest) {
+        let level = rest[start + 2..]
+            .chars()
+            .next()
+            .and_then(|value| value.to_digit(10))
+            .unwrap_or_default() as usize;
+        if level <= heading_level
+            || (appendix && crate::result_presentation::is_source_heading(&text))
+        {
+            return Some(offset + start);
+        }
+        offset += end;
+        rest = &rest[end..];
+    }
+    None
+}
+
+fn fold_report_details(html: &str) -> String {
+    let mut rest = html;
+    let mut output = String::new();
+    while let Some((start, heading_end, text, id)) = next_html_heading(rest) {
+        let appendix = crate::result_presentation::is_appendix_heading(&text);
+        let sources = crate::result_presentation::is_source_heading(&text);
+        if !appendix && !sources {
+            output.push_str(&rest[..heading_end]);
+            rest = &rest[heading_end..];
+            continue;
+        }
+        let level = rest[start + 2..]
+            .chars()
+            .next()
+            .and_then(|value| value.to_digit(10))
+            .unwrap_or_default() as usize;
+        let section_end = next_detail_boundary(&rest[heading_end..], appendix, level)
+            .map(|offset| heading_end + offset)
+            .unwrap_or(rest.len());
+        let section = &rest[heading_end..section_end];
+        let count = section.matches("<li>").count();
+        let label = if sources && count > 0 {
+            format!("{} · {count}", text.trim())
+        } else {
+            text.trim().to_string()
+        };
+        let class = if appendix {
+            "report-appendix"
+        } else {
+            "report-sources"
+        };
+        output.push_str(&rest[..start]);
+        output.push_str(&format!("<details class=\"report-detail {class}\""));
+        if let Some(id) = id {
+            output.push_str(&format!(" id=\"{}\"", escape(&id)));
+        }
+        output.push_str(&format!(
+            "<summary><span>{}</span></summary>",
+            escape(&label)
+        ));
+        output.push_str(section);
+        output.push_str("</details>");
+        rest = &rest[section_end..];
+    }
+    output.push_str(rest);
+    output
+}
+
 pub fn render(title: &str, markdown: &str) -> String {
     // GFM enables tables, task lists and strikethrough. Dangerous HTML/protocols stay disabled.
     let html = markdown::to_html_with_options(markdown, &markdown::Options::gfm())
@@ -182,6 +271,7 @@ pub fn render(title: &str, markdown: &str) -> String {
     body.push_str(remaining);
     let body = body.replace("<table>", "<div class=\"table-wrap\" tabindex=\"0\" role=\"region\" aria-label=\"Report data table\"><table>")
         .replace("</table>", "</table></div>");
+    let body = fold_report_details(&body);
     let title = escape(title);
     let picker = include_str!("../assets/report/theme-picker.html");
     let mobile_picker = picker.replacen(
@@ -300,5 +390,20 @@ mod tests {
     fn heading_markup_does_not_create_nested_toc_links() {
         let page = render("Report", "## [Source](https://example.com) **bold**");
         assert!(page.contains("href=\"#section-1\">Source bold</a>"));
+    }
+
+    #[test]
+    fn appendix_and_sources_are_collapsed_after_the_answer() {
+        let page = render(
+            "Report",
+            "## 结论\n\n正文先给答案。\n\n## 附录\n\n| 编号 | 证据 |\n| --- | --- |\n| 1 | 访谈记录 |\n\n### Sources\n\n- [A](https://example.com/a)\n- [B](https://example.com/b)",
+        );
+        let answer = page.find("正文先给答案。").unwrap();
+        let appendix = page.find("<details class=\"report-detail report-appendix\"").unwrap();
+        let sources = page.find("<details class=\"report-detail report-sources\"").unwrap();
+        assert!(answer < appendix && appendix < sources);
+        assert!(page.contains("<summary><span>附录</span></summary>"));
+        assert!(page.contains("<summary><span>Sources · 2</span></summary>"));
+        assert!(page[appendix..sources].contains("</details>"));
     }
 }

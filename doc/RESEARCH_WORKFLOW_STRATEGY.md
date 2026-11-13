@@ -1,6 +1,6 @@
 # Research Workflow Strategy
 
-Last reviewed: 2026-11-08
+Last reviewed: 2026-11-13
 
 ## Purpose and status
 
@@ -17,7 +17,7 @@ Most content-quality rules are model instructions, not deterministic guarantees.
 | Request intake and planning | Expand the user's intent into a reviewable question, scope and task graph | Separate assumptions and assertions from facts; define evidence requirements and intended audience | Focused, bounded instructions; no research conclusions during planning |
 | Evidence collection (`collect`) | Gather and record relevant, traceable evidence | Preserve provenance, definitions, dates, scope, contradictory findings and gaps | Remove filler and duplicate evidence chains; no final-report page or word budget |
 | Analysis (`analyze`) | Assess what the evidence supports and why | Preserve key arguments, calculations, alternatives, counterevidence and uncertainty | Remove repetition; no final-report page or word budget |
-| Final report (`advise`) | Answer the question for the intended reader | Keep material qualifications and citations beside the conclusions; retain detailed support in the appendix | Main body normally two to three pages of reading; appendix outside that budget |
+| Final report (`advise`) | Answer the question for the intended reader | Keep material qualifications and citations beside the conclusions; retain selective verification detail in an optional appendix | Main body normally about three pages of reading; appendix normally no more than one third and omitted when inline citations and structured sources suffice |
 | Rendering, export and publication | Present and deliver the report | Preserve the report and source traceability; verify the exact published version | Use a consistent reading interface, not a second lossy summary |
 
 Internal labels such as `advise`, “News collection” or “Investment brief” do not determine the research type. A report can be exploratory, technical, commercial, financial or mixed.
@@ -145,7 +145,7 @@ Evaluate corroboration, contradictions, alternative explanations and counterevid
 
 Carry upstream uncertainty forward. A later model must not convert a partial evidence record into a strong recommendation through more confident phrasing. Qualitative confidence should reflect actual support and limitations.
 
-There is no two-to-three-page limit for analysis. Keep the key arguments and evidence needed to audit the final report. Remove redundant expression rather than reasoning that could change the conclusion.
+There is no final-report reading limit for analysis. Keep the key arguments and evidence needed to audit the final report. Remove redundant expression rather than reasoning that could change the conclusion.
 
 ## 5. Final report
 
@@ -173,34 +173,34 @@ These are presentation rules, not permission to overstate. A definite verdict st
 
 ### Main-body reading budget
 
-Unless the user explicitly requests another length, target roughly **two to three pages of reading**:
+Unless the user explicitly requests another length, target roughly **three pages of reading**:
 
-- About **1,200–1,800 Chinese characters** or **800–1,200 English words**.
+- About **1,500–2,200 Chinese characters** or **1,000–1,400 English words**.
 - Include tables and captions in the main-body reading load.
 - Exclude the appendix; use a comparable reading load for other languages.
 
-This is a flexible reading target, not a hard limit, a minimum to fill or a promise of printed pagination. Natural, complete, readable explanations and evidence fidelity take priority over the default length; exceed it when needed. Shorten by removing repetition and moving detailed support to the appendix, not by deleting subjects, logical connections or necessary explanations. Do not mechanically truncate the report, reduce the evidence collected, or remove critical caveats to meet it. Plans requesting exhaustive coverage normally place that detail in the appendix unless the user explicitly requested a long main body.
+This is a flexible reading target, not a hard limit, a minimum to fill or a promise of printed pagination. Use the added space to explain the evidence-to-conclusion reasoning, not to repeat findings or add background filler. Natural, complete, readable explanations and evidence fidelity take priority over the default length; exceed it when needed. Do not mechanically truncate the report, reduce the evidence collected, or remove critical caveats to meet it. Plans requesting exhaustive coverage normally place only selective verification detail in the appendix unless the user explicitly requested a long main body.
 
 ### Body and appendix responsibilities
 
 | Keep in the main body | Put detailed support in the appendix |
 | --- | --- |
-| Direct answer and supported recommendations | Full claim-to-source mapping and provenance |
-| Few findings needed to understand the answer | Full evidence-requirement assessment |
+| Direct answer and supported recommendations | Contested or decision-critical claim-to-source detail |
+| Findings and reasoning needed to understand the answer | Relevant evidence-requirement assessments |
 | Concise citations beside material claims | Detailed dates, calculations and evaluation protocols |
 | Decision-changing risks and uncertainty | Long comparison tables and attachment observations |
 | Conditions that would change the conclusion | Detailed qualitative confidence and invalidation rationale |
 | Prioritized next steps, where useful | Audit details and supporting references |
 
-Both parts belong in the same report Markdown field, separated by a clearly labeled Appendix in the goal language. Preserve required links and exact attachment references. The appendix enables verification; it should not repeat upstream reports wholesale or duplicate the body.
+Both parts belong in the same report Markdown field, separated by a clearly labeled Appendix in the goal language. The appendix is optional and normally no more than one third of the report. Include it only when selective verification detail would interrupt the answer, such as unresolved conflicts, non-obvious calculations, exact attachment page references or contested claims. Do not build a default row-per-sentence claim table or repeat the structured source list. Preserve required links and exact attachment references. The appendix enables verification; it should not repeat upstream reports wholesale or duplicate the body.
 
-Write a connected explanation rather than a compressed analysis outline. Develop core findings with their supporting evidence and qualifications instead of crowding all analytical dimensions, prices and dates into the opening. Before returning, check that the opening answers the question and readers can follow the reasoning on one reading, with key evidence, citations and necessary qualifications attached to their claims. Preserve a complete explanation when it conflicts with the default length target. A critical unmet evidence requirement must remain visible in the body.
+Keep concise citations beside material claims and do not attach a citation to every sentence. Write a connected explanation rather than a compressed analysis outline. Develop core findings with their supporting evidence and qualifications instead of crowding all analytical dimensions, prices and dates into the opening. Before returning, check that the opening answers the question and readers can follow the reasoning on one reading, with key evidence, citations and necessary qualifications attached to their claims. Preserve a complete explanation when it conflicts with the default length target. A critical unmet evidence requirement must remain visible in the body.
 
 ### Regenerate final-report wording
 
 Completed final reports expose **Regenerate** in the result view. Users may supply writing preferences (audience, tone, structure or length) or leave them blank to apply the current clarity guidance. This creates one new final-report attempt using the validated dependency evidence/analysis and the selected prior report; it does not modify task instructions or start upstream tasks. Preferences are saved in that attempt's prompt. Earlier versions remain available through the run version picker, including after a failed regeneration.
 
-Regeneration always uses the selected report's saved evidence snapshot rather than rerunning research or reading later task/material edits. When current upstream inputs differ from that snapshot, the editor states inline that the later changes are not included but still permits a rewrite. The new attempt keeps the source report's input signature so it remains historical, and never presents old evidence as a result of the changed inputs.
+Regeneration always uses the selected report's saved evidence snapshot rather than rerunning research or reading later task/material edits. The current report-delivery, answer, editorial and clear-writing guidance is appended as authoritative, so an older saved prompt cannot keep the previous citation-heavy appendix contract. When current upstream inputs differ from that snapshot, the editor states inline that the later changes are not included but still permits a rewrite. The new attempt keeps the source report's input signature so it remains historical, and never presents old evidence as a result of the changed inputs.
 
 Regeneration is not an alternate path for applying current research changes. Normal execution still requires current input signatures, approved dependencies and valid materials. A historical rewrite preserves citations, findings and limitations from its source snapshot; it forbids fresh browsing and provider queries. This is prompt guidance, not a separate tool-access sandbox or automated semantic equivalence check.
 
@@ -238,7 +238,7 @@ For acceptance, compare reports for the same research and audience: can readers 
 
 Each execution step receives the goal, relevant instructions/comments, supplied materials and validated dependency evidence. Input signatures and dependency run IDs prevent changed inputs or stale upstream results from silently counting as current work. Where full upstream reports are provided as files, read them in bounded sections and preserve their source records; do not claim to have reviewed unread material.
 
-Research results use a structured envelope containing `status`, Markdown `report`, optional `blocker`, and `sources` with title, URL and publication time. The readable content is in `report`; it must contain the useful result, not only a short summary.
+Research results use a structured envelope containing `status`, Markdown `report`, optional `blocker`, and `sources` with title, URL and publication time. The readable content is in `report`; it must contain the useful result, not only a short summary. Native readers and published HTML show the answer and reasoning first, then expose a recognized Appendix and the structured Sources list as collapsed disclosures. Copy and export retain the complete text.
 
 Partial results also receive a machine-readable evidence-gap marker in the stored output so downstream steps preserve the limitation. Reader-facing surfaces — the result view, Markdown export and published page — strip that marker and show an English evidence notice instead. The marker is an internal handoff instruction and never appears as report content.
 
@@ -363,6 +363,8 @@ If an application termination cannot wait for the worker, startup reapplies a ty
 - **2026-11-09:** Corrected the SkipAll/expiry distinction, clarified that a Quick period keeps its one-step Goal without a Topic, and scoped the Undo description to the command paths that are actually enabled. Material task-edit QA now passes at r27, but remaining material paths, settings/context/archive command migration and final legacy-snapshot removal are still required; this document does not claim a completed whole-workspace Undo migration.
 
 - **2026-11-12:** Made generated research content follow the requester's language. Planning no longer defaults to English, and every step must write its reader-facing prose, headings, tables and final report in the goal language even when the evidence is English.
+
+- **2026-11-13:** Rebalanced final reports around reader conclusions. The main-body target increased to roughly 1,500–2,200 Chinese characters or 1,000–1,400 English words; appendices are optional, selective and normally no more than one third. Native readers and published HTML collapse recognized appendices and source lists after the answer, while copy and export remain complete.
 
 ## Deferred result loading
 

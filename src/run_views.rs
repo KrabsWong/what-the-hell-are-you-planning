@@ -252,6 +252,7 @@ impl TaskApp {
         }
         self.result_scroll.set_offset(point(px(0.), px(0.)));
         self.expanded_run_sources = None;
+        self.expanded_run_appendix = None;
         self.show_planning_activity = self
             .displayed_run_id()
             .and_then(|id| self.store.runs().iter().find(|r| r.id == id))

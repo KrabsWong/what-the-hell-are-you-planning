@@ -8,7 +8,8 @@ use gpui_kit::{
     component::{
         Disableable,
         switch::Switch,
-        button::ButtonVariants,
+        Selectable,
+        button::{ButtonCustomVariant, ButtonVariants},
         input::Input,
         menu::{DropdownMenu, PopupMenuItem},
         tab::{Tab, TabBar},
@@ -402,7 +403,7 @@ impl TaskApp {
                         .child(selectable("Content")),
                 )
                 .child(label(
-                    "Used for generated summaries, plans, task instructions and reports across Research and Automations. Match request follows the language you write in.",
+                    "Applies to generated research and automation output.",
                     cx,
                 ))
                 .child(
@@ -435,36 +436,50 @@ impl TaskApp {
             let appearance = col()
             .gap_2()
             .child(div().font_weight(FontWeight::SEMIBOLD).child(selectable("Appearance")))
-            .child(label("Choose a theme. Follow system adapts automatically; changes are saved immediately.", cx))
             .child(
                 row().flex_wrap().children(
                     [
                         (
                             "appearance-system",
                             "Follow system",
+                            assets::IconName::Monitor,
                             crate::appearance::Appearance::System,
                         ),
                         (
                             "appearance-light",
                             "Light",
+                            assets::IconName::Sun,
                             crate::appearance::Appearance::Light,
                         ),
                         (
                             "appearance-dark",
                             "Dark",
+                            assets::IconName::Moon,
                             crate::appearance::Appearance::Dark,
                         ),
                     ]
                     .into_iter()
-                    .map(|(id, name, mode)| {
-                        select_button(
-                            id,
-                            name,
-                            self.store.appearance() == mode,
-                            cx,
-                        )
-                        .when(self.store.appearance() == mode, |b| b.icon(assets::IconName::Check))
-                        .on_click(cx.listener(move |a, _, w, cx| a.set_appearance(mode, w, cx)))
+                    .map(|(id, name, icon, mode)| {
+                        let selected = self.store.appearance() == mode;
+                        let colors = palette(cx);
+                        tool_icon(id, icon, name)
+                            .custom(
+                                ButtonCustomVariant::new(cx)
+                                    .foreground(
+                                        rgb(if selected {
+                                            colors.accent
+                                        } else {
+                                            colors.muted
+                                        })
+                                        .into(),
+                                    )
+                                    .color(transparent_black())
+                                    .hover(rgb(colors.hover).into())
+                                    .active(rgb(colors.accent_surface).into()),
+                            )
+                            .selected(selected)
+                            .toggled(selected)
+                            .on_click(cx.listener(move |a, _, w, cx| a.set_appearance(mode, w, cx)))
                     }),
                 ),
             );
@@ -480,38 +495,72 @@ impl TaskApp {
                         app.set_liquid_glass(*enabled, window, cx);
                     })))
                 .child(label(self.liquid_glass_unavailable_reason().unwrap_or(
-                    "Use native translucent surfaces. Off by default; changes are saved immediately."
+                    "Native translucency."
                 ), cx)))
             .child(col().gap_2()
                 .child(div().font_weight(FontWeight::SEMIBOLD).child(selectable("Execution")))
-                .child(div().text_sm().child(selectable("Maximum simultaneous research tasks")))
+                .child(div().text_sm().child(selectable("Research tasks")))
                 .child(row()
-                    .child(button("concurrency-decrease", "−")
-                        .accessibility_label("Decrease maximum simultaneous research tasks")
+                    .child(tool_icon(
+                            "concurrency-decrease",
+                            assets::IconName::Minus,
+                            "Decrease research task limit",
+                        )
+                        .tooltip(if self.store.concurrency_limit() <= 1 {
+                            "Minimum is 1."
+                        } else {
+                            "Decrease the limit. Running research tasks continue."
+                        })
                         .disabled(self.store.concurrency_limit() <= 1)
                         .on_click(cx.listener(|a, _, _, cx| a.set_execution_concurrency(a.store.concurrency_limit().saturating_sub(1), cx))))
                     .child(div().w_8().text_center().child(selectable(self.store.concurrency_limit().to_string())))
-                    .child(button("concurrency-increase", "+")
-                        .accessibility_label("Increase maximum simultaneous research tasks")
+                    .child(tool_icon(
+                            "concurrency-increase",
+                            assets::IconName::Plus,
+                            "Increase research task limit",
+                        )
+                        .tooltip(if self.store.concurrency_limit()
+                            >= crate::scheduler::MAX_CONCURRENT_RUNS
+                        {
+                            "Maximum is 10."
+                        } else {
+                            "Increase the limit."
+                        })
                         .disabled(self.store.concurrency_limit() >= crate::scheduler::MAX_CONCURRENT_RUNS)
                         .on_click(cx.listener(|a, _, _, cx| a.set_execution_concurrency(a.store.concurrency_limit() + 1, cx)))))
-                .child(label("1–10 research tasks. Recommended: 3; try 5 after checking stability. Higher values may cause more rate-limit errors, retries and browser load.", cx))
-                .child(label("Research and automation tasks use separate limits and never occupy each other's slots. Saved immediately to this workspace. Lowering a limit lets running work finish. Dependencies, shared folders and browser Spaces can still reduce actual concurrency.", cx))
-                .child(div().text_sm().pt_2().child(selectable("Maximum simultaneous automation periods")))
+                .child(label("1–10 · Recommended 3 · Higher limits can increase rate-limit errors.", cx))
+                .child(div().text_sm().pt_2().child(selectable("Automation periods")))
                 .child(row()
-                    .child(button("automation-concurrency-decrease", "−")
-                        .accessibility_label("Decrease maximum simultaneous automation periods")
+                    .child(tool_icon(
+                            "automation-concurrency-decrease",
+                            assets::IconName::Minus,
+                            "Decrease automation period limit",
+                        )
+                        .tooltip(if self.store.automation_concurrency_limit() <= 1 {
+                            "Minimum is 1."
+                        } else {
+                            "Decrease the limit. Running automation periods continue."
+                        })
                         .disabled(self.store.automation_concurrency_limit() <= 1)
                         .on_click(cx.listener(|a, _, _, cx| a.set_automation_concurrency(a.store.automation_concurrency_limit().saturating_sub(1), cx))))
                     .child(div().w_8().text_center().child(selectable(self.store.automation_concurrency_limit().to_string())))
-                    .child(button("automation-concurrency-increase", "+")
-                        .accessibility_label("Increase maximum simultaneous automation periods")
+                    .child(tool_icon(
+                            "automation-concurrency-increase",
+                            assets::IconName::Plus,
+                            "Increase automation period limit",
+                        )
+                        .tooltip(if self.store.automation_concurrency_limit()
+                            >= crate::scheduler::MAX_CONCURRENT_RUNS
+                        {
+                            "Maximum is 10."
+                        } else {
+                            "Increase the limit."
+                        })
                         .disabled(self.store.automation_concurrency_limit() >= crate::scheduler::MAX_CONCURRENT_RUNS)
                         .on_click(cx.listener(|a, _, _, cx| a.set_automation_concurrency(a.store.automation_concurrency_limit() + 1, cx)))))
-                .child(label("Counts only periods that are actually running. Queued periods and periods waiting for a retry do not occupy a slot. Recommended: 2.", cx)))
+                .child(label("1–10 · Recommended 2 · Only running periods use a slot.", cx)))
             .when_some(self.workspace_root.as_ref(), |view, root| view.child(col().gap_2()
                 .child(div().font_weight(FontWeight::SEMIBOLD).child(selectable("Workspace")))
-                .child(label("Projects, reports, materials and app data are stored in this folder's workspace subfolder.", cx))
                 .child(div().text_sm().child(selectable(root.to_string_lossy().into_owned())))))
         };
         let panel = match self.settings_tab() {

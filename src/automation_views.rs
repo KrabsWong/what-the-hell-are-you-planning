@@ -3429,7 +3429,12 @@ impl TaskApp {
             "Each period repeats the approved research plan and saves its results in Automations."
         });
         let active = self.store.automation_active(id).map(|o| o.id);
-        let mut actions = row().flex_wrap().justify_end().gap_2().flex_shrink_0();
+        let mut actions = row()
+            .flex_wrap()
+            .justify_end()
+            .gap_2()
+            .flex_shrink_0()
+            .ml_auto();
         if definition.status == DefinitionStatus::Draft {
             actions = actions.child(
                 primary_button("enable-draft-automation", "Review and enable")
@@ -3532,7 +3537,6 @@ impl TaskApp {
             // Back is the app-level breadcrumb action; the page does not repeat it.
             .child(
                 row()
-                    .w_full()
                     .min_w_0()
                     .flex_wrap()
                     .items_start()

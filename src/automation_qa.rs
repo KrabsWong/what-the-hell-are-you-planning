@@ -5158,6 +5158,18 @@ fn ui_interaction(root: &Path) -> PathBuf {
             w.try_find("automation-occurrence-detail").is_none(),
             "results stay closed until a history row is opened"
         );
+        let content = w.find("automation-detail-scroll").bounds();
+        let run = w.find("run-automation").bounds();
+        let settings = w.find("automation-settings").bounds();
+        let expected_right = content.right() - px(24.);
+        assert!(
+            (settings.right() - expected_right).abs() <= px(1.),
+            "detail actions should end at the content's right inset: settings={settings:?}, content={content:?}"
+        );
+        assert!(
+            run.top() == settings.top(),
+            "standard-width actions should stay on one line"
+        );
     })
     .unwrap();
     screenshot(&mut cx, handle, &directory, "05-detail-enabled.png");
@@ -5791,6 +5803,23 @@ fn settings_hierarchy_fixture(root: &Path) {
                 let app = app.unwrap();
                 cx.update_window(handle, |_, w, cx| {
                     w.render_frame(cx);
+                    if width >= 1440. {
+                        let content = w.find("automation-detail-scroll").bounds();
+                        let run = w.find("run-automation").bounds();
+                        let settings = w.find("automation-settings").bounds();
+                        let expected_right = content.right() - px(24.);
+                        assert!(
+                            (settings.right() - expected_right).abs() <= px(1.),
+                            "detail actions should end at the content's right inset: settings={settings:?}, content={content:?}"
+                        );
+                        assert!(
+                            run.top() == settings.top(),
+                            "standard-width actions should stay on one line"
+                        );
+                    }
+                }).unwrap();
+                screenshot(&mut cx, handle, &directory, "detail-header.png");
+                cx.update_window(handle, |_, w, cx| {
                     w.click("automation-settings", cx);
                     w.render_frame(cx);
                     assert!(w.find("edit-automation").visible());

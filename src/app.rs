@@ -549,7 +549,7 @@ pub struct TaskApp {
     pub research_sequences: std::collections::BTreeSet<u64>,
     pub todo_batch: Option<crate::batch::TodoBatch>,
     pub(crate) recovery: crate::recovery::Recovery,
-    pub sidebar_logo: Entity<crate::brand::SidebarLogo>,
+    pub launch_logo: Entity<crate::brand::LaunchLogo>,
     pub(crate) sidebar_surface: Option<Entity<crate::shell_surfaces::SidebarSurface>>,
     pub(crate) brand_overlay: Option<Entity<crate::shell_surfaces::BrandOverlay>>,
     pub(crate) content_surface: Option<Entity<crate::shell_surfaces::ContentSurface>>,
@@ -1057,7 +1057,7 @@ impl TaskApp {
             research_sequences: Default::default(),
             todo_batch: None,
             recovery: Default::default(),
-            sidebar_logo: cx.new(|_| crate::brand::SidebarLogo),
+            launch_logo: cx.new(|_| crate::brand::LaunchLogo { size: 64. }),
             sidebar_surface: None,
             brand_overlay: None,
             content_surface: None,
@@ -2507,6 +2507,8 @@ impl TaskApp {
                 }
                 self.undo_invalidation = None;
                 crate::appearance::apply(self.store.appearance(), None, cx);
+                let appearance = self.store.appearance();
+                let _ = crate::workspace::save_appearance_hint(appearance);
                 self.refresh_liquid_glass(window, cx);
                 self.toast = "Last change undone".into();
                 self.error.clear();
@@ -2730,6 +2732,8 @@ impl TaskApp {
         self.research_project = project;
         self.set_scope_identity(Scope::All);
         crate::appearance::apply(self.store.appearance(), Some(window), cx);
+        let appearance = self.store.appearance();
+        let _ = crate::workspace::save_appearance_hint(appearance);
         if self.store.opencode_path().is_empty() {
             self.store.set_opencode_path(opencode::detect_executable());
         }

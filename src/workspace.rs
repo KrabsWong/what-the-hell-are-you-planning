@@ -275,6 +275,33 @@ pub fn save_location(root: &Path) -> Result<(), String> {
     fs::rename(temporary, path).map_err(|e| e.to_string())
 }
 
+/// The window opens before the store hydrates, so the appearance choice is
+/// mirrored next to the workspace location and read synchronously at launch.
+fn appearance_path() -> Result<PathBuf, String> {
+    let home = std::env::var_os("HOME").ok_or("HOME is unavailable")?;
+    Ok(PathBuf::from(home).join("Library/Application Support/What the hell are you planning/appearance.json"))
+}
+
+pub fn load_appearance_hint() -> Option<crate::appearance::Appearance> {
+    serde_json::from_slice(&fs::read(appearance_path().ok()?).ok()?).ok()
+}
+
+#[cfg(any(test, feature = "qa"))]
+pub fn save_appearance_hint(_: crate::appearance::Appearance) -> Result<(), String> {
+    // QA harnesses share the developer's Application Support directory; never write there.
+    Ok(())
+}
+
+#[cfg(not(any(test, feature = "qa")))]
+pub fn save_appearance_hint(appearance: crate::appearance::Appearance) -> Result<(), String> {
+    let path = appearance_path()?;
+    fs::create_dir_all(path.parent().unwrap()).map_err(|e| e.to_string())?;
+    let temporary = path.with_extension("tmp");
+    fs::write(&temporary, serde_json::to_vec(&appearance).map_err(|e| e.to_string())?)
+        .map_err(|e| e.to_string())?;
+    fs::rename(temporary, path).map_err(|e| e.to_string())
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;

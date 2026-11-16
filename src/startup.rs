@@ -185,19 +185,24 @@ impl TaskApp {
         let (tx, rx) = mpsc::channel();
         self.startup.workspace_pending = Some(rx);
         std::thread::spawn(move || {
+            let report = |phase: &'static str| {
+                let _ = tx.send(WorkspaceOpenEvent::Progress(phase));
+            };
             let result = (|| {
                 let lock = match existing_lock {
                     Some(lock) => lock,
                     None => storage.acquire_lock()?,
                 };
-                let backup = storage.upgrade_paths(|phase| { let _ = tx.send(WorkspaceOpenEvent::Progress(phase)); })?;
-                let mut live = crate::persistence_live::select_existing(&storage)?;
+                let backup = storage.upgrade_paths(&report)?;
+                let mut live =
+                    crate::persistence_live::select_existing_reporting(&storage, &report)?;
                 if live.is_none() {
                     live = crate::persistence_live::create_new(&storage)?;
                 }
                 let store = if let Some(live) = &mut live {
                     live.migrated_store.take()
                 } else {
+                    report("Loading your work…");
                     storage.load()?
                 };
                 Ok(PreparedWorkspace { storage, lock, store, backup, live })
@@ -308,7 +313,7 @@ impl TaskApp {
             return col().id("workspace-upgrading").size_full()
                 .bg(rgb(colors.canvas)).text_color(rgb(colors.text))
                 .items_center().justify_center().gap_4()
-                .child(self.sidebar_logo.clone())
+                .child(self.launch_logo.clone())
                 .child(col().items_center().gap_2()
                     .child(div().text_lg().font_weight(FontWeight::SEMIBOLD).child(selectable("Preparing your workspace")))
                     .child(div().id("workspace-upgrade-phase").text_sm().text_color(rgb(colors.muted)).child(selectable(phase))))
@@ -323,7 +328,9 @@ impl TaskApp {
                     .bg(rgb(colors.canvas))
                     .items_center()
                     .justify_center()
-                    .child(label("Starting…", cx)),
+                    .gap_3()
+                    .child(self.launch_logo.clone())
+                    .child(label("Checking AI agents…", cx)),
             );
         }
         let dependency = |index: usize| {

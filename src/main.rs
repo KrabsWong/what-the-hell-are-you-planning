@@ -501,7 +501,11 @@ fn main() {
     application.run(move |cx| {
         init(cx);
         cx.bind_keys([KeyBinding::new("cmd-q", Quit, None)]);
-        appearance::apply(appearance::Appearance::default(), None, cx);
+        appearance::apply(
+            crate::workspace::load_appearance_hint().unwrap_or_default(),
+            None,
+            cx,
+        );
         let bounds = Bounds::centered(None, size(px(1440.), px(920.)), cx);
         let mut app_entity = None;
         let handle = cx.open_window(

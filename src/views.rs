@@ -418,6 +418,7 @@ impl TaskApp {
             cx,
         ) {
             crate::appearance::apply(mode, Some(window), cx);
+            let _ = crate::workspace::save_appearance_hint(mode);
         }
         cx.notify();
     }
@@ -4319,7 +4320,6 @@ impl Render for TaskApp {
                 });
             });
         }
-        let colors = palette(cx);
         if self.workspace_required {
             if let Some(path) = self.workspace_choice.take() {
                 self.directory_input.update(cx, |input, cx| {
@@ -4353,6 +4353,7 @@ impl Render for TaskApp {
             }
         }
         self.poll_workspace_open(window, cx);
+        let colors = palette(cx);
         if self.workspace_required || self.startup.required {
             if cfg!(target_os = "macos") {
                 return col()

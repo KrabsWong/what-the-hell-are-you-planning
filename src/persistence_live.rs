@@ -355,6 +355,15 @@ pub(crate) fn create_new(storage: &Storage) -> Result<Option<LiveStartup>, Strin
 }
 
 pub(crate) fn select_existing(storage: &Storage) -> Result<Option<LiveStartup>, String> {
+    select_existing_reporting(storage, &|_| {})
+}
+
+/// Same as [`select_existing`], naming the steps that can dominate a launch so
+/// the launch screen can report what is actually happening.
+pub(crate) fn select_existing_reporting(
+    storage: &Storage,
+    progress: &dyn Fn(&'static str),
+) -> Result<Option<LiveStartup>, String> {
     let path = storage.path();
     if !path.extension().is_some_and(|extension| extension == "sqlite3") || !path.is_file() {
         return Ok(None);
@@ -374,6 +383,7 @@ pub(crate) fn select_existing(storage: &Storage) -> Result<Option<LiveStartup>, 
             };
             let database = crate::sqlite_v4::SqliteV4::open(path, &root, incarnation)?;
             database.verify_integrity()?;
+            progress("Loading your work…");
             let mut store = database.load_store_lazy()?;
             let recovery_warning = apply_recovery(
                 path,
@@ -400,9 +410,11 @@ pub(crate) fn select_existing(storage: &Storage) -> Result<Option<LiveStartup>, 
                     value
                 }
             };
+            progress("Updating workspace format…");
             crate::sqlite_v4::migrate_v3_to_v4_locked(path, &root, incarnation)?;
             let database = crate::sqlite_v4::SqliteV4::open(path, &root, incarnation)?;
             database.verify_integrity()?;
+            progress("Loading your work…");
             let mut store = database.load_store_lazy()?;
             let recovery_warning = apply_recovery(
                 path,
@@ -458,8 +470,26 @@ mod tests {
         assert_eq!(read_sidecar(&sidecar(&selected.path)).unwrap(), Some(incarnation));
     }
 
-    fn temp_workspace(name: &str) -> (PathBuf, PathBuf) {
-        let root = std::env::temp_dir().join(format!(
+    #[test]
+    fn launch_reports_loading_work_for_existing_v4() {
+        let (root, path) = temp_workspace("reported");
+        let store = Store::empty();
+        crate::sqlite_v4::SqliteV4::create_seeded(&path, &root, 77_002, &store).unwrap();
+        let phases = std::cell::RefCell::new(Vec::new());
+        let selected = select_existing_reporting(&Storage::new(path), &|phase| {
+            phases.borrow_mut().push(phase);
+        })
+        .unwrap();
+        assert!(selected.is_some(), "v4 workspace selected");
+        assert!(
+            phases.borrow().contains(&"Loading your work…"),
+            "launch must report the store load: {:?}",
+            phases.borrow()
+        );
+        std::fs::remove_dir_all(root).unwrap();
+    }
+
+    fn temp_workspace(name: &str) -> (PathBuf, PathBuf) {        let root = std::env::temp_dir().join(format!(
             "t14-live-{name}-{}-{}",
             std::process::id(),
             std::time::SystemTime::now()

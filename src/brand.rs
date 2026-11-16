@@ -154,35 +154,39 @@ fn motion(phase: f32) -> (f32, f32) {
     (if reverse { 1. - turn } else { turn }, spread)
 }
 
-pub(crate) struct SidebarLogo;
-impl Render for SidebarLogo {
+pub(crate) struct LaunchLogo {
+    pub(crate) size: f32,
+}
+impl Render for LaunchLogo {
     fn render(&mut self, _: &mut Window, cx: &mut Context<Self>) -> impl IntoElement {
         #[cfg(feature = "qa")]
         render_probe::logo();
-        sidebar_logo(crate::appearance::palette(cx).accent)
+        launch_logo(crate::appearance::palette(cx).accent, self.size)
     }
 }
 
-pub(crate) fn sidebar_logo(color: u32) -> AnyElement {
+/// The launch surface logo: same geometry and timing as the sidebar mark, at the
+/// size the launch screen asks for. One widget, one drawing routine.
+pub(crate) fn launch_logo(color: u32, size: f32) -> AnyElement {
     #[cfg(feature = "qa")]
     if std::env::var("PLANNING_T19_DIAGNOSTIC_STATIC_LOGO").as_deref() == Ok("1") {
         return div()
-            .id("sidebar-brand")
+            .id("startup-brand")
             .relative()
-            .size(px(32.))
+            .size(px(size))
             .flex_shrink_0()
-            .child(logo_frame(color, 0.0))
+            .child(logo_frame(color, 0.0, size))
             .into_any_element();
     }
     div()
-        .id("sidebar-brand")
+        .id("startup-brand")
         .relative()
-        .size(px(32.))
+        .size(px(size))
         .flex_shrink_0()
         .with_animation(
             "assembly",
             Animation::new(Duration::from_millis(4960)).repeat(),
-            move |mark, phase| mark.child(logo_frame(color, phase)),
+            move |mark, phase| mark.child(logo_frame(color, phase, size)),
         )
         .into_any_element()
 }
@@ -218,8 +222,8 @@ fn paint_bar(bounds: Bounds<Pixels>, color: u32, window: &mut Window) {
     }
 }
 
-fn logo_frame(color: u32, phase: f32) -> impl IntoElement {
-    const SCALE: f32 = 32.0 / 128.0;
+fn logo_frame(color: u32, phase: f32, extent: f32) -> impl IntoElement {
+    let scale = extent / 128.0;
     // Original bounds, tangential slide, and outward normal. Bars stay horizontal/vertical.
     const BARS: [(f32, f32, f32, f32, f32, f32, f32, f32); 4] = [
         (44., 18., 66., 20., -26., 0., 0., -1.),
@@ -234,18 +238,18 @@ fn logo_frame(color: u32, phase: f32) -> impl IntoElement {
             for (x, y, w, h, dx, dy, nx, ny) in BARS {
                 let origin = bounds.origin
                     + point(
-                        px((x + dx * turn + nx * spread) * SCALE),
-                        px((y + dy * turn + ny * spread) * SCALE),
+                        px((x + dx * turn + nx * spread) * scale),
+                        px((y + dy * turn + ny * spread) * scale),
                     );
                 paint_bar(
-                    Bounds::new(origin, size(px(w * SCALE), px(h * SCALE))),
+                    Bounds::new(origin, size(px(w * scale), px(h * scale))),
                     color,
                     window,
                 );
             }
         },
     )
-    .size(px(32.))
+    .size(px(extent))
 }
 
 #[cfg(test)]
@@ -282,7 +286,7 @@ pub(crate) fn verify_frames() {
             div()
                 .size_full()
                 .bg(rgb(0xeeeeec))
-                .child(logo_frame(0x795822, self.0))
+                .child(logo_frame(0x795822, self.0, 32.))
         }
     }
     let mut cx = HeadlessAppContext::with_platform(
@@ -359,7 +363,7 @@ pub(crate) fn sidebar_logo_at(color: u32, phase: f32) -> AnyElement {
         .relative()
         .size(px(32.))
         .flex_shrink_0()
-        .child(logo_frame(color, phase))
+        .child(logo_frame(color, phase, 32.))
         .into_any_element()
 }
 

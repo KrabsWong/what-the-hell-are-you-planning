@@ -23,6 +23,9 @@ impl TaskApp {
     }
 
     pub fn model_field_agent(&self, input: &Entity<component::input::InputState>) -> &str {
+        if self.fallback_model == *input {
+            return &self.store.research_config().fallback_agent;
+        }
         self.research_models.iter().position(|field| field == input)
             .map(|i| self.store.research_agent(ResearchKind::ALL[i]))
             .unwrap_or(&self.store.research_config().default_agent)
@@ -30,6 +33,7 @@ impl TaskApp {
 
     pub fn refresh_model_placeholders(&self, w: &mut Window, cx: &mut Context<Self>) {
         self.global_model.update(cx, |s, cx| s.set_placeholder("Choose a model", w, cx));
+        self.fallback_model.update(cx, |s, cx| s.set_placeholder("Choose a fallback model", w, cx));
         for i in 0..4 {
             let placeholder = if self.store.research_agent(ResearchKind::ALL[i]) == self.store.research_config().default_agent {
                 "Global default"
@@ -62,6 +66,27 @@ impl TaskApp {
         cx.notify();
     }
 
+    pub fn set_fallback_agent(&mut self, agent: &str, w: &mut Window, cx: &mut Context<Self>) {
+        if self.store.fallback_agent() == agent {
+            return;
+        }
+        let agent = agent.to_owned();
+        if self
+            .apply_domain_command_undoable(
+                crate::scoped_domain::DomainCommand::FallbackModelAgent { agent },
+                "Model settings saved",
+                cx,
+            )
+            .is_none()
+        {
+            return;
+        }
+        self.fallback_model.update(cx, |s, cx| s.set_value("", w, cx));
+        self.research_model_picker = None;
+        self.refresh_model_placeholders(w, cx);
+        cx.notify();
+    }
+
     pub fn use_global_for_stage(&mut self, i: usize, w: &mut Window, cx: &mut Context<Self>) {
         if self
             .apply_domain_command_undoable(
@@ -81,6 +106,8 @@ impl TaskApp {
 
     pub fn refresh_research_inputs(&mut self, w: &mut Window, cx: &mut Context<Self>) {
         self.refresh_model_placeholders(w, cx);
+        let fallback = self.store.fallback_model().to_owned();
+        self.fallback_model.update(cx, |s, cx| s.set_value(fallback, w, cx));
         for i in 0..4 {
             let value = self.store.research_config().models[i].clone();
             self.research_models[i].update(cx, |s, cx| s.set_value(value, w, cx));
@@ -99,22 +126,28 @@ impl TaskApp {
     }
 
     pub fn finish_model_edit(&mut self, input: &Entity<component::input::InputState>, accept: bool, w: &mut Window, cx: &mut Context<Self>) {
-        let stage = self.research_models.iter().position(|field| field == input);
-        let saved = match stage {
-            Some(i) => self.store.research_config().models[i].clone(),
-            None => self.store.default_model().clone(),
+        let is_fallback = self.fallback_model == *input;
+        let stage = (!is_fallback)
+            .then(|| self.research_models.iter().position(|field| field == input))
+            .flatten();
+        let saved = if is_fallback {
+            self.store.fallback_model().to_owned()
+        } else {
+            match stage {
+                Some(i) => self.store.research_config().models[i].clone(),
+                None => self.store.default_model().clone(),
+            }
         };
         let draft = input.read(cx).value();
         let value = draft.trim();
-        if accept && value != saved.as_str() && ((if self.model_field_agent(input) == "Codex" { crate::codex::valid_model(value) } else { crate::opencode::valid_model(value) }) || (stage.is_some() && value.is_empty())) {
-            self.apply_domain_command_undoable(
-                crate::scoped_domain::DomainCommand::ModelValue {
-                    stage,
-                    value: value.to_owned(),
-                },
-                "Model settings saved",
-                cx,
-            );
+        let valid = if self.model_field_agent(input) == "Codex" { crate::codex::valid_model(value) } else { crate::opencode::valid_model(value) };
+        if accept && value != saved.as_str() && (valid || ((stage.is_some() || is_fallback) && value.is_empty())) {
+            let command = if is_fallback {
+                crate::scoped_domain::DomainCommand::FallbackModelValue { value: value.to_owned() }
+            } else {
+                crate::scoped_domain::DomainCommand::ModelValue { stage, value: value.to_owned() }
+            };
+            self.apply_domain_command_undoable(command, "Model settings saved", cx);
         } else if draft.as_str() != saved.as_str() {
             input.update(cx, |field, cx| field.set_value(saved, w, cx));
         }

@@ -358,8 +358,10 @@ pub(crate) enum DomainCommand {
     TaskArchive { task: u64, archived: bool },
     RestoreArchived { task: u64 },
     ModelAgent { stage: Option<usize>, agent: String },
+    FallbackModelAgent { agent: String },
     UseGlobalForStage { stage: usize },
     ModelValue { stage: Option<usize>, value: String },
+    FallbackModelValue { value: String },
     ModelsToGlobal,
     ApplyModelProfile { name: String },
     CreateModelProfile { name: String },
@@ -566,6 +568,12 @@ impl DomainCommand {
                 apply_model_agent(store, stage, agent)?;
                 undo.settings = before.delta(store);
             }
+            Self::FallbackModelAgent { agent } => {
+                let before = SettingsBefore::capture(store);
+                store.research_config_mut().fallback_agent = agent;
+                store.research_config_mut().fallback_model.clear();
+                undo.settings = before.delta(store);
+            }
             Self::UseGlobalForStage { stage } => {
                 validate_stage(Some(stage))?;
                 let before = SettingsBefore::capture(store);
@@ -581,6 +589,11 @@ impl DomainCommand {
                     Some(stage) => store.research_config_mut().models[stage] = value,
                     None => store.set_default_model(value),
                 }
+                undo.settings = before.delta(store);
+            }
+            Self::FallbackModelValue { value } => {
+                let before = SettingsBefore::capture(store);
+                store.research_config_mut().fallback_model = value;
                 undo.settings = before.delta(store);
             }
             Self::ModelsToGlobal => {
@@ -985,6 +998,8 @@ fn capture_profile(store: &Store, name: String) -> ModelProfile {
     ModelProfile {
         name,
         default_agent: store.research_config().default_agent.clone(),
+        fallback_agent: store.fallback_agent().to_owned(),
+        fallback_model: store.fallback_model().to_owned(),
         default_model: store.default_model().clone(),
         agents: store.research_config().agents.clone(),
         models: store.research_config().models.clone(),
@@ -1002,6 +1017,8 @@ fn apply_profile(store: &mut Store, name: &str) {
     };
     let config = store.research_config_mut();
     config.default_agent = profile.default_agent;
+    config.fallback_agent = profile.fallback_agent;
+    config.fallback_model = profile.fallback_model;
     config.agents = profile.agents;
     config.models = profile.models;
     store.set_default_model(profile.default_model);
@@ -1777,6 +1794,24 @@ mod tests {
         .is_err());
         assert_eq!(store, before);
         assert_eq!(pending(&store), before_pending);
+    }
+
+    #[test]
+    fn fallback_agent_change_clears_stale_model_and_undoes() {
+        let mut store = Store::empty();
+        store
+            .research_config_mut()
+            .fallback_model = "stale/provider-model".into();
+        let outcome = DomainCommand::FallbackModelAgent {
+            agent: "Codex".into(),
+        }
+        .execute(&mut store)
+        .unwrap();
+        assert_eq!(store.fallback_agent(), "Codex");
+        assert!(store.fallback_model().is_empty());
+        assert!(apply_undo(&mut store, &outcome.undo).is_ok());
+        assert_eq!(store.fallback_agent(), "OpenCode");
+        assert_eq!(store.fallback_model(), "stale/provider-model");
     }
 
     #[test]

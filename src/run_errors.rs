@@ -81,6 +81,53 @@ pub(crate) fn user_message(line: &str) -> &str {
     }
 }
 
+/// Whether a failed run reports a model or provider availability problem rather
+/// than a task/content validation failure.
+pub(crate) fn model_unavailable(line: &str) -> bool {
+    if line.starts_with("[error] [validation] ") {
+        return false;
+    }
+    let text = line.to_ascii_lowercase();
+    let contains = |terms: &[&str]| terms.iter().any(|term| text.contains(term));
+    let payload = line
+        .strip_prefix("[error]")
+        .or_else(|| line.strip_prefix("[stream error]"))
+        .unwrap_or(line)
+        .trim();
+    let status = serde_json::from_str::<serde_json::Value>(payload)
+        .ok()
+        .and_then(|value| status_code(&value));
+    contains(&[
+        "provider.free-limit",
+        "freeusagelimiterror",
+        "free usage limit",
+        "insufficient_quota",
+        "insufficient credit",
+        "insufficient balance",
+        "quota exceeded",
+        "billing limit",
+        "rate limit",
+        "rate_limit",
+        "too many requests",
+        "timeout",
+        "timed out",
+        "connection refused",
+        "connection reset",
+        "network",
+        "dns",
+        "failed to fetch",
+        "error sending request",
+        "overloaded",
+        "service unavailable",
+        "model not found",
+        "unknown model",
+        "invalid model",
+        "model unavailable",
+        "model is not available",
+    ]) || matches!(status, Some(404 | 408 | 429 | 504))
+        || status.is_some_and(|code| (500..600).contains(&code))
+}
+
 fn status_code(value: &serde_json::Value) -> Option<u64> {
     match value {
         serde_json::Value::Object(fields) => ["status", "statusCode", "status_code"]
@@ -97,7 +144,29 @@ fn status_code(value: &serde_json::Value) -> Option<u64> {
 
 #[cfg(test)]
 mod tests {
-    use super::user_message;
+    use super::{model_unavailable, user_message};
+
+    #[test]
+    fn availability_errors_are_distinct_from_content_failures() {
+        for error in [
+            r#"[error] {"type":"provider.free-limit","status":429}"#,
+            "[error] insufficient_quota",
+            "[error] overloaded",
+            "[error] request timed out",
+            "[stream error] connection reset",
+            "[error] model not found",
+        ] {
+            assert!(model_unavailable(error), "{error}");
+        }
+        for error in [
+            "[error] [validation] Source 2 has an unsupported URL.",
+            "[error] [validation] Source title mentions network timeout and DNS.",
+            "[error] internal assertion failed",
+            "[error] {\"status\":401}",
+        ] {
+            assert!(!model_unavailable(error), "{error}");
+        }
+    }
 
     #[test]
     fn free_allowance_takes_priority_over_rate_limit() {

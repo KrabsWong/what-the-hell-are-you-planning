@@ -299,6 +299,9 @@ impl TaskApp {
         let model = self.store.default_model().clone();
         self.global_model
             .update(cx, |s, cx| s.set_value(model, w, cx));
+        let fallback = self.store.fallback_model().to_owned();
+        self.fallback_model
+            .update(cx, |s, cx| s.set_value(fallback, w, cx));
     }
 
     pub fn agent_settings_panel(&self, cx: &mut Context<Self>) -> Div {

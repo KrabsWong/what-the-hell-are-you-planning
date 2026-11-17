@@ -158,6 +158,24 @@ impl TaskApp {
             }).into_any_element()
     }
 
+    fn fallback_agent_picker(&self, cx: &mut Context<Self>) -> AnyElement {
+        let agent = self.store.fallback_agent().to_owned();
+        let entity = cx.entity().downgrade();
+        button("model-agent-fallback", agent)
+            .w(px(140.)).flex_shrink_0()
+            .tooltip("Choose the agent used by the fallback model")
+            .icon(assets::IconName::ChevronDown)
+            .dropdown_menu(move |mut menu, _, _| {
+                for (label, value) in [("OpenCode", "OpenCode"), ("Codex", "Codex")] {
+                    let entity = entity.clone();
+                    menu = menu.item(PopupMenuItem::new(label).on_click(move |_, w, cx| {
+                        let _ = entity.update(cx, |this, cx| this.set_fallback_agent(value, w, cx));
+                    }));
+                }
+                menu
+            }).into_any_element()
+    }
+
     fn research_model_field(&self, input: &Entity<component::input::InputState>, id: String, cx: &mut Context<Self>) -> Div {
         let colors = palette(cx);
         let value = input.read(cx).value();
@@ -234,6 +252,15 @@ impl TaskApp {
                 .child(row().child(self.model_agent_picker(None, cx)).child(self.research_model_field(
                     &self.global_model, "research-global-model".into(), cx,
                 ))))
+            .child(col().gap_2()
+                .child(div().font_weight(FontWeight::SEMIBOLD).child(selectable("Fallback model")))
+                .child(row().child(self.fallback_agent_picker(cx)).child(self.research_model_field(
+                    &self.fallback_model, "research-fallback-model".into(), cx,
+                )))
+                .child(label(format!(
+                    "After {} failed attempts with a stage model, automatic retries use this model in a fresh session.",
+                    crate::retries::FALLBACK_AFTER_FAILED_ATTEMPTS
+                ), cx)))
             .child(col().pt_2().gap_1()
                 .child(row().justify_between()
                     .child(div().font_weight(FontWeight::SEMIBOLD).child(selectable("Research stage models")))

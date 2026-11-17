@@ -3,6 +3,7 @@ use crate::domain::{AgentRun, Stage, Store};
 
 pub const MAX_AUTO_RETRIES: u8 = 3;
 pub const RETRY_DELAY_SECONDS: i64 = 30;
+pub const FALLBACK_AFTER_FAILED_ATTEMPTS: u8 = 2;
 
 impl AgentRun {
     pub fn retry_delay_remaining(&self, now: i64) -> i64 {
@@ -12,6 +13,33 @@ impl AgentRun {
 }
 
 impl Store {
+    /// Planning attempts are manually retried, so reuse the fallback when the
+    /// previous attempt failed because the primary model was unavailable.
+    pub(crate) fn planning_route_after_failure(
+        &self,
+        failed: Option<&AgentRun>,
+        agent: &str,
+        model: &str,
+    ) -> (String, String) {
+        let use_fallback = failed
+            .is_some_and(|run| {
+                run.status == "Failed"
+                    && run.logs.iter().any(|line| crate::run_errors::model_unavailable(line))
+            })
+            && self.valid_fallback_model();
+        if use_fallback {
+            (
+                self.fallback_agent().to_owned(),
+                self.fallback_model().to_owned(),
+            )
+        } else {
+            (
+                agent.to_owned(),
+                model.to_owned(),
+            )
+        }
+    }
+
     pub fn prepare_auto_retry(&self, failed_id: u64, now: i64) -> Option<AgentRun> {
         let failed = self.runs().iter().find(|run| run.id == failed_id)?;
         if failed.status != "Failed"
@@ -68,6 +96,29 @@ impl Store {
                 .filter(|line| line.starts_with("[research] Regenerating report from run #"))
                 .cloned(),
         );
+        let model_unavailable = failed
+            .logs
+            .iter()
+            .any(|line| crate::run_errors::model_unavailable(line));
+        if model_unavailable && retry.auto_retry_attempt >= FALLBACK_AFTER_FAILED_ATTEMPTS {
+            if self.valid_fallback_model()
+                && (retry.agent != self.fallback_agent() || retry.model != self.fallback_model())
+            {
+                retry.logs.push(format!(
+                    "[fallback] Primary model still unavailable after {} failed attempts. Retrying with {} · {} in a fresh session.",
+                    FALLBACK_AFTER_FAILED_ATTEMPTS,
+                    self.fallback_agent(),
+                    self.fallback_model()
+                ));
+                retry.agent = self.fallback_agent().to_owned();
+                retry.model = self.fallback_model().to_owned();
+                retry.session_id = None;
+            } else if !self.valid_fallback_model() {
+                retry.logs.push(
+                    "[fallback] No valid fallback model is configured; retrying the primary model.".into(),
+                );
+            }
+        }
         // Preserve the original evidence and session, with actionable validation feedback.
         Some(retry)
     }
@@ -134,6 +185,68 @@ mod tests {
         }
         assert!(store.prepare_auto_retry(id, 100).is_none());
         assert!(store.prepare_auto_retry(original.id, 100).is_none());
+    }
+
+    #[test]
+    fn availability_failure_switches_to_fallback_after_two_attempts() {
+        let (mut store, mut id) = failed_task();
+        store.research_config_mut().fallback_agent = "Codex".into();
+        store.research_config_mut().fallback_model = "fallback-model".into();
+        store.last_run_mut().unwrap().logs.push(
+            r#"[error] {"type":"provider.free-limit","message":"Free usage limit reached","status":429}"#.into(),
+        );
+        let original = store.runs().last().unwrap().clone();
+
+        let first = store.prepare_auto_retry(id, 100).unwrap();
+        assert_eq!(first.auto_retry_attempt, 1);
+        assert_eq!(first.agent, original.agent);
+        assert_eq!(first.model, original.model);
+        assert_eq!(first.session_id, original.session_id);
+        let mut first_failed = first.clone();
+        first_failed.status = "Failed".into();
+        first_failed.logs.push(
+            r#"[error] {"type":"provider.free-limit","message":"Free usage limit reached","status":429}"#.into(),
+        );
+        id = first_failed.id;
+        store.push_run(first_failed);
+
+        let second = store.prepare_auto_retry(id, 200).unwrap();
+        assert_eq!(second.auto_retry_attempt, 2);
+        assert_eq!(second.agent, "Codex");
+        assert_eq!(second.model, "fallback-model");
+        assert!(second.session_id.is_none());
+        assert_eq!(second.input_signature, original.input_signature);
+        assert!(second.logs.iter().any(|line| line.contains("fresh session")));
+        let mut third = second.clone();
+        third.status = "Failed".into();
+        id = third.id;
+        store.push_run(third);
+
+        let continued = store.prepare_auto_retry(id, 300).unwrap();
+        assert_eq!(continued.agent, "Codex");
+        assert_eq!(continued.model, "fallback-model");
+    }
+
+    #[test]
+    fn validation_failure_never_switches_to_fallback() {
+        let (mut store, id) = failed_task();
+        store.research_config_mut().fallback_agent = "Codex".into();
+        store.research_config_mut().fallback_model = "fallback-model".into();
+        store
+            .last_run_mut()
+            .unwrap()
+            .logs
+            .push("[error] [validation] Invalid source".into());
+        let original = store.runs().last().unwrap().clone();
+        let first = store.prepare_auto_retry(id, 100).unwrap();
+        let mut first_failed = first.clone();
+        first_failed.status = "Failed".into();
+        store.push_run(first_failed);
+        let second = store.prepare_auto_retry(first.id, 200).unwrap();
+        assert_eq!(second.agent, original.agent);
+        assert_eq!(second.model, original.model);
+        assert_eq!(second.session_id, original.session_id);
+        assert!(!second.logs.iter().any(|line| line.starts_with("[fallback]")));
     }
 
     #[test]

@@ -109,8 +109,17 @@ impl Store {
                     .into(),
             );
         }
-        let model = self.research_model(ResearchKind::Goal);
-        if !self.valid_research_model(ResearchKind::Goal) {
+        let previous = self
+            .runs()
+            .iter()
+            .rev()
+            .find(|run| run.project_plan == Some(project.id));
+        let (agent, model) = self.planning_route_after_failure(
+            previous,
+            self.research_agent(ResearchKind::Goal),
+            self.research_model(ResearchKind::Goal),
+        );
+        if !self.valid_agent_model(&agent, &model) {
             return Err(
                 "Choose an agent and model for Plan in Settings."
                     .into(),
@@ -177,8 +186,8 @@ impl Store {
             ended_at: None,
             session_id: None,
             exit_code: None,
-            agent: self.research_agent(ResearchKind::Goal).into(),
-            model: model.to_string(),
+            agent,
+            model: model.clone(),
             stage: Stage::Backlog,
             status: "Running".into(),
             logs: vec![format!("[project plan] {} · {model}", project.name)],
@@ -288,6 +297,22 @@ mod tests {
             serde_json::json!({"tasks":[{"title":"题目","brief":"x".repeat(12_001)}]}).to_string();
         assert!(parse_plan(&oversized).is_err());
         assert!(parse_plan(&" ".repeat(128_001)).is_err());
+    }
+
+    #[test]
+    fn project_plan_retry_after_availability_failure_uses_fallback() {
+        let mut store = workspace();
+        store.research_config_mut().fallback_agent = "Codex".into();
+        store.research_config_mut().fallback_model = "fallback-model".into();
+        let mut failed = store.prepare_project_plan(1).unwrap();
+        failed.status = "Failed".into();
+        failed.logs.push("[error] quota exceeded".into());
+        store.push_run(failed);
+
+        let retry = store.prepare_project_plan(1).unwrap();
+        assert_eq!(retry.agent, "Codex");
+        assert_eq!(retry.model, "fallback-model");
+        assert!(retry.session_id.is_none());
     }
 
     #[test]

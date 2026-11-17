@@ -598,6 +598,22 @@ impl Store {
             self.effective_model(model)
         }
     }
+    pub fn fallback_agent(&self) -> &str {
+        &self.research_config().fallback_agent
+    }
+    pub fn fallback_model(&self) -> &str {
+        &self.research_config().fallback_model
+    }
+    pub fn valid_fallback_model(&self) -> bool {
+        self.valid_agent_model(self.fallback_agent(), self.fallback_model())
+    }
+    pub fn valid_agent_model(&self, agent: &str, model: &str) -> bool {
+        match agent {
+            "Codex" => crate::codex::valid_model(model),
+            "OpenCode" => crate::opencode::valid_model(model),
+            _ => false,
+        }
+    }
     pub fn research_agent(&self, kind: crate::research::ResearchKind) -> &str {
         self.research_config().agents[kind.index()].as_deref()
             .unwrap_or(&self.research_config().default_agent)
@@ -3668,6 +3684,8 @@ mod tests {
         store.push_model_profile(crate::model_profiles::ModelProfile {
             name: "review".into(),
             default_agent: "OpenCode".into(),
+            fallback_agent: "OpenCode".into(),
+            fallback_model: String::new(),
             default_model: "provider/model".into(),
             agents: Default::default(),
             models: Default::default(),

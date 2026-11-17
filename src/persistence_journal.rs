@@ -1423,6 +1423,8 @@ fn topic_heap(topic: &Topic) -> usize {
 fn research_config_heap(config: &ResearchConfig) -> usize {
     let ResearchConfig {
         default_agent,
+        fallback_agent,
+        fallback_model,
         codex_path,
         agents,
         models,
@@ -1431,6 +1433,8 @@ fn research_config_heap(config: &ResearchConfig) -> usize {
     } = config;
     let mut value = size_of::<ResearchConfig>();
     value = text(value, default_agent);
+    value = text(value, fallback_agent);
+    value = text(value, fallback_model);
     value = text(value, codex_path);
     value = opt_texts(value, agents);
     for model in models {
@@ -1443,6 +1447,8 @@ fn model_profile_heap(profile: &ModelProfile) -> usize {
     let ModelProfile {
         name,
         default_agent,
+        fallback_agent,
+        fallback_model,
         default_model,
         agents,
         models,
@@ -1450,6 +1456,8 @@ fn model_profile_heap(profile: &ModelProfile) -> usize {
     let mut value = size_of::<ModelProfile>();
     value = text(value, name);
     value = text(value, default_agent);
+    value = text(value, fallback_agent);
+    value = text(value, fallback_model);
     value = text(value, default_model);
     value = opt_texts(value, agents);
     for model in models {
@@ -2318,6 +2326,8 @@ mod tests {
         profiles.push(ModelProfile {
             name: "first large profile".into(),
             default_agent: "x".repeat(400_000),
+            fallback_agent: "OpenCode".into(),
+            fallback_model: String::new(),
             default_model: "m".into(),
             agents: Default::default(),
             models: Default::default(),
@@ -2325,6 +2335,8 @@ mod tests {
         profiles.push(ModelProfile {
             name: "last small profile".into(),
             default_agent: "small".into(),
+            fallback_agent: "OpenCode".into(),
+            fallback_model: String::new(),
             default_model: "m".into(),
             agents: Default::default(),
             models: Default::default(),

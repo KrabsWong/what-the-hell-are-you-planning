@@ -209,6 +209,8 @@ impl OutputLanguage {
 #[serde(default)]
 pub struct ResearchConfig {
     pub default_agent: String,
+    pub fallback_agent: String,
+    pub fallback_model: String,
     pub codex_path: String,
     pub agents: [Option<String>; 4],
     pub models: [String; 4],
@@ -219,6 +221,8 @@ impl Default for ResearchConfig {
     fn default() -> Self {
         Self {
             default_agent: "OpenCode".into(),
+            fallback_agent: "OpenCode".into(),
+            fallback_model: String::new(),
             codex_path: crate::codex::detect_executable(),
             agents: Default::default(),
             models: Default::default(),

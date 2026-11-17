@@ -282,12 +282,27 @@ pub fn run() {
                 w.within("settings-tabs").click(1usize, cx);
                 w.render_frame(cx);
                 assert!(w.try_find("research-global-model").is_some());
+                assert!(w.try_find("research-fallback-model").is_some());
                 assert_eq!(app.read(cx).scope(), Scope::Settings);
                 assert!(w.try_find("ego-path").is_some());
                 assert!(w.try_find("research-model-0").is_some());
             }).unwrap();
             screenshot(&mut cx, handle, &directory, "02-research-model-fields.png");
             cx.update_window(handle, |_, w, cx| {
+                assert!(w.try_find("model-agent-fallback").is_some());
+                app.update(cx, |a, cx| a.set_fallback_agent("Codex", w, cx));
+                w.render_frame(cx);
+                assert_eq!(app.read(cx).store.fallback_agent(), "Codex");
+                assert_eq!(
+                    w.find("research-fallback-model").placeholder(),
+                    Some("Choose a fallback model")
+                );
+                click(w, cx, "model-settings-scroll", "research-fallback-model");
+                w.click("research-model-option-qa-codex-model", cx);
+                assert_eq!(app.read(cx).store.fallback_model(), "qa-codex-model");
+                let persisted = Storage::new(path.clone()).load().unwrap().unwrap();
+                assert_eq!(persisted.fallback_agent(), "Codex");
+                assert_eq!(persisted.fallback_model(), "qa-codex-model");
                 click(w, cx, "model-settings-scroll", "model-agent-0");
                 w.within("popup-menu").click(1usize, cx);
                 w.render_frame(cx);
@@ -437,6 +452,10 @@ pub fn run() {
                     let input = a.research_models[1].clone();
                     input.update(cx, |s, cx| s.set_value("qa-codex-model", w, cx));
                     a.finish_model_edit(&input, true, w, cx);
+                    a.set_fallback_agent("Codex", w, cx);
+                    let fallback = a.fallback_model.clone();
+                    fallback.update(cx, |s, cx| s.set_value("qa-codex-other", w, cx));
+                    a.finish_model_edit(&fallback, true, w, cx);
                     a.model_profile_name.update(cx, |s, cx| s.set_value("深度研究 · 多 Agent 协作方案", w, cx));
                 });
                 click(w, cx, "model-settings-scroll", "model-profile-create");
@@ -446,12 +465,16 @@ pub fn run() {
             cx.update_window(handle, |_, _, cx| {
                 assert!(app.read(cx).store.research_config().agents.iter().all(Option::is_none));
                 assert!(app.read(cx).research_models[1].read(cx).value().is_empty());
+                assert_eq!(app.read(cx).store.fallback_agent(), "Codex");
+                assert_eq!(app.read(cx).store.fallback_model(), "qa-codex-model");
             }).unwrap();
             cx.run_until_parked();
             profile_menu(&mut cx, handle, "model-profile-picker", 1);
             cx.update_window(handle, |_, w, cx| {
                 assert_eq!(app.read(cx).research_models[1].read(cx).value().as_ref(), "qa-codex-model");
                 assert_eq!(app.read(cx).store.research_config().agents[1].as_deref(), Some("Codex"));
+                assert_eq!(app.read(cx).store.fallback_agent(), "Codex");
+                assert_eq!(app.read(cx).store.fallback_model(), "qa-codex-other");
                 w.render_frame(cx);
                 let save_bounds = w.find("model-profile-update").bounds();
                 assert_eq!(w.find("model-profile-update").disabled(), Some(true));

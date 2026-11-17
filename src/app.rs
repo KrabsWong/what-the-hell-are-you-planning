@@ -523,6 +523,7 @@ pub struct TaskApp {
     pub codex_discovery: Option<mpsc::Receiver<Result<crate::codex::Discovery, String>>>,
     pub settings_scroll: ScrollHandle,
     pub global_model: Entity<InputState>,
+    pub fallback_model: Entity<InputState>,
     pub model_profile_name: Entity<InputState>,
     pub creating_model_profile: bool,
     pub publishing_inputs: [Entity<InputState>; 3],
@@ -774,6 +775,11 @@ impl TaskApp {
                 .default_value(store.default_model().clone())
                 .placeholder("provider/model")
         });
+        let fallback_model = cx.new(|cx| {
+            InputState::new(window, cx)
+                .default_value(store.fallback_model().to_owned())
+                .placeholder("Choose a fallback model")
+        });
         let research_models: [_; 4] = std::array::from_fn(|_| {
             cx.new(|cx| InputState::new(window, cx).placeholder("Global default"))
         });
@@ -816,7 +822,7 @@ impl TaskApp {
                 }
             }));
         }
-        for input in research_models.iter().chain([&global_model]) {
+        for input in research_models.iter().chain([&global_model, &fallback_model]) {
             subscriptions.push(
                 cx.subscribe_in(input, window, move |this, input, event, w, cx| {
                     match event {
@@ -918,6 +924,7 @@ impl TaskApp {
             publishing_job: None,
             publishing_scan_requested: true,
             global_model,
+            fallback_model,
             creating_model_profile: false,
             model_profile_name: cx
                 .new(|cx| InputState::new(window, cx).placeholder("Profile name")),

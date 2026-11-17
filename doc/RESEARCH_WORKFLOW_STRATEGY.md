@@ -314,6 +314,12 @@ This is a contributor maintenance rule, not a background synchronization service
 | Automation template, snapshot and time-context injection | [automation_execution.rs](../src/automation_execution.rs) |
 | Automation management interface | [automation_views.rs](../src/automation_views.rs) |
 
+### Automatic model fallback
+
+Settings can define one fallback agent/model pair shared by all research stages. It is a recovery setting, not a second primary model: the approved or manual run still starts with the stage's selected agent and model. If a failed attempt reports a model availability problem, such as exhausted quota, rate limiting, overload, timeout, connection failure or a provider 5xx response, the second failed attempt switches the next automatic retry to the fallback pair and clears the session so it does not resume a primary-model conversation. A validation or content failure does not switch models. The existing three-retry budget, 30-second delay, freshness checks, approval checks and concurrency rules remain in force, and later availability failures stay on the configured fallback.
+
+Request and project planning have no automatic retry chain. When a user starts another planning attempt after an availability failure, that new attempt uses the fallback pair; a validation failure still follows the existing one-shot format-repair rule with the original model.
+
 ### Editing, comments and Undo
 
 Run submission may wait for durable admission before a process starts. A goal queue binds that receipt to its original goal, step and batch generation; pending admission is not a paused or failed step. Cancellation during admission retains a durable stop marker and retires the intent before removing that marker. A parked persistence or launch-confirmation obligation exposes **Retry dispatch** in the footer; retry resumes the retained operation rather than creating a new run. Attention feedback does not imply that an already durable run was unsaved. Runtime polling wakes for pending admission, live saves and material verification and stops when only explicit human confirmation or retry remains.

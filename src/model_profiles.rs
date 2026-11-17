@@ -1,10 +1,18 @@
 use crate::domain::Store;
 use serde::{Deserialize, Serialize};
 
+fn default_fallback_agent() -> String {
+    "OpenCode".into()
+}
+
 #[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
 pub struct ModelProfile {
     pub name: String,
     pub default_agent: String,
+    #[serde(default = "default_fallback_agent")]
+    pub fallback_agent: String,
+    #[serde(default)]
+    pub fallback_model: String,
     pub default_model: String,
     pub agents: [Option<String>; 4],
     pub models: [String; 4],
@@ -15,6 +23,8 @@ impl Store {
         ModelProfile {
             name,
             default_agent: self.research_config().default_agent.clone(),
+            fallback_agent: self.fallback_agent().to_owned(),
+            fallback_model: self.fallback_model().to_owned(),
             default_model: self.default_model().clone(),
             agents: self.research_config().agents.clone(),
             models: self.research_config().models.clone(),
@@ -45,6 +55,8 @@ impl Store {
     pub fn apply_model_profile(&mut self, name: &str) {
         let Some(profile) = self.model_profiles().iter().find(|p| p.name == name).cloned() else { return; };
         self.research_config_mut().default_agent = profile.default_agent.clone();
+        self.research_config_mut().fallback_agent = profile.fallback_agent;
+        self.research_config_mut().fallback_model = profile.fallback_model;
         self.set_default_model(profile.default_model.clone());
         self.research_config_mut().agents = profile.agents.clone();
         self.research_config_mut().models = profile.models.clone();
@@ -74,6 +86,8 @@ mod tests {
     fn profiles_restore_global_and_stage_overrides_without_changing_runtime_settings() {
         let mut store = Store::empty();
         store.set_default_model("provider/global".into());
+        store.research_config_mut().fallback_agent = "Codex".into();
+        store.research_config_mut().fallback_model = "fallback-codex".into();
         store.research_config_mut().agents[1] = Some("Codex".into());
         store.research_config_mut().models[1] = "codex-model".into();
         store.create_model_profile(" Mixed ").unwrap();
@@ -90,6 +104,8 @@ mod tests {
         assert!(!store.model_profile_changed(&original));
         assert_eq!(store.research_model(crate::research::ResearchKind::ALL[0]), "provider/global");
         assert_eq!(store.research_model(crate::research::ResearchKind::ALL[1]), "codex-model");
+        assert_eq!(store.fallback_agent(), "Codex");
+        assert_eq!(store.fallback_model(), "fallback-codex");
         assert_eq!(store.research_config().ego_path, "custom-browser");
         assert_eq!(store.research_config().codex_path, "custom-codex");
         assert_eq!(
@@ -97,12 +113,14 @@ mod tests {
             crate::research::OutputLanguage::SimplifiedChinese
         );
         store.set_default_model("provider/updated".into());
+        store.research_config_mut().fallback_model = "updated-fallback".into();
         assert!(store.model_profile_changed(&original));
         store.update_model_profile("Mixed");
         store.apply_model_profile("Fast");
         assert_eq!(store.default_model(), "another-model");
         store.apply_model_profile("Mixed");
         assert_eq!(store.default_model(), "provider/updated");
+        assert_eq!(store.fallback_model(), "updated-fallback");
         store.delete_model_profile("Mixed");
         assert!(store.active_model_profile().is_none());
         assert_eq!(store.default_model(), "provider/updated");
@@ -121,6 +139,14 @@ mod tests {
         legacy.as_object_mut().unwrap().remove("model_profiles");
         legacy.as_object_mut().unwrap().remove("active_model_profile");
         let restored: Store = serde_json::from_value(legacy).unwrap();
+        assert_eq!(restored.fallback_agent(), "OpenCode");
+        assert!(restored.fallback_model().is_empty());
+        let mut legacy_profile = serde_json::to_value(&store.model_profiles()[0]).unwrap();
+        legacy_profile.as_object_mut().unwrap().remove("fallback_agent");
+        legacy_profile.as_object_mut().unwrap().remove("fallback_model");
+        let profile: ModelProfile = serde_json::from_value(legacy_profile).unwrap();
+        assert_eq!(profile.fallback_agent, "OpenCode");
+        assert!(profile.fallback_model.is_empty());
         assert!(restored.model_profiles().is_empty());
         assert!(restored.active_model_profile().is_none());
     }

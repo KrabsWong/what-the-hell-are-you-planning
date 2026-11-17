@@ -1140,8 +1140,13 @@ impl Store {
             .find(|p| p.id == request.project_id)
             .ok_or("Project not found.")?;
         let signature = self.request_plan_signature(id)?;
-        let model = self.research_model(ResearchKind::Goal);
-        if !self.valid_research_model(ResearchKind::Goal) {
+        let previous = self.request_attempts(id).last().copied();
+        let (agent, model) = self.planning_route_after_failure(
+            previous,
+            self.research_agent(ResearchKind::Goal),
+            self.research_model(ResearchKind::Goal),
+        );
+        if !self.valid_agent_model(&agent, &model) {
             return Err(
                 "Choose a global model or a Plan model in Settings before generating a plan."
                     .into(),
@@ -1262,8 +1267,8 @@ impl Store {
             ended_at: None,
             session_id: None,
             exit_code: None,
-            agent: self.research_agent(ResearchKind::Goal).into(),
-            model: model.to_string(),
+            agent,
+            model,
             stage: Stage::Backlog,
             status: "Running".into(),
             logs,
@@ -2180,6 +2185,25 @@ mod tests {
         assert_eq!(s.request_plan_auto_repair(repair_id), None, "No repair loop");
         assert!(s.apply_request_plan(id, PLAN).is_ok());
         assert_eq!(s.request_plan_auto_repair(repair_id), None);
+    }
+
+    #[test]
+    fn planning_retry_after_availability_failure_uses_fallback() {
+        let mut s = store();
+        let id = s.create_research_request(1, None, "Analyze recent earnings").unwrap();
+        confirm_test_request(&mut s, id);
+        s.research_config_mut().fallback_agent = "Codex".into();
+        s.research_config_mut().fallback_model = "fallback-model".into();
+        let mut failed = s.prepare_request_plan(id).unwrap();
+        failed.status = "Failed".into();
+        failed.logs.push(r#"[error] {"status":503,"message":"overloaded"}"#.into());
+        s.request_at_mut(0).unwrap().planning_run_id = Some(failed.id);
+        s.push_run(failed);
+
+        let retry = s.prepare_request_plan(id).unwrap();
+        assert_eq!(retry.agent, "Codex");
+        assert_eq!(retry.model, "fallback-model");
+        assert!(retry.session_id.is_none());
     }
 
     #[test]

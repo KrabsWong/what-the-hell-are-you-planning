@@ -4047,18 +4047,7 @@ impl TaskApp {
                 index.index(),
             )
             .status_suffix()
-        }
-        .or_else(|| {
-            // A lazy body has a durable report but no hydrated text yet, so the
-            // presentation cannot classify it. Say that the report is saved
-            // rather than implying the row has no evidence qualifier.
-            let run_id = occurrence
-                .final_run_id
-                .or_else(|| occurrence.run_ids.last().copied())?;
-            self.store
-                .run_body_is_lazy(run_id)
-                .then_some("saved report")
-        });
+        };
         let status = match suffix {
             Some(suffix) => format!("{} · {suffix}", occurrence.status.label()),
             None => occurrence.status.label().to_string(),
@@ -6209,7 +6198,7 @@ mod tests {
     }
 
     #[gpui_kit::test]
-    fn lazy_result_row_keeps_saved_report_qualifier(cx: &mut TestAppContext) {
+    fn lazy_result_row_shows_status_without_report_qualifier(cx: &mut TestAppContext) {
         let cx = cx.add_empty_window();
         cx.update(|_, cx| init(cx));
         let store = lazy_results_store();
@@ -6229,8 +6218,8 @@ mod tests {
             .expect("lazy report row must render");
         assert_eq!(
             snapshot.label(),
-            Some("Succeeded · saved report"),
-            "a saved but unhydrated body must keep an evidence-availability qualifier"
+            Some("Succeeded"),
+            "body-loading state must not appear as a result qualifier"
         );
     }
 
@@ -6407,8 +6396,8 @@ mod tests {
             )
             .unwrap();
         let steps = store.apply_research_plan(goal, PLAN).unwrap();
-        // Build the Analyze run directly: the row must start as a saved-report
-        // placeholder even though the prerequisite collect step has no result.
+        // Build the Analyze run directly: the row must not expose body-loading
+        // state even though the prerequisite collect step has no result.
         let run_id = 1;
         let signature = store
             .research_signature_present(steps[1])
@@ -6494,7 +6483,7 @@ mod tests {
     }
 
     #[gpui_kit::test]
-    fn lazy_row_transitions_to_incomplete_after_hydration(cx: &mut TestAppContext) {
+    fn lazy_row_keeps_status_until_quality_is_available(cx: &mut TestAppContext) {
         let cx = cx.add_empty_window();
         cx.update(|_, cx| init(cx));
         let store = incomplete_results_store();
@@ -6513,7 +6502,7 @@ mod tests {
         let lazy = cx
             .update(|window, _| window.try_find("occurrence-status-1"))
             .expect("lazy intermediate row renders");
-        assert_eq!(lazy.label(), Some("Succeeded · saved report"));
+        assert_eq!(lazy.label(), Some("Succeeded"));
 
         cx.update(|_, cx| {
             app.update(cx, |app, cx| {

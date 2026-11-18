@@ -1,5 +1,5 @@
 use crate::{
-    app::{Layout, Scope, TaskApp},
+    app::{Scope, TaskApp},
     appearance::palette,
     domain::Topic,
     views::*,
@@ -705,7 +705,6 @@ impl TaskApp {
                         })))
                     })))
             .child(row().px_6().pb_2().gap_3()
-                .child(self.layout_switch(cx))
                 .child(div().flex_1().min_w_0().child(label(format!("{} research goal{}{}", goals.len(), if goals.len() == 1 { "" } else { "s" }, if archived { " · Archived topic. Existing goals and results remain available." } else { "" }), cx)
                     .id("topic-goal-count")
                     .tooltip(|w, cx| component::tooltip::Tooltip::new("Open a goal to explore its steps and materials.").build(w, cx)))))
@@ -726,8 +725,7 @@ impl TaskApp {
                     .map(observed)
             ))
             .child(self.todo_batch_bar(Some(project), cx))
-            .when(self.layout == Layout::Board && !planning_only, |d| d.child(self.board(&goals.iter().map(|t| (*t).clone()).collect::<Vec<_>>(), cx)))
-            .when(self.layout == Layout::List && !planning_only, |d| d.child(col().id("topic-goals").track_scroll(&self.navigation.topic_scroll).px_6().pt_3().pb_5().overflow_y_scroll().flex_1().min_h_0()
+            .when(!planning_only, |d| d.child(col().id("topic-goals").track_scroll(&self.navigation.topic_scroll).px_6().pt_3().pb_5().overflow_y_scroll().flex_1().min_h_0()
                 .when(goals.is_empty(), |d| d.child(muted("No research goals yet. Create one here or assign an existing goal using its Topic property.", cx)))
                 .child(list)))
             .into_any_element()

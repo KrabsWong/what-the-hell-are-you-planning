@@ -1387,7 +1387,7 @@ fn validate_stage_intent(
 ) -> Result<(), ScopedEditError> {
     if stage == Stage::InProgress {
         return Err(ScopedEditError::Rejected(
-            "Save task details first, then submit execution from Board or the status menu."
+            "Save task details first, then submit execution from the status menu."
                 .into(),
         ));
     }

@@ -1,6 +1,6 @@
 //! Native visual/interaction acceptance for action affordances. No model is invoked.
 use crate::{
-    app::{Layout, Scope, TaskApp},
+    app::{Scope, TaskApp},
     appearance::Appearance,
     domain::{Stage, Store},
     persistence::Storage,
@@ -158,7 +158,6 @@ pub fn run() {
                     app.update(cx, |a, cx| {
                         let ids = a.store.apply_project_plan(1, TOPICS).unwrap();
                         a.navigate(Scope::All, w, cx);
-                        a.layout = Layout::Board;
                         cx.notify();
                         ids[0]
                     })
@@ -179,11 +178,11 @@ pub fn run() {
                 })
             }).unwrap();
             cx.update_window(handle, |_, w, cx| w.render_frame(cx)).unwrap();
-            screenshot(&mut cx, handle, &directory, "05-kanban.png");
+            screenshot(&mut cx, handle, &directory, "05-research-list.png");
             cx.update_window(handle, |_, w, cx| {
-                let topics: Vec<u64> = app.read(cx).store.topics().iter().map(|topic| topic.id).collect();
-                scroll_card_into_view(w, cx, &format!("approve-topic-{goal}"), &topics);
-                w.click(format!("approve-topic-{goal}"), cx);
+                app.update(cx, |a, cx| a.open_task(goal, w, cx));
+                w.render_frame(cx);
+                click_in(w, cx, "detail-scroll", "approve-research-topic");
                 assert_eq!(app.read(cx).store.task(goal).unwrap().stage, Stage::Planned);
                 assert!(app.read(cx).store.runs().is_empty());
                 app.update(cx, |a, cx| {
@@ -268,7 +267,6 @@ pub fn run() {
                 );
                 app.update(cx, |a, cx| {
                     a.navigate(Scope::Project(1), w, cx);
-                    a.layout = Layout::List;
                     cx.notify();
                 });
             })
@@ -357,38 +355,6 @@ fn click_in(w: &mut Window, cx: &mut App, scroll: &str, id: &str) {
     }
     assert!(w.find(id.to_string()).visible(), "Could not scroll to {id}");
     w.click(id.to_string(), cx);
-}
-
-/// Scroll the Backlog cards column by dispatching at a visible topic header
-/// inside it. The column itself is a layout node rather than an observed test
-/// target, so use whichever topic header is currently visible and switch to a
-/// later group after the column moves.
-fn scroll_card_into_view(w: &mut Window, cx: &mut App, id: &str, topics: &[u64]) {
-    w.render_frame(cx);
-    for _ in 0..30 {
-        let bounds = w.find(id.to_string()).bounds();
-        let viewport = w.viewport_size();
-        let top = px(110.);
-        let bottom = viewport.height - px(40.);
-        if bounds.top() >= top && bounds.bottom() <= bottom {
-            break;
-        }
-        let anchor = topics.iter().find_map(|topic| {
-            let anchor = format!("board-topic-backlog-{topic}");
-            w.try_find(anchor.clone())
-                .filter(|snapshot| snapshot.visible())
-                .map(|_| anchor)
-        });
-        let Some(anchor) = anchor else { break; };
-        let delta = if bounds.top() < top { 120. } else { -120. };
-        w.scroll(
-            anchor,
-            ScrollDelta::Pixels(point(px(0.), px(delta))),
-            cx,
-        );
-        w.render_frame(cx);
-    }
-    assert!(w.find(id.to_string()).visible(), "Could not scroll to {id}");
 }
 
 fn assert_task_properties_layout(w: &mut Window) {

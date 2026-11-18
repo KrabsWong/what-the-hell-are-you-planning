@@ -3,7 +3,7 @@
 The automation modal investigation uncovered shared main-thread work, not a
 wheel-input defect. Retained surfaces prevent animation from rebuilding sibling
 views, but do not make expensive semantic updates cheap. This audit extends the
-fix to shared status computation used by the sidebar, collections, boards,
+fix to shared status computation used by the sidebar, collections,
 steps, results and dialogs.
 
 ## Changes
@@ -34,7 +34,7 @@ are attached to the test app.
 ```sh
 cargo test --quiet
 cargo build --features qa --quiet
-target/debug/what-the-hell-are-you-planning --qa-board-scroll
+target/debug/what-the-hell-are-you-planning --qa-list-scroll
 PLANNING_PERF_WORKSPACE=/path/to/snapshot.sqlite3 \
   target/debug/what-the-hell-are-you-planning --qa-render-perf
 PLANNING_SCROLL_DARK=1 PLANNING_PERF_WORKSPACE=/path/to/snapshot.sqlite3 \
@@ -43,25 +43,28 @@ PLANNING_SCROLL_DARK=1 PLANNING_PERF_WORKSPACE=/path/to/snapshot.sqlite3 \
 
 Set `PLANNING_SCROLL_DARK=0` for light mode. Native QA tests a 1000 × 680
 window with expanded sidebar projects. It dispatches bidirectional wheel input
-on the sidebar, research list, horizontal board, model settings, automation
+on the sidebar, research list, model settings, automation
 results and an ordinary report. Displacement assertions prevent measuring an
 unmoving viewport. Each surface runs both without semantic notifications and
 with a notification every fifth input. Input intervals include the 16 ms timer
 and main-loop scheduling; these are not GPU presentation/refresh-rate metrics.
 
-The headless board check also retains a paused queue, asserts zero extra status
+The headless list check also retains a paused queue, asserts zero extra status
 computations during wheel frames, checks cached versus uncached projections,
 and checks both Store changes and queue-only changes invalidate the cache.
 Full-refresh frame timings deliberately defeat retention and should not be
 reported as ordinary scroll frame times. Small/empty forms and every possible
 workspace size are not individually certified by this matrix.
 
-## Verification on 2026-11-09
+## Historical verification on 2026-11-09
 
-`cargo test --quiet`: 745 passed, 2 ignored, 0 failures. The headless board,
+The measurements below were recorded before the board presentation was removed.
+They are retained as audit evidence; the current QA command is `--qa-list-scroll`.
+
+`cargo test --quiet`: 745 passed, 2 ignored, 0 failures. The headless list,
 settings and sidebar check passed, including cache equivalence, zero additional
 status computations while scrolling with a paused queue, Store invalidation,
-and queue-only invalidation. Wheel-plus-draw p95 was 9.43 ms for the board,
+and queue-only invalidation. Wheel-plus-draw p95 was 9.43 ms for the former board surface,
 1.53 ms for settings and 8.38 ms for the expanded sidebar.
 
 The same 184-task / 188-run snapshot used in the automation investigation was

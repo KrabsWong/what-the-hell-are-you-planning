@@ -270,17 +270,12 @@ print(json.dumps({'type':'text','part':{'text':json.dumps(result)}}),flush=True)
         assert_eq!(app.read(cx).store.runs().len(), runs_before_navigation);
         app.update(cx, |a, cx| a.navigate(Scope::Recovery, w, cx));
         w.render_frame(cx);
-        for layout in [crate::app::Layout::List, crate::app::Layout::Board] {
-            app.update(cx, |a, cx| {
-                a.open_goal_steps(goals[1].0, w, cx);
-                a.set_steps_layout(layout);
-            });
-            w.render_frame(cx);
-            w.click(format!("goal-step-{}", goals[1].1[0]), cx);
-            w.render_frame(cx);
-            assert!(w.try_find("step-execution-reason").is_some());
-            assert!(w.try_find("step-run").is_some());
-        }
+        app.update(cx, |a, cx| a.open_goal_steps(goals[1].0, w, cx));
+        w.render_frame(cx);
+        w.click(format!("goal-step-{}", goals[1].1[0]), cx);
+        w.render_frame(cx);
+        assert!(w.try_find("step-execution-reason").is_some());
+        assert!(w.try_find("step-run").is_some());
         app.update(cx, |a, cx| a.open_task(goals[3].1[0], w, cx));
         w.render_frame(cx);
         assert!(w.try_find("step-check-session").is_some());

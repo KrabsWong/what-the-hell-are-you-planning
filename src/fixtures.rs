@@ -65,7 +65,7 @@ impl Store {
                 Some(1),
             ),
             (
-                "Drag tasks between workflow stages",
+                "Move tasks between workflow stages",
                 1,
                 InProgress,
                 High,
@@ -73,7 +73,7 @@ impl Store {
                 None,
             ),
             (
-                "Restore card position when a drag is cancelled",
+                "Restore list position when a move is cancelled",
                 1,
                 Planned,
                 Medium,
@@ -201,7 +201,7 @@ impl Store {
                     0 => "Make the task detail view feel at home in the workspace. Keep the parent task visible, retain navigation context, and put editable properties within reach.\n\nAcceptance criteria\n• Open a task without losing the list filter.\n• Navigate to a child and return to its parent.\n• Keep the activity history consistent across views.".into(),
                     15 => "Define a small adapter boundary for local coding agents. A run request carries task context, stage, selected agent, model and prompt.\n\nThis prototype uses simulated runs only. No process is spawned, no credentials are read, and no source files are modified.".into(),
                     18 => "Each workflow stage has its own agent and model configuration. Preserve a snapshot of the policy when creating a run so later configuration changes do not alter its history.\n\n先选择阶段，再设置 agent 与模型。真实模型列表由后续适配器提供。".into(),
-                    _ => format!("{}\n\nImplement the interaction in the local workspace and verify that list, board and detail views stay consistent.\n\n完成后检查键盘操作、中文输入与空状态。", title),
+                    _ => format!("{}\n\nImplement the interaction in the local workspace and verify that list and detail views stay consistent.\n\n完成后检查键盘操作、中文输入与空状态。", title),
                 },
                 project_id, topic_id: None, approved_plan: None, stage, priority, labels: vec![label.into()],
                 cycle: if i % 4 != 2 { Some("Cycle 1".into()) } else { None },

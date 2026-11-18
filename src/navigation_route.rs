@@ -18,7 +18,7 @@
 
 use std::collections::BTreeMap;
 
-use crate::app::{AllStatus, Layout, Scope};
+use crate::app::{AllStatus, Scope};
 use crate::domain::Store;
 
 pub(crate) type ProjectId = u64;
@@ -109,18 +109,16 @@ impl ResultOwner {
 pub(crate) struct ResearchListPage {
     scope: ResearchScope,
     all_status: AllStatus,
-    layout: Layout,
     /// List-local filter text. Structural navigation clears it; Back restores
     /// the captured page value.
     query: String,
 }
 
 impl ResearchListPage {
-    pub(crate) fn new(scope: ResearchScope, all_status: AllStatus, layout: Layout) -> Self {
+    pub(crate) fn new(scope: ResearchScope, all_status: AllStatus) -> Self {
         Self {
             scope,
             all_status,
-            layout,
             query: String::new(),
         }
     }
@@ -134,9 +132,6 @@ impl ResearchListPage {
     pub(crate) fn all_status(&self) -> AllStatus {
         self.all_status
     }
-    pub(crate) fn layout(&self) -> Layout {
-        self.layout
-    }
     pub(crate) fn query(&self) -> &str {
         &self.query
     }
@@ -146,34 +141,20 @@ impl ResearchListPage {
 pub(crate) struct ResearchTaskPage {
     task: TaskId,
     panel: TaskPanel,
-    steps_layout: Layout,
     /// Page family the task was opened from. Kept private so the page remains a
     /// single identity while `scope()` still projects the structural base.
     base: Scope,
 }
 
 impl ResearchTaskPage {
-    pub(crate) fn new(
-        task: TaskId,
-        panel: TaskPanel,
-        steps_layout: Layout,
-        base: Scope,
-    ) -> Self {
-        Self {
-            task,
-            panel,
-            steps_layout,
-            base,
-        }
+    pub(crate) fn new(task: TaskId, panel: TaskPanel, base: Scope) -> Self {
+        Self { task, panel, base }
     }
     pub(crate) fn task(&self) -> TaskId {
         self.task
     }
     pub(crate) fn panel(&self) -> TaskPanel {
         self.panel
-    }
-    pub(crate) fn steps_layout(&self) -> Layout {
-        self.steps_layout
     }
     pub(crate) fn base(&self) -> &Scope {
         &self.base
@@ -295,8 +276,8 @@ pub(crate) enum Route {
 }
 
 impl Route {
-    pub(crate) fn research_list(scope: ResearchScope, all_status: AllStatus, layout: Layout) -> Self {
-        Self::ResearchList(ResearchListPage::new(scope, all_status, layout))
+    pub(crate) fn research_list(scope: ResearchScope, all_status: AllStatus) -> Self {
+        Self::ResearchList(ResearchListPage::new(scope, all_status))
     }
     pub(crate) fn with_research_query(self, query: String) -> Self {
         match self {
@@ -305,18 +286,17 @@ impl Route {
         }
     }
     pub(crate) fn research_task(task: TaskId) -> Self {
-        Self::research_task_from(task, Scope::All, TaskPanel::Overview, Layout::List)
+        Self::research_task_from(task, Scope::All, TaskPanel::Overview)
     }
     pub(crate) fn research_task_from(
         task: TaskId,
         base: Scope,
         panel: TaskPanel,
-        steps_layout: Layout,
     ) -> Self {
-        Self::ResearchTask(ResearchTaskPage::new(task, panel, steps_layout, base))
+        Self::ResearchTask(ResearchTaskPage::new(task, panel, base))
     }
-    pub(crate) fn research_task_steps(task: TaskId, layout: Layout) -> Self {
-        Self::research_task_from(task, Scope::All, TaskPanel::Steps, layout)
+    pub(crate) fn research_task_steps(task: TaskId) -> Self {
+        Self::research_task_from(task, Scope::All, TaskPanel::Steps)
     }
     pub(crate) fn research_result(owner: ResultOwner, run: Option<RunId>) -> Self {
         Self::ResearchResult(ResearchResultPage::new(
@@ -398,17 +378,16 @@ impl Route {
     pub(crate) fn for_scope(
         scope: &Scope,
         all_status: AllStatus,
-        layout: Layout,
         results_filter: Option<AutomationId>,
         history_limit: usize,
     ) -> Route {
         use ResearchScope::*;
         match scope {
-            Scope::All => Self::research_list(All, all_status, layout),
-            Scope::Project(id) => Self::research_list(Project(*id), all_status, layout),
-            Scope::Topic(id) => Self::research_list(Topic(*id), all_status, layout),
-            Scope::Cycle(name) => Self::research_list(Cycle(name.clone()), all_status, layout),
-            Scope::Archive => Self::research_list(Archive, all_status, layout),
+            Scope::All => Self::research_list(All, all_status),
+            Scope::Project(id) => Self::research_list(Project(*id), all_status),
+            Scope::Topic(id) => Self::research_list(Topic(*id), all_status),
+            Scope::Cycle(name) => Self::research_list(Cycle(name.clone()), all_status),
+            Scope::Archive => Self::research_list(Archive, all_status),
             Scope::Runs => Self::research_result(ResultOwner::OrdinaryPage, None),
             Scope::Recovery => Self::PausedProjects,
             Scope::Research => Self::MarketResearch,
@@ -599,8 +578,6 @@ pub(crate) enum Destination {
 #[derive(Clone, Copy, Debug, PartialEq, Eq, PartialOrd, Ord)]
 pub(crate) enum ScrollKey {
     TaskList,
-    BoardX,
-    BoardColumn(u8),
     Topic,
     TaskDetail,
     AutomationDetail,
@@ -641,7 +618,7 @@ pub(crate) struct ReturnFrame {
     /// Captured at push time for a deleted selected run. It never lives on the
     /// live result page and cannot become a second navigation authority.
     pub result_fallback: Option<ResultFallback>,
-    /// Page-local filters/layout that are not part of the route identity yet.
+    /// Page-local filters that are not part of the route identity yet.
     pub page: PageState,
 }
 
@@ -649,11 +626,9 @@ pub(crate) struct ReturnFrame {
 pub(crate) struct PageState {
     pub query: String,
     pub all_status: AllStatus,
-    pub layout: Layout,
     pub results_filter: Option<AutomationId>,
     pub history_limit: usize,
     pub settings_tab: SettingsSection,
-    pub steps_layout: Layout,
 }
 
 impl Default for PageState {
@@ -661,11 +636,9 @@ impl Default for PageState {
         Self {
             query: String::new(),
             all_status: AllStatus::All,
-            layout: Layout::List,
             results_filter: None,
             history_limit: 20,
             settings_tab: SettingsSection::General,
-            steps_layout: Layout::Board,
         }
     }
 }
@@ -1258,15 +1231,10 @@ impl NavState {
         }
     }
 
-    pub(crate) fn set_research_filters(
-        &mut self,
-        all_status: AllStatus,
-        layout: Layout,
-    ) -> Result<(), NavReject> {
+    pub(crate) fn set_research_filters(&mut self, all_status: AllStatus) -> Result<(), NavReject> {
         match &mut self.route {
             Route::ResearchList(page) => {
                 page.all_status = all_status;
-                page.layout = layout;
                 Ok(())
             }
             _ => Err(NavReject::InvalidRoute),
@@ -1975,7 +1943,6 @@ fn structural_parent(route: &Route, store: &Store) -> Option<Route> {
                 Some(Route::research_list(
                     ResearchScope::All,
                     AllStatus::All,
-                    Layout::List,
                 ))
             }
             ResearchScope::Topic(topic) => store
@@ -1992,14 +1959,12 @@ fn structural_parent(route: &Route, store: &Store) -> Option<Route> {
                     Route::research_list(
                         ResearchScope::Project(project.id),
                         AllStatus::All,
-                        Layout::List,
                     )
                 })
                 .or_else(|| {
                     Some(Route::research_list(
                         ResearchScope::All,
                         AllStatus::All,
-                        Layout::List,
                     ))
                 }),
         },
@@ -2014,20 +1979,17 @@ fn structural_parent(route: &Route, store: &Store) -> Option<Route> {
                 return Some(Route::research_list(
                     ResearchScope::Topic(topic.id),
                     AllStatus::All,
-                    Layout::List,
                 ));
             }
             if store.projects().iter().any(|project| project.id == task.project_id) {
                 return Some(Route::research_list(
                     ResearchScope::Project(task.project_id),
                     AllStatus::All,
-                    Layout::List,
                 ));
             }
             Some(Route::research_list(
                 ResearchScope::All,
                 AllStatus::All,
-                Layout::List,
             ))
         }
         Route::ResearchResult(page) => match page.owner() {
@@ -2066,15 +2028,15 @@ fn validate_frame(mut frame: ReturnFrame, store: &Store) -> Restored {
             Route::ResearchList(ResearchListPage {
                 scope: ResearchScope::Project(_) | ResearchScope::Topic(_) | ResearchScope::Cycle(_),
                 ..
-            }) => Route::research_list(ResearchScope::All, AllStatus::All, Layout::List),
+            }) => Route::research_list(ResearchScope::All, AllStatus::All),
             Route::ResearchTask(_) => {
-                Route::research_list(ResearchScope::All, AllStatus::All, Layout::List)
+                Route::research_list(ResearchScope::All, AllStatus::All)
             }
             Route::ResearchResult(page) => match page.owner() {
                 ResultOwner::Task(_)
                 | ResultOwner::Goal { .. }
                 | ResultOwner::AutomationTask { .. } => {
-                    Route::research_list(ResearchScope::All, AllStatus::All, Layout::List)
+                    Route::research_list(ResearchScope::All, AllStatus::All)
                 }
                 ResultOwner::OrdinaryPage => {
                     Route::research_result(ResultOwner::OrdinaryPage, None)
@@ -2084,7 +2046,7 @@ fn validate_frame(mut frame: ReturnFrame, store: &Store) -> Restored {
                 }
             },
             Route::AutomationDetail(_) | Route::AutomationEditor(_) => Route::AutomationList,
-            _ => Route::research_list(ResearchScope::All, AllStatus::All, Layout::List),
+            _ => Route::research_list(ResearchScope::All, AllStatus::All),
         };
         frame.route = fallback;
         frame.overlays.clear();
@@ -2268,11 +2230,7 @@ mod tests {
     }
 
     fn list_route() -> Route {
-        Route::research_list(
-            ResearchScope::All,
-            AllStatus::All,
-            Layout::List,
-        )
+        Route::research_list(ResearchScope::All, AllStatus::All)
     }
 
     fn result_route(owner: ResultOwner, run: Option<RunId>) -> Route {
@@ -3142,11 +3100,7 @@ mod tests {
     #[test]
     fn data_scope_has_no_runs_alias_inside_research_list() {
         let store = base_store();
-        let list = Route::research_list(
-            ResearchScope::All,
-            AllStatus::All,
-            Layout::List,
-        );
+        let list = Route::research_list(ResearchScope::All, AllStatus::All);
         assert_eq!(list.data_scope(&store), DataScope::All);
         let results = Route::research_result(ResultOwner::OrdinaryPage, None);
         assert_eq!(results.data_scope(&store), DataScope::Results);
@@ -3216,13 +3170,14 @@ mod tests {
         };
         stack.record(frame.clone());
         stack.record(frame.clone());
+        stack.record(frame.clone());
+        stack.record(frame.clone());
         assert_eq!(stack.len(), 1, "consecutive duplicates collapse");
         for index in 0..(MAX_RETURN_DEPTH + 3) {
             stack.record(ReturnFrame {
                 route: Route::research_list(
                     ResearchScope::Cycle(format!("cycle-{index}")),
                     AllStatus::All,
-                    Layout::List,
                 ),
                 overlays: vec![],
                 scroll: ScrollBookmark::default(),
@@ -3236,7 +3191,6 @@ mod tests {
             Some(Route::research_list(
                 ResearchScope::Cycle(format!("cycle-{}", MAX_RETURN_DEPTH + 2)),
                 AllStatus::All,
-                Layout::List,
             )),
             "the bound retains the newest frames in order"
         );
@@ -3260,7 +3214,6 @@ mod tests {
                 Destination::Route(Route::research_list(
                     ResearchScope::Project(2),
                     AllStatus::All,
-                    Layout::Board,
                 )),
                 EnterMode::Structural,
                 scroll(0.0),
@@ -3282,7 +3235,7 @@ mod tests {
             Scope::AutomationRuns,
             Scope::Settings,
         ] {
-            let route = Route::for_scope(&scope, AllStatus::All, Layout::List, Some(3), 20);
+            let route = Route::for_scope(&scope, AllStatus::All, Some(3), 20);
             assert_eq!(
                 route.legacy_scope(),
                 scope,
@@ -3291,7 +3244,7 @@ mod tests {
         }
         let cycle = Scope::Cycle("Q4".into());
         assert_eq!(
-            Route::for_scope(&cycle, AllStatus::Open, Layout::Board, None, 20).legacy_scope(),
+            Route::for_scope(&cycle, AllStatus::Open, None, 20).legacy_scope(),
             cycle
         );
     }
@@ -3299,11 +3252,11 @@ mod tests {
     #[test]
     fn scope_route_adapter_uses_the_typed_result_page() {
         assert_eq!(
-            Route::for_scope(&Scope::Runs, AllStatus::All, Layout::List, None, 20),
+            Route::for_scope(&Scope::Runs, AllStatus::All, None, 20),
             Route::research_result(ResultOwner::OrdinaryPage, None)
         );
         assert_eq!(
-            Route::for_scope(&Scope::AutomationRuns, AllStatus::All, Layout::List, Some(3), 0),
+            Route::for_scope(&Scope::AutomationRuns, AllStatus::All, Some(3), 0),
             Route::automation_results(Some(3), 1),
             "the results history bound is always positive"
         );
@@ -3317,7 +3270,7 @@ mod tests {
         assert!(state
             .replace_route(
                 &store,
-                Route::research_list(ResearchScope::Project(999), AllStatus::All, Layout::List),
+                Route::research_list(ResearchScope::Project(999), AllStatus::All),
             )
             .is_err());
         assert_eq!(state, before, "a rejected route leaves the whole state unchanged");
@@ -3325,26 +3278,24 @@ mod tests {
         state
             .replace_route(
                 &store,
-                Route::research_list(ResearchScope::Project(1), AllStatus::All, Layout::Board),
+                Route::research_list(ResearchScope::Project(1), AllStatus::All),
             )
             .unwrap();
         assert_eq!(
             state.route(),
-            &Route::research_list(ResearchScope::Project(1), AllStatus::All, Layout::Board)
+            &Route::research_list(ResearchScope::Project(1), AllStatus::All)
         );
     }
 
     #[test]
     fn research_task_page_accessors_return_their_fields() {
-        let page = ResearchTaskPage::new(7, TaskPanel::Steps, Layout::List, Scope::Topic(2));
+        let page = ResearchTaskPage::new(7, TaskPanel::Steps, Scope::Topic(2));
         assert_eq!(page.task(), 7);
         assert_eq!(page.panel(), TaskPanel::Steps);
-        assert_eq!(page.steps_layout(), Layout::List);
         assert_eq!(page.base(), &Scope::Topic(2));
-        let list = ResearchListPage::new(ResearchScope::All, AllStatus::Open, Layout::Board)
+        let list = ResearchListPage::new(ResearchScope::All, AllStatus::Open)
             .with_query("supply".into());
         assert_eq!(list.query(), "supply");
-        assert_eq!(list.layout(), Layout::Board);
         assert_eq!(list.all_status(), AllStatus::Open);
     }
 

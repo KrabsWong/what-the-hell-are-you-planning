@@ -1061,7 +1061,6 @@ impl TaskApp {
                             if let Some(pid) = project_plan {
                                 a.structural_navigation();
                                 a.navigate(Scope::Project(pid), w, cx);
-                                a.layout = Layout::Board;
                             } else {
                                 a.record_origin();
                                 a.open_task(context_task.unwrap_or(id), w, cx);

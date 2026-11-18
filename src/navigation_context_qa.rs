@@ -1,6 +1,6 @@
 //! T10 S6: real-control return context, scroll and dirty exits.
 //!
-//! Runs at 1440x920 and 1000x680. It uses the actual list/board/topic rows,
+//! Runs at 1440x920 and 1000x680. It uses the actual list/topic rows,
 //! period steps, footer/header commands and the shared Save/Discard/Stay dialog.
 
 use crate::automation::{
@@ -9,7 +9,7 @@ use crate::automation::{
 };
 use crate::automation_schedule::{Schedule, ScheduleSpec};
 use crate::domain::{Stage, Store};
-use crate::app::{AllStatus, Layout, Scope, TaskApp};
+use crate::app::{AllStatus, Scope, TaskApp};
 use crate::persistence::Storage;
 use gpui_kit::{component::{Theme, ThemeMode}, prelude::*, test::TestWindowExt, *};
 use std::{path::Path, sync::Arc};
@@ -217,10 +217,6 @@ fn list_offset(app: &crate::app::TaskApp) -> f32 {
     app.navigation.task_list_scroll.0.borrow().base_handle.offset().y.as_f32()
 }
 
-fn board_offset(app: &crate::app::TaskApp) -> f32 {
-    app.navigation.board_scroll.offset().x.as_f32()
-}
-
 fn scroll_over(w: &mut Window, id: ElementId, dy: f32, cx: &mut App) {
     scroll_xy_over(w, id, 0.0, dy, cx)
 }
@@ -376,46 +372,9 @@ pub fn run() {
         assert!(list_offset(app.read(cx)) < -10.0, "list scroll must be restored");
     }).unwrap();
 
-    // 1b. Board horizontal + column scroll survives a card drill-down.
-    cx.update_window(handle, |_, w, cx| {
-        w.click("board-view", cx);
-        w.render_frame(cx);
-        let id = app.read(cx).visible_tasks().first().unwrap().id;
-        let card = ElementId::Name(format!("card-{id}").into());
-        scroll_xy_over(w, card.clone(), -120.0, 0.0, cx);
-        scroll_xy_over(w, card, 0.0, -60.0, cx);
-        w.render_frame(cx);
-        assert!(board_offset(app.read(cx)) < -10.0, "precondition: board scrolled horizontally");
-        assert!(
-            app.read(cx).navigation.board_column(Stage::Backlog).offset().y < px(-10.),
-            "precondition: board column scrolled"
-        );
-        w.click(format!("card-{id}"), cx);
-        w.render_frame(cx);
-        w.click("navigation-back", cx);
-        w.render_frame(cx);
-        assert_eq!(app.read(cx).layout, Layout::Board);
-        assert!(board_offset(app.read(cx)) < -10.0, "board horizontal offset restored");
-        assert!(
-            app.read(cx)
-                .navigation
-                .board_column(Stage::Backlog)
-                .offset()
-                .y
-                < px(-10.),
-            "board column offset restored"
-        );
-        assert_eq!(
-            app.read(cx).navigation.board_column(Stage::Planned).offset().y,
-            px(0.),
-            "unscrolled columns return to zero"
-        );
-    }).unwrap();
-
     // 2. Topic list scroll survives opening a goal.
     cx.update_window(handle, |_, w, cx| {
         app.update(cx, |a, cx| {
-            a.layout = Layout::List;
             a.navigate(Scope::Topic(fixture.topic), w, cx);
         });
         w.render_frame(cx);
@@ -1253,13 +1212,11 @@ fn size_theme_pass(
                     for goal in &matching_goals {
                         a.store.archive(*goal).unwrap();
                     }
-                    a.layout = Layout::List;
                 });
             }
             let stage = app.read(cx).display_task_status(fixture.goal).phase;
             app.update(cx, |a, cx| {
                 a.navigate(scope.clone(), w, cx);
-                a.layout = Layout::List;
                 a.show_done = true;
                 a.all_status = AllStatus::Stage(stage);
                 a.set_query("Research goal".into());
@@ -1286,7 +1243,6 @@ fn size_theme_pass(
             assert!(!app.read(cx).query().is_empty(), "source query is meaningful");
             let before = (
                 app.read(cx).scope(),
-                app.read(cx).layout,
                 app.read(cx).query(),
                 app.read(cx).all_status,
                 list_offset(app.read(cx)),
@@ -1308,12 +1264,11 @@ fn size_theme_pass(
             w.click("navigation-back", cx);
             w.render_frame(cx);
             assert_eq!(app.read(cx).scope(), before.0, "{scope:?}: Back restores scope");
-            assert_eq!(app.read(cx).layout, before.1, "{scope:?}: Back restores layout");
-            assert_eq!(app.read(cx).query(), before.2, "{scope:?}: Back restores filter");
-            assert_eq!(app.read(cx).all_status, before.3, "{scope:?}: Back restores status filter");
+            assert_eq!(app.read(cx).query(), before.1, "{scope:?}: Back restores filter");
+            assert_eq!(app.read(cx).all_status, before.2, "{scope:?}: Back restores status filter");
             assert_eq!(
                 list_offset(app.read(cx)),
-                before.4,
+                before.3,
                 "{scope:?}: Back restores collection scroll"
             );
         })

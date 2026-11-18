@@ -1,6 +1,6 @@
 //! Isolated end-to-end acceptance for sentence -> understanding -> confirmation -> Backlog -> approved Goal -> report.
 use crate::{
-    app::{Layout, Scope, TaskApp},
+    app::{Scope, TaskApp},
     domain::{Stage, Store},
     persistence::Storage,
 };
@@ -83,7 +83,6 @@ pub fn run() {
             view.update(cx, |a, cx| {
                 a.attach_storage(Storage::new(path.clone()), w, cx);
                 a.navigate(Scope::Project(1), w, cx);
-                a.layout = Layout::Board;
             });
             app = Some(view.clone());
             cx.new(|cx| base::Root::new(view, w, cx))
@@ -299,29 +298,28 @@ pub fn run() {
     cx.update_window(handle, |_, w, cx| {
         app.update(cx, |a, cx| {
             a.navigate(Scope::Project(1), w, cx);
-            a.layout = Layout::Board;
         });
         w.render_frame(cx);
         for child in &children {
             assert!(
-                w.try_find(format!("card-{child}")).is_none(),
-                "Internal steps must not be approval cards"
+                w.try_find(format!("task-row-{child}")).is_none(),
+                "Internal steps must not be approval rows"
             );
             assert!(app.read(cx).store.prepare_run(*child).is_err());
         }
         assert_eq!(app.read(cx).store.task(goal).unwrap().stage, Stage::Backlog);
-        let runs_before_drag = app.read(cx).store.runs().len();
-        w.drag_to(format!("card-{goal}"), "column-todo", cx);
+        let runs_before_approval = app.read(cx).store.runs().len();
+        app.update(cx, |a, cx| a.change_stage(goal, Stage::Planned, cx));
         assert!(app.read(cx).store.goal_execution_approved(goal));
         assert!(app.read(cx).store.research_pending_approval(other));
         assert_eq!(
             app.read(cx).store.runs().len(),
-            runs_before_drag,
-            "Dragging must not execute"
+            runs_before_approval,
+            "Approval must not execute"
         );
     })
     .unwrap();
-    screenshot(&mut cx, handle, &root, "01-approved-goal-board.png");
+    screenshot(&mut cx, handle, &root, "01-approved-goal-list.png");
     cx.update_window(handle, |_, w, cx| {
         w.render_frame(cx);
         w.click("run-project-todo", cx);
@@ -487,7 +485,7 @@ pub fn run() {
     }).unwrap();
     screenshot(&mut cx, handle, &root, "05-evidence-header.png");
     println!(
-        "INTAKE QA PASSED: understanding failure/retry, pending understanding persistence, clarification feedback, explicit confirmation, light/dark understanding screenshots, missing-field auto repair, complete plan, required Topic, Goal-only drag approval, peak concurrency {peak}, final report, reapproval and selective rerun, repeated request, blocked branch/resume, persistence. {}",
+        "INTAKE QA PASSED: understanding failure/retry, pending understanding persistence, clarification feedback, explicit confirmation, light/dark understanding screenshots, missing-field auto repair, complete plan, required Topic, Goal-only approval, peak concurrency {peak}, final report, reapproval and selective rerun, repeated request, blocked branch/resume, persistence. {}",
         root.display()
     );
 }
@@ -510,7 +508,6 @@ fn interrupted_understanding_resume(cx: &mut HeadlessAppContext, store: &Store, 
             a.store = reopened.clone();
             a.storage = Some(Storage::new(path.clone()));
             a.navigate(Scope::Topic(reopened.research_requests()[0].topic_id.unwrap()), w, cx);
-            a.layout = Layout::List;
             a.recovery.checks.insert(run_id, crate::recovery::SessionCheck::Running);
             a.resume_request_understanding(1, cx);
             assert_eq!(a.store.runs().len(), reopened.runs().len(), "Never duplicate a running session");
@@ -547,7 +544,6 @@ fn topic_understanding_screenshots(cx: &mut HeadlessAppContext, store: &Store, r
             view.update(cx, |a, cx| {
                 a.store = store.clone();
                 a.navigate(Scope::Topic(request.topic_id.unwrap()), w, cx);
-                a.layout = Layout::List;
                 cx.notify();
             });
             cx.new(|cx| base::Root::new(view, w, cx))

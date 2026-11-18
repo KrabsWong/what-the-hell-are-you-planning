@@ -229,39 +229,6 @@ fn task_state_icon(
     let state = store.task_status(task.id, batch).execution;
     state.icon_view(format!("task-state-icon-{}", task.id), cx)
 }
-// All hierarchy levels use the same semantic card surfaces, including hover states.
-pub(crate) fn board_card_colors(stage: Stage, cx: &App) -> (u32, u32, u32) {
-    match (gpui_kit::component::Theme::global(cx).is_dark(), stage) {
-        (false, Stage::Backlog) => (0xe8ebf0, 0xdde2e9, 0xc6cdd8),
-        (false, Stage::Planned) => (0xdeebfa, 0xd0e2f7, 0xb1cce9),
-        (false, Stage::InProgress) => (0xffedc9, 0xffe4ae, 0xe4c47e),
-        (false, Stage::Review) => (0xeee2fa, 0xe4d4f5, 0xcfb7e8),
-        (false, Stage::Done) => (0xdcefe5, 0xcce7d9, 0xa8d2be),
-        (false, Stage::Cancelled) => (0xf2e0e2, 0xead2d6, 0xdab6bc),
-        (true, Stage::Backlog) => (0x282e38, 0x313a48, 0x434d5e),
-        (true, Stage::Planned) => (0x20354e, 0x294361, 0x3b6086),
-        (true, Stage::InProgress) => (0x49391e, 0x594625, 0x7d6132),
-        (true, Stage::Review) => (0x3a2b4d, 0x49365f, 0x674b82),
-        (true, Stage::Done) => (0x203e33, 0x294e40, 0x3e705c),
-        (true, Stage::Cancelled) => (0x442c33, 0x543740, 0x754c57),
-    }
-}
-/// Card actions keep the card's semantic hue while remaining visible at rest.
-pub(crate) fn board_action_style(stage: Stage, cx: &App) -> gpui_kit::component::button::ButtonCustomVariant {
-    let (surface, hover, border) = board_card_colors(stage, cx);
-    let darken = |color: u32, percent: u32| {
-        let channel = |shift: u32| (((color >> shift) & 255_u32) * percent / 100) << shift;
-        channel(16) | channel(8) | channel(0)
-    };
-    let dark = gpui_kit::component::Theme::global(cx).is_dark();
-    gpui_kit::component::button::ButtonCustomVariant::new(cx)
-        .color(rgb(if dark { darken(surface, 72) } else { hover }).into())
-        .foreground(rgb(palette(cx).text).into())
-        .hover(rgb(if dark { surface } else { border }).into())
-        .active(rgb(if dark { darken(surface, 55) } else { darken(border, 92) }).into())
-}
-
-// Tree rows own hover feedback so the title and disclosure read as one item.
 pub(crate) fn sidebar_variant(
     active: bool,
     cx: &App,
@@ -287,55 +254,6 @@ fn section(title: &str, cx: &App) -> Div {
 }
 
 impl TaskApp {
-    pub(crate) fn layout_switch(&self, cx: &mut Context<Self>) -> AnyElement {
-        self.layout_switch_for(false, cx)
-    }
-    pub(crate) fn layout_switch_for(&self, steps: bool, cx: &mut Context<Self>) -> AnyElement {
-        use gpui_kit::component::tab::{Tab, TabBar};
-
-        let colors = palette(cx);
-        let layout = if steps {
-            self.steps_layout()
-        } else {
-            self.layout
-        };
-        TabBar::new(if steps { "steps-layout-switch" } else { "layout-switch" })
-            .segmented()
-            .selected_index(if layout == Layout::List { 0 } else { 1 })
-            .flex_shrink_0()
-            .h(px(36.))
-            .rounded(px(GROUP_RADIUS))
-            .bg(rgb(colors.side))
-            .child(
-                Tab::new().aria_label("List").child(
-                    row()
-                        .id(if steps { "steps-list-view" } else { "list-view" })
-                        .child(gpui_kit::component::Icon::new(assets::IconName::Menu).size_4())
-                        .child("List")
-                        .map(observed),
-                ),
-            )
-            .child(
-                Tab::new().aria_label("Board").child(
-                    row()
-                        .id(if steps { "steps-board-view" } else { "board-view" })
-                        .child(gpui_kit::component::Icon::new(assets::IconName::LayoutDashboard).size_4())
-                        .child("Board")
-                        .map(observed),
-                ),
-            )
-            .on_click(cx.listener(move |this, index: &usize, _, cx| {
-                let layout = if *index == 0 { Layout::List } else { Layout::Board };
-                if steps {
-                    this.set_steps_layout(layout);
-                } else {
-                    this.layout = layout;
-                }
-                cx.notify();
-            }))
-            .into_any_element()
-    }
-
     fn task_location_label(&self, task: &Task) -> String {
         let id = self.store.identifier(task);
         match task.research.as_ref().map(|r| r.kind) {
@@ -1788,14 +1706,7 @@ impl TaskApp {
                 format!("{count} goals · grouped by topic")
             }
         } else {
-            format!(
-                "{count} goals · {}",
-                if self.layout == Layout::List {
-                    "grouped by project"
-                } else {
-                    "grouped by topic"
-                }
-            )
+            format!("{count} goals · grouped by project")
         };
         row()
             .h(px(60.))
@@ -1849,7 +1760,7 @@ impl TaskApp {
             .dropdown_menu_with_anchor(Anchor::TopLeft, move |mut menu, _, _| {
                 for filter in [AllStatus::All, AllStatus::Open]
                     .into_iter()
-                    .chain(Stage::BOARD_ORDER.map(AllStatus::Stage))
+                    .chain(Stage::WORKFLOW_ORDER.map(AllStatus::Stage))
                     .chain(crate::workflow::ExecutionGroup::ALL.map(AllStatus::Execution))
                 {
                     let entity = entity.clone();
@@ -1904,7 +1815,6 @@ impl TaskApp {
                         .min_w_0()
                         .child(Input::new(&self.search).id("task-search")),
                 )
-                .child(self.layout_switch(cx))
                 .child(
                     tool_icon("display", assets::IconName::Settings2, "Display options")
                         .selected(self.show_display)
@@ -1914,7 +1824,7 @@ impl TaskApp {
                         })),
                 ),
         );
-        if self.scope() == Scope::Archive && self.layout == Layout::List {
+        if self.scope() == Scope::Archive {
             main = main.child(self.topic_directory(None, cx));
         }
         if let Scope::Project(id) = self.scope() {
@@ -2011,9 +1921,6 @@ impl TaskApp {
                         ),
                 )
                 .into_any_element();
-        }
-        if self.layout == Layout::Board {
-            return main.child(self.board(&tasks, cx)).into_any_element();
         }
         let ordered = self.order_visible_tasks(&tasks);
         let row_height = if self.scope() == Scope::Archive { 72. } else if self.compact { 32. } else { 38. };
@@ -2364,336 +2271,6 @@ impl TaskApp {
                         )),
                 )
             })
-            .map(observed)
-            .map(|element| self.task_context(element, id, cx))
-            .into_any_element()
-    }
-    pub(crate) fn board(&self, tasks: &[Task], cx: &mut Context<Self>) -> AnyElement {
-        let colors = palette(cx);
-        let archive = self.scope() == Scope::Archive;
-        col().flex_1().min_h_0()
-            .when(!archive, |d| d.child(div().id("board-guidance").px_6().pb_2().child(label(
-                "Drop Todo tasks into Execution to submit. Waiting → Queued → Running; problems appear under Needs attention.", cx))))
-            .when(archive, |d| d.child(div().id("archive-board-guidance").px_6().pb_2().child(label(
-                "Archived history · retained results. Restore a goal to resume work.", cx))))
-            .child(row()
-            .id("board-scroll")
-            .track_scroll(&self.navigation.board_scroll)
-            .items_start()
-            .gap_4()
-            .px_6()
-            .pb_5()
-            .flex_1()
-            .min_h_0()
-            .overflow_x_scroll()
-            .restrict_scroll_to_axis()
-            .children(Stage::BOARD_ORDER.into_iter()
-                .filter(|stage| !archive || tasks.iter().any(|t| t.parent_id.is_none()
-                    && self.display_task_status(t.id).phase == *stage))
-                .map(|stage| {
-                let entity = cx.entity().downgrade();
-                let cards: Vec<_> = tasks
-                    .iter()
-                    .filter(|t| t.parent_id.is_none() && self.display_task_status(t.id).phase == stage)
-                    .cloned()
-                    .collect();
-                col()
-                    .id(format!("column-{}", stage.key()))
-                    .w(px(if stage == Stage::InProgress { 350. } else { 292. }))
-                    .flex_shrink_0()
-                    .h_full()
-                    .gap_3()
-                    .rounded(px(GROUP_RADIUS))
-                    .when(!archive, |d| d
-                        .drag_over::<DragTask>(move |d, drag, _, cx| {
-                            let allowed = entity.upgrade().is_some_and(|entity| {
-                                let app = entity.read(cx);
-                                app.store.validate_manual_transition(drag.id, stage, app.todo_batch.as_ref()).is_ok()
-                            });
-                            d.bg(rgb(if allowed { colors.hover } else { colors.danger }))
-                        })
-                        .on_drop(cx.listener(move |this, drag: &DragTask, _, cx| {
-                            this.change_stage(drag.id, stage, cx)
-                        })))
-                    .child(
-                        row()
-                            .justify_between()
-                            .h_9()
-                            .child(
-                                row()
-                                    .child(
-                                        div()
-                                            .text_color(rgb(stage_color(stage, cx)))
-                                            .child(crate::workflow::phase_label(stage)),
-                                    )
-                                    .child(label(cards.len().to_string(), cx))
-                                    .when(stage == Stage::InProgress && !archive, |d| d.child(self.execution_status_filter(&cards, cx))),
-                            )
-                            .when(!archive, |d| d.child(
-                                tool_icon(
-                                    format!("add-{}", stage.key()),
-                                    assets::IconName::Plus,
-                                    "New research starts in Backlog",
-                                )
-                                .on_click(cx.listener(
-                                    move |this, _, w, cx| this.request_new_research(w, cx),
-                                )),
-                            )),
-                    )
-                    .child(
-                        col()
-                            .id(format!("cards-{}", stage.key()))
-                            .track_scroll(&self.navigation.board_column(stage))
-                            .overflow_y_scroll()
-                            .restrict_scroll_to_axis()
-                            .flex_1()
-                            .min_h_0()
-                            .gap_3()
-                            .children(if stage == Stage::InProgress && !archive {
-                                self.execution_board_cards(&cards, cx)
-                            } else { self.topic_grouped_cards(&cards, stage.key(), cx) })
-                            .when(cards.is_empty() && !archive, |d| {
-                                d.child(
-                                    div()
-                                        .id(format!("empty-drop-{}", stage.key()))
-                                        .h_24()
-                                        .border_1()
-                                        .border_color(rgb(colors.line))
-                                        .rounded(px(CONTROL_RADIUS))
-                                        .flex()
-                                        .items_center()
-                                        .justify_center()
-                                        .child(label("Drop a goal here", cx)),
-                                )
-                            }),
-                    )
-                    .map(observed)
-            })).map(observed))
-            .into_any_element()
-    }
-    pub(crate) fn goal_card(&self, t: &Task, cx: &mut Context<Self>) -> AnyElement {
-        let colors = palette(cx);
-        // Keep each status recognizable even when a card is hovered.
-        let dark = gpui_kit::component::Theme::global(cx).is_dark();
-        let archived = self.store.task_is_archived(t.id);
-        let status = self.display_task_status(t.id);
-        let completed = status.execution == crate::execution_status::ExecutionStatus::Done;
-        let generic_completion = status.reason == status.execution.hint()
-            || status.reason == format!(
-                "{} done. {}",
-                self.store.research_children(t.id).len(),
-                status.execution.hint(),
-            );
-        let (surface, hover, border) = board_card_colors(status.phase, cx);
-        let is_goal = t.research.as_ref()
-            .is_some_and(|research| research.kind == crate::research::ResearchKind::Goal);
-        let mut metadata = t.labels.iter()
-            .filter(|label| !is_goal || label.as_str() != "Research")
-            .take(2).cloned().collect::<Vec<_>>();
-        if !t.bucket.is_empty() && (!is_goal || t.bucket != "Now") {
-            metadata.push(t.bucket.clone());
-        }
-        if let Some(cycle) = &t.cycle {
-            metadata.push(format!("⟳ {cycle}"));
-        }
-        let id = t.id;
-        let drag = DragTask {
-            id,
-            title: t.title.clone(),
-        };
-        col()
-            .id(format!("card-{id}"))
-            .p_3()
-            .gap_2()
-            .rounded(px(GROUP_RADIUS))
-            .border_1()
-            .border_color(rgb(border))
-            .bg(rgb(surface))
-            .cursor_pointer()
-            .hover(|d| d.bg(rgb(hover)))
-            .on_click(cx.listener(move |this, _, w, cx| this.request_task(id, false, w, cx)))
-            .when(!archived, |d| {
-                d.on_drag(drag, |value, _, _, cx| cx.new(|_| value.clone()))
-            })
-            .child(
-                row()
-                    .items_start()
-                    .gap_2()
-                    .child(
-                        row()
-                            .flex_1()
-                            .min_w_0()
-                            .flex_wrap()
-                            .gap_1()
-                            .child(
-                                div()
-                                    .rounded(px(4.))
-                                    .px_1()
-                                    .py(px(2.))
-                                    .bg(rgba(if dark { 0xffffff14 } else { 0xffffff99 }))
-                                    .text_xs()
-                                    .text_color(rgb(colors.text))
-                                    .child(self.store.identifier(t)),
-                            )
-                            .when(
-                                !matches!(self.scope(), Scope::Project(_) | Scope::Topic(_)),
-                                |d| {
-                                    d.child(
-                                        div()
-                                            .min_w_0()
-                                            .rounded(px(4.))
-                                            .px_1()
-                                            .py(px(2.))
-                                            .bg(rgba(if dark { 0xffffff14 } else { 0xffffff99 }))
-                                            .text_xs()
-                                            .text_color(rgb(colors.text))
-                                            .child(
-                                                self.store
-                                                    .projects()
-                                                    .iter()
-                                                    .find(|p| p.id == t.project_id)
-                                                    .map(|p| p.name.clone())
-                                                    .unwrap_or_else(|| "Unassigned project".into()),
-                                            ),
-                                    )
-                                },
-                            ),
-                    )
-                    .child(self.execution_indicator(id, cx)),
-            )
-            .when(t.priority != Priority::Medium, |d| {
-                d.child(label(format!("Priority: {}", t.priority.label()), cx).text_xs())
-            })
-            .child(
-                div()
-                    .line_height(relative(1.4))
-                    .child(selectable(t.title.clone())),
-            )
-            .when(!completed || status.display_label.is_some(), |card| {
-                card.child(
-                    chip(status.label(), status.execution.color(cx), cx)
-                        .id(format!("card-status-{id}"))
-                        .aria_label(status.label())
-                        .map(observed),
-                )
-            })
-            .when(!completed || !generic_completion, |card| {
-                card.child(label(status.reason.clone(), cx))
-            })
-            .when_some(
-                self.store
-                    .research_requests()
-                    .iter()
-                    .find(|r| r.goal_ids.contains(&id))
-                    .and_then(|r| r.brief.as_ref()),
-                |d, brief| {
-                    let summary: String = brief
-                        .deliverable
-                        .split_whitespace()
-                        .collect::<Vec<_>>()
-                        .join(" ")
-                        .chars()
-                        .take(90)
-                        .collect();
-                    d.child(
-                        label(
-                            format!(
-                                "Output · {summary}{}",
-                                if brief.deliverable.chars().count() > 90 {
-                                    "…"
-                                } else {
-                                    ""
-                                }
-                            ),
-                            cx,
-                        )
-                        .line_clamp(3),
-                    )
-                },
-            )
-            .when(!metadata.is_empty(), |d| {
-                d.child(
-                    div()
-                        .text_xs()
-                        .line_height(relative(1.4))
-                        .text_color(rgb(colors.secondary))
-                        .child(selectable(metadata.join(" · "))),
-                )
-            })
-            .child(
-                label(format!("Created · {}", if t.created_at.is_empty() {
-                    "Not recorded".to_string()
-                } else {
-                    crate::time_display::timestamp(&t.created_at)
-                }), cx)
-                    .id(format!("card-created-{id}"))
-                    .cursor_default(),
-            )
-            .when(is_goal, |card| {
-                card.child(
-                    button(format!("goal-progress-{id}"), format!("Open {} steps", self.store.research_children(id).len()))
-                        .custom(board_action_style(status.phase, cx))
-                        .border_1().border_color(rgb(border))
-                        .icon(assets::IconName::ArrowRight)
-                        .w_full()
-                        .on_click(cx.listener(move |a, _, w, cx| {
-                            cx.stop_propagation();
-                            a.record_goal_origin(id);
-                            a.open_goal_steps(id, w, cx);
-                        })),
-                )
-            })
-            .when(archived, |d| {
-                d.child(
-                    quiet_button(format!("restore-archived-{id}"), "Restore")
-                        .icon(assets::IconName::RotateCw)
-                        .tooltip("Restore this archived research and its retained results")
-                        .on_click(cx.listener(move |this, _, _, cx| {
-                            cx.stop_propagation();
-                            this.restore_archived(id, cx);
-                        })),
-                ).child(
-                    danger_button(format!("delete-archived-{id}"), "Delete…")
-                        .h(px(28.)).px_2().flex_shrink_0()
-                        .tooltip("Permanently delete this archived research and its saved history")
-                        .on_click(cx.listener(move |this, _, w, cx| {
-                            cx.stop_propagation();
-                            this.request_delete_archived(crate::archive_app::ArchiveTarget::Task(id), w, cx);
-                        })),
-                )
-            })
-            .when(!archived && self.store.research_pending_approval(id), |d| {
-                d.child(label("Awaiting approval", cx)).child(
-                    quiet_button(
-                        format!("approve-topic-{id}"),
-                        if t.parent_id.is_some() {
-                            "Approve parent goal"
-                        } else {
-                            "Approve research"
-                        },
-                    )
-                    .icon(assets::IconName::ArrowRight)
-                    .on_click(cx.listener(move |this, _, _, cx| {
-                        cx.stop_propagation();
-                        this.approve_research_topic(id, cx);
-                    })),
-                )
-            })
-            .when(
-                !archived
-                    && t.research.as_ref().is_some_and(|r| r.requires_approval)
-                    && t.stage == Stage::Planned,
-                |d| {
-                    d.child(label(
-                        if self.store.has_research_plan(id) {
-                            "Approved · open to run research"
-                        } else {
-                            "Approved · open to generate research steps"
-                        },
-                        cx,
-                    ))
-                },
-            )
             .map(observed)
             .map(|element| self.task_context(element, id, cx))
             .into_any_element()
@@ -3286,9 +2863,7 @@ impl TaskApp {
                         return;
                     }
                     if let Some(goal) = this.store.owning_research_goal(id) {
-                        let layout = this.steps_layout();
                         this.open_goal_steps(goal, w, cx);
-                        this.set_steps_layout(layout);
                     } else {
                         this.view_task_result(id, cx);
                     }

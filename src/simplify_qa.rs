@@ -1179,7 +1179,6 @@ fn run_checks(layout_only: bool) {
                     "Same titles in different projects stay independent"
                 );
                 app.update(cx, |a, cx| {
-                    a.layout = crate::app::Layout::List;
                     a.navigate(Scope::All, w, cx);
                 });
                 w.render_frame(cx);
@@ -1227,11 +1226,9 @@ fn run_checks(layout_only: bool) {
             .unwrap();
             cx.run_until_parked();
             cx.update_window(handle, |_, w, cx| {
-                w.click("list-view", cx);
                 assert!(w.find("run-project-todo").visible());
                 assert!(app.read(cx).directory_project.is_none());
                 assert!(app.read(cx).planning_project.is_none());
-                assert!(app.read(cx).layout == crate::app::Layout::List);
                 assert!(app.read(cx).store.runs().iter().any(|r| r.id == latest_id));
             })
             .unwrap();
@@ -1366,31 +1363,7 @@ fn run_checks(layout_only: bool) {
                 assert_eq!(app.read(cx).scope(), Scope::Project(1));
                 assert!(app.read(cx).query().is_empty());
                 assert!(w.find("navigation-back").visible());
-                w.click("board-view", cx);
                 w.render_frame(cx);
-                let column = format!("column-{}", Stage::Planned.key());
-                let before = w.find(column.clone()).bounds().left();
-                w.scroll(
-                    column.clone(),
-                    ScrollDelta::Pixels(point(px(0.), px(-240.))),
-                    cx,
-                );
-                w.render_frame(cx);
-                assert_eq!(
-                    w.find(column.clone()).bounds().left(),
-                    before,
-                    "Vertical scroll must not move the board horizontally"
-                );
-                w.scroll(
-                    column.clone(),
-                    ScrollDelta::Pixels(point(px(-120.), px(0.))),
-                    cx,
-                );
-                w.render_frame(cx);
-                assert!(
-                    w.find(column.clone()).bounds().left() < before,
-                    "Explicit horizontal scrolling remains available"
-                );
                 app.update(cx, |a, cx| a.open_task(goal, w, cx));
                 w.render_frame(cx);
                 w.click("navigation-back", cx);
@@ -1398,7 +1371,6 @@ fn run_checks(layout_only: bool) {
                 w.click("navigation-back", cx);
                 assert_eq!(app.read(cx).scope(), Scope::Project(1));
                 assert!(app.read(cx).selected().is_none());
-                assert!(app.read(cx).layout == crate::app::Layout::Board);
             })
             .unwrap();
             screenshot(&mut cx, handle, &directory, "21-project-return.png");
@@ -1417,16 +1389,7 @@ fn run_checks(layout_only: bool) {
                 assert_eq!(done, vec![done_ids.0, done_ids.1]);
             })
             .unwrap();
-            cx.update_window(handle, |_, w, cx| {
-                w.scroll(
-                    "column-backlog",
-                    ScrollDelta::Pixels(point(px(-1200.), px(0.))),
-                    cx,
-                );
-                w.render_frame(cx);
-            })
-            .unwrap();
-            screenshot(&mut cx, handle, &directory, "21-all-board-tags.png");
+            screenshot(&mut cx, handle, &directory, "21-all-list-tags.png");
             cx.update_window(handle, |_, w, cx| {
                 app.update(cx, |a, cx| {
                     a.clear_query();

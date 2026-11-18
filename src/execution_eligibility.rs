@@ -210,7 +210,7 @@ impl ExecutionEligibility {
         }
     }
 
-    /// Exact short phrase for list, board and period/progress rows. `None`
+    /// Exact short phrase for list and period/progress rows. `None`
     /// keeps the ordinary phase/execution label.
     pub(crate) fn label_override(&self) -> Option<String> {
         let decision = self.decision();

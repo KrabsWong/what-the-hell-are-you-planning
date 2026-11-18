@@ -107,7 +107,7 @@ The default per-period deadline is 30 minutes and can be adjusted in advanced se
 ## 6. Results, history and concurrency
 
 - Results show the summary, report, sources, query time range, actual collection time and missing or conflicting information. Source-field validation is not factual verification.
-- Each period is viewed in automation history and never enters the normal board, project task tree, unfinished-research list or automatic publication.
+- Each period is viewed in automation history and never enters the ordinary research list, project task tree, unfinished-research list or automatic publication.
 - Targets for T15: lists load with a bound or page, and details load on demand. Current storage still deserializes all history and report bodies into memory; the route matrix records that boundary.
 - Log cleanup handles only terminal periods and never deletes reports, sources, recovery inputs, session identifiers or deduplication evidence.
 - Automation periods use a separate concurrency pool (default 2, counting only running periods) and a separate queue. They consume no Research slots and never join the Research Topic FIFO.

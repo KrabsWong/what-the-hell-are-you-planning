@@ -1,6 +1,6 @@
-//! Isolated native drag/drop acceptance. Never invokes a configured real agent.
+//! Isolated native workflow acceptance. Never invokes a configured real agent.
 use crate::{
-    app::{AllStatus, Layout, Scope, TaskApp},
+    app::{AllStatus, Scope, TaskApp},
     batch::{BatchState, TodoBatch},
     domain::{Stage, Store},
     persistence::Storage,
@@ -25,7 +25,7 @@ prompt = sys.argv[-1]
 time.sleep(0.15)
 text = 'Local acceptance result'
 if 'FINAL RESPONSE CONTRACT' in prompt:
-    if 'Current task: Analyze drag evidence' in prompt or 'Current task: Write drag report' in prompt:
+    if 'Current task: Analyze submitted evidence' in prompt or 'Current task: Write submitted report' in prompt:
         assert 'EVIDENCE_SENTINEL' in prompt, 'Dependencies must be passed before execution'
     text = json.dumps({'status': 'complete', 'report': 'EVIDENCE_SENTINEL Local fixture evidence. [Source](https://example.com/qa)', 'sources': [{'title': 'Local fixture', 'url': 'https://example.com/qa', 'published_at': 'unknown'}]})
 print(json.dumps({'type': 'text', 'part': {'text': text}}), flush=True)
@@ -37,7 +37,7 @@ print(json.dumps({'type': 'text', 'part': {'text': text}}), flush=True)
     store.research_config_mut().ego_path = cli.to_string_lossy().into();
     store.project_at_mut(0).unwrap().directory = root.to_string_lossy().into();
     let id = store
-        .create_task("Drag to submit · isolated task", 1, Stage::Backlog, None)
+        .create_task("Submit · isolated task", 1, Stage::Backlog, None)
         .unwrap();
     let path = root.join("workspace.json");
     Storage::new(path.clone()).save(&store).unwrap();
@@ -54,7 +54,6 @@ print(json.dumps({'type': 'text', 'part': {'text': text}}), flush=True)
             app.update(cx, |a, cx| {
                 a.attach_storage(Storage::new(path.clone()), w, cx);
                 a.navigate(Scope::All, w, cx);
-                a.layout = Layout::Board;
             });
             entity = Some(app.clone());
             cx.new(|cx| base::Root::new(app, w, cx))
@@ -66,15 +65,19 @@ print(json.dumps({'type': 'text', 'part': {'text': text}}), flush=True)
         app.update(cx, |a, cx| a.start_run(id, cx));
         assert!(app.read(cx).store.runs().is_empty(), "Legacy tasks cannot start new runs");
     }).unwrap();
-    // A single goal drop must execute the complete dependency chain in order.
+    // A single goal submission must execute the complete dependency chain in order.
     let (chain, steps) = app.update(&mut cx, |a, _| {
-        let goal = a.store.create_research_goal("Drag dependency acceptance".into(), "Local evidence".into(), 1).unwrap();
-        let steps = a.store.apply_research_plan(goal, r#"{"tasks":[{"title":"Collect drag evidence","instructions":"Collect","kind":"collect","depends_on":[]},{"title":"Analyze drag evidence","instructions":"Analyze","kind":"analyze","depends_on":[0]},{"title":"Write drag report","instructions":"Report","kind":"advise","depends_on":[1]}]}"#).unwrap();
+        let goal = a.store.create_research_goal("Submission dependency acceptance".into(), "Local evidence".into(), 1).unwrap();
+        let steps = a.store.apply_research_plan(goal, r#"{"tasks":[{"title":"Collect submitted evidence","instructions":"Collect","kind":"collect","depends_on":[]},{"title":"Analyze submitted evidence","instructions":"Analyze","kind":"analyze","depends_on":[0]},{"title":"Write submitted report","instructions":"Report","kind":"advise","depends_on":[1]}]}"#).unwrap();
         (goal, steps)
     });
     cx.update_window(handle, |_, w, cx| {
         w.render_frame(cx);
-        w.drag_to(format!("card-{chain}"), "column-in-progress", cx);
+        app.update(cx, |a, cx| a.open_task(chain, w, cx));
+        w.render_frame(cx);
+        click_in(w, cx, "detail-scroll", "property-Stage");
+        w.click("set-in-progress", cx);
+        w.render_frame(cx);
         let a = app.read(cx);
         assert_eq!(
             a.store.task_status(steps[1], a.todo_batch.as_ref()).group,
@@ -138,7 +141,6 @@ print(json.dumps({'type': 'text', 'part': {'text': text}}), flush=True)
             crate::appearance::apply(mode, Some(w), cx);
             app.update(cx, |a, cx| {
                 a.navigate(Scope::All, w, cx);
-                a.layout = Layout::Board;
                 a.all_status = AllStatus::All;
             });
             w.render_frame(cx);
@@ -146,12 +148,11 @@ print(json.dumps({'type': 'text', 'part': {'text': text}}), flush=True)
         .unwrap();
         cx.capture_screenshot(handle)
             .unwrap()
-            .save(root.join(format!("board-{name}.png")))
+            .save(root.join(format!("list-{name}.png")))
             .unwrap();
     }
     cx.update_window(handle, |_, w, cx| {
         app.update(cx, |a, cx| {
-            a.layout = Layout::List;
             a.all_status = AllStatus::Stage(Stage::InProgress);
             cx.notify();
         });
@@ -197,10 +198,27 @@ print(json.dumps({'type': 'text', 'part': {'text': text}}), flush=True)
         .save(root.join("steps.png"))
         .unwrap();
     println!(
-        "Workflow drag, queue, dependency protection and views passed: {}",
+        "Workflow submission, queue, dependency protection and views passed: {}",
         root.display()
     );
     cx.update(|cx| cx.quit());
+}
+
+fn click_in(w: &mut Window, cx: &mut App, scroll: &str, id: &str) {
+    w.render_frame(cx);
+    for _ in 0..30 {
+        let bounds = w.find(id.to_string()).bounds();
+        let area = w.find(scroll.to_string()).bounds();
+        let top = area.top().max(px(110.));
+        let bottom = area.bottom().min(w.viewport_size().height - px(40.)) - px(8.);
+        if bounds.top() >= top && bounds.bottom() <= bottom {
+            break;
+        }
+        let delta = if bounds.top() < top { 120. } else { -120. };
+        w.scroll(scroll.to_string(), ScrollDelta::Pixels(point(px(0.), px(delta))), cx);
+    }
+    assert!(w.find(id.to_string()).visible(), "Could not scroll to {id}");
+    w.click(id.to_string(), cx);
 }
 
 /// Verify actual element positions in all three views, including execution groups.
@@ -229,7 +247,6 @@ pub fn display_order() {
             app.store = store.clone();
             app.expanded_sidebar_projects = vec![1];
             app.navigate(Scope::Project(1), w, cx);
-            app.layout = Layout::List;
         });
         entity = Some(app.clone());
         cx.new(|cx| base::Root::new(app, w, cx))
@@ -242,19 +259,11 @@ pub fn display_order() {
             assert!(w.find(format!("task-row-{}", pair[0])).bounds().top() < w.find(format!("task-row-{}", pair[1])).bounds().top());
             assert!(w.find(format!("sidebar-task-{}", pair[0])).bounds().top() < w.find(format!("sidebar-task-{}", pair[1])).bounds().top());
         }
-        app.update(cx, |a, cx| { a.layout = Layout::Board; cx.notify(); });
-        w.render_frame(cx);
-        for pair in expected.windows(2) {
-            assert!(w.find(format!("card-{}", pair[0])).bounds().top() < w.find(format!("card-{}", pair[1])).bounds().top());
-        }
         app.update(cx, |a, cx| {
             for id in expected { a.store.set_stage(id, Stage::InProgress).unwrap(); }
             cx.notify();
         });
         w.render_frame(cx);
-        for pair in expected.windows(2) {
-            assert!(w.find(format!("card-{}", pair[0])).bounds().top() < w.find(format!("card-{}", pair[1])).bounds().top());
-        }
         assert!(app.read(cx).store.runs().is_empty());
         assert!(app.read(cx).todo_batch.is_none());
     }).unwrap();
@@ -267,7 +276,6 @@ pub fn display_order() {
             a.collapsed_sidebar_goals.retain(|id| *id != goal);
             a.open_task(goal, w, cx);
             a.set_goal_steps_tab(Some(goal));
-            a.set_steps_layout(Layout::List);
             cx.notify();
             (goal, steps)
         });
@@ -281,12 +289,12 @@ pub fn display_order() {
         assert_eq!(app.read(cx).store.detail_task_neighbors(steps[1]).1, steps[2]);
         assert!(app.read(cx).store.runs().is_empty());
     }).unwrap();
-    println!("Newest-first sidebar, List, Board and execution-group positions verified.");
+    println!("Newest-first sidebar, list and execution-group positions verified.");
     cx.update(|cx| cx.quit());
 }
 
 /// Repeatable horizontal-scroll workload with validated research results, no real agents.
-pub fn scroll_benchmark() {
+pub fn list_scroll() {
     let mut store = Store::empty();
     store.project_at_mut(0).unwrap().directory = std::env::temp_dir().to_string_lossy().into();
     store.set_default_model("fixture/model".into());
@@ -308,7 +316,7 @@ pub fn scroll_benchmark() {
     let mut view = None;
     let window = cx.open_window(size(px(1000.), px(720.)), |w, cx| {
         let app = cx.new(|cx| TaskApp::new_mock(w, cx));
-        app.update(cx, |a, cx| { a.store = store; a.navigate(Scope::All, w, cx); a.layout = Layout::Board;
+        app.update(cx, |a, cx| { a.store = store; a.navigate(Scope::All, w, cx);
             a.todo_batch = Some(TodoBatch { project_id: 1, items: vec![benchmark_goal], completed: 0, runs_completed: 0,
                 state: BatchState::Paused("Scroll fixture paused queue".into()), run_ids: Default::default(),
                 done_items: vec![], failed_items: vec![], failed_tasks: vec![] }); });
@@ -316,6 +324,16 @@ pub fn scroll_benchmark() {
         cx.new(|cx| base::Root::new(app, w, cx))
     }).unwrap();
     let handle = window.into();
+    cx.update_window(handle, |_, w, cx| { w.render_frame(cx); }).unwrap();
+    let benchmark_goal = cx
+        .update_window(handle, |_, _, cx| {
+            view.as_ref().unwrap().read(cx).visible_tasks().first().unwrap().id
+        })
+        .unwrap();
+    view.as_ref().unwrap().update(&mut cx, |a, cx| {
+        a.todo_batch.as_mut().unwrap().items = vec![benchmark_goal];
+        cx.notify();
+    });
     cx.update_window(handle, |_, w, cx| { w.render_frame(cx); }).unwrap();
     cx.update_window(handle, |_, _, cx| {
         let a = view.as_ref().unwrap().read(cx);
@@ -327,19 +345,18 @@ pub fn scroll_benchmark() {
         }
     }).unwrap();
     let computations = crate::workflow_views::STATUS_COMPUTATIONS.load(std::sync::atomic::Ordering::Relaxed);
-    let initial_left = cx.update_window(handle, |_, w, _| w.find("column-in-progress").bounds().left()).unwrap();
     let mut elapsed = Vec::new();
     for n in 0..30 {
         let start = Instant::now();
         cx.update_window(handle, |_, w, cx| {
-            let position = w.find("board-scroll").bounds().center();
+            let position = w.find("collection-table-scroll").bounds().center();
             w.dispatch_event(MouseMoveEvent {
                 position,
                 ..Default::default()
             }.to_platform_input(), cx);
             w.dispatch_event(ScrollEvent {
                 position,
-                delta: ScrollDelta::Pixels(point(px(if n < 15 { -12. } else { 12. }), px(0.))),
+                delta: ScrollDelta::Pixels(point(px(0.), px(if n < 15 { -12. } else { 12. }))),
                 ..Default::default()
             }.to_platform_input(), cx);
             // The normal input path redraws dirty views. render_frame() forces
@@ -348,8 +365,12 @@ pub fn scroll_benchmark() {
         }).unwrap();
         elapsed.push(start.elapsed().as_secs_f64() * 1000.);
         if n == 14 {
-            cx.update_window(handle, |_, w, _| {
-                assert!(w.find("column-in-progress").bounds().left() < initial_left, "Horizontal gesture must move the board");
+            cx.update_window(handle, |_, w, cx| {
+                assert!(
+                    view.as_ref().unwrap().read(cx).navigation.task_list_scroll
+                        .0.borrow().base_handle.offset().y < px(-100.),
+                    "Vertical gesture must move the list"
+                );
             }).unwrap();
         }
     }
@@ -362,7 +383,7 @@ pub fn scroll_benchmark() {
         assert_eq!(app.read(cx).display_task_status(benchmark_goal).phase, Stage::Cancelled, "Render cache must not retain stale status across frames");
     }).unwrap();
     elapsed.sort_by(f64::total_cmp);
-    println!("Board scroll workload: 24 goals / 72 completed steps; median {:.2} ms, p95 {:.2} ms per scroll+render", elapsed[15], elapsed[28]);
+    println!("List scroll workload: 24 goals / 72 completed steps; median {:.2} ms, p95 {:.2} ms per scroll+render", elapsed[15], elapsed[28]);
     cx.update_window(handle, |_, w, cx| {
         app.update(cx, |a, cx| {
             a.navigate(Scope::Settings, w, cx);

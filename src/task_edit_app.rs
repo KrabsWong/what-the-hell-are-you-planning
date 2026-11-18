@@ -349,7 +349,7 @@ impl TaskApp {
         }
     }
 
-    /// Direct property/board change. Reuses the shared task-edit preparation
+    /// Direct property change. Reuses the shared task-edit preparation
     /// and does not enter the task-editor draft/navigation path.
     pub(crate) fn apply_task_metadata(
         &mut self,
@@ -420,7 +420,7 @@ impl TaskApp {
         .is_saved()
     }
 
-    /// Direct board/property stage change and scoped step reopen.
+    /// Direct property or stage change and scoped step reopen.
     pub(crate) fn apply_task_stage(
         &mut self,
         id: u64,
@@ -769,7 +769,7 @@ impl TaskApp {
         };
         if stage.after == crate::domain::Stage::InProgress {
             return Err(
-                "Save task details first, then submit execution from Board or the status menu."
+                "Save task details first, then submit execution from the status menu."
                     .into(),
             );
         }

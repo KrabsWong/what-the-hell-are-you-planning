@@ -10,8 +10,8 @@
 //! through `OriginStack::apply_intent`, and later asks the stack for a validated
 //! route. Background completion paths must never call these methods.
 
-use crate::app::{AllStatus, Layout, Scope};
-use crate::domain::{Stage, Store};
+use crate::app::{AllStatus, Scope};
+use crate::domain::Store;
 
 /// Maximum number of chained drill-downs remembered for Back.
 pub(crate) const MAX_ORIGIN_DEPTH: usize = 8;
@@ -27,22 +27,6 @@ pub(crate) const DEFAULT_RESULTS_LIMIT: usize = 20;
 pub(crate) struct ScrollState {
     pub x: f32,
     pub y: f32,
-}
-
-/// A visible board column and its vertical offset. The board itself scrolls
-/// horizontally; each column scrolls vertically.
-#[derive(Clone, Copy, Debug, PartialEq)]
-pub(crate) struct BoardAnchor {
-    pub stage: Stage,
-    pub y: f32,
-}
-
-#[derive(Clone, Debug, Default, PartialEq)]
-pub(crate) struct ResearchScroll {
-    /// Horizontal board offset in `x`; virtualized list offset in `y`.
-    pub outer: ScrollState,
-    /// Vertical offset of every board column that was scrolled.
-    pub columns: Vec<BoardAnchor>,
 }
 
 /// Which page a research period dialog was opened over.
@@ -67,18 +51,15 @@ pub(crate) enum Origin {
         scope: Scope,
         query: String,
         all_status: AllStatus,
-        layout: Layout,
-        scroll: ResearchScroll,
+        scroll: ScrollState,
     },
     ResearchTopic {
         topic: u64,
-        layout: Layout,
         scroll: ScrollState,
     },
     ResearchTask {
         task: u64,
         steps_tab: Option<u64>,
-        steps_layout: Layout,
         scroll: ScrollState,
     },
     ResearchResult {
@@ -175,7 +156,7 @@ pub(crate) enum NavigationIntent {
     /// Sidebar item, breadcrumb link, footer command, or a result's explicit
     /// "Open project". Clears the pending origin stack.
     Structural(NavigationTarget),
-    /// List/board row, report entry, period step, result "Open task", and other
+    /// List row, report entry, period step, result "Open task", and other
     /// in-context drill-downs. Records the caller state.
     DrillDown {
         target: NavigationTarget,
@@ -344,8 +325,7 @@ fn research_all(notice: &str) -> BackResolution {
             scope: Scope::All,
             query: String::new(),
             all_status: AllStatus::All,
-            layout: Layout::List,
-            scroll: ResearchScroll::default(),
+            scroll: ScrollState::default(),
         },
         notice,
     )
@@ -365,7 +345,6 @@ pub(crate) fn validate_origin(origin: Origin, store: &Store) -> BackResolution {
             scope,
             query,
             all_status,
-            layout,
             scroll,
         } => match &scope {
             Scope::Project(id) if !project_exists(store, *id) => {
@@ -376,33 +355,30 @@ pub(crate) fn validate_origin(origin: Origin, store: &Store) -> BackResolution {
             }
             Scope::Settings => BackResolution::route(Origin::SettingsPage {
                 tab: 0,
-                scroll: scroll.outer,
+                scroll,
             }),
             Scope::Automations => BackResolution::route(Origin::AutomationList {
-                scroll: scroll.outer,
+                scroll,
             }),
             Scope::AutomationRuns => BackResolution::route(Origin::AutomationResults {
                 filter: None,
                 history_limit: DEFAULT_RESULTS_LIMIT,
-                scroll: scroll.outer,
+                scroll,
             }),
             _ => BackResolution::route(Origin::ResearchList {
                 scope,
                 query,
                 all_status,
-                layout,
                 scroll,
             }),
         },
         Origin::ResearchTopic {
             topic,
-            layout,
             scroll,
         } => {
             if topic_exists(store, topic) {
                 BackResolution::route(Origin::ResearchTopic {
                     topic,
-                    layout,
                     scroll,
                 })
             } else {
@@ -412,14 +388,12 @@ pub(crate) fn validate_origin(origin: Origin, store: &Store) -> BackResolution {
         Origin::ResearchTask {
             task,
             steps_tab,
-            steps_layout,
             scroll,
         } => {
             if store.task(task).is_some() {
                 BackResolution::route(Origin::ResearchTask {
                     task,
                     steps_tab,
-                    steps_layout,
                     scroll,
                 })
             } else {
@@ -777,7 +751,7 @@ mod tests {
         AutomationOccurrence, AutomationOccurrenceSnapshot, AutomationPolicy, AutomationShape,
     };
     use crate::automation_schedule::{Schedule, ScheduleSpec};
-    use crate::domain::{Project, ProjectKind};
+    use crate::domain::{Project, ProjectKind, Stage};
 
     fn store() -> Store {
         let mut store = Store::empty();
@@ -875,14 +849,7 @@ mod tests {
             scope,
             query: "analysis".into(),
             all_status: AllStatus::All,
-            layout: Layout::List,
-            scroll: ResearchScroll {
-                outer: ScrollState { x: 4.0, y: 120.0 },
-                columns: vec![BoardAnchor {
-                    stage: Stage::Backlog,
-                    y: 36.0,
-                }],
-            },
+            scroll: ScrollState { x: 4.0, y: 120.0 },
         }
     }
 
@@ -963,7 +930,6 @@ mod tests {
         let resolution = validate_origin(
             Origin::ResearchTopic {
                 topic: 99,
-                layout: Layout::Board,
                 scroll: ScrollState::default(),
             },
             &store,
@@ -996,7 +962,6 @@ mod tests {
             Origin::ResearchTask {
                 task,
                 steps_tab: None,
-                steps_layout: Layout::List,
                 scroll: ScrollState::default(),
             },
             &store,
@@ -1431,7 +1396,6 @@ mod tests {
             Origin::ResearchTask {
                 task,
                 steps_tab: None,
-                steps_layout: Layout::List,
                 scroll: ScrollState::default(),
             },
             &store,

@@ -1,7 +1,6 @@
 use crate::{
-    app::{Layout, Scope, TaskApp},
+    app::{Scope, TaskApp},
     appearance::palette,
-    domain::Task,
     views::*,
 };
 use gpui_kit::{component::{Disableable, input::{InputEvent, Textarea, TextareaState}}, prelude::FluentBuilder, *};
@@ -221,69 +220,6 @@ impl TaskApp {
         body.into_any_element()
     }
 
-    pub(crate) fn topic_grouped_cards(
-        &self,
-        cards: &[Task],
-        group: &str,
-        cx: &mut Context<Self>,
-    ) -> Vec<AnyElement> {
-        if matches!(self.scope(), Scope::Topic(_)) {
-            return cards.iter().map(|t| self.goal_card(t, cx)).collect();
-        }
-        let mut result = Vec::new();
-        let mut topics: Vec<_> = self
-            .store
-            .topics()
-            .iter()
-            .filter(|topic| topic.automation_id.is_none())
-            .collect();
-        topics.sort_by_key(|topic| (crate::display_order::newest_id(topic.project_id), crate::display_order::newest_id(topic.id)));
-        for topic in topics {
-            let goals: Vec<_> = cards
-                .iter()
-                .filter(|t| {
-                    self.store
-                        .task_topic(t.id)
-                        .is_some_and(|v| v.id == topic.id)
-                })
-                .collect();
-            if goals.is_empty() {
-                continue;
-            }
-            let id = topic.id;
-            let colors = palette(cx);
-            result.push(
-                col()
-                    .id(format!("board-topic-group-{}-{id}", group))
-                    .p_2()
-                    .gap_2()
-                    .rounded(px(crate::appearance::SURFACE_RADIUS))
-                    .border_1()
-                    .border_color(rgb(colors.subtle_line))
-                    .bg(rgb(colors.panel))
-                    .child(row_button(format!("board-topic-{}-{id}", group), "")
-                        .w_full().min_w_0().px_1()
-                        .tooltip(topic.display_name())
-                        .accessibility_label(topic.display_name())
-                        .child(single_line_text(
-                            format!("board-topic-title-{}-{id}", group), topic.display_name()))
-                        .child(label(goals.len().to_string(), cx))
-                        .on_click(cx.listener(move |a, _, w, cx| a.navigate(Scope::Topic(id), w, cx))))
-                    .children(goals.into_iter().map(|t| self.goal_card(t, cx)))
-                    .map(observed)
-                    .into_any_element(),
-            );
-        }
-        // Corrupt/imported legacy roots stay visible while migration is resolved.
-        result.extend(
-            cards
-                .iter()
-                .filter(|t| self.store.task_topic(t.id).is_none())
-                .map(|t| self.goal_card(t, cx)),
-        );
-        result
-    }
-
     pub(crate) fn request_history(
         &self,
         project: Option<u64>,
@@ -367,7 +303,6 @@ impl TaskApp {
                                     button(format!("open-request-{id}"), "Review goals").on_click(
                                         cx.listener(move |a, _, w, cx| {
                                             a.navigate(Scope::Project(project), w, cx);
-                                            a.layout = Layout::Board;
                                             cx.notify();
                                         }),
                                     ),

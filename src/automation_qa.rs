@@ -1,6 +1,6 @@
 //! Offline automation acceptance: fake clock/runner, isolated SQLite workspace, no model calls.
 use crate::{
-    app::{Layout, Scope, TaskApp},
+    app::{Scope, TaskApp},
     appearance::Appearance,
     automation::{AutomationShape, DefinitionStatus, OccurrenceStatus},
     domain::{Stage, Store},
@@ -1641,7 +1641,6 @@ fn entry_route_check(root: &Path) {
 #[derive(Clone, Debug, PartialEq)]
 struct DispatchUiState {
     scope: Scope,
-    layout: Layout,
     selected: Option<u64>,
     selected_run: Option<u64>,
     automation_selected: Option<u64>,
@@ -1666,7 +1665,6 @@ fn dispatch_ui_state(
         let a = app.read(cx);
         DispatchUiState {
             scope: a.scope(),
-            layout: a.layout,
             selected: a.selected(),
             selected_run: a.selected_run(),
             automation_selected: a.automation_ui.selected,
@@ -2607,13 +2605,11 @@ fn completion_boundary_check(root: &Path) {
                         a.attach_storage(Storage::new(path.clone()), w, cx);
                         a.fixture_select_task(None);
                         a.note_selected_run(None);
-                        a.layout = Layout::List;
                         if route == "progress" {
                             a.set_scope_identity(Scope::Runs);
                             a.note_selected_run(Some(run_id));
                             a.show_run_result = true;
                             a.show_run_details = false;
-                            a.layout = Layout::Board;
                             a.detail_scroll.set_offset(point(px(0.), px(-110.)));
                             a.result_scroll.set_offset(point(px(0.), px(-130.)));
                         } else {

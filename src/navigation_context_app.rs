@@ -6,19 +6,16 @@
 //!
 //! Background completion paths must never call these methods.
 
-use std::cell::RefCell;
 use std::collections::BTreeMap;
 
-use crate::app::{AllStatus, Layout, Scope, TaskApp};
+use crate::app::{Scope, TaskApp};
 use crate::automation_views::AutomationDraft;
-use crate::domain::{Stage, Store};
 use crate::draft_exit::{
     ComposerDraft, DecisionOutcome, DecisionSurface, DraftSurface, ExitDecision, ExitTarget,
     PendingExit, PerTaskText, SaveOutcome, TaskEditValues,
 };
 use crate::navigation_context::{
-    BoardAnchor, CreationMode, NavigationTarget, Origin, OriginStack, PeriodUnder, RecentSurface,
-    ResearchScroll, ScrollState,
+    CreationMode, NavigationTarget, Origin, PeriodUnder, RecentSurface, ScrollState,
 };
 use crate::settings_views::SettingsTab;
 use gpui_kit::*;
@@ -65,10 +62,6 @@ pub(crate) struct NavigationState {    /// Last surface opened for each task tab
     pub task_list_scroll: UniformListScrollHandle,
     /// Topic goal list scroll.
     pub topic_scroll: ScrollHandle,
-    /// Board horizontal scroll.
-    pub board_scroll: ScrollHandle,
-    /// Per-column board vertical scroll, created on first render.
-    board_columns: RefCell<Vec<(Stage, ScrollHandle)>>,
     /// Whole-form snapshot captured when the automation wizard opened.
     pub automation_baseline: Option<AutomationDraft>,
     /// Task-editor values captured when the editor opened. Comparing against
@@ -100,8 +93,6 @@ pub(crate) struct NavigationState {    /// Last surface opened for each task tab
     /// Last Settings section, used as the default when Settings is entered
     /// again. The active page stores its own typed tab.
     pub settings_section: crate::navigation_route::SettingsSection,
-    /// Last goal-steps layout, used when a Task page has no explicit value.
-    pub steps_layout: crate::app::Layout,
 }
 
 impl NavigationState {
@@ -110,8 +101,6 @@ impl NavigationState {
             recent_surfaces: BTreeMap::new(),
             task_list_scroll: UniformListScrollHandle::new(),
             topic_scroll: ScrollHandle::new(),
-            board_scroll: ScrollHandle::new(),
-            board_columns: RefCell::new(Vec::new()),
             automation_baseline: None,
             task_edit_baseline: None,
             planning_baseline: String::new(),
@@ -126,18 +115,7 @@ impl NavigationState {
             next_exit_token: 1,
             selected_attempt: None,
             settings_section: crate::navigation_route::SettingsSection::General,
-            steps_layout: crate::app::Layout::Board,
         }
-    }
-
-    pub(crate) fn board_column(&self, stage: Stage) -> ScrollHandle {
-        let mut columns = self.board_columns.borrow_mut();
-        if let Some((_, handle)) = columns.iter().find(|(value, _)| *value == stage) {
-            return handle.clone();
-        }
-        let handle = ScrollHandle::new();
-        columns.push((stage, handle.clone()));
-        handle
     }
 }
 
@@ -173,12 +151,12 @@ impl TaskApp {
     }
 
     /// A card's Open steps is a user drill-down. Back restores the page that
-    /// actually showed the card, including All/Project/Topic/Archive, layout,
-    /// filter and scroll; breadcrumbs remain structural.
+    /// actually showed the card, including All/Project/Topic/Archive, filter
+    /// and scroll; breadcrumbs remain structural.
     pub(crate) fn record_goal_origin(&mut self, _task: u64) {
         // A card's Open steps is a drill-down from the page that actually shows
         // the card. Capture that initiating context (All/Project/Topic/Archive,
-        // including layout, filter and scroll) rather than rewriting it to the
+        // including filter and scroll) rather than rewriting it to the
         // goal's Topic. Breadcrumbs remain structural parents.
         self.record_origin();
     }
@@ -232,7 +210,6 @@ impl TaskApp {
             return Origin::ResearchTask {
                 task,
                 steps_tab: self.goal_steps_tab(),
-                steps_layout: self.steps_layout(),
                 scroll: ScrollState {
                     x: self.detail_scroll.offset().x.as_f32(),
                     y: pixels_y(&self.detail_scroll),
@@ -259,7 +236,6 @@ impl TaskApp {
         match &self.scope() {
             Scope::Topic(topic) => Origin::ResearchTopic {
                 topic: *topic,
-                layout: self.layout,
                 scroll: ScrollState {
                     x: self.navigation.topic_scroll.offset().x.as_f32(),
                     y: pixels_y(&self.navigation.topic_scroll),
@@ -299,32 +275,17 @@ impl TaskApp {
                 scope: scope.clone(),
                 query: self.query(),
                 all_status: self.all_status,
-                layout: self.layout,
-                scroll: ResearchScroll {
-                    outer: ScrollState {
-                        x: self.navigation.board_scroll.offset().x.as_f32(),
-                        y: self
-                            .navigation
-                            .task_list_scroll
-                            .0
-                            .borrow()
-                            .base_handle
-                            .offset()
-                            .y
-                            .as_f32(),
-                    },
-                    columns: Stage::BOARD_ORDER
-                        .into_iter()
-                        .map(|stage| BoardAnchor {
-                            stage,
-                            y: self
-                                .navigation
-                                .board_column(stage)
-                                .offset()
-                                .y
-                                .as_f32(),
-                        })
-                        .collect(),
+                scroll: ScrollState {
+                    x: 0.0,
+                    y: self
+                        .navigation
+                        .task_list_scroll
+                        .0
+                        .borrow()
+                        .base_handle
+                        .offset()
+                        .y
+                        .as_f32(),
                 },
             },
         }
@@ -396,12 +357,10 @@ impl TaskApp {
                 scope,
                 query,
                 all_status,
-                layout,
                 scroll,
             } => {
                 self.navigate(scope, w, cx);
                 self.all_status = all_status;
-                self.layout = layout;
                 self.set_query(query.clone());
                 self.search.update(cx, |s, cx| s.set_value(query, w, cx));
                 self.navigation
@@ -409,28 +368,13 @@ impl TaskApp {
                     .0
                     .borrow()
                     .base_handle
-                    .set_offset(point(px(0.), px(scroll.outer.y)));
-                self.navigation
-                    .board_scroll
-                    .set_offset(point(px(scroll.outer.x), px(0.)));
-                for stage in Stage::BOARD_ORDER {
-                    self.navigation
-                        .board_column(stage)
-                        .set_offset(point(px(0.), px(0.)));
-                }
-                for column in scroll.columns {
-                    self.navigation
-                        .board_column(column.stage)
-                        .set_offset(point(px(0.), px(column.y)));
-                }
+                    .set_offset(point(px(0.), px(scroll.y)));
             }
             Origin::ResearchTopic {
                 topic,
-                layout,
                 scroll,
             } => {
                 self.navigate(Scope::Topic(topic), w, cx);
-                self.layout = layout;
                 self.navigation
                     .topic_scroll
                     .set_offset(point(px(scroll.x), px(scroll.y)));
@@ -438,12 +382,10 @@ impl TaskApp {
             Origin::ResearchTask {
                 task,
                 steps_tab,
-                steps_layout,
                 scroll,
             } => {
                 self.open_task(task, w, cx);
                 self.set_goal_steps_tab(steps_tab);
-                self.set_steps_layout(steps_layout);
                 self.detail_scroll
                     .set_offset(point(px(scroll.x), px(scroll.y)));
             }

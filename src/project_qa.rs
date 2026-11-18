@@ -1,6 +1,6 @@
 //! Explicit live acceptance uses saved model settings but writes only an isolated QA workspace.
 use crate::{
-    app::{Layout, Scope, TaskApp},
+    app::{Scope, TaskApp},
     domain::{Stage, Store},
     persistence::Storage,
     research::ResearchKind,
@@ -49,7 +49,6 @@ pub fn run(live: bool) {
                 a.attach_storage(Storage::new(path.clone()), w, cx);
                 assert!(a.storage_error.is_empty(), "{}", a.storage_error);
                 a.navigate(Scope::Project(1), w, cx);
-                a.layout = Layout::Board;
             });
             app = Some(view.clone());
             cx.new(|cx| base::Root::new(view, w, cx))

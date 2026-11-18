@@ -588,7 +588,7 @@ impl Store {
     pub fn apply_research_plan(&mut self, goal_id: u64, text: &str) -> Result<Vec<u64>, String> {
         if self.research_pending_approval(goal_id) {
             return Err(
-                "Approve this research goal in Kanban before generating its steps.".into(),
+                "Approve this research goal in the list before generating its steps.".into(),
             );
         }
         let plan = parse_plan(text)?;
@@ -1024,7 +1024,7 @@ impl Store {
     }
     pub fn next_research_task(&self, goal: u64) -> Result<Option<u64>, String> {
         if self.research_pending_approval(goal) {
-            return Err("Approve this research goal in Kanban before running its tasks.".into());
+            return Err("Approve this research goal in the list before running its tasks.".into());
         }
         if self
             .task(goal)
@@ -1249,7 +1249,7 @@ pub fn prepare_report_regeneration(store: &Store, source_id: u64, style: &str) -
 
 pub fn prepare_run(store: &Store, id: u64) -> Result<AgentRun, String> {
     if store.research_pending_approval(id) {
-        return Err("Approve this research goal in Kanban before running it.".into());
+        return Err("Approve this research goal in the list before running it.".into());
     }
     let task = store.task(id).ok_or("Task not found.")?;
     let research = task.research.as_ref().ok_or("Not a research task.")?;

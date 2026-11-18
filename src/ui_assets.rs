@@ -42,8 +42,6 @@ assets::icon_assets!(
         Loader,
         FileText,
         Layers,
-        LayoutDashboard,
-        Menu,
         Monitor,
         Moon,
         MousePointerClick,

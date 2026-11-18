@@ -98,7 +98,7 @@ impl Store {
             .find(|p| p.id == project)
             .ok_or("Project not found.")?;
         if self.has_project_plan(project.id) {
-            return Err("This project already has research proposals. Review and edit its existing cards in the board.".into());
+            return Err("This project already has research proposals. Review and edit its existing goals in the list.".into());
         }
         if project.name.trim().is_empty()
             || project.name.chars().count() > 160

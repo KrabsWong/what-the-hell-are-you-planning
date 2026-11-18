@@ -44,5 +44,5 @@ Do not replace the product logo, Dock artwork, native macOS window controls, use
 
 - Run `python3 script/check_icons.py`: all Rust `IconName` references must be registered in `AppIcons`.
 - Run `cargo test --quiet`: embedded asset tests verify actual bytes.
-- Run relevant isolated QA (`--qa-board-topics`, `--qa-settings`, `--qa-affordance`, or `--qa-onboarding`) and inspect light/dark screenshots for missing icons, alignment, and accessible action labels.
+- Run relevant isolated QA (`--qa-topics`, `--qa-settings`, `--qa-affordance`, or `--qa-onboarding`) and inspect light/dark screenshots for missing icons, alignment, and accessible action labels.
 - QA fixtures must not restart the user's real app or modify their workspace.

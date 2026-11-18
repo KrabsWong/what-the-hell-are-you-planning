@@ -252,7 +252,7 @@ mod tests {
 /// Timed native wheel input on the same isolated snapshot used by the frame audit.
 /// Semantic notifications deliberately exercise background-update costs.
 pub fn scroll_native() {
-    use crate::{app::Layout, appearance::Appearance};
+    use crate::appearance::Appearance;
     use std::time::Duration;
     let store = load_workspace(Path::new(&std::env::var("PLANNING_PERF_WORKSPACE").unwrap())).unwrap();
     let result = store.runs().iter().rev().find(|r| r.project_plan.is_none()
@@ -277,22 +277,20 @@ pub fn scroll_native() {
         }).unwrap();
         cx.activate(true);
         cx.spawn(async move |cx| {
-            for (name, scope, target, horizontal) in [
-                ("Sidebar", Scope::All, "sidebar-scroll", false),
-                ("Research list", Scope::All, "collection-table-scroll", false),
-                ("Research board", Scope::All, "board-scroll", true),
-                ("Model settings", Scope::Settings, "model-settings-scroll", false),
-                ("Automation results", Scope::AutomationRuns, "automation-results-scroll", false),
-                ("Research report", Scope::Runs, "research-result-scroll", false),
+            for (name, scope, target) in [
+                ("Sidebar", Scope::All, "sidebar-scroll"),
+                ("Research list", Scope::All, "collection-table-scroll"),
+                ("Model settings", Scope::Settings, "model-settings-scroll"),
+                ("Automation results", Scope::AutomationRuns, "automation-results-scroll"),
+                ("Research report", Scope::Runs, "research-result-scroll"),
             ] {
                 cx.update_window(handle, |_, w, cx| {
                     app.update(cx, |a, cx| a.navigate(scope, w, cx));
                 }).unwrap();
                 cx.background_executor().timer(Duration::from_millis(400)).await;
-                cx.update_window(handle, |_, w, cx| {
+                cx.update_window(handle, |_, _, cx| {
                     app.update(cx, |a, cx| {
-                        a.layout = if horizontal { Layout::Board } else { Layout::List };
-                        if matches!(name, "Sidebar" | "Research list" | "Research board") {
+                        if matches!(name, "Sidebar" | "Research list") {
                             a.set_scope_identity(Scope::All);
                         }
                         if name == "Model settings" { a.set_settings_tab(crate::settings_views::SettingsTab::Models); }
@@ -321,15 +319,13 @@ pub fn scroll_native() {
                             let position = w.find(target).bounds().center();
                             w.dispatch_event(MouseMoveEvent { position, ..Default::default() }.to_platform_input(), cx);
                             let amount = px(if frame < 60 { -12. } else { 12. });
-                            let delta = if horizontal { point(amount, px(0.)) } else { point(px(0.), amount) };
-                            w.dispatch_event(ScrollEvent { position, delta: ScrollDelta::Pixels(delta), ..Default::default() }.to_platform_input(), cx);
+                            w.dispatch_event(ScrollEvent { position, delta: ScrollDelta::Pixels(point(px(0.), amount)), ..Default::default() }.to_platform_input(), cx);
                             // Native input schedules its own display callback. A forced
                             // draw here would render twice and distort scroll latency.
                             if frame == 59 {
                                 let a = app.read(cx);
                                 match name {
                                     "Research list" => assert!(a.navigation.task_list_scroll.0.borrow().base_handle.offset().y < px(-100.)),
-                                    "Research board" => assert!(a.navigation.board_scroll.offset().x < px(-100.)),
                                     "Automation results" => assert!(a.automation_ui.result_list.scroll_px_offset_for_scrollbar().y.abs() > px(100.)),
                                     "Sidebar" => assert!(a.sidebar_scroll.offset().y < px(-100.)),
                                     "Model settings" => assert!(a.settings_scroll.offset().y < px(-100.)),

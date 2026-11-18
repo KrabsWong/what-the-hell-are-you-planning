@@ -29,8 +29,8 @@ impl TaskApp {
         self.begin_planning(CreationMode::NewTopic { project }, w, cx);
     }
 
-    /// Open the request form in place. The caller's route, filters, layout and
-    /// scroll are untouched, so Cancel is an exact-origin operation.
+    /// Open the request form in place. The caller's route, filters and scroll
+    /// are untouched, so Cancel is an exact-origin operation.
     fn begin_planning(
         &mut self,
         mode: CreationMode,

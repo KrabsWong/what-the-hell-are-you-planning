@@ -33,10 +33,9 @@ The original 49-entry standalone offline baseline is listed below: 45 in the tab
 | `--qa` | Intake acceptance; alias of `--qa-intake` |
 | `--qa-intake` | Intake acceptance from one sentence to an approved goal |
 | `--qa-projects` | Offline alias of the same intake acceptance |
-| `--qa-board-topics` | Topic-grouped board directory |
-| `--qa-display-order` | Sidebar, List, Board and execution ordering |
-| `--qa-board-scroll` | Board scrolling fixture |
-| `--qa-workflow` | Drag submission, transitions, dependency chain and screenshots |
+| `--qa-display-order` | Sidebar, list and execution ordering |
+| `--qa-list-scroll` | List scrolling fixture |
+| `--qa-workflow` | Status-menu submission, transitions, dependency chain and screenshots |
 | `--qa-rich-markdown` | Markdown/Mermaid/LaTeX rendering frames |
 | `--qa-brand` | Brand asset rendering |
 | `--qa-attachments` | Paste, drop, original bytes, inheritance and CLI `--file` |
@@ -191,4 +190,4 @@ exposed material around the body corners.
 - Interactive previews refresh Reduce Transparency every 500 ms. Older systems or missing native handles retain opaque navigation. The forced-opaque case tests the fallback without changing system preferences.
 - Headless snapshots cannot verify the native glass layer. Successful testing on a later macOS version does not establish macOS 26 device coverage or scrolling-performance acceptance.
 
-For focused permanent-deletion coverage, run `ARCHIVE_QA_CASE=permanent-delete target/debug/what-the-hell-are-you-planning --qa-archived-research` after building with `--features qa`. This uses synthetic workspaces and checks confirmation, cancellation, unavailable storage, stale workspace confirmation, goal menu wording, and light/dark list and board layouts. Run `LIVE_PERSISTENCE_QA_CASE=archive-permanent-delete target/debug/what-the-hell-are-you-planning --qa-live-persistence` for durable v4 run/body deletion and removal of the archived topic emptied by its last goal. Run `LIVE_PERSISTENCE_QA_CASE=lazy-dependency-view` to verify that viewing an unfinished step hydrates a lazy prerequisite result and unlocks Retry.
+For focused permanent-deletion coverage, run `ARCHIVE_QA_CASE=permanent-delete target/debug/what-the-hell-are-you-planning --qa-archived-research` after building with `--features qa`. This uses synthetic workspaces and checks confirmation, cancellation, unavailable storage, stale workspace confirmation, goal menu wording, and light/dark list layouts. Run `LIVE_PERSISTENCE_QA_CASE=archive-permanent-delete target/debug/what-the-hell-are-you-planning --qa-live-persistence` for durable v4 run/body deletion and removal of the archived topic emptied by its last goal. Run `LIVE_PERSISTENCE_QA_CASE=lazy-dependency-view` to verify that viewing an unfinished step hydrates a lazy prerequisite result and unlocks Retry.

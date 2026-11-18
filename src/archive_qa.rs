@@ -1,6 +1,6 @@
 //! Focused offline acceptance for archived research history. No model calls.
 use crate::{
-    app::{Layout, Scope, TaskApp},
+    app::{Scope, TaskApp},
     appearance::Appearance,
     controls::button,
     domain::{Stage, Store},
@@ -28,7 +28,7 @@ pub fn run() {
             for mode in [Appearance::Light, Appearance::Dark] {
                 let directory = root.join(format!("{mode:?}-{width}"));
                 std::fs::create_dir_all(&directory).unwrap();
-                list_and_board(&directory, mode, width, height);
+                archived_list(&directory, mode, width, height);
             }
         }
         permanent_delete_confirmation(&root);
@@ -40,7 +40,7 @@ pub fn run() {
     goal_menu_labels(&root);
     topic_directory_visibility(&root);
     render_matrix(&root);
-    archived_in_progress_board(&root);
+    archived_in_progress_list(&root);
     ordinary_goal_steps_back(&root);
     ancestor_archive_material_check(&root);
     active_archive_confirmation(&root);
@@ -48,17 +48,17 @@ pub fn run() {
     println!("Archive QA passed · {}", root.display());
 }
 
-fn archived_in_progress_board(root: &Path) {
-    let directory = root.join("archived-in-progress-board");
+fn archived_in_progress_list(root: &Path) {
+    let directory = root.join("archived-in-progress-list");
     std::fs::create_dir_all(&directory).unwrap();
     let mut store = Store::empty();
     store.project_at_mut(0).unwrap().directory = directory.to_string_lossy().into();
     store.set_default_model("qa/archive".into());
-    let topic = store.create_topic(1, "Archived board topic").unwrap();
+    let topic = store.create_topic(1, "Archived list topic").unwrap();
     let goal = store
         .create_research_goal_in_topic(
             "TASK-G1 Review research goal".into(),
-            "Archived incomplete goal must remain visible on the board.".into(),
+            "Archived incomplete goal must remain visible in the list.".into(),
             1,
             Some(topic),
         )
@@ -70,7 +70,6 @@ fn archived_in_progress_board(root: &Path) {
     Storage::new(path.clone()).save(&store).unwrap();
     let (mut cx, handle, app) = with_app(store, &path, 1000., 680., |a, _, _| {
         a.set_scope_identity(Scope::All);
-        a.layout = Layout::Board;
     });
     cx.update_window(handle, |_, w, cx| {
         w.render_frame(cx);
@@ -78,8 +77,8 @@ fn archived_in_progress_board(root: &Path) {
         w.render_frame(cx);
         assert_eq!(app.read(cx).visible_tasks().len(), 1);
         assert!(
-            w.find(format!("card-{goal}")).visible(),
-            "archived InProgress goal must keep its board card"
+            w.find(format!("task-row-{goal}")).visible(),
+            "archived InProgress goal must keep its list row"
         );
         assert!(w.find(format!("restore-archived-{goal}")).visible());
         assert!(
@@ -87,30 +86,28 @@ fn archived_in_progress_board(root: &Path) {
             "archive must not show execution filtering"
         );
         let status = w
-            .find(format!("card-status-{goal}"))
+            .find(format!("task-status-{goal}"))
             .label()
             .map(str::to_string)
             .unwrap_or_default();
         assert!(status.contains("Archived"), "{status}");
 
-        // Open steps from the Archive board must return to the same Archive
-        // board, not the goal's ordinary Topic board.
-        w.click(format!("goal-progress-{goal}"), cx);
+        // Open steps from the Archive list must return to the same Archive
+        // list, not the goal's ordinary Topic view.
+        w.click(format!("goal-steps-{goal}"), cx);
         w.render_frame(cx);
         assert_eq!(app.read(cx).selected(), Some(goal));
         w.click("navigation-back", cx);
         w.render_frame(cx);
         assert_eq!(app.read(cx).scope(), Scope::Archive);
-        assert_eq!(app.read(cx).layout, Layout::Board);
-        assert!(w.find(format!("card-{goal}")).visible());
+        assert!(w.find(format!("task-row-{goal}")).visible());
 
         // The same entry with the keyboard shortcut.
-        w.click(format!("goal-progress-{goal}"), cx);
+        w.click(format!("goal-steps-{goal}"), cx);
         w.render_frame(cx);
         w.press("cmd-[", cx);
         w.render_frame(cx);
         assert_eq!(app.read(cx).scope(), Scope::Archive);
-        assert_eq!(app.read(cx).layout, Layout::Board);
         assert!(w.find(format!("restore-archived-{goal}")).visible());
     })
     .unwrap();
@@ -118,7 +115,7 @@ fn archived_in_progress_board(root: &Path) {
         &mut cx,
         handle,
         &directory,
-        "archived-in-progress-board.png",
+        "archived-in-progress-list.png",
     );
 }
 
@@ -132,7 +129,7 @@ fn ordinary_goal_steps_back(root: &Path) {
     let goal = store
         .create_research_goal_in_topic(
             "Ordinary Open steps goal".into(),
-            "Board caller must survive Open steps Back.".into(),
+            "List caller must survive Open steps Back.".into(),
             1,
             Some(topic),
         )
@@ -143,30 +140,27 @@ fn ordinary_goal_steps_back(root: &Path) {
     for scope in [Scope::All, Scope::Project(1)] {
         let (mut cx, handle, app) = with_app(store.clone(), &path, 1200., 800., |a, _, _| {
             a.set_scope_identity(scope.clone());
-            a.layout = Layout::Board;
         });
         cx.update_window(handle, |_, w, cx| {
             w.render_frame(cx);
             assert_eq!(app.read(cx).visible_tasks().len(), 1);
             let caller = app.read(cx).scope();
-            w.click(format!("goal-progress-{goal}"), cx);
+            w.click(format!("goal-steps-{goal}"), cx);
             w.render_frame(cx);
             assert_eq!(app.read(cx).selected(), Some(goal));
             w.click("navigation-back", cx);
             w.render_frame(cx);
-            assert_eq!(app.read(cx).scope(), caller, "Open steps returns its board caller");
-            assert_eq!(app.read(cx).layout, Layout::Board);
-            assert!(w.find(format!("card-{goal}")).visible());
+            assert_eq!(app.read(cx).scope(), caller, "Open steps returns its list caller");
+            assert!(w.find(format!("task-row-{goal}")).visible());
         })
         .unwrap();
     }
 
-    // List caller: row -> goal detail -> Steps -> Back restores All/List and its
+    // Filtered caller: row -> goal detail -> Steps -> Back restores All and its
     // non-empty filter.
     {
         let (mut cx, handle, app) = with_app(store.clone(), &path, 1200., 800., |a, _, _| {
             a.set_scope_identity(Scope::All);
-            a.layout = Layout::List;
             a.set_query("Ordinary".into());
         });
         cx.update_window(handle, |_, w, cx| {
@@ -177,18 +171,16 @@ fn ordinary_goal_steps_back(root: &Path) {
             w.click("navigation-back", cx);
             w.render_frame(cx);
             assert_eq!(app.read(cx).scope(), Scope::All);
-            assert_eq!(app.read(cx).layout, Layout::List);
             assert_eq!(app.read(cx).query(), "Ordinary");
         })
         .unwrap();
     }
 
-    // Topic caller: topic goal row -> Steps -> Back restores the Topic board.
+    // Topic caller: topic goal row -> Steps -> Back restores the Topic list.
     {
         let topic = store.task_topic(goal).unwrap().id;
         let (mut cx, handle, app) = with_app(store.clone(), &path, 1200., 800., |a, _, _| {
             a.set_scope_identity(Scope::Topic(topic));
-            a.layout = Layout::Board;
         });
         cx.update_window(handle, |_, w, cx| {
             w.render_frame(cx);
@@ -198,7 +190,6 @@ fn ordinary_goal_steps_back(root: &Path) {
             w.click("navigation-back", cx);
             w.render_frame(cx);
             assert_eq!(app.read(cx).scope(), Scope::Topic(topic));
-            assert_eq!(app.read(cx).layout, Layout::Board);
         })
         .unwrap();
     }
@@ -266,7 +257,7 @@ fn render_matrix(root: &Path) {
         for mode in [Appearance::Light, Appearance::Dark] {
             let directory = root.join(format!("{mode:?}-{width}"));
             std::fs::create_dir_all(&directory).unwrap();
-            list_and_board(&directory, mode, width, height);
+            archived_list(&directory, mode, width, height);
             detail_and_restore(&directory, mode, width, height);
             ordinary_status_check(&directory, mode, width, height);
         }
@@ -308,74 +299,52 @@ fn ordinary_status_check(directory: &Path, mode: Appearance, width: f32, height:
     screenshot(&mut cx, handle, directory, &format!("ordinary-status-{mode:?}-{width}.png"));
 }
 
-fn list_and_board(directory: &Path, mode: Appearance, width: f32, height: f32) {
-    for layout in [Layout::List, Layout::Board] {
-        let scenario = directory.join(format!("archive-{layout:?}"));
-        std::fs::create_dir_all(&scenario).unwrap();
-        let (mut store, goal, _) = completed_goal(&scenario);
-        store.set_appearance(mode);
-        store.archive(goal).unwrap();
-        let path = scenario.join("workspace.sqlite3");
-        Storage::new(path.clone()).save(&store).unwrap();
-        let name = format!("archive-{}.png", match layout {
-            Layout::List => "list",
-            Layout::Board => "board",
-        });
-        let (mut cx, handle, app) = with_app(store, &path, width, height, |a, _, _| {
-            a.set_scope_identity(Scope::All);
-            a.layout = layout;
-            a.show_done = false;
-        });
-        cx.update_window(handle, |_, w, cx| {
-            w.render_frame(cx);
-            w.click("archive", cx);
-            w.render_frame(cx);
-            let nav_count = w
-                .find("nav-count-Archive")
-                .label()
-                .map(str::to_string)
-                .unwrap_or_default();
-            assert_eq!(nav_count, "1");
-            let summary = w
-                .find("collection-summary")
-                .label()
-                .map(str::to_string)
-                .unwrap_or_default();
-            assert!(summary.starts_with("1 goals"), "{summary}");
-            assert_eq!(app.read(cx).visible_tasks().len(), 1);
-            assert_eq!(app.read(cx).scope(), Scope::Archive);
-            let status = if layout == Layout::List {
-                w.find(format!("task-status-{goal}"))
-                    .label()
-                    .map(str::to_string)
-            } else {
-                w.find(format!("card-status-{goal}"))
-                    .label()
-                    .map(str::to_string)
-            };
-            let status = status.unwrap_or_default();
-            assert!(status.contains("Archived · 3/3 complete"), "{status}");
-            assert!(w.find(format!("delete-archived-{goal}")).visible());
-            if layout == Layout::List {
-                assert!(w.find(format!("task-row-{goal}")).visible());
-                assert!(w.find(format!("task-title-container-{goal}")).bounds().size.width > px(60.), "archive actions must leave room for the title");
-                assert!(w.find(format!("restore-archived-{goal}")).visible());
-            } else {
-                assert!(w.find(format!("card-{goal}")).visible());
-                assert!(w.find(format!("restore-archived-{goal}")).visible());
-                assert!(w.try_find("board-guidance").is_none());
-                assert!(w.try_find("empty-drop-todo").is_none());
-                assert!(w.try_find("empty-drop-in-progress").is_none());
-                assert!(w.try_find("execution-status-filter").is_none());
-            }
-        })
-        .unwrap();
-        screenshot(&mut cx, handle, directory, &name);
-        drop(cx);
-        if layout == Layout::List {
-            default_archive_visibility(directory, mode, width, height);
-        }
-    }
+fn archived_list(directory: &Path, mode: Appearance, width: f32, height: f32) {
+    let scenario = directory.join("archive-list");
+    std::fs::create_dir_all(&scenario).unwrap();
+    let (mut store, goal, _) = completed_goal(&scenario);
+    store.set_appearance(mode);
+    store.archive(goal).unwrap();
+    let path = scenario.join("workspace.sqlite3");
+    Storage::new(path.clone()).save(&store).unwrap();
+    let (mut cx, handle, app) = with_app(store, &path, width, height, |a, _, _| {
+        a.set_scope_identity(Scope::All);
+        a.show_done = false;
+    });
+    cx.update_window(handle, |_, w, cx| {
+        w.render_frame(cx);
+        w.click("archive", cx);
+        w.render_frame(cx);
+        let nav_count = w
+            .find("nav-count-Archive")
+            .label()
+            .map(str::to_string)
+            .unwrap_or_default();
+        assert_eq!(nav_count, "1");
+        let summary = w
+            .find("collection-summary")
+            .label()
+            .map(str::to_string)
+            .unwrap_or_default();
+        assert!(summary.starts_with("1 goals"), "{summary}");
+        assert_eq!(app.read(cx).visible_tasks().len(), 1);
+        assert_eq!(app.read(cx).scope(), Scope::Archive);
+        let status = w
+            .find(format!("task-status-{goal}"))
+            .label()
+            .map(str::to_string)
+            .unwrap_or_default();
+        assert!(status.contains("Archived · 3/3 complete"), "{status}");
+        assert!(w.find(format!("delete-archived-{goal}")).visible());
+        assert!(w.find(format!("task-row-{goal}")).visible());
+        assert!(w.find(format!("task-title-container-{goal}")).bounds().size.width > px(60.), "archive actions must leave room for the title");
+        assert!(w.find(format!("restore-archived-{goal}")).visible());
+        assert!(w.try_find("execution-status-filter").is_none());
+    })
+    .unwrap();
+    screenshot(&mut cx, handle, directory, "archive-list.png");
+    drop(cx);
+    default_archive_visibility(directory, mode, width, height);
 }
 
 fn default_archive_visibility(directory: &Path, mode: Appearance, width: f32, height: f32) {
@@ -388,7 +357,6 @@ fn default_archive_visibility(directory: &Path, mode: Appearance, width: f32, he
     Storage::new(path.clone()).save(&store).unwrap();
     let (mut cx, handle, app) = with_app(store, &path, width, height, |a, _, _| {
         a.set_scope_identity(Scope::All);
-        a.layout = Layout::List;
         // Default application state: completed items are shown.
         a.show_done = true;
     });
@@ -418,7 +386,6 @@ fn detail_and_restore(directory: &Path, mode: Appearance, width: f32, height: f3
     let (mut cx, handle, app) = with_app(store, &path, width, height, |a, _, _| {
         a.set_scope_identity(Scope::Archive);
         a.fixture_select_task(Some(goal));
-        a.layout = Layout::List;
     });
     cx.update_window(handle, |_, w, cx| {
         w.render_frame(cx);
@@ -438,7 +405,15 @@ fn detail_and_restore(directory: &Path, mode: Appearance, width: f32, height: f3
         assert!(materials.contains("read-only"), "{materials}");
         assert!(!materials.contains("Drop PDFs"), "{materials}");
         assert_eq!(w.find("add-attachments").disabled(), Some(true));
-        for step in &steps {
+        for (index, step) in steps.iter().enumerate() {
+            if index > 0 {
+                w.scroll(
+                    "detail-scroll",
+                    ScrollDelta::Pixels(point(px(0.), px(-160.))),
+                    cx,
+                );
+                w.render_frame(cx);
+            }
             assert!(w.find(format!("subtask-{step}")).visible());
             assert!(
                 w.try_find(format!("subtask-refresh-{step}")).is_none(),
@@ -456,7 +431,7 @@ fn detail_and_restore(directory: &Path, mode: Appearance, width: f32, height: f3
         for (index, step) in steps.iter().enumerate() {
             if index > 0 {
                 w.scroll(
-                    "steps-cards-Done",
+                    "goal-steps-list",
                     ScrollDelta::Pixels(point(px(0.), px(-160.))),
                     cx,
                 );
@@ -470,8 +445,6 @@ fn detail_and_restore(directory: &Path, mode: Appearance, width: f32, height: f3
             assert!(status.contains("Archived"), "{status}");
             assert!(w.find(format!("goal-step-{step}")).visible());
         }
-        assert!(w.try_find("steps-column-Todo").is_none());
-        assert!(w.try_find("steps-column-Execution").is_none());
         assert!(w.try_find("execution-status-filter").is_none());
     })
     .unwrap();
@@ -824,7 +797,6 @@ fn permanent_delete_confirmation(root: &Path) {
     Storage::new(path.clone()).save(&store).unwrap();
     let (mut cx, handle, app) = with_app(store, &path, 1000., 680., |a, _, _| {
         a.set_scope_identity(Scope::Archive);
-        a.layout = Layout::List;
     });
     cx.update(|cx| cx.set_prompt_builder(qa_prompt_builder));
     // An unavailable save must leave the entire deletion scope intact.

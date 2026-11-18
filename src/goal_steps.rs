@@ -1,14 +1,13 @@
 //! Goal-local execution views; step cards never approve or launch work.
 use crate::{
-    app::{Layout, TaskApp},
+    app::TaskApp,
     domain::{Stage, Store},
     execution_status::ExecutionStatus,
     views::*,
 };
 use gpui_kit::{
     component::{
-        Selectable, Disableable,
-        button::{ButtonCustomVariant, ButtonVariants},
+        Disableable, Selectable,
     },
     prelude::FluentBuilder,
     *,
@@ -260,7 +259,6 @@ impl TaskApp {
     pub(crate) fn open_goal_steps(&mut self, goal: u64, w: &mut Window, cx: &mut Context<Self>) {
         self.open_task(goal, w, cx);
         self.set_goal_steps_tab(Some(goal));
-        self.set_steps_layout(Layout::Board);
         cx.notify();
     }
     pub(crate) fn goal_tabs(&self, goal: u64, cx: &mut Context<Self>) -> AnyElement {
@@ -284,12 +282,11 @@ impl TaskApp {
             )
             .into_any_element()
     }
+
     pub(crate) fn goal_steps_view(&self, goal: u64, cx: &mut Context<Self>) -> AnyElement {
-        let colors = crate::appearance::palette(cx);
-        let archived = self.store.task_is_archived(goal);
         let mut ids = self.store.research_children(goal);
         ids.sort_by(|a, b| crate::display_order::siblings_in_display_order(self.store.task(*a).unwrap(), self.store.task(*b).unwrap()));
-        let mut content = col().flex_1().min_h_0().child(
+        let content = col().flex_1().min_h_0().child(
             col()
                 .px_6()
                 .pt_3()
@@ -301,127 +298,43 @@ impl TaskApp {
                         .font_weight(FontWeight::SEMIBOLD)
                         .child(self.store.task(goal).unwrap().title.clone()),
                 )
-                .child(
-                    row()
-                        .gap_3()
-                        .justify_between()
-                        .child(
-                            div()
-                                .flex_1()
-                                .min_w_0()
-                                .child(label(self.execution_summary(goal), cx)),
-                        )
-                        .child(self.layout_switch_for(true, cx)),
-                ),
+                .child(label(self.execution_summary(goal), cx)),
         );
         if ids.is_empty() {
             return content
                 .child(muted("No steps planned yet.", cx).px_6())
                 .into_any_element();
         }
-        let step = |id: u64, board: bool, cx: &mut Context<Self>| {
+        let step = |id: u64, cx: &mut Context<Self>| {
             let task = self.store.task(id).unwrap();
             let title = format!("{} · {}", self.store.identifier(task), task.title);
             let execution = self.display_task_status(id).execution;
             let status = self.display_task_status(id);
-            let (surface, hover, border) = board_card_colors(status.phase, cx);
-            let dark = gpui_kit::component::Theme::global(cx).is_dark();
             row_button(format!("goal-step-{id}"), "")
                 .w_full()
                 .min_w_0()
-                .when(board, |b| {
-                    b.h_auto()
-                        .p_3()
-                        .rounded(px(crate::appearance::GROUP_RADIUS))
-                        .border_1()
-                        .border_color(rgb(border))
-                        .bg(rgb(surface))
-                        .custom(
-                            ButtonCustomVariant::new(cx)
-                                .color(rgb(surface).into())
-                                .foreground(rgb(colors.text).into())
-                                .hover(rgb(hover).into())
-                                .active(rgb(hover).into()),
-                        )
-                })
-                .when(!board, |b| b.h_8().px_2())
+                .h_8()
+                .px_2()
                 .accessibility_label(format!("{} · {}", title, status.label()))
                 .tooltip(format!("{} · {}", status.label(), status.reason))
                 .on_click(cx.listener(move |a, _, w, cx| {
                     a.request_task(id, false, w, cx)
                 }))
-                .child(if board {
-                    col()
-                        .w_full()
-                        .min_w_0()
-                        .gap_2()
-                        .child(
-                            row()
-                                .w_full()
-                                .justify_between()
-                                .gap_2()
-                                .child(
-                                    div()
-                                        .rounded(px(4.))
-                                        .px_1()
-                                        .py(px(2.))
-                                        .bg(rgba(if dark { 0xffffff14 } else { 0xffffff99 }))
-                                        .text_xs()
-                                        .child(self.store.identifier(task)),
-                                )
-                                .child(
-                                    execution.icon_view(format!("goal-step-icon-{id}"), cx),
-                                ),
-                        )
-                        .child(
-                            div()
-                                .w_full()
-                                .whitespace_normal()
-                                .text_left()
-                                .line_height(relative(1.4))
-                                .child(selectable(task.title.clone())),
-                        )
-                        .when(execution != ExecutionStatus::Done || status.display_label.is_some(), |card| card.child(div().id(format!("goal-step-status-{id}"))
-                            .aria_label(status.label())
-                            .text_xs().text_left().whitespace_normal()
-                            .text_color(rgb(execution.color(cx))).child(selectable(status.label())).map(observed)))
-                        .when(execution != ExecutionStatus::Done || status.reason != execution.hint(), |card| card.child(div().text_xs().text_left().whitespace_normal()
-                            .text_color(rgb(colors.secondary)).child(selectable(status.reason.clone()))))
-                        .child(
-                            row()
-                                .w_full()
-                                .justify_between()
-                                .child(label(
-                                    task.research
-                                        .as_ref()
-                                        .map(|r| match r.kind {
-                                            crate::research::ResearchKind::Collect => "Evidence",
-                                            crate::research::ResearchKind::Analyze => "Analysis",
-                                            crate::research::ResearchKind::Advise => "Final report",
-                                            crate::research::ResearchKind::Goal => "Goal",
-                                        })
-                                        .unwrap_or("Task"),
-                                    cx,
-                                ))
-                                .child(row().gap_1().child(label("Open", cx)).child(gpui_kit::component::Icon::new(assets::IconName::ChevronRight).size_4())),
-                        )
-                        .into_any_element()
-                } else {
+                .child(
                     row()
                         .w_full()
                         .min_w_0()
-                        .child(
-                            execution.icon_view(format!("goal-step-row-icon-{id}"), cx),
-                        )
+                        .child(execution.icon_view(format!("goal-step-row-icon-{id}"), cx))
                         .child(single_line_text(format!("goal-step-title-{id}"), title))
-                        .child(label(status.label(), cx).id(format!("goal-step-status-{id}"))
-                            .aria_label(status.label()).map(observed))
-                        .child(row().gap_1().child(label("Open", cx)).child(gpui_kit::component::Icon::new(assets::IconName::ChevronRight).size_4()))
-                        .into_any_element()
-                })
+                        .when(execution != ExecutionStatus::Done || status.display_label.is_some(), |status_row| {
+                            status_row.child(label(status.label(), cx).id(format!("goal-step-status-{id}"))
+                                .aria_label(status.label()).map(observed))
+                        })
+                        .child(row().gap_1().child(label("Open", cx)).child(gpui_kit::component::Icon::new(assets::IconName::ChevronRight).size_4())),
+                )
         };
-        if self.steps_layout() == Layout::List {
-            content = content.child(
+        content
+            .child(
                 col()
                     .id("goal-steps-list")
                     .px_6()
@@ -430,58 +343,10 @@ impl TaskApp {
                     .min_h_0()
                     .overflow_y_scroll()
                     .gap_1()
-                    .children(ids.iter().map(|id| step(*id, false, cx)))
+                    .children(ids.iter().map(|id| step(*id, cx)))
                     .map(observed),
-            );
-        } else {
-            content = content.child(
-                row()
-                    .id("goal-steps-board")
-                    .items_start()
-                    .flex_1()
-                    .min_h_0()
-                    .overflow_x_scroll()
-                    .restrict_scroll_to_axis()
-                    .px_6()
-                    .pb_5()
-                    .gap_4()
-                    .children(Stage::BOARD_ORDER.into_iter().filter(|phase|
-                        if archived {
-                            ids.iter().any(|id| self.display_task_status(*id).phase == *phase)
-                        } else {
-                            matches!(phase, Stage::Planned | Stage::InProgress | Stage::Done) || ids.iter().any(|id| self.display_task_status(*id).phase == *phase)
-                        }
-                    ).map(|phase| {
-                        let matching: Vec<_> = ids.iter().copied().filter(|id|
-                            self.display_task_status(*id).phase == phase).collect();
-                        let tasks: Vec<_> = matching.iter().filter_map(|id| self.store.task(*id).cloned()).collect();
-                        let mut cards = vec![];
-                        if phase == Stage::InProgress {
-                            for group in crate::workflow::ExecutionGroup::ALL {
-                                if self.board_execution_filter.is_some_and(|filter| filter != group) { continue; }
-                                let group_ids: Vec<_> = matching.iter().copied().filter(|id|
-                                    self.display_task_status(*id).group == Some(group)).collect();
-                                if group_ids.is_empty() { continue; }
-                                cards.push(label(format!("{} · {}", group.label(), group_ids.len()), cx).into_any_element());
-                                cards.extend(group_ids.into_iter().map(|id| step(id, true, cx).into_any_element()));
-                            }
-                        } else { cards.extend(matching.iter().map(|id| step(*id, true, cx).into_any_element())); }
-                        col().id(format!("steps-column-{}", crate::workflow::phase_label(phase)))
-                            .w(px(if phase == Stage::InProgress { 350. } else { 292. })).flex_shrink_0().h_full().gap_3()
-                            .child(row().h_9().gap_2()
-                                .child(div().text_color(rgb(stage_color(phase, cx))).child(selectable(crate::workflow::phase_label(phase))))
-                                .child(label(matching.len().to_string(), cx))
-                                .when(phase == Stage::InProgress && !archived, |d| d.child(self.execution_status_filter(&tasks, cx))))
-                            .child(col().id(format!("steps-cards-{}", crate::workflow::phase_label(phase)))
-                                .flex_1().min_h_0().overflow_y_scroll().gap_3().restrict_scroll_to_axis()
-                                .when(cards.is_empty(), |d| d.child(label("No steps in this category", cx)))
-                                .children(cards)
-                                .map(observed))
-                    }))
-                    .map(observed),
-            );
-        }
-        content.into_any_element()
+            )
+            .into_any_element()
     }
 }
 

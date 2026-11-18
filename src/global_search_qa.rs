@@ -5,7 +5,7 @@
 //! 1000x680 in both themes.
 
 use crate::{
-    app::{AllStatus, Layout, Scope, TaskApp},
+    app::{AllStatus, Scope, TaskApp},
     appearance::Appearance,
     automation::{
         AutomationDefinition, AutomationOccurrence, AutomationOccurrenceSnapshot, AutomationPolicy,
@@ -318,7 +318,6 @@ fn research_list_origin(
     let (mut cx, handle, app) = with_app(&fixture.store, path, width, height, |a, _, _| {
         a.set_scope_identity(Scope::All);
         a.fixture_select_task(None);
-        a.layout = Layout::Board;
         a.all_status = AllStatus::Open;
     });
     let mut opener = None;
@@ -331,7 +330,6 @@ fn research_list_origin(
         focus_search_input(w, cx);
         assert!(app.read(cx).global_search_ui.open);
         assert_eq!(app.read(cx).scope(), Scope::All);
-        assert_eq!(app.read(cx).layout, Layout::Board);
         assert_eq!(app.read(cx).all_status, AllStatus::Open);
         assert_eq!(w.find("global-search-input").focused(), Some(true));
         assert_eq!(
@@ -384,7 +382,6 @@ fn research_list_origin(
         w.render_frame(cx);
         assert!(!app.read(cx).global_search_ui.open);
         assert_eq!(app.read(cx).scope(), Scope::All);
-        assert_eq!(app.read(cx).layout, Layout::Board);
         assert_eq!(app.read(cx).all_status, AllStatus::Open);
         assert_eq!(w.focused(cx), opener);
     })
@@ -393,7 +390,7 @@ fn research_list_origin(
 }
 
 /// Table-driven Project/Topic caller coverage: both required non-All Research
-/// routes must keep their scope, list filter, layout and opener focus through a
+/// routes must keep their scope, list filter and opener focus through a
 /// typed global query for the footer command and ⌘K alike.
 fn research_scope_origin(
     fixture: &Fixture,
@@ -410,7 +407,6 @@ fn research_scope_origin(
         let (mut cx, handle, app) = with_app(&fixture.store, path, width, height, |a, w, cx| {
             a.set_scope_identity(initial_scope.clone());
             a.fixture_select_task(None);
-            a.layout = Layout::Board;
             a.all_status = AllStatus::Open;
             a.search
                 .update(cx, |input, cx| input.set_value("supply", w, cx));
@@ -431,7 +427,6 @@ fn research_scope_origin(
             focus_search_input(w, cx);
             assert!(app.read(cx).global_search_ui.open);
             assert_eq!(app.read(cx).scope(), scope);
-            assert_eq!(app.read(cx).layout, Layout::Board);
             assert_eq!(app.read(cx).all_status, AllStatus::Open);
             assert_eq!(app.read(cx).query(), "supply");
             assert_eq!(
@@ -460,7 +455,6 @@ fn research_scope_origin(
             w.render_frame(cx);
             assert!(!app.read(cx).global_search_ui.open);
             assert_eq!(app.read(cx).scope(), scope);
-            assert_eq!(app.read(cx).layout, Layout::Board);
             assert_eq!(app.read(cx).all_status, AllStatus::Open);
             assert_eq!(app.read(cx).query(), "supply");
             assert_eq!(

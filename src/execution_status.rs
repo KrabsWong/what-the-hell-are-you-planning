@@ -1,4 +1,4 @@
-//! Live execution status shared by the sidebar, list and board.
+//! Live execution status shared by the sidebar and list.
 use crate::{
     batch::{BatchState, TodoBatch},
     domain::{Stage, Store},
@@ -56,7 +56,7 @@ impl ExecutionStatus {
             _ => IconName::Circle,
         }
     }
-    /// Status icon shared by every list, board and step row.
+    /// Status icon shared by every list and step row.
     ///
     /// `id` scopes the animation so each row can animate on its own. Live work
     /// pulses and a retry turns, which reads as "still working" at a glance;

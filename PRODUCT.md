@@ -10,7 +10,7 @@ Primarily desktop users without a developer background. They use the task manage
 
 ## Product Purpose
 
-A native Rust / gpui-kit task workspace for automatic topic planning, manual Kanban admission, per-stage Agent and model selection, ego(lite) collection, PDF/image materials, logs and reports, plus recurring information research. Success means the user knows where to act next, approval and execution boundaries stay clear, and real data keeps saving.
+A native Rust / gpui-kit task workspace for automatic topic planning, manual approval and stage changes, per-stage Agent and model selection, ego(lite) collection, PDF/image materials, logs and reports, plus recurring information research. Success means the user knows where to act next, approval and execution boundaries stay clear, and real data keeps saving.
 
 ## Brand Personality
 
@@ -29,9 +29,9 @@ Keep action labels and icons visible at rest and distinct from explanatory copy.
 3. Preserve the layout, data and research workflow users already learned.
 4. Disabled actions explain why; the user should not have to guess.
 5. Default pages foreground tasks, progress, results and the next step; model paths, sessions, raw logs and stage rules stay in details and settings.
-6. Theme switching, narrow windows, keyboard use and responsive scrolling through long readers, histories, boards, settings, materials and dialogs remain available. Scrolling smoothness under concurrent updates and saves is a release gate, not a benchmark aspiration.
+6. Theme switching, narrow windows, keyboard use and responsive scrolling through long readers, histories, collections, settings, materials and dialogs remain available. Scrolling smoothness under concurrent updates and saves is a release gate, not a benchmark aspiration.
 7. Automations clearly distinguish "enabled" from "this period failed"; schedule, next trigger, latest activity time and unread results are visible in the list, the approved version is visible on the detail and in Settings, and run logs live in technical details.
-8. Automation results do not enter the normal board, task tree or global publishing; they appear only in automation history.
+8. Automation results do not enter the ordinary research list, task tree or global publishing; they appear only in automation history.
 
 ## Research intake
 

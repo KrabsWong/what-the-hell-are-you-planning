@@ -41,12 +41,6 @@ pub enum Scope {
     AutomationRuns,
     Settings,
 }
-#[derive(Clone, Copy, Debug, PartialEq)]
-pub enum Layout {
-    List,
-    Board,
-}
-
 /// Result of admitting one run to the execution queue. Navigation is separate:
 /// background dispatch returns this value to its caller, while an explicit user
 /// command decides whether to open a progress surface.
@@ -254,22 +248,6 @@ pub enum Property {
     Bucket,
     Parent,
 }
-#[derive(Clone)]
-pub struct DragTask {
-    pub id: u64,
-    pub title: String,
-}
-impl Render for DragTask {
-    fn render(&mut self, _: &mut Window, cx: &mut Context<Self>) -> impl IntoElement {
-        div()
-            .w(px(280.))
-            .p_4()
-            .rounded_md()
-            .bg(rgb(crate::appearance::palette(cx).panel))
-            .text_color(rgb(crate::appearance::palette(cx).text))
-            .child(self.title.clone())
-    }
-}
 pub struct Draft {
     pub id: u64,
     pub project: u64,
@@ -299,7 +277,6 @@ pub struct TaskApp {
     /// T12 S2: typed route identity. `scope()` is a read-only projection; no
     /// writable `scope` field exists on the app.
     nav: crate::navigation_route::NavState,
-    pub layout: Layout,
     pub all_status: AllStatus,
     pub sidebar_scroll: ScrollHandle,
     pub sidebar_reveal: Option<u64>,
@@ -569,7 +546,6 @@ pub struct TaskApp {
     pub render_executions:
         std::cell::RefCell<std::collections::HashMap<u64, crate::execution_status::ExecutionStatus>>,
     pub render_status_epoch: std::cell::Cell<u64>,
-    pub board_execution_filter: Option<crate::workflow::ExecutionGroup>,
     pub show_task_activity: bool,
     pub automation_ui: crate::automation_views::AutomationUi,
     /// T10 return context and recent-surface memory.
@@ -939,7 +915,6 @@ impl TaskApp {
             pumping: false,
             store,
             nav,
-            layout: Layout::List,
             all_status: AllStatus::All,
             sidebar_scroll: ScrollHandle::new(),
             sidebar_reveal: None,
@@ -1081,7 +1056,6 @@ impl TaskApp {
             render_statuses: Default::default(),
             render_executions: Default::default(),
             render_status_epoch: Default::default(),
-            board_execution_filter: None,
             show_task_activity: false,
             automation_ui,
             navigation: crate::navigation_context_app::NavigationState::new(),
@@ -1330,39 +1304,19 @@ impl TaskApp {
         }
     }
 
-    pub(crate) fn steps_layout(&self) -> Layout {
-        match self.nav.route() {
-            crate::navigation_route::Route::ResearchTask(page) => page.steps_layout(),
-            _ => self.navigation.steps_layout,
-        }
-    }
-
     pub(crate) fn set_goal_steps_tab(&mut self, goal: Option<u64>) {
         use crate::navigation_route::{Route, TaskPanel};
         let crate::navigation_route::Route::ResearchTask(page) = self.nav.route() else {
             return;
         };
         let task = page.task();
-        let layout = page.steps_layout();
         let base = self.scope();
         let panel = if goal == Some(task) {
             TaskPanel::Steps
         } else {
             TaskPanel::Overview
         };
-        self.install_route(Route::research_task_from(task, base, panel, layout));
-    }
-
-    pub(crate) fn set_steps_layout(&mut self, layout: Layout) {
-        use crate::navigation_route::Route;
-        self.navigation.steps_layout = layout;
-        let Route::ResearchTask(page) = self.nav.route() else {
-            return;
-        };
-        let task = page.task();
-        let panel = page.panel();
-        let base = self.scope();
-        self.install_route(Route::research_task_from(task, base, panel, layout));
+        self.install_route(Route::research_task_from(task, base, panel));
     }
 
     /// Task detail identity is the typed `ResearchTask` route; there is no
@@ -1394,15 +1348,8 @@ impl TaskApp {
         }
     }
 
-    fn stage_index(stage: crate::domain::Stage) -> u8 {
-        crate::domain::Stage::BOARD_ORDER
-            .iter()
-            .position(|value| *value == stage)
-            .unwrap_or(0) as u8
-    }
-
     /// Capture the complete live page for a typed Back frame: route, typed
-    /// overlays, scroll bookmarks and the page-local filters/layout that are not
+    /// overlays, scroll bookmarks and the page-local filters that are not
     /// yet part of route identity.
     pub(crate) fn capture_return_frame(&self) -> crate::navigation_route::ReturnFrame {
         use crate::navigation_route::{PageState, ReturnFrame, ScrollBookmark, ScrollKey};
@@ -1412,18 +1359,6 @@ impl TaskApp {
             0.0,
             self.navigation.task_list_scroll.0.borrow().base_handle.offset().y.as_f32(),
         );
-        scroll.set(
-            ScrollKey::BoardX,
-            self.navigation.board_scroll.offset().x.as_f32(),
-            0.0,
-        );
-        for stage in crate::domain::Stage::BOARD_ORDER {
-            scroll.set(
-                ScrollKey::BoardColumn(Self::stage_index(stage)),
-                0.0,
-                self.navigation.board_column(stage).offset().y.as_f32(),
-            );
-        }
         scroll.set(
             ScrollKey::Topic,
             self.navigation.topic_scroll.offset().x.as_f32(),
@@ -1462,11 +1397,9 @@ impl TaskApp {
             page: PageState {
                 query: self.query(),
                 all_status: self.all_status,
-                layout: self.layout,
                 results_filter: self.automation_ui.result_filter,
                 history_limit: self.automation_ui.history_limit,
                 settings_tab: self.settings_section(),
-                steps_layout: self.steps_layout(),
             },
         }
     }
@@ -1504,9 +1437,7 @@ impl TaskApp {
     ) {
         use crate::navigation_route::ScrollKey;
         self.all_status = frame.page.all_status;
-        self.layout = frame.page.layout;
         self.navigation.settings_section = frame.page.settings_tab;
-        self.navigation.steps_layout = frame.page.steps_layout;
         self.automation_ui.result_filter = frame.page.results_filter;
         self.automation_ui.history_limit = frame.page.history_limit;
         match &frame.route {
@@ -1540,19 +1471,6 @@ impl TaskApp {
                 .base_handle
                 .set_offset(point(px(0.), px(y)));
             let _ = x;
-        }
-        if let Some((x, _)) = frame.scroll.get(ScrollKey::BoardX) {
-            self.navigation.board_scroll.set_offset(point(px(x), px(0.)));
-        }
-        for stage in crate::domain::Stage::BOARD_ORDER {
-            if let Some((_, y)) = frame
-                .scroll
-                .get(ScrollKey::BoardColumn(Self::stage_index(stage)))
-            {
-                self.navigation
-                    .board_column(stage)
-                    .set_offset(point(px(0.), px(y)));
-            }
         }
         if let Some((x, y)) = frame.scroll.get(ScrollKey::Topic) {
             self.navigation.topic_scroll.set_offset(point(px(x), px(y)));
@@ -1592,11 +1510,9 @@ impl TaskApp {
         &mut self,
         task: u64,
         panel: crate::navigation_route::TaskPanel,
-        steps_layout: Layout,
     ) -> bool {
         let base = self.scope();
-        let route =
-            crate::navigation_route::Route::research_task_from(task, base, panel, steps_layout);
+        let route = crate::navigation_route::Route::research_task_from(task, base, panel);
         self.install_route(route)
     }
 
@@ -1837,12 +1753,7 @@ impl TaskApp {
     pub(crate) fn fixture_select_task(&mut self, task: Option<u64>) {
         match task {
             Some(task) => {
-                let layout = self.steps_layout();
-                self.set_task_identity(
-                    task,
-                    crate::navigation_route::TaskPanel::Overview,
-                    layout,
-                );
+                self.set_task_identity(task, crate::navigation_route::TaskPanel::Overview);
             }
             None => {
                 if let crate::navigation_route::Route::ResearchTask(page) = self.nav.route() {
@@ -1858,13 +1769,11 @@ impl TaskApp {
         let preferred = Route::for_scope(
             &Scope::Project(1),
             AllStatus::All,
-            Layout::List,
             None,
             20,
         );
         NavState::new(store, preferred).unwrap_or_else(|_| {
-            let fallback =
-                Route::for_scope(&Scope::All, AllStatus::All, Layout::List, None, 20);
+            let fallback = Route::for_scope(&Scope::All, AllStatus::All, None, 20);
             NavState::new(store, fallback).expect("All research is always a valid route")
         })
     }
@@ -1895,7 +1804,6 @@ impl TaskApp {
         crate::navigation_route::Route::for_scope(
             scope,
             self.all_status,
-            self.layout,
             self.automation_ui.result_filter,
             self.automation_ui.history_limit,
         )
@@ -1920,7 +1828,7 @@ impl TaskApp {
         use crate::navigation_route::{ResearchScope, ResultOwner, Route};
         match route {
             Route::ResearchList(_) | Route::ResearchTask(_) => {
-                Route::research_list(ResearchScope::All, self.all_status, Layout::List)
+                Route::research_list(ResearchScope::All, self.all_status)
             }
             Route::ResearchResult(_) => {
                 Route::research_result(ResultOwner::OrdinaryPage, None)
@@ -1930,7 +1838,7 @@ impl TaskApp {
                 Route::automation_results(None, self.automation_ui.history_limit.max(1))
             }
             Route::PausedProjects | Route::MarketResearch | Route::Settings(_) | Route::AutomationList => {
-                Route::research_list(ResearchScope::All, self.all_status, Layout::List)
+                Route::research_list(ResearchScope::All, self.all_status)
             }
         }
     }
@@ -2112,13 +2020,11 @@ impl TaskApp {
         self.show_task_details = false;
         self.expanded_request_brief = None;
         self.show_task_activity = false;
-        let (panel, steps_layout) = match self.nav.route() {
-            crate::navigation_route::Route::ResearchTask(page) if page.task() == id => {
-                (page.panel(), page.steps_layout())
-            }
-            _ => (crate::navigation_route::TaskPanel::Overview, self.steps_layout()),
+        let panel = match self.nav.route() {
+            crate::navigation_route::Route::ResearchTask(page) if page.task() == id => page.panel(),
+            _ => crate::navigation_route::TaskPanel::Overview,
         };
-        self.set_task_identity(id, panel, steps_layout);
+        self.set_task_identity(id, panel);
         if self.selected() != Some(id) {
             self.toast = "That task is no longer available. Returned to a safe parent.".into();
         }
@@ -2168,7 +2074,7 @@ impl TaskApp {
         }
     }
     pub fn matches_scope(&self, t: &Task) -> bool {
-        // Automation research is reached from its own history, never the normal board.
+        // Automation research is reached from its own history, never the ordinary research list.
         if t.automation_id.is_some() {
             return false;
         }

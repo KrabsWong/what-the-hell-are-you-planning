@@ -19,6 +19,19 @@ pub struct SkippedRange {
     pub to: Option<i64>,
 }
 
+/// Result of moving a queued automation period into the run queue. UI callers
+/// use this to distinguish a real enqueue from a guard that intentionally did
+/// nothing; internal callers may ignore it.
+#[derive(Clone, Debug, PartialEq, Eq)]
+pub(crate) enum AutomationEnqueueOutcome {
+    Queued,
+    Requeued,
+    Pending,
+    AlreadyActive,
+    Skipped(String),
+    Failed(String),
+}
+
 #[derive(Clone, Debug, PartialEq, Eq)]
 pub enum TickAction {
     /// Create and queue the newest due occurrence.
@@ -1962,9 +1975,11 @@ impl TaskApp {
         &mut self,
         occurrence_id: u64,
         cx: &mut gpui_kit::Context<Self>,
-    ) {
+    ) -> crate::automation_runtime::AutomationEnqueueOutcome {
         if self.stop_journal_error.is_some() {
-            return;
+            return AutomationEnqueueOutcome::Failed(
+                "Resolve the stop journal before resuming this period.".into(),
+            );
         }
         // Per-occurrence admission guard. This is independent of transient
         // storage_error/pending state, so a later successful save cannot replay
@@ -1974,26 +1989,36 @@ impl TaskApp {
             .iter()
             .any(|intent| intent.occurrence == occurrence_id)
         {
-            return;
+            return AutomationEnqueueOutcome::Skipped(
+                "A stop request is still recorded for this period.".into(),
+            );
         }
         if self.storage.is_none() || !self.storage_error.is_empty() {
-            return;
+            return AutomationEnqueueOutcome::Failed(if self.storage_error.is_empty() {
+                "Local storage is unavailable.".into()
+            } else {
+                self.storage_error.clone()
+            });
         }
         let now = Self::automation_now();
         let Some(occurrence) = self.store.occurrence(occurrence_id).cloned() else {
-            return;
+            return AutomationEnqueueOutcome::Failed(
+                "This automation period is no longer available.".into(),
+            );
         };
         if occurrence.status == OccurrenceStatus::Verifying {
             self.error =
                 "This automation period is checking a previous session; confirm recovery before dispatching."
                     .into();
-            return;
+            return AutomationEnqueueOutcome::Skipped(self.error.clone());
         }
         if !matches!(
             occurrence.status,
             OccurrenceStatus::Queued | OccurrenceStatus::Running | OccurrenceStatus::WaitingRetry
         ) {
-            return;
+            return AutomationEnqueueOutcome::Skipped(
+                "This period is not queued, running or waiting to retry.".into(),
+            );
         }
         if let Some(reason) =
             occurrence_recovery_blocker_for(&self.store, &occurrence, &self.recovery.checks, false)
@@ -2009,10 +2034,10 @@ impl TaskApp {
             }
             self.store
                 .mark_automation_attention(occurrence.automation_id, reason.clone());
-            self.error = reason;
+            self.error = reason.clone();
             self.persist_if_changed(true);
             cx.notify();
-            return;
+            return AutomationEnqueueOutcome::Skipped(reason.clone());
         }
         // A durable Queued run that is not in the in-memory queue is a lost
         // queue effect, not an active process. Distinguish it from a running or
@@ -2034,19 +2059,23 @@ impl TaskApp {
                 && (matches!(run.status.as_str(), "Running" | "Cancelling" | "Recovering")
                     || (run.status == "Queued" && Some(run.id) != lost_effect))
         }) {
-            return;
+            return AutomationEnqueueOutcome::AlreadyActive;
         }
         // Expiry/deadline win over exact-intent recovery. A committed run
         // recovered after its allowed delay must not execute expired work.
         if occurrence.first_start_expired(now) {
             self.expire_occurrence(occurrence_id, now, cx);
-            return;
+            return AutomationEnqueueOutcome::Skipped(
+                "This period passed its start delay and was not queued.".into(),
+            );
         }
         if let Some(deadline) = occurrence.deadline_at
             && now >= deadline
         {
             self.timeout_occurrence(occurrence_id, now, cx);
-            return;
+            return AutomationEnqueueOutcome::Skipped(
+                "This period passed its deadline and was not queued.".into(),
+            );
         }
         // Exact-intent recovery: a run committed before its queue effect but
         // never started is requeued by id, not replaced with a new run.
@@ -2076,17 +2105,25 @@ impl TaskApp {
                     occurrence: occurrence_id,
                     now,
                 };
-                if let Err(error) = self.execute_command(command, cx) {
-                    self.error = format!("Automation run could not be requeued: {error}");
-                    self.automation_backoff_until =
-                        Some(std::time::Instant::now() + std::time::Duration::from_secs(30));
+                match self.execute_command(command, cx) {
+                    Ok(crate::command_app::CommandRun::Durable(_)) => {
+                        return AutomationEnqueueOutcome::Requeued;
+                    }
+                    Ok(crate::command_app::CommandRun::Saving { .. }) => {
+                        return AutomationEnqueueOutcome::Pending;
+                    }
+                    Err(error) => {
+                        self.error = format!("Automation run could not be requeued: {error}");
+                        self.automation_backoff_until =
+                            Some(std::time::Instant::now() + std::time::Duration::from_secs(30));
+                        return AutomationEnqueueOutcome::Failed(self.error.clone());
+                    }
                 }
             }
-            return;
         }
         if self.automation_fake_mode {
             self.run_fake_automation(occurrence, now, cx);
-            return;
+            return AutomationEnqueueOutcome::Queued;
         }
         let run = match self.store.prepare_occurrence_run(&occurrence, now) {
             Ok(run) => run,
@@ -2108,11 +2145,11 @@ impl TaskApp {
                 self.error = format!("Automation did not start: {error}");
                 self.persist_if_changed(true);
                 cx.notify();
-                return;
+                return AutomationEnqueueOutcome::Failed(self.error.clone());
             }
         };
         let Some(prepared) = self.prepare_run_dispatch(run, vec![], cx) else {
-            return;
+            return AutomationEnqueueOutcome::Failed(self.error.clone());
         };
         match self.commit_prepared_dispatch(
             prepared,
@@ -2121,15 +2158,18 @@ impl TaskApp {
         ) {
             Some(_) => {
                 self.automation_backoff_until = None;
+                cx.notify();
+                AutomationEnqueueOutcome::Queued
             }
             None => {
                 // The durable run+link commit failed or conflicted. No queue
                 // effect ran; the typed intent is retained for reprepare.
                 self.automation_backoff_until =
                     Some(std::time::Instant::now() + std::time::Duration::from_secs(30));
+                cx.notify();
+                AutomationEnqueueOutcome::Failed(self.error.clone())
             }
         }
-        cx.notify();
     }
 
     fn run_fake_automation(

@@ -286,6 +286,10 @@ print(json.dumps({'type':'text','part':{'text':json.dumps(result)}}),flush=True)
         w.render_frame(cx);
         assert!(w.try_find("step-execution-panel").is_some());
         assert!(w.try_find("step-execution-reason").is_some());
+        assert!(
+            w.try_find("step-rerun-prerequisite").is_some(),
+            "a blocked step must offer an explicit prerequisite replay path"
+        );
         w.click("step-run", cx);
         assert_eq!(app.read(cx).store.runs().len(), runs_before_navigation);
         w.click(format!("step-prerequisite-{}", goals[1].1[0]), cx);
@@ -308,6 +312,27 @@ print(json.dumps({'type':'text','part':{'text':json.dumps(result)}}),flush=True)
         w.click("step-run", cx);
         assert_eq!(app.read(cx).store.runs().len(), 6, "running step cannot launch twice");
     }).unwrap();
+    // Stopping the recovery queue must also cancel an in-flight check. A later
+    // session result must not import itself after the user stopped monitoring.
+    cx.update_window(handle, |_, _, cx| {
+        app.update(cx, |a, cx| {
+            a.check_interrupted_sessions(cx);
+            assert!(a.recovery_check_in_flight());
+            a.stop_recovery_queue();
+            assert!(!a.recovery_check_in_flight());
+            assert!(a
+                .recovery
+                .checks
+                .values()
+                .all(|check| !matches!(check, SessionCheck::Checking | SessionCheck::Running)));
+            assert_eq!(
+                a.store.runs().iter().find(|run| run.id == 4).unwrap().status,
+                "Recovering",
+                "stopping monitoring must not invent a terminal session result"
+            );
+        })
+    })
+    .unwrap();
     // The fixture leaves one session permanently running in another topic.
     // Prove that the ordinary Research queue keeps the retry queued, then
     // explicitly stop that fake session and recheck before retrying. This is
@@ -316,12 +341,27 @@ print(json.dumps({'type':'text','part':{'text':json.dumps(result)}}),flush=True)
     cx.update_window(handle, |_, w, cx| {
         app.update(cx, |a, cx| a.poll_runtime(cx));
         w.render_frame(cx);
-        let a = app.read(cx);
-        let running = a.store.runs().iter().find(|run| run.id == 4).expect("fixture run 4");
-        assert_eq!(running.status, "Recovering");
-        let retry = a.store.runs().iter().find(|run| run.id == 6).expect("retry run 6");
-        assert_eq!(retry.status, "Queued");
-        assert!(a.queued_runs.iter().any(|(id, _)| *id == 6));
+        let (running_status, retry_status, retry_queued) = {
+            let a = app.read(cx);
+            (
+                a.store.runs().iter().find(|run| run.id == 4).expect("fixture run 4").status.clone(),
+                a.store.runs().iter().find(|run| run.id == 6).expect("retry run 6").status.clone(),
+                a.queued_runs.iter().any(|(id, _)| *id == 6),
+            )
+        };
+        assert_eq!(running_status, "Recovering");
+        assert_eq!(retry_status, "Queued");
+        assert!(retry_queued);
+        app.update(cx, |a, _| {
+            a.note_selected_run(Some(4));
+            a.show_run_result = true;
+            a.show_run_details = false;
+        });
+        w.render_frame(cx);
+        assert!(
+            w.try_find("cancel-run").is_some(),
+            "a recovering run must remain stoppable"
+        );
         assert!(
             !root.join("executed").exists(),
             "the queued retry must not start while another topic is still running"

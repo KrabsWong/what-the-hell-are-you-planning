@@ -1,10 +1,17 @@
 //! Presentation-only summaries. Keep the original log for technical details.
 
+/// All prefixes used by the current and legacy browser handoff paths.
+pub(crate) fn is_browser_handoff(line: &str) -> bool {
+    line.starts_with("[blocked]")
+        || line.starts_with("[browser] Access paused ·")
+        || line.starts_with("[browser-handoff]")
+}
+
 pub(crate) fn user_message(line: &str) -> &str {
     if let Some(reason) = line.strip_prefix("[error] [validation] ") {
         return reason;
     }
-    if line.starts_with("[blocked]") {
+    if is_browser_handoff(line) {
         return "The research browser needs your attention. Open it to complete any sign-in or confirmation, then retry this step.";
     }
     if line.starts_with("[interrupted]") {
@@ -144,7 +151,20 @@ fn status_code(value: &serde_json::Value) -> Option<u64> {
 
 #[cfg(test)]
 mod tests {
-    use super::{model_unavailable, user_message};
+    use super::{is_browser_handoff, model_unavailable, user_message};
+
+    #[test]
+    fn browser_handoff_detection_excludes_ordinary_browser_tool_logs() {
+        assert!(is_browser_handoff(
+            "[browser] Access paused · User confirmation required"
+        ));
+        assert!(is_browser_handoff(
+            "[browser-handoff] Browser control remains with the user; continue research without browser access."
+        ));
+        assert!(!is_browser_handoff(
+            "[browser] {\"server\":\"planning_ego\",\"tool\":\"run\"}"
+        ));
+    }
 
     #[test]
     fn availability_errors_are_distinct_from_content_failures() {
@@ -190,6 +210,11 @@ mod tests {
             ("[error] request timed out", "too long to respond"),
             ("[error] context_length_exceeded", "more information"),
             ("[blocked] User confirmation required", "research browser"),
+            ("[browser] Access paused · User confirmation required", "research browser"),
+            (
+                "[browser-handoff] Browser control remains with the user; continue research without browser access.",
+                "research browser",
+            ),
             ("[interrupted] Application closed", "previous session"),
             (
                 "[workspace] Permission denied: /private/path",

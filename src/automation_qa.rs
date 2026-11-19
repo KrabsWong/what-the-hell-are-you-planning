@@ -2769,7 +2769,12 @@ print(json.dumps({'type':'text','part':{'text':json.dumps({'status':'complete','
                     .store
                     .request_manual_occurrence(a1, "queue-a1", now)
                     .unwrap();
-                a.enqueue_automation_occurrence(occurrence.id, cx);
+                let outcome = a.enqueue_automation_occurrence(occurrence.id, cx);
+                assert_eq!(
+                    outcome,
+                    crate::automation_runtime::AutomationEnqueueOutcome::Queued,
+                    "a newly requested period must report a real enqueue"
+                );
                 occurrence.id
             })
         })

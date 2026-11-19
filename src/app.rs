@@ -116,7 +116,7 @@ pub(crate) enum LaunchIntent {
     },
 }
 
-#[derive(Clone)]
+#[derive(Clone, Debug, PartialEq)]
 pub(crate) struct PendingDispatch {
     pub intent: LaunchIntent,
     pub files: Vec<PathBuf>,
@@ -345,6 +345,9 @@ pub struct TaskApp {
     pub(crate) pending_stop: Option<crate::domain_command::PreparedCommand>,
     /// Failed dispatch retained as intent; retry rebuilds run/ids from current state.
     pub(crate) pending_dispatch: Option<PendingDispatch>,
+    /// Retry intents held behind an older pending save. They are replayed after
+    /// that save resolves and always rebuild from the current store.
+    pub(crate) deferred_dispatches: Vec<PendingDispatch>,
     /// Exact reserved dispatch (run id included) retained across busy/backpressure
     /// retries; generic reprepare must never allocate a new identity.
     pub(crate) pending_dispatch_reserved: Option<(LaunchIntent, AgentRun, Vec<std::path::PathBuf>)>,
@@ -388,6 +391,8 @@ pub struct TaskApp {
         crate::dispatch_admission::AdmissionId,
         std::sync::Arc<crate::dispatch_intent::AdmissionParts>,
     )>,
+    /// Active batch runs whose Stop request is still waiting for a terminal event.
+    pub(crate) batch_stop_waiting: Vec<u64>,
     pub(crate) dispatch_recovery_done: bool,
     #[cfg(feature = "qa")]
     pub(crate) qa_dispatch_fake: Option<crate::dispatch_admission::FakeDispatchRunner>,
@@ -970,6 +975,7 @@ impl TaskApp {
             pending_commit: None,
             pending_stop: None,
             pending_dispatch: None,
+            deferred_dispatches: Vec::new(),
             pending_dispatch_reserved: None,
             dispatch_admission: None,
             dispatch_awaiting: None,
@@ -990,6 +996,7 @@ impl TaskApp {
             dispatch_status_durable: None,
             dispatch_resolution_launch_pending: None,
             dispatch_claim_pending: None,
+            batch_stop_waiting: Vec::new(),
             dispatch_recovery_done: false,
             #[cfg(feature = "qa")]
             qa_dispatch_fake: None,
@@ -3325,8 +3332,14 @@ impl TaskApp {
                 || self.pending_stop.is_some()
                 || self.pending_dispatch.is_some()
             {
-                self.error =
-                    "Resolve the previous pending change before dispatching this run.".into();
+                let deferred = PendingDispatch {
+                    intent: intent.clone(),
+                    files: prepared.files.clone(),
+                };
+                if !self.deferred_dispatches.contains(&deferred) {
+                    self.deferred_dispatches.push(deferred);
+                }
+                self.error = "Queued behind the previous pending change. This retry will start when that change is saved or discarded.".into();
                 cx.notify();
                 return None;
             }
@@ -3864,6 +3877,22 @@ impl TaskApp {
                 run.status = "Cancelling".into();
                 run.logs.push("[run] Cancellation requested".into());
             }
+        } else if self
+            .store
+            .runs()
+            .iter()
+            .find(|run| run.id == id)
+            .is_some_and(|run| run.status == "Recovering")
+        {
+            if let Some(mut run) = self.store.run_mut(id) {
+                run.status = "Cancelled".into();
+                run.ended_at = Some(opencode::timestamp());
+                run.logs.push(
+                    "[run] Stop requested for a recovered session; the external process may finish separately."
+                        .into(),
+                );
+            }
+            self.recovery.checks.remove(&id);
         } else if let Some(index) = self.queued_runs.iter().position(|(run, _)| *run == id) {
             self.queued_runs.remove(index);
             if let Some(mut run) = self.store.run_mut(id) {

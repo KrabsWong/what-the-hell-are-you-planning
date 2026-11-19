@@ -21,6 +21,34 @@ pub(crate) enum StepState {
     Done,
 }
 impl Store {
+    /// Leaf-first chain of unfinished prerequisites, including transitive
+    /// dependencies. Used only to offer an explicit rerun path; execution still
+    /// revalidates every dependency before dispatch.
+    pub(crate) fn missing_prerequisite_chain(&self, id: u64) -> Vec<u64> {
+        fn collect(
+            store: &Store,
+            id: u64,
+            seen: &mut std::collections::BTreeSet<u64>,
+            out: &mut Vec<u64>,
+        ) {
+            let Some(task) = store.task(id) else { return };
+            let Some(research) = task.research.as_ref() else { return };
+            for dep in &research.depends_on {
+                if !seen.insert(*dep) {
+                    continue;
+                }
+                collect(store, *dep, seen, out);
+                if store.research_result(*dep).is_none() {
+                    out.push(*dep);
+                }
+            }
+        }
+        let mut seen = std::collections::BTreeSet::new();
+        let mut out = Vec::new();
+        collect(self, id, &mut seen, &mut out);
+        out
+    }
+
     pub(crate) fn step_state(&self, id: u64) -> StepState {
         let Some(task) = self.task(id) else {
             return StepState::Blocked;
@@ -186,8 +214,10 @@ impl TaskApp {
         if state == ExecutionStatus::Blocked {
             if let Some(run) = latest {
                 let detail = run.logs.iter().rev().find(|line| {
-                    ["[error]", "[blocked]", "[interrupted]", "[workspace]", "[stream error]"].iter()
-                        .any(|prefix| line.starts_with(prefix))
+                    crate::run_errors::is_browser_handoff(line)
+                        || ["[error]", "[interrupted]", "[workspace]", "[stream error]"]
+                            .iter()
+                            .any(|prefix| line.starts_with(prefix))
                 }).map(|line| crate::run_errors::user_message(line).to_owned());
                 if let Some(detail) = detail {
                     panel = panel.child(crate::views::notice(
@@ -228,10 +258,51 @@ impl TaskApp {
         } else {
             primary_button("step-run", if latest.is_some() { "Retry step" } else { "Run step" })
         };
+        let action_tooltip = if !dependencies.is_empty() {
+            let names: Vec<String> = dependencies.iter().map(|dep| {
+                self.store.task(*dep)
+                    .map(|task| self.store.identifier(task))
+                    .unwrap_or_else(|| format!("Missing prerequisite {dep}"))
+            }).collect();
+            format!(
+                "Only this step stays disabled until prerequisites finish: {}. Use Rerun prerequisite to re-run the upstream work.",
+                names.join(", ")
+            )
+        } else if cancelled {
+            "Reopen this step before running it again.".into()
+        } else if checking {
+            "Confirm the previous session before starting a duplicate run.".into()
+        } else if pending {
+            "Approve this goal's plan before running this step.".into()
+        } else if active {
+            "This step is already running or queued.".into()
+        } else if archived {
+            "Restore the archived topic or goal before running this step.".into()
+        } else if !self.storage_error.is_empty() {
+            format!("Local storage must recover before dispatch: {}", self.storage_error)
+        } else {
+            "Run only this step; completed prerequisite results are reused.".into()
+        };
+        let prerequisite_replay = self.store.missing_prerequisite_chain(id).into_iter().next();
         if !archived {
             actions = actions.child(run_action
                 .disabled(pending || checking || active || cancelled || !dependencies.is_empty())
+                .tooltip(action_tooltip)
                 .on_click(cx.listener(move |a, _, _, cx| a.start_run(id, cx))));
+        }
+        if let Some(prerequisite) = prerequisite_replay {
+            let title = self.store.task(prerequisite)
+                .map(|task| self.store.identifier(task))
+                .unwrap_or_else(|| format!("prerequisite {prerequisite}"));
+            actions = actions.child(
+                button("step-rerun-prerequisite", format!("Rerun prerequisite · {title}"))
+                    .tooltip(format!(
+                        "Run {title} and its own unfinished prerequisites first. This step stays disabled until its results are current."
+                    ))
+                    .on_click(cx.listener(move |a, _, _, cx| {
+                        a.start_run_background(prerequisite, cx)
+                    })),
+            );
         }
         let mut links = col().gap_1()
             .child(quiet_button("step-open-goal", if pending { "Review goal" } else { "Open goal" })

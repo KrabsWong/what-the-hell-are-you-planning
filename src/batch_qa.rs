@@ -275,7 +275,13 @@ pub fn run() {
         "cancellable streamed output",
     );
     cx.update_window(handle, |_, _, cx| {
-        app.update(cx, |a, cx| a.cancel_todo_batch(cx))
+        app.update(cx, |a, cx| {
+            a.cancel_todo_batch(cx);
+            assert!(
+                a.toast.starts_with("Stop requested"),
+                "stop must not claim completion before the process ends"
+            );
+        })
     })
     .unwrap();
     idle(&mut cx, handle, &app);
@@ -283,6 +289,10 @@ pub fn run() {
         app.update(cx, |a, cx| {
             assert!(a.todo_batch.is_none());
             assert_eq!(a.store.runs().last().unwrap().status, "Cancelled");
+            assert_eq!(
+                a.toast, "Topic queue stopped · saved results kept",
+                "the final toast is promoted only after the terminal event"
+            );
             assert!(!a.store.runs().iter().any(|r| r.task_id == cancelled.1[1]));
             archive_goal(a, cancelled.0);
             cx.notify();

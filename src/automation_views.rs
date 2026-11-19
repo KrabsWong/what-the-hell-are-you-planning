@@ -2507,8 +2507,27 @@ impl TaskApp {
             return;
         }
         if occurrence.status.is_active() {
-            self.enqueue_automation_occurrence(occurrence.id, cx);
-            self.toast = "Resuming this period's unfinished steps.".into();
+            match self.enqueue_automation_occurrence(occurrence.id, cx) {
+                crate::automation_runtime::AutomationEnqueueOutcome::Queued
+                | crate::automation_runtime::AutomationEnqueueOutcome::Requeued => {
+                    self.toast = "Resuming this period's unfinished steps.".into();
+                }
+                crate::automation_runtime::AutomationEnqueueOutcome::Pending => {
+                    self.toast =
+                        "Saving the period retry · unfinished steps resume after the receipt."
+                            .into();
+                }
+                crate::automation_runtime::AutomationEnqueueOutcome::AlreadyActive => {
+                    self.toast =
+                        "This period already has an active run; nothing new was queued.".into();
+                }
+                crate::automation_runtime::AutomationEnqueueOutcome::Skipped(reason) => {
+                    self.automation_ui.feedback = Some(Err(reason));
+                }
+                crate::automation_runtime::AutomationEnqueueOutcome::Failed(error) => {
+                    self.automation_ui.feedback = Some(Err(error));
+                }
+            }
             cx.notify();
             return;
         }

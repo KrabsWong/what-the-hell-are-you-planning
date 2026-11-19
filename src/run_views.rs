@@ -788,6 +788,20 @@ impl TaskApp {
         let automation_owned = run.automation_occurrence_id.is_some();
         let active = self.active_runs.iter().any(|a| a.id == run.id)
             || self.queued_runs.iter().any(|(id, _)| *id == run.id);
+        let admission_pending = self
+            .dispatch_awaiting
+            .as_ref()
+            .is_some_and(|id| id.run_id == run.id)
+            || self
+                .dispatch_claim_pending
+                .as_ref()
+                .is_some_and(|(id, parts)| id.run_id == run.id && parts.run.id == run.id)
+            || self
+                .pending_dispatch_reserved
+                .as_ref()
+                .is_some_and(|(_, reserved, _)| reserved.id == run.id)
+            || self.batch_pending_runs.iter().any(|pending| pending.run_id == run.id);
+        let stoppable = active || admission_pending || run.status == "Recovering";
         // Recovered OpenCode sessions have no local worker/queue entry, but still
         // need the same progress outline as runs launched by this app instance.
         let ongoing = active || matches!(run.status.as_str(), "Running" | "Queued" | "Recovering" | "Cancelling");
@@ -798,7 +812,10 @@ impl TaskApp {
         let project_id = project_plan.or_else(|| self.store.task(id).map(|t| t.project_id));
         let can_open =
             project_id.is_some() && (project_plan.is_some() || self.store.task(id).is_some());
-        let browser_blocked = run.logs.iter().any(|l| l.starts_with("[blocked]"));
+        let browser_blocked = run
+            .logs
+            .iter()
+            .any(|line| crate::run_errors::is_browser_handoff(line));
         let planning = project_plan.is_some() || run.research_kind == Some(ResearchKind::Goal);
         // Research streams contain a JSON protocol until the lifecycle validates the result.
         let readable = !planning
@@ -1018,7 +1035,7 @@ impl TaskApp {
                     .on_click(cx.listener(|this, _, _, cx| this.open_ego(cx))),
             );
         }
-        if active {
+        if stoppable {
             if run_goal.is_some_and(|goal| self.research_sequences.contains(&goal)) {
                 actions = actions.child(
                     quiet_button("pause-research", "Pause after this step").on_click(cx.listener(

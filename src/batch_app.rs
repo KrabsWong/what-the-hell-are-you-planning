@@ -97,6 +97,7 @@ impl TaskApp {
             });
             // A replaced batch cannot own any in-flight admission receipt.
             self.batch_pending_runs.clear();
+            self.batch_stop_waiting.clear();
         }
         let batch = self.todo_batch.as_mut().unwrap();
         let mut added = 0;
@@ -211,6 +212,17 @@ impl TaskApp {
             .iter()
             .map(|pending| pending.run_id)
             .collect();
+        let waiting: Vec<u64> = pending_runs
+            .iter()
+            .copied()
+            .chain(
+                self.todo_batch
+                    .as_ref()
+                    .into_iter()
+                    .flat_map(|batch| batch.run_ids.keys().copied()),
+            )
+            .filter(|id| self.active_runs.iter().any(|active| active.id == *id))
+            .collect();
         if let Some(batch) = self.todo_batch.take() {
             for id in batch.run_ids.keys() {
                 self.cancel_run_id(*id, cx);
@@ -228,8 +240,34 @@ impl TaskApp {
         // Admission receipts still in flight no longer belong to any batch.
         self.batch_pending_runs.clear();
         self.batch_generation_seq = self.batch_generation_seq.wrapping_add(1);
-        self.toast = "Batch stopped · saved results kept".into();
+        self.batch_stop_waiting = waiting.clone();
+        self.toast = if !waiting.is_empty() {
+            format!(
+                "Stop requested · {} task(s) still finishing · saved results kept",
+                waiting.len()
+            )
+        } else if self.storage_error.is_empty() {
+            "Topic queue stopped · saved results kept".into()
+        } else {
+            "Stop requested · cancellation not saved · see the footer".into()
+        };
         cx.notify();
+    }
+
+    /// Called when a cancelled topic-queue run reaches its terminal event.
+    /// The success toast is only promoted after every active process is gone.
+    pub(crate) fn finish_batch_stop_run(&mut self, run_id: u64) {
+        let Some(index) = self
+            .batch_stop_waiting
+            .iter()
+            .position(|waiting| *waiting == run_id)
+        else {
+            return;
+        };
+        self.batch_stop_waiting.remove(index);
+        if self.batch_stop_waiting.is_empty() && self.toast.starts_with("Stop requested ·") {
+            self.toast = "Topic queue stopped · saved results kept".into();
+        }
     }
     pub(crate) fn advance_todo_batch(&mut self, cx: &mut Context<Self>) {
         if self.todo_batch.as_ref().is_none_or(|b| b.state != BatchState::Running) { return; }
@@ -474,7 +512,8 @@ impl TaskApp {
                     "Dismiss completed batch",
                 )
             } else {
-                danger_button("clear-todo-batch", "Stop all")
+                danger_button("clear-todo-batch", "Stop topic queue")
+                    .tooltip("Stop queued work and cancel running steps. Saved results are kept; paused goals remain available to resume.")
             }
             .on_click(cx.listener(|this, _, _, cx| this.cancel_todo_batch(cx))),
         );

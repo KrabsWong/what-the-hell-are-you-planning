@@ -27,6 +27,7 @@ pub fn run() {
     terminal_failure_retains_journal_check(&root);
     dispatch_checks(&root);
     pending_dispatch_preserves_prior_intent(&root);
+    pending_dispatch_defers_until_saved(&root);
     typed_intent_checks(&root);
     automation_command_invalidates_undo_check(&root);
     println!("Command QA passed · {}", root.display());
@@ -1118,6 +1119,67 @@ fn pending_dispatch_preserves_prior_intent(root: &Path) {
     assert!(!pending);
     assert!(read);
     assert_eq!(cx.update(|cx| app.read(cx).store.runs().len()), 0);
+}
+
+fn pending_dispatch_defers_until_saved(root: &Path) {
+    let directory = root.join("dispatch-deferred");
+    std::fs::create_dir_all(&directory).unwrap();
+    let path = directory.join("workspace.sqlite3");
+    let (store, occ, run) = dispatch_store(&directory);
+    Storage::new(path.clone()).save(&store).unwrap();
+    let (mut cx, handle, app) = app_for(&path, &directory);
+    cx.update_window(handle, |_, w, cx| w.render_frame(cx))
+        .unwrap();
+    cx.update(|cx| app.update(cx, |a, _| a.store.push_occurrence(occ.clone())));
+    fail_automation_writes(&path);
+    cx.update(|cx| {
+        app.update(cx, |a, cx| {
+            assert!(
+                a.execute_command(
+                    crate::domain_command::Command::SetRead {
+                        occurrence: occ.id,
+                        unread: true,
+                    },
+                    cx,
+                )
+                .is_err()
+            );
+        })
+    });
+    let (deferred, runs, queued) = cx.update(|cx| {
+        app.update(cx, |a, cx| {
+            let prepared = a.prepare_run_dispatch(run, vec![], cx).unwrap();
+            assert!(a
+                .commit_prepared_dispatch(prepared, crate::app::LaunchIntent::Occurrence(occ.id), cx)
+                .is_none());
+            (
+                a.deferred_dispatches.len(),
+                a.store.runs().len(),
+                a.queued_runs.len(),
+            )
+        })
+    });
+    assert_eq!(deferred, 1, "the retry must wait for the older save");
+    assert_eq!(runs, 0, "no run is staged while a save is pending");
+    assert_eq!(queued, 0, "no queue effect runs while a save is pending");
+    assert!(cx.update(|cx| app.read(cx).error.contains("Queued behind")));
+
+    allow_automation_writes(&path);
+    let (deferred, runs, queued, pending) = cx.update(|cx| {
+        app.update(cx, |a, cx| {
+            a.retry_pending_saves(cx);
+            (
+                a.deferred_dispatches.len(),
+                a.store.runs().len(),
+                a.queued_runs.len(),
+                a.pending_commit.is_some(),
+            )
+        })
+    });
+    assert!(!pending);
+    assert_eq!(deferred, 0, "the deferred retry is replayed after the save");
+    assert_eq!(runs, 1, "the replayed retry creates one fresh run");
+    assert_eq!(queued, 1, "the replayed retry enters the queue");
 }
 
 /// Typed dispatch intents must rebuild the authoritative request/source and

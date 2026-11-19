@@ -347,6 +347,10 @@ impl TaskApp {
             || self.recovery.next_check.is_some()
             || !self.recovery.queue.is_empty()
     }
+    #[cfg(feature = "qa")]
+    pub(crate) fn recovery_check_in_flight(&self) -> bool {
+        self.recovery.receiver.is_some() || self.recovery.next_check.is_some()
+    }
     pub(crate) fn poll_recovery(&mut self, cx: &mut Context<Self>) {
         let mut updates = vec![];
         let mut disconnected = false;
@@ -641,7 +645,91 @@ impl TaskApp {
         self.recovery.queue.retain(|(_, goals)| !goals.is_empty());
     }
     pub(crate) fn stop_recovery_queue(&mut self) {
+        self.cancel_recovery_checks();
         self.recovery.queue.clear();
+    }
+
+    /// Drop an in-flight session check. The sender belongs to the spawned
+    /// inspection thread; dropping the receiver makes its next send fail and
+    /// ends the check without importing later results.
+    pub(crate) fn cancel_recovery_checks(&mut self) {
+        self.recovery.receiver = None;
+        self.recovery.next_check = None;
+        self.recovery
+            .checks
+            .retain(|_, check| matches!(check, SessionCheck::Stopped));
+    }
+
+    /// Stop one paused goal without requiring its background session to report
+    /// back. The durable cancellation is explicit; an external session may
+    /// still finish separately and will no longer be monitored.
+    pub(crate) fn cancel_paused_goal(&mut self, goal: u64, cx: &mut Context<Self>) {
+        let children = self.store.research_children(goal);
+        let runs: Vec<AgentRun> = self
+            .store
+            .runs()
+            .iter()
+            .filter(|run| children.contains(&run.task_id))
+            .cloned()
+            .collect();
+        let live: Vec<u64> = runs
+            .iter()
+            .filter(|run| matches!(run.status.as_str(), "Queued" | "Running" | "Cancelling"))
+            .map(|run| run.id)
+            .collect();
+        let recovering: Vec<u64> = runs
+            .iter()
+            .filter(|run| {
+                matches!(run.status.as_str(), "Recovering" | "Interrupted")
+                    && self.store.is_recovery_candidate(run)
+            })
+            .map(|run| run.id)
+            .collect();
+        for id in live {
+            self.cancel_run_id(id, cx);
+        }
+        for id in recovering {
+            if let Some(run) = self.store.run_mut(id) {
+                run.status = "Cancelled".into();
+                run.ended_at = Some(opencode::timestamp());
+                run.logs.push(
+                    "[run] Stop requested for a recovered session; the external process may finish separately."
+                        .into(),
+                );
+            }
+            self.recovery.checks.remove(&id);
+        }
+        let command = crate::domain_command::Command::Edit(
+            crate::domain_command::EditCommand::TaskStage {
+                id: goal,
+                stage: Stage::Cancelled,
+            },
+        );
+        match self.execute_command(command, cx) {
+            Ok(_) => {
+                self.error.clear();
+                self.toast = "Goal cancelled · its external session is no longer monitored".into();
+            }
+            Err(error) => {
+                self.error = error.clone();
+                self.task_start_feedback = Some((goal, error));
+            }
+        }
+        self.persist_if_changed(true);
+        cx.notify();
+    }
+
+    fn cancel_paused_project(&mut self, project: u64, cx: &mut Context<Self>) {
+        let goals: Vec<u64> = self
+            .store
+            .paused_project_goals()
+            .into_iter()
+            .filter(|(id, _)| *id == project)
+            .flat_map(|(_, goals)| goals)
+            .collect();
+        for goal in goals {
+            self.cancel_paused_goal(goal, cx);
+        }
     }
     pub(crate) fn recovery_view(&self, cx: &mut Context<Self>) -> AnyElement {
         let mut projects = self.store.paused_project_goals();
@@ -703,6 +791,13 @@ impl TaskApp {
                                 .tooltip("Resume approved, stopped goals. Running or unverified sessions cannot be restarted.")
                                 .on_click(cx.listener(move |a, _, _, cx| {
                                     a.resume_projects(Some(project), cx)
+                                })),
+                        )
+                        .child(
+                            danger_button(("cancel-paused-project", project), "Cancel project")
+                                .tooltip("Cancel every paused goal in this project. Saved results are kept; external sessions are no longer monitored.")
+                                .on_click(cx.listener(move |a, _, _, cx| {
+                                    a.cancel_paused_project(project, cx)
                                 })),
                         )
                     }),
@@ -788,6 +883,14 @@ impl TaskApp {
                             .on_click(cx.listener(move |a, _, w, cx| a.open_task(goal, w, cx))),
                         )
                         .child(label(status, cx).pl_1());
+                    group = group.child(
+                        danger_button(("cancel-recovery-goal", goal), "Stop goal")
+                            .self_start()
+                            .tooltip("Cancel this paused goal and stop monitoring its previous session. Saved results are kept.")
+                            .on_click(cx.listener(move |a, _, _, cx| {
+                                a.cancel_paused_goal(goal, cx)
+                            })),
+                    );
                     for child in children {
                         let task = self.store.task(child).unwrap();
                         let state = self.store.execution_status(child, self.todo_batch.as_ref());

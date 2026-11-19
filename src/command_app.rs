@@ -388,6 +388,23 @@ impl TaskApp {
                 }
             }
         }
+        self.replay_deferred_dispatches(cx);
+    }
+
+    /// Replay retries that were held behind an older pending command. Each
+    /// entry rebuilds its run from the current store; a still-pending command
+    /// re-queues the typed intent through `commit_prepared_dispatch`.
+    fn replay_deferred_dispatches(&mut self, cx: &mut Context<Self>) {
+        let deferred = std::mem::take(&mut self.deferred_dispatches);
+        for pending in deferred {
+            let backup = pending.clone();
+            if let Err(error) = self.retry_dispatch_intent(pending, cx) {
+                if !self.deferred_dispatches.contains(&backup) && self.pending_dispatch.is_none() {
+                    self.pending_dispatch = Some(backup);
+                }
+                self.automation_ui.feedback = Some(Err(error));
+            }
+        }
     }
 
     /// Explicit resolution for a pending dispatch whose source is no longer

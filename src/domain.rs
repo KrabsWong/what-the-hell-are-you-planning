@@ -2172,7 +2172,7 @@ impl Store {
             let request = requests_by_run.get(&run.id).copied();
             if !(run.project_plan.is_none() && id_set.contains(&run.task_id) || request.is_some()) { continue; }
             let action = match run.status.as_str() {
-                "Queued" => "Open Progress and use Stop task to cancel this queued attempt or retry. If its goal is in the batch queue, also use Stop all, or wait for the queue to finish.",
+                "Queued" => "Open Progress and use Stop task to cancel this queued attempt or retry. If its goal is in the batch queue, also use Stop topic queue, or wait for the queue to finish.",
                 "Running" => "Wait for completion, or open Progress and use Stop task. Wait until stopping finishes before moving.",
                 "Recovering" => "Wait for recovery to finish, then finish or stop the task. To abandon recovery, archive the topic and confirm Stop and archive; wait for stopping to finish, then restore it if needed.",
                 "Cancelling" => "A stop has already been requested. Wait until the status changes to Stopped; do not submit another stop.",
@@ -2189,7 +2189,7 @@ impl Store {
                 let state = if matches!(batch.state, crate::batch::BatchState::Paused(_)) { "Paused batch queue" } else { "Pending batch queue" };
                 let children: Vec<_> = self.tasks.iter().filter(|t| t.parent_id == Some(*id) && !t.stage.is_closed() && self.research_result(t.id).is_none()).map(|t| task_name(t.id)).collect();
                 let children = if children.is_empty() { String::new() } else { format!("\n  Pending child tasks: {}", children.join("; ")) };
-                blockers.push(format!("{} — {state}{children}\n  Finish the queue, or use Stop all in the queue bar. Stop all affects the entire batch, including other topics; pausing alone does not release it.", task_name(*id)));
+                blockers.push(format!("{} — {state}{children}\n  Finish the queue, or use Stop topic queue in the queue bar. Stop topic queue affects the entire batch, including other topics; pausing alone does not release it.", task_name(*id)));
             }
         }
         for request in requests {

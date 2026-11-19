@@ -1950,7 +1950,7 @@ mod tests {
         let blockers = s.topic_move_blockers(topic, Some(&batch));
         assert_eq!(blockers.len(), 1);
         assert!(blockers[0].contains("Paused batch queue"));
-        assert!(blockers[0].contains("Stop all"));
+        assert!(blockers[0].contains("Stop topic queue"));
         assert!(blockers[0].contains("including other topics"));
         assert!(blockers[0].contains(&s.task(ids[0]).unwrap().title));
         batch.state = crate::batch::BatchState::Finished;

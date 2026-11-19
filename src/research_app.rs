@@ -757,6 +757,7 @@ impl TaskApp {
             cx.notify();
             return;
         }
+        self.finish_batch_stop_run(run_id);
         self.publishing_scan_requested = true;
         let continuing_goal = self.run_goal(run_id)
             .filter(|goal| self.research_sequences.contains(goal));

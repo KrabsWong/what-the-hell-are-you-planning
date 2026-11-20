@@ -14,7 +14,7 @@ pub struct PublishingConfig {
 }
 impl Default for PublishingConfig {
     fn default() -> Self {
-        Self { repository: String::new(), branch: "main".into(), base_url: "https://report.krabs.wang".into(), automatic: false }
+        Self { repository: String::new(), branch: "main".into(), base_url: "https://report.krabs.wang".into(), automatic: true }
     }
 }
 impl PublishingConfig {
@@ -97,10 +97,10 @@ fn classify_page(curl_code: Option<i32>, output: &[u8], marker: &str) -> PageChe
 enum PublicationAction { Publish(bool), Retry(String), Verify(String), Open(String) }
 impl PublicationAction {
     fn label(&self) -> &'static str {
-        match self { Self::Publish(false) => "Publish report", Self::Publish(true) => "Publish update", Self::Retry(_) => "Retry publishing", Self::Verify(_) => "Check status", Self::Open(_) => "View report" }
+        match self { Self::Publish(false) => "Publish report", Self::Publish(true) => "Publish update", Self::Retry(_) => "Publish update", Self::Verify(_) => "Check status", Self::Open(_) => "View report" }
     }
     fn help(&self) -> &'static str {
-        match self { Self::Publish(_) => "Publish the current final reports to GitHub", Self::Retry(_) => "Retry publishing the saved report snapshot", Self::Verify(_) => "Check the public page only; does not commit or push to GitHub", Self::Open(_) => "Open the published report" }
+        match self { Self::Publish(_) => "Publish the current final reports to GitHub", Self::Retry(_) => "Publish the saved snapshot again to update the report URL", Self::Verify(_) => "Check the public page only; does not commit or push to GitHub", Self::Open(_) => "Open the published report" }
     }
 }
 fn publication_action(publication: Option<&Publication>, changed: bool) -> PublicationAction {
@@ -116,12 +116,20 @@ impl Store {
         self.topic_publication_content(topic).ok()
     }
 
+    pub(crate) fn topic_share_content_with_mode(&self, topic: u64, allow_automation: bool) -> Option<(String, String)> {
+        self.topic_publication_content_with_mode(topic, allow_automation).ok()
+    }
+
     pub(crate) fn topic_publication_blocker(&self, topic_id: u64) -> Option<String> {
+        self.topic_publication_blocker_with_mode(topic_id, false)
+    }
+
+    pub(crate) fn topic_publication_blocker_with_mode(&self, topic_id: u64, allow_automation: bool) -> Option<String> {
         let Some(topic) = self.topics().iter().find(|topic| topic.id == topic_id) else {
             return Some("Choose an active research topic before publishing.".into());
         };
         if topic.archived { return Some("Restore this topic before publishing.".into()); }
-        if topic.automation_id.is_some() { return Some("Automation topics cannot be published from Research.".into()); }
+        if topic.automation_id.is_some() && !allow_automation { return Some("Automation topics cannot be published from Research.".into()); }
         if let Some(status) = self.topic_planning_status(topic.id) {
             return Some(format!("Finish topic planning before publishing. Current planning status: {status}."));
         }
@@ -201,7 +209,11 @@ impl Store {
     }
 
     pub(crate) fn topic_publication_content(&self, topic_id: u64) -> Result<(String, String), String> {
-        if let Some(blocker) = self.topic_publication_blocker(topic_id) { return Err(blocker); }
+        self.topic_publication_content_with_mode(topic_id, false)
+    }
+
+    pub(crate) fn topic_publication_content_with_mode(&self, topic_id: u64, allow_automation: bool) -> Result<(String, String), String> {
+        if let Some(blocker) = self.topic_publication_blocker_with_mode(topic_id, allow_automation) { return Err(blocker); }
         let topic = self
             .topics()
             .iter()
@@ -232,7 +244,7 @@ impl Store {
         Ok((topic.name.clone(), markdown))
     }
 }
-fn fingerprint(config: &PublishingConfig, title: &str, markdown: &str) -> String {
+pub(crate) fn fingerprint(config: &PublishingConfig, title: &str, markdown: &str) -> String {
     format!("{:x}", Sha256::digest(serde_json::to_vec(&(&config.repository, &config.branch, &config.base_url, title, markdown)).unwrap()))
 }
 /// A Topic has one permanent public URL. The first successfully pushed
@@ -319,6 +331,23 @@ fn verify_page(publication: &Publication, commit: String) -> PublishOutcome {
 }
 
 impl TaskApp {
+    pub(crate) fn enqueue_topic_notification(&mut self, topic: u64, occurrence: Option<u64>) {
+        if !self.store.notification_config().enabled { return; }
+        let allow_automation = self.store.topic(topic).is_some_and(|topic| topic.automation_id.is_some());
+        if self.store.topic_publication_blocker_with_mode(topic, allow_automation).is_some() { return; }
+        let Some((title, markdown)) = self.store.topic_share_content_with_mode(topic, allow_automation) else { return; };
+        let fingerprint = fingerprint(&self.store.report_publishing(), &title, &markdown);
+        let summary = crate::notification::publication_summary(&markdown);
+        self.store.enqueue_notification_job(
+            topic,
+            occurrence,
+            title,
+            summary,
+            fingerprint,
+            chrono::Utc::now().timestamp(),
+        );
+    }
+
     pub(crate) fn recover_publications(&mut self) {
         self.publishing_scan_requested = true;
         let ids: Vec<String> = self
@@ -339,6 +368,8 @@ impl TaskApp {
         for (input, value) in self.publishing_inputs.iter().zip([config.repository.clone(), config.branch.clone(), config.base_url.clone()]) {
             input.update(cx, |s, cx| s.set_value(value, w, cx));
         }
+        let destination = self.store.notification_config().destination.clone();
+        self.notification_destination_input.update(cx, |s, cx| s.set_value(destination, w, cx));
     }
     fn save_publishing_settings(&mut self, cx: &mut Context<Self>) {
         let config = PublishingConfig {
@@ -348,6 +379,17 @@ impl TaskApp {
             automatic: self.store.report_publishing().automatic,
         };
         if let Err(error) = config.validate() { self.show_save_error(error, cx); return; }
+        let destination = self.notification_destination_input.read(cx).value().trim().to_string();
+        if !destination.is_empty()
+            && !destination.chars().all(|c| c.is_ascii_alphanumeric() || c == '_' || c == '-')
+        {
+            self.show_save_error("Notification destination must use letters, digits, underscore or hyphen.", cx);
+            return;
+        }
+        if destination.len() > 64 {
+            self.show_save_error("Notification destination must be 64 characters or fewer.", cx);
+            return;
+        }
         if self
             .apply_domain_command_undoable(
                 crate::scoped_domain::DomainCommand::Publishing { config },
@@ -355,6 +397,19 @@ impl TaskApp {
                 cx,
             )
             .is_none()
+        {
+            return;
+        }
+        let notification = crate::notification::NotificationConfig {
+            enabled: self.store.notification_config().enabled,
+            destination,
+        };
+        if self.store.notification_config() != &notification
+            && self.apply_domain_command_undoable(
+                crate::scoped_domain::DomainCommand::Notification { config: notification },
+                "Completion notification settings saved",
+                cx,
+            ).is_none()
         {
             return;
         }
@@ -449,6 +504,7 @@ impl TaskApp {
             Err(mpsc::TryRecvError::Empty) => None,
         });
         if let Some((id, event)) = event {
+            let mut online_publication = None;
             if let Some(p) = self.store.publication_mut(&id) {
                 match event {
                     PublishEvent::Progress(stage, commit) => {
@@ -469,9 +525,13 @@ impl TaskApp {
                         };
                         p.status = status.into();
                         p.message = message;
+                        if p.status == "Online" { online_publication = Some(p.clone()); }
                     }
                 }
                 self.toast = format!("Report publication · {}", p.status);
+            }
+            if let Some(publication) = online_publication {
+                self.store.activate_notification_jobs(&publication, chrono::Utc::now().timestamp());
             }
             self.persist_if_changed(true); cx.notify();
         }
@@ -480,9 +540,10 @@ impl TaskApp {
         self.publishing_scan_requested = false;
         let topics: Vec<u64> = self.store.topics().iter().map(|topic| topic.id).collect();
         for topic in topics {
-            if self.store.topic_publication_blocker(topic).is_some() { continue; }
+            let allow_automation = self.store.topic(topic).is_some_and(|topic| topic.automation_id.is_some());
+            if self.store.topic_publication_blocker_with_mode(topic, allow_automation).is_some() { continue; }
             if self.prepare_topic_publication_bodies(topic).is_err() { continue; }
-            let Some((title, markdown)) = self.store.topic_share_content(topic) else { continue; };
+            let Some((title, markdown)) = self.store.topic_share_content_with_mode(topic, allow_automation) else { continue; };
             let fingerprint = fingerprint(&self.store.report_publishing(), &title, &markdown);
             let current = current_publication_index(&self.store.publications(), topic)
                 .map(|index| &self.store.publications()[index]);
@@ -524,6 +585,40 @@ impl TaskApp {
                 })))
             .child(label("Enabling this also publishes existing completed Topics. All active goals must be complete. A Topic keeps one report URL: new content overwrites it in place so shared links keep working, retries keep the same URL, and earlier versions remain in Git history. Anyone with the link can read it.", cx))
             .child(label("Import your existing reports into the repository before connecting EdgeOne. Git pushes never force-overwrite remote history. Keep the repository private and configure EdgeOne to deploy this branch.", cx))
+            .child(div().font_weight(FontWeight::SEMIBOLD).child(selectable("Completion notifications")))
+            .child(select_button("completion-notifications", "Notify when a report is online", self.store.notification_config().enabled, cx)
+                .when(self.store.notification_config().enabled, |b| b.icon(assets::IconName::Check))
+                .on_click(cx.listener(|a, _, _, cx| {
+                    let config = crate::notification::NotificationConfig {
+                        enabled: !a.store.notification_config().enabled,
+                        destination: a.store.notification_config().destination.clone(),
+                    };
+                    let _ = a.apply_domain_command_undoable(
+                        crate::scoped_domain::DomainCommand::Notification { config },
+                        "Completion notification preference saved",
+                        cx,
+                    );
+                    cx.notify();
+                })))
+            .child(label("Destination override", cx)).child(Input::new(&self.notification_destination_input).id("notification-destination"))
+            .child(label("Endpoint and signing key come from YOOOOO_NOTIFY_URL / YOOOOO_NOTIFY_HMAC_KEY or the shared yooooo-notifier client config. Leave the destination empty to use its default channel.", cx))
+            .child({
+                let jobs = self.store.notification_jobs();
+                let pending = jobs.iter().filter(|job| job.status == crate::notification::JOB_PENDING
+                    || job.status == crate::notification::JOB_WAITING).count();
+                let delivered = jobs.iter().filter(|job| job.status == crate::notification::JOB_DELIVERED).count();
+                let attention = jobs.iter().filter(|job| job.status == crate::notification::JOB_FAILED
+                    || job.status == crate::notification::JOB_NEEDS_REVIEW).count();
+                col().gap_1()
+                    .child(label(format!("{pending} pending · {delivered} delivered · {attention} need attention"), cx))
+                    .child(button("retry-notifications", "Retry failed notifications")
+                        .disabled(attention == 0 || self.notification_job.is_some())
+                        .on_click(cx.listener(|a, _, _, cx| {
+                            let count = a.retry_failed_notifications(cx);
+                            a.toast = format!("{count} notifications queued for retry");
+                            cx.notify();
+                        })))
+            })
     }
     pub(crate) fn topic_publish_button(&self, topic: u64, cx: &mut Context<Self>) -> impl IntoElement {
         let blocker = self.store.topic_publication_blocker(topic);

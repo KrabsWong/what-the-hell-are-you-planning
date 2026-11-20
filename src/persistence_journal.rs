@@ -31,6 +31,7 @@ use crate::automation::{
 use crate::domain::{AgentRun, Project, Stage, StagePolicy, Task, Topic};
 use crate::model_profiles::ModelProfile;
 use crate::report_publish::{Publication, PublishingConfig};
+use crate::notification::{NotificationConfig, NotificationJob};
 use crate::request_planning::ResearchRequest;
 use crate::research::{ResearchConfig, ResearchTask};
 use serde::Serialize;
@@ -238,6 +239,8 @@ pub(crate) enum MetadataDelta {
     ResearchRequests(Vec<ResearchRequest>),
     Publications(Vec<Publication>),
     PublishingConfig(PublishingConfig),
+    NotificationConfig(NotificationConfig),
+    NotificationJobs(Vec<NotificationJob>),
     /// Snapshot id of the emergency plan whose recovered writes are durable in
     /// this same atomic group. Startup uses it to retire a sidecar exactly once.
     RecoverySnapshot(String),
@@ -263,6 +266,8 @@ impl MetadataDelta {
             Self::ResearchRequests(_) => "research_requests",
             Self::Publications(_) => "publications",
             Self::PublishingConfig(_) => "report_publishing",
+            Self::NotificationConfig(_) => "notification_config",
+            Self::NotificationJobs(_) => "notification_jobs",
             Self::RecoverySnapshot(_) => "recovery_snapshot",
         }
     }
@@ -1562,6 +1567,23 @@ fn publishing_config_heap(value: usize, config: &PublishingConfig) -> usize {
     text(value, base_url)
 }
 
+fn notification_config_heap(value: usize, config: &NotificationConfig) -> usize {
+    let NotificationConfig { destination, .. } = config;
+    text(value, destination)
+}
+
+fn notification_job_heap(job: &NotificationJob) -> usize {
+    let mut value = size_of::<NotificationJob>();
+    value = text(value, &job.id);
+    value = text(value, &job.status);
+    value = text(value, &job.title);
+    value = text(value, &job.summary);
+    value = text(value, &job.fingerprint);
+    value = text(value, &job.url);
+    value = text(value, &job.destination);
+    text(value, &job.last_error)
+}
+
 fn metadata_heap(delta: &MetadataDelta) -> usize {
     match delta {
         MetadataDelta::NextId(_)
@@ -1615,6 +1637,17 @@ fn metadata_heap(delta: &MetadataDelta) -> usize {
         }
         MetadataDelta::PublishingConfig(config) => {
             publishing_config_heap(size_of::<MetadataDelta>(), config)
+        }
+        MetadataDelta::NotificationConfig(config) => {
+            notification_config_heap(size_of::<MetadataDelta>(), config)
+        }
+        MetadataDelta::NotificationJobs(jobs) => {
+            let mut value = size_of::<MetadataDelta>();
+            value = slots::<NotificationJob>(value, jobs.capacity());
+            for job in jobs {
+                value = sat(value, notification_job_heap(job));
+            }
+            value
         }
         MetadataDelta::RecoverySnapshot(text) => {
             let value = size_of::<MetadataDelta>();

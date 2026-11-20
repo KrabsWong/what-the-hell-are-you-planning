@@ -57,7 +57,7 @@ pub fn run() {
                 w.within("settings-tabs").click(2usize, cx);
                 w.render_frame(cx);
                 assert_eq!(app.read(cx).scope(), Scope::Settings);
-                assert!(!app.read(cx).store.report_publishing().automatic);
+                assert!(app.read(cx).store.report_publishing().automatic);
                 for (id, value) in [
                     (
                         "publishing-repository",
@@ -83,14 +83,7 @@ pub fn run() {
                     "https://reports.example.com"
                 );
                 click(w, cx, "automatic-publishing");
-                assert!(
-                    Storage::new(path.clone())
-                        .load()
-                        .unwrap()
-                        .unwrap()
-                        .report_publishing()
-                        .automatic
-                );
+                assert!(!Storage::new(path.clone()).load().unwrap().unwrap().report_publishing().automatic);
                 assert!(
                     app.read(cx).publishing_job.is_none(),
                     "Incomplete topics must not start publishing"
@@ -120,7 +113,7 @@ pub fn run() {
             );
             cx.update_window(handle, |_, w, cx| {
                 click(w, cx, "automatic-publishing");
-                assert!(!Storage::new(path.clone()).load().unwrap().unwrap().report_publishing().automatic);
+                assert!(Storage::new(path.clone()).load().unwrap().unwrap().report_publishing().automatic);
                 app.update(cx, |a, cx| a.navigate(Scope::Topic(topic), w, cx));
                 w.render_frame(cx);
                 assert_eq!(w.find("publish-topic-report").disabled(), Some(true));
@@ -197,8 +190,8 @@ pub fn run() {
                 for (status, commit, expected_label) in [
                     ("Online", None, "View report"),
                     ("Pushed · awaiting deployment", Some("fixture-commit-sha"), "Check status"),
-                    ("Pushed · awaiting deployment", None, "Retry publishing"),
-                    ("Failed", None, "Retry publishing"),
+                    ("Pushed · awaiting deployment", None, "Publish update"),
+                    ("Failed", None, "Publish update"),
                 ] {
                     app.update(cx, |a, cx| {
                         let index = crate::report_publish::current_publication_index(
@@ -350,7 +343,7 @@ pub fn run() {
                             a.publishing_inputs[2].read(cx).value().as_ref(),
                             "https://reports.example.com"
                         );
-                        assert!(!a.store.report_publishing().automatic);
+                        assert!(a.store.report_publishing().automatic);
                         assert!(a.publishing_job.is_none());
                     });
                     cx.new(|cx| base::Root::new(view, w, cx))

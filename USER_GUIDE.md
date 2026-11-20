@@ -26,7 +26,7 @@ When the app starts, the sidebar expands only the Project you used last and show
 | Area | What it is for |
 | --- | --- |
 | All research / Projects | Browse research goals and tasks in the list, filter by status, start new research, edit, archive |
-| Settings (workspace menu at the bottom of the sidebar) | Set the global Agent/model, overrides for the four research stages, concurrency and report publishing |
+| Settings (workspace menu at the bottom of the sidebar) | Set the global Agent/model, overrides for the four research stages, concurrency, report publishing and completion notifications |
 | Market research (opened from **New research**) | Propose a research goal and see existing research; advanced configuration opens only when you need it |
 | Settings → Agent & models | See and change the Agent and model actually used globally and by each stage |
 | Research results | Follow research progress, reports and sources; technical details show the model and logs |
@@ -34,6 +34,8 @@ When the app starts, the sidebar expands only the Project you used last and show
 | Archive | View and restore archived research; completed Goals keep their retained results and completion count |
 
 Actions are grouped by purpose: the page's main advancing action uses the filled primary button, supporting actions use bordered secondary buttons or icon controls, and lower-frequency project options such as **Rename project…** and **Working folder…** live in the ⋯ menu. On a project page, **New research** is the primary action and **Run / resume** is a secondary queue action; native light/dark and compact-layout validation of that hierarchy remains pending. Display options are tucked into the sliders icon. Selection controls are visually separate from advancing actions. Form controls keep their borders, while statuses and tags are shown as information only. Icon buttons have hover tooltips, keyboard focus and accessible names. The maintained route and action contract is in [Route and action matrix](doc/ROUTE_ACTION_MATRIX.md).
+
+In **Settings → Publishing**, automatic publication is on by default. A completed Topic is published without a click; use **Publish update** only when its content changed or a previous push failed. **Check status** verifies an already pushed page, and **View report** opens a verified online report. The same panel can turn completion notifications on or off and override the destination channel. Once the page is verified online, the app sends a short summary with the report URL. A Quick automation period has no public page, so it sends the same short summary directly when it finishes. Endpoint and signing credentials come from `YOOOOO_NOTIFY_URL` / `YOOOOO_NOTIFY_HMAC_KEY` or the shared `~/.config/yooooo-notifier/client.json`; they are never stored in the workspace. If delivery is interrupted before confirmation, the notification stays in the panel for manual review instead of being silently resent.
 
 **All** includes every task that is not archived by default. The status dropdown to the left of the search box offers **All statuses / Open / Backlog / Todo / In progress / In review / Done / Cancelled**; Open leaves out Done and Cancelled. The status filter and search work together, and archived tasks stay in Archive. Show completed is no longer used in All, while other views such as a project still offer this display option.
 

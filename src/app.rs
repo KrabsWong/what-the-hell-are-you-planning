@@ -509,8 +509,10 @@ pub struct TaskApp {
     pub model_profile_name: Entity<InputState>,
     pub creating_model_profile: bool,
     pub publishing_inputs: [Entity<InputState>; 3],
+    pub notification_destination_input: Entity<InputState>,
     pub publishing_scan_requested: bool,
     pub publishing_job: Option<(String, mpsc::Receiver<crate::report_publish::PublishEvent>)>,
+    pub notification_job: Option<(String, mpsc::Receiver<crate::notification::NotificationEvent>)>,
     discovery: Option<mpsc::Receiver<(PathBuf, Discovery)>>,
     pub active_runs: Vec<ActiveRun>,
     pub queued_runs: Vec<(u64, Vec<PathBuf>)>,
@@ -902,7 +904,9 @@ impl TaskApp {
             available_models: vec![],
             settings_scroll: ScrollHandle::new(),
             publishing_inputs: std::array::from_fn(|_| cx.new(|cx| InputState::new(window, cx))),
+            notification_destination_input: cx.new(|cx| InputState::new(window, cx)),
             publishing_job: None,
+            notification_job: None,
             publishing_scan_requested: true,
             global_model,
             fallback_model,
@@ -2641,6 +2645,7 @@ impl TaskApp {
         self.restore_sidebar();
         self.store.recover_interrupted_runs();
         self.recover_publications();
+        self.recover_notifications();
         self.store.reconcile_goal_approvals();
         let project = self
             .store
@@ -4017,6 +4022,7 @@ impl TaskApp {
         self.advance_todo_batch(cx);
         self.dispatch_runs(cx);
         self.poll_report_publishing(cx);
+        self.poll_notifications(cx);
         if !self.automation_timer_armed {
             self.poll_automations(cx);
         }
@@ -4049,6 +4055,7 @@ impl TaskApp {
             || self.ego_probe.is_some()
             || self.attachment_import.is_some()
             || self.publishing_job.is_some()
+            || self.notification_job.is_some()
             // Material verification/cleanup is active external work. Human
             // approval (`pending_material_edit`) is intentionally excluded.
             || self.pending_material_job.is_some()

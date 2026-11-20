@@ -705,6 +705,16 @@ impl SqliteV4 {
             &meta,
             "publications",
         )?));
+        store.set_metadata(MetadataDelta::NotificationConfig(parse_meta_or(
+            &meta,
+            "notification_config",
+            crate::notification::NotificationConfig::default(),
+        )?));
+        store.set_metadata(MetadataDelta::NotificationJobs(parse_meta_or(
+            &meta,
+            "notification_jobs",
+            Vec::new(),
+        )?));
         store.set_metadata(MetadataDelta::Topics(parse_meta(&meta, "topics")?));
         // Planning links are validated after runs load. Only rows with a
         // marker or a valid immutable owner are projected; unmarked legacy
@@ -1516,6 +1526,8 @@ fn metadata_value(delta: &MetadataDelta) -> Result<Value, String> {
         MetadataDelta::ResearchRequests(value) => serde_json::to_value(value),
         MetadataDelta::Publications(value) => serde_json::to_value(value),
         MetadataDelta::PublishingConfig(value) => serde_json::to_value(value),
+        MetadataDelta::NotificationConfig(value) => serde_json::to_value(value),
+        MetadataDelta::NotificationJobs(value) => serde_json::to_value(value),
         MetadataDelta::RecoverySnapshot(value) => serde_json::to_value(value),
     }
     .map_err(|error| error.to_string())
@@ -1563,6 +1575,8 @@ fn seed_metadata(
             serde_json::to_value(store.recovery_snapshot()),
         ),
         ("publications", serde_json::to_value(&store.publications())),
+        ("notification_config", serde_json::to_value(&store.notification_config())),
+        ("notification_jobs", serde_json::to_value(&store.notification_jobs())),
         ("topics", serde_json::to_value(&store.topics())),
         (
             "research_requests",

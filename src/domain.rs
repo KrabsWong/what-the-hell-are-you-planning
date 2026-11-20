@@ -321,6 +321,10 @@ fn publication_tracked() -> TrackedList<crate::report_publish::Publication> {
     TrackedList::new()
 }
 
+fn notification_job_tracked() -> TrackedList<crate::notification::NotificationJob> {
+    TrackedList::new()
+}
+
 fn model_profile_tracked() -> TrackedList<crate::model_profiles::ModelProfile> {
     TrackedList::new()
 }
@@ -379,6 +383,13 @@ fn deserialize_publications<'de, D: serde::Deserializer<'de>>(
     Ok(TrackedList::from_vec(items))
 }
 
+fn deserialize_notification_jobs<'de, D: serde::Deserializer<'de>>(
+    deserializer: D,
+) -> Result<TrackedList<crate::notification::NotificationJob>, D::Error> {
+    let items = Vec::<crate::notification::NotificationJob>::deserialize(deserializer)?;
+    Ok(TrackedList::from_vec(items))
+}
+
 fn deserialize_model_profiles<'de, D: serde::Deserializer<'de>>(
     deserializer: D,
 ) -> Result<TrackedList<crate::model_profiles::ModelProfile>, D::Error> {
@@ -425,6 +436,10 @@ pub struct Store {
     lazy_bodies: std::collections::BTreeSet<u64>,
     #[serde(default = "publication_tracked", deserialize_with = "deserialize_publications")]
     publications: TrackedList<crate::report_publish::Publication>,
+    #[serde(default)]
+    pub(crate) notification_config_value: TrackedScalar<crate::notification::NotificationConfig>,
+    #[serde(default = "notification_job_tracked", deserialize_with = "deserialize_notification_jobs")]
+    pub(crate) notification_jobs: TrackedList<crate::notification::NotificationJob>,
     #[serde(default = "task_tracked", deserialize_with = "deserialize_tasks")]
     tasks: TrackedVec<Task>,
     #[serde(default = "project_tracked", deserialize_with = "deserialize_projects")]
@@ -640,6 +655,8 @@ impl Store {
             recovery_snapshot: TrackedScalar::new(String::new()),
             lazy_bodies: std::collections::BTreeSet::new(),
             publications: publication_tracked(),
+            notification_config_value: TrackedScalar::new(Default::default()),
+            notification_jobs: notification_job_tracked(),
             tasks: task_tracked(),
             projects: project_tracked(),
             topics: topic_tracked(),
@@ -1435,6 +1452,14 @@ impl Store {
         if self.publications.is_dirty() {
             deltas.push(MetadataDelta::Publications(self.publications.to_vec()));
         }
+        if self.notification_config_value.is_dirty() {
+            deltas.push(MetadataDelta::NotificationConfig(
+                self.notification_config_value.get().clone(),
+            ));
+        }
+        if self.notification_jobs.is_dirty() {
+            deltas.push(MetadataDelta::NotificationJobs(self.notification_jobs.to_vec()));
+        }
         if self.report_publishing.is_dirty() {
             deltas.push(MetadataDelta::PublishingConfig(
                 self.report_publishing.get().clone(),
@@ -1630,6 +1655,8 @@ impl Store {
             MetadataDelta::Topics(value) => self.replace_topics(value),
             MetadataDelta::ResearchRequests(value) => self.replace_requests(value),
             MetadataDelta::Publications(value) => self.replace_publications(value),
+            MetadataDelta::NotificationConfig(value) => self.set_notification_config(value),
+            MetadataDelta::NotificationJobs(value) => self.replace_notification_jobs(value),
             MetadataDelta::PublishingConfig(value) => self.set_report_publishing(value),
             MetadataDelta::RecoverySnapshot(value) => self.set_recovery_snapshot(value),
         }
@@ -1645,6 +1672,7 @@ impl Store {
             .saturating_add(self.research_requests.epoch())
             .saturating_add(self.policies.epoch())
             .saturating_add(self.publications.epoch())
+            .saturating_add(self.notification_jobs.epoch())
             .saturating_add(self.model_profiles.epoch());
         for scalar in [
             self.next_id.epoch(),
@@ -1660,6 +1688,7 @@ impl Store {
             self.research_config.epoch(),
             self.active_model_profile.epoch(),
             self.report_publishing.epoch(),
+            self.notification_config_value.epoch(),
             self.recovery_snapshot.epoch(),
         ] {
             epoch = epoch.saturating_add(scalar);
@@ -1746,6 +1775,8 @@ impl Store {
             || self.model_profiles.is_dirty()
             || self.active_model_profile.is_dirty()
             || self.publications.is_dirty()
+            || self.notification_config_value.is_dirty()
+            || self.notification_jobs.is_dirty()
             || self.report_publishing.is_dirty()
             || self.recovery_snapshot.is_dirty()
     }
@@ -1765,6 +1796,8 @@ impl Store {
         self.model_profiles.clear_dirty();
         self.active_model_profile.clear_dirty();
         self.publications.clear_dirty();
+        self.notification_config_value.clear_dirty();
+        self.notification_jobs.clear_dirty();
         self.report_publishing.clear_dirty();
         self.recovery_snapshot.clear_dirty();
     }
@@ -1824,6 +1857,10 @@ impl Store {
     }
     pub fn set_report_publishing(&mut self, value: crate::report_publish::PublishingConfig) {
         self.report_publishing.set(value);
+    }
+
+    pub fn set_notification_config(&mut self, value: crate::notification::NotificationConfig) {
+        self.notification_config_value.set(value);
     }
 
     pub fn research_config_mut(&mut self) -> &mut crate::research::ResearchConfig {
@@ -1963,6 +2000,8 @@ impl Store {
                     tracked::request_from(value).expect("validated loaded requests")
             }
             MetadataDelta::Publications(value) => self.publications.load(value),
+            MetadataDelta::NotificationConfig(value) => self.notification_config_value.load(value),
+            MetadataDelta::NotificationJobs(value) => self.notification_jobs.load(value),
             MetadataDelta::PublishingConfig(value) => self.report_publishing.load(value),
             MetadataDelta::RecoverySnapshot(value) => self.recovery_snapshot.load(value),
         }

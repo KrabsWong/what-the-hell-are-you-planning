@@ -80,6 +80,7 @@ mod navigation_route;
 mod navigation_context_qa;
 #[cfg(feature = "qa")]
 mod navigation_qa;
+mod notification;
 mod opencode;
 mod codex;
 mod persistence;

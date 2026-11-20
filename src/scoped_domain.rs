@@ -9,6 +9,7 @@ use crate::appearance::Appearance;
 use crate::domain::{AgentRun, Project, ResearchRequest, Store, Task, Topic};
 use crate::model_profiles::ModelProfile;
 use crate::report_publish::PublishingConfig;
+use crate::notification::NotificationConfig;
 use crate::research::ResearchConfig;
 use crate::scoped_edit::ScopedEditError;
 
@@ -175,6 +176,7 @@ struct SettingsDelta {
     max_concurrent_automations: Option<(usize, usize)>,
     appearance: Option<(Appearance, Appearance)>,
     report_publishing: Option<(PublishingConfig, PublishingConfig)>,
+    notification_config: Option<(NotificationConfig, NotificationConfig)>,
     opencode_path: Option<(String, String)>,
 }
 
@@ -203,6 +205,7 @@ impl SettingsDelta {
         check!(max_concurrent_automations, &store.max_concurrent_automations());
         check!(appearance, &store.appearance());
         check!(report_publishing, store.report_publishing());
+        check!(notification_config, store.notification_config());
         check!(opencode_path, store.opencode_path());
         Ok(())
     }
@@ -233,6 +236,9 @@ impl SettingsDelta {
         if let Some((before, _)) = &self.report_publishing {
             store.set_report_publishing(before.clone());
         }
+        if let Some((before, _)) = &self.notification_config {
+            store.set_notification_config(before.clone());
+        }
         if let Some((before, _)) = &self.opencode_path {
             store.set_opencode_path(before.clone());
         }
@@ -249,6 +255,7 @@ struct SettingsBefore {
     max_concurrent_automations: usize,
     appearance: Appearance,
     report_publishing: PublishingConfig,
+    notification_config: NotificationConfig,
     opencode_path: String,
 }
 
@@ -263,6 +270,7 @@ impl SettingsBefore {
             max_concurrent_automations: store.max_concurrent_automations(),
             appearance: store.appearance(),
             report_publishing: store.report_publishing().clone(),
+            notification_config: store.notification_config().clone(),
             opencode_path: store.opencode_path().clone(),
         }
     }
@@ -286,6 +294,7 @@ impl SettingsBefore {
             ),
             appearance: field!(appearance, &store.appearance()),
             report_publishing: field!(report_publishing, store.report_publishing()),
+            notification_config: field!(notification_config, store.notification_config()),
             opencode_path: field!(opencode_path, store.opencode_path()),
         }
     }
@@ -369,6 +378,7 @@ pub(crate) enum DomainCommand {
     DeleteModelProfile { name: String },
     Publishing { config: PublishingConfig },
     PublishingAutomatic { automatic: bool },
+    Notification { config: NotificationConfig },
 }
 
 impl DomainCommand {
@@ -631,6 +641,11 @@ impl DomainCommand {
             Self::PublishingAutomatic { automatic } => {
                 let before = SettingsBefore::capture(store);
                 store.report_publishing_mut().automatic = automatic;
+                undo.settings = before.delta(store);
+            }
+            Self::Notification { config } => {
+                let before = SettingsBefore::capture(store);
+                store.set_notification_config(config);
                 undo.settings = before.delta(store);
             }
         }
@@ -1170,6 +1185,7 @@ fn invert_settings(delta: &SettingsDelta) -> SettingsDelta {
         max_concurrent_automations: swap(&delta.max_concurrent_automations),
         appearance: swap(&delta.appearance),
         report_publishing: swap(&delta.report_publishing),
+        notification_config: swap(&delta.notification_config),
         opencode_path: swap(&delta.opencode_path),
     }
 }

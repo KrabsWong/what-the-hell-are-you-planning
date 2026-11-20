@@ -759,6 +759,11 @@ impl TaskApp {
         }
         self.finish_batch_stop_run(run_id);
         self.publishing_scan_requested = true;
+        let completion_topic = self
+            .store
+            .runs().iter().find(|run| run.id == run_id)
+            .and_then(|run| self.store.task(run.task_id))
+            .and_then(|task| self.store.task_topic(task.id).map(|topic| topic.id));
         let continuing_goal = self.run_goal(run_id)
             .filter(|goal| self.research_sequences.contains(goal));
         self.finalize_research_run(run_id, cx);
@@ -770,6 +775,12 @@ impl TaskApp {
             .iter()
             .find(|run| run.id == run_id)
             .and_then(|run| run.automation_occurrence_id);
+        if automation_occurrence.is_none()
+            && let Some(topic) = completion_topic
+        {
+            self.enqueue_topic_notification(topic, None);
+            self.persist_if_changed(true);
+        }
         let automation_terminal = automation_occurrence
             .and_then(|id| self.store.occurrence(id))
             .is_some_and(|occurrence| occurrence.status.is_terminal());

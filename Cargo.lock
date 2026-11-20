@@ -8470,6 +8470,7 @@ dependencies = [
  "chrono",
  "chrono-tz",
  "gpui-kit",
+ "hmac",
  "latex-rust",
  "libc",
  "markdown",

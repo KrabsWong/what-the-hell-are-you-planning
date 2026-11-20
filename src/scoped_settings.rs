@@ -8,6 +8,7 @@ pub(crate) enum SettingsChange {
     AutomationConcurrency(usize),
     Appearance(crate::appearance::Appearance),
     LiquidGlass(bool),
+    InterfaceLanguage(crate::i18n::InterfaceLanguage),
     OutputLanguage(crate::research::OutputLanguage),
 }
 
@@ -62,6 +63,14 @@ pub(crate) fn apply_settings_change(
             store.set_appearance(mode);
             SettingsChange::Appearance(before)
         }
+        SettingsChange::InterfaceLanguage(language) => {
+            if store.interface_language() == language {
+                return Err(SettingsError::NoChange);
+            }
+            let before = store.interface_language();
+            store.set_interface_language(language);
+            SettingsChange::InterfaceLanguage(before)
+        }
         SettingsChange::OutputLanguage(language) => {
             if store.output_language() == language {
                 return Err(SettingsError::NoChange);
@@ -92,6 +101,7 @@ pub(crate) fn undo_settings_change(
         SettingsChange::Appearance(mode) => {
             store.set_appearance(mode);
         }
+        SettingsChange::InterfaceLanguage(language) => store.set_interface_language(language),
         SettingsChange::OutputLanguage(language) => store.set_output_language(language),
     }
     Ok(())
@@ -114,6 +124,37 @@ mod tests {
         )));
         undo_settings_change(&mut store, &undo).unwrap();
         assert!(!store.liquid_glass());
+        assert_eq!(store.appearance(), crate::appearance::Appearance::Dark);
+    }
+
+    #[test]
+    fn interface_language_undo_restores_only_the_language() {
+        let mut store = Store::empty();
+        assert_eq!(
+            store.interface_language(),
+            crate::i18n::InterfaceLanguage::English
+        );
+        store.set_appearance(crate::appearance::Appearance::Dark);
+        let undo = apply_settings_change(
+            &mut store,
+            SettingsChange::InterfaceLanguage(crate::i18n::InterfaceLanguage::SimplifiedChinese),
+        )
+        .unwrap();
+        assert_eq!(
+            store.interface_language(),
+            crate::i18n::InterfaceLanguage::SimplifiedChinese
+        );
+        assert!(store.pending_metadata_deltas().iter().any(|delta| matches!(
+            delta,
+            crate::persistence_journal::MetadataDelta::InterfaceLanguage(
+                crate::i18n::InterfaceLanguage::SimplifiedChinese
+            )
+        )));
+        undo_settings_change(&mut store, &undo).unwrap();
+        assert_eq!(
+            store.interface_language(),
+            crate::i18n::InterfaceLanguage::English
+        );
         assert_eq!(store.appearance(), crate::appearance::Appearance::Dark);
     }
 

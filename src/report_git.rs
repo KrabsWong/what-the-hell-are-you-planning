@@ -89,23 +89,29 @@ const LEGACY_ENTRY: &str = "<!doctype html><html lang=\"zh-CN\"><meta charset=\"
 const ENTRY_TEMPLATE: &str = include_str!("../assets/report-publishing/entry.html");
 
 fn entry_page(not_found: bool) -> String {
+    let brand = crate::i18n::tr_string("Report Something");
     let (title, intro) = if not_found {
         ("404 · 报告未找到", "请确认报告链接是否完整，或稍后重试。")
     } else {
         ("研究报告", "请通过分享链接访问具体报告。")
     };
-    ENTRY_TEMPLATE.replace("{{TITLE}}", title).replace("{{INTRO}}", intro)
+    ENTRY_TEMPLATE
+        .replace("{{TITLE}}", title)
+        .replace("{{INTRO}}", intro)
+        .replace("{{BRAND}}", &brand)
 }
 
 fn prepare_entry_pages(root: &Path) -> Result<Vec<&'static str>, String> {
     let mut changed = Vec::new();
+    let brand = crate::i18n::tr_string("Report Something");
     for (name, content) in [("index.html", entry_page(false)), ("404.html", entry_page(true)), ("robots.txt", "User-agent: *\nDisallow: /\n".into())] {
         let path = safe_destination(root, name)?;
         let replace = match fs::read_to_string(&path) {
             Ok(existing) => {
                 let previous = include_str!("../assets/report-publishing/entry-v1.html")
                     .replace("{{TITLE}}", if name == "404.html" { "404 · 报告未找到" } else { "研究报告" })
-                    .replace("{{INTRO}}", if name == "404.html" { "请确认报告链接是否完整，或稍后重试。" } else { "请通过分享链接访问具体报告。" });
+                    .replace("{{INTRO}}", if name == "404.html" { "请确认报告链接是否完整，或稍后重试。" } else { "请通过分享链接访问具体报告。" })
+                    .replace("{{BRAND}}", &brand);
                 name != "robots.txt" && (existing == LEGACY_ENTRY || existing == previous)
             },
             Err(error) if error.kind() == std::io::ErrorKind::NotFound => true,
@@ -150,7 +156,9 @@ fn prepare_repository_index(root: &Path, site_url: &str) -> Result<(), String> {
         if !page.is_file() { continue; }
         let html = fs::read_to_string(page).map_err(|_| "Cannot read existing report HTML.")?;
         let title = html.split_once("<title>").and_then(|(_, rest)| rest.split_once("</title>").map(|(title, _)| title))
-            .unwrap_or("Untitled report").trim_end_matches(" · Report Something");
+            .unwrap_or("Untitled report")
+            .trim_end_matches(&crate::i18n::tr_string(" · Report Something"))
+            .trim_end_matches(" · Report Something");
         let title = title.replace("&quot;", "\"").replace("&#39;", "'").replace("&lt;", "<").replace("&gt;", ">").replace("&amp;", "&");
         // Encode Markdown table/control punctuation; report titles remain literal text.
         let title: String = title.chars().map(|c| match c {
@@ -161,13 +169,13 @@ fn prepare_repository_index(root: &Path, site_url: &str) -> Result<(), String> {
         entries.push((name, title));
     }
     entries.sort_by(|a, b| a.0.cmp(&b.0));
-    let mut index = format!("{INDEX_START}\n## 报告索引\n\n此索引仅供私有 GitHub 仓库内查看，不包含在 EdgeOne 部署产物中。\n\n| Topic | 目录 | 分享链接 |\n| --- | --- | --- |\n");
+    let mut index = format!("{INDEX_START}\n## 报告索引\n\n此索引仅供私有 GitHub 仓库内查看，不包含在 EdgeOne 部署产物中。\n\n| {} | 目录 | 分享链接 |\n| --- | --- | --- |\n", crate::i18n::tr_string("Topic"));
     for (id, title) in entries {
         index.push_str(&format!("| {title} | [{id}](./{id}/index.html) | [打开报告]({site_url}/{id}/) |\n"));
     }
     index.push_str(&format!("\n{INDEX_END}"));
     let readme_path = safe_destination(root, "README.md")?;
-    let existing = if readme_path.exists() { fs::read_to_string(&readme_path).map_err(|_| "Cannot read README.md.")? } else { "# Report Something\n".into() };
+    let existing = if readme_path.exists() { fs::read_to_string(&readme_path).map_err(|_| "Cannot read README.md.")? } else { format!("# {}\n", crate::i18n::tr_string("Report Something")) };
     let readme = match (existing.find(INDEX_START), existing.find(INDEX_END)) {
         (Some(start), Some(end)) if end > start => format!("{}{}{}", &existing[..start], index, &existing[end + INDEX_END.len()..]),
         (None, None) => format!("{}\n\n{index}\n", existing.trim_end()),
@@ -361,7 +369,8 @@ mod tests {
         assert!(prepare_entry_pages(&root).unwrap().is_empty());
         let previous = include_str!("../assets/report-publishing/entry-v1.html")
             .replace("{{TITLE}}", "404 · 报告未找到")
-            .replace("{{INTRO}}", "请确认报告链接是否完整，或稍后重试。");
+            .replace("{{INTRO}}", "请确认报告链接是否完整，或稍后重试。")
+            .replace("{{BRAND}}", crate::i18n::tr_string("Report Something").as_str());
         fs::write(root.join("404.html"), previous).unwrap();
         assert_eq!(prepare_entry_pages(&root).unwrap(), ["404.html"]);
         assert_eq!(fs::read_to_string(root.join("404.html")).unwrap(), missing);

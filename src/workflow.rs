@@ -60,7 +60,7 @@ impl TaskStatus {
         if self.execution.label() == self.phase.label() || self.execution == ExecutionStatus::Done {
             phase.into()
         } else {
-            format!("{phase} · {}", self.execution.label())
+            format!("{phase} · {}", crate::i18n::tr_string(self.execution.label()))
         }
     }
 }
@@ -234,7 +234,7 @@ impl Store {
                 .into_iter()
                 .filter_map(|state| {
                     let count = states.iter().filter(|value| **value == state).count();
-                    (count > 0).then(|| format!("{count} {}", state.label().to_lowercase()))
+                    (count > 0).then(|| format!("{count} {}", crate::i18n::tr_string(state.label()).to_lowercase()))
                 })
                 .collect::<Vec<_>>()
                 .join(" · ");

@@ -46,14 +46,14 @@ fn attempt_indicator(run: &AgentRun, cx: &App) -> AnyElement {
         "Queued" => Status::Queued,
         _ => Status::Blocked,
     };
-    let tooltip = format!("This attempt: {}{}", status_label(&run.status),
+    let tooltip = format!("This attempt: {}{}", crate::i18n::tr_string(status_label(&run.status)),
         if run.auto_retry_attempt > 0 { format!(" · Retry {}/3", run.auto_retry_attempt) } else { String::new() });
     // This is a status, not a button. An empty button label still reserves layout
     // space and clips the custom icon inside its narrow content container.
     div().id(format!("attempt-status-{}", run.id))
         .size(px(24.)).flex_shrink_0()
         .flex().items_center().justify_center()
-        .aria_label(format!("Attempt: {}", status_label(&run.status)))
+        .aria_label(crate::i18n::tr(format!("Attempt: {}", crate::i18n::tr_string(status_label(&run.status)))))
         .child(status.icon_view(format!("attempt-status-icon-{}", run.id), cx))
         .tooltip(move |w, cx| gpui_kit::component::tooltip::Tooltip::new(tooltip.clone()).build(w, cx))
         .into_any_element()
@@ -179,7 +179,7 @@ fn context_value_field(
         .border_1()
         .border_color(rgb(colors.line))
         .bg(rgb(colors.panel))
-        .aria_label(accessible)
+        .aria_label(crate::i18n::tr(accessible))
         .tooltip(move |window, cx| {
             gpui_kit::component::tooltip::Tooltip::new(tooltip.clone()).build(window, cx)
         })
@@ -227,8 +227,8 @@ fn topic_menu_item(
             .min_h(px(20.))
             .p_0()
             .min_w_0()
-            .tooltip(label.clone())
-            .accessibility_label(label)
+            .tooltip(crate::i18n::tr(label.clone()))
+            .accessibility_label(crate::i18n::tr(label))
             .child(
                 div()
                     .w_full()
@@ -359,7 +359,7 @@ impl TaskApp {
                     || (topic.id.is_some() && run.task_id == topic.id.unwrap()
                         && run.research_kind == Some(ResearchKind::Goal)))
                 .map(|run| (run.id, format!("{} · {} · {}", if run.project_plan.is_some() { "Project plan" } else { "Goal plan" },
-                    crate::time_display::timestamp(if run.started_at.is_empty() { &run.queued_at } else { &run.started_at }), status_label(&run.status))))
+                    crate::time_display::timestamp(if run.started_at.is_empty() { &run.queued_at } else { &run.started_at }), crate::i18n::tr_string(status_label(&run.status)))))
                 .collect();
             let planning_entity = cx.entity().downgrade();
             let topic_options: Vec<_> = project
@@ -419,7 +419,7 @@ impl TaskApp {
                         )
                     } else {
                         button("run-project-picker", name.clone()).w_full().h(px(36.)).py_0().px_2()
-                            .dropdown_caret(true).tooltip("Choose project")
+                            .dropdown_caret(true).tooltip(crate::i18n::tr("Choose project"))
                             .dropdown_menu_with_anchor(Anchor::TopLeft, move |mut menu, _, _| {
                                 for (id, name, rid) in &project_options {
                                     let entity = entity.clone(); let rid = *rid;
@@ -443,11 +443,11 @@ impl TaskApp {
                         gpui_kit::component::button::Button::new("run-topic-filter")
                             .w_full().h(px(36.)).py_0().px_2().dropdown_caret(true)
                             .disabled(topic_filters.is_empty())
-                            .tooltip(if topic_copied {
+                            .tooltip(crate::i18n::tr(if topic_copied {
                                 format!("Copy. {topic_value}")
                             } else {
                                 topic_value.clone()
-                            })
+                            }))
                             .child(context_value_content(
                                 "run-topic-selected-title",
                                 topic_value.clone(),
@@ -488,7 +488,7 @@ impl TaskApp {
                                 false,
                                 cx,
                             ))
-                            .tooltip("Choose goal or planning activity")
+                            .tooltip(crate::i18n::tr("Choose goal or planning activity"))
                             .dropdown_menu_with_anchor(Anchor::TopLeft, move |mut menu, _, _| {
                                 for (id, name, rid) in &topic_options {
                                     let entity = topic_entity.clone(); let rid = *rid;
@@ -513,7 +513,7 @@ impl TaskApp {
                         .when(!planning_options.is_empty(), |d| d.child(
                             quiet_button("run-project-planning", "Planning history")
                                 .h_6().px_1().text_xs().text_color(rgb(colors.accent)).dropdown_caret(true)
-                                .tooltip("Project and current goal planning records")
+                                .tooltip(crate::i18n::tr("Project and current goal planning records"))
                                 .dropdown_menu_with_anchor(Anchor::TopLeft, move |mut menu, _, _| {
                                     for (rid, title) in &planning_options {
                                         let entity = planning_entity.clone(); let rid = *rid;
@@ -678,8 +678,8 @@ impl TaskApp {
             .py_2()
             .rounded(px(crate::appearance::CONTROL_RADIUS))
             .selected(active)
-            .tooltip(title.clone())
-            .accessibility_label(format!("{identity}: {title}"))
+            .tooltip(crate::i18n::tr(title.clone()))
+            .accessibility_label(crate::i18n::tr(format!("{identity}: {title}")))
             .when(run.research_kind == Some(ResearchKind::Advise), |b| {
                 b.border_1()
                     .border_color(rgb(colors.line))
@@ -695,7 +695,7 @@ impl TaskApp {
                         div()
                             .id(format!("run-title-{rid}"))
                             .role(Role::Label)
-                            .aria_label(title.clone())
+                            .aria_label(crate::i18n::tr(title.clone()))
                             .w_full()
                             .whitespace_normal()
                             .text_sm()
@@ -764,7 +764,7 @@ impl TaskApp {
             .text_xs()
             .text_color(rgb(palette(cx).muted))
             .dropdown_caret(true)
-            .tooltip("View earlier attempts for this task")
+            .tooltip(crate::i18n::tr("View earlier attempts for this task"))
             .dropdown_menu_with_anchor(Anchor::TopLeft, move |mut menu, _, _| {
                 for (id, name) in &options {
                     let entity = entity.clone();
@@ -986,11 +986,11 @@ impl TaskApp {
             });
             actions = actions.child(primary_button("regenerate-report", "Regenerate")
                 .disabled(self.task_running(id))
-                .tooltip(regeneration_tooltip)
+                .tooltip(crate::i18n::tr(regeneration_tooltip))
                 .on_click(cx.listener(move |a, _, w, cx| {
                     a.report_regeneration = Some((source_id, cx.new(|cx|
                         gpui_kit::component::input::TextareaState::new(w, cx)
-                            .placeholder("Optional: tone, audience or length…")
+                            .placeholder(crate::i18n::tr("Optional: tone, audience or length…"))
                             .rows(3))));
                     cx.notify();
                 })));
@@ -1006,7 +1006,7 @@ impl TaskApp {
                 actions = actions.child(
                     quiet_button("period-overview", "Overview")
                         .h(px(32.))
-                        .tooltip(overview.tooltip.clone())
+                        .tooltip(crate::i18n::tr(overview.tooltip.clone()))
                         .on_click(cx.listener(move |a, _, w, cx| {
                             a.open_task_neighbor(&overview, true, w, cx);
                         })),
@@ -1016,14 +1016,14 @@ impl TaskApp {
                 .child(crate::controls::tool_icon("previous-task", assets::IconName::ArrowUp, "Previous task")
                     .h(px(32.)).w(px(32.))
                     .disabled(!previous_enabled)
-                    .tooltip(previous.tooltip.clone())
+                    .tooltip(crate::i18n::tr(previous.tooltip.clone()))
                     .on_click(cx.listener(move |a, _, w, cx| {
                         a.open_task_neighbor(&previous, true, w, cx);
                     })))
                 .child(crate::controls::tool_icon("next-task", assets::IconName::ArrowDown, "Next task")
                     .h(px(32.)).w(px(32.))
                     .disabled(!next_enabled)
-                    .tooltip(next.tooltip.clone())
+                    .tooltip(crate::i18n::tr(next.tooltip.clone()))
                     .on_click(cx.listener(move |a, _, w, cx| {
                         a.open_task_neighbor(&next, true, w, cx);
                     })));
@@ -1064,7 +1064,7 @@ impl TaskApp {
                 .dropdown_menu_with_anchor(Anchor::TopRight, move |mut menu, _, _| {
                     if !details {
                         let entity = entity.clone();
-                        menu = menu.item(gpui_kit::component::menu::PopupMenuItem::new("Technical details").on_click(move |_, _, cx| {
+                        menu = menu.item(gpui_kit::component::menu::PopupMenuItem::new(crate::i18n::tr("Technical details")).on_click(move |_, _, cx| {
                             let _ = entity.update(cx, |a, cx| {
                                 a.show_run_details = true;
                                 a.show_run_result = false;
@@ -1073,7 +1073,7 @@ impl TaskApp {
                         }));
                     }
                     let entity = entity.clone();
-                    menu = menu.item(gpui_kit::component::menu::PopupMenuItem::new(origin_label).disabled(!can_open).on_click(move |_, w, cx| {
+                    menu = menu.item(gpui_kit::component::menu::PopupMenuItem::new(crate::i18n::tr(origin_label)).disabled(!can_open).on_click(move |_, w, cx| {
                         let _ = entity.update(cx, |a, cx| {
                             if let Some(pid) = project_plan {
                                 a.structural_navigation();
@@ -1086,7 +1086,7 @@ impl TaskApp {
                     }));
                     if readable && !copy.is_empty() {
                         let copy = copy.clone();
-                        menu = menu.separator().item(gpui_kit::component::menu::PopupMenuItem::new("Copy result").on_click(move |_, _, cx| {
+                        menu = menu.separator().item(gpui_kit::component::menu::PopupMenuItem::new(crate::i18n::tr("Copy result")).on_click(move |_, _, cx| {
                             cx.write_to_clipboard(ClipboardItem::new_string(copy.clone()));
                         }));
                     }
@@ -1131,9 +1131,9 @@ impl TaskApp {
                     .child(attempt_indicator(run, cx))
                     .when(run.research_kind.is_some() && !planning, |d| {
                         let mut kind = if self.report_body_error(run).is_some() {
-                            "Report unavailable"
+                            crate::i18n::tr_string("Report unavailable")
                         } else {
-                            result_presentation.kind.label()
+                            crate::i18n::tr_string(result_presentation.kind.label())
                         }.to_string();
                         if result_presentation.notice.is_none() {
                             if let Some(suffix) = result_presentation.status_suffix() {
@@ -1145,7 +1145,7 @@ impl TaskApp {
                             kind.push_str(" · ");
                             kind.push_str(&freshness.join(" · "));
                         }
-                        d.child(label(kind.clone(), cx).id("run-result-kind").aria_label(kind).map(observed))
+                        d.child(label(kind.clone(), cx).id("run-result-kind").aria_label(crate::i18n::tr(kind)).map(observed))
                     })
                     .child(execution_metadata(String::new(), run.agent.to_string(),
                         if run.model.is_empty() { "Not recorded" } else { run.model.as_str() }, cx))
@@ -1188,7 +1188,7 @@ impl TaskApp {
                     .child(row().gap_2()
                         .child(primary_button("confirm-regenerate-report", "Regenerate report")
                             .disabled(self.task_running(id))
-                            .tooltip(regeneration_tooltip)
+                            .tooltip(crate::i18n::tr(regeneration_tooltip))
                             .on_click(cx.listener(move |a, _, _, cx| {
                                 let style = preferences.read(cx).value().to_string();
                                 a.regenerate_report(source_id, &style, cx);
@@ -1271,7 +1271,7 @@ impl TaskApp {
                 let result_run = (status.execution == ExecutionStatus::Done)
                     .then(|| self.store.research_result(task_id).map(|r| r.id)).flatten();
                 let current = task_id == run.task_id;
-                let status_label = status.label();
+                let status_label = crate::i18n::tr_string(status.label());
                 let row_label = format!("{} · {status_label}", task.title);
                 let row_tooltip = format!("{}\n{}", task.title, status_label);
                 let latest_run = self.store.runs().iter().rev()
@@ -1279,13 +1279,13 @@ impl TaskApp {
                 entries = entries.child(row().id(format!("progress-task-{task_id}"))
                     .min_w_0().gap_2().px_2().h(px(32.)).rounded(px(crate::appearance::CONTROL_RADIUS))
                     .when(current, |d| d.bg(rgb(colors.accent_surface)))
-                    .aria_label(row_label)
+                    .aria_label(crate::i18n::tr(row_label))
                     .tooltip(move |w, cx| gpui_kit::component::tooltip::Tooltip::new(row_tooltip.clone()).build(w, cx))
                     .child(status.execution.icon_view(format!("progress-task-icon-{task_id}"), cx))
                     .child(row_button(format!("progress-task-title-{task_id}"), "")
                         .flex_1().min_w_0().h(px(28.)).px_1()
-                        .accessibility_label(task.title.clone())
-                        .tooltip(if result_run.is_some() { "Open result" } else { "Open task details" })
+                        .accessibility_label(crate::i18n::tr(task.title.clone()))
+                        .tooltip(crate::i18n::tr(if result_run.is_some() { "Open result" } else { "Open task details" }))
                         .child(div().w_full().min_w_0().text_sm().text_left().truncate()
                             .text_color(rgb(colors.text)).child(selectable(task.title.clone())))
                         .child(div().flex_shrink_0().child(row().gap_1()
@@ -1413,7 +1413,7 @@ impl TaskApp {
                     .gap_1()
                     .text_xs()
                     .child(execution_metadata(
-                        format!("Run {} · {}", run.id, run.stage.label()), run.agent.to_string(),
+                        format!("Run {} · {}", run.id, crate::i18n::tr_string(run.stage.label())), run.agent.to_string(),
                         if run.model.is_empty() { "Not recorded" } else { run.model.as_str() }, cx,
                     ))
                     .when_some(self.store.task(run.task_id), |details, task| {
@@ -1487,7 +1487,7 @@ impl TaskApp {
             .when(!self.show_run_result, |d| {
                 d.child(
                     Checkbox::new("follow-logs")
-                        .label("Follow output")
+                        .label(crate::i18n::tr("Follow output"))
                         .checked(self.follow_logs)
                         .on_change(cx.listener(|this, value, _, cx| {
                             this.follow_logs = *value;
@@ -1510,7 +1510,7 @@ impl TaskApp {
                         .rounded(px(crate::appearance::GROUP_RADIUS))
                         .font_family("Menlo")
                         .text_xs()
-                        .child(selectable(run.output.clone()))
+                        .child(selectable_raw(run.output.clone()))
                         .map(observed),
                 )
             })

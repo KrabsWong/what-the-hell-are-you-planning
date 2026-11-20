@@ -788,14 +788,14 @@ impl TaskApp {
                             button(("resume-project", project), "Resume project")
                                 .icon(assets::IconName::Play)
                                 .disabled(!ready || !can_resume)
-                                .tooltip("Resume approved, stopped goals. Running or unverified sessions cannot be restarted.")
+                                .tooltip(crate::i18n::tr("Resume approved, stopped goals. Running or unverified sessions cannot be restarted."))
                                 .on_click(cx.listener(move |a, _, _, cx| {
                                     a.resume_projects(Some(project), cx)
                                 })),
                         )
                         .child(
                             danger_button(("cancel-paused-project", project), "Cancel project")
-                                .tooltip("Cancel every paused goal in this project. Saved results are kept; external sessions are no longer monitored.")
+                                .tooltip(crate::i18n::tr("Cancel every paused goal in this project. Saved results are kept; external sessions are no longer monitored."))
                                 .on_click(cx.listener(move |a, _, _, cx| {
                                     a.cancel_paused_project(project, cx)
                                 })),
@@ -886,7 +886,7 @@ impl TaskApp {
                     group = group.child(
                         danger_button(("cancel-recovery-goal", goal), "Stop goal")
                             .self_start()
-                            .tooltip("Cancel this paused goal and stop monitoring its previous session. Saved results are kept.")
+                            .tooltip(crate::i18n::tr("Cancel this paused goal and stop monitoring its previous session. Saved results are kept."))
                             .on_click(cx.listener(move |a, _, _, cx| {
                                 a.cancel_paused_goal(goal, cx)
                             })),
@@ -895,7 +895,7 @@ impl TaskApp {
                         let task = self.store.task(child).unwrap();
                         let state = self.store.execution_status(child, self.todo_batch.as_ref());
                         let title = format!("{} · {}", self.store.identifier(task), task.title);
-                        let row_label = format!("{title} · {}", state.label());
+                        let row_label = format!("{title} · {}", crate::i18n::tr_string(state.label()));
                         let hint = self
                             .store
                             .step_block_reason(child)
@@ -906,7 +906,7 @@ impl TaskApp {
                                 .gap_2()
                                 .min_h(px(28.))
                                 .id(format!("recovery-step-row-{child}"))
-                                .aria_label(row_label)
+                                .aria_label(crate::i18n::tr(row_label))
                                 .child(
                                     state.icon_view(format!("recovery-step-icon-{child}"), cx),
                                 )
@@ -914,7 +914,7 @@ impl TaskApp {
                                     recovery_title(("recovery-step", child), title, cx)
                                         .text_sm()
                                         .min_w_0()
-                                        .tooltip(hint)
+                                        .tooltip(crate::i18n::tr(hint))
                                         .on_click(cx.listener(move |a, _, w, cx| {
                                             a.open_task(child, w, cx)
                                         })),
@@ -973,7 +973,7 @@ impl TaskApp {
                 let detail = request
                     .map(|r| {
                         let date = crate::time_display::timestamp(&r.submitted_at);
-                        format!("{date} · {status}")
+                        format!("{date} · {}", crate::i18n::tr_string(&status))
                     })
                     .unwrap_or_else(|| status.into());
                 view = view.child(
@@ -1002,7 +1002,7 @@ impl TaskApp {
                                         )
                                         .icon(assets::IconName::Play)
                                         .disabled(retry_disabled)
-                                        .tooltip(if checking {
+                                        .tooltip(crate::i18n::tr(if checking {
                                             "Checking whether the previous planning session is still running."
                                         } else if retry_disabled {
                                             "The previous planning session is still being verified."
@@ -1012,7 +1012,7 @@ impl TaskApp {
                                             "Continue the current research understanding before goals are generated."
                                         } else {
                                             "Retry this saved request. Goals are not created until a valid plan is reviewed."
-                                        })
+                                        }))
                                         .on_click(cx.listener(move |a, _, _, cx| {
                                             if !session_stopped {
                                                 a.check_interrupted_sessions(cx);
@@ -1031,7 +1031,7 @@ impl TaskApp {
                                             label,
                                         )
                                         .icon(assets::IconName::ArrowRight)
-                                        .tooltip("Open the owning research area to review, replan, or archive this request.")
+                                        .tooltip(crate::i18n::tr("Open the owning research area to review, replan, or archive this request."))
                                         .on_click(cx.listener(move |a, _, w, cx| {
                                             a.navigate(scope.clone(), w, cx)
                                         })),

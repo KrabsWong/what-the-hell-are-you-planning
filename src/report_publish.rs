@@ -63,9 +63,9 @@ pub struct PublishOutcome { commit: Option<String>, page: Option<PageCheck>, err
 enum PageCheck { Online, Awaiting(String), AccessError(String) }
 
 fn classify_page(curl_code: Option<i32>, output: &[u8], marker: &str) -> PageCheck {
-    let synced = "Report pushed to GitHub successfully.";
+    let synced = crate::i18n::tr_string("Report pushed to GitHub successfully.");
     if curl_code != Some(0) {
-        let reason = match curl_code {
+        let reason: &str = match curl_code {
             Some(5) => "Could not resolve the proxy",
             Some(6) => "Could not resolve the site hostname",
             Some(7) => "Could not connect to the site",
@@ -75,11 +75,17 @@ fn classify_page(curl_code: Option<i32>, output: &[u8], marker: &str) -> PageChe
             Some(63) => "Page exceeds the 10 MB verification limit",
             _ => "Page request failed",
         };
-        return PageCheck::AccessError(format!("{synced} {reason} (curl {}). Check the site or network, then use Check status; no new push is needed.", curl_code.map(|code| code.to_string()).unwrap_or_else(|| "terminated".into())));
+        let reason = crate::i18n::tr_string(reason);
+        let code = curl_code
+            .map(|value| value.to_string())
+            .unwrap_or_else(|| crate::i18n::tr_string("terminated"));
+        return PageCheck::AccessError(format!("{synced} {reason} (curl {code}). Check the site or network, then use Check status; no new push is needed."));
     }
     let output = String::from_utf8_lossy(output);
     let Some((body, code)) = output.rsplit_once('\n') else {
-        return PageCheck::AccessError(format!("{synced} Page check returned no HTTP status. Use Check status to retry."));
+        return PageCheck::AccessError(format!(
+            "{synced} Page check returned no HTTP status. Use Check status to retry."
+        ));
     };
     let code = code.trim().parse::<u16>().unwrap_or(0);
     match code {
@@ -87,7 +93,11 @@ fn classify_page(curl_code: Option<i32>, output: &[u8], marker: &str) -> PageChe
         200..=299 => PageCheck::Awaiting(format!("{synced} HTTP {code}: the page is reachable but does not yet contain this report version. Wait for deployment/cache refresh, then use Check status.")),
         404 | 423 => PageCheck::Awaiting(format!("{synced} HTTP {code}: the report page is not available yet. Check EdgeOne deployment, then use Check status.")),
         _ => {
-            let detail = if code == 545 { " EdgeOne reports an edge function execution error." } else { "" };
+            let detail = if code == 545 {
+                crate::i18n::tr_string(" EdgeOne reports an edge function execution error.")
+            } else {
+                String::new()
+            };
             PageCheck::AccessError(format!("{synced} Public page returned HTTP {code}.{detail} Check the hosting service, then use Check status; no new push is needed."))
         }
     }
@@ -233,7 +243,10 @@ impl Store {
                     self.task(report).map(|task| task.title.replace(['\n', '\r'], " ")).unwrap_or_else(|| "Final report".into())
                 ))?;
                 markdown.push_str(&run.output);
-                markdown.push_str("\n\n### Sources\n\n");
+                markdown.push_str(&format!(
+                    "\n\n### {}\n\n",
+                    crate::i18n::tr_string("Sources")
+                ));
                 for source in &run.sources {
                     // Titles are text, never raw HTML; the renderer handles URL policy.
                     markdown.push_str(&format!("- {}: <{}> ({})\n", source.title.replace(['\n', '\r'], " "), source.url, source.published_at));
@@ -301,7 +314,14 @@ fn random_id() -> Result<String, String> {
 fn publish(root: std::path::PathBuf, publication: Publication, tx: &mpsc::Sender<PublishEvent>) -> PublishOutcome {
     let _ = tx.send(PublishEvent::Progress("Generating HTML".into(), None));
     let marker = format!("<!-- report-version:{} -->", publication.fingerprint);
-    let html = format!("{}\n{marker}", crate::report_html::render(&publication.title, &publication.markdown));
+    let html = format!(
+        "{}\n{marker}",
+        crate::report_html::render(
+            &publication.title,
+            &publication.markdown,
+            &crate::report_html::ReportLabels::localized(),
+        )
+    );
     let files = vec![(format!("{}/index.html", publication.id), html.into_bytes())];
     let commit = match crate::report_git::publish(&root, &publication.config.repository, &publication.config.branch, &files, &publication.config.base_url, |stage| { let _ = tx.send(PublishEvent::Progress(stage.into(), None)); }) {
         Ok(commit) => commit,
@@ -520,7 +540,7 @@ impl TaskApp {
                             Some(PageCheck::Online) => ("Online", String::new()),
                             Some(PageCheck::Awaiting(message)) => ("Pushed · awaiting deployment", message),
                             Some(PageCheck::AccessError(message)) => ("Pushed · site access error", message),
-                            None if p.commit.is_some() => ("Pushed · site access error", format!("Report pushed to GitHub successfully. {} Use Check status; no new push is needed.", outcome.error.unwrap_or_else(|| "Page verification stopped.".into()))),
+                            None if p.commit.is_some() => ("Pushed · site access error", format!("Report pushed to GitHub successfully. {} Use Check status; no new push is needed.", crate::i18n::tr_string(outcome.error.unwrap_or_else(|| "Page verification stopped.".into())))),
                             None => ("Failed", outcome.error.unwrap_or_default()),
                         };
                         p.status = status.into();
@@ -528,7 +548,10 @@ impl TaskApp {
                         if p.status == "Online" { online_publication = Some(p.clone()); }
                     }
                 }
-                self.toast = format!("Report publication · {}", p.status);
+                self.toast = format!(
+                    "Report publication · {}",
+                    crate::i18n::tr_string(p.status.clone())
+                );
             }
             if let Some(publication) = online_publication {
                 self.store.activate_notification_jobs(&publication, chrono::Utc::now().timestamp());
@@ -642,7 +665,7 @@ impl TaskApp {
             .loading_icon(assets::IconName::Loader)
             .loading(busy)
             .disabled(self.publishing_job.is_some() || (!ready && matches!(action, PublicationAction::Publish(_))))
-            .tooltip(tooltip)
+            .tooltip(crate::i18n::tr(tooltip))
             .on_click(cx.listener(move |a, _, _, cx| match &action {
                 PublicationAction::Publish(_) => a.request_topic_publication(topic, cx),
                 PublicationAction::Retry(id) => a.start_publication(id, cx),
@@ -670,10 +693,11 @@ impl TaskApp {
                 .bg(rgb(colors.side)).border_1().border_color(rgb(colors.subtle_line))
                 .child(row().flex_wrap().gap_2()
                     .child(div().text_xs().font_weight(FontWeight::MEDIUM).px_2().py_1().rounded(px(crate::appearance::CONTROL_RADIUS))
-                        .text_color(rgb(color)).bg(rgba((color << 8) | 20)).child(status.to_string()))
+                        .text_color(rgb(color)).bg(rgba((color << 8) | 20))
+                        .child(selectable(crate::i18n::tr(status.to_string()))))
                     .child(row().min_w_0().max_w_full()
                     .child(link_button(format!("open-report-{}", p.id), "").icon(assets::IconName::ExternalLink).min_w_0().flex_1()
-                        .accessibility_label(format!("Open report: {url}"))
+                        .accessibility_label(crate::i18n::tr(format!("Open report: {url}")))
                         .tooltip(url.clone())
                         .child(div().min_w_0().text_sm().underline().overflow_hidden().text_ellipsis().whitespace_nowrap().child(selectable(url.clone())))
                         .on_click(cx.listener(move |_, _, _, cx| cx.open_url(&open_url))))

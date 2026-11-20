@@ -252,7 +252,7 @@ fn research_candidate(store: &Store, task: &Task) -> Candidate {
         .task_topic(task.id)
         .map(|topic| topic.display_name());
     let kind = research_kind_label(task);
-    let status = store.task_status(task.id, None).label();
+    let status = crate::i18n::tr_string(store.task_status(task.id, None).label());
     let detail = match &topic {
         Some(topic) => format!("{kind} · {project} · {topic} · {status}"),
         None => format!("{kind} · {project} · {status}"),
@@ -282,8 +282,8 @@ fn research_candidate(store: &Store, task: &Task) -> Candidate {
 }
 
 fn automation_candidate(definition: &crate::automation::AutomationDefinition) -> Candidate {
-    let shape = definition.shape.label();
-    let status = definition.status.label();
+    let shape = crate::i18n::tr_string(definition.shape.label());
+    let status = crate::i18n::tr_string(definition.status.label());
     let schedule = crate::automation_views::schedule_summary(&definition.schedule);
     let detail = format!("{shape} · {status} · {schedule}");
     Candidate {
@@ -312,8 +312,8 @@ fn period_candidate(
     let automation_name = definition
         .map(|definition| definition.name.clone())
         .unwrap_or_else(|| format!("Automation {}", occurrence.automation_id));
-    let status = occurrence.status.label();
-    let source = occurrence.source.label();
+    let status = crate::i18n::tr_string(occurrence.status.label());
+    let source = crate::i18n::tr_string(occurrence.source.label());
     let reference =
         crate::automation_views::format_in_zone(occurrence.reference_time, &occurrence.timezone);
     // A linked run is a saved-result reference, not proof of a validated final
@@ -818,8 +818,8 @@ impl TaskApp {
                 .cursor_pointer()
                 .role(Role::ListBoxOption)
                 .aria_selected(selected)
-                .aria_label(format!("{} · {}", hit.kind.label(), hit.title))
-                .aria_description(format!("{} · {}", hit.detail, hit.destination))
+                .aria_label(crate::i18n::tr(format!("{} · {}", crate::i18n::tr_string(hit.kind.label()), hit.title)))
+                .aria_description(crate::i18n::tr(format!("{} · {}", hit.detail, hit.destination)))
                 .border_1()
                 .border_color(rgba(0x00000000))
                 .when(selected, |this| {
@@ -870,7 +870,7 @@ impl TaskApp {
                                         .text_color(rgb(colors.tag_text))
                                         .text_xs()
                                         .whitespace_nowrap()
-                                        .child(hit.kind.label()),
+                                        .child(crate::i18n::tr(crate::i18n::tr_string(hit.kind.label()))),
                                 )
                                 .child(
                                     single_line_text(format!("{row_id}-detail"), hit.detail.clone())
@@ -884,7 +884,7 @@ impl TaskApp {
                                         .text_xs()
                                         .text_color(rgb(colors.accent))
                                         .whitespace_nowrap()
-                                        .child("Open"),
+                                        .child(crate::i18n::tr("Open")),
                                 ),
                         ),
                 ),
@@ -945,7 +945,7 @@ impl TaskApp {
                             div()
                                 .text_lg()
                                 .font_weight(FontWeight::SEMIBOLD)
-                                .child("Search"),
+                                .child(crate::i18n::tr("Search")),
                         ).child(muted(
                             "Research titles, automation definitions and periods.",
                             cx,
@@ -978,7 +978,7 @@ impl TaskApp {
                         .map(|domain| {
                             select_button(
                                 format!("global-search-domain-{}", domain.key()),
-                                domain.label(),
+                                crate::i18n::tr_string(domain.label()),
                                 self.global_search_ui.domain == domain,
                                 cx,
                             )
@@ -1007,11 +1007,11 @@ impl TaskApp {
                     .child(observed(
                         div()
                             .id("global-search-empty-title")
-                            .aria_label(if query.trim().is_empty() {
+                            .aria_label(crate::i18n::tr(if query.trim().is_empty() {
                                 "Search across Research and Automations"
                             } else {
                                 "No matches"
-                            })
+                            }))
                             .text_sm()
                             .font_weight(FontWeight::MEDIUM)
                             .child(if query.trim().is_empty() {
@@ -1026,13 +1026,13 @@ impl TaskApp {
                         } else {
                             format!(
                                 "Nothing in {} matches that query. Try fewer words or choose All.",
-                                self.global_search_ui.domain.label()
+                                crate::i18n::tr_string(self.global_search_ui.domain.label())
                             )
                         };
                         observed(
                             div()
                                 .id("global-search-empty-hint")
-                                .aria_label(hint.clone())
+                                .aria_label(crate::i18n::tr(hint.clone()))
                                 .child(muted(hint, cx)),
                         )
                     }),
@@ -1053,7 +1053,7 @@ impl TaskApp {
                     this.child(observed(
                         div()
                             .id("global-search-message")
-                            .aria_label(message.clone())
+                            .aria_label(crate::i18n::tr(message.clone()))
                             .text_color(rgb(colors.danger))
                             .child(selectable(message)),
                     ))

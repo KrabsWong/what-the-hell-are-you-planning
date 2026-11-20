@@ -15,7 +15,7 @@ impl TaskApp {
         self.remember_dialog_opener(w, cx);
         let Some(name) = self.store.projects().iter().find(|p| p.id == project).map(|p| p.name.clone()) else { return; };
         self.clear_navigation_overlays();
-        let input = cx.new(|cx| InputState::new(w, cx).placeholder("Project name").default_value(name));
+        let input = cx.new(|cx| InputState::new(w, cx).placeholder(crate::i18n::tr("Project name")).default_value(name));
         cx.subscribe(&input, |a, _, event: &InputEvent, cx| {
             if matches!(event, InputEvent::Change) && a.project_rename.is_some() {
                 a.error.clear(); cx.notify();
@@ -68,7 +68,7 @@ impl TaskApp {
             .gap_1()
             .child(
                 primary_button("plan-project", "New research")
-                    .tooltip("Describe a research question to automatically create its topic and plan.")
+                    .tooltip(crate::i18n::tr("Describe a research question to automatically create its topic and plan."))
                     .on_click(cx.listener(move |a, _, w, cx| a.open_project_plan(project, w, cx))),
             )
             .child(self.todo_batch_action(project, cx))
@@ -81,10 +81,10 @@ impl TaskApp {
                 .dropdown_menu_with_anchor(Anchor::TopRight, move |menu, _, _| {
                     let folder = entity.clone();
                     let rename = entity.clone();
-                    menu.item(PopupMenuItem::new("Rename project…").on_click(move |_, w, cx| {
+                    menu.item(PopupMenuItem::new(crate::i18n::tr("Rename project…")).on_click(move |_, w, cx| {
                         let _ = rename.update(cx, |a, cx| a.open_project_rename(project, w, cx));
                     })).item(
-                        PopupMenuItem::new("Working folder…").on_click(move |_, w, cx| {
+                        PopupMenuItem::new(crate::i18n::tr("Working folder…")).on_click(move |_, w, cx| {
                             let _ = folder.update(cx, |a, cx| a.open_directory(project, w, cx));
                         }),
                     )
@@ -149,14 +149,14 @@ impl TaskApp {
             let entity = entity.clone();
             quiet_button("planning-destination", project_name.clone())
                 .dropdown_caret(true)
-                .tooltip("Change the project this request will be saved in")
-                .accessibility_label(format!("Target project: {project_name}"))
+                .tooltip(crate::i18n::tr("Change the project this request will be saved in"))
+                .accessibility_label(crate::i18n::tr(format!("Target project: {project_name}")))
                 .dropdown_menu_with_anchor(Anchor::TopRight, move |mut menu, _, _| {
                     for (id, name) in &projects {
                         let id = *id;
                         let entity = entity.clone();
                         menu = menu.item(
-                            PopupMenuItem::new(name.clone()).on_click(move |_, w, cx| {
+                            PopupMenuItem::new(crate::i18n::tr(name.clone())).on_click(move |_, w, cx| {
                                 let _ = entity.update(cx, |app, cx| {
                                     app.retarget_planning_destination(id, w, cx);
                                 });
@@ -169,7 +169,7 @@ impl TaskApp {
         } else {
             quiet_button("planning-destination", project_name.clone())
                 .disabled(true)
-                .tooltip("Replan keeps the source topic's project. Change the source topic instead.")
+                .tooltip(crate::i18n::tr("Replan keeps the source topic's project. Change the source topic instead."))
                 .into_any_element()
         };
         let error = self

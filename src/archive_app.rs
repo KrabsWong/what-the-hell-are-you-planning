@@ -57,16 +57,28 @@ impl TaskApp {
         };
         if w.has_active_prompt() { return; }
         let topic_note = if reviewed.empty_topics.is_empty() {
-            ""
+            String::new()
         } else if reviewed.empty_topics.len() == 1 {
-            " The archived topic left empty by this deletion is removed as well."
+            crate::i18n::tr_string(
+                " The archived topic left empty by this deletion is removed as well.",
+            )
         } else {
-            " The archived topics left empty by this deletion are removed as well."
+            crate::i18n::tr_string(
+                " The archived topics left empty by this deletion are removed as well.",
+            )
         };
-        let detail = format!("{}\nPermanently delete {} tasks, {} planning requests and {} runs, including saved results and local publication snapshots. This cannot be undone. Exported files, original materials and remote pages are not removed.{}",
-            reviewed.name, reviewed.tasks.len(), reviewed.requests.len(), reviewed.runs.len(), topic_note);
-        let answer = w.prompt(PromptLevel::Warning, "Permanently delete archived research?", Some(&detail),
-            &["Cancel", "Delete permanently"], cx);
+        let detail = crate::i18n::tr_string(format!("{}\nPermanently delete {} tasks, {} planning requests and {} runs, including saved results and local publication snapshots. This cannot be undone. Exported files, original materials and remote pages are not removed.{}",
+            reviewed.name, reviewed.tasks.len(), reviewed.requests.len(), reviewed.runs.len(), topic_note));
+        let cancel = crate::i18n::tr_string("Cancel");
+        let delete = crate::i18n::tr_string("Delete permanently");
+        let answers = [cancel.as_str(), delete.as_str()];
+        let answer = w.prompt(
+            PromptLevel::Warning,
+            &crate::i18n::tr_string("Permanently delete archived research?"),
+            Some(&detail),
+            &answers,
+            cx,
+        );
         let workspace = self.live_workspace;
         let path = self.storage.as_ref().map(|storage| storage.path().to_path_buf());
         cx.spawn(async move |this, cx| {
@@ -139,9 +151,17 @@ impl TaskApp {
             ArchiveTarget::Topic(id) => self.store.topics().iter().find(|t| t.id == id).map(|t| t.display_name()),
             ArchiveTarget::Task(id) => self.store.task(id).map(|t| t.title.clone()),
         }.unwrap_or_default();
-        let answer = w.prompt(PromptLevel::Warning, "Stop related work and archive?",
-            Some(&format!("{name}\n{} running, queued or interrupted attempts will be stopped. Pending steps will not start. Saved results will be retained.", runs.len())),
-            &["Cancel", "Stop and archive"], cx);
+        let detail = crate::i18n::tr_string(format!("{name}\n{} running, queued or interrupted attempts will be stopped. Pending steps will not start. Saved results will be retained.", runs.len()));
+        let cancel = crate::i18n::tr_string("Cancel");
+        let stop = crate::i18n::tr_string("Stop and archive");
+        let answers = [cancel.as_str(), stop.as_str()];
+        let answer = w.prompt(
+            PromptLevel::Warning,
+            &crate::i18n::tr_string("Stop related work and archive?"),
+            Some(&detail),
+            &answers,
+            cx,
+        );
         cx.spawn(async move |this, cx| {
             if answer.await == Ok(1) {
                 let _ = this.update(cx, |a, cx| a.confirm_archive(target, cx));

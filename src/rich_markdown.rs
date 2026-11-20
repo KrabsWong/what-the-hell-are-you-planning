@@ -160,7 +160,7 @@ impl MarkdownPlugin for RichBlock {
                                     .secondary()
                                     .outline()
                                     .flex_shrink_0()
-                                    .tooltip("Open diagram: zoom and pan")
+                                    .tooltip(crate::i18n::tr("Open diagram: zoom and pan"))
                                     .on_click(move |_, _, cx| {
                                         crate::diagram_viewer::open(
                                             light.clone(), dark.clone(), width, height, cx,
@@ -187,10 +187,10 @@ impl MarkdownPlugin for RichBlock {
             Err(error) => div()
                 .w_full()
                 .p_3()
-                .child(format!(
+                .child(crate::i18n::tr(format!(
                     "Preview unavailable: {error}\n\n{}",
                     node.as_text()
-                ))
+                )))
                 .into_any_element(),
         }
     }

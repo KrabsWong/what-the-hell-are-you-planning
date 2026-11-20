@@ -186,7 +186,7 @@ impl Render for Viewer {
                             )
                             .child(
                                 crate::controls::quiet_button("fit", "Fit")
-                                    .tooltip("Fit diagram to window (0)")
+                                    .tooltip(crate::i18n::tr("Fit diagram to window (0)"))
                                     .on_click(cx.listener(|this, _, _, cx| this.fit(cx))),
                             )
                             .child(
@@ -198,7 +198,7 @@ impl Render for Viewer {
                         div()
                             .text_xs()
                             .text_color(rgb(p.muted))
-                            .child("Drag to pan · + / - to zoom · 0 to fit · Esc to close"),
+                            .child(crate::i18n::tr("Drag to pan · + / - to zoom · 0 to fit · Esc to close")),
                     ),
             )
             .child(
@@ -248,7 +248,7 @@ impl Render for Viewer {
                         )
                     })
                     .when_some(self.error.clone(), |el, error| {
-                        el.child(div().p_4().child(error))
+                        el.child(div().p_4().child(crate::i18n::tr(error.clone())))
                     }),
             )
     }

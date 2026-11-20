@@ -261,20 +261,26 @@ impl ResultPresentation {
 
     /// Compact visible state used by result surfaces and focused QA.
     pub fn state_label(&self) -> String {
-        let mut label = self.kind.label().to_string();
+        let mut label = crate::i18n::tr_string(self.kind.label());
         if let Some(quality) = self.quality.label() {
-            label.push_str(&format!(" · {quality}"));
+            label.push_str(&format!(" · {}", crate::i18n::tr_string(quality)));
         }
         let freshness = self.freshness.labels();
         label.push_str(" · ");
         if freshness.is_empty() {
-            label.push_str(if self.attempt.is_active() {
+            label.push_str(&crate::i18n::tr_string(if self.attempt.is_active() {
                 "In progress"
             } else {
                 "Current"
-            });
+            }));
         } else {
-            label.push_str(&freshness.join(" · "));
+            label.push_str(
+                &freshness
+                    .into_iter()
+                    .map(crate::i18n::tr_string)
+                    .collect::<Vec<_>>()
+                    .join(" · "),
+            );
         }
         label
     }

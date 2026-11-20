@@ -63,6 +63,15 @@ mod ego;
 mod ego_mcp;
 mod execution_status;
 mod execution_eligibility;
+mod i18n;
+mod i18n_catalog;
+mod i18n_catalog_audit_automation;
+mod i18n_catalog_audit_core;
+mod i18n_catalog_audit_domain;
+mod i18n_catalog_automation;
+mod i18n_catalog_core;
+mod i18n_catalog_domain;
+mod i18n_catalog_export;
 mod global_search;
 #[cfg(feature = "qa")]
 mod global_search_qa;
@@ -513,7 +522,7 @@ fn main() {
                 window_bounds: Some(WindowBounds::Windowed(bounds)),
                 window_min_size: Some(size(px(1000.), px(680.))),
                 titlebar: Some(TitlebarOptions {
-                    title: Some("What the hell are you planning?".into()),
+                    title: Some(crate::i18n::tr_string("What the hell are you planning?").into()),
                     appears_transparent: cfg!(target_os = "macos"),
                     traffic_light_position: cfg!(target_os = "macos")
                         .then(|| point(px(20.), px(16.))),

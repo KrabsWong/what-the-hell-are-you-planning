@@ -707,7 +707,7 @@ impl TaskApp {
         #[cfg(feature = "qa")]
         crate::brand::start_render_probe_logging();
         let nav = Self::initial_nav(&store);
-        let search = cx.new(|cx| InputState::new(window, cx).placeholder("Filter this list…"));
+        let search = cx.new(|cx| InputState::new(window, cx).placeholder(crate::i18n::tr("Filter this list…")));
         let sub = cx.subscribe(&search, |this, state, event, cx| {
             if matches!(event, InputEvent::Change) {
                 this.set_query(state.read(cx).value().to_string());
@@ -715,7 +715,7 @@ impl TaskApp {
             }
         });
         let global_search = cx
-            .new(|cx| InputState::new(window, cx).placeholder("Search research and automations…"));
+            .new(|cx| InputState::new(window, cx).placeholder(crate::i18n::tr("Search research and automations…")));
         let global_search_sub = cx.subscribe_in(
             &global_search,
             window,
@@ -756,15 +756,15 @@ impl TaskApp {
         let global_model = cx.new(|cx| {
             InputState::new(window, cx)
                 .default_value(store.default_model().clone())
-                .placeholder("provider/model")
+                .placeholder(crate::i18n::tr("provider/model"))
         });
         let fallback_model = cx.new(|cx| {
             InputState::new(window, cx)
                 .default_value(store.fallback_model().to_owned())
-                .placeholder("Choose a fallback model")
+                .placeholder(crate::i18n::tr("Choose a fallback model"))
         });
         let research_models: [_; 4] = std::array::from_fn(|_| {
-            cx.new(|cx| InputState::new(window, cx).placeholder("Global default"))
+            cx.new(|cx| InputState::new(window, cx).placeholder(crate::i18n::tr("Global default")))
         });
         let automation_ui = crate::automation_views::AutomationUi::new(window, cx);
         let system_appearance = cx.observe_window_appearance(window, |this, w, cx| {
@@ -884,15 +884,15 @@ impl TaskApp {
             executable_input: cx.new(|cx| {
                 InputState::new(window, cx)
                     .default_value(opencode::detect_executable())
-                    .placeholder("Path to opencode")
+                    .placeholder(crate::i18n::tr("Path to opencode"))
             }),
             codex_executable_input: cx.new(|cx| {
                 InputState::new(window, cx)
                     .default_value(crate::codex::detect_executable())
-                    .placeholder("Path to codex")
+                    .placeholder(crate::i18n::tr("Path to codex"))
             }),
             directory_input: cx
-                .new(|cx| InputState::new(window, cx).placeholder("/absolute/path/to/project")),
+                .new(|cx| InputState::new(window, cx).placeholder(crate::i18n::tr("/absolute/path/to/project"))),
             directory_project: None,
             connection_project: 1,
             connection_status: "Model catalog has not been loaded.".into(),
@@ -912,7 +912,7 @@ impl TaskApp {
             fallback_model,
             creating_model_profile: false,
             model_profile_name: cx
-                .new(|cx| InputState::new(window, cx).placeholder("Profile name")),
+                .new(|cx| InputState::new(window, cx).placeholder(crate::i18n::tr("Profile name"))),
             discovery: None,
             active_runs: vec![],
             queued_runs: vec![],
@@ -955,7 +955,7 @@ impl TaskApp {
             property: None,
             comment: cx.new(|cx| {
                 TextareaState::new(window, cx)
-                    .placeholder("Leave a comment…")
+                    .placeholder(crate::i18n::tr("Leave a comment…"))
                     .rows(3)
             }),
             report_regeneration: None,
@@ -1029,15 +1029,15 @@ impl TaskApp {
             project_brief: cx.new(|cx| {
                 TextareaState::new(window, cx)
                     .rows(5)
-                    .placeholder("e.g. Analyze Intel’s latest earnings and market reaction, with links to sources.")
+                    .placeholder(crate::i18n::tr("e.g. Analyze Intel’s latest earnings and market reaction, with links to sources."))
             }),
             research_title: cx.new(|cx| {
                 InputState::new(window, cx)
-                    .placeholder("e.g. What changed in US technology stocks this week?")
+                    .placeholder(crate::i18n::tr("e.g. What changed in US technology stocks this week?"))
             }),
             research_brief: cx.new(|cx| {
                 TextareaState::new(window, cx)
-                    .placeholder("Market or ticker, time range, and research question…")
+                    .placeholder(crate::i18n::tr("Market or ticker, time range, and research question…"))
                     .rows(6)
             }),
             research_project: 1,
@@ -2059,7 +2059,7 @@ impl TaskApp {
     }
     pub(crate) fn scope_title(&self, scope: &Scope) -> String {
         match scope {
-            Scope::All => "All research".into(),
+            Scope::All => crate::i18n::tr_string("All research"),
             Scope::Project(id) => self
                 .store
                 .projects()
@@ -2075,13 +2075,13 @@ impl TaskApp {
                 .map(|t| t.display_name())
                 .unwrap_or_default(),
             Scope::Cycle(c) => c.clone(),
-            Scope::Archive => "Archive".into(),
-            Scope::Runs => "Research results".into(),
-            Scope::Recovery => "Paused projects".into(),
-            Scope::Research => "Market research".into(),
-            Scope::Automations => "Automations".into(),
-            Scope::AutomationRuns => "Automation results".into(),
-            Scope::Settings => "Settings".into(),
+            Scope::Archive => crate::i18n::tr_string("Archive"),
+            Scope::Runs => crate::i18n::tr_string("Research results"),
+            Scope::Recovery => crate::i18n::tr_string("Paused projects"),
+            Scope::Research => crate::i18n::tr_string("Market research"),
+            Scope::Automations => crate::i18n::tr_string("Automations"),
+            Scope::AutomationRuns => crate::i18n::tr_string("Automation results"),
+            Scope::Settings => crate::i18n::tr_string("Settings"),
         }
     }
     pub fn matches_scope(&self, t: &Task) -> bool {
@@ -2162,7 +2162,7 @@ impl TaskApp {
         };
         let title = cx.new(|cx| {
             InputState::new(window, cx)
-                .placeholder("What needs to be done?")
+                .placeholder(crate::i18n::tr("What needs to be done?"))
                 .default_value(task.title.clone())
         });
         self.draft = Some(Draft {
@@ -2173,18 +2173,18 @@ impl TaskApp {
             title: title.clone(),
             description: cx.new(|cx| {
                 TextareaState::new(window, cx)
-                    .placeholder("Describe the outcome, context, and acceptance criteria…")
+                    .placeholder(crate::i18n::tr("Describe the outcome, context, and acceptance criteria…"))
                     .default_value(task.description.clone())
                     .rows(6)
             }),
             labels: cx.new(|cx| {
                 InputState::new(window, cx)
-                    .placeholder("Feature, UI")
+                    .placeholder(crate::i18n::tr("Feature, UI"))
                     .default_value(task.labels.join(", "))
             }),
             due: cx.new(|cx| {
                 InputState::new(window, cx)
-                    .placeholder("YYYY-MM-DD")
+                    .placeholder(crate::i18n::tr("YYYY-MM-DD"))
                     .default_value(task.due_date.clone())
             }),
         });
@@ -2433,6 +2433,8 @@ impl TaskApp {
                 crate::appearance::apply(self.store.appearance(), None, cx);
                 let appearance = self.store.appearance();
                 let _ = crate::workspace::save_appearance_hint(appearance);
+                crate::i18n::set_active(self.store.interface_language());
+                self.refresh_localized_placeholders(window, cx);
                 self.refresh_liquid_glass(window, cx);
                 self.toast = "Last change undone".into();
                 self.error.clear();
@@ -2639,6 +2641,9 @@ impl TaskApp {
         cx: &mut Context<Self>,
     ) {
         self.store = store.unwrap_or_else(Store::empty);
+        crate::i18n::set_active(self.store.interface_language());
+        window.set_window_title(&crate::i18n::tr_string("What the hell are you planning?"));
+        self.refresh_localized_placeholders(window, cx);
         self.automation_ui.clear_store_caches();
         self.render_statuses.borrow_mut().clear();
         self.render_executions.borrow_mut().clear();

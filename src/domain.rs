@@ -17,10 +17,18 @@ pub fn activity_display(event: &str, created_at: &str) -> String {
         } else {
             "Time not recorded"
         };
-        return format!("{message} · {}", crate::time_display::timestamp(time));
+        return format!(
+            "{} · {}",
+            crate::i18n::tr_string(message),
+            crate::time_display::timestamp(time)
+        );
     }
     if let Some((message, time)) = event.rsplit_once(" · ") {
-        return format!("{message} · {}", crate::time_display::timestamp(time));
+        return format!(
+            "{} · {}",
+            crate::i18n::tr_string(message),
+            crate::time_display::timestamp(time)
+        );
     }
     event.to_string()
 }
@@ -477,6 +485,8 @@ pub struct Store {
     #[serde(default)]
     liquid_glass: TrackedScalar<bool>,
     #[serde(default)]
+    interface_language: TrackedScalar<crate::i18n::InterfaceLanguage>,
+    #[serde(default)]
     last_active_project: TrackedScalar<Option<u64>>,
 }
 
@@ -541,6 +551,10 @@ impl Store {
     }
     pub fn liquid_glass(&self) -> bool {
         *self.liquid_glass.get()
+    }
+
+    pub fn interface_language(&self) -> crate::i18n::InterfaceLanguage {
+        *self.interface_language.get()
     }
 
     pub fn appearance(&self) -> crate::appearance::Appearance {
@@ -676,6 +690,7 @@ impl Store {
             research_config: TrackedScalar::new(Default::default()),
             appearance: TrackedScalar::new(Default::default()),
             liquid_glass: TrackedScalar::new(false),
+            interface_language: TrackedScalar::new(Default::default()),
             last_active_project: TrackedScalar::new(None),
         };
         store.projects.push_tracked(Project {
@@ -1419,6 +1434,11 @@ impl Store {
         if self.liquid_glass.is_dirty() {
             deltas.push(MetadataDelta::LiquidGlass(*self.liquid_glass.get()));
         }
+        if self.interface_language.is_dirty() {
+            deltas.push(MetadataDelta::InterfaceLanguage(
+                *self.interface_language.get(),
+            ));
+        }
         if self.appearance.is_dirty() {
             deltas.push(MetadataDelta::Appearance(*self.appearance.get()));
         }
@@ -1641,6 +1661,7 @@ impl Store {
             MetadataDelta::OpenCodePath(value) => self.set_opencode_path(value),
             MetadataDelta::Appearance(value) => self.set_appearance(value),
             MetadataDelta::LiquidGlass(value) => self.set_liquid_glass(value),
+            MetadataDelta::InterfaceLanguage(value) => self.set_interface_language(value),
             MetadataDelta::LastActiveProject(value) => self.set_last_active_project(value),
             MetadataDelta::AutomationSchemaVersion(value) => {
                 self.set_automation_schema_version(value)
@@ -1681,6 +1702,7 @@ impl Store {
             self.opencode_path.epoch(),
             self.appearance.epoch(),
             self.liquid_glass.epoch(),
+            self.interface_language.epoch(),
             self.last_active_project.epoch(),
             self.automation_schema_version.epoch(),
             self.max_concurrent_runs.epoch(),
@@ -1767,6 +1789,7 @@ impl Store {
             || self.opencode_path.is_dirty()
             || self.appearance.is_dirty()
             || self.liquid_glass.is_dirty()
+            || self.interface_language.is_dirty()
             || self.last_active_project.is_dirty()
             || self.automation_schema_version.is_dirty()
             || self.max_concurrent_runs.is_dirty()
@@ -1788,6 +1811,7 @@ impl Store {
         self.opencode_path.clear_dirty();
         self.appearance.clear_dirty();
         self.liquid_glass.clear_dirty();
+        self.interface_language.clear_dirty();
         self.last_active_project.clear_dirty();
         self.automation_schema_version.clear_dirty();
         self.max_concurrent_runs.clear_dirty();
@@ -1847,6 +1871,10 @@ impl Store {
     }
     pub fn set_liquid_glass(&mut self, value: bool) {
         self.liquid_glass.set(value);
+    }
+
+    pub fn set_interface_language(&mut self, value: crate::i18n::InterfaceLanguage) {
+        self.interface_language.set(value);
     }
 
     pub fn set_appearance(&mut self, value: crate::appearance::Appearance) {
@@ -1979,6 +2007,7 @@ impl Store {
             MetadataDelta::OpenCodePath(value) => self.opencode_path.load(value),
             MetadataDelta::Appearance(value) => self.appearance.load(value),
             MetadataDelta::LiquidGlass(value) => self.liquid_glass.load(value),
+            MetadataDelta::InterfaceLanguage(value) => self.interface_language.load(value),
             MetadataDelta::LastActiveProject(value) => self.last_active_project.load(value),
             MetadataDelta::AutomationSchemaVersion(value) => {
                 self.automation_schema_version.load(value)

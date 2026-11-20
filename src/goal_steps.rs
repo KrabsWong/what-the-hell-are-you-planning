@@ -147,7 +147,7 @@ impl TaskApp {
     }
     pub(crate) fn goal_run_button(&self, goal: u64, element: &'static str, cx: &mut Context<Self>) -> gpui_kit::component::button::Button {
         let (title, disabled, hint) = self.goal_run_state(goal);
-        button(element, title).disabled(disabled).tooltip(hint)
+        button(element, title).disabled(disabled).tooltip(crate::i18n::tr(hint))
             .on_click(cx.listener(move |a, _, _, cx| a.run_research_next(goal, true, cx)))
     }
     pub(crate) fn step_execution_panel(&self, id: u64, cx: &mut Context<Self>) -> AnyElement {
@@ -195,11 +195,11 @@ impl TaskApp {
                 .child(
                     div()
                         .id("step-execution-status")
-                        .aria_label(self.display_task_status(id).label())
+                        .aria_label(crate::i18n::tr(self.display_task_status(id).label()))
                         .text_sm()
                         .font_weight(FontWeight::SEMIBOLD)
                         .text_color(rgb(state.color(cx)))
-                        .child(self.display_task_status(id).label())
+                        .child(crate::i18n::tr(self.display_task_status(id).label()))
                         .map(observed),
                 )
                 .child(
@@ -232,7 +232,7 @@ impl TaskApp {
             let title = self.store.task(dep).map(|t| format!("Open {}", self.store.identifier(t)))
                 .unwrap_or_else(|| format!("Missing prerequisite {dep}"));
             panel = panel.child(button(format!("step-prerequisite-{dep}"), title).w_full()
-                .tooltip(self.store.task(dep).map(|t| t.title.clone()).unwrap_or_default())
+                .tooltip(crate::i18n::tr(self.store.task(dep).map(|t| t.title.clone()).unwrap_or_default()))
                 .disabled(self.store.task(dep).is_none())
                 .on_click(cx.listener(move |a, _, w, cx| a.open_task(dep, w, cx))));
         }
@@ -287,7 +287,7 @@ impl TaskApp {
         if !archived {
             actions = actions.child(run_action
                 .disabled(pending || checking || active || cancelled || !dependencies.is_empty())
-                .tooltip(action_tooltip)
+                .tooltip(crate::i18n::tr(action_tooltip))
                 .on_click(cx.listener(move |a, _, _, cx| a.start_run(id, cx))));
         }
         if let Some(prerequisite) = prerequisite_replay {
@@ -296,9 +296,9 @@ impl TaskApp {
                 .unwrap_or_else(|| format!("prerequisite {prerequisite}"));
             actions = actions.child(
                 button("step-rerun-prerequisite", format!("Rerun prerequisite · {title}"))
-                    .tooltip(format!(
+                    .tooltip(crate::i18n::tr(format!(
                         "Run {title} and its own unfinished prerequisites first. This step stays disabled until its results are current."
-                    ))
+                    )))
                     .on_click(cx.listener(move |a, _, _, cx| {
                         a.start_run_background(prerequisite, cx)
                     })),
@@ -386,8 +386,8 @@ impl TaskApp {
                 .min_w_0()
                 .h_8()
                 .px_2()
-                .accessibility_label(format!("{} · {}", title, status.label()))
-                .tooltip(format!("{} · {}", status.label(), status.reason))
+                .accessibility_label(crate::i18n::tr(format!("{} · {}", title, crate::i18n::tr_string(status.label()))))
+                .tooltip(crate::i18n::tr(format!("{} · {}", crate::i18n::tr_string(status.label()), status.reason)))
                 .on_click(cx.listener(move |a, _, w, cx| {
                     a.request_task(id, false, w, cx)
                 }))
@@ -398,8 +398,12 @@ impl TaskApp {
                         .child(execution.icon_view(format!("goal-step-row-icon-{id}"), cx))
                         .child(single_line_text(format!("goal-step-title-{id}"), title))
                         .when(execution != ExecutionStatus::Done || status.display_label.is_some(), |status_row| {
-                            status_row.child(label(status.label(), cx).id(format!("goal-step-status-{id}"))
-                                .aria_label(status.label()).map(observed))
+                            status_row.child(
+                                label(crate::i18n::tr(status.label()), cx)
+                                    .id(format!("goal-step-status-{id}"))
+                                    .aria_label(crate::i18n::tr(status.label()))
+                                    .map(observed),
+                            )
                         })
                         .child(row().gap_1().child(label("Open", cx)).child(gpui_kit::component::Icon::new(assets::IconName::ChevronRight).size_4())),
                 )

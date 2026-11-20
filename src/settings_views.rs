@@ -1,6 +1,7 @@
 use crate::{
     app::{Scope, TaskApp},
     appearance::palette,
+    i18n::{InterfaceLanguage, tr},
     research::OutputLanguage,
     views::*,
 };
@@ -53,13 +54,13 @@ impl TaskApp {
         .w(px(240.))
         .dropdown_caret(true)
         .disabled(names.is_empty())
-        .tooltip("Apply a saved global and stage model configuration")
+        .tooltip(crate::i18n::tr("Apply a saved global and stage model configuration"))
         .dropdown_menu(move |mut menu, _, _| {
             for name in &names {
                 let entity = entity.clone();
                 let name = name.clone();
                 menu = menu.item(
-                    PopupMenuItem::new(name.clone())
+                    PopupMenuItem::new(crate::i18n::tr(name.clone()))
                         .checked(selected.as_ref() == Some(&name))
                         .on_click(move |_, w, cx| {
                             let _ = entity.update(cx, |this, cx| {
@@ -101,7 +102,7 @@ impl TaskApp {
                 let restore_name = name.clone();
                 let delete_entity = entity.clone();
                 menu.item(
-                    PopupMenuItem::new("Restore saved settings")
+                    PopupMenuItem::new(crate::i18n::tr("Restore saved settings"))
                         .disabled(!changed)
                         .on_click(move |_, w, cx| {
                             let _ = restore_entity.update(cx, |this, cx| {
@@ -127,7 +128,7 @@ impl TaskApp {
                 )
                 .separator()
                 .item(
-                    PopupMenuItem::new("Delete current profile").on_click(move |_, _, cx| {
+                    PopupMenuItem::new(crate::i18n::tr("Delete current profile")).on_click(move |_, _, cx| {
                         let _ = delete_entity.update(cx, |this, cx| {
                             let name = name.clone();
                             let saved = this
@@ -177,11 +178,11 @@ impl TaskApp {
                                 .w(px(110.))
                                 .primary()
                                 .disabled(!changed)
-                                .tooltip(if changed {
+                                .tooltip(crate::i18n::tr(if changed {
                                     "Save current model settings to this profile"
                                 } else {
                                     "No changes to save"
-                                })
+                                }))
                                 .on_click(cx.listener(move |this, _, _, cx| {
                                     let Some(name) = active_name.clone() else {
                                         return;
@@ -286,6 +287,83 @@ impl TaskApp {
             cx,
         );
         cx.notify();
+    }
+
+    pub fn set_interface_language(
+        &mut self,
+        language: InterfaceLanguage,
+        window: &mut Window,
+        cx: &mut Context<Self>,
+    ) {
+        if self.store.interface_language() == language {
+            return;
+        }
+        if !self.apply_scoped_settings(
+            crate::scoped_settings::SettingsChange::InterfaceLanguage(language),
+            cx,
+        ) {
+            return;
+        }
+        crate::i18n::set_active(language);
+        self.refresh_localized_placeholders(window, cx);
+        cx.notify();
+    }
+
+    /// Input placeholders are stored state, so they are rebuilt explicitly
+    /// when the interface language changes or a saved language is loaded.
+    pub(crate) fn refresh_localized_placeholders(
+        &mut self,
+        window: &mut Window,
+        cx: &mut Context<Self>,
+    ) {
+        self.search.update(cx, |state, cx| {
+            state.set_placeholder(crate::i18n::tr("Filter this list…"), window, cx)
+        });
+        self.global_search.update(cx, |state, cx| {
+            state.set_placeholder(crate::i18n::tr("Search research and automations…"), window, cx)
+        });
+        self.refresh_model_placeholders(window, cx);
+        self.executable_input.update(cx, |state, cx| {
+            state.set_placeholder(crate::i18n::tr("Path to opencode"), window, cx)
+        });
+        self.codex_executable_input.update(cx, |state, cx| {
+            state.set_placeholder(crate::i18n::tr("Path to codex"), window, cx)
+        });
+        self.directory_input.update(cx, |state, cx| {
+            state.set_placeholder(crate::i18n::tr("/absolute/path/to/project"), window, cx)
+        });
+        self.model_profile_name.update(cx, |state, cx| {
+            state.set_placeholder(crate::i18n::tr("Profile name"), window, cx)
+        });
+        self.comment.update(cx, |state, cx| {
+            state.set_placeholder(crate::i18n::tr("Leave a comment…"), window, cx)
+        });
+        self.project_brief.update(cx, |state, cx| {
+            state.set_placeholder(
+                crate::i18n::tr(
+                    "e.g. Analyze Intel’s latest earnings and market reaction, with links to sources.",
+                ),
+                window,
+                cx,
+            )
+        });
+        self.research_title.update(cx, |state, cx| {
+            state.set_placeholder(
+                crate::i18n::tr("e.g. What changed in US technology stocks this week?"),
+                window,
+                cx,
+            )
+        });
+        self.research_brief.update(cx, |state, cx| {
+            state.set_placeholder(
+                crate::i18n::tr("Market or ticker, time range, and research question…"),
+                window,
+                cx,
+            )
+        });
+        self.automation_ui
+            .refresh_localized_placeholders(window, cx);
+        self.refresh_publishing_inputs(window, cx);
     }
 
     pub fn open_model_settings(&mut self, w: &mut Window, cx: &mut Context<Self>) {
@@ -396,8 +474,56 @@ impl TaskApp {
         let build_general = || {
             #[cfg(feature = "qa")]
             crate::brand::note_general_render();
+            let interface_language = self.store.interface_language();
+            let interface_language_entity = cx.entity().downgrade();
             let language = self.store.output_language();
             let language_entity = cx.entity().downgrade();
+            let interface_language_settings = col()
+                .gap_2()
+                .child(
+                    div()
+                        .font_weight(FontWeight::SEMIBOLD)
+                        .child(selectable(tr("Interface language"))),
+                )
+                .child(label(
+                    tr("Changes the language of controls, statuses and messages."),
+                    cx,
+                ))
+                .child(
+                    row()
+                        .flex_wrap()
+                        .gap_2()
+                        .child(
+                            div()
+                                .text_sm()
+                                .w(px(140.))
+                                .child(selectable(tr("Display language"))),
+                        )
+                        .child(
+                            button(
+                                "interface-language-picker",
+                                tr(interface_language.label()),
+                            )
+                            .w(px(240.))
+                            .dropdown_caret(true)
+                            .tooltip(tr("Choose the language shown throughout the app"))
+                            .dropdown_menu(move |mut menu, _, _| {
+                                for option in InterfaceLanguage::ALL {
+                                    let entity = interface_language_entity.clone();
+                                    menu = menu.item(
+                                        PopupMenuItem::new(tr(option.label())).on_click(
+                                            move |_, w, cx| {
+                                                let _ = entity.update(cx, |app, cx| {
+                                                    app.set_interface_language(option, w, cx);
+                                                });
+                                            },
+                                        ),
+                                    );
+                                }
+                                menu
+                            }),
+                        ),
+                );
             let content = col()
                 .gap_2()
                 .child(
@@ -418,12 +544,12 @@ impl TaskApp {
                             button("output-language-picker", language.label())
                                 .w(px(240.))
                                 .dropdown_caret(true)
-                                .tooltip("Choose the language for generated research output")
+                                .tooltip(crate::i18n::tr("Choose the language for generated research output"))
                                 .dropdown_menu(move |mut menu, _, _| {
                                     for option in OutputLanguage::ALL {
                                         let entity = language_entity.clone();
                                         menu = menu.item(
-                                            PopupMenuItem::new(option.label())
+                                            PopupMenuItem::new(crate::i18n::tr(option.label()))
                                                 .checked(option == language)
                                                 .on_click(move |_, _, cx| {
                                                     let _ = entity.update(cx, |app, cx| {
@@ -487,11 +613,12 @@ impl TaskApp {
                 ),
             );
             col().gap_6()
+            .child(interface_language_settings)
             .child(content)
             .child(appearance)
             .child(col().gap_2()
                 .child(Switch::new("settings-liquid-glass")
-                    .label("Liquid Glass")
+                    .label(crate::i18n::tr("Liquid Glass"))
                     .checked(self.store.liquid_glass())
                     .disabled(self.liquid_glass_unavailable_reason().is_some())
                     .on_click(cx.listener(|app, enabled, window, cx| {
@@ -509,11 +636,11 @@ impl TaskApp {
                             assets::IconName::Minus,
                             "Decrease research task limit",
                         )
-                        .tooltip(if self.store.concurrency_limit() <= 1 {
+                        .tooltip(crate::i18n::tr(if self.store.concurrency_limit() <= 1 {
                             "Minimum is 1."
                         } else {
                             "Decrease the limit. Running research tasks continue."
-                        })
+                        }))
                         .disabled(self.store.concurrency_limit() <= 1)
                         .on_click(cx.listener(|a, _, _, cx| a.set_execution_concurrency(a.store.concurrency_limit().saturating_sub(1), cx))))
                     .child(div().w_8().text_center().child(selectable(self.store.concurrency_limit().to_string())))
@@ -522,13 +649,13 @@ impl TaskApp {
                             assets::IconName::Plus,
                             "Increase research task limit",
                         )
-                        .tooltip(if self.store.concurrency_limit()
+                        .tooltip(crate::i18n::tr(if self.store.concurrency_limit()
                             >= crate::scheduler::MAX_CONCURRENT_RUNS
                         {
                             "Maximum is 10."
                         } else {
                             "Increase the limit."
-                        })
+                        }))
                         .disabled(self.store.concurrency_limit() >= crate::scheduler::MAX_CONCURRENT_RUNS)
                         .on_click(cx.listener(|a, _, _, cx| a.set_execution_concurrency(a.store.concurrency_limit() + 1, cx)))))
                 .child(label("1–10 · Recommended 3 · Higher limits can increase rate-limit errors.", cx))
@@ -539,11 +666,11 @@ impl TaskApp {
                             assets::IconName::Minus,
                             "Decrease automation period limit",
                         )
-                        .tooltip(if self.store.automation_concurrency_limit() <= 1 {
+                        .tooltip(crate::i18n::tr(if self.store.automation_concurrency_limit() <= 1 {
                             "Minimum is 1."
                         } else {
                             "Decrease the limit. Running automation periods continue."
-                        })
+                        }))
                         .disabled(self.store.automation_concurrency_limit() <= 1)
                         .on_click(cx.listener(|a, _, _, cx| a.set_automation_concurrency(a.store.automation_concurrency_limit().saturating_sub(1), cx))))
                     .child(div().w_8().text_center().child(selectable(self.store.automation_concurrency_limit().to_string())))
@@ -552,13 +679,13 @@ impl TaskApp {
                             assets::IconName::Plus,
                             "Increase automation period limit",
                         )
-                        .tooltip(if self.store.automation_concurrency_limit()
+                        .tooltip(crate::i18n::tr(if self.store.automation_concurrency_limit()
                             >= crate::scheduler::MAX_CONCURRENT_RUNS
                         {
                             "Maximum is 10."
                         } else {
                             "Increase the limit."
-                        })
+                        }))
                         .disabled(self.store.automation_concurrency_limit() >= crate::scheduler::MAX_CONCURRENT_RUNS)
                         .on_click(cx.listener(|a, _, _, cx| a.set_automation_concurrency(a.store.automation_concurrency_limit() + 1, cx)))))
                 .child(label("1–10 · Recommended 2 · Only running periods use a slot.", cx)))
@@ -589,9 +716,9 @@ impl TaskApp {
                         TabBar::new("settings-tabs")
                             .underline()
                             .selected_index(Self::settings_tab_index(self.settings_tab()))
-                            .child(Tab::new().label("General"))
-                            .child(Tab::new().label("Agent & models"))
-                            .child(Tab::new().label("Publishing"))
+                            .child(Tab::new().label(crate::i18n::tr("General")))
+                            .child(Tab::new().label(crate::i18n::tr("Agent & models")))
+                            .child(Tab::new().label(crate::i18n::tr("Publishing")))
                             .on_click(cx.listener(|this, index, w, cx| {
                                 this.refresh_publishing_inputs(w, cx);
                                 this.research_model_picker = None;

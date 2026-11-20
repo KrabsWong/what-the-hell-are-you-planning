@@ -53,8 +53,8 @@ impl TaskApp {
                     .w_full()
                     .h_9()
                     .px_2()
-                    .tooltip(hint)
-                    .accessibility_label(title.clone())
+                    .tooltip(crate::i18n::tr(hint))
+                    .accessibility_label(crate::i18n::tr(title.clone()))
                     .on_click(cx.listener(move |this, _, w, cx| this.open_task(id, w, cx)))
                     .child(
                         row()
@@ -101,7 +101,7 @@ impl TaskApp {
                     .when(has_composer_draft, |d| {
                         d.child(
                             button("discard-research-draft", "Discard draft")
-                                .tooltip("Clear the parked research request title and context")
+                                .tooltip(crate::i18n::tr("Clear the parked research request title and context"))
                                 .on_click(cx.listener(|this, _, w, cx| this.discard_parked_composer(w, cx))),
                         )
                     }),
@@ -145,14 +145,14 @@ impl TaskApp {
         let entity = cx.entity().downgrade();
         button(format!("model-agent-{}", stage.map(|i| i.to_string()).unwrap_or("global".into())), title)
             .w(px(140.)).flex_shrink_0()
-            .tooltip(if inherited { "Uses the global agent" } else { "Choose the agent for this model" })
+            .tooltip(crate::i18n::tr(if inherited { "Uses the global agent" } else { "Choose the agent for this model" }))
             .icon(assets::IconName::ChevronDown)
             .dropdown_menu(move |menu, _, _| {
                 let open_entity = entity.clone();
                 let codex_entity = entity.clone();
-                menu.item(PopupMenuItem::new("OpenCode").on_click(move |_, w, cx| {
+                menu.item(PopupMenuItem::new(crate::i18n::tr("OpenCode")).on_click(move |_, w, cx| {
                     let _ = open_entity.update(cx, |this, cx| this.set_model_agent(stage, "OpenCode", w, cx));
-                })).item(PopupMenuItem::new("Codex").on_click(move |_, w, cx| {
+                })).item(PopupMenuItem::new(crate::i18n::tr("Codex")).on_click(move |_, w, cx| {
                     let _ = codex_entity.update(cx, |this, cx| this.set_model_agent(stage, "Codex", w, cx));
                 }))
             }).into_any_element()
@@ -163,12 +163,12 @@ impl TaskApp {
         let entity = cx.entity().downgrade();
         button("model-agent-fallback", agent)
             .w(px(140.)).flex_shrink_0()
-            .tooltip("Choose the agent used by the fallback model")
+            .tooltip(crate::i18n::tr("Choose the agent used by the fallback model"))
             .icon(assets::IconName::ChevronDown)
             .dropdown_menu(move |mut menu, _, _| {
                 for (label, value) in [("OpenCode", "OpenCode"), ("Codex", "Codex")] {
                     let entity = entity.clone();
-                    menu = menu.item(PopupMenuItem::new(label).on_click(move |_, w, cx| {
+                    menu = menu.item(PopupMenuItem::new(crate::i18n::tr(label)).on_click(move |_, w, cx| {
                         let _ = entity.update(cx, |this, cx| this.set_fallback_agent(value, w, cx));
                     }));
                 }
@@ -308,7 +308,7 @@ impl TaskApp {
             .child(
                 label(self.ego_status.clone(), cx)
                     .id("ego-status")
-                    .aria_label(self.ego_status.clone())
+                    .aria_label(crate::i18n::tr(self.ego_status.clone()))
                     .map(observed),
             )
             .when(!crate::ego::is_installed(&self.ego_input.read(cx).value()), |d| d.child(link_button("install-ego","Install ego(lite)").icon(assets::IconName::ExternalLink).on_click(|_,_,cx|cx.open_url("https://lite.ego.app"))))
@@ -354,7 +354,7 @@ impl TaskApp {
         panel = panel.child(
             label(hint, cx)
                 .id("material-drop-hint")
-                .aria_label(hint)
+                .aria_label(crate::i18n::tr(hint))
                 .map(observed),
         );
         if busy {
@@ -418,7 +418,7 @@ impl TaskApp {
                             let remove_entity = menu_entity.clone();
                             let open_attachment = menu_attachment.clone();
                             let remove_path = menu_attachment.relative_path.clone();
-                            menu.item(PopupMenuItem::new("Open in default app").on_click(move |_, _, cx| {
+                            menu.item(PopupMenuItem::new(crate::i18n::tr("Open in default app")).on_click(move |_, _, cx| {
                                 let _ = open_entity.update(cx, |this, cx| this.open_attachment(&open_attachment, cx));
                             })).separator()
                             .item(PopupMenuItem::element(move |_, _| {
@@ -474,7 +474,7 @@ impl TaskApp {
                 .iter()
                 .all(|child| self.store.research_result_available_or_pending(*child));
         let browser = quiet_button("task-open-ego", "Open ego(lite)").icon(assets::IconName::ExternalLink)
-            .tooltip("Opens the browser app. Select the research Space in ego(lite).")
+            .tooltip(crate::i18n::tr("Opens the browser app. Select the research Space in ego(lite)."))
             .on_click(cx.listener(|this, _, _, cx| this.open_ego(cx)));
         let next_model = self.store.research_model(research.kind);
         let archived = self.store.task_is_archived(id);
@@ -736,11 +736,11 @@ impl TaskApp {
                                             } else {
                                                 assets::IconName::ChevronRight
                                             })
-                                            .tooltip(if appendix_open {
+                                            .tooltip(crate::i18n::tr(if appendix_open {
                                                 "Hide detailed verification notes"
                                             } else {
                                                 "Show detailed verification notes"
-                                            })
+                                            }))
                                             .on_click(cx.listener(move |a, _, _, cx| {
                                                 a.expanded_run_appendix = if appendix_open {
                                                     None
@@ -778,7 +778,7 @@ impl TaskApp {
                                 .child(quiet_button("toggle-result-sources", format!("Sources · {}", presentation.sources.len()))
                                     .self_start().px_2().text_color(rgb(colors.muted))
                                     .icon(if sources_open { assets::IconName::ChevronDown } else { assets::IconName::ChevronRight })
-                                    .tooltip(if sources_open { "Hide source links" } else { "Show source links and publication dates" })
+                                    .tooltip(crate::i18n::tr(if sources_open { "Hide source links" } else { "Show source links and publication dates" }))
                                     .on_click(cx.listener(move |a, _, _, cx| {
                                         a.expanded_run_sources = if sources_open { None } else { Some(run_id) }; cx.notify();
                                     })))

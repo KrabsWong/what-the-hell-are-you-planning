@@ -19,7 +19,7 @@ use gpui_kit::{
 
 pub(crate) fn topic_copy_tag(id: impl Into<SharedString>, cx: &App) -> AnyElement {
     chip("Copy", palette(cx).muted, cx)
-        .id(id.into()).role(Role::Label).aria_label("Copy of another topic")
+        .id(id.into()).role(Role::Label).aria_label(crate::i18n::tr("Copy of another topic"))
         .bg(rgb(palette(cx).tag_surface)).border_1().border_color(rgb(palette(cx).border_strong)).font_weight(FontWeight::NORMAL)
         .flex_shrink_0().whitespace_nowrap()
         .tooltip(|w, cx| component::tooltip::Tooltip::new("Created from another topic; open the topic to view its source.").build(w, cx))
@@ -37,17 +37,17 @@ fn topic_intake_tag(id: impl Into<SharedString>, status: crate::request_planning
     };
     let label = if compact {
         match status {
-            TopicIntakeStatus::Understanding => "Aligning",
-            TopicIntakeStatus::NeedsReview => "Review",
-            TopicIntakeStatus::NeedsAttention => "Attention",
-            TopicIntakeStatus::Interrupted => "Paused",
-            _ => status.label(),
+            TopicIntakeStatus::Understanding => crate::i18n::tr_string("Aligning"),
+            TopicIntakeStatus::NeedsReview => crate::i18n::tr_string("Review"),
+            TopicIntakeStatus::NeedsAttention => crate::i18n::tr_string("Attention"),
+            TopicIntakeStatus::Interrupted => crate::i18n::tr_string("Paused"),
+            _ => crate::i18n::tr_string(status.label()),
         }
-    } else { status.label() };
+    } else { crate::i18n::tr_string(status.label()) };
     chip(label, color, cx)
         .when(compact, |d| d.px_1().text_size(px(11.)))
-        .id(id.into()).role(Role::Label).aria_label(status.label())
-        .tooltip(move |w, cx| component::tooltip::Tooltip::new(status.label()).build(w, cx))
+        .id(id.into()).role(Role::Label).aria_label(crate::i18n::tr(crate::i18n::tr_string(status.label())))
+        .tooltip(move |w, cx| component::tooltip::Tooltip::new(crate::i18n::tr_string(status.label())).build(w, cx))
         .bg(rgb(colors.tag_surface)).border_1().border_color(rgb(colors.border_strong)).font_weight(FontWeight::NORMAL)
         .flex_shrink_0().whitespace_nowrap().map(observed)
 }
@@ -64,7 +64,7 @@ impl gpui_kit::base::text::MarkdownPlugin for TopicTitleTags {
         match link.url.as_str() {
             "topic-tag:copy" => Some(MarkdownNode::new(self.name(), true).text("Copy")),
             "topic-tag:status" => self.0.map(|status|
-                MarkdownNode::new(self.name(), false).text(status.label())),
+                MarkdownNode::new(self.name(), false).text(crate::i18n::tr_string(status.label()))),
             _ => None,
         }
     }
@@ -85,7 +85,7 @@ fn topic_inline_title(topic: &Topic, status: Option<crate::request_planning::Top
     let mut text = String::new();
     if topic.replanned_from.is_some() { text.push_str("[Copy](topic-tag:copy) "); }
     if let Some(status) = status {
-        text.push_str(&format!("[{}](topic-tag:status) ", status.label()));
+        text.push_str(&format!("[{}](topic-tag:status) ", crate::i18n::tr_string(status.label())));
     }
     // Treat the user-authored title as literal text, never Markdown syntax.
     for ch in topic.display_name().chars() {
@@ -202,8 +202,8 @@ impl TaskApp {
             body = body.child(muted("All goals, child tasks (including archived tasks), research requests and dependencies move together. Existing reports and materials stay at their current file locations.", cx));
             if dialog.has_destinations {
                 body = body.child(label("Destination project", cx))
-                    .child(Select::new(&dialog.projects).id("topic-move-project").accessibility_label("Destination project").w_full().menu_max_h(px(220.))
-                        .placeholder("Choose a project…").search_placeholder("Search projects…"))
+                    .child(Select::new(&dialog.projects).id("topic-move-project").accessibility_label(crate::i18n::tr("Destination project")).w_full().menu_max_h(px(220.))
+                        .placeholder(crate::i18n::tr("Choose a project…")).search_placeholder(crate::i18n::tr("Search projects…")))
                     .child(muted(destination.map(|p| format!("Confirm to move the entire topic from {source} to {}.", p.name))
                         .unwrap_or("Select a destination, then confirm the move below.".into()), cx));
             } else {
@@ -219,7 +219,7 @@ impl TaskApp {
         }
         div().absolute().inset_0().occlude().bg(rgba(0x00000080)).flex().items_center().justify_center().p_4()
             .child(col().w(px(600.)).max_w_full().p_6().gap_4().map(|d| crate::appearance::floating_surface(d, cx))
-                .child(div().text_lg().font_weight(FontWeight::SEMIBOLD).child(if blocked { "Cannot move topic yet" } else { "Move topic" }))
+                .child(div().text_lg().font_weight(FontWeight::SEMIBOLD).child(crate::i18n::tr(if blocked { "Cannot move topic yet" } else { "Move topic" })))
                 .child(body)
                 .child(row().justify_end()
                     .child(button("cancel-topic-move", if blocked { "Close" } else { "Cancel" }).on_click(cx.listener(|a, _, w, cx| {
@@ -246,7 +246,7 @@ impl TaskApp {
         self.remember_dialog_opener(w, cx);
         let input = cx.new(|cx| {
             InputState::new(w, cx)
-                .placeholder("Topic name")
+                .placeholder(crate::i18n::tr("Topic name"))
                 .default_value(name)
         });
         input.update(cx, |s, cx| s.focus(w, cx));
@@ -349,8 +349,8 @@ impl TaskApp {
         .h(px(28.))
         .max_w(px(164.))
         .min_w_0()
-        .tooltip(title.clone())
-        .accessibility_label(title.clone())
+        .tooltip(crate::i18n::tr(title.clone()))
+        .accessibility_label(crate::i18n::tr(title.clone()))
         .disabled(goal.is_some_and(|id| self.store.task(id).is_some_and(|t| t.archived)))
         .dropdown_menu(move |mut menu, _, _| {
             for (id, name) in (if goal.is_none() {
@@ -362,7 +362,7 @@ impl TaskApp {
             .chain(topics.clone())
             {
                 let entity = entity.clone();
-                menu = menu.item(PopupMenuItem::new(name).on_click(move |_, _, cx| {
+                menu = menu.item(PopupMenuItem::new(crate::i18n::tr(name)).on_click(move |_, _, cx| {
                     let _ = entity.update(cx, |a, cx| {
                         if let Some(goal) = goal {
                             a.apply_domain_command_undoable(
@@ -396,7 +396,7 @@ impl TaskApp {
             .any(|r| r.planning_run_id.is_some_and(|id| self.store.runs().iter()
                 .any(|run| run.id == id && matches!(run.status.as_str(), "Queued" | "Running" | "Cancelling"))));
         let action = button("regenerate-topic-plan", "Regenerate").disabled(active)
-            .tooltip("Generate a replacement for an unapproved plan. Previous goals are archived only after the replacement is valid.");
+            .tooltip(crate::i18n::tr("Generate a replacement for an unapproved plan. Previous goals are archived only after the replacement is valid."));
         if requests.len() == 1 {
             let request = requests[0].0;
             return action.on_click(cx.listener(move |a, _, _, cx| a.retry_research_request(request, cx))).into_any_element();
@@ -406,7 +406,7 @@ impl TaskApp {
             for (request, input) in &requests {
                 let request = *request;
                 let entity = entity.clone();
-                menu = menu.item(PopupMenuItem::new(input.clone()).on_click(move |_, _, cx| {
+                menu = menu.item(PopupMenuItem::new(crate::i18n::tr(input.clone())).on_click(move |_, _, cx| {
                     let _ = entity.update(cx, |a, cx| a.retry_research_request(request, cx));
                 }));
             }
@@ -424,7 +424,7 @@ impl TaskApp {
                 .is_some_and(|t| t.id == id);
         let status = self.store.topic_intake_status(id);
         let description = format!("{}{}{}", if topic.replanned_from.is_some() { "Copy · " } else { "" },
-            topic.display_name(), status.map(|status| format!(" · {}", status.label())).unwrap_or_default());
+            topic.display_name(), status.map(|status| format!(" · {}", crate::i18n::tr_string(status.label()))).unwrap_or_default());
         row()
             .items_center()
             .gap_0()
@@ -439,8 +439,8 @@ impl TaskApp {
                     .flex_1()
                     .min_w_0()
                     .h_8()
-                    .tooltip(description.clone())
-                    .accessibility_label(description)
+                    .tooltip(crate::i18n::tr(description.clone()))
+                    .accessibility_label(crate::i18n::tr(description))
                     .child(row().w_full().min_w_0().gap_1()
                         .when(topic.replanned_from.is_some(), |d| d.child(topic_copy_tag(format!("topic-copy-{id}"), cx)))
                         .when_some(status, |d, status| d.child(
@@ -523,8 +523,8 @@ impl TaskApp {
                         .border_1()
                         .border_color(rgb(colors.line))
                         .bg(rgb(colors.panel))
-                        .tooltip(title.clone())
-                        .accessibility_label(title.clone())
+                        .tooltip(crate::i18n::tr(title.clone()))
+                        .accessibility_label(crate::i18n::tr(title.clone()))
                         .child(col().w_full().min_w_0().gap_1()
                             .child(row().w_full().min_w_0().h_5().flex_shrink_0()
                                 .child(single_line_text(format!("topic-directory-title-{id}"), title)))
@@ -596,8 +596,8 @@ impl TaskApp {
                             .min_w_0()
                             .h_8()
                             .px_2()
-                            .tooltip(hint)
-                            .accessibility_label(title.clone())
+                            .tooltip(crate::i18n::tr(hint))
+                            .accessibility_label(crate::i18n::tr(title.clone()))
                             .on_click(cx.listener(move |a, _, w, cx| {
                                 a.request_task_result_first(goal_id, w, cx)
                             }))
@@ -649,7 +649,7 @@ impl TaskApp {
                         d.child(quiet_button(format!("topic-export-{goal_id}"), "Export")
                             .h_8().px_2()
                             .disabled(self.goal_busy(goal_id))
-                            .tooltip("Save completed evidence, analysis and reports as a ZIP")
+                            .tooltip(crate::i18n::tr("Save completed evidence, analysis and reports as a ZIP"))
                             .on_click(cx.listener(move |a, _, _, cx| a.export_research_goal(goal_id, cx))))
                     }),
             );
@@ -664,7 +664,7 @@ impl TaskApp {
             .child(row().px_6().pt_4().pb_2().gap_2().flex_wrap()
                 .child(div().flex_1().min_w_0().child(topic_inline_title(topic, self.store.topic_intake_status(id))))
                 .when(can_queue, |d| d.child(button("queue-topic", "Queue topic")
-                    .tooltip("Queue all approved unfinished goals in this topic. Topics execute one at a time.")
+                    .tooltip(crate::i18n::tr("Queue all approved unfinished goals in this topic. Topics execute one at a time."))
                     .on_click(cx.listener(move |a, _, _, cx| a.start_topic_batch(id, cx)))))
                 .child(self.topic_plan_action(id, cx))
                 .child(self.topic_publish_button(id, cx))
@@ -674,17 +674,17 @@ impl TaskApp {
                 .child(tool_icon("topic-actions-menu", assets::IconName::Ellipsis, "More topic actions")
                     .dropdown_menu_with_anchor(Anchor::TopRight, move |menu, _, _| {
                         let moving = entity.clone();
-                        let menu = menu.item(PopupMenuItem::new("Move…").on_click(move |_, w, cx| {
+                        let menu = menu.item(PopupMenuItem::new(crate::i18n::tr("Move…")).on_click(move |_, w, cx| {
                             let _ = moving.update(cx, |a, cx| a.request_topic_move(id, w, cx));
                         }));
                         let rename = entity.clone();
                         let archive = entity.clone();
                         let delete = entity.clone();
-                        menu.item(PopupMenuItem::new("Rename topic").on_click(move |_, w, cx| {
+                        menu.item(PopupMenuItem::new(crate::i18n::tr("Rename topic")).on_click(move |_, w, cx| {
                             let _ = rename.update(cx, |a, cx| a.open_topic_editor(project, Some(id), w, cx));
                         }))
                         .separator()
-                        .item(PopupMenuItem::new(if archived { "Restore topic" } else { "Archive topic" }).on_click(move |_, w, cx| {
+                        .item(PopupMenuItem::new(crate::i18n::tr(if archived { "Restore topic" } else { "Archive topic" })).on_click(move |_, w, cx| {
                             let _ = archive.update(cx, |a, cx| {
                                 if archived {
                                     a.apply_domain_command_undoable(
@@ -700,7 +700,7 @@ impl TaskApp {
                                 }
                             });
                         }))
-                        .when(archived, |menu| menu.item(PopupMenuItem::new("Delete topic permanently…").on_click(move |_, w, cx| {
+                        .when(archived, |menu| menu.item(PopupMenuItem::new(crate::i18n::tr("Delete topic permanently…")).on_click(move |_, w, cx| {
                             let _ = delete.update(cx, |a, cx| a.request_delete_archived(crate::archive_app::ArchiveTarget::Topic(id), w, cx));
                         })))
                     })))

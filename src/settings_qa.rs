@@ -116,6 +116,46 @@ pub fn run() {
             })
             .unwrap();
             screenshot(&mut cx, handle, &directory, "00-settings-appearance.png");
+            profile_menu(&mut cx, handle, "interface-language-picker", 1);
+            cx.update_window(handle, |_, w, cx| {
+                assert_eq!(
+                    app.read(cx).store.interface_language(),
+                    crate::i18n::InterfaceLanguage::SimplifiedChinese
+                );
+                assert_eq!(crate::i18n::active(), crate::i18n::InterfaceLanguage::SimplifiedChinese);
+                assert_eq!(
+                    Storage::new(path.clone())
+                        .load()
+                        .unwrap()
+                        .unwrap()
+                        .interface_language(),
+                    crate::i18n::InterfaceLanguage::SimplifiedChinese
+                );
+                w.render_frame(cx);
+                assert_eq!(
+                    w.find("interface-language-picker").label(),
+                    Some(crate::i18n::InterfaceLanguage::SimplifiedChinese.label())
+                );
+                assert_eq!(crate::i18n::tr("Settings"), "设置");
+            })
+            .unwrap();
+            screenshot(&mut cx, handle, &directory, "00-settings-simplified-chinese.png");
+            profile_menu(&mut cx, handle, "interface-language-picker", 0);
+            cx.update_window(handle, |_, w, cx| {
+                assert_eq!(
+                    app.read(cx).store.interface_language(),
+                    crate::i18n::InterfaceLanguage::English
+                );
+                assert_eq!(crate::i18n::active(), crate::i18n::InterfaceLanguage::English);
+                w.render_frame(cx);
+                assert_eq!(w.find("interface-language-picker").label(), Some("English"));
+                w.scroll(
+                    "model-settings-scroll",
+                    ScrollDelta::Pixels(point(px(0.), px(10_000.))),
+                    cx,
+                );
+            })
+            .unwrap();
             profile_menu(&mut cx, handle, "output-language-picker", 2);
             cx.update_window(handle, |_, w, cx| {
                 assert_eq!(
@@ -140,20 +180,20 @@ pub fn run() {
                 );
                 assert_eq!(app.read(cx).store.concurrency_limit(), 3);
                 for limit in 4..=10 {
-                    w.click("concurrency-increase", cx);
+                    click(w, cx, "model-settings-scroll", "concurrency-increase");
                     assert_eq!(app.read(cx).store.concurrency_limit(), limit);
                     assert_eq!(Storage::new(path.clone()).load().unwrap().unwrap().concurrency_limit(), limit);
                 }
-                w.click("concurrency-increase", cx);
+                click(w, cx, "model-settings-scroll", "concurrency-increase");
                 assert_eq!(app.read(cx).store.concurrency_limit(), 10);
                 for limit in (1..10).rev() {
-                    w.click("concurrency-decrease", cx);
+                    click(w, cx, "model-settings-scroll", "concurrency-decrease");
                     assert_eq!(app.read(cx).store.concurrency_limit(), limit);
                 }
-                w.click("concurrency-decrease", cx);
+                click(w, cx, "model-settings-scroll", "concurrency-decrease");
                 assert_eq!(app.read(cx).store.concurrency_limit(), 1);
-                w.click("concurrency-increase", cx);
-                w.click("concurrency-increase", cx);
+                click(w, cx, "model-settings-scroll", "concurrency-increase");
+                click(w, cx, "model-settings-scroll", "concurrency-increase");
                 assert_eq!(Storage::new(path.clone()).load().unwrap().unwrap().concurrency_limit(), 3);
                 // Automation periods have their own persisted pool.
                 w.scroll(
@@ -163,7 +203,7 @@ pub fn run() {
                 );
                 assert_eq!(app.read(cx).store.automation_concurrency_limit(), 2);
                 for limit in 3..=10 {
-                    w.click("automation-concurrency-increase", cx);
+                    click(w, cx, "model-settings-scroll", "automation-concurrency-increase");
                     assert_eq!(app.read(cx).store.automation_concurrency_limit(), limit);
                     assert_eq!(
                         Storage::new(path.clone())
@@ -174,15 +214,15 @@ pub fn run() {
                         limit
                     );
                 }
-                w.click("automation-concurrency-increase", cx);
+                click(w, cx, "model-settings-scroll", "automation-concurrency-increase");
                 assert_eq!(app.read(cx).store.automation_concurrency_limit(), 10);
                 for limit in (1..10).rev() {
-                    w.click("automation-concurrency-decrease", cx);
+                    click(w, cx, "model-settings-scroll", "automation-concurrency-decrease");
                     assert_eq!(app.read(cx).store.automation_concurrency_limit(), limit);
                 }
-                w.click("automation-concurrency-decrease", cx);
+                click(w, cx, "model-settings-scroll", "automation-concurrency-decrease");
                 assert_eq!(app.read(cx).store.automation_concurrency_limit(), 1);
-                w.click("automation-concurrency-increase", cx);
+                click(w, cx, "model-settings-scroll", "automation-concurrency-increase");
                 assert_eq!(
                     Storage::new(path.clone())
                         .load()

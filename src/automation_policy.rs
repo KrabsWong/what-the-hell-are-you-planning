@@ -66,7 +66,7 @@ impl Rejection {
     pub fn message(self) -> String {
         format!(
             "This task appears to ask for {}. Automation creation accepts information-collection and local-report work only; remove that action to continue. This is input validation, not a read-only sandbox.",
-            self.action
+            crate::i18n::tr_string(self.action)
         )
     }
 }
@@ -393,7 +393,11 @@ fn validate_field(field: InstructionField, text: &str, required: bool) -> Result
         return Err(field.too_long_message());
     }
     if let Some(rejection) = rejection(text) {
-        return Err(format!("{}: {}", field.label(), rejection.message()));
+        return Err(format!(
+            "{}: {}",
+            crate::i18n::tr_string(field.label()),
+            rejection.message()
+        ));
     }
     Ok(())
 }

@@ -67,11 +67,14 @@ impl Store {
         let identifier = self.identifier(task);
         let mut files = vec![];
         let mut index = format!(
-            "# {}\n\nGoal: {}\n\nExported: {}\n\n{}\n\n## Documents\n\n",
+            "# {}\n\n{}: {}\n\n{}: {}\n\n{}\n\n## {}\n\n",
             task.title,
+            crate::i18n::tr_string("Goal"),
             identifier,
+            crate::i18n::tr_string("Exported"),
             crate::time_display::timestamp(&crate::opencode::timestamp()),
-            crate::time_display::original_request(&task.description, self.research_requests().iter().find(|r| r.goal_ids.contains(&goal)))
+            crate::time_display::original_request(&task.description, self.research_requests().iter().find(|r| r.goal_ids.contains(&goal))),
+            crate::i18n::tr_string("Documents")
         );
         let mut materials = task.attachments.clone();
         for id in self.research_children(goal) {
@@ -79,10 +82,10 @@ impl Store {
             let result = self
                 .research_result(id)
                 .ok_or("A research result is no longer current.")?;
-            let category = match step.research.as_ref().map(|r| r.kind) {
-                Some(ResearchKind::Collect) => "evidence",
-                Some(ResearchKind::Analyze) => "analysis",
-                Some(ResearchKind::Advise) => "report",
+            let (category, category_label) = match step.research.as_ref().map(|r| r.kind) {
+                Some(ResearchKind::Collect) => ("evidence", crate::i18n::tr_string("Evidence")),
+                Some(ResearchKind::Analyze) => ("analysis", crate::i18n::tr_string("Analysis")),
+                Some(ResearchKind::Advise) => ("report", crate::i18n::tr_string("Report")),
                 _ => continue,
             };
             let step_id = self.identifier(step);
@@ -94,7 +97,7 @@ impl Store {
             );
             let document = format!("{stem}.md");
             index.push_str(&format!(
-                "- [{step_id} · {category}]({document}) — {}\n",
+                "- [{step_id} · {category_label}]({document}) — {}\n",
                 step.title.replace('\n', " ")
             ));
             let presentation = crate::result_presentation::present_run(self, result);
@@ -105,27 +108,35 @@ impl Store {
                     step.title
                 ));
             }
-            markdown.push_str("\n\n---\n\n## References\n\n");
+            markdown.push_str(&format!(
+                "\n\n---\n\n## {}\n\n",
+                crate::i18n::tr_string("References")
+            ));
             if result.sources.is_empty() {
-                markdown.push_str(
-                    "No separately recorded web sources. See citations in the document above.\n",
-                );
+                markdown.push_str(&format!(
+                    "{}\n",
+                    crate::i18n::tr_string(
+                        "No separately recorded web sources. See citations in the document above."
+                    )
+                ));
             }
             for source in &result.sources {
-                markdown.push_str(&format!(
+                markdown.push_str(&crate::i18n::tr_string(format!(
                     "- {}\n  - URL: <{}>\n  - Published: {}\n",
                     markdown_text(&source.title),
                     source.url,
                     markdown_text(&crate::time_display::timestamp(&source.published_at))
-                ));
+                )));
             }
             files.push((document.clone(), markdown.into_bytes()));
-            index.push_str(&format!(
+            index.push_str(&crate::i18n::tr_string(format!(
                 "  - Run: {} · Started: {} · Finished: {}\n",
                 result.id,
                 crate::time_display::timestamp(&result.started_at),
-                crate::time_display::timestamp(result.ended_at.as_deref().unwrap_or("unknown"))
-            ));
+                crate::time_display::timestamp(
+                    result.ended_at.as_deref().unwrap_or(&crate::i18n::tr_string("unknown"))
+                )
+            )));
             materials.extend(step.attachments.clone());
             materials.extend(result.attachments.clone());
         }
@@ -133,7 +144,10 @@ impl Store {
         materials.dedup_by(|a, b| a.relative_path == b.relative_path);
         let mut resources = vec![];
         if !materials.is_empty() {
-            index.push_str("\n## Uploaded resources\n\n");
+            index.push_str(&format!(
+                "\n## {}\n\n",
+                crate::i18n::tr_string("Uploaded resources")
+            ));
         }
         for (i, attachment) in materials.into_iter().enumerate() {
             let extension = match attachment.media_type.as_str() {
@@ -159,7 +173,10 @@ impl Store {
             ));
             resources.push((path, attachment));
         }
-        index.push_str("\nEach document contains the complete saved Markdown result and its recorded references. Uploaded original files are included in resources when present. Failed attempts, technical logs and other working-directory files are excluded.\n");
+        index.push_str(&format!(
+            "{}\n",
+            crate::i18n::tr_string("Each document contains the complete saved Markdown result and its recorded references. Uploaded original files are included in resources when present. Failed attempts, technical logs and other working-directory files are excluded.")
+        ));
         files.push(("README.md".into(), index.into_bytes()));
         Ok(ResearchExport {
             name: format!("{}_{}.zip", filename(&identifier), filename(&task.title)),

@@ -684,6 +684,11 @@ impl SqliteV4 {
         )?));
         store.set_metadata(MetadataDelta::Appearance(parse_meta(&meta, "appearance")?));
         store.set_metadata(MetadataDelta::LiquidGlass(parse_meta_or(&meta, "liquid_glass", false)?));
+        store.set_metadata(MetadataDelta::InterfaceLanguage(parse_meta_or(
+            &meta,
+            "interface_language",
+            crate::i18n::InterfaceLanguage::English,
+        )?));
         store.set_metadata(MetadataDelta::LastActiveProject(parse_meta(
             &meta,
             "last_active_project",
@@ -1515,6 +1520,7 @@ fn metadata_value(delta: &MetadataDelta) -> Result<Value, String> {
         MetadataDelta::OpenCodePath(value) => serde_json::to_value(value),
         MetadataDelta::Appearance(value) => serde_json::to_value(value),
         MetadataDelta::LiquidGlass(value) => serde_json::to_value(value),
+        MetadataDelta::InterfaceLanguage(value) => serde_json::to_value(value),
         MetadataDelta::LastActiveProject(value) => serde_json::to_value(value),
         MetadataDelta::AutomationSchemaVersion(value) => serde_json::to_value(value),
         MetadataDelta::MaxConcurrentRuns(value) => serde_json::to_value(value),
@@ -1558,6 +1564,10 @@ fn seed_metadata(
         ("research_config", serde_json::to_value(&store.research_config())),
         ("appearance", serde_json::to_value(store.appearance())),
         ("liquid_glass", serde_json::to_value(store.liquid_glass())),
+        (
+            "interface_language",
+            serde_json::to_value(store.interface_language()),
+        ),
         (
             "last_active_project",
             serde_json::to_value(store.last_active_project()),
@@ -2542,6 +2552,46 @@ mod tests {
         assert!(!database.load_store().unwrap().liquid_glass());
         database.connection.execute("INSERT INTO meta(key,payload) VALUES('liquid_glass','42')", []).unwrap();
         assert!(database.load_store().is_err());
+    }
+
+    #[test]
+    fn interface_language_survives_seed_and_incremental_write_and_defaults_to_english() {
+        let root = temp_root("interface-language");
+        let mut store = fixture_store(&root);
+        store.set_interface_language(crate::i18n::InterfaceLanguage::SimplifiedChinese);
+        let path = root.join("workspace.sqlite3");
+        let database = SqliteV4::create_seeded(&path, &root, INCARNATION, &store).unwrap();
+        assert_eq!(
+            database.load_store().unwrap().interface_language(),
+            crate::i18n::InterfaceLanguage::SimplifiedChinese
+        );
+        drop(database);
+        let mut database = SqliteV4::open(&path, &root, INCARNATION).unwrap();
+        let mut journal = ChangeJournal::new(INCARNATION);
+        let group = journal
+            .stage_with_metadata(
+                Vec::new(),
+                vec![MetadataDelta::InterfaceLanguage(
+                    crate::i18n::InterfaceLanguage::English,
+                )],
+                Vec::new(),
+            )
+            .unwrap();
+        database.commit_group(&group).unwrap();
+        drop(database);
+        let database = SqliteV4::open(&path, &root, INCARNATION).unwrap();
+        assert_eq!(
+            database.load_store().unwrap().interface_language(),
+            crate::i18n::InterfaceLanguage::English
+        );
+        database
+            .connection
+            .execute("DELETE FROM meta WHERE key='interface_language'", [])
+            .unwrap();
+        assert_eq!(
+            database.load_store().unwrap().interface_language(),
+            crate::i18n::InterfaceLanguage::English
+        );
     }
 
     #[test]

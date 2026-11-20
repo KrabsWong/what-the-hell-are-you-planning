@@ -279,12 +279,12 @@ pub(crate) fn previous_versions_dialog(app: &TaskApp, cx: &mut Context<TaskApp>)
                 .rounded(px(crate::appearance::CONTROL_RADIUS))
                 .selected(active)
                 .when(active, |button| button.bg(rgb(colors.accent_surface)))
-                .tooltip(format!("Recorded {recorded} · input revision {digest}"))
-                .accessibility_label(format!(
+                .tooltip(crate::i18n::tr(format!("Recorded {recorded} · input revision {digest}")))
+                .accessibility_label(crate::i18n::tr(format!(
                     "{} · {} · Run #{run} · {recorded} · {status}",
                     entry.task_title,
                     step_kind_label(entry.kind)
-                ))
+                )))
                 .child(
                     col()
                         .w_full()
@@ -326,7 +326,7 @@ pub(crate) fn previous_versions_dialog(app: &TaskApp, cx: &mut Context<TaskApp>)
             body = body.child(
                 label(facts.join(" · "), cx)
                     .id("previous-version-facts")
-                    .aria_label(facts.join(" · "))
+                    .aria_label(crate::i18n::tr(facts.join(" · ")))
                     .map(observed),
             );
         }
@@ -393,7 +393,7 @@ pub(crate) fn previous_versions_dialog(app: &TaskApp, cx: &mut Context<TaskApp>)
                 .disabled(history.is_none())
                 .dropdown_menu_with_anchor(Anchor::TopRight, move |mut menu, _, _| {
                     let entity = entity.clone();
-                    menu = menu.item(PopupMenuItem::new("Export Markdown").on_click(
+                    menu = menu.item(PopupMenuItem::new(crate::i18n::tr("Export Markdown")).on_click(
                         move |_, _, cx| {
                             let _ = entity.update(cx, |app, cx| {
                                 app.export_previous_version(run, cx);

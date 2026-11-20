@@ -32,12 +32,18 @@ impl TaskApp {
     }
 
     pub fn refresh_model_placeholders(&self, w: &mut Window, cx: &mut Context<Self>) {
-        self.global_model.update(cx, |s, cx| s.set_placeholder("Choose a model", w, cx));
-        self.fallback_model.update(cx, |s, cx| s.set_placeholder("Choose a fallback model", w, cx));
+        self.global_model.update(cx, |s, cx| {
+            s.set_placeholder(crate::i18n::tr("Choose a model"), w, cx)
+        });
+        self.fallback_model.update(cx, |s, cx| {
+            s.set_placeholder(crate::i18n::tr("Choose a fallback model"), w, cx)
+        });
         for i in 0..4 {
-            let placeholder = if self.store.research_agent(ResearchKind::ALL[i]) == self.store.research_config().default_agent {
-                "Global default"
-            } else { "Choose a model" };
+            let placeholder = crate::i18n::tr(
+                if self.store.research_agent(ResearchKind::ALL[i]) == self.store.research_config().default_agent {
+                    "Global default"
+                } else { "Choose a model" },
+            );
             self.research_models[i].update(cx, |s, cx| s.set_placeholder(placeholder, w, cx));
         }
     }

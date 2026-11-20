@@ -11,7 +11,7 @@ use gpui_kit::{
 
 pub fn button(id: impl Into<ElementId>, text: impl Into<SharedString>) -> Button {
     Button::new(id)
-        .label(text)
+        .label(crate::i18n::tr(text))
         .h(px(32.))
         .px_3()
         .rounded(px(crate::appearance::CONTROL_RADIUS))
@@ -33,7 +33,7 @@ pub fn tool_icon(
     icon: assets::IconName,
     name: impl Into<SharedString>,
 ) -> Button {
-    let name = name.into();
+    let name = crate::i18n::tr(name);
     Button::new(id)
         .ghost()
         .h(px(32.))
@@ -41,8 +41,8 @@ pub fn tool_icon(
         .icon(icon)
         .w(px(32.))
         .px_0()
-        .tooltip(name.clone())
-        .accessibility_label(name)
+        .tooltip(crate::i18n::tr(name.clone()))
+        .accessibility_label(crate::i18n::tr(name))
 }
 /// One affordance for execution diagnostics across task, result and progress views.
 pub fn technical_details_button(id: impl Into<ElementId>) -> Button {
@@ -90,7 +90,7 @@ pub fn single_line_text(id: impl Into<ElementId>, title: impl Into<String>) -> S
         .min_w_0()
         .id(id)
         .role(Role::Label)
-        .aria_label(title.clone())
+        .aria_label(crate::i18n::tr(title.clone()))
         .overflow_hidden()
         .child(
             canvas(
@@ -175,8 +175,8 @@ pub fn labeled_menu_item(
             .min_h(px(20.))
             .p_0()
             .min_w_0()
-            .tooltip(title.clone())
-            .accessibility_label(title.clone())
+            .tooltip(crate::i18n::tr(title.clone()))
+            .accessibility_label(crate::i18n::tr(title.clone()))
             // Long English/CJK labels wrap instead of disappearing at a fixed
             // one-line width; the tooltip remains for unusually long values.
             .child(
@@ -200,7 +200,7 @@ pub fn property_choice(
     let text = text.into();
     row_button(id, "")
         .w_full()
-        .accessibility_label(text.clone())
+        .accessibility_label(crate::i18n::tr(text.clone()))
         .child(
             div()
                 .flex()

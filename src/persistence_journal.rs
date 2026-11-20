@@ -228,6 +228,7 @@ pub(crate) enum MetadataDelta {
     OpenCodePath(String),
     Appearance(Appearance),
     LiquidGlass(bool),
+    InterfaceLanguage(crate::i18n::InterfaceLanguage),
     LastActiveProject(Option<u64>),
     AutomationSchemaVersion(u32),
     MaxConcurrentRuns(usize),
@@ -255,6 +256,7 @@ impl MetadataDelta {
             Self::OpenCodePath(_) => "opencode_path",
             Self::Appearance(_) => "appearance",
             Self::LiquidGlass(_) => "liquid_glass",
+            Self::InterfaceLanguage(_) => "interface_language",
             Self::LastActiveProject(_) => "last_active_project",
             Self::AutomationSchemaVersion(_) => "automation_schema_version",
             Self::MaxConcurrentRuns(_) => "max_concurrent_runs",
@@ -1590,6 +1592,7 @@ fn metadata_heap(delta: &MetadataDelta) -> usize {
         | MetadataDelta::RunIdFloor(_)
         | MetadataDelta::Appearance(_)
         | MetadataDelta::LiquidGlass(_)
+        | MetadataDelta::InterfaceLanguage(_)
         | MetadataDelta::LastActiveProject(_)
         | MetadataDelta::AutomationSchemaVersion(_)
         | MetadataDelta::MaxConcurrentRuns(_)

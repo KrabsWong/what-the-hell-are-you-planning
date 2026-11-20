@@ -9,6 +9,68 @@ fn escape(value: &str) -> String {
         .replace('\'', "&#39;")
 }
 
+/// Static, application-owned text used by the public report shell.
+///
+/// Generated report Markdown is never translated through this struct; only
+/// labels that the application itself adds to the exported document are.
+pub(crate) struct ReportLabels {
+    pub title_suffix: String,
+    pub brand: String,
+    pub skip_to_report: String,
+    pub find_sections: String,
+    pub on_this_page: String,
+    pub report_contents: String,
+    pub research_report: String,
+    pub diagram_fallback: String,
+    pub diagram_alt: String,
+    pub view_mermaid_source: String,
+    pub evidence_limitations: String,
+    pub evidence_gaps: String,
+    pub report_data_table: String,
+}
+
+impl ReportLabels {
+    pub(crate) fn localized() -> Self {
+        Self {
+            title_suffix: crate::i18n::tr_string(" · Report Something"),
+            brand: crate::i18n::tr_string("Report Something"),
+            skip_to_report: crate::i18n::tr_string("Skip to report"),
+            find_sections: crate::i18n::tr_string("Find sections"),
+            on_this_page: crate::i18n::tr_string("On this page"),
+            report_contents: crate::i18n::tr_string("Report contents"),
+            research_report: crate::i18n::tr_string("RESEARCH REPORT"),
+            diagram_fallback: crate::i18n::tr_string(
+                "Diagram preview unavailable. Mermaid source is preserved below.",
+            ),
+            diagram_alt: crate::i18n::tr_string("Research report diagram"),
+            view_mermaid_source: crate::i18n::tr_string("View Mermaid source"),
+            evidence_limitations: crate::i18n::tr_string("Evidence limitations"),
+            evidence_gaps: crate::i18n::tr_string("Evidence gaps"),
+            report_data_table: crate::i18n::tr_string("Report data table"),
+        }
+    }
+
+    #[cfg(test)]
+    fn english() -> Self {
+        Self {
+            title_suffix: " · Report Something".into(),
+            brand: "Report Something".into(),
+            skip_to_report: "Skip to report".into(),
+            find_sections: "Find sections".into(),
+            on_this_page: "On this page".into(),
+            report_contents: "Report contents".into(),
+            research_report: "RESEARCH REPORT".into(),
+            diagram_fallback:
+                "Diagram preview unavailable. Mermaid source is preserved below.".into(),
+            diagram_alt: "Research report diagram".into(),
+            view_mermaid_source: "View Mermaid source".into(),
+            evidence_limitations: "Evidence limitations".into(),
+            evidence_gaps: "Evidence gaps".into(),
+            report_data_table: "Report data table".into(),
+        }
+    }
+}
+
 // Only generated Markdown HTML enters this function; attribute values are already encoded.
 // Local attachment links must not expose paths or resolve against another public report.
 fn public_urls(html: &str) -> String {
@@ -54,7 +116,7 @@ fn heading_text(html: &str) -> String {
 }
 
 // Only inspect code blocks emitted by the Markdown renderer, never raw user HTML.
-fn render_diagrams(html: &str) -> String {
+fn render_diagrams(html: &str, labels: &ReportLabels) -> String {
     const OPEN: &str = "<pre><code class=\"language-mermaid\">";
     const CLOSE: &str = "</code></pre>";
     let mut rest = html;
@@ -69,10 +131,13 @@ fn render_diagrams(html: &str) -> String {
         let end = source_start + end;
         let source = rest[source_start..end].replace("&lt;", "<").replace("&gt;", ">")
             .replace("&quot;", "\"").replace("&#39;", "'").replace("&amp;", "&");
-        match diagram_images(&source) {
+        match diagram_images(&source, labels) {
             Ok(images) => output.push_str(&images),
             Err(_) => {
-                output.push_str("<div class=\"diagram-fallback\"><p>Diagram preview unavailable. Mermaid source is preserved below.</p>");
+                output.push_str(&format!(
+                    "<div class=\"diagram-fallback\"><p>{}</p>",
+                    escape(&labels.diagram_fallback)
+                ));
                 output.push_str(&rest[start..end + CLOSE.len()]);
                 output.push_str("</div>");
             }
@@ -83,7 +148,7 @@ fn render_diagrams(html: &str) -> String {
     output
 }
 
-fn diagram_images(source: &str) -> Result<String, String> {
+fn diagram_images(source: &str, labels: &ReportLabels) -> Result<String, String> {
     if source.len() > 16_384 || source.lines().count() > 256 {
         return Err("Diagram exceeds rendering limits".into());
     }
@@ -97,9 +162,15 @@ fn diagram_images(source: &str) -> Result<String, String> {
         }
         // SVGs are isolated image documents, not active inline HTML. Encode every byte.
         let data: String = svg.bytes().map(|byte| format!("%{byte:02X}")).collect();
-        images.push_str(&format!("<img class=\"diagram-{name}\" alt=\"Research report diagram\" src=\"data:image/svg+xml,{data}\">"));
+        images.push_str(&format!(
+            "<img class=\"diagram-{name}\" alt=\"{}\" src=\"data:image/svg+xml,{data}\">",
+            escape(&labels.diagram_alt)
+        ));
     }
-    images.push_str("<details><summary>View Mermaid source</summary><pre><code>");
+    images.push_str(&format!(
+        "<details><summary>{}</summary><pre><code>",
+        escape(&labels.view_mermaid_source)
+    ));
     images.push_str(&escape(source));
     images.push_str("</code></pre></details></figure>");
     Ok(images)
@@ -111,17 +182,20 @@ fn internal_gap_html() -> String {
         crate::research::EVIDENCE_GAP_NOTE.trim_start_matches("> ")
     )
 }
-fn public_gap_note() -> String {
+fn public_gap_note(labels: &ReportLabels) -> String {
     format!(
-        "<aside class=\"evidence-notice\" aria-label=\"Evidence limitations\"><strong>Evidence gaps</strong><p>{}</p></aside>",
+        "<aside class=\"evidence-notice\" aria-label=\"{}\"><strong>{}</strong><p>{}</p></aside>",
+        escape(&labels.evidence_limitations),
+        escape(&labels.evidence_gaps),
         crate::research::EVIDENCE_GAP_NOTICE
     )
 }
 
 // The page owns h1. Remove only a repeated report title, never repeated sections
 // separated by substantive content. A generated evidence notice is not content.
-fn normalize_headings(title: &str, html: &str) -> String {
-    let html = html.replace(&internal_gap_html(), &public_gap_note());
+fn normalize_headings(title: &str, html: &str, labels: &ReportLabels) -> String {
+    let gap_note = public_gap_note(labels);
+    let html = html.replace(&internal_gap_html(), &gap_note);
     let mut rest = html.as_str();
     let mut result = String::new();
     let mut previous = escape(title);
@@ -135,7 +209,7 @@ fn normalize_headings(title: &str, html: &str) -> String {
         let content = &rest[start + 4..end];
         let between = &rest[..start];
         let is_title_repeat = level == 1 && heading_text(content).trim() == previous.trim()
-            && between.replace(&public_gap_note(), "").replace("<hr />", "").trim().is_empty();
+            && between.replace(&gap_note, "").replace("<hr />", "").trim().is_empty();
         result.push_str(between);
         if !is_title_repeat {
             let output_level = level.max(2);
@@ -237,12 +311,12 @@ fn fold_report_details(html: &str) -> String {
     output
 }
 
-pub fn render(title: &str, markdown: &str) -> String {
+pub fn render(title: &str, markdown: &str, labels: &ReportLabels) -> String {
     // GFM enables tables, task lists and strikethrough. Dangerous HTML/protocols stay disabled.
     let html = markdown::to_html_with_options(markdown, &markdown::Options::gfm())
         .unwrap_or_else(|_| format!("<pre>{}</pre>", escape(markdown)));
-    let html = render_diagrams(&public_urls(&html));
-    let html = normalize_headings(title, &html);
+    let html = render_diagrams(&public_urls(&html), labels);
+    let html = normalize_headings(title, &html, labels);
     let mut body = String::new();
     let mut toc = String::new();
     let mut remaining = html.as_str();
@@ -269,7 +343,13 @@ pub fn render(title: &str, markdown: &str) -> String {
         remaining = &remaining[content_start + end + closing.len()..];
     }
     body.push_str(remaining);
-    let body = body.replace("<table>", "<div class=\"table-wrap\" tabindex=\"0\" role=\"region\" aria-label=\"Report data table\"><table>")
+    let body = body.replace(
+        "<table>",
+        &format!(
+            "<div class=\"table-wrap\" tabindex=\"0\" role=\"region\" aria-label=\"{}\"><table>",
+            escape(&labels.report_data_table)
+        ),
+    )
         .replace("</table>", "</table></div>");
     let body = fold_report_details(&body);
     let title = escape(title);
@@ -284,14 +364,21 @@ pub fn render(title: &str, markdown: &str) -> String {
 <html lang="zh-CN"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
 <meta name="robots" content="noindex,nofollow,noarchive"><meta name="referrer" content="no-referrer">
 <meta http-equiv="Content-Security-Policy" content="default-src 'none'; style-src 'unsafe-inline'; script-src 'unsafe-inline'; font-src https://gw.alipayobjects.com; img-src https: http: data:; base-uri 'none'; form-action 'none'">
-<title>{title} · Report Something</title><style>{fonts}{base}{style}</style></head>
-<body><a class="skip" href="#report">Skip to report</a><div class="shell">
-<aside class="sidebar"><div class="brandline"><span class="brand-mark">R</span>Report Something</div>
-<div class="side-tools"><input id="toc-search" type="search" placeholder="Find sections" aria-label="Find sections">{picker}</div>
-<p class="side-title">{title}</p><p class="sidebar-title">On this page</p><nav aria-label="Report contents">{toc}</nav></aside>
-<main id="report">{mobile_picker}<details class="mobile-toc"><summary>On this page</summary><nav>{toc}</nav></details>
-<header class="report-head"><p class="eyebrow">RESEARCH REPORT</p><h1 class="report-title">{title}</h1></header>
+<title>{title}{title_suffix}</title><style>{fonts}{base}{style}</style></head>
+<body><a class="skip" href="#report">{skip_to_report}</a><div class="shell">
+<aside class="sidebar"><div class="brandline"><span class="brand-mark">R</span>{brand}</div>
+<div class="side-tools"><input id="toc-search" type="search" placeholder="{find_sections}" aria-label="{find_sections}">{picker}</div>
+<p class="side-title">{title}</p><p class="sidebar-title">{on_this_page}</p><nav aria-label="{report_contents}">{toc}</nav></aside>
+<main id="report">{mobile_picker}<details class="mobile-toc"><summary>{on_this_page}</summary><nav>{toc}</nav></details>
+<header class="report-head"><p class="eyebrow">{research_report}</p><h1 class="report-title">{title}</h1></header>
 {body}</main></div><script>{script}</script></body></html>"##,
+        title_suffix = escape(&labels.title_suffix),
+        brand = escape(&labels.brand),
+        skip_to_report = escape(&labels.skip_to_report),
+        find_sections = escape(&labels.find_sections),
+        on_this_page = escape(&labels.on_this_page),
+        report_contents = escape(&labels.report_contents),
+        research_report = escape(&labels.research_report),
         fonts = include_str!("../assets/report/fonts.css"),
         base = include_str!("../assets/report/base.css"),
         style = include_str!("../assets/report/style.css"),
@@ -302,6 +389,10 @@ pub fn render(title: &str, markdown: &str) -> String {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    fn render(title: &str, markdown: &str) -> String {
+        super::render(title, markdown, &ReportLabels::english())
+    }
 
     #[test]
     fn mermaid_exports_isolated_theme_images_and_preserves_source() {

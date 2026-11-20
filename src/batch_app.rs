@@ -458,7 +458,7 @@ impl TaskApp {
         button("run-project-todo", format!("{} ({count})", if busy { "Add to queue" } else { "Run / resume" }))
             .icon(assets::IconName::Play)
             .disabled(count == 0 || !self.storage_error.is_empty())
-            .tooltip(format!("Queue approved goals. Topics run in order, with up to {} concurrent steps within the current topic.", self.store.concurrency_limit()))
+            .tooltip(crate::i18n::tr(format!("Queue approved goals. Topics run in order, with up to {} concurrent steps within the current topic.", self.store.concurrency_limit())))
             .on_click(cx.listener(move |this, _, _, cx| this.start_todo_batch(project, cx)))
             .into_any_element()
     }
@@ -513,7 +513,7 @@ impl TaskApp {
                 )
             } else {
                 danger_button("clear-todo-batch", "Stop topic queue")
-                    .tooltip("Stop queued work and cancel running steps. Saved results are kept; paused goals remain available to resume.")
+                    .tooltip(crate::i18n::tr("Stop queued work and cancel running steps. Saved results are kept; paused goals remain available to resume."))
             }
             .on_click(cx.listener(|this, _, _, cx| this.cancel_todo_batch(cx))),
         );

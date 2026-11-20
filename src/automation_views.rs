@@ -683,7 +683,7 @@ impl AutomationUi {
             |window: &mut Window, cx: &mut Context<TaskApp>, placeholder: &str, value: &str| {
                 cx.new(|cx| {
                     InputState::new(window, cx)
-                        .placeholder(placeholder.to_string())
+                        .placeholder(crate::i18n::tr(placeholder.to_string()))
                         .default_value(value.to_string())
                 })
             };
@@ -740,12 +740,12 @@ impl AutomationUi {
             name: input(window, cx, "e.g. Shenzhen fuel price", ""),
             objective: cx.new(|cx| {
                 TextareaState::new(window, cx)
-                    .placeholder("Describe the recurring check: the question and its scope.")
+                    .placeholder(crate::i18n::tr("Describe the recurring check: the question and its scope."))
                     .rows(5)
             }),
             expected: cx.new(|cx| {
                 TextareaState::new(window, cx)
-                    .placeholder("Optional: what the answer should contain and how you will judge it useful.")
+                    .placeholder(crate::i18n::tr("Optional: what the answer should contain and how you will judge it useful."))
                     .rows(3)
             }),
             interval: input(window, cx, "10", "10"),
@@ -757,6 +757,42 @@ impl AutomationUi {
             failures: input(window, cx, "3", "3"),
             retention: input(window, cx, "30", "30"),
         }
+    }
+
+    pub(crate) fn refresh_localized_placeholders(
+        &mut self,
+        window: &mut Window,
+        cx: &mut Context<TaskApp>,
+    ) {
+        self.name.update(cx, |state, cx| {
+            state.set_placeholder(crate::i18n::tr("e.g. Shenzhen fuel price"), window, cx)
+        });
+        self.objective.update(cx, |state, cx| {
+            state.set_placeholder(
+                crate::i18n::tr("Describe the recurring check: the question and its scope."),
+                window,
+                cx,
+            )
+        });
+        self.expected.update(cx, |state, cx| {
+            state.set_placeholder(
+                crate::i18n::tr(
+                    "Optional: what the answer should contain and how you will judge it useful.",
+                ),
+                window,
+                cx,
+            )
+        });
+        self.delay.update(cx, |state, cx| {
+            state.set_placeholder(
+                crate::i18n::tr("Default: one period (max 24 h)"),
+                window,
+                cx,
+            )
+        });
+        self.timeout.update(cx, |state, cx| {
+            state.set_placeholder(crate::i18n::tr("minutes"), window, cx)
+        });
     }
 
     /// A workspace attach replaces the whole Store. Per-store epoch sums are not
@@ -2868,12 +2904,12 @@ impl TaskApp {
             let latest = latest_occurrence(&self.store, id);
             let unread = self.store.automation_unread_count(id);
             let next = match definition.status {
-                DefinitionStatus::Paused => "Paused".to_string(),
-                DefinitionStatus::Archived => "Archived".to_string(),
+                DefinitionStatus::Paused => crate::i18n::tr_string("Paused"),
+                DefinitionStatus::Archived => crate::i18n::tr_string("Archived"),
                 _ => definition
                     .cursor
                     .map(|value| format_in_zone(value, &definition.schedule.timezone))
-                    .unwrap_or_else(|| "No future trigger".into()),
+                    .unwrap_or_else(|| crate::i18n::tr_string("No future trigger")),
             };
             let status = match definition.status {
                 DefinitionStatus::Enabled => "Enabled",
@@ -2889,23 +2925,26 @@ impl TaskApp {
                         crate::result_presentation::present_occurrence(&self.store, occurrence);
                     let suffix = presentation
                         .status_suffix()
-                        .map(|suffix| format!(" · {suffix}"))
+                        .map(|suffix| format!(" · {}", crate::i18n::tr_string(suffix)))
                         .unwrap_or_default();
                     (
-                        format!("{}{suffix}", occurrence.status.label()),
+                        format!(
+                            "{}{suffix}",
+                            crate::i18n::tr_string(occurrence.status.label())
+                        ),
                         format!(
                             "{} {}",
-                            activity.kind.label(),
+                            crate::i18n::tr_string(activity.kind.label()),
                             format_in_zone_precise(activity.utc, &occurrence.timezone)
                         ),
                     )
                 })
-                .unwrap_or_else(|| ("Not run yet".into(), String::new()));
+                .unwrap_or_else(|| (crate::i18n::tr_string("Not run yet"), String::new()));
             let planning_state = self.effective_planning_state(id);
             let planning = planning_state
                 != crate::automation_planning_state::AutomationPlanningState::None;
             let latest_label = if planning {
-                planning_state.label().into()
+                crate::i18n::tr_string(planning_state.label())
             } else {
                 latest_label
             };
@@ -3064,7 +3103,7 @@ impl TaskApp {
                         .child(
                             quiet_button(format!("legacy-planning-attempt-{run_id}"), "Review")
                                 .icon(assets::IconName::ArrowRight)
-                                .tooltip("Open this unassigned legacy planning attempt")
+                                .tooltip(crate::i18n::tr("Open this unassigned legacy planning attempt"))
                                 .on_click(cx.listener(move |app, _, window, cx| {
                                     app.open_planning_attempt(run_id, window, cx)
                                 }))
@@ -3276,7 +3315,7 @@ impl TaskApp {
                     .child(crate::views::observed(
                         div()
                             .id("automation-results-subtitle")
-                            .aria_label("Every automation period, newest activity first. Each row names the timestamp it shows; open it for its answer and sources.")
+                            .aria_label(crate::i18n::tr("Every automation period, newest activity first. Each row names the timestamp it shows; open it for its answer and sources."))
                             .w_full()
                             .min_w_0()
                             .child(muted(
@@ -3308,7 +3347,7 @@ impl TaskApp {
                     .child(crate::views::observed(
                         div()
                             .id("automation-results-unread-hint")
-                            .aria_label("Unread results are marked with a dot.")
+                            .aria_label(crate::i18n::tr("Unread results are marked with a dot."))
                             .w_full()
                             .min_w_0()
                             .child(muted("Unread results are marked with a dot.", cx)),
@@ -3413,14 +3452,14 @@ impl TaskApp {
             .font_weight(FontWeight::MEDIUM)
             .text_color(rgb(palette(cx).accent))
             .bg(rgb(palette(cx).accent_surface))
-            .tooltip("Filter results by automation")
-            .accessibility_label("Filter results by automation")
+            .tooltip(crate::i18n::tr("Filter results by automation"))
+            .accessibility_label(crate::i18n::tr("Filter results by automation"))
             .dropdown_menu_with_anchor(Anchor::TopRight, move |mut menu, _, _| {
                 for (id, name) in &options {
                     let value = *id;
                     let entity = entity.clone();
                     menu = menu.item(
-                        PopupMenuItem::new(name.clone())
+                        PopupMenuItem::new(crate::i18n::tr(name.clone()))
                             .checked(selected == value)
                             .on_click(move |_, _, cx| {
                                 let _ = entity.update(cx, |app, cx| {
@@ -3474,7 +3513,7 @@ impl TaskApp {
                 actions = actions.child(
                     button("pause-automation", "Pause")
                         .icon(assets::IconName::Pause)
-                        .tooltip("Stop future triggers and cancel unstarted requests. A running period can finish.")
+                        .tooltip(crate::i18n::tr("Stop future triggers and cancel unstarted requests. A running period can finish."))
                         .on_click(cx.listener(move |app, _, _, cx| app.pause_automation_ui(id, cx))),
                 );
             }
@@ -3483,7 +3522,7 @@ impl TaskApp {
                     actions.child(
                         primary_button("resume-automation", "Resume schedule")
                             .icon(assets::IconName::Play)
-                            .tooltip("Enable again from now; paused time is not backfilled.")
+                            .tooltip(crate::i18n::tr("Enable again from now; paused time is not backfilled."))
                             .on_click(cx.listener(move |app, _, _, cx| {
                                 app.resume_automation_schedule(id, cx)
                             })),
@@ -3494,7 +3533,7 @@ impl TaskApp {
                     button("pause-automation", "Pause")
                         .icon(assets::IconName::Pause)
                         .disabled(true)
-                        .tooltip("Enable this automation before pausing it."),
+                        .tooltip(crate::i18n::tr("Enable this automation before pausing it.")),
                 );
             }
             DefinitionStatus::Archived => {}
@@ -3512,10 +3551,10 @@ impl TaskApp {
                         b.primary().font_weight(FontWeight::MEDIUM)
                     })
                     .disabled(run_blocked.is_some())
-                    .tooltip(
+                    .tooltip(crate::i18n::tr(
                         run_blocked
                             .unwrap_or("Queue one manual period. The schedule does not move."),
-                    )
+                    ))
                     .on_click(cx.listener(move |app, _, _, cx| app.run_automation_now(id, cx))),
             );
         }
@@ -3523,7 +3562,7 @@ impl TaskApp {
             actions = actions.child(
                 danger_button("stop-automation", "Stop this run")
                     .icon(assets::IconName::CircleX)
-                    .tooltip("Cancel the active period and its scheduled retries; future triggers continue.")
+                    .tooltip(crate::i18n::tr("Cancel the active period and its scheduled retries; future triggers continue."))
                     .on_click(cx.listener(move |app, _, _, cx| app.stop_automation_now(id, cx))),
             );
             let _ = occurrence;
@@ -3534,7 +3573,7 @@ impl TaskApp {
         actions = actions.child(
             button("automation-settings", "Settings")
                 .icon(assets::IconName::Settings2)
-                .tooltip("Review the task, schedule, run limits and approved execution snapshot.")
+                .tooltip(crate::i18n::tr("Review the task, schedule, run limits and approved execution snapshot."))
                 .on_click(
                     cx.listener(move |app, _, window, cx| app.open_automation_settings(window, cx)),
                 ),
@@ -3636,7 +3675,7 @@ impl TaskApp {
                             .child(
                                 quiet_button("review-automation-planning", action)
                                     .icon(assets::IconName::ListOrdered)
-                                    .tooltip("Return to the planning step and review or retry the saved request.")
+                                    .tooltip(crate::i18n::tr("Return to the planning step and review or retry the saved request."))
                                     .on_click(cx.listener(move |app, _, window, cx| {
                                         app.review_automation_planning(id, window, cx)
                                     })),
@@ -3850,7 +3889,7 @@ impl TaskApp {
                         .child(
                             quiet_button(format!("planning-attempt-{run_id}"), "Review")
                                 .icon(assets::IconName::ArrowRight)
-                                .tooltip("Open this planning attempt")
+                                .tooltip(crate::i18n::tr("Open this planning attempt"))
                                 .on_click(cx.listener(move |app, _, window, cx| {
                                     app.open_planning_attempt(run_id, window, cx)
                                 }))
@@ -3922,7 +3961,7 @@ impl TaskApp {
                     .child(row().items_center().gap_1()
                         .child(overview_heading("Run limits"))
                         .child(tool_icon("automation-policy-help", assets::IconName::CircleQuestionMark,
-                            "About run limits").tooltip(wrapped_tooltip(&run_policy_summary(&definition.policy)))))
+                            "About run limits").tooltip(crate::i18n::tr(wrapped_tooltip(&run_policy_summary(&definition.policy))))))
                     .child(row().flex_wrap().gap_2()
                         .child(chip(format!("Timeout: {}", human_duration(definition.policy.timeout_seconds)), colors.text, cx).bg(rgb(colors.tag_surface)))
                         .child(chip(format!("Pause after {} consecutive failures", definition.policy.max_consecutive_failures), colors.text, cx).bg(rgb(colors.tag_surface))))
@@ -3942,7 +3981,7 @@ impl TaskApp {
                     .child(overview_heading("Execution"))
                     .child(tool_icon("automation-execution-help", assets::IconName::CircleQuestionMark,
                         "About approved execution settings")
-                        .tooltip(wrapped_tooltip("Each period uses the approved agent and model shown here. Global model changes do not alter this automation. Editing the plan or agent creates a new version that requires approval."))));
+                        .tooltip(crate::i18n::tr(wrapped_tooltip("Each period uses the approved agent and model shown here. Global model changes do not alter this automation. Editing the plan or agent creates a new version that requires approval.")))));
             for (index, stage) in ResearchKinds::labels().iter().enumerate() {
                 if index == 0 || !crate::research::ResearchKind::ALL.get(index)
                     .is_some_and(|kind| required.contains(kind)) { continue; }
@@ -3962,7 +4001,7 @@ impl TaskApp {
                 if definition.shape == AutomationShape::Research && !archived {
                     quiet_button("replan-automation", "Replan")
                         .icon(assets::IconName::RefreshCw)
-                        .tooltip("Plan the research again once. The new plan starts a new version you must approve.")
+                        .tooltip(crate::i18n::tr("Plan the research again once. The new plan starts a new version you must approve."))
                         .on_click(cx.listener(move |app, _, window, cx| {
                             app.record_origin();
                             let _ = app.close_settings_overlay();
@@ -3983,7 +4022,7 @@ impl TaskApp {
                         d.child(
                             primary_button("edit-automation", "Edit")
                                 .icon(assets::IconName::Pencil)
-                                .tooltip("Create a new version. You must review and enable it again.")
+                                .tooltip(crate::i18n::tr("Create a new version. You must review and enable it again."))
                                 .on_click(cx.listener(move |app, _, window, cx| {
                                     app.record_origin();
                                     let _ = app.close_settings_overlay();
@@ -4068,15 +4107,20 @@ impl TaskApp {
             .status_suffix()
         };
         let status = match suffix {
-            Some(suffix) => format!("{} · {suffix}", occurrence.status.label()),
-            None => occurrence.status.label().to_string(),
+            Some(suffix) => format!(
+                "{} · {}",
+                crate::i18n::tr_string(occurrence.status.label()),
+                crate::i18n::tr_string(suffix)
+            ),
+            None => crate::i18n::tr_string(occurrence.status.label()),
         };
         let color = occurrence_status_color(occurrence.status, &colors);
         // Latest activity is the shared presentation key: a retry request first,
         // then actual start, manual request, scheduled trigger or reference time.
         let activity = occurrence_activity(occurrence);
         let when = format_in_zone_precise(activity.utc, &occurrence.timezone);
-        let activity_text = format!("{} {when}", activity.kind.label());
+        let activity_text =
+            format!("{} {when}", crate::i18n::tr_string(activity.kind.label()));
         let definition = show_automation
             .then(|| self.store.automation(occurrence.automation_id))
             .flatten();
@@ -4101,7 +4145,9 @@ impl TaskApp {
         let definition_name = definition
             .map(|definition| definition.name.clone())
             .unwrap_or_else(|| "Automation period".into());
-        let row_label = format!("{activity_text} · {status} · {definition_name}");
+        let row_label = crate::i18n::tr_string(&format!(
+            "{activity_text} · {status} · {definition_name}"
+        ));
         let trigger_hint = if occurrence.skipped_count > 0 {
             format!(
                 "{trigger_name} · {} earlier periods were summarized",
@@ -4177,7 +4223,9 @@ impl TaskApp {
                         .gap_1()
                         .text_color(rgb(colors.muted))
                         .tooltip(move |window, cx| {
-                            gpui_kit::component::tooltip::Tooltip::new(trigger_hint.clone())
+                        gpui_kit::component::tooltip::Tooltip::new(crate::i18n::tr(
+                            trigger_hint.clone(),
+                        ))
                                 .build(window, cx)
                         })
                         .child(gpui_kit::component::Icon::new(trigger_icon).size(px(14.)))
@@ -4187,7 +4235,7 @@ impl TaskApp {
                 .child(
                     div()
                         .id(format!("occurrence-status-{id}"))
-                        .aria_label(status.clone())
+                        .aria_label(crate::i18n::tr(status.clone()))
                         .min_w_0()
                         .text_sm()
                         .font_weight(FontWeight::MEDIUM)
@@ -4198,7 +4246,7 @@ impl TaskApp {
         );
         row()
             .id(format!("automation-occurrence-{id}"))
-            .aria_label(row_label)
+            .aria_label(crate::i18n::tr(row_label))
             .w_full()
             .min_w_0()
             .px_2()
@@ -4339,11 +4387,11 @@ impl TaskApp {
                     } else {
                         assets::IconName::ChevronRight
                     })
-                    .tooltip(if expanded {
+                    .tooltip(crate::i18n::tr(if expanded {
                         "Hide detailed verification notes"
                     } else {
                         "Show detailed verification notes"
-                    })
+                    }))
                     .on_click(cx.listener(move |app, _, _, cx| {
                         if !app.automation_ui.expanded_appendices.remove(&toggle_id) {
                             app.automation_ui
@@ -4472,7 +4520,7 @@ impl TaskApp {
             panel = panel.child(
                 crate::views::notice(crate::views::NoticeTone::Info, message, cx)
                     .id("automation-report-loading")
-                    .aria_label("Loading saved report")
+                    .aria_label(crate::i18n::tr("Loading saved report"))
                     .map(observed),
             );
         } else if matches!(
@@ -4491,13 +4539,13 @@ impl TaskApp {
                             cx,
                         )
                         .id("automation-report-unavailable")
-                        .aria_label("Saved report body unavailable")
+                        .aria_label(crate::i18n::tr("Saved report body unavailable"))
                         .map(observed),
                     )
                     .child(
                         quiet_button("automation-report-retry", "Try again")
                             .icon(assets::IconName::RefreshCw)
-                            .tooltip("Read the saved report again. This does not rerun the automation.")
+                            .tooltip(crate::i18n::tr("Read the saved report again. This does not rerun the automation."))
                             .on_click(cx.listener(move |app, _, _, cx| {
                                 if app.retry_occurrence_body(occurrence_id) {
                                     cx.notify();
@@ -4519,7 +4567,7 @@ impl TaskApp {
                     cx,
                 )
                 .id("automation-report-missing")
-                .aria_label("Saved report body missing")
+                .aria_label(crate::i18n::tr("Saved report body missing"))
                 .map(observed),
             );
         } else if !presentation.has_final_report && !active {
@@ -4530,7 +4578,7 @@ impl TaskApp {
                     cx,
                 )
                 .id("automation-no-final-notice")
-                .aria_label("No final report yet")
+                .aria_label(crate::i18n::tr("No final report yet"))
                 .map(observed),
             );
         }
@@ -4547,7 +4595,7 @@ impl TaskApp {
             panel = panel.child(
                 div()
                     .id("automation-result-state")
-                    .aria_label(state_label.clone())
+                    .aria_label(crate::i18n::tr(state_label.clone()))
                     .text_xs()
                     .child(selectable(state_label))
                     .map(observed),
@@ -4581,7 +4629,7 @@ impl TaskApp {
                 continue;
             }
             if presentation.reports.len() > 1 {
-                let mut heading = format!("{} · {}", self.result_owner_title(&report.owner_label), result.kind.label());
+                let mut heading = format!("{} · {}", self.result_owner_title(&report.owner_label), crate::i18n::tr_string(result.kind.label()));
                 if result.notice.is_none() {
                     if let Some(suffix) = result.status_suffix() {
                         heading.push_str(&format!(" · {suffix}"));
@@ -4616,7 +4664,7 @@ impl TaskApp {
                 panel = panel.child(
                     div()
                         .id(format!("automation-report-body-{id}-{run_key}"))
-                        .aria_label("Retained report body")
+                        .aria_label(crate::i18n::tr("Retained report body"))
                         .p_3().rounded(px(crate::appearance::GROUP_RADIUS)).bg(rgb(colors.panel)).child(
                         self.automation_report_section(
                             format!("automation-result-{id}-{run_key}"),
@@ -4663,7 +4711,7 @@ impl TaskApp {
                         .border_1()
                         .border_color(rgb(colors.line))
                         .child(label(
-                            format!("{} · {}", self.result_owner_title(&progress.owner_label), progress.step_label),
+                            format!("{} · {}", self.result_owner_title(&progress.owner_label), crate::i18n::tr_string(&progress.step_label)),
                             cx,
                         ))
                         .child(selectable(progress.text.clone())),
@@ -4702,9 +4750,9 @@ impl TaskApp {
                         self.store.automation(occurrence.automation_id), occurrence, &self.store,
                     ), cx))
                     .child(label("Saved task instructions", cx))
-                    .child(selectable(occurrence.snapshot.objective.clone()))
+                    .child(crate::views::selectable_raw(occurrence.snapshot.objective.clone()))
                     .child(label("Saved expected result", cx))
-                    .child(selectable(occurrence.snapshot.expected_result.clone()))
+                    .child(crate::views::selectable_raw(occurrence.snapshot.expected_result.clone()))
                     .map(observed),
             );
             for report in &presentation.reports {
@@ -4957,14 +5005,14 @@ impl TaskApp {
                     .child(
                         div()
                             .id(format!("automation-step-status-{task_id}"))
-                            .aria_label(status.label())
+                            .aria_label(crate::i18n::tr(status.label()))
                             .flex_shrink_0()
                             .text_xs()
                             .text_color(rgb(execution.color(cx)))
                             .child(selectable(status.label()))
                             .map(observed),
                     )
-                    .child(label(format!("{kind} · {identifier}"), cx).flex_shrink_0())
+                    .child(label(crate::i18n::tr(format!("{kind} · {identifier}")), cx).flex_shrink_0())
                     .child(
                         div()
                             .id(format!("automation-step-title-{task_id}"))
@@ -4972,7 +5020,7 @@ impl TaskApp {
                             .min_w_0()
                             .text_sm()
                             .truncate()
-                            .aria_label(title.clone())
+                            .aria_label(crate::i18n::tr(title.clone()))
                             .tooltip({
                                 let title = title.clone();
                                 move |window, cx| {
@@ -4985,8 +5033,10 @@ impl TaskApp {
                     .child(
                         quiet_button(format!("automation-step-{task_id}"), "Open")
                             .icon(assets::IconName::ChevronRight)
-                            .accessibility_label(format!("Open {identifier} · {title}"))
-                            .tooltip(format!("Open {identifier} · {title}"))
+                            .accessibility_label(crate::i18n::tr(format!(
+                                "Open {identifier} · {title}"
+                            )))
+                            .tooltip(crate::i18n::tr(format!("Open {identifier} · {title}")))
                             .on_click(cx.listener(move |app, _, window, cx| {
                                 cx.stop_propagation();
                                 app.request_task(task_id, false, window, cx)
@@ -5035,7 +5085,7 @@ impl TaskApp {
                             )
                             .icon(assets::IconName::Play)
                             .disabled(busy || !runnable)
-                            .tooltip(if !runnable {
+                            .tooltip(crate::i18n::tr(if !runnable {
                                 retry_reason
                             } else if winding_down {
                                 "The last step's background session is still shutting down. Retry becomes available when it finishes; it cannot extend the period.".to_string()
@@ -5048,7 +5098,7 @@ impl TaskApp {
                                     "Retry this period in place using approved version v{}. Finished steps keep their results; only unfinished work runs again.",
                                     occurrence.definition_version
                                 )
-                            })
+                            }))
                             .on_click(cx.listener(move |app, _, _, cx| {
                                 app.retry_automation_occurrence(occurrence_id, cx)
                             })),
@@ -5079,7 +5129,7 @@ impl TaskApp {
         let activity = occurrence_activity(occurrence);
         let activity_text = format!(
             "{} {}",
-            activity.kind.label(),
+            crate::i18n::tr_string(activity.kind.label()),
             format_in_zone_precise(activity.utc, &occurrence.timezone)
         );
         div()
@@ -5111,7 +5161,7 @@ impl TaskApp {
                                         selectable(title),
                                     ))
                                     .child(muted(
-                                        format!("Period {} · {} · {activity_text} · {}", occurrence.id, occurrence.status.label(), occurrence.source.label()),
+                                        format!("Period {} · {} · {activity_text} · {}", occurrence.id, crate::i18n::tr_string(occurrence.status.label()), crate::i18n::tr_string(occurrence.source.label())),
                                         cx,
                                     )),
                             )
@@ -5126,7 +5176,7 @@ impl TaskApp {
                                                 "Cancel period",
                                             )
                                             .icon(assets::IconName::CircleX)
-                                            .tooltip("Cancel this period and its scheduled retry")
+                                            .tooltip(crate::i18n::tr("Cancel this period and its scheduled retry"))
                                             .on_click(
                                                 cx.listener(move |app, _, _, cx| {
                                                     app.cancel_automation_occurrence_ui(id, cx)
@@ -5232,7 +5282,7 @@ impl TaskApp {
         } else {
             let mut text: String = run.output.chars().take(20_000).collect();
             if run.output.chars().count() > 20_000 {
-                text.push_str("\n\n[Output truncated for display]");
+                text.push_str(&crate::i18n::tr_string("\n\n[Output truncated for display]"));
             }
             text
         };
@@ -5258,22 +5308,23 @@ impl TaskApp {
                                     .text_lg()
                                     .font_weight(FontWeight::SEMIBOLD)
                                     .id(status_id)
-                                    .aria_label(run.status.clone())
+                                    .aria_label(crate::i18n::tr(run.status.clone()))
                                     .child(selectable(format!(
                                         "Planning attempt {} · {}",
-                                        run.id, run.status
+                                        run.id,
+                                        crate::i18n::tr_string(&run.status)
                                     )))
                                     .map(observed))
                                 .child(muted(format!(
                                     "Revision {} · {} · plan history, not a research report",
-                                    revision.map(|value| value.to_string()).unwrap_or_else(|| "legacy".into()),
+                                    revision.map(|value| value.to_string()).unwrap_or_else(|| crate::i18n::tr_string("legacy")),
                                     crate::time_display::timestamp(run.ended_at.as_deref().unwrap_or(&run.started_at))
                                 ), cx)
                                     .id(revision_id)
-                                    .aria_label(format!(
+                                    .aria_label(crate::i18n::tr(format!(
                                         "Revision {}",
                                         revision.map(|value| value.to_string()).unwrap_or_else(|| "legacy".into())
-                                    ))
+                                    )))
                                     .map(observed)))
                             .child(
                                 tool_icon("close-planning-attempt", assets::IconName::Close, "Close planning attempt")
@@ -5286,7 +5337,7 @@ impl TaskApp {
                             .child(
                                 div()
                                     .id(objective_id)
-                                    .aria_label(objective.to_string())
+                                    .aria_label(crate::i18n::tr(objective.to_string()))
                                     .child(selectable(objective.to_string()))
                                     .map(observed),
                             )
@@ -5294,7 +5345,7 @@ impl TaskApp {
                             .child(
                                 div()
                                     .id(expected_id)
-                                    .aria_label(expected.to_string())
+                                    .aria_label(crate::i18n::tr(expected.to_string()))
                                     .child(selectable(expected.to_string()))
                                     .map(observed),
                             )
@@ -5377,12 +5428,12 @@ impl TaskApp {
             content = content.child(
                 row().flex_wrap().gap_2()
                     .child(select_button("automation-shape-quick", "Quick task", self.automation_ui.shape == AutomationShape::Quick, cx)
-                        .tooltip("One instruction, one short answer each period. No project or planning needed.")
+                        .tooltip(crate::i18n::tr("One instruction, one short answer each period. No project or planning needed."))
                         .on_click(cx.listener(|app, _, _, cx| {
                             app.select_automation_shape(AutomationShape::Quick, cx);
                         })))
                     .child(select_button("automation-shape-research", "Research automation", self.automation_ui.shape == AutomationShape::Research, cx)
-                        .tooltip("Describe it once; confirm the research understanding, review the goals, then repeat the approved plan.")
+                        .tooltip(crate::i18n::tr("Describe it once; confirm the research understanding, review the goals, then repeat the approved plan."))
                         .on_click(cx.listener(|app, _, _, cx| {
                             app.select_automation_shape(AutomationShape::Research, cx);
                         }))),
@@ -5613,7 +5664,7 @@ impl TaskApp {
                 .child(crate::views::observed(
                     div()
                         .id("automation-schedule-note")
-                        .aria_label("Times use the schedule and time zone above.")
+                        .aria_label(crate::i18n::tr("Times use the schedule and time zone above."))
                         .child(muted("Times use the schedule and time zone above.", cx)),
                 ));
             if !self.automation_ui.preview_error.is_empty() {
@@ -5636,7 +5687,7 @@ impl TaskApp {
                 content = content.child(crate::views::observed(
                     div()
                         .id("automation-review-heading")
-                        .aria_label(review_heading)
+                        .aria_label(crate::i18n::tr(review_heading))
                         .font_weight(FontWeight::SEMIBOLD)
                         .child(selectable(review_heading)),
                 ));
@@ -5659,7 +5710,7 @@ impl TaskApp {
                 content = content.child(crate::views::observed(
                     col()
                         .id("automation-quick-authorization")
-                        .aria_label(format!("{objective}\n{expected}"))
+                        .aria_label(crate::i18n::tr(format!("{objective}\n{expected}")))
                         .p_3()
                         .gap_2()
                         .rounded(px(crate::appearance::GROUP_RADIUS))
@@ -5711,11 +5762,11 @@ impl TaskApp {
                                         step.title,
                                         match step.kind {
                                             crate::research::ResearchKind::Collect =>
-                                                "Evidence collection",
-                                            crate::research::ResearchKind::Analyze => "Analysis",
+                                                crate::i18n::tr_string("Evidence collection"),
+                                            crate::research::ResearchKind::Analyze => crate::i18n::tr_string("Analysis"),
                                             crate::research::ResearchKind::Advise =>
-                                                "Final report",
-                                            crate::research::ResearchKind::Goal => "Plan",
+                                                crate::i18n::tr_string("Final report"),
+                                            crate::research::ResearchKind::Goal => crate::i18n::tr_string("Plan"),
                                         }
                                     ))))
                                     .child(muted(step.instructions.clone(), cx))
@@ -5723,7 +5774,7 @@ impl TaskApp {
                                         format!(
                                             "Depends on: {}",
                                             if step.depends_on.is_empty() {
-                                                "none".into()
+                                                crate::i18n::tr_string("none")
                                             } else {
                                                 step.depends_on
                                                     .iter()
@@ -5869,7 +5920,7 @@ impl TaskApp {
                     if planning_now { "Understand research" } else { "Continue" },
                 )
                     .icon(assets::IconName::ArrowRight)
-                    .tooltip(if planning_now {
+                    .tooltip(crate::i18n::tr(if planning_now {
                         "Saves a draft and prepares a short research understanding. Confirm it before generating goals and tasks."
                     } else if quick {
                         if step == 1 {
@@ -5881,7 +5932,7 @@ impl TaskApp {
                         "Continue to the schedule"
                     } else {
                         "Continue to review the generated plan"
-                    })
+                    }))
                     .on_click(cx.listener(|app, _, window, cx| app.automation_wizard_next(window, cx))),
             );
         } else {
@@ -5890,7 +5941,7 @@ impl TaskApp {
                 primary_button("enable-automation", "Enable automation")
                     .icon(assets::IconName::Play)
                     .disabled(!plan_ready)
-                    .tooltip(if plan_ready {
+                    .tooltip(crate::i18n::tr(if plan_ready {
                         if quick {
                             "Approve this instruction and start future periods"
                         } else {
@@ -5900,7 +5951,7 @@ impl TaskApp {
                         "Return to the schedule and continue to authorize this task"
                     } else {
                         "Review the generated plan before enabling"
-                    })
+                    }))
                     .on_click(cx.listener(|app, _, _, cx| app.enable_automation(cx))),
             );
         }

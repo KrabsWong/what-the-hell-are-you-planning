@@ -603,8 +603,8 @@ impl AutomationOccurrence {
         if !can_transition(self.status, target) {
             return Err(format!(
                 "An occurrence cannot move from {} to {}.",
-                self.status.label(),
-                target.label()
+                crate::i18n::tr_string(self.status.label()),
+                crate::i18n::tr_string(target.label())
             ));
         }
         self.status = target;

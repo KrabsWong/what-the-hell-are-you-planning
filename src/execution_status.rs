@@ -341,7 +341,7 @@ impl crate::app::TaskApp {
         let mut parts = vec![format!("{} steps", states.len())];
         for status in ExecutionStatus::ALL.into_iter().chain(Stage::ALL.into_iter().map(ExecutionStatus::Stage)) {
             let count = states.iter().filter(|state| **state == status).count();
-            if count > 0 { parts.push(format!("{count} {}", status.label().to_lowercase())); }
+            if count > 0 { parts.push(format!("{count} {}", crate::i18n::tr_string(status.label()).to_lowercase())); }
         }
         parts.join(" · ")
     }
@@ -353,12 +353,12 @@ impl crate::app::TaskApp {
         // A status is not an action: no button label slot, content gap or hover fill.
         // Reserve a non-shrinking 24px box for the shared 16px icon in cards and list rows.
         div().id(format!("execution-status-{id}"))
-            .aria_label(state.label())
+            .aria_label(crate::i18n::tr(state.label()))
             .size(px(24.)).flex_shrink_0()
             .flex().items_center().justify_center()
             .child(status.icon_view(format!("execution-status-icon-{id}"), cx))
             .tooltip(move |window, cx| {
-                component::tooltip::Tooltip::new(state.label())
+                component::tooltip::Tooltip::new(crate::i18n::tr_string(state.label()))
                     .build(window, cx)
             })
             .into_any_element()

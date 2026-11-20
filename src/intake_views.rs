@@ -31,7 +31,7 @@ fn clarification_context(text: &str) -> Div {
 
 fn clarification_round(id: String, number: usize, content: Div, cx: &App) -> AnyElement {
     row().id(id.clone()).items_start().gap_3()
-        .child(div().id(format!("{id}-number")).role(Role::Label).aria_label(format!("#{number}"))
+        .child(div().id(format!("{id}-number")).role(Role::Label).aria_label(crate::i18n::tr(format!("#{number}")))
             .w(px(32.)).flex_shrink_0().text_sm().font_weight(FontWeight::SEMIBOLD)
             .child(selectable(format!("#{number}"))).map(observed))
         .child(content.id(format!("{id}-content")).flex_1().min_w_0()
@@ -44,7 +44,7 @@ impl TaskApp {
         let Some(request) = self.store.research_requests().iter().find(|request| request.id == id) else { return; };
         let draft = request.understanding_draft.clone();
         let input = cx.new(|cx| TextareaState::new(window, cx).rows(3)
-            .default_value(draft).placeholder("Answer a question or explain what should change…"));
+            .default_value(draft).placeholder(crate::i18n::tr("Answer a question or explain what should change…")));
         self.understanding_editor_subscription = Some(cx.subscribe(&input, move |a, input, event, cx| {
             if matches!(event, InputEvent::Change) && !a.understanding_submission_pending(id) {
                 let value = input.read(cx).value().to_string();
@@ -265,7 +265,7 @@ impl TaskApp {
                     .py_3()
                     .border_b_1()
                     .border_color(rgb(colors.line))
-                    .child(div().child(selectable(request.input.clone())))
+                    .child(div().child(selectable_raw(request.input.clone())))
                     .child(row().gap_3().flex_wrap()
                         .child(label(format!("{} · {status}", crate::time_display::timestamp(&request.submitted_at)), cx))
                         .when_some(run.map(|r| r.id), |d, run| d.child(
@@ -292,7 +292,7 @@ impl TaskApp {
                                         },
                                     )
                                     .disabled(active)
-                                    .tooltip(if planned { "Regenerates all unapproved goals from this request. The current plan stays available until a valid replacement is ready; previous goals are archived." } else { "Generate a reviewable plan from this saved request." })
+                                    .tooltip(crate::i18n::tr(if planned { "Regenerates all unapproved goals from this request. The current plan stays available until a valid replacement is ready; previous goals are archived." } else { "Generate a reviewable plan from this saved request." }))
                                     .on_click(cx.listener(
                                         move |a, _, _, cx| a.retry_research_request(id, cx),
                                     )),
@@ -357,7 +357,7 @@ impl TaskApp {
             .when(self.store.can_regenerate_request_plan(request_id), |d| d.child(
                 quiet_button("regenerate-request-plan", if regenerating { "Regenerating plan…" } else { "Regenerate plan" })
                     .disabled(regenerating)
-                    .tooltip("Regenerates all Backlog goals from the original request. Previous goals are archived only after the new plan is valid.")
+                    .tooltip(crate::i18n::tr("Regenerates all Backlog goals from the original request. Previous goals are archived only after the new plan is valid."))
                     .on_click(cx.listener(move |a, _, _, cx| a.retry_research_request(request_id, cx))))))
             .when(expanded, |d| {
                 d.child(
@@ -371,7 +371,7 @@ impl TaskApp {
                             format!("ORIGINAL REQUEST · {}", crate::time_display::timestamp(&request.submitted_at)),
                             cx,
                         ))
-                        .child(div().child(selectable(request.input.clone())))
+                        .child(div().child(selectable_raw(request.input.clone())))
                         .child(label("EXPECTED OUTPUT", cx))
                         .child(div().child(selectable(brief.deliverable.clone())))
                         .child(label("OBJECTIVE & SCOPE", cx))

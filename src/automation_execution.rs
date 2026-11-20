@@ -214,7 +214,7 @@ pub fn approval_for(
         if model.trim().is_empty() || !store.valid_research_model(kind) {
             return Err(format!(
                 "Choose an available model for the {} step in Settings before enabling.",
-                kind.label()
+                crate::i18n::tr_string(kind.label())
             ));
         }
         models[index] = model;

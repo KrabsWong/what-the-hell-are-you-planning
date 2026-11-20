@@ -35,7 +35,7 @@ The research workflow is designed for questions such as industry trends, market 
 4. Analyze the findings and produce a final report.
 5. Review the report, inspect sources, and add information for a follow-up run.
 
-Browser work takes place in a dedicated ego(lite) **Space**, where you can inspect the pages and take over when necessary. The browser opens in its own window. Login, permission, and other user-intervention requirements remain visible rather than being silently bypassed.
+Browser work takes place in a dedicated ego(lite) **Space**, where you can inspect the pages and take over when necessary. Login, permission, and other user-intervention requirements remain visible rather than being silently bypassed.
 
 Research plans state the decision or exploratory question, scope, and evidence needed to support a conclusion. Collection links findings to those requirements and records their limitations; analysis distinguishes supported, limited, missing, and conflicting evidence. Final reports explain the supported answer or recommendation, remaining gaps, what would change the conclusion, and focused next steps. Methods follow the research type: market validation, investment research, technical comparisons, and general research do not share mandatory domain-specific sections. These are agent output instructions, not automatic truth verification or credibility scoring.
 

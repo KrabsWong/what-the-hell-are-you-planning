@@ -10,7 +10,7 @@ Primarily desktop users without a developer background. They use the task manage
 
 ## Product Purpose
 
-A native Rust / gpui-kit task workspace for automatic topic planning, manual approval and stage changes, per-stage Agent and model selection, ego(lite) collection, PDF/image materials, logs and reports, plus recurring information research. Success means the user knows where to act next, approval and execution boundaries stay clear, and real data keeps saving.
+A native Rust / gpui-kit task workspace for automatic topic planning, manual approval and stage changes, per-stage Agent and model selection, ego(lite) collection, PDF/image materials, logs and reports, plus recurring information research. Success means the user knows where to act next, approval and execution boundaries stay clear, and real data keeps saving. ego(lite) is agent-owned: the interface never exposes a manual browser-launch action, and the user only switches to an already-open Space when an agent hands it over.
 
 ## Brand Personality
 

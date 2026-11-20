@@ -12,7 +12,7 @@ pub(crate) fn user_message(line: &str) -> &str {
         return reason;
     }
     if is_browser_handoff(line) {
-        return "The research browser needs your attention. Open it to complete any sign-in or confirmation, then retry this step.";
+        return "The research browser needs your attention. Switch to it to complete any sign-in or confirmation, then retry this step.";
     }
     if line.starts_with("[interrupted]") {
         return "This attempt stopped before it finished. Check the previous session, then retry this step.";

@@ -304,7 +304,7 @@ impl TaskApp {
             .child(div().h_3().border_b_1().border_color(rgb(colors.line)))
             .child(div().pt_2().font_weight(FontWeight::SEMIBOLD).child(selectable("Browser · ego(lite)")))
             .child(Input::new(&self.ego_input).id("ego-path"))
-            .child(row().flex_wrap().child(button("check-ego","Check runtime").disabled(self.ego_probe.is_some()).on_click(cx.listener(|this,_,_,cx|this.check_ego(cx)))).child(button("open-ego","Open browser").icon(assets::IconName::ExternalLink).on_click(cx.listener(|this,_,_,cx|this.open_ego(cx)))))
+            .child(button("check-ego","Check runtime").disabled(self.ego_probe.is_some()).on_click(cx.listener(|this,_,_,cx|this.check_ego(cx))))
             .child(
                 label(self.ego_status.clone(), cx)
                     .id("ego-status")
@@ -473,9 +473,6 @@ impl TaskApp {
             && children
                 .iter()
                 .all(|child| self.store.research_result_available_or_pending(*child));
-        let browser = quiet_button("task-open-ego", "Open ego(lite)").icon(assets::IconName::ExternalLink)
-            .tooltip(crate::i18n::tr("Opens the browser app. Select the research Space in ego(lite)."))
-            .on_click(cx.listener(|this, _, _, cx| this.open_ego(cx)));
         let next_model = self.store.research_model(research.kind);
         let archived = self.store.task_is_archived(id);
         let history = archived.then(|| crate::archive_presentation::goal_history(&self.store, id));
@@ -546,7 +543,7 @@ impl TaskApp {
                     .justify_between()
                     .gap_2()
                     .child(muted(status, cx))
-                    .child(row().flex_wrap().gap_2().child(browser).when(
+                    .child(row().flex_wrap().gap_2().when(
                         !archived && !pending_approval && !children.is_empty(),
                         |d| d.child(self.goal_run_button(id, "research-all", cx)),
                     )),
@@ -560,15 +557,14 @@ impl TaskApp {
                         .border_color(rgb(colors.line))
                         .py_2()
                 })
-                .child(
-                    row()
-                        .flex_wrap()
-                        .justify_between()
-                        .when(has_dependencies, |d| {
-                            d.child(muted("Upstream research", cx))
-                        })
-                        .child(browser),
-                )
+                .when(has_dependencies, |d| {
+                    d.child(
+                        row()
+                            .flex_wrap()
+                            .justify_between()
+                            .child(muted("Upstream research", cx)),
+                    )
+                })
                 .when(has_dependencies, |d| {
                     d.child(label("This task uses the results of the steps below.", cx))
                 });

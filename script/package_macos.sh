@@ -54,7 +54,7 @@ OpenCode: https://opencode.ai
 Codex: https://developers.openai.com/codex/cli
 Install at least one of OpenCode or Codex.
 ego(lite): https://lite.ego.app
-Open ego(lite) and complete its initial setup after installation.
+Complete ego(lite)'s initial setup after installation.
 Model providers may charge fees. Use your own accounts and configuration.
 
 Signing and first launch

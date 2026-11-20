@@ -73,7 +73,7 @@ Use **Tab / Shift-Tab** to move between controls and **Enter / Space** to activa
 2. Open **Settings → Agent & models**, check the Agent's version, path and connection status, and click **Refresh local models** to update the model list.
 3. On the same page, choose the global Agent and model; click the model field to expand it and search, and your change is saved automatically. Planning, collection, analysis and the final report share it by default.
 4. Install ego(lite) and complete its first-time setup, enter the `ego-browser` path and click **Check runtime**. The usual path is `~/.local/bin/ego-browser`.
-5. **Open browser** opens ego(lite). Each goal has its own Space name, which you can see in the browser's Space menu. When it runs, the app reads the operating guide that comes with the installed version.
+5. Each goal has its own Space name, which you can see in the browser's Space menu. The agent opens ego(lite) when it needs web access; if it hands control back, switch to that Space and handle the prompt. When it runs, the app reads the operating guide that comes with the installed version.
 
 Check runtime only confirms that the local guide can be read; whether web access actually works is something you judge from the logs and sources of the collection task. OpenCode / Codex use the sign-in and permissions already set up on your machine, and this app does not store API keys or approve interactive permission requests on your behalf.
 

@@ -330,7 +330,7 @@ A run retry that arrives while an older command is still pending is retained as 
 
 **Stop topic queue** cancels queued work and requests cancellation of active runs, but reports only a stop request until each active process reaches a terminal event; the success toast is promoted at that point. Stopping the queue also cancels paused-project recovery checks, so a late session inspection cannot import a result after the user stopped monitoring. Paused projects expose separate project and goal cancellation for recovery work, and a Recovering or admission-pending run keeps a Stop control because its external work may still be active. Automation period enqueue now returns an explicit queued, requeued, pending, already-active, skipped or failed outcome; **Resuming** is shown only when work actually entered the queue, while a pending durable receipt gets its own saving message.
 
-Browser handoff presentation recognizes all current handoff log prefixes, so the browser-open control and handoff explanation appear whether the log was written as `[browser]`, `[browser-handoff]`, or by the legacy `[blocked]` path.
+Browser handoff presentation recognizes all current handoff log prefixes, so the handoff explanation appears whether the log was written as `[browser]`, `[browser-handoff]`, or by the legacy `[blocked]` path. No manual browser-launch control is exposed; the agent owns browser startup and the user only switches to the already-open Space.
 
 Imported material copies are still being verified until attachment and its durable save complete. The intermediate message must not claim that those materials are already included in the next run. Native confirmation/reload acceptance is tracked separately in the review ledger.
 

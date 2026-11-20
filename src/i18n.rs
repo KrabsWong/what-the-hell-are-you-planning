@@ -231,7 +231,34 @@ mod tests {
         assert_eq!(tr("New research"), "新建研究");
         assert_eq!(tr("29 sources · 0 materials"), "29 个来源 · 0 份资料");
         assert_eq!(tr("1 research goal"), "1 个研究目标");
+        assert_eq!(
+            tr("The research browser needs your attention. Switch to it and handle its prompt; return to the task when you are ready to continue."),
+            "研究浏览器需要你处理。请切换到该浏览器并处理提示，完成后返回任务继续。"
+        );
+        assert_eq!(
+            tr("The research browser needs your attention. Switch to it to complete any sign-in or confirmation, then retry this step."),
+            "研究浏览器需要你处理。请切换到该浏览器完成登录或确认，然后重试此步骤。"
+        );
+        assert_eq!(tr("Log storage"), "日志存储");
+        assert_eq!(tr("Log retention: 30 days"), "日志保留：30 天");
+        assert_eq!(tr("No old detailed logs to clear."), "没有可清除的旧详细日志。");
         assert_eq!(tr("User authored title"), "User authored title");
         set_active(InterfaceLanguage::English);
+    }
+
+    #[test]
+    fn removed_browser_launch_copy_has_no_translation_entries() {
+        for key in [
+            "Open browser",
+            "Open ego(lite)",
+            "Opens the browser app. Select the research Space in ego(lite).",
+            "Open the Space menu in ego(lite) to inspect your research task",
+            "Open ego(lite) and use its Space menu to inspect your research task",
+            "Open the research browser to handle its prompt. Return to the task when you are ready to continue.",
+            "The research browser needs your attention. Open it to complete any sign-in or confirmation, then retry this step.",
+            "Install ego(lite) and finish its first launch, then try again.",
+        ] {
+            assert!(translations().get(key).is_none(), "stale key: {key}");
+        }
     }
 }

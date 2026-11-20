@@ -184,31 +184,6 @@ impl TaskApp {
         self.start_pump(cx);
         cx.notify();
     }
-    pub fn open_ego(&mut self, cx: &mut Context<Self>) {
-        #[cfg(target_os = "macos")]
-        {
-            match std::process::Command::new("/usr/bin/open")
-                .args(["-a", "ego lite"])
-                .status()
-            {
-                Ok(s) if s.success() => {
-                    self.toast =
-                        "Open the Space menu in ego(lite) to inspect your research task".into();
-                    self.error.clear();
-                }
-                _ => {
-                    self.error =
-                        "Install ego(lite) and finish its first launch, then try again.".into()
-                }
-            }
-        }
-        #[cfg(not(target_os = "macos"))]
-        {
-            self.toast =
-                "Open ego(lite) and use its Space menu to inspect your research task".into();
-        }
-        cx.notify();
-    }
     pub fn create_research(&mut self, w: &mut Window, cx: &mut Context<Self>) {
         let title = self.research_title.read(cx).value().trim().to_string();
         let brief = self.research_brief.read(cx).value().trim().to_string();

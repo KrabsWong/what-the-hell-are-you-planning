@@ -341,12 +341,28 @@ fn visual_automation_settings(root: &Path, mode: Appearance, width: f32, height:
         assert!(app.save_automation_draft(cx));
         let id = app.store.automations().last().unwrap().id;
         app.open_automation(id, w, cx);
-        app.open_automation_settings(w, cx);
         cx.notify();
     });
     cx.update_window(handle, |_, w, cx| {
         w.render_frame(cx);
+        assert!(
+            w.try_find("automation-cleanup-preview").is_none(),
+            "automation detail must not expose log maintenance"
+        );
+        w.click("automation-settings", cx);
+        w.render_frame(cx);
         w.find("automation-settings-body");
+        assert!(w.find("automation-cleanup-preview").visible());
+        assert!(
+            w.try_find("automation-cleanup-apply").is_none(),
+            "zero cleanup preview must not offer a clear action"
+        );
+        w.click("automation-cleanup-preview", cx);
+        w.render_frame(cx);
+        assert!(
+            w.try_find("automation-cleanup-apply").is_none(),
+            "zero cleanup preview must not offer a clear action"
+        );
         assert!(w.find("close-automation-settings").visible());
         let _ = app;
     })
@@ -1138,6 +1154,10 @@ fn startup_completion_scheduled(root: &Path) {
             "Starting… must disappear after scheduled startup completion"
         );
         w.find("startup-recheck");
+        assert!(
+            w.try_find("startup-open-ego").is_none(),
+            "startup must not expose a manual browser launch"
+        );
     })
     .unwrap();
     cx.update_window(handle, |_, w, _| w.remove_window())

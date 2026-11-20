@@ -859,7 +859,7 @@ impl TaskApp {
             ),
             "Blocked" if browser_blocked => (
                 "The browser needs your attention",
-                "Open the research browser to handle its prompt. Return to the task when you are ready to continue.",
+                "The research browser needs your attention. Switch to it and handle its prompt; return to the task when you are ready to continue.",
             ),
             "Blocked" => (
                 "More information is needed",
@@ -1027,13 +1027,6 @@ impl TaskApp {
                     .on_click(cx.listener(move |a, _, w, cx| {
                         a.open_task_neighbor(&next, true, w, cx);
                     })));
-        }
-        if browser_blocked || (active && run.research_kind == Some(ResearchKind::Collect)) {
-            actions = actions.child(
-                quiet_button("run-open-browser", "Open browser")
-                    .icon(assets::IconName::ExternalLink)
-                    .on_click(cx.listener(|this, _, _, cx| this.open_ego(cx))),
-            );
         }
         if stoppable {
             if run_goal.is_some_and(|goal| self.research_sequences.contains(&goal)) {

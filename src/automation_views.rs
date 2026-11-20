@@ -436,7 +436,8 @@ pub struct AutomationUi {
     pub expanded_appendices: HashSet<String>,
     pub technical_run: Option<u64>,
     pub technical_scroll: ScrollHandle,
-    pub show_cleanup: bool,
+    pub cleanup_reviewed: bool,
+    pub cleanup_occurrences: usize,
     pub cleanup_preview: String,
     pub feedback: Option<Result<String, String>>,
     pub scroll: ScrollHandle,
@@ -730,7 +731,8 @@ impl AutomationUi {
             expanded_appendices: HashSet::new(),
             technical_run: None,
             technical_scroll: ScrollHandle::new(),
-            show_cleanup: false,
+            cleanup_reviewed: false,
+            cleanup_occurrences: 0,
             cleanup_preview: String::new(),
             feedback: None,
             scroll: ScrollHandle::new(),
@@ -1272,6 +1274,9 @@ impl TaskApp {
         self.remember_dialog_opener(window, cx);
         let _ = self.open_settings_overlay();
         let _ = self.close_period_overlay();
+        self.automation_ui.cleanup_reviewed = false;
+        self.automation_ui.cleanup_occurrences = 0;
+        self.automation_ui.cleanup_preview.clear();
         self.automation_ui.feedback = None;
         window.focus(&self.modal_focus, cx);
         cx.notify();
@@ -2714,18 +2719,28 @@ impl TaskApp {
             .automation_log_cleanup(id, Self::automation_now(), false)
         {
             Ok((occurrences, bytes, _)) => {
-                self.automation_ui.cleanup_preview = format!(
-                    "{occurrences} completed period(s), {:.1} KB of detailed logs. Reports, sources, materials and recovery records are kept.",
-                    bytes as f64 / 1024.
-                );
+                self.automation_ui.cleanup_occurrences = occurrences;
+                self.automation_ui.cleanup_preview = if occurrences == 0 {
+                    "No old detailed logs to clear.".into()
+                } else {
+                    format!(
+                        "{occurrences} completed period(s), {:.1} KB of detailed logs. Reports, sources, materials and recovery records are kept.",
+                        bytes as f64 / 1024.
+                    )
+                };
             }
-            Err(error) => self.automation_ui.cleanup_preview = error,
+            Err(error) => {
+                self.automation_ui.cleanup_occurrences = 0;
+                self.automation_ui.cleanup_preview = error;
+            }
         }
-        self.automation_ui.show_cleanup = true;
+        self.automation_ui.cleanup_reviewed = true;
         cx.notify();
     }
 
     pub fn automation_cleanup_apply(&mut self, id: u64, cx: &mut Context<Self>) {
+        self.automation_ui.cleanup_reviewed = false;
+        self.automation_ui.cleanup_occurrences = 0;
         let command = crate::domain_command::Command::CleanupLogs {
             id,
             now: Self::automation_now(),
@@ -3797,34 +3812,6 @@ impl TaskApp {
                     })),
                 );
             }
-            // Keep log cleanup visually separate from the run list.
-            panel = panel.child(div().w_full().h(px(1.)).bg(rgb(colors.line)));
-            panel = panel.child(
-                row()
-                    .gap_2()
-                    .child(
-                        quiet_button("automation-cleanup-preview", "Log cleanup preview")
-                            .icon(assets::IconName::ListOrdered)
-                            .on_click(cx.listener(move |app, _, _, cx| {
-                                app.automation_cleanup_preview(id, cx)
-                            })),
-                    )
-                    .when(self.automation_ui.show_cleanup, |d| {
-                        d.child(
-                            primary_button("automation-cleanup-apply", "Clear old detailed logs")
-                                .icon(assets::IconName::Archive)
-                                .on_click(cx.listener(move |app, _, _, cx| {
-                                    app.automation_cleanup_apply(id, cx)
-                                })),
-                        )
-                    }),
-            );
-            if !self.automation_ui.cleanup_preview.is_empty() {
-                panel = panel.child(overview_note(
-                    self.automation_ui.cleanup_preview.clone(),
-                    cx,
-                ));
-            }
         }
 
         // App-wide behaviour is fine print at the end of the page, not a
@@ -3969,6 +3956,40 @@ impl TaskApp {
                         CatchUp::LatestOnly => format!("Catch up: latest missed run, within {}", human_duration(definition.policy.allowed_delay_seconds)),
                         CatchUp::SkipAll => "Catch up: skip all missed runs".into(),
                     }, cx)),
+            )
+            .child(
+                col().gap_2().pt_3().border_t_1().border_color(rgb(colors.subtle_line))
+                    .child(overview_heading("Log storage"))
+                    .child(overview_note(
+                        format!("Log retention: {} days", definition.policy.log_retention_days),
+                        cx,
+                    ))
+                    .child(
+                        row().gap_2()
+                            .child(
+                                quiet_button("automation-cleanup-preview", "Log cleanup preview")
+                                    .icon(assets::IconName::ListOrdered)
+                                    .on_click(cx.listener(move |app, _, _, cx| {
+                                        app.automation_cleanup_preview(id, cx)
+                                    })),
+                            )
+                            .when(
+                                self.automation_ui.cleanup_reviewed
+                                    && self.automation_ui.cleanup_occurrences > 0,
+                                |d| {
+                                    d.child(
+                                        primary_button("automation-cleanup-apply", "Clear old detailed logs")
+                                            .icon(assets::IconName::Archive)
+                                            .on_click(cx.listener(move |app, _, _, cx| {
+                                                app.automation_cleanup_apply(id, cx)
+                                            })),
+                                    )
+                                },
+                            ),
+                    )
+                    .when(!self.automation_ui.cleanup_preview.is_empty(), |d| {
+                        d.child(overview_note(self.automation_ui.cleanup_preview.clone(), cx))
+                    }),
             );
         if let Some(approval) = &definition.approval {
             let required = definition

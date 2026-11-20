@@ -325,6 +325,10 @@ pub fn run() {
                 assert!(w.try_find("research-fallback-model").is_some());
                 assert_eq!(app.read(cx).scope(), Scope::Settings);
                 assert!(w.try_find("ego-path").is_some());
+                assert!(
+                    w.try_find("open-ego").is_none(),
+                    "settings must not expose a manual browser launch"
+                );
                 assert!(w.try_find("research-model-0").is_some());
             }).unwrap();
             screenshot(&mut cx, handle, &directory, "02-research-model-fields.png");

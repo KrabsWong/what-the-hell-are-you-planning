@@ -879,6 +879,10 @@ fn run_checks(layout_only: bool) {
                 );
                 assert_eq!(w.find("step-run").label(), Some("Run again"));
                 assert!(w.try_find("configure-research").is_none());
+                assert!(
+                    w.try_find("task-open-ego").is_none(),
+                    "task details must not expose a manual ego(lite) launch"
+                );
                 assert!(w.try_find("property-Cycle").is_none());
                 assert!(
                     w.try_find("property-Stage").is_none(),
@@ -913,6 +917,10 @@ fn run_checks(layout_only: bool) {
                     "Advanced settings replace the composer in this view"
                 );
                 assert!(w.try_find("ego-path").is_some());
+                assert!(
+                    w.try_find("open-ego").is_none(),
+                    "settings must not expose a manual browser launch"
+                );
                 assert_eq!(app.read(cx).store, before);
                 scroll_to(w, cx, "model-settings-scroll", "research-model-0");
             })
@@ -995,7 +1003,10 @@ fn run_checks(layout_only: bool) {
             });
             cx.update_window(handle, |_, w, _| {
                 assert!(w.find("run-waiting").visible());
-                assert!(w.find("run-open-browser").visible());
+                assert!(
+                    w.try_find("run-open-browser").is_none(),
+                    "running research must not expose a manual browser launch"
+                );
                 assert!(w.try_find("research-result-scroll").is_none());
             })
             .unwrap();
@@ -1019,7 +1030,10 @@ fn run_checks(layout_only: bool) {
             .unwrap();
             screenshot(&mut cx, handle, &directory, "15-browser-attention.png");
             cx.update_window(handle, |_, w, cx| {
-                assert!(w.find("run-open-browser").visible());
+                assert!(
+                    w.try_find("run-open-browser").is_none(),
+                    "browser handoff must not expose a manual browser launch"
+                );
                 assert!(w.try_find("research-result-scroll").is_none());
                 assert!(w.try_find("cancel-run").is_none());
                 app.update(cx, |a, _| {

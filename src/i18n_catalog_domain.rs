@@ -689,7 +689,7 @@ pub(crate) static DOMAIN_TRANSLATIONS: &[(&str, &str)] = &[
     ("The rerun materials are unavailable: {error}", "重新运行所需资料不可用：{error}"),
     ("The rerun replacement could not be prepared or admitted; retirement will retry.", "无法准备或准许重新运行的替代项；收尾将重试。"),
     ("The rerun source task is no longer available.", "重新运行的源任务已不可用。"),
-    ("The research browser needs your attention. Open it to complete any sign-in or confirmation, then retry this step.", "研究浏览器需要你处理。请打开它完成登录或确认，然后重试此步骤。"),
+    ("The research browser needs your attention. Switch to it to complete any sign-in or confirmation, then retry this step.", "研究浏览器需要你处理。请切换到该浏览器完成登录或确认，然后重试此步骤。"),
     ("The research context changed after this comment was prepared. Review the new impact before posting.", "准备此评论后，研究上下文发生了变化。发布前请查看新的影响。"),
     ("The research context changed after this edit was prepared. Review the new impact before applying.", "准备此编辑后，研究上下文发生了变化。应用前请查看新的影响。"),
     ("The research context changed after this material was prepared. Review the new impact before adding.", "准备此资料后，研究上下文发生了变化。添加前请查看新的影响。"),

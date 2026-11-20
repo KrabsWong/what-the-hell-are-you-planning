@@ -494,9 +494,7 @@ impl TaskApp {
                 .child(card()
                     .child(heading("3 · ego(lite)", ego.0, ego.1))
                     .child(row().justify_between().gap_2().child(label("Browser access · finish its first launch after installing.", cx))
-                        .child(row().gap_3()
-                            .when(!crate::ego::is_installed(&self.ego_input.read(cx).value()), |d| d.child(link_button("startup-install-ego", "Install").icon(assets::IconName::ExternalLink).on_click(|_,_,cx| cx.open_url("https://lite.ego.app"))))
-                            .child(link_button("startup-open-ego", "Open").icon(assets::IconName::ExternalLink).on_click(cx.listener(|this,_,_,cx| this.open_ego(cx))))))
+                        .when(!crate::ego::is_installed(&self.ego_input.read(cx).value()), |d| d.child(link_button("startup-install-ego", "Install").icon(assets::IconName::ExternalLink).on_click(|_,_,cx| cx.open_url("https://lite.ego.app")))))
                     .child(Input::new(&self.ego_input).id("startup-ego"))
                     .when(!ego.2.is_empty(), |view| view.child(div().text_xs().text_color(rgb(if ego.3 { colors.muted } else { ego.1 })).child(selectable(ego.2.clone()))))
                     .when(!self.error.is_empty(), |view| view.child(crate::views::notice(

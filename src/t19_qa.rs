@@ -1273,18 +1273,16 @@ fn automation_results_compact(root: &Path) {
         });
         cx.update_window(handle, |_, w, cx| {
             w.render_frame(cx);
-            w.find("automation-results-subtitle");
             let viewport = w.viewport_size();
-            let subtitle = w.find("automation-results-subtitle").bounds();
+            let title = w.find("automation-results-title").bounds();
             assert!(
-                subtitle.right() <= px(width) + px(1.),
-                "{width}x{height} {mode:?}: subtitle must stay inside the viewport"
+                title.right() <= px(width) + px(1.),
+                "{width}x{height} {mode:?}: results title must stay inside the viewport"
             );
-            let hint_snapshot = w.find("automation-results-unread-hint");
-            let hint = hint_snapshot.bounds();
+            let count = w.find("automation-results-count");
             assert!(
-                hint_snapshot.visible() && hint.right() <= px(width) + px(1.),
-                "{width}x{height} {mode:?}: unread hint must be visible and bounded"
+                count.visible() && count.bounds().right() <= px(width) + px(1.),
+                "{width}x{height} {mode:?}: result count must stay with the title"
             );
             for (id, name) in ids.iter().zip(names.iter()) {
                 let row = w.find(format!("automation-occurrence-{id}"));
@@ -1871,8 +1869,7 @@ pub fn automation_dialog_scroll() {
                     samples.push(started.elapsed().as_secs_f64() * 1000.);
                 }
                 cx.update_window(handle, |_, _, cx| {
-                    let offset = app.read(cx).automation_ui.dialog_scroll.offset().y.as_f32()
-                        + app.read(cx).automation_ui.report_readers.borrow().values().map(|state| state.read(cx).list_state().scroll_px_offset_for_scrollbar().y.as_f32()).sum::<f32>();
+                    let offset = app.read(cx).automation_ui.dialog_scroll.offset().y.as_f32();
                     if direction < 0. { assert!(offset < -100., "wheel must move the report"); }
                     else { assert!(offset.abs() < 1., "reverse wheel must return to top: {offset}"); }
                 }).unwrap();
@@ -1971,13 +1968,10 @@ pub fn automation_dialog_native() {
                     }.to_platform_input(), cx);
                     w.draw(cx).clear(cx);
                     if frame == 119 {
-                        assert!(app.read(cx).automation_ui.dialog_scroll.offset().y + app.read(cx).automation_ui.report_readers.borrow().values().map(|state| state.read(cx).list_state().scroll_px_offset_for_scrollbar().y).fold(px(0.), |sum, y| sum + y) < px(-100.));
+                        assert!(app.read(cx).automation_ui.dialog_scroll.offset().y < px(-100.));
                     }
                     if frame == 239 {
                         assert!(app.read(cx).automation_ui.dialog_scroll.offset().y.abs() < px(1.));
-                        for state in app.read(cx).automation_ui.report_readers.borrow().values() {
-                            assert!(state.read(cx).list_state().scroll_px_offset_for_scrollbar().y.abs() < px(1.));
-                        }
                     }
                 }).unwrap();
                 work.push(started.elapsed().as_secs_f64() * 1000.);
@@ -2074,62 +2068,29 @@ pub fn automation_dialog_first_scroll() {
                 }
                 println!("FIRST_SCROLL attempt={attempt} first_painted={first_painted:?}");
                 assert!(first_painted.is_some_and(|time| time < Duration::from_millis(250)), "Scroll handle changed without painting the modal promptly");
-                // Exercise real wheel dispatch inside the virtualized document.
-                let reader = cx.update_window(handle, |_, w, cx| {
-                    app.read(cx).automation_ui.report_readers.borrow().iter()
-                        .filter_map(|(key, state)| w.try_find(format!("{key}-reader"))
-                            .map(|element| (key.clone(), state.clone(), element.bounds().top())))
-                        .min_by(|a, b| a.2.partial_cmp(&b.2).unwrap())
-                        .map(|(key, state, _)| (key, state))
+                // The result dialog now owns one scroll container. Every wheel
+                // event over the reader moves that container; there is no inner
+                // report list to hand off to.
+                cx.update_window(handle, |_, _, cx| {
+                    app.read(cx).automation_ui.dialog_scroll.set_offset(point(px(0.), px(0.)));
                 }).unwrap();
-                if let Some((key, state)) = reader {
-                    cx.update_window(handle, |_, _, cx| {
-                        app.read(cx).automation_ui.dialog_scroll.set_offset(point(px(0.), px(0.)));
-                        state.read(cx).list_state().set_offset_from_scrollbar(point(px(0.), px(0.)));
+                cx.update_window(handle, |_, w, _| w.refresh()).unwrap();
+                cx.background_executor().timer(Duration::from_millis(100)).await;
+                for _ in 0..40 {
+                    let moved = cx.update_window(handle, |_, w, cx| {
+                        let body = w.find("automation-result-body").bounds();
+                        let position = body.center();
+                        let before = app.read(cx).automation_ui.dialog_scroll.offset().y;
+                        w.dispatch_event(MouseMoveEvent { position, ..Default::default() }.to_platform_input(), cx);
+                        w.dispatch_event(ScrollEvent { position, delta: ScrollDelta::Pixels(point(px(0.), px(-32.))), ..Default::default() }.to_platform_input(), cx);
+                        app.read(cx).automation_ui.dialog_scroll.offset().y < before
                     }).unwrap();
-                    cx.update_window(handle, |_, w, _| w.refresh()).unwrap();
-                    cx.background_executor().timer(Duration::from_millis(100)).await;
-                    for _ in 0..40 {
-                        let revealed = cx.update_window(handle, |_, w, cx| {
-                            let bounds = w.find(format!("{key}-reader")).bounds();
-                            let body = w.find("automation-result-body").bounds();
-                            if bounds.bottom() <= body.bottom() + px(0.5) { return true; }
-                            let position = bounds.intersect(&body).center();
-                            let outer_before = app.read(cx).automation_ui.dialog_scroll.offset().y;
-                            w.dispatch_event(MouseMoveEvent { position, ..Default::default() }.to_platform_input(), cx);
-                            w.dispatch_event(ScrollEvent { position, delta: ScrollDelta::Pixels(point(px(0.), px(-32.))), ..Default::default() }.to_platform_input(), cx);
-                            assert_eq!(state.read(cx).list_state().scroll_px_offset_for_scrollbar().y, px(0.), "Reveal the clipped reader before consuming its text");
-                            assert!(app.read(cx).automation_ui.dialog_scroll.offset().y < outer_before);
-                            false
-                        }).unwrap();
-                        if revealed { break; }
-                        cx.background_executor().timer(Duration::from_millis(16)).await;
-                    }
-                    for (edge, dy) in [(false, -32.), (true, -32.), (true, 32.)] {
-                        let (inner_before, outer_before) = cx.update_window(handle, |_, w, cx| {
-                            let list = state.read(cx).list_state().clone();
-                            if edge {
-                                list.set_offset_from_scrollbar(point(px(0.), if dy < 0. { -list.max_offset_for_scrollbar().y } else { px(0.) }));
-                            }
-                            let before = list.scroll_px_offset_for_scrollbar().y;
-                            let outer = app.read(cx).automation_ui.dialog_scroll.offset().y;
-                            let bounds = w.find(format!("{key}-reader")).bounds();
-                            let body = w.find("automation-result-body").bounds();
-                            let position = bounds.intersect(&body).center();
-                            w.dispatch_event(MouseMoveEvent { position, ..Default::default() }.to_platform_input(), cx);
-                            w.dispatch_event(ScrollEvent { position, delta: ScrollDelta::Pixels(point(px(0.), px(dy))), ..Default::default() }.to_platform_input(), cx);
-                            (before, outer)
-                        }).unwrap();
-                        cx.background_executor().timer(Duration::from_millis(32)).await;
-                        cx.update_window(handle, |_, _, cx| {
-                            let inner = state.read(cx).list_state().scroll_px_offset_for_scrollbar().y;
-                            let outer = app.read(cx).automation_ui.dialog_scroll.offset().y;
-                            println!("NESTED_SCROLL edge={edge} inner={inner_before:?}->{inner:?} outer={outer_before:?}->{outer:?}");
-                            if edge { assert_eq!(inner, inner_before); assert!((outer - outer_before).as_f32() * dy > 0.); }
-                            else { assert!(inner < inner_before); assert_eq!(outer, outer_before); }
-                        }).unwrap();
-                    }
+                    if moved { break; }
+                    cx.background_executor().timer(Duration::from_millis(16)).await;
                 }
+                cx.update_window(handle, |_, _, cx| {
+                    assert!(app.read(cx).automation_ui.dialog_scroll.offset().y < px(-1.), "reader wheel must move the dialog");
+                }).unwrap();
                 cx.update_window(handle, |_, w, cx| {
                     app.update(cx, |a, cx| a.close_occurrence_result(w, cx));
                 }).unwrap();

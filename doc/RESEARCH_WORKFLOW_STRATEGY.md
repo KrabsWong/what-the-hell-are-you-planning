@@ -1,6 +1,6 @@
 # Research Workflow Strategy
 
-Last reviewed: 2026-11-13
+Last reviewed: 2026-11-21
 
 ## Purpose and status
 
@@ -318,7 +318,9 @@ This is a contributor maintenance rule, not a background synchronization service
 
 ### Automatic model fallback
 
-Settings can define one fallback agent/model pair shared by all research stages. It is a recovery setting, not a second primary model: the approved or manual run still starts with the stage's selected agent and model. If a failed attempt reports a model availability problem, such as exhausted quota, rate limiting, overload, timeout, connection failure or a provider 5xx response, the second failed attempt switches the next automatic retry to the fallback pair and clears the session so it does not resume a primary-model conversation. A validation or content failure does not switch models. The existing three-retry budget, 30-second delay, freshness checks, approval checks and concurrency rules remain in force, and later availability failures stay on the configured fallback.
+Settings can define one fallback agent/model pair shared by all research stages. It is a recovery setting, not a second primary model: an approved automation period, quick period or ordinary research run still starts with the selected primary agent and model. If a failed attempt reports a model availability problem, such as exhausted quota, rate limiting, overload, timeout, connection failure or a provider 5xx response, the next automatic retry switches to the fallback pair and clears the session so it does not resume a primary-model conversation. A validation or content failure does not switch models. The existing three-retry budget, 15-second delay, freshness checks, approval checks and concurrency rules remain in force, and later availability failures stay on the configured fallback. Planning retries use the same fallback signal on the next explicitly started attempt.
+
+Every dispatched agent attempt also carries a one-hour hard deadline. Queued attempts that pass the deadline are not started, and running or recovering attempts are cancelled when it is reached. Automation periods use the same one-hour upper bound for their configured time limit, even when an older saved policy contains a larger value.
 
 Request and project planning have no automatic retry chain. When a user starts another planning attempt after an availability failure, that new attempt uses the fallback pair; a validation failure still follows the existing one-shot format-repair rule with the original model.
 
@@ -380,6 +382,7 @@ If an application termination cannot wait for the worker, startup reapplies a ty
 
 - **2026-11-13:** Rebalanced final reports around reader conclusions. The main-body target increased to roughly 1,500–2,200 Chinese characters or 1,000–1,400 English words; appendices are optional, selective and normally no more than one third. Native readers and published HTML collapse recognized appendices and source lists after the answer, while copy and export remain complete.
 - **2026-11-20:** Made automatic publication the default and added completion notifications with a durable outbox. Research automation Topics publish and notify with a public URL; Quick periods send the same summary directly without a URL. Automation results remain confined to automation history, and publication and notification state is documented separately from research completion.
+- **2026-11-21:** Unified fallback routing across Research automations, Quick automations and ordinary research runs. The first availability failure now switches the next retry to the configured fallback after 15 seconds. Added a one-hour hard deadline for every agent attempt, with cancellation on expiry, and capped automation period time limits at one hour.
 
 ## Deferred result loading
 

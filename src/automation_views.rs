@@ -45,6 +45,40 @@ impl AutomationKind {
 /// Weekdays selected by a fresh automation: Monday through Friday.
 pub const DEFAULT_WEEKDAYS: [bool; 7] = [true, true, true, true, true, false, false];
 
+fn default_automation_result_doc(
+    presentation: &crate::result_presentation::ResultPresentation,
+) -> Option<AutomationResultDoc> {
+    if let Some(index) = presentation
+        .reports
+        .iter()
+        .position(|report| report.presentation.has_final_report
+            || report.presentation.kind == crate::result_presentation::ResultKind::FinalReport)
+    {
+        return Some(AutomationResultDoc::Report(index));
+    }
+    if let Some(index) = presentation.reports.iter().position(|report| {
+        report.presentation.run_id.is_some()
+            || report.presentation.kind != crate::result_presentation::ResultKind::None
+    }) {
+        return Some(AutomationResultDoc::Report(index));
+    }
+    if !presentation.progress.is_empty() {
+        return Some(AutomationResultDoc::Progress(0));
+    }
+    (presentation.reports.is_empty() && presentation.has_reader_body())
+        .then_some(AutomationResultDoc::Fallback)
+}
+
+/// One readable document in an automation period result. Only the selected
+/// document is rendered in the full-width reader.
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+enum AutomationResultDoc {
+    Report(usize),
+    Progress(usize),
+    Fallback,
+    Step(u64),
+}
+
 /// Explicit defaults for a new automation form. Only values that legitimately
 /// depend on the machine are passed in; every other field is fixed here.
 #[derive(Clone, Debug, PartialEq, Eq)]
@@ -102,7 +136,7 @@ impl AutomationDraft {
             minute: "00".into(),
             timezone: defaults.timezone.clone(),
             delay: String::new(),
-            timeout: "30".into(),
+            timeout: "60".into(),
             failures: "3".into(),
             retention: "30".into(),
             plan: None,
@@ -432,6 +466,11 @@ pub struct AutomationUi {
     pub pending_period: Option<u64>,
     pub show_technical: bool,
     pub show_completed_steps: bool,
+    /// Key of the single document currently shown in a period result dialog.
+    /// `None` resolves to the final report when one exists.
+    pub selected_result_doc: Option<String>,
+    /// The Evidence outline group stays closed until the user asks for a step.
+    pub show_result_evidence: bool,
     pub expanded_sources: HashSet<String>,
     pub expanded_appendices: HashSet<String>,
     pub technical_run: Option<u64>,
@@ -443,7 +482,6 @@ pub struct AutomationUi {
     pub scroll: ScrollHandle,
     /// Scroll offset of the open period dialog body, restored by Back.
     pub dialog_scroll: ScrollHandle,
-    pub(crate) report_readers: RefCell<HashMap<String, Entity<gpui_kit::base::text::TextViewState>>>,
     /// Session-only background tint per automation in the all-results list.
     pub result_tints: ResultTints,
     pub name: Entity<InputState>,
@@ -727,6 +765,8 @@ impl AutomationUi {
             pending_period: None,
             show_technical: false,
             show_completed_steps: false,
+            selected_result_doc: None,
+            show_result_evidence: false,
             expanded_sources: HashSet::new(),
             expanded_appendices: HashSet::new(),
             technical_run: None,
@@ -737,7 +777,6 @@ impl AutomationUi {
             feedback: None,
             scroll: ScrollHandle::new(),
             dialog_scroll: ScrollHandle::new(),
-            report_readers: RefCell::new(HashMap::new()),
             result_tints: ResultTints::new(),
             name: input(window, cx, "e.g. Shenzhen fuel price", ""),
             objective: cx.new(|cx| {
@@ -755,7 +794,7 @@ impl AutomationUi {
             minute: input(window, cx, "00", "00"),
             timezone: input(window, cx, "Asia/Shanghai", &system_timezone()),
             delay: input(window, cx, "Default: one period (max 24 h)", ""),
-            timeout: input(window, cx, "minutes", "30"),
+            timeout: input(window, cx, "minutes", "60"),
             failures: input(window, cx, "3", "3"),
             retention: input(window, cx, "30", "30"),
         }
@@ -802,7 +841,6 @@ impl AutomationUi {
     pub(crate) fn clear_store_caches(&mut self) {
         self.result_order.borrow_mut().clear();
         self.run_index.borrow_mut().clear();
-        self.report_readers.borrow_mut().clear();
     }
 
     /// Stable focus handle for one attempt's Review control. Creating it lazily
@@ -1306,6 +1344,8 @@ impl TaskApp {
         let _ = self.close_settings_overlay();
         self.automation_ui.show_technical = false;
         self.automation_ui.show_completed_steps = false;
+        self.automation_ui.selected_result_doc = None;
+        self.automation_ui.show_result_evidence = false;
         self.automation_ui.expanded_sources.clear();
         self.automation_ui.expanded_appendices.clear();
         self.automation_ui.technical_run = None;
@@ -1393,6 +1433,8 @@ impl TaskApp {
         let _ = self.close_period_overlay();
         self.automation_ui.show_technical = false;
         self.automation_ui.show_completed_steps = false;
+        self.automation_ui.selected_result_doc = None;
+        self.automation_ui.show_result_evidence = false;
         self.automation_ui.expanded_sources.clear();
         self.automation_ui.expanded_appendices.clear();
         self.automation_ui.technical_run = None;
@@ -3305,9 +3347,10 @@ impl TaskApp {
         plan: &AutomationResultsPlan,
         cx: &mut Context<Self>,
     ) -> AnyElement {
+        let colors = palette(cx);
         let heading = match plan.filter {
-            Some(_) => format!("Periods · {} of {}", plan.total, plan.all_total),
-            None => format!("Periods · {}", plan.total),
+            Some(_) => format!("{} / {}", plan.total, plan.all_total),
+            None => plan.total.to_string(),
         };
         let mut panel = col()
             .w_full()
@@ -3315,59 +3358,33 @@ impl TaskApp {
             .p_6()
             .gap_4()
             .child(
-                col()
+                row()
                     .w_full()
                     .min_w_0()
-                    .gap_1()
-                    .child(
-                        div()
-                            .id("automation-results-title")
-                            .text_lg()
-                            .font_weight(FontWeight::SEMIBOLD)
-                            .child(selectable("Automation results"))
-                            .map(observed),
-                    )
-                    .child(crate::views::observed(
-                        div()
-                            .id("automation-results-subtitle")
-                            .aria_label(crate::i18n::tr("Every automation period, newest activity first. Each row names the timestamp it shows; open it for its answer and sources."))
-                            .w_full()
-                            .min_w_0()
-                            .child(muted(
-                                "Every automation period, newest activity first. Each row names the timestamp it shows; open it for its answer and sources.",
-                                cx,
-                            )),
-                    )),
-            );
-        if plan.total > 0 {
-            panel = panel.child(
-                col()
-                    .w_full()
-                    .min_w_0()
-                    .gap_2()
+                    .justify_between()
+                    .flex_wrap()
+                    .gap_3()
                     .child(
                         row()
-                            .w_full()
                             .min_w_0()
-                            .justify_between()
-                            .flex_wrap()
-                            .gap_3()
+                            .items_center()
+                            .gap_2()
                             .child(
                                 div()
+                                    .id("automation-results-title")
+                                    .text_lg()
                                     .font_weight(FontWeight::SEMIBOLD)
-                                    .child(selectable(heading)),
+                                    .child(selectable("Automation results"))
+                                    .map(observed),
                             )
-                            .child(self.automation_results_filter_control(cx)),
+                            .child(
+                                chip(heading, colors.muted, cx)
+                                    .id("automation-results-count"),
+                            ),
                     )
-                    .child(crate::views::observed(
-                        div()
-                            .id("automation-results-unread-hint")
-                            .aria_label(crate::i18n::tr("Unread results are marked with a dot."))
-                            .w_full()
-                            .min_w_0()
-                            .child(muted("Unread results are marked with a dot.", cx)),
-                    )),
+                    .child(self.automation_results_filter_control(cx)),
             );
+        if plan.total > 0 {
             if plan.queued > 0 || plan.waiting > 0 {
                 panel = panel.child(overview_note(
                     format!(
@@ -3714,10 +3731,9 @@ impl TaskApp {
                     "Pause and Run manually unlock once you review and enable this draft.",
                     cx,
                 ))
-            })
-            // Separate the definition and its actions from the run history.
-            .child(div().w_full().h(px(1.)).bg(rgb(colors.line)));
-
+            });
+        // The history heading carries its own compact separator.
+        //
         // History is a compact, newest-first list. Each row opens its result in
         // a dialog; nothing expands inside the page.
         // In live mode the indexed reader owns the visible page order and
@@ -3774,16 +3790,16 @@ impl TaskApp {
         } else {
             panel = panel.child(
                 row()
+                    .w_full()
                     .justify_between()
+                    .border_t_1()
+                    .border_color(rgb(colors.subtle_line))
+                    .pt_2()
                     .child(
                         div()
                             .font_weight(FontWeight::SEMIBOLD)
                             .child(selectable(format!("History · {total}"))),
-                    )
-                    .child(overview_note(
-                        "Newest activity first. Unread results are marked with a dot.",
-                        cx,
-                    )),
+                    ),
             );
             let mut history = col().gap_2();
             for occurrence in shown {
@@ -4307,76 +4323,25 @@ impl TaskApp {
             .into_any_element()
     }
 
-    /// Keep short reports in the outer flow; virtualize long documents by block.
-    fn automation_report_reader(
-        &self, key: String, markdown: String, height: Pixels, cx: &mut Context<Self>,
-    ) -> AnyElement {
-        use gpui_kit::base::text::{TextView, TextViewState};
-        let long = markdown.len() > 4096 || markdown.lines().count() > 40;
-        let view = if long {
-            let mut readers = self.automation_ui.report_readers.borrow_mut();
-            // Retain only the active period's readers, including Back navigation.
-            let prefix = format!("automation-result-{}-", self.period_overlay().unwrap_or(0));
-            readers.retain(|key, _| key.starts_with(&prefix));
-            let state = readers.entry(key.clone()).or_insert_with(||
-                cx.new(|cx| TextViewState::markdown(&markdown, cx).scrollable(true))
-            ).clone();
-            state.update(cx, |state, cx| state.set_text(&markdown, cx));
-            TextView::new(&state).scrollable(true).h(height)
-        } else {
-            TextView::markdown(key.clone(), markdown)
-        }.markdown_extensions(crate::rich_markdown::extensions()).w_full()
+    /// The result dialog has one scroll container. The selected document
+    /// renders into that flow instead of creating a nested reader per report.
+    fn automation_report_reader(&self, key: String, markdown: String) -> AnyElement {
+        use gpui_kit::base::text::TextView;
+        TextView::markdown(key, markdown)
+            .markdown_extensions(crate::rich_markdown::extensions())
+            .w_full()
             .on_link_click(|url, _, _, cx| {
-                if url.starts_with("https://") || url.starts_with("http://") { cx.open_url(url); }
-            });
-        if !long { return view.into_any_element(); }
-        let state = self.automation_ui.report_readers.borrow()[&key].clone();
-        let outer = self.automation_ui.dialog_scroll.clone();
-        div().id(format!("{key}-reader")).relative().w_full().h(height).flex_shrink_0()
-            .child(canvas(|_, _, _| (), move |bounds, _, window, _| {
-                let visible = bounds.intersect(&window.content_mask().bounds);
-                let state = state.clone();
-                let outer = outer.clone();
-                // Register before the child so capture runs before its bounce handler.
-                window.on_mouse_event(move |event: &ScrollEvent, phase, window, cx| {
-                    if phase != DispatchPhase::Capture || !visible.contains(&event.position) { return; }
-                    let delta = event.delta.pixel_delta(window.line_height());
-                    if delta.y == px(0.) || delta.x.abs() > delta.y.abs() { return; }
-                    // Reveal a clipped reader before scrolling text inside it.
-                    let reveal = if delta.y < px(0.) && bounds.bottom() > visible.bottom() {
-                        delta.y.max(visible.bottom() - bounds.bottom())
-                    } else if delta.y > px(0.) && bounds.top() < visible.top() {
-                        delta.y.min(visible.top() - bounds.top())
-                    } else { px(0.) };
-                    let outer_next = (outer.offset().y + reveal).clamp(-outer.max_offset().y, px(0.));
-                    if reveal != px(0.) && outer_next != outer.offset().y {
-                        outer.set_offset(point(outer.offset().x, outer_next));
-                        window.refresh();
-                        cx.stop_propagation();
-                        return;
-                    }
-                    let list = state.read(cx).list_state().clone();
-                    let offset = list.scroll_px_offset_for_scrollbar();
-                    let max = list.max_offset_for_scrollbar();
-                    let next = (offset.y + delta.y).clamp(-max.y, px(0.));
-                    let at_edge = if delta.y < px(0.) { offset.y <= -max.y + px(0.5) } else { offset.y >= px(-0.5) };
-                    if !at_edge {
-                        list.set_offset_from_scrollbar(point(offset.x, next));
-                        state.update(cx, |_, cx| cx.notify());
-                    } else {
-                        outer.set_offset(point(outer.offset().x, (outer.offset().y + delta.y).clamp(-outer.max_offset().y, px(0.))));
-                    }
-                    window.refresh();
-                    cx.stop_propagation();
-                });
-            }).absolute().inset_0()).child(view).map(observed).into_any_element()
+                if url.starts_with("https://") || url.starts_with("http://") {
+                    cx.open_url(url);
+                }
+            })
+            .into_any_element()
     }
 
     fn automation_report_section(
         &self,
         key: String,
         markdown: String,
-        height: Pixels,
         cx: &mut Context<Self>,
     ) -> AnyElement {
         let (body, appendix) =
@@ -4394,8 +4359,6 @@ impl TaskApp {
             .child(self.automation_report_reader(
                 format!("{key}-body"),
                 body.to_string(),
-                height,
-                cx,
             ));
         if let Some(appendix) = appendix {
             let toggle_id = disclosure_id.clone();
@@ -4426,8 +4389,6 @@ impl TaskApp {
                 section = section.child(self.automation_report_reader(
                     format!("{key}-appendix"),
                     appendix,
-                    height,
-                    cx,
                 ));
             }
         }
@@ -4442,6 +4403,38 @@ impl TaskApp {
             }
         }
         owner.to_string()
+    }
+
+    fn automation_selected_result_doc(
+        &self,
+        presentation: &crate::result_presentation::ResultPresentation,
+    ) -> Option<AutomationResultDoc> {
+        if let Some(key) = &self.automation_ui.selected_result_doc {
+            if let Some(task_id) = key.strip_prefix("step-").and_then(|value| value.parse::<u64>().ok())
+                && self.store.task(task_id).is_some()
+            {
+                return Some(AutomationResultDoc::Step(task_id));
+            }
+        }
+        default_automation_result_doc(presentation)
+    }
+
+    fn automation_step_run(
+        &self,
+        occurrence: &AutomationOccurrence,
+        task_id: u64,
+    ) -> Option<&crate::domain::AgentRun> {
+        self.store
+            .runs()
+            .iter()
+            .filter(|run| {
+                run.automation_occurrence_id == Some(occurrence.id) && run.task_id == task_id
+            })
+            .filter(|run| {
+                matches!(run.status.as_str(), "Succeeded" | "Blocked")
+                    && (!run.output.trim().is_empty() || self.store.run_body_is_lazy(run.id))
+            })
+            .max_by_key(|run| run.id)
     }
 
     fn automation_occurrence_detail(
@@ -4603,16 +4596,20 @@ impl TaskApp {
                 .map(observed),
             );
         }
-        let single_final_report = presentation.reports.len() == 1
+        let selected_doc = self.automation_selected_result_doc(presentation);
+        let single_final_report = !matches!(selected_doc, Some(AutomationResultDoc::Step(_)))
+            && presentation.reports.len() == 1
             && presentation.has_final_report;
-        let show_state = !active
+        let step_result_selected = matches!(selected_doc, Some(AutomationResultDoc::Step(_)));
+        let show_state = !step_result_selected
+            && !active
             && (!single_final_report
                 || presentation.freshness.stale_input
                 || presentation.freshness.regenerating
                 || presentation.freshness.historical
                 || presentation.freshness.legacy_contract);
         let state_label = presentation.state_label();
-        if show_state {
+        if show_state && !step_result_selected {
             panel = panel.child(
                 div()
                     .id("automation-result-state")
@@ -4622,122 +4619,205 @@ impl TaskApp {
                     .map(observed),
             );
         }
-        if presentation.reports.is_empty() && presentation.has_reader_body() {
-            panel = panel.child(
-                div().p_3().rounded(px(crate::appearance::GROUP_RADIUS)).bg(rgb(colors.panel)).child(
-                    self.automation_report_section(
-                        format!("automation-result-{id}-fallback"),
-                        presentation.reader_markdown.clone(), reader_height, cx,
-                    ),
-                ),
-            );
-            panel = panel.child(self.automation_result_sources(
-                id,
-                "fallback",
-                &presentation.sources,
-                cx,
-            ));
-        }
-        for report in &presentation.reports {
-            let result = &report.presentation;
-            if result.run_id.is_none()
-                && result.kind == crate::result_presentation::ResultKind::None
-            {
-                panel = panel.child(muted(
-                    format!("{} · No final report yet", self.result_owner_title(&report.owner_label)),
-                    cx,
-                ));
-                continue;
-            }
-            if presentation.reports.len() > 1 {
-                let mut heading = format!("{} · {}", self.result_owner_title(&report.owner_label), crate::i18n::tr_string(result.kind.label()));
-                if result.notice.is_none() {
-                    if let Some(suffix) = result.status_suffix() {
-                        heading.push_str(&format!(" · {suffix}"));
+        match selected_doc {
+            Some(AutomationResultDoc::Step(task_id)) => {
+                if let Some(run) = self.automation_step_run(occurrence, task_id) {
+                    let step = crate::result_presentation::present_run(&self.store, run);
+                    let task = self.store.task(task_id);
+                    let kind = task
+                        .and_then(|task| task.research.as_ref())
+                        .map(|research| match research.kind {
+                            crate::research::ResearchKind::Collect => "Evidence",
+                            crate::research::ResearchKind::Analyze => "Analysis",
+                            crate::research::ResearchKind::Advise => "Final report",
+                            crate::research::ResearchKind::Goal => "Step",
+                        })
+                        .unwrap_or("Step");
+                    let identifier = task
+                        .map(|task| self.store.identifier(task))
+                        .unwrap_or_else(|| format!("Step {task_id}"));
+                    let title = task
+                        .map(|task| task.title.clone())
+                        .unwrap_or_else(|| crate::i18n::tr_string(kind));
+                    panel = panel.child(
+                        row()
+                            .id("automation-step-result-context")
+                            .items_center()
+                            .gap_2()
+                            .child(
+                                tool_icon(
+                                    "automation-step-back-final",
+                                    assets::IconName::ArrowLeft,
+                                    "View final report",
+                                )
+                                .on_click(cx.listener(|app, _, _, cx| {
+                                    app.automation_ui.selected_result_doc = None;
+                                    app.automation_ui.dialog_scroll.set_offset(point(px(0.), px(0.)));
+                                    cx.notify();
+                                })),
+                            )
+                            .child(chip(
+                                format!("{} · {}", crate::i18n::tr_string(kind), identifier),
+                                colors.text,
+                                cx,
+                            ).id("automation-step-result-kind"))
+                            .child(label(title, cx).min_w_0().max_w_full()),
+                    );
+                    if step.notice.is_some() {
+                        panel = panel.child(crate::views::notice(
+                            crate::views::NoticeTone::Warning,
+                            crate::research::EVIDENCE_GAP_NOTICE,
+                            cx,
+                        ));
+                    }
+                    if step.has_reader_body() {
+                        panel = panel.child(
+                            div()
+                                .id(format!("automation-report-body-{id}-step-{task_id}"))
+                                .aria_label(crate::i18n::tr("Retained report body"))
+                                .p_3().rounded(px(crate::appearance::GROUP_RADIUS)).bg(rgb(colors.panel)).child(
+                                self.automation_report_section(
+                                    format!("automation-result-{id}-step-{task_id}"),
+                                    step.reader_markdown.clone(),
+                                    cx,
+                                ),
+                            ).map(observed),
+                        );
+                        if !step.sources.is_empty() {
+                            panel = panel.child(self.automation_result_sources(
+                                id,
+                                &format!("step-{task_id}"),
+                                &step.sources,
+                                cx,
+                            ));
+                        }
+                    } else {
+                        panel = panel.child(muted(
+                            crate::i18n::tr("No report text was saved for this step."),
+                            cx,
+                        ));
                     }
                 }
+            }
+            Some(AutomationResultDoc::Fallback) => {
                 panel = panel.child(
-                    div()
-                        .font_weight(FontWeight::SEMIBOLD)
-                        .child(selectable(heading)),
-                );
-            }
-            // The saved-version tooltip explains the frozen instructions.
-            let freshness = crate::result_presentation::Freshness {
-                previous_version: false,
-                ..result.freshness
-            }.labels();
-            let freshness: Vec<_> = freshness.into_iter()
-                .filter(|label| !show_state || !presentation.freshness.labels().contains(label))
-                .collect();
-            if !freshness.is_empty() {
-                panel = panel.child(muted(freshness.join(" · "), cx));
-            }
-            if result.notice.is_some() {
-                panel = panel.child(crate::views::notice(
-                    crate::views::NoticeTone::Warning,
-                    crate::research::EVIDENCE_GAP_NOTICE,
-                    cx,
-                ));
-            }
-            if result.has_reader_body() {
-                let run_key = result.run_id.unwrap_or(0);
-                panel = panel.child(
-                    div()
-                        .id(format!("automation-report-body-{id}-{run_key}"))
-                        .aria_label(crate::i18n::tr("Retained report body"))
-                        .p_3().rounded(px(crate::appearance::GROUP_RADIUS)).bg(rgb(colors.panel)).child(
+                    div().p_3().rounded(px(crate::appearance::GROUP_RADIUS)).bg(rgb(colors.panel)).child(
                         self.automation_report_section(
-                            format!("automation-result-{id}-{run_key}"),
-                            result.reader_markdown.clone(), reader_height, cx,
-                        ),
-                    ).map(observed),
-                );
-                if !result.sources.is_empty() {
-                    panel = panel.child(self.automation_result_sources(
-                        id,
-                        &format!("report-{run_key}"),
-                        &result.sources,
-                        cx,
-                    ));
-                }
-            } else if result.quality == crate::result_presentation::EvidenceQuality::Rejected {
-                panel = panel.child(muted(
-                    "The saved output did not pass report validation. Raw output remains in Technical details.",
-                    cx,
-                ));
-            } else if result.quality == crate::result_presentation::EvidenceQuality::NotValidated
-                && result.kind != crate::result_presentation::ResultKind::LiveProgress
-            {
-                panel = panel.child(muted(
-                    "This attempt has no validated reader report. Raw output remains in Technical details.",
-                    cx,
-                ));
-            }
-        }
-        if !presentation.progress.is_empty() {
-            panel = panel.child(
-                div()
-                    .id("automation-live-progress")
-                    .font_weight(FontWeight::SEMIBOLD)
-                    .child(selectable("Live progress · not a validated answer"))
-                    .map(observed),
-            );
-            for progress in &presentation.progress {
-                panel = panel.child(
-                    col()
-                        .p_3()
-                        .gap_1()
-                        .rounded(px(crate::appearance::GROUP_RADIUS))
-                        .border_1()
-                        .border_color(rgb(colors.line))
-                        .child(label(
-                            format!("{} · {}", self.result_owner_title(&progress.owner_label), crate::i18n::tr_string(&progress.step_label)),
+                            format!("automation-result-{id}-fallback"),
+                            presentation.reader_markdown.clone(),
                             cx,
-                        ))
-                        .child(selectable(progress.text.clone())),
+                        ),
+                    ),
                 );
+                panel = panel.child(self.automation_result_sources(
+                    id,
+                    "fallback",
+                    &presentation.sources,
+                    cx,
+                ));
             }
+            Some(AutomationResultDoc::Report(index)) => {
+                if let Some(report) = presentation.reports.get(index) {
+                    let result = &report.presentation;
+                    if result.run_id.is_none()
+                        && result.kind == crate::result_presentation::ResultKind::None
+                    {
+                        panel = panel.child(muted(
+                            format!("{} · No final report yet", self.result_owner_title(&report.owner_label)),
+                            cx,
+                        ));
+                    } else {
+                        if !single_final_report {
+                            let mut heading = format!("{} · {}", self.result_owner_title(&report.owner_label), crate::i18n::tr_string(result.kind.label()));
+                            if result.notice.is_none() {
+                                if let Some(suffix) = result.status_suffix() {
+                                    heading.push_str(&format!(" · {suffix}"));
+                                }
+                            }
+                            panel = panel.child(
+                                div().font_weight(FontWeight::SEMIBOLD).child(selectable(heading)),
+                            );
+                        }
+                        let freshness = crate::result_presentation::Freshness {
+                            previous_version: false,
+                            ..result.freshness
+                        }.labels();
+                        let freshness: Vec<_> = freshness.into_iter()
+                            .filter(|label| !show_state || !presentation.freshness.labels().contains(label))
+                            .collect();
+                        if !freshness.is_empty() {
+                            panel = panel.child(muted(freshness.join(" · "), cx));
+                        }
+                        if result.notice.is_some() {
+                            panel = panel.child(crate::views::notice(
+                                crate::views::NoticeTone::Warning,
+                                crate::research::EVIDENCE_GAP_NOTICE,
+                                cx,
+                            ));
+                        }
+                        if result.has_reader_body() {
+                            let run_key = result.run_id.unwrap_or(0);
+                            panel = panel.child(
+                                div()
+                                    .id(format!("automation-report-body-{id}-{run_key}"))
+                                    .aria_label(crate::i18n::tr("Retained report body"))
+                                    .p_3().rounded(px(crate::appearance::GROUP_RADIUS)).bg(rgb(colors.panel)).child(
+                                    self.automation_report_section(
+                                        format!("automation-result-{id}-{run_key}"),
+                                        result.reader_markdown.clone(),
+                                        cx,
+                                    ),
+                                ).map(observed),
+                            );
+                            if !result.sources.is_empty() {
+                                panel = panel.child(self.automation_result_sources(
+                                    id,
+                                    &format!("report-{run_key}"),
+                                    &result.sources,
+                                    cx,
+                                ));
+                            }
+                        } else if result.quality == crate::result_presentation::EvidenceQuality::Rejected {
+                            panel = panel.child(muted(
+                                "The saved output did not pass report validation. Raw output remains in Technical details.",
+                                cx,
+                            ));
+                        } else if result.quality == crate::result_presentation::EvidenceQuality::NotValidated
+                            && result.kind != crate::result_presentation::ResultKind::LiveProgress
+                        {
+                            panel = panel.child(muted(
+                                "This attempt has no validated reader report. Raw output remains in Technical details.",
+                                cx,
+                            ));
+                        }
+                    }
+                }
+            }
+            Some(AutomationResultDoc::Progress(index)) => {
+                if let Some(progress) = presentation.progress.get(index) {
+                    panel = panel.child(
+                        div()
+                            .id("automation-live-progress")
+                            .font_weight(FontWeight::SEMIBOLD)
+                            .child(selectable("Live progress · not a validated answer"))
+                            .map(observed),
+                    );
+                    panel = panel.child(
+                        col()
+                            .p_3()
+                            .gap_1()
+                            .rounded(px(crate::appearance::GROUP_RADIUS))
+                            .border_1()
+                            .border_color(rgb(colors.line))
+                            .child(label(
+                                format!("{} · {}", self.result_owner_title(&progress.owner_label), crate::i18n::tr_string(&progress.step_label)),
+                                cx,
+                            ))
+                            .child(selectable(progress.text.clone())),
+                    );
+                }
+            }
+            None => {}
         }
         // Steps remain normal research entities but are reached only from here.
         // Their full titles are shown, not just identifiers, so a research
@@ -4965,6 +5045,12 @@ impl TaskApp {
             .iter()
             .filter(|task| self.store.research_result_available_or_pending(**task))
             .count();
+        let selected_task = self
+            .automation_ui
+            .selected_result_doc
+            .as_deref()
+            .and_then(|key| key.strip_prefix("step-"))
+            .and_then(|value| value.parse::<u64>().ok());
         let busy = occurrence.status.is_active() || goals.iter().any(|goal| self.goal_busy(*goal));
         let retry_blocker = self
             .store
@@ -4990,6 +5076,7 @@ impl TaskApp {
             let Some(task) = self.store.task(task_id) else {
                 continue;
             };
+            let has_result = self.automation_step_run(occurrence, task_id).is_some();
             let status = self.display_task_status(task_id);
             let execution = status.execution;
             let kind = match task.research.as_ref().map(|research| research.kind) {
@@ -5008,6 +5095,9 @@ impl TaskApp {
                     .gap_2()
                     .items_center()
                     .rounded(px(crate::appearance::GROUP_RADIUS))
+                    .when(selected_task == Some(task_id), |view| {
+                        view.bg(rgb(colors.accent_surface))
+                    })
                     .cursor_pointer()
                     .hover(|d| d.bg(rgb(colors.hover)))
                     .tooltip({
@@ -5019,7 +5109,13 @@ impl TaskApp {
                     })
                     .on_click(
                         cx.listener(move |app, _, window, cx| {
-                            app.request_task(task_id, false, window, cx)
+                            if has_result {
+                                app.automation_ui.selected_result_doc = Some(format!("step-{task_id}"));
+                                app.automation_ui.dialog_scroll.set_offset(point(px(0.), px(0.)));
+                                cx.notify();
+                            } else {
+                                app.request_task(task_id, false, window, cx)
+                            }
                         }),
                     )
                     .child(execution.icon_view(format!("automation-step-icon-{task_id}"), cx))
@@ -5052,15 +5148,28 @@ impl TaskApp {
                             .child(selectable(title.clone())),
                     )
                     .child(
-                        quiet_button(format!("automation-step-{task_id}"), "Open")
+                        quiet_button(
+                            format!("automation-step-{task_id}"),
+                            if has_result { "View result" } else { "Open" }
+                        )
                             .icon(assets::IconName::ChevronRight)
                             .accessibility_label(crate::i18n::tr(format!(
-                                "Open {identifier} · {title}"
+                                "{} {identifier} · {title}",
+                                if has_result { "View result for" } else { "Open" }
                             )))
-                            .tooltip(crate::i18n::tr(format!("Open {identifier} · {title}")))
+                            .tooltip(crate::i18n::tr(format!(
+                                "{} {identifier} · {title}",
+                                if has_result { "View result for" } else { "Open" }
+                            )))
                             .on_click(cx.listener(move |app, _, window, cx| {
                                 cx.stop_propagation();
-                                app.request_task(task_id, false, window, cx)
+                                if has_result {
+                                    app.automation_ui.selected_result_doc = Some(format!("step-{task_id}"));
+                                    app.automation_ui.dialog_scroll.set_offset(point(px(0.), px(0.)));
+                                    cx.notify();
+                                } else {
+                                    app.request_task(task_id, false, window, cx)
+                                }
                             })),
                     ),
             );
@@ -5166,7 +5275,8 @@ impl TaskApp {
                 col()
                     .w(px(860.))
                     .max_w_full()
-                    .max_h(relative(0.9))
+                    .h(relative(0.9))
+                    .max_h_full()
                     .p_6()
                     .gap_4()
                     .map(|d| crate::appearance::floating_surface(d, cx))
@@ -5182,7 +5292,7 @@ impl TaskApp {
                                         selectable(title),
                                     ))
                                     .child(muted(
-                                        format!("Period {} · {} · {activity_text} · {}", occurrence.id, crate::i18n::tr_string(occurrence.status.label()), crate::i18n::tr_string(occurrence.source.label())),
+                        format!("#{} · {} · {}", occurrence.id, crate::i18n::tr_string(occurrence.status.label()), activity_text),
                                         cx,
                                     )),
                             )
@@ -5206,15 +5316,19 @@ impl TaskApp {
                                         )
                                     })
                                     .child(
-                                        quiet_button(
+                                        tool_icon(
                                             "mark-automation-read",
+                                            if occurrence.unread {
+                                                assets::IconName::CircleDot
+                                            } else {
+                                                assets::IconName::CircleCheck
+                                            },
                                             if occurrence.unread {
                                                 "Mark read"
                                             } else {
                                                 "Mark unread"
                                             },
                                         )
-                                        .icon(assets::IconName::Check)
                                         .on_click(
                                             cx.listener(move |app, _, _, cx| {
                                                 app.toggle_automation_read(id, cx)
@@ -5239,8 +5353,11 @@ impl TaskApp {
                         div()
                             .id("automation-result-body")
                             .flex_1()
+                            .h_full()
+                            .min_w_0()
                             .min_h_0()
                             .overflow_y_scroll()
+                            .overflow_x_scroll()
                             .track_scroll(&self.automation_ui.dialog_scroll)
                             // A native wheel can update the offset without waking
                             // a newly installed cached overlay. Request a paint,
@@ -6072,6 +6189,10 @@ mod tests {
     };
     use crate::automation_schedule::{Schedule, ScheduleSpec};
     use crate::domain::Store;
+    use crate::result_presentation::{
+        OwnedReportPresentation, ProgressPresentation, ResultKind, ResultPresentation,
+    };
+    use super::default_automation_result_doc;
 
     #[test]
     fn result_scroll_bridge_keeps_list_offset_authoritative() {
@@ -6116,6 +6237,81 @@ mod tests {
         assert_eq!(
             result_scroll_step(false, -120.0, -120.0, -120.0, None, 0),
             ResultScrollStep::Idle
+        );
+    }
+
+    fn owned_report(
+        run_id: u64,
+        kind: ResultKind,
+        has_final_report: bool,
+        body: &str,
+    ) -> OwnedReportPresentation {
+        OwnedReportPresentation {
+            owner_label: "1 · Test step".into(),
+            presentation: ResultPresentation {
+                kind,
+                run_id: Some(run_id),
+                reader_markdown: body.into(),
+                has_final_report,
+                ..ResultPresentation::empty()
+            },
+        }
+    }
+
+    #[test]
+    fn result_doc_selection_prefers_the_final_report() {
+        let mut presentation = ResultPresentation::empty();
+        presentation.reports.push(owned_report(
+            8,
+            ResultKind::IntermediateEvidence,
+            false,
+            "Evidence body",
+        ));
+        presentation.reports.push(owned_report(
+            9,
+            ResultKind::FinalReport,
+            true,
+            "Final body",
+        ));
+        assert_eq!(
+            default_automation_result_doc(&presentation),
+            Some(super::AutomationResultDoc::Report(1))
+        );
+        presentation.progress.push(ProgressPresentation {
+            run_id: 10,
+            owner_label: "1 · Test goal".into(),
+            step_label: "Live step".into(),
+            text: "streaming".into(),
+        });
+        assert_eq!(
+            default_automation_result_doc(&presentation),
+            Some(super::AutomationResultDoc::Report(1))
+        );
+    }
+
+    #[test]
+    fn result_doc_selection_falls_back_to_evidence_then_progress() {
+        let mut presentation = ResultPresentation::empty();
+        presentation.reports.push(owned_report(
+            8,
+            ResultKind::IntermediateEvidence,
+            false,
+            "Evidence body",
+        ));
+        assert_eq!(
+            default_automation_result_doc(&presentation),
+            Some(super::AutomationResultDoc::Report(0))
+        );
+        presentation.reports.clear();
+        presentation.progress.push(ProgressPresentation {
+            run_id: 10,
+            owner_label: "1 · Test goal".into(),
+            step_label: "Live step".into(),
+            text: "streaming".into(),
+        });
+        assert_eq!(
+            default_automation_result_doc(&presentation),
+            Some(super::AutomationResultDoc::Progress(0))
         );
     }
 

@@ -5,6 +5,10 @@ pub fn activity_event(message: &str) -> String {
     format!("{message} · {}", crate::opencode::timestamp())
 }
 
+/// Hard wall-clock limit for a single agent attempt across ordinary research,
+/// automation steps, planning and report regeneration.
+pub const RUN_TIMEOUT_SECONDS: i64 = 60 * 60;
+
 /// Old versions stored a relative label without recording an event time.
 /// Only creation events can recover their time from the task itself.
 pub fn activity_display(event: &str, created_at: &str) -> String {

@@ -3595,14 +3595,14 @@ fn draft_defaults_check(root: &Path) {
         let policy = ui.policy(cx).expect("default policy");
         assert_eq!(policy.catch_up, crate::automation_schedule::CatchUp::LatestOnly);
         assert_eq!(policy.allowed_delay_seconds, 24 * 60 * 60);
-        assert_eq!(policy.timeout_seconds, 30 * 60);
+        assert_eq!(policy.timeout_seconds, 60 * 60);
         assert_eq!(policy.max_consecutive_failures, 3);
         assert_eq!(policy.log_retention_days, 30);
         assert_eq!(ui.interval.read(cx).value().to_string(), "10");
         assert_eq!(ui.hour.read(cx).value().to_string(), "10");
         assert_eq!(ui.minute.read(cx).value().to_string(), "00");
         assert_eq!(ui.delay.read(cx).value().to_string(), "");
-        assert_eq!(ui.timeout.read(cx).value().to_string(), "30");
+        assert_eq!(ui.timeout.read(cx).value().to_string(), "60");
         assert_eq!(ui.failures.read(cx).value().to_string(), "3");
         assert_eq!(ui.retention.read(cx).value().to_string(), "30");
         assert_eq!(ui.timezone.read(cx).value().to_string(), crate::automation_views::system_timezone());

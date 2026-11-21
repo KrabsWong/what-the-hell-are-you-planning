@@ -699,7 +699,8 @@ impl TaskApp {
             let index = crate::research::ResearchKind::Advise.index();
             run.automation_occurrence_id = Some(occurrence_id);
             run.deadline_at = Some(
-                Self::automation_now().saturating_add(occurrence.snapshot.policy.timeout_seconds),
+                Self::automation_now()
+                    .saturating_add(occurrence.snapshot.policy.effective_timeout_seconds()),
             );
             run.model = occurrence.snapshot.models[index].clone();
             run.agent = occurrence

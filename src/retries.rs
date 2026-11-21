@@ -2,8 +2,8 @@
 use crate::domain::{AgentRun, Stage, Store};
 
 pub const MAX_AUTO_RETRIES: u8 = 3;
-pub const RETRY_DELAY_SECONDS: i64 = 30;
-pub const FALLBACK_AFTER_FAILED_ATTEMPTS: u8 = 2;
+pub const RETRY_DELAY_SECONDS: i64 = 15;
+pub const FALLBACK_AFTER_FAILED_ATTEMPTS: u8 = 1;
 
 impl AgentRun {
     pub fn retry_delay_remaining(&self, now: i64) -> i64 {
@@ -75,6 +75,14 @@ impl Store {
         retry.id = self.runs().iter().map(|run| run.id).max()?.checked_add(1)?;
         retry.auto_retry_attempt += 1;
         retry.retry_not_before = Some(now + RETRY_DELAY_SECONDS);
+        retry.deadline_at = Some(
+            failed
+                .automation_occurrence_id
+                .and_then(|id| self.occurrence(id))
+                .and_then(|occurrence| occurrence.deadline_at)
+                .map(|deadline| deadline.min(now + crate::domain::RUN_TIMEOUT_SECONDS))
+                .unwrap_or_else(|| now + crate::domain::RUN_TIMEOUT_SECONDS),
+        );
         retry.status = "Queued".into();
         retry.queued_at = crate::opencode::timestamp();
         retry.started_at.clear();
@@ -105,8 +113,7 @@ impl Store {
                 && (retry.agent != self.fallback_agent() || retry.model != self.fallback_model())
             {
                 retry.logs.push(format!(
-                    "[fallback] Primary model still unavailable after {} failed attempts. Retrying with {} · {} in a fresh session.",
-                    FALLBACK_AFTER_FAILED_ATTEMPTS,
+                    "[fallback] Primary model is unavailable. Retrying with {} · {} in a fresh session.",
                     self.fallback_agent(),
                     self.fallback_model()
                 ));
@@ -127,6 +134,9 @@ impl Store {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::automation::{AutomationPolicy, AutomationShape};
+    use crate::automation_execution::{build_quick_template, build_template};
+    use crate::automation_schedule::{Schedule, ScheduleSpec};
 
     fn failed_task() -> (Store, u64) {
         let mut store = Store::empty();
@@ -143,6 +153,60 @@ mod tests {
             run.id
         };
         (store, id)
+    }
+
+    fn failed_automation_run(shape: AutomationShape) -> (Store, u64) {
+        let mut store = Store::empty();
+        store.project_at_mut(0).unwrap().directory = std::env::temp_dir().to_string_lossy().into_owned();
+        store.set_default_model("test/model".into());
+        store.research_config_mut().fallback_agent = "Codex".into();
+        store.research_config_mut().fallback_model = "fallback-model".into();
+        let template = if shape == AutomationShape::Quick {
+            build_quick_template("Check a value", "A sourced answer").unwrap()
+        } else {
+            build_template("Track a topic", "A sourced note").unwrap()
+        };
+        let id = store
+            .create_automation_draft(
+                1,
+                shape,
+                "Retry fixture".into(),
+                "Check a value".into(),
+                "A sourced answer".into(),
+                Schedule {
+                    spec: ScheduleSpec::Daily { hour: 10, minute: 0 },
+                    timezone: "Asia/Shanghai".into(),
+                },
+                AutomationPolicy::default(),
+                Some(template),
+                1_000,
+            )
+            .unwrap();
+        store.approve_and_enable(id, vec![], 1_000).unwrap();
+        let occurrence = store.request_manual_occurrence(id, "fallback", 1_000).unwrap();
+        let mut run = store.prepare_occurrence_run(&occurrence, 1_010).unwrap();
+        run.status = "Failed".into();
+        run.logs.push(
+            r#"[error] {"type":"provider.quota","message":"Insufficient balance","status":402}"#.into(),
+        );
+        store.push_run(run.clone());
+        (store, run.id)
+    }
+
+    #[test]
+    fn automation_research_and_quick_runs_share_the_fallback_chain() {
+        for shape in [AutomationShape::Research, AutomationShape::Quick] {
+            let (store, id) = failed_automation_run(shape);
+            let retry = store.prepare_auto_retry(id, 1_020).unwrap();
+            assert_eq!(retry.agent, "Codex", "{shape:?}");
+            assert_eq!(retry.model, "fallback-model", "{shape:?}");
+            assert_eq!(retry.retry_delay_remaining(1_020), 15, "{shape:?}");
+            assert_eq!(
+                retry.deadline_at,
+                Some(1_020 + crate::domain::RUN_TIMEOUT_SECONDS),
+                "{shape:?}"
+            );
+        }
     }
 
     #[test]
@@ -168,9 +232,9 @@ mod tests {
             let mut retry = store.prepare_auto_retry(id, 100).unwrap();
             assert_eq!(retry.auto_retry_attempt, attempt);
             assert_eq!(retry.status, "Queued");
-            assert_eq!(retry.retry_delay_remaining(100), 30);
-            assert_eq!(retry.retry_delay_remaining(129), 1);
-            assert_eq!(retry.retry_delay_remaining(130), 0);
+            assert_eq!(retry.retry_delay_remaining(100), 15);
+            assert_eq!(retry.retry_delay_remaining(114), 1);
+            assert_eq!(retry.retry_delay_remaining(115), 0);
             assert_eq!(retry.retry_delay_remaining(200), 0);
             assert_eq!(retry.session_id, original.session_id);
             assert_eq!(retry.prompt, original.prompt);
@@ -188,7 +252,7 @@ mod tests {
     }
 
     #[test]
-    fn availability_failure_switches_to_fallback_after_two_attempts() {
+    fn availability_failure_switches_to_fallback_on_the_first_retry() {
         let (mut store, mut id) = failed_task();
         store.research_config_mut().fallback_agent = "Codex".into();
         store.research_config_mut().fallback_model = "fallback-model".into();
@@ -199,9 +263,11 @@ mod tests {
 
         let first = store.prepare_auto_retry(id, 100).unwrap();
         assert_eq!(first.auto_retry_attempt, 1);
-        assert_eq!(first.agent, original.agent);
-        assert_eq!(first.model, original.model);
-        assert_eq!(first.session_id, original.session_id);
+        assert_eq!(first.agent, "Codex");
+        assert_eq!(first.model, "fallback-model");
+        assert!(first.session_id.is_none());
+        assert_eq!(first.input_signature, original.input_signature);
+        assert!(first.logs.iter().any(|line| line.contains("fresh session")));
         let mut first_failed = first.clone();
         first_failed.status = "Failed".into();
         first_failed.logs.push(
@@ -216,7 +282,7 @@ mod tests {
         assert_eq!(second.model, "fallback-model");
         assert!(second.session_id.is_none());
         assert_eq!(second.input_signature, original.input_signature);
-        assert!(second.logs.iter().any(|line| line.contains("fresh session")));
+        assert!(second.logs.iter().all(|line| !line.starts_with("[fallback]")));
         let mut third = second.clone();
         third.status = "Failed".into();
         id = third.id;

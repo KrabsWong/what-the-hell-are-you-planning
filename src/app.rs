@@ -3658,6 +3658,21 @@ impl TaskApp {
                 self.complete_research_run(id, cx);
                 continue;
             }
+            let now = Self::automation_now();
+            if run.deadline_at.is_some_and(|deadline| now >= deadline) {
+                {
+                    let mut run = self.store.run_at_mut(index).unwrap();
+                    run.status = "Stale".into();
+                    run.ended_at = Some(opencode::timestamp());
+                    run.logs.push(if historical_report_regeneration {
+                        "[automation] Report regeneration exceeded its own time limit before starting; the previous report is preserved."
+                    } else {
+                        "[run] Execution time limit reached before this attempt started."
+                    }.into());
+                }
+                self.complete_research_run(id, cx);
+                continue;
+            }
             if let Err(error) = self.check_workspace_directory(std::path::Path::new(&run.directory))
             {
                 {
@@ -3718,27 +3733,9 @@ impl TaskApp {
                     self.complete_research_run(id, cx);
                     continue;
                 };
-                let now = Self::automation_now();
                 let regeneration = occurrence.status
                     == crate::automation::OccurrenceStatus::Succeeded
                     && automation_research_kind == Some(crate::research::ResearchKind::Advise);
-                if self.store.runs()[index]
-                    .deadline_at
-                    .is_some_and(|deadline| now >= deadline)
-                {
-                    {
-                        let mut run = self.store.run_at_mut(index).unwrap();
-                        run.status = "Stale".into();
-                        run.ended_at = Some(opencode::timestamp());
-                        run.logs.push(
-                            "[automation] Report regeneration exceeded its own time limit before starting; the previous report is preserved."
-                                .into(),
-                        );
-                    }
-                    self.persist_if_changed(true);
-                    self.complete_research_run(id, cx);
-                    continue;
-                }
                 if !regeneration && occurrence.first_start_expired(now) {
                     {
                         let mut run = self.store.run_at_mut(index).unwrap();
@@ -3827,10 +3824,20 @@ impl TaskApp {
             };
             self.store.run_at_mut(index).unwrap().status = "Running".into();
             self.store.run_at_mut(index).unwrap().started_at = opencode::timestamp();
+            {
+                let hard_deadline = now.saturating_add(crate::domain::RUN_TIMEOUT_SECONDS);
+                let stored = self.store.run_at_mut(index).unwrap();
+                stored.deadline_at = Some(
+                    stored
+                        .deadline_at
+                        .map_or(hard_deadline, |deadline| deadline.min(hard_deadline)),
+                );
+            }
             self.persist_if_changed(true);
             if !self.storage_error.is_empty() {
                 self.store.run_at_mut(index).unwrap().status = "Queued".into();
                 self.store.run_at_mut(index).unwrap().started_at.clear();
+                self.store.run_at_mut(index).unwrap().deadline_at = run.deadline_at;
                 self.queued_runs.insert(0, (id, request.files));
                 break;
             }

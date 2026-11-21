@@ -95,14 +95,14 @@ Error handling:
 
 | Error | Handling |
 | --- | --- |
-| Network, rate limiting and other transient errors | Reuse the bounded step retry, defaulting to at most 3 attempts 30 seconds apart; never retry early when the service gives an explicit wait time |
+| Network, rate limiting and other transient errors | Reuse the bounded step retry, defaulting to at most 3 attempts 15 seconds apart; switch to the configured fallback on the first availability failure and never retry early when the service gives an explicit wait time |
 | Output validation failure | Bounded correction within the same step retry budget |
 | Missing model, invalid identity, insufficient permission, browser handoff | Move to needs-attention; do not retry continuously |
 | User stop | Cancel the current period and later retries; never retrigger the same period |
 | Timeout | Stop the current period, record the reason and do not start new steps beyond that period's deadline |
 | Consecutive final failures | Pause automatic triggering after 3 consecutive periods; success clears the count, and skipped/cancelled periods do not count |
 
-The default per-period deadline is 30 minutes and can be adjusted in advanced settings. It starts at the first actual start and includes waits between steps and retries. The deadline is saved and survives restarts and sleep.
+The default and maximum per-period deadline are one hour. It can be lowered in advanced settings, starts at the first actual start and includes waits between steps and retries. The deadline is saved and survives restarts and sleep. Each agent attempt also has a one-hour hard deadline; running attempts are stopped when it is reached.
 
 ## 6. Results, history and concurrency
 

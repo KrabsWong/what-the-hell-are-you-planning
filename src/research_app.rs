@@ -794,7 +794,10 @@ impl TaskApp {
                 occurrence: None,
                 goal: continuing_goal,
                 notice: Some(format!(
-                    "Retry {attempt}/3 scheduled in 30 seconds · Stop task to cancel"
+                    "Retry {attempt}/{max} scheduled in {delay} seconds · Stop task to cancel",
+                    attempt = attempt,
+                    delay = crate::retries::RETRY_DELAY_SECONDS,
+                    max = crate::retries::MAX_AUTO_RETRIES,
                 )),
             };
             if let Err(error) = self.save_current_store_durably(completion, cx) {

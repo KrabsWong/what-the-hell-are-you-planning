@@ -9,7 +9,7 @@ use serde::{Deserialize, Serialize};
 use sha2::{Digest, Sha256};
 
 pub const AUTOMATION_SCHEMA_VERSION: u32 = 1;
-pub const DEFAULT_EXECUTION_TIMEOUT_SECONDS: i64 = 30 * 60;
+pub const DEFAULT_EXECUTION_TIMEOUT_SECONDS: i64 = 60 * 60;
 pub const DEFAULT_ALLOWED_DELAY_SECONDS: i64 = 24 * 60 * 60;
 pub const DEFAULT_MAX_CONSECUTIVE_FAILURES: u32 = 3;
 pub const DEFAULT_LOG_RETENTION_DAYS: u32 = 30;
@@ -17,7 +17,7 @@ pub const MIN_LOG_RETENTION_DAYS: u32 = 1;
 pub const MAX_LOG_RETENTION_DAYS: u32 = 3650;
 pub const MAX_ALLOWED_DELAY_SECONDS: i64 = 7 * 24 * 60 * 60;
 pub const MIN_TIMEOUT_SECONDS: i64 = 60;
-pub const MAX_TIMEOUT_SECONDS: i64 = 24 * 60 * 60;
+pub const MAX_TIMEOUT_SECONDS: i64 = 60 * 60;
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(rename_all = "snake_case")]
@@ -152,6 +152,13 @@ impl Default for AutomationPolicy {
     }
 }
 impl AutomationPolicy {
+    /// Applied at runtime so policies saved before the one-hour cap cannot
+    /// create a longer-running period after the cap was introduced.
+    pub fn effective_timeout_seconds(&self) -> i64 {
+        self.timeout_seconds
+            .clamp(MIN_TIMEOUT_SECONDS, MAX_TIMEOUT_SECONDS)
+    }
+
     pub fn validate(&self) -> Result<(), String> {
         if !(1..=MAX_ALLOWED_DELAY_SECONDS).contains(&self.allowed_delay_seconds) {
             return Err(format!(
@@ -160,7 +167,7 @@ impl AutomationPolicy {
             ));
         }
         if !(MIN_TIMEOUT_SECONDS..=MAX_TIMEOUT_SECONDS).contains(&self.timeout_seconds) {
-            return Err("Execution time limit must be between 1 minute and 24 hours.".into());
+            return Err("Execution time limit must be between 1 minute and 1 hour.".into());
         }
         if !(1..=10).contains(&self.max_consecutive_failures) {
             return Err("Pause after consecutive failures must be between 1 and 10.".into());
@@ -622,6 +629,8 @@ impl AutomationOccurrence {
             self.deadline_at = Some(
                 first
                     .checked_add(self.snapshot.policy.timeout_seconds)
+                    .zip(first.checked_add(MAX_TIMEOUT_SECONDS))
+                    .map(|(deadline, cap)| deadline.min(cap))
                     .ok_or("The execution deadline is out of range.")?,
             );
         }
@@ -1161,6 +1170,10 @@ mod tests {
                 ..AutomationPolicy::default()
             },
             AutomationPolicy {
+                timeout_seconds: MAX_TIMEOUT_SECONDS + 1,
+                ..AutomationPolicy::default()
+            },
+            AutomationPolicy {
                 max_consecutive_failures: 0,
                 ..AutomationPolicy::default()
             },
@@ -1172,6 +1185,12 @@ mod tests {
             assert!(invalid.validate().is_err());
         }
         assert_eq!(AutomationPolicy::default().catch_up, CatchUp::LatestOnly);
+        assert_eq!(AutomationPolicy::default().timeout_seconds, 60 * 60);
+        let legacy = AutomationPolicy {
+            timeout_seconds: 24 * 60 * 60,
+            ..AutomationPolicy::default()
+        };
+        assert_eq!(legacy.effective_timeout_seconds(), 60 * 60);
     }
 
     #[test]

@@ -257,10 +257,10 @@ impl TaskApp {
                 .child(row().child(self.fallback_agent_picker(cx)).child(self.research_model_field(
                     &self.fallback_model, "research-fallback-model".into(), cx,
                 )))
-                .child(label(format!(
-                    "After {} failed attempts with a stage model, automatic retries use this model in a fresh session.",
-                    crate::retries::FALLBACK_AFTER_FAILED_ATTEMPTS
-                ), cx)))
+                .child(label(
+                    "When a stage model is unavailable, the next automatic retry uses this model in a fresh session.",
+                    cx,
+                )))
             .child(col().pt_2().gap_1()
                 .child(row().justify_between()
                     .child(div().font_weight(FontWeight::SEMIBOLD).child(selectable("Research stage models")))

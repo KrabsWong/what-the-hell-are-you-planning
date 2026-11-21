@@ -586,7 +586,7 @@ impl Store {
         if let Some(blocker) = self.occurrence_retry_blocker(&occurrence) {
             return Err(blocker);
         }
-        let timeout = occurrence.snapshot.policy.timeout_seconds;
+        let timeout = occurrence.snapshot.policy.effective_timeout_seconds();
         let mut occurrence = self.occurrence_mut(id).unwrap();
         // An explicit user retry is the only way a terminal period reopens.
         occurrence.status = OccurrenceStatus::Queued;
@@ -2328,12 +2328,12 @@ impl TaskApp {
             .store
             .all_occurrences()
             .iter()
-            .filter(|o| o.status == OccurrenceStatus::Running)
+            .filter(|o| o.status.is_active())
             .filter(|o| {
                 o.deadline_at.is_some_and(|deadline| now >= deadline)
                     || self.automation_started.get(&o.id).is_some_and(|start| {
                         start.elapsed().as_secs() as i64
-                            >= o.snapshot.policy.timeout_seconds
+                            >= o.snapshot.policy.effective_timeout_seconds()
                     })
             })
             .map(|o| o.id)
@@ -2370,18 +2370,21 @@ impl TaskApp {
         for id in ids {
             let run = self.store.runs().iter().find(|run| run.id == id).cloned();
             let Some(run) = run else { continue };
-            if !expired_regeneration(&self.store, &run, now) {
+            if !run.deadline_at.is_some_and(|deadline| now >= deadline) {
                 continue;
             }
+            let regeneration = expired_regeneration(&self.store, &run, now);
+            let stopped_log = if regeneration {
+                "[automation] Recovered report regeneration exceeded its own time limit; the previous successful report is preserved."
+            } else {
+                "[run] Execution time limit reached; stopping this attempt."
+            };
             if run.status == "Recovering" || run.status == "Interrupted" {
                 if let Some(mut value) = self.store.run_mut(id) {
                     value.status = "Cancelled".into();
                     value.ended_at = Some(crate::opencode::timestamp());
                     if !value.logs.iter().any(|line| line.contains("time limit")) {
-                        value.logs.push(
-                            "[automation] Recovered report regeneration exceeded its own time limit; the previous successful report is preserved."
-                                .into(),
-                        );
+                        value.logs.push(stopped_log.into());
                     }
                 }
                 self.recovery.checks.remove(&id);
@@ -2390,10 +2393,7 @@ impl TaskApp {
                 if let Some(mut value) = self.store.run_mut(id)
                     && !value.logs.iter().any(|line| line.contains("time limit"))
                 {
-                    value.logs.push(
-                        "[automation] Report regeneration exceeded its own time limit; the previous successful report is preserved."
-                            .into(),
-                    );
+                    value.logs.push(stopped_log.into());
                 }
                 self.cancel_run_id(id, cx);
             }

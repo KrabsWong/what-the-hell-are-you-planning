@@ -5595,6 +5595,7 @@ impl TaskApp {
                 },
                 "automation-objective",
                 &self.automation_ui.objective,
+                Some(160.),
                 cx,
             ));
             if self.automation_ui.shape.is_quick() {
@@ -5602,10 +5603,7 @@ impl TaskApp {
                     "Expected answer (optional)",
                     "automation-expected",
                     &self.automation_ui.expected,
-                    cx,
-                ));
-                content = content.child(muted(
-                    "Example: Check today's fuel prices in Shenzhen, Guangdong and answer with the current price and source. Left empty, the name and expected answer are derived from this instruction.",
+                    None,
                     cx,
                 ));
             } else {
@@ -5613,6 +5611,7 @@ impl TaskApp {
                     "Expected result (optional)",
                     "automation-expected",
                     &self.automation_ui.expected,
+                    None,
                     cx,
                 ));
                 content = content.child(muted(
@@ -5620,10 +5619,6 @@ impl TaskApp {
                     cx,
                 ));
             }
-            content = content.child(muted(
-                "Use automations for information checks and local reports. The selected agent keeps its normal permissions; review results before acting.",
-                cx,
-            ));
         } else if step == 2 {
             content = content.child(
                 div()
@@ -6136,8 +6131,13 @@ impl TaskApp {
         title: &str,
         id: &str,
         input: &Entity<TextareaState>,
+        height: Option<f32>,
         cx: &mut Context<Self>,
     ) -> AnyElement {
+        let mut textarea = Textarea::new(input).w_full();
+        if let Some(height) = height {
+            textarea = textarea.h(px(height));
+        }
         col()
             .gap_1()
             .w_full()
@@ -6148,7 +6148,7 @@ impl TaskApp {
                     .id(id.to_string())
                     .w_full()
                     .min_w_0()
-                    .child(Textarea::new(input).w_full())
+                    .child(textarea)
                     .map(observed),
             )
             .into_any_element()

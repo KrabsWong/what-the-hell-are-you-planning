@@ -261,4 +261,14 @@ mod tests {
             assert!(translations().get(key).is_none(), "stale key: {key}");
         }
     }
+
+    #[test]
+    fn removed_automation_helper_copy_has_no_translation_entries() {
+        for key in [
+            "Example: Check today's fuel prices in Shenzhen, Guangdong and answer with the current price and source. Left empty, the name and expected answer are derived from this instruction.",
+            "Use automations for information checks and local reports. The selected agent keeps its normal permissions; review results before acting.",
+        ] {
+            assert!(translations().get(key).is_none(), "stale key: {key}");
+        }
+    }
 }

@@ -751,8 +751,6 @@ pub(crate) static SIMPLIFIED_CHINESE: &[(&str, &str)] = &[
     ("Quick tasks live under Automations and keep one short answer per period. They never create a project or topic.", "快速任务位于“自动化”下，每个时段保留一个简短答案。它们不会创建项目或主题。"),
     ("Name (optional)", "名称（可选）"),
     ("Expected answer (optional)", "预期答案（可选）"),
-    ("Example: Check today's fuel prices in Shenzhen, Guangdong and answer with the current price and source. Left empty, the name and expected answer are derived from this instruction.", "例如：查询今天广东深圳的油价，并用当前价格和来源作答。留空时，名称和预期答案将从此指令推导。"),
-    ("Use automations for information checks and local reports. The selected agent keeps its normal permissions; review results before acting.", "自动化适用于信息检查和本地报告。所选代理保留其正常权限；执行操作前请检查结果。"),
     ("Fixed interval", "固定间隔"),
     ("Every day", "每天"),
     ("Selected weekdays", "指定工作日"),

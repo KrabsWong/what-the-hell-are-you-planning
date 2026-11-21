@@ -84,6 +84,25 @@ fn now() -> i64 {
     chrono::Utc::now().timestamp()
 }
 
+fn scroll_wizard_field(w: &mut Window, cx: &mut App, app: &Entity<TaskApp>, id: &str) {
+    w.render_frame(cx);
+    for _ in 0..12 {
+        if w
+            .try_find(id.to_string())
+            .is_some_and(|field| field.visible())
+        {
+            return;
+        }
+        app.update(cx, |a, cx| {
+            let y = a.automation_ui.scroll.offset().y - px(160.);
+            a.automation_ui.scroll.set_offset(point(px(0.), y));
+            cx.notify();
+        });
+        w.render_frame(cx);
+    }
+    assert!(w.find(id.to_string()).visible(), "Could not scroll to {id}");
+}
+
 /// The final wizard step must offer a working enable action next to saving a
 /// reviewed draft; a saved draft keeps the lifecycle controls visible but disabled.
 fn wizard_actions_check(root: &Path) {
@@ -662,6 +681,7 @@ fn expected_only_ui_check(directory: &Path, shape: AutomationShape) {
         w.click("automation-objective", cx);
         w.input("Check public fuel prices in Shenzhen", cx);
         w.render_frame(cx);
+        scroll_wizard_field(w, cx, &app, "automation-expected");
         w.click_at("automation-expected", point(px(12.), px(12.)), cx);
         w.render_frame(cx);
         w.input("Send email the answer", cx);
@@ -3964,6 +3984,7 @@ print(json.dumps({'type':'text','part':{'text':json.dumps(plan)}}), flush=True)
         w.click("automation-shape-research", cx);
         w.click("automation-objective", cx);
         w.input("Objective A", cx);
+        scroll_wizard_field(w, cx, &app, "automation-expected");
         w.click("automation-expected", cx);
         w.input("Expected A", cx);
         w.click("automation-next-step", cx);
@@ -4028,6 +4049,7 @@ print(json.dumps({'type':'text','part':{'text':json.dumps(plan)}}), flush=True)
         w.click("automation-objective", cx);
         w.press("cmd-a", cx);
         w.input("Objective B", cx);
+        scroll_wizard_field(w, cx, &app, "automation-expected");
         w.click("automation-expected", cx);
         w.press("cmd-a", cx);
         w.input("Expected B", cx);
@@ -4072,6 +4094,7 @@ print(json.dumps({'type':'text','part':{'text':json.dumps(plan)}}), flush=True)
     // Expected-only edit is another immutable revision.
     cx.update_window(handle, |_, w, cx| {
         app.update(cx, |a, cx| a.replan_automation(automation, w, cx));
+        scroll_wizard_field(w, cx, &app, "automation-expected");
         w.click("automation-expected", cx);
         w.press("cmd-a", cx);
         w.input("Expected C", cx);
@@ -4130,6 +4153,7 @@ print(json.dumps({'type':'text','part':{'text':json.dumps(plan)}}), flush=True)
         w.click("automation-objective", cx);
         w.press("cmd-a", cx);
         w.input("FAIL_ONCE", cx);
+        scroll_wizard_field(w, cx, &app, "automation-expected");
         w.click("automation-expected", cx);
         w.press("cmd-a", cx);
         w.input("Failure contract", cx);
@@ -4823,6 +4847,7 @@ fn ui_interaction(root: &Path) -> PathBuf {
         w.input(long_name, cx);
         w.click("automation-objective", cx);
         w.input("Track notable public information changes with sources, time range and uncertainty.", cx);
+        scroll_wizard_field(w, cx, &app, "automation-expected");
         w.click("automation-expected", cx);
         w.input("A three-minute brief with sources and evidence gaps.", cx);
         w.click("automation-next-step", cx);
@@ -5106,6 +5131,7 @@ fn ui_interaction(root: &Path) -> PathBuf {
     cx.update_window(handle, |_, w, cx| {
         w.click("automation-objective", cx);
         w.input("Verify that failed storage does not show a saved status.", cx);
+        scroll_wizard_field(w, cx, &app, "automation-expected");
         w.click("automation-expected", cx);
         w.input("Keep the draft and show the error.", cx);
         app.update(cx, |a, _| {

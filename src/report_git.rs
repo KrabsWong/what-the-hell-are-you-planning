@@ -148,30 +148,16 @@ fn prepare_repository_index(root: &Path, site_url: &str) -> Result<(), String> {
         return Err("Existing build-reports.mjs differs from the report publisher. Review it before retrying.".into());
     }
     let mut entries = Vec::new();
-    for entry in fs::read_dir(root).map_err(|_| "Cannot enumerate report directories.")? {
-        let entry = entry.map_err(|_| "Cannot read report directory.")?;
-        let name = entry.file_name().to_string_lossy().into_owned();
-        if name.len() != 32 || !name.bytes().all(|c| c.is_ascii_digit() || (b'a'..=b'f').contains(&c)) { continue; }
-        let page = safe_destination(root, &format!("{name}/index.html"))?;
-        if !page.is_file() { continue; }
-        let html = fs::read_to_string(page).map_err(|_| "Cannot read existing report HTML.")?;
-        let title = html.split_once("<title>").and_then(|(_, rest)| rest.split_once("</title>").map(|(title, _)| title))
-            .unwrap_or("Untitled report")
-            .trim_end_matches(&crate::i18n::tr_string(" · Report Something"))
-            .trim_end_matches(" · Report Something");
-        let title = title.replace("&quot;", "\"").replace("&#39;", "'").replace("&lt;", "<").replace("&gt;", ">").replace("&amp;", "&");
-        // Encode Markdown table/control punctuation; report titles remain literal text.
-        let title: String = title.chars().map(|c| match c {
-            '\n' | '\r' => " ".into(),
-            c if "|<>[]*_`\\".contains(c) => format!("&#{};", c as u32),
-            _ => c.to_string(),
-        }).collect();
-        entries.push((name, title));
-    }
-    entries.sort_by(|a, b| a.0.cmp(&b.0));
-    let mut index = format!("{INDEX_START}\n## 报告索引\n\n此索引仅供私有 GitHub 仓库内查看，不包含在 EdgeOne 部署产物中。\n\n| {} | 目录 | 分享链接 |\n| --- | --- | --- |\n", crate::i18n::tr_string("Topic"));
-    for (id, title) in entries {
-        index.push_str(&format!("| {title} | [{id}](./{id}/index.html) | [打开报告]({site_url}/{id}/) |\n"));
+    scan_report_pages(root, "", &mut entries)?;
+    entries.sort_by(|a, b| a.2.cmp(&b.2).then_with(|| a.0.cmp(&b.0)));
+    let mut index = format!("{INDEX_START}\n## 报告索引\n\n此索引仅供私有 GitHub 仓库内查看，不包含在 EdgeOne 部署产物中。\n");
+    let mut current_group = String::new();
+    for (path, title, group) in entries {
+        if group != current_group {
+            index.push_str(&format!("\n{group}\n\n| {} | 目录 | 分享链接 |\n| --- | --- | --- |\n", crate::i18n::tr_string("Topic")));
+            current_group = group;
+        }
+        index.push_str(&format!("| {title} | [{path}](./{path}/index.html) | [打开报告]({site_url}/{path}/) |\n"));
     }
     index.push_str(&format!("\n{INDEX_END}"));
     let readme_path = safe_destination(root, "README.md")?;
@@ -184,6 +170,106 @@ fn prepare_repository_index(root: &Path, site_url: &str) -> Result<(), String> {
     fs::write(config_path, serde_json::to_vec_pretty(&config).unwrap()).map_err(|_| "Cannot write EdgeOne deployment configuration.")?;
     fs::write(build_path, BUILD).map_err(|_| "Cannot write public report build script.")?;
     fs::write(readme_path, readme).map_err(|_| "Cannot write report index.")?;
+    Ok(())
+}
+
+fn is_report_id(name: &str) -> bool {
+    name.len() == 32 && name.bytes().all(|c| c.is_ascii_digit() || (b'a'..=b'f').contains(&c))
+}
+
+fn report_page_title(html: &str) -> String {
+    let title = html
+        .split_once("<title>")
+        .and_then(|(_, rest)| rest.split_once("</title>").map(|(title, _)| title))
+        .unwrap_or("Untitled report")
+        .trim_end_matches(&crate::i18n::tr_string(" · Report Something"))
+        .trim_end_matches(" · Report Something");
+    let title = title
+        .replace("&quot;", "\"")
+        .replace("&#39;", "'")
+        .replace("&lt;", "<")
+        .replace("&gt;", ">")
+        .replace("&amp;", "&");
+    // Encode Markdown table/control punctuation; report titles remain literal text.
+    title
+        .chars()
+        .map(|c| match c {
+            '\n' | '\r' => " ".into(),
+            c if "|<>[]*_`\\".contains(c) => format!("&#{};", c as u32),
+            _ => c.to_string(),
+        })
+        .collect()
+}
+
+fn report_group(relative: &str) -> &'static str {
+    match relative.split('/').next().unwrap_or("") {
+        "research" => "## Research reports",
+        "automations" => "## Automation reports",
+        _ => "## Earlier reports",
+    }
+}
+
+fn collect_report_page(
+    root: &Path,
+    relative: &str,
+    out: &mut Vec<(String, String, String)>,
+) -> Result<(), String> {
+    let page = safe_destination(root, &format!("{relative}/index.html"))?;
+    if !page.is_file() {
+        return Ok(());
+    }
+    let html = fs::read_to_string(page).map_err(|_| "Cannot read existing report HTML.")?;
+    out.push((
+        relative.to_string(),
+        report_page_title(&html),
+        report_group(relative).into(),
+    ));
+    Ok(())
+}
+
+/// Walks the two report namespaces plus legacy root-level report directories.
+/// Private repository files at any level are skipped because only report-id
+/// leaf directories are collected.
+fn scan_report_pages(
+    root: &Path,
+    relative: &str,
+    out: &mut Vec<(String, String, String)>,
+) -> Result<(), String> {
+    let dir = if relative.is_empty() {
+        root.to_path_buf()
+    } else {
+        safe_destination(root, relative)?
+    };
+    if !dir.is_dir() {
+        return Ok(());
+    }
+    let mut names = Vec::new();
+    for entry in fs::read_dir(&dir).map_err(|_| "Cannot enumerate report directories.")? {
+        let entry = entry.map_err(|_| "Cannot read report directory.")?;
+        let name = entry.file_name().to_string_lossy().into_owned();
+        if !name.starts_with('.') {
+            names.push(name);
+        }
+    }
+    names.sort();
+    for name in names {
+        let child = if relative.is_empty() {
+            name.clone()
+        } else {
+            format!("{relative}/{name}")
+        };
+        if is_report_id(&name) {
+            collect_report_page(root, &child, out)?;
+        } else if relative.is_empty() && matches!(name.as_str(), "research" | "automations") {
+            scan_report_pages(root, &child, out)?;
+        } else if relative == "research"
+            || relative == "automations"
+            || relative.starts_with("research/")
+            || relative.starts_with("automations/")
+        {
+            scan_report_pages(root, &child, out)?;
+        }
+    }
     Ok(())
 }
 
@@ -445,6 +531,40 @@ mod tests {
         fs::write(root.join("edgeone.json"), r#"{"outputDirectory":"custom"}"#).unwrap();
         assert!(prepare_repository_index(&root, "https://reports.example.com").is_err());
         assert_eq!(readme, fs::read_to_string(root.join("README.md")).unwrap());
+    }
+
+    #[test]
+    fn nested_report_namespaces_are_indexed_and_deployed() {
+        let root = std::env::temp_dir().join(format!("report-git-nested-{}", chrono::Utc::now().timestamp_nanos_opt().unwrap()));
+        fs::create_dir_all(&root).unwrap();
+        let cleanup = Checkout(root.clone());
+        let regular = "a".repeat(32);
+        let automated = "b".repeat(32);
+        let regular_dir = root.join("research").join(&regular);
+        let automation_dir = root.join("automations").join("7").join("12").join(&automated);
+        fs::create_dir_all(&regular_dir).unwrap();
+        fs::create_dir_all(&automation_dir).unwrap();
+        fs::write(regular_dir.join("index.html"), "<title>Regular report</title>body").unwrap();
+        fs::write(automation_dir.join("index.html"), "<title>Automation report</title>body").unwrap();
+        fs::write(root.join("README.md"), "# Notes\n").unwrap();
+
+        prepare_repository_index(&root, "https://reports.example.com").unwrap();
+        let readme = fs::read_to_string(root.join("README.md")).unwrap();
+        assert!(readme.contains("## Research reports"));
+        assert!(readme.contains("## Automation reports"));
+        assert!(readme.contains("Regular report"));
+        assert!(readme.contains("Automation report"));
+        assert!(readme.contains(&format!("https://reports.example.com/research/{regular}/")));
+        assert!(readme.contains(&format!("https://reports.example.com/automations/7/12/{automated}/")));
+
+        let output = node_command().arg("build-reports.mjs").current_dir(&root).output()
+            .expect("Node.js was present at preflight but could not be started");
+        assert!(output.status.success(), "{}", String::from_utf8_lossy(&output.stderr));
+        let public = root.join("report-public");
+        assert!(public.join("research").join(&regular).join("index.html").is_file());
+        assert!(public.join("automations").join("7").join("12").join(&automated).join("index.html").is_file());
+        assert!(!public.join("README.md").exists());
+        drop(cleanup);
     }
 
     #[test]

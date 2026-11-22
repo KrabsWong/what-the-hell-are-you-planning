@@ -116,6 +116,7 @@ impl CommandBase {
             | Command::AutomationPause { id, .. }
             | Command::ResumeSchedule { id, .. }
             | Command::SetAutomationNotification { id, .. }
+            | Command::SetAutomationPublish { id, .. }
             | Command::Archive { id, .. } => {
                 if let Some(definition) = store.automation(*id) {
                     base.automations.insert(
@@ -356,6 +357,12 @@ pub(crate) enum Command {
         id: u64,
         enabled: bool,
     },
+    /// Change one Research automation's GitHub sync opt-in without creating a
+    /// reviewed definition version. Quick automations have no report to publish.
+    SetAutomationPublish {
+        id: u64,
+        enabled: bool,
+    },
     ResumeSchedule {
         id: u64,
         now: i64,
@@ -428,6 +435,7 @@ impl Command {
             | Self::Enable { .. }
             | Self::AutomationPause { .. }
             | Self::SetAutomationNotification { .. }
+            | Self::SetAutomationPublish { .. }
             | Self::ResumeSchedule { .. }
             | Self::RetryOccurrence { .. }
             | Self::RunNow { .. }
@@ -462,6 +470,11 @@ impl Command {
                 "automation_notification",
                 *id,
                 format!("automation:{id}:notification:{enabled}"),
+            ),
+            Self::SetAutomationPublish { id, enabled } => CommandId::new(
+                "automation_publish",
+                *id,
+                format!("automation:{id}:publish:{enabled}"),
             ),
             Self::ResumeSchedule { id, .. } => {
                 CommandId::new("automation_resume", *id, format!("automation:{id}:resume"))
@@ -622,6 +635,7 @@ impl Command {
             Self::RunNow { .. }
             | Self::SetRead { .. }
             | Self::SetAutomationNotification { .. }
+            | Self::SetAutomationPublish { .. }
             | Self::CleanupLogs { .. }
             | Self::StopOccurrence { .. } => Ok(()),
             Self::Copy { .. } => Err(CommandError::Conflict(
@@ -865,6 +879,46 @@ impl Store {
                             "Completion notification enabled"
                         } else {
                             "Completion notification disabled"
+                        }
+                        .into(),
+                        detail: "The preference applies to future completed periods.".into(),
+                    }),
+                }
+            }
+            Command::SetAutomationPublish { id, enabled } => {
+                let topics: Vec<u64> = if *enabled {
+                    Vec::new()
+                } else {
+                    staged
+                        .all_occurrences()
+                        .iter()
+                        .filter(|occurrence| occurrence.automation_id == *id)
+                        .filter_map(|occurrence| occurrence.research_topic_id)
+                        .collect()
+                };
+                {
+                    let definition = staged
+                        .automation_mut(*id)
+                        .ok_or_else(|| CommandError::Rejected("Automation not found.".into()))?;
+                    if definition.shape.is_quick() {
+                        return Err(CommandError::Rejected(
+                            "Quick tasks do not publish reports. Choose a Research automation.".into(),
+                        ));
+                    }
+                    definition.policy.sync_final_report = *enabled;
+                }
+                staged.promote_waiting_topic_notifications(&topics);
+                CommandOutcome {
+                    subject: Some(*id),
+                    effects: vec![],
+                    undo: UndoDecision::NotUndoable(
+                        "GitHub sync preferences are saved as a separate operation.",
+                    ),
+                    feedback: Some(CommandFeedback {
+                        title: if *enabled {
+                            "GitHub sync enabled"
+                        } else {
+                            "GitHub sync disabled"
                         }
                         .into(),
                         detail: "The preference applies to future completed periods.".into(),
@@ -2595,6 +2649,36 @@ mod tests {
         assert!(after.policy.notify_on_completion);
         assert_eq!(after.version, before.version);
         assert_eq!(after.approval, before.approval);
+    }
+
+    #[test]
+    fn automation_publish_command_is_research_only_and_preserves_version() {
+        let mut store = Store::mock();
+        let mut research = automation_definition(1, 1_000);
+        research.shape = AutomationShape::Research;
+        store.push_automation(research);
+        let before = store.automation(1).unwrap().clone();
+        let command = Command::SetAutomationPublish {
+            id: 1,
+            enabled: true,
+        };
+        let prepared = store
+            .prepare_command(command.id(), CommandClass::StartOrExtend, command)
+            .unwrap();
+        let after = prepared.staged.automation(1).unwrap();
+        assert!(after.policy.sync_final_report);
+        assert_eq!(after.version, before.version);
+        assert_eq!(after.approval, before.approval);
+
+        let mut store = Store::mock();
+        store.push_automation(automation_definition(2, 1_000));
+        let command = Command::SetAutomationPublish {
+            id: 2,
+            enabled: true,
+        };
+        assert!(store
+            .prepare_command(command.id(), CommandClass::StartOrExtend, command)
+            .is_err());
     }
 
     #[test]

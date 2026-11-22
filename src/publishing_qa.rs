@@ -162,6 +162,7 @@ pub fn run() {
                         ("00000000000000000000000000000003", "Failed", "Fixture authentication failure. Configure local Git authentication and retry."),
                     ] {
                         a.store.push_publication(Publication {
+                            path_prefix: String::new(),
                             id: id.into(), topic, fingerprint: id.into(), config: a.store.report_publishing().clone(),
                             title: "Gold research and investment observations".into(), markdown: "Fixture report".into(),
                             status: status.into(), commit: None, message: message.into(),

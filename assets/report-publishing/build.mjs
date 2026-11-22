@@ -24,8 +24,48 @@ async function copy(source, destination) {
     await copyFile(source, destination);
   } else throw new Error(`Unsupported public asset: ${source}`);
 }
+const ROOT_FILES = new Set(['index.html', '404.html', 'robots.txt', 'favicon.ico', 'assets']);
+const REPORT_ID = /^[a-f0-9]{32}$/;
+const REPORT_FILES = new Set(['index.html']);
+const REPORT_DIRS = new Set(['assets', 'evidence', 'analysis']);
+const NAMESPACES = new Set(['research', 'automations']);
+
+async function assertPublic(entry, source) {
+  if (entry.name.startsWith('.')) return false;
+  if (entry.isSymbolicLink()) throw new Error(`Public assets cannot contain symbolic links: ${source}`);
+  return true;
+}
+
+// Only final report assets leave a report leaf directory. Evidence and
+// analysis directories are reserved for future publication and are allowed
+// here so the deployed layout already supports them.
+async function copyReportLeaf(source, destination) {
+  await mkdir(destination, { recursive: true });
+  for (const entry of await readdir(source, { withFileTypes: true })) {
+    const from = path.join(source, entry.name);
+    if (!(await assertPublic(entry, from))) continue;
+    const to = path.join(destination, entry.name);
+    if (entry.isDirectory() && REPORT_DIRS.has(entry.name)) await copy(from, to);
+    else if (entry.isFile() && REPORT_FILES.has(entry.name)) await copyFile(from, to);
+  }
+}
+
+async function copyReportTree(source, destination) {
+  await mkdir(destination, { recursive: true });
+  for (const entry of await readdir(source, { withFileTypes: true })) {
+    const from = path.join(source, entry.name);
+    if (!(await assertPublic(entry, from))) continue;
+    if (!entry.isDirectory()) continue;
+    const to = path.join(destination, entry.name);
+    if (REPORT_ID.test(entry.name)) await copyReportLeaf(from, to);
+    else await copyReportTree(from, to);
+  }
+}
+
 for (const name of await readdir('.')) {
-  if (['index.html', '404.html', 'robots.txt', 'favicon.ico', 'assets'].includes(name) || /^[a-f0-9]{32}$/.test(name)) {
+  if (ROOT_FILES.has(name) || REPORT_ID.test(name)) {
     await copy(name, path.join(output, name));
+  } else if (NAMESPACES.has(name)) {
+    await copyReportTree(name, path.join(output, name));
   }
 }

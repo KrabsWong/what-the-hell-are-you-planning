@@ -828,6 +828,14 @@ impl TaskApp {
             cx.notify();
             return;
         }
+        if self.storage_error.is_empty()
+            && let Some(request) = self.store.request_plan_fallback_retry(run_id)
+        {
+            self.retry_research_request_background(request, cx);
+            self.toast = "Model unavailable · retrying planning with the fallback model".into();
+            cx.notify();
+            return;
+        }
         if let Some(occurrence) = automation_occurrence {
             self.automation_after_run(occurrence, run_id, cx);
             cx.notify();

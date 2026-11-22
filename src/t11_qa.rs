@@ -61,17 +61,30 @@ fn enabled_idle(mode: Appearance, width: f32, height: f32, directory: &Path) {
             assert!(a.storage_error.is_empty());
             assert!(a.error.is_empty());
             assert!(!matches!(a.save_feedback, Some(Err(_))));
-            a.open_automation(id, w, cx);
+            a.navigate(Scope::Automations, w, cx);
         });
         w.render_frame(cx);
-        assert!(w.try_find("run-automation").is_some());
-        assert!(w.try_find("resume-automation").is_none());
-        assert!(w.try_find("stop-automation").is_none());
-        assert!(w.try_find("automation-settings").is_some());
-        let height = w.find("run-automation").bounds().size.height;
+        // Lifecycle actions moved to the list row.
+        assert!(w.try_find(ElementId::Name(format!("run-automation-{id}").into())).is_some());
+        assert!(w.try_find(ElementId::Name(format!("resume-automation-{id}").into())).is_none());
+        let height = w.find(ElementId::Name(format!("run-automation-{id}").into())).bounds().size.height;
         assert!(
             height >= px(28.) && height <= px(36.),
             "Run manually height was {height:?}"
+        );
+    })
+    .unwrap();
+    cx.update_window(handle, |_, w, cx| {
+        app.update(cx, |a, cx| a.open_automation(id, w, cx));
+        w.render_frame(cx);
+        // The detail keeps page-specific actions only.
+        assert!(w.try_find("stop-automation").is_none());
+        assert!(w.try_find("automation-settings").is_some());
+        let content = w.find("automation-detail-scroll").bounds();
+        let row = w.find(format!("automation-occurrence-{failed}")).bounds();
+        assert!(
+            (row.right() - (content.right() - px(24.))).abs() <= px(2.),
+            "detail history rows must fill the panel: row={row:?}, content={content:?}"
         );
     })
     .unwrap();
@@ -135,7 +148,7 @@ fn enabled_idle(mode: Appearance, width: f32, height: f32, directory: &Path) {
         });
         w.render_frame(cx);
         assert!(w.try_find("enable-draft-automation").is_some());
-        assert_eq!(w.find("run-automation").disabled(), Some(true));
+        assert!(w.try_find(ElementId::Name(format!("run-automation-{draft}").into())).is_none());
         assert!(w.try_find("stop-automation").is_none());
     })
     .unwrap();
@@ -203,10 +216,17 @@ fn recovery_active(mode: Appearance, width: f32, height: f32, directory: &Path) 
                 "an active period with no recorded session is reconciled fail-closed"
             );
             assert!(a.store.automation_active(id).is_some());
-            a.open_automation(id, w, cx);
+            a.navigate(Scope::Automations, w, cx);
         });
         w.render_frame(cx);
-        assert!(w.try_find("resume-automation").is_some());
+        // Resume schedule now lives on the automation list row.
+        assert!(w.try_find(ElementId::Name(format!("resume-automation-{id}").into())).is_some());
+    })
+    .unwrap();
+    cx.update_window(handle, |_, w, cx| {
+        app.update(cx, |a, cx| a.open_automation(id, w, cx));
+        w.render_frame(cx);
+        // Stop this run stays tied to the active period on the detail page.
         assert!(w.try_find("stop-automation").is_some());
     })
     .unwrap();

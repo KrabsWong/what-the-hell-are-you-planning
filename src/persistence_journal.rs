@@ -1545,6 +1545,7 @@ fn publication_heap(publication: &Publication) -> usize {
         status,
         commit,
         message,
+        path_prefix,
     } = publication;
     let mut value = size_of::<Publication>();
     value = text(value, id);
@@ -1554,7 +1555,8 @@ fn publication_heap(publication: &Publication) -> usize {
     value = text(value, markdown);
     value = text(value, status);
     value = opt_text(value, commit);
-    text(value, message)
+    value = text(value, message);
+    text(value, path_prefix)
 }
 
 fn publishing_config_heap(value: usize, config: &PublishingConfig) -> usize {
@@ -2449,6 +2451,7 @@ mod tests {
 
         let mut publications = Vec::with_capacity(4);
         publications.push(Publication {
+            path_prefix: String::new(),
             id: "p1".into(),
             topic: 1,
             fingerprint: "f".into(),
@@ -2460,6 +2463,7 @@ mod tests {
             message: String::new(),
         });
         publications.push(Publication {
+            path_prefix: String::new(),
             id: "p2".into(),
             topic: 1,
             fingerprint: "f".into(),

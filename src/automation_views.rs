@@ -26,6 +26,12 @@ use gpui_kit::{
 };
 use std::{cell::RefCell, collections::{HashMap, HashSet}, io::Read};
 
+/// The detail page is a dashboard, not the full history. The Automation results
+/// page owns the complete timeline with its per-automation filter.
+const DETAIL_HISTORY_LIMIT: usize = 5;
+
+const AUTOMATION_RUN_CONDITIONS: &str = "All automations run only while the app is open and the computer is awake — nothing runs in the background, and the app never wakes the computer. When the app is open again, catch-up follows the automation's setting: “Only the latest missed period” can run the newest missed period if it is within the allowed delay, while “Skip all missed periods” skips them; time spent paused is never made up.";
+
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub enum AutomationKind {
     Interval,
@@ -117,6 +123,7 @@ pub struct AutomationDraft {
     pub failures: String,
     pub retention: String,
     pub notify_on_completion: bool,
+    pub sync_final_report: bool,
     pub plan: Option<AutomationTemplate>,
 }
 
@@ -142,6 +149,7 @@ impl AutomationDraft {
             failures: "3".into(),
             retention: "30".into(),
             notify_on_completion: false,
+            sync_final_report: false,
             plan: None,
         }
     }
@@ -164,6 +172,7 @@ impl AutomationDraft {
         draft.failures = definition.policy.max_consecutive_failures.to_string();
         draft.retention = definition.policy.log_retention_days.to_string();
         draft.notify_on_completion = definition.policy.notify_on_completion;
+        draft.sync_final_report = definition.policy.sync_final_report;
         draft.plan = definition.template.clone();
         match &definition.schedule.spec {
             ScheduleSpec::Interval { minutes } => {
@@ -441,6 +450,8 @@ pub struct AutomationUi {
     pub show_advanced: bool,
     /// Task-level completion-notification opt-in shown in setup and Settings.
     pub notify_on_completion: bool,
+    /// Research-only opt-in for syncing the final report to GitHub.
+    pub sync_final_report: bool,
     pub kind: AutomationKind,
     pub interval_in_hours: bool,
     pub catch_up: CatchUp,
@@ -457,6 +468,9 @@ pub struct AutomationUi {
     pub planning_opener_focus: std::cell::RefCell<std::collections::HashMap<u64, FocusHandle>>,
     /// Attempt whose Review control must regain focus when its dialog closes.
     pub planning_attempt_return_run: Option<u64>,
+    /// Set when Settings was opened from a list row whose automation has never
+    /// run, so closing it returns to the list instead of an empty detail page.
+    pub settings_return_to_list: bool,
     /// Automation whose periods the all-results list is limited to. `None`
     /// keeps every automation.
     pub result_filter: Option<u64>,
@@ -748,6 +762,7 @@ impl AutomationUi {
             automation_command_inflight: None,
             show_advanced: false,
             notify_on_completion: false,
+            sync_final_report: false,
             kind: AutomationKind::Daily,
             interval_in_hours: false,
             catch_up: CatchUp::LatestOnly,
@@ -756,6 +771,7 @@ impl AutomationUi {
             preview: vec![],
             preview_error: String::new(),
             planning_attempt_origin_settings: false,
+            settings_return_to_list: false,
             settings_scroll: ScrollHandle::new(),
             planning_opener_focus: std::cell::RefCell::new(std::collections::HashMap::new()),
             planning_attempt_return_run: None,
@@ -885,6 +901,7 @@ impl AutomationUi {
             failures: self.failures.read(cx).value().to_string(),
             retention: self.retention.read(cx).value().to_string(),
             notify_on_completion: self.notify_on_completion,
+            sync_final_report: self.sync_final_report,
             plan: self.plan.clone(),
         }
     }
@@ -904,6 +921,7 @@ impl AutomationUi {
         self.catch_up = draft.catch_up;
         self.weekdays = draft.weekdays;
         self.notify_on_completion = draft.notify_on_completion;
+        self.sync_final_report = draft.sync_final_report;
         self.plan = draft.plan.clone();
         set_input(cx, &self.name, &draft.name, window);
         set_textarea(cx, &self.objective, &draft.objective, window);
@@ -1011,6 +1029,7 @@ impl AutomationUi {
             catch_up: self.catch_up,
             log_retention_days: retention,
             notify_on_completion: self.notify_on_completion,
+            sync_final_report: if self.shape.is_quick() { false } else { self.sync_final_report },
         };
         policy.validate()?;
         Ok(policy)
@@ -1332,6 +1351,11 @@ impl TaskApp {
 
     pub fn close_automation_settings(&mut self, window: &mut Window, cx: &mut Context<Self>) {
         let _ = self.close_settings_overlay();
+        if self.automation_ui.settings_return_to_list {
+            self.automation_ui.settings_return_to_list = false;
+            self.automation_ui.selected = None;
+            self.install_route(crate::navigation_route::Route::AutomationList);
+        }
         self.restore_dialog_opener(window, cx);
         cx.notify();
     }
@@ -2087,12 +2111,16 @@ impl TaskApp {
                     self.toast = "Automation enabled · newer edits remain unsaved".into();
                     return;
                 }
-                let Some(id) = subject.or(enable.id) else {
+                if subject.or(enable.id).is_none() {
                     return;
-                };
+                }
                 self.automation_ui.creating = false;
                 self.automation_ui.editing = None;
-                self.automation_ui.selected = Some(id);
+                // Enabling closes the wizard onto the list. The inline feedback
+                // and footer toast confirm the result; an empty detail page
+                // would only repeat boilerplate before any period has run.
+                self.automation_ui.selected = None;
+                self.install_route(crate::navigation_route::Route::AutomationList);
                 self.automation_ui.step = 1;
                 self.navigation.automation_baseline = None;
                 self.automation_ui.pending_planning = None;
@@ -2787,6 +2815,28 @@ impl TaskApp {
         cx.notify();
     }
 
+    pub fn set_automation_publish(
+        &mut self,
+        id: u64,
+        enabled: bool,
+        cx: &mut Context<Self>,
+    ) {
+        let command = crate::domain_command::Command::SetAutomationPublish { id, enabled };
+        match self.execute_command(command, cx) {
+            Ok(crate::command_app::CommandRun::Saving { .. }) => {
+                self.automation_ui.feedback =
+                    Some(Ok("Saving… GitHub sync preference.".into()));
+            }
+            Ok(crate::command_app::CommandRun::Durable(receipt)) => {
+                self.automation_ui.feedback = receipt.feedback.map(|feedback| {
+                    Ok(format!("{} · {}", feedback.title, feedback.detail))
+                });
+            }
+            Err(error) => self.automation_ui.feedback = Some(Err(error)),
+        }
+        cx.notify();
+    }
+
     pub fn automation_cleanup_preview(&mut self, id: u64, cx: &mut Context<Self>) {
         match self
             .store
@@ -3007,6 +3057,9 @@ impl TaskApp {
                 DefinitionStatus::NeedsAttention => "Needs attention",
                 DefinitionStatus::Archived => "Archived",
             };
+            let lifecycle_status = definition.status;
+            let run_enabled = definition.approval_current()
+                && lifecycle_status != DefinitionStatus::Archived;
             let (latest_label, latest_activity) = latest
                 .map(|occurrence| {
                     let activity = occurrence_activity(occurrence);
@@ -3057,8 +3110,20 @@ impl TaskApp {
                     .hover(|d| d.bg(rgb(colors.hover)))
                     .on_click(
                         cx.listener(move |app, _, window, cx| {
-                            app.record_origin();
-                            app.open_automation(id, window, cx)
+                            // A definition with no periods has no history to
+                            // show; opening its Settings is more useful than
+                            // landing on an almost empty detail page. Drafts
+                            // still open the detail for their planning review.
+                            if lifecycle_status != DefinitionStatus::Draft
+                                && app.store.automation_occurrences(id).is_empty()
+                            {
+                                app.automation_ui.settings_return_to_list = true;
+                                app.automation_ui.selected = Some(id);
+                                app.open_automation_settings(window, cx);
+                            } else {
+                                app.record_origin();
+                                app.open_automation(id, window, cx)
+                            }
                         }),
                     )
                     .child(
@@ -3161,6 +3226,67 @@ impl TaskApp {
                                             .map(observed),
                                     ),
                             ),
+                    )
+                    .child(
+                        row()
+                            .flex_shrink_0()
+                            .gap_1()
+                            .items_center()
+                                    .when(lifecycle_status != DefinitionStatus::Archived, |d| {
+                                        match lifecycle_status {
+                                            DefinitionStatus::Enabled => d.child(
+                                                tool_icon(
+                                                    format!("pause-automation-{id}"),
+                                                    assets::IconName::Pause,
+                                                    "Pause",
+                                                )
+                                                .tooltip(crate::i18n::tr("Stop future triggers and cancel unstarted requests. A running period can finish."))
+                                                .on_click(cx.listener(move |app, _, _, cx| {
+                                                    app.pause_automation_ui(id, cx)
+                                                })),
+                                            ),
+                                            DefinitionStatus::Paused
+                                            | DefinitionStatus::NeedsAttention => d.child(
+                                                tool_icon(
+                                                    format!("resume-automation-{id}"),
+                                                    assets::IconName::RotateCw,
+                                                    "Resume schedule",
+                                                )
+                                                .tooltip(crate::i18n::tr("Enable again from now; paused time is not backfilled."))
+                                                .on_click(cx.listener(move |app, _, _, cx| {
+                                                    app.resume_automation_schedule(id, cx)
+                                                })),
+                                            ),
+                                            DefinitionStatus::Draft => d.child(
+                                                tool_icon(
+                                                    format!("pause-automation-{id}"),
+                                                    assets::IconName::Pause,
+                                                    "Pause",
+                                                )
+                                                .disabled(true)
+                                                .tooltip(crate::i18n::tr("Enable this automation before pausing it.")),
+                                            ),
+                                            DefinitionStatus::Archived => d,
+                                        }
+                                    })
+                                    .when(lifecycle_status != DefinitionStatus::Archived, |d| {
+                                        d.child(
+                                            tool_icon(
+                                                format!("run-automation-{id}"),
+                                                assets::IconName::Play,
+                                                "Run manually",
+                                            )
+                                            .disabled(!run_enabled)
+                                            .tooltip(crate::i18n::tr(if run_enabled {
+                                                "Queue one manual period. The schedule does not move."
+                                            } else {
+                                                "Review and enable this version before running it."
+                                            }))
+                                            .on_click(cx.listener(move |app, _, _, cx| {
+                                                app.run_automation_now(id, cx)
+                                            })),
+                                        )
+                                    }),
                     )
                     .child(
                         gpui_kit::component::Icon::new(assets::IconName::ChevronRight)
@@ -3569,59 +3695,10 @@ impl TaskApp {
                     ),
             );
         }
-        // One lifecycle control stays in the same place: Pause while scheduled,
-        // Resume once paused or needing attention. Drafts show it disabled so
-        // the control does not appear to vanish before the first enable.
-        match definition.status {
-            DefinitionStatus::Enabled => {
-                actions = actions.child(
-                    button("pause-automation", "Pause")
-                        .icon(assets::IconName::Pause)
-                        .tooltip(crate::i18n::tr("Stop future triggers and cancel unstarted requests. A running period can finish."))
-                        .on_click(cx.listener(move |app, _, _, cx| app.pause_automation_ui(id, cx))),
-                );
-            }
-            DefinitionStatus::Paused | DefinitionStatus::NeedsAttention => {
-                actions =
-                    actions.child(
-                        primary_button("resume-automation", "Resume schedule")
-                            .icon(assets::IconName::Play)
-                            .tooltip(crate::i18n::tr("Enable again from now; paused time is not backfilled."))
-                            .on_click(cx.listener(move |app, _, _, cx| {
-                                app.resume_automation_schedule(id, cx)
-                            })),
-                    );
-            }
-            DefinitionStatus::Draft => {
-                actions = actions.child(
-                    button("pause-automation", "Pause")
-                        .icon(assets::IconName::Pause)
-                        .disabled(true)
-                        .tooltip(crate::i18n::tr("Enable this automation before pausing it.")),
-                );
-            }
-            DefinitionStatus::Archived => {}
-        }
-        if definition.status != DefinitionStatus::Archived {
-            // Manual trigger. It stays visible in every live state so it can be
-            // found; when it cannot start work, the reason is stated here and
-            // just below the action row.
-            let run_blocked = (!definition.approval_current())
-                .then_some("Review and enable this version before running it.");
-            actions = actions.child(
-                button("run-automation", "Run manually")
-                    .icon(assets::IconName::Play)
-                    .when(definition.status == DefinitionStatus::Enabled, |b| {
-                        b.primary().font_weight(FontWeight::MEDIUM)
-                    })
-                    .disabled(run_blocked.is_some())
-                    .tooltip(crate::i18n::tr(
-                        run_blocked
-                            .unwrap_or("Queue one manual period. The schedule does not move."),
-                    ))
-                    .on_click(cx.listener(move |app, _, _, cx| app.run_automation_now(id, cx))),
-            );
-        }
+        // Pause/Resume and Run manually live on the automation list rows. They
+        // are routine scheduling controls, not configuration of this definition,
+        // so the detail header keeps only actions tied to this page: reviewing a
+        // draft, stopping an active period and Settings.
         if let Some(occurrence) = active {
             actions = actions.child(
                 danger_button("stop-automation", "Stop this run")
@@ -3646,15 +3723,18 @@ impl TaskApp {
         // for the list-level workflows that will own them.
 
         let mut panel = col()
+            .size_full()
             .flex_1()
             .h_full()
+            .w_full()
             .min_h_0()
             .min_w_0()
             .id("automation-detail-scroll")
             .track_scroll(&self.automation_ui.scroll)
             .overflow_y_scroll()
             .p_6()
-            .gap_4();
+            .gap_4()
+            .items_stretch();
         panel = panel
             // Back is the app-level breadcrumb action; the page does not repeat it.
             .child(
@@ -3757,12 +3837,6 @@ impl TaskApp {
                     reason,
                     cx,
                 ))
-            })
-            .when(definition.status == DefinitionStatus::Draft, |d| {
-                d.child(overview_note(
-                    "Pause and Run manually unlock once you review and enable this draft.",
-                    cx,
-                ))
             });
         // The history heading carries its own compact separator.
         //
@@ -3781,10 +3855,6 @@ impl TaskApp {
             .get(&id)
             .map(|cache| cache.total)
             .unwrap_or(0);
-        let paged_more = self
-            .history_cache
-            .get(&id)
-            .is_some_and(|cache| cache.next.is_some());
         let mut occurrences: Vec<_> = match &paged_ids {
             Some(ids) => ids
                 .iter()
@@ -3805,15 +3875,13 @@ impl TaskApp {
         } else {
             occurrences.len()
         };
-        let shown = if paged_ids.is_some() {
-            occurrences.clone()
-        } else {
-            occurrences
-                .iter()
-                .take(self.automation_ui.history_limit)
-                .copied()
-                .collect::<Vec<_>>()
-        };
+        // The detail page shows a short, newest-first preview. The complete
+        // timeline lives in Automation results with this automation filtered.
+        let shown: Vec<_> = occurrences
+            .iter()
+            .take(DETAIL_HISTORY_LIMIT)
+            .copied()
+            .collect();
         if occurrences.is_empty() {
             panel = panel.child(overview_note(
                 "No runs yet. Enabling or Run manually will create the first period.",
@@ -3824,50 +3892,43 @@ impl TaskApp {
                 row()
                     .w_full()
                     .justify_between()
+                    .gap_3()
+                    .items_center()
                     .border_t_1()
                     .border_color(rgb(colors.subtle_line))
                     .pt_2()
                     .child(
-                        div()
-                            .font_weight(FontWeight::SEMIBOLD)
-                            .child(selectable(format!("History · {total}"))),
-                    ),
-            );
-            let mut history = col().gap_2();
-            for occurrence in shown {
-                history = history.child(self.automation_occurrence_row(occurrence, false, cx));
-            }
-            panel = panel.child(history);
-            if paged_ids.is_some() {
-                if paged_more {
-                    panel = panel.child(
-                        quiet_button("load-more-history", "Load more history".to_string())
-                            .on_click(cx.listener(move |app, _, _, cx| {
-                                app.load_more_automation_history(id, cx);
-                            })),
-                    );
-                }
-            } else if occurrences.len() > self.automation_ui.history_limit {
-                let remaining = occurrences.len() - self.automation_ui.history_limit;
-                panel = panel.child(
-                    quiet_button(
-                        "load-more-history",
-                        format!("Load more · {remaining} remaining"),
+                        row()
+                            .gap_2()
+                            .items_center()
+                            .child(
+                                div()
+                                    .font_weight(FontWeight::SEMIBOLD)
+                                    .child(selectable(format!("History · {total}"))),
+                            )
+                            .child(
+                                tool_icon(
+                                    "automation-run-help",
+                                    assets::IconName::CircleQuestionMark,
+                                    "About run conditions",
+                                )
+                                .tooltip(crate::i18n::tr(wrapped_tooltip(
+                                    AUTOMATION_RUN_CONDITIONS,
+                                ))),
+                            ),
                     )
-                    .on_click(cx.listener(|app, _, _, cx| {
-                        app.automation_ui.history_limit += 20;
-                        cx.notify();
-                    })),
+            );
+            let mut history = col().gap_2().w_full().min_w_0();
+            for occurrence in shown {
+                history = history.child(
+                    div()
+                        .w_full()
+                        .min_w_0()
+                        .child(self.automation_occurrence_row(occurrence, false, cx)),
                 );
             }
+            panel = panel.child(history);
         }
-
-        // App-wide behaviour is fine print at the end of the page, not a
-        // per-automation setting inside the overview card.
-        panel = panel.child(overview_note(
-            "All automations run only while the app is open and the computer is awake — nothing runs in the background, and the app never wakes the computer. When the app is open again, catch-up follows the automation's setting: “Only the latest missed period” can run the newest missed period if it is within the allowed delay, while “Skip all missed periods” skips them; time spent paused is never made up.",
-            cx,
-        ));
         panel.map(observed).into_any_element()
     }
 
@@ -4025,6 +4086,28 @@ impl TaskApp {
                         d.child(overview_note("Global completion notifications are off in Settings > Publishing; no message is sent until they are enabled.", cx))
                     }),
             )
+            .when(!definition.shape.is_quick(), |d| {
+                d.child(
+                    col().gap_2().pt_3().border_t_1().border_color(rgb(colors.subtle_line))
+                        .child(row().items_center().justify_between().gap_2()
+                            .w_full().pr_2()
+                            .child(overview_heading("GitHub sync"))
+                            .child(
+                                Switch::new("automation-settings-sync-report")
+                                    .checked(definition.policy.sync_final_report)
+                                    .flex_shrink_0()
+                                    .accessibility_label(crate::i18n::tr("Sync final report to GitHub"))
+                                    .tooltip(crate::i18n::tr("Publishes this automation's final report to the configured repository. Automatic publishing and a repository must also be enabled in Settings > Publishing."))
+                                    .on_click(cx.listener(move |app, enabled, _, cx| {
+                                        app.set_automation_publish(id, *enabled, cx);
+                                    }))
+                            )
+                        )
+                        .when(!self.store.report_publishing().automatic || self.store.report_publishing().repository.is_empty(), |d| {
+                            d.child(overview_note("Automatic publishing or the repository is not configured in Settings > Publishing; no report will be synced until both are set.", cx))
+                        }),
+                )
+            })
             .child(
                 col().gap_2().pt_3().border_t_1().border_color(rgb(colors.subtle_line))
                     .child(overview_heading("Log storage"))
@@ -5308,6 +5391,27 @@ impl TaskApp {
         let title = self.store.automation(occurrence.automation_id)
             .map(|definition| definition.name.clone())
             .unwrap_or_else(|| "Automation result".into());
+        let publish_topic = occurrence.research_topic_id;
+        let publish_blocker = publish_topic.and_then(|topic| {
+            let allow_automation = self
+                .store
+                .topic(topic)
+                .is_some_and(|topic| topic.automation_id.is_some());
+            self.store
+                .topic_publication_blocker_with_mode(topic, allow_automation)
+        });
+        let publish_state = publish_topic.map(|topic| {
+            let publication = crate::report_publish::current_publication_index(
+                &self.store.publications(),
+                topic,
+            )
+            .map(|index| self.store.publications()[index].clone());
+            crate::report_publish::publication_action(publication.as_ref(), false)
+        });
+        let publish_label = publish_state
+            .as_ref()
+            .map(|action| action.label())
+            .unwrap_or("Publish report");
         let activity = occurrence_activity(occurrence);
         let activity_text = format!(
             "{} {}",
@@ -5365,6 +5469,31 @@ impl TaskApp {
                                                     app.cancel_automation_occurrence_ui(id, cx)
                                                 }),
                                             ),
+                                        )
+                                    })
+                                    .when(publish_state.is_some(), |d| {
+                                        let action = publish_state.expect("checked above");
+                                        let help = action.help();
+                                        let topic = publish_topic.expect("state implies a topic");
+                                        d.child(
+                                            button("publish-occurrence-report", publish_label)
+                                                .icon(assets::IconName::ArrowUp)
+                                                .h(px(24.))
+                                                .px_2()
+                                                .when(self.publishing_job.is_some(), |b| {
+                                                    b.icon(assets::IconName::Loader).loading(true)
+                                                })
+                                                .disabled(publish_blocker.is_some())
+                                                .tooltip(crate::i18n::tr(
+                                                    publish_blocker
+                                                        .clone()
+                                                        .unwrap_or_else(|| help.to_string()),
+                                                ))
+                                                .on_click(cx.listener(move |app, _, window, cx| {
+                                                    app.perform_publication_action(
+                                                        topic, action.clone(), window, cx,
+                                                    );
+                                                })),
                                         )
                                     })
                                     .child(
@@ -5845,6 +5974,24 @@ impl TaskApp {
                     )
                 )
                 .child(muted("Off by default. Enable only for automations whose results should be pushed to the configured channel.", cx))
+                .when(!self.automation_ui.shape.is_quick(), |d| {
+                    d.child(row().items_center().justify_between().gap_2()
+                        .w_full().pr_2()
+                        .child(div().font_weight(FontWeight::SEMIBOLD).child(selectable("GitHub sync")))
+                        .child(
+                            Switch::new("automation-sync-report")
+                                .checked(self.automation_ui.sync_final_report)
+                                .flex_shrink_0()
+                                .accessibility_label(crate::i18n::tr("Sync final report to GitHub"))
+                                .tooltip(crate::i18n::tr("Publishes this automation's final report to the configured repository. Automatic publishing and a repository must also be enabled in Settings > Publishing."))
+                                .on_click(cx.listener(|app, enabled, _, cx| {
+                                    app.automation_ui.sync_final_report = *enabled;
+                                    cx.notify();
+                                }))
+                        )
+                    )
+                    .child(muted("Research automations only. Off by default; the shared repository is configured in Settings > Publishing.", cx))
+                })
                 .child(
                     row().justify_between()
                         .child(div().font_weight(FontWeight::SEMIBOLD).child(selectable("Advanced limits")))
@@ -6015,7 +6162,7 @@ impl TaskApp {
                     "Retry planning to generate one.",
                     cx,
                 ));
-                content = content.child(
+                content = content.child(row().child(
                     primary_button("automation-retry-planning", "Retry planning")
                         .icon(assets::IconName::RefreshCw)
                         .on_click(cx.listener(|app, _, _, cx| {
@@ -6035,7 +6182,7 @@ impl TaskApp {
                             }
                             cx.notify();
                         })),
-                );
+                ));
             }
             content = content
                 .child(
@@ -6072,14 +6219,14 @@ impl TaskApp {
             );
             content = content.child(muted(
                 if quick {
-                    "Enabling approves this instruction, agent, model, time zone and limits for repeated execution. Each period runs one step in its own folder under the Automations area, through the same research pipeline and agent as a manual run."
+                    "Enabling approves this instruction and its limits. Each period runs one step in its own folder under Automations."
                 } else {
-                    "Enabling approves this plan: every goal and step, the agent, models, time zone and limits. Each period creates a new topic under Automations with its own folder, session and browser Space, and never replans."
+                    "Enabling approves this plan, its models and its limits. Each period reuses it in its own folder under Automations."
                 },
                 cx,
             ));
             content = content.child(muted(
-                "Missed periods run only the newest one by default; it is skipped if older than the allowed delay. Runs happen only while the app is open and the computer is awake.",
+                "Missed periods: newest only, within the allowed delay. Runs require the app open and the computer awake.",
                 cx,
             ));
         }

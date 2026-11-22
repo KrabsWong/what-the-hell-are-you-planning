@@ -51,6 +51,7 @@ fn archived_topic_deletion_cascades_lazy_results_and_all_planning_attempts() {
     let copy = store.create_topic(1, "Surviving copy").unwrap();
     store.topic_mut(copy).unwrap().replanned_from = Some(topic);
     store.push_publication(Publication {
+        path_prefix: String::new(),
         id: "fixture-publication".into(), topic, fingerprint: "fixture".into(),
         config: PublishingConfig::default(), title: "Old report".into(), markdown: "Deleted result".into(),
         status: "Online".into(), commit: None, message: String::new(),

@@ -39,9 +39,23 @@ pub struct Publication {
     pub status: String,
     pub commit: Option<String>,
     pub message: String,
+    /// Repository-relative directory containing this report. Empty for legacy
+    /// publications that still live at the repository root and keep their URL.
+    #[serde(default)]
+    pub path_prefix: String,
 }
 impl Publication {
-    pub fn url(&self) -> String { format!("{}/{}/", self.config.base_url, self.id) }
+    /// The single source of truth for both the written file path and the
+    /// verified public URL. Keeping them derived from one function avoids a
+    /// mismatch where the page is pushed to one location and checked at another.
+    pub fn remote_dir(&self) -> String {
+        if self.path_prefix.is_empty() {
+            self.id.clone()
+        } else {
+            format!("{}/{}", self.path_prefix, self.id)
+        }
+    }
+    pub fn url(&self) -> String { format!("{}/{}/", self.config.base_url, self.remote_dir()) }
     fn presentation(&self) -> (&str, &str) {
         match self.status.as_str() {
             "Pushed · verifying live page" =>
@@ -103,17 +117,17 @@ fn classify_page(curl_code: Option<i32>, output: &[u8], marker: &str) -> PageChe
     }
 }
 
-#[derive(Debug, PartialEq)]
-enum PublicationAction { Publish(bool), Retry(String), Verify(String), Open(String) }
+#[derive(Clone, Debug, PartialEq)]
+pub(crate) enum PublicationAction { Publish(bool), Retry(String), Verify(String), Open(String) }
 impl PublicationAction {
-    fn label(&self) -> &'static str {
+    pub(crate) fn label(&self) -> &'static str {
         match self { Self::Publish(false) => "Publish report", Self::Publish(true) => "Publish update", Self::Retry(_) => "Publish update", Self::Verify(_) => "Check status", Self::Open(_) => "View report" }
     }
-    fn help(&self) -> &'static str {
+    pub(crate) fn help(&self) -> &'static str {
         match self { Self::Publish(_) => "Publish the current final reports to GitHub", Self::Retry(_) => "Publish the saved snapshot again to update the report URL", Self::Verify(_) => "Check the public page only; does not commit or push to GitHub", Self::Open(_) => "Open the published report" }
     }
 }
-fn publication_action(publication: Option<&Publication>, changed: bool) -> PublicationAction {
+pub(crate) fn publication_action(publication: Option<&Publication>, changed: bool) -> PublicationAction {
     let Some(p) = publication else { return PublicationAction::Publish(false); };
     if changed { return PublicationAction::Publish(true); }
     if p.status == "Online" { PublicationAction::Open(p.url()) }
@@ -140,6 +154,13 @@ impl Store {
         };
         if topic.archived { return Some("Restore this topic before publishing.".into()); }
         if topic.automation_id.is_some() && !allow_automation { return Some("Automation topics cannot be published from Research.".into()); }
+        if allow_automation {
+            if let Some(automation) = topic.automation_id {
+                if !self.automation_publish_enabled(automation) {
+                    return Some("GitHub sync is off for this automation. Enable it in the automation's Settings.".into());
+                }
+            }
+        }
         if let Some(status) = self.topic_planning_status(topic.id) {
             return Some(format!("Finish topic planning before publishing. Current planning status: {status}."));
         }
@@ -273,6 +294,34 @@ pub(crate) fn current_publication_index(publications: &[Publication], topic: u64
     }
     first
 }
+impl Store {
+    /// GitHub sync is an explicit per-automation opt-in for Research periods.
+    /// Quick periods have no Topic or report, so the shape check is defensive.
+    pub(crate) fn automation_publish_enabled(&self, automation: u64) -> bool {
+        self.automation(automation).is_some_and(|definition| {
+            !definition.shape.is_quick() && definition.policy.sync_final_report
+        })
+    }
+}
+
+/// New reports are grouped by origin: ordinary research under `research/`,
+/// research automation periods under `automations/<id>/<occurrence>/`. Legacy
+/// publications keep their empty prefix and therefore their permanent root URL.
+fn publication_path_prefix(store: &Store, topic: u64) -> String {
+    let Some(automation_id) = store.topic(topic).and_then(|topic| topic.automation_id) else {
+        return "research".into();
+    };
+    let occurrence_id = store
+        .all_occurrences()
+        .iter()
+        .find(|occurrence| occurrence.research_topic_id == Some(topic))
+        .map(|occurrence| occurrence.id);
+    match occurrence_id {
+        Some(occurrence_id) => format!("automations/{automation_id}/{occurrence_id}"),
+        None => format!("automations/{automation_id}"),
+    }
+}
+
 fn claim_publication(
     store: &mut Store,
     topic: u64,
@@ -283,8 +332,9 @@ fn claim_publication(
 ) -> Result<String, String> {
     let Some(index) = current_publication_index(store.publications(), topic) else {
         let id = random_id()?;
+        let path_prefix = publication_path_prefix(store, topic);
         store.push_publication(Publication { id: id.clone(), topic, fingerprint, config, title, markdown,
-            status: "Pending".into(), commit: None, message: String::new() });
+            status: "Pending".into(), commit: None, message: String::new(), path_prefix });
         return Ok(id);
     };
     let mut publication = store.publications()[index].clone();
@@ -322,7 +372,7 @@ fn publish(root: std::path::PathBuf, publication: Publication, tx: &mpsc::Sender
             &crate::report_html::ReportLabels::localized(),
         )
     );
-    let files = vec![(format!("{}/index.html", publication.id), html.into_bytes())];
+    let files = vec![(format!("{}/index.html", publication.remote_dir()), html.into_bytes())];
     let commit = match crate::report_git::publish(&root, &publication.config.repository, &publication.config.branch, &files, &publication.config.base_url, |stage| { let _ = tx.send(PublishEvent::Progress(stage.into(), None)); }) {
         Ok(commit) => commit,
         Err(error) => return PublishOutcome { commit: None, page: None, error: Some(error) },
@@ -360,6 +410,28 @@ impl TaskApp {
             if !self.store.automation_notification_enabled(automation) { return; }
         }
         let allow_automation = self.store.topic(topic).is_some_and(|topic| topic.automation_id.is_some());
+        if let Some(occurrence) = occurrence {
+            let automation = self.store.occurrence(occurrence)
+                .map(|value| value.automation_id)
+                .unwrap_or_default();
+            if !self.store.automation_publish_enabled(automation) {
+                // Without a publication there is no online URL to wait for, so
+                // send the answer-first summary directly instead of stranding
+                // the notification job in the waiting state.
+                let Some((title, markdown)) = self.store.topic_share_content_with_mode(topic, allow_automation) else { return; };
+                let summary = crate::notification::publication_summary(&markdown);
+                let fingerprint = fingerprint(&self.store.report_publishing(), &title, &markdown);
+                self.store.enqueue_direct_topic_notification_job(
+                    topic,
+                    occurrence,
+                    title,
+                    summary,
+                    fingerprint,
+                    chrono::Utc::now().timestamp(),
+                );
+                return;
+            }
+        }
         if self.store.topic_publication_blocker_with_mode(topic, allow_automation).is_some() { return; }
         let Some((title, markdown)) = self.store.topic_share_content_with_mode(topic, allow_automation) else { return; };
         let fingerprint = fingerprint(&self.store.report_publishing(), &title, &markdown);
@@ -448,9 +520,20 @@ impl TaskApp {
         let config = self.store.report_publishing().clone();
         if let Err(error) = config.validate() { self.show_action_error(error, cx); return; }
         if let Err(error) = self.prepare_topic_publication_bodies(topic) { self.show_action_error(error, cx); return; }
-        let (title, markdown) = match self.store.topic_publication_content(topic) {
-            Ok(content) => content,
-            Err(error) => { self.show_action_error(error, cx); return; }
+        let allow_automation = self
+            .store
+            .topic(topic)
+            .is_some_and(|topic| topic.automation_id.is_some());
+        if let Some(blocker) = self
+            .store
+            .topic_publication_blocker_with_mode(topic, allow_automation)
+        {
+            self.show_action_error(blocker, cx);
+            return;
+        }
+        let Some((title, markdown)) = self.store.topic_share_content_with_mode(topic, allow_automation) else {
+            self.show_action_error("Could not prepare the report for this period.".to_string(), cx);
+            return;
         };
         let fingerprint = fingerprint(&config, &title, &markdown);
         if let Some(index) = current_publication_index(&self.store.publications(), topic) {
@@ -474,6 +557,42 @@ impl TaskApp {
         };
         self.start_publication(&id, cx);
     }
+
+    /// Shared by the Topic page and the automation period result dialog so a
+    /// manual publish always gives visible feedback and respects state.
+    pub(crate) fn perform_publication_action(
+        &mut self,
+        topic: u64,
+        action: PublicationAction,
+        window: &mut Window,
+        cx: &mut Context<Self>,
+    ) {
+        match action {
+            PublicationAction::Publish(_) => {
+                if self.publishing_job.is_some() {
+                    self.toast = "A report is already being published.".into();
+                    let _ = window;
+                } else {
+                    self.toast = "Publishing report…".into();
+                    self.request_topic_publication(topic, cx);
+                }
+            }
+            PublicationAction::Retry(id) => {
+                if self.publishing_job.is_some() {
+                    self.toast = "A report is already being published.".into();
+                } else {
+                    self.toast = "Publishing report…".into();
+                    self.start_publication(&id, cx);
+                }
+            }
+            PublicationAction::Verify(id) => {
+                self.toast = "Checking the published report…".into();
+                self.start_publication_mode(&id, true, cx);
+            }
+            PublicationAction::Open(url) => cx.open_url(&url),
+        }
+    }
+
     fn prepare_topic_publication_bodies(&mut self, topic: u64) -> Result<(), String> {
         let targets = self.store.topic_publication_result_run_ids(topic)
             .into_iter()
@@ -583,13 +702,16 @@ impl TaskApp {
         }
     }
     pub(crate) fn publishing_settings_panel(&self, cx: &mut Context<Self>) -> Div {
-        col().gap_4()
+        col().gap_3()
             .child(div().font_weight(FontWeight::SEMIBOLD).child(selectable("Report publishing")))
-            .child(label("Push finished Topic reports to a dedicated GitHub repository connected to EdgeOne. Configure Git authentication on this computer first. Original attachments and execution logs are not published.", cx))
+            .child(label("Publish finished reports to a dedicated GitHub repository connected to EdgeOne.", cx))
+            .child(div().font_weight(FontWeight::MEDIUM).child(selectable("Repository")))
             .child(label("GitHub repository", cx)).child(Input::new(&self.publishing_inputs[0]).id("publishing-repository"))
             .child(label("Target branch", cx)).child(Input::new(&self.publishing_inputs[1]).id("publishing-branch"))
             .child(label("Public site URL", cx)).child(Input::new(&self.publishing_inputs[2]).id("publishing-url"))
-            .child(button("save-publishing", "Save publishing settings").disabled(self.publishing_job.is_some()).on_click(cx.listener(|a, _, _, cx| a.save_publishing_settings(cx))))
+            .child(row().child(button("save-publishing", "Save publishing settings")
+                .disabled(self.publishing_job.is_some())
+                .on_click(cx.listener(|a, _, _, cx| a.save_publishing_settings(cx)))))
             .child(row().items_center().justify_between().gap_2().w_full().pr_2()
                 .child(div().font_weight(FontWeight::SEMIBOLD).child(selectable("Publish completed Topics automatically")))
                 .child(
@@ -618,8 +740,8 @@ impl TaskApp {
                         }))
                 )
             )
-            .child(label("Enabling this also publishes existing completed Topics. All active goals must be complete. A Topic keeps one report URL: new content overwrites it in place so shared links keep working, retries keep the same URL, and earlier versions remain in Git history. Anyone with the link can read it.", cx))
-            .child(label("Import your existing reports into the repository before connecting EdgeOne. Git pushes never force-overwrite remote history. Keep the repository private and configure EdgeOne to deploy this branch.", cx))
+            .child(label("New reports are grouped under research/ and automations/. Existing report URLs stay unchanged.", cx))
+            .child(label("Keep the repository private. EdgeOne must deploy this branch.", cx))
             .child(row().items_center().justify_between().gap_2().w_full().pr_2()
                 .child(div().font_weight(FontWeight::SEMIBOLD).child(selectable("Completion notifications")))
                 .child(
@@ -641,7 +763,7 @@ impl TaskApp {
                 )
             )
             .child(label("Destination override", cx)).child(Input::new(&self.notification_destination_input).id("notification-destination"))
-            .child(label("Endpoint and signing key come from YOOOOO_NOTIFY_URL / YOOOOO_NOTIFY_HMAC_KEY or the shared yooooo-notifier client config. Leave the destination empty to use its default channel.", cx))
+            .child(label("Keys come from YOOOOO_NOTIFY_URL / YOOOOO_NOTIFY_HMAC_KEY or the shared client config.", cx))
             .child({
                 let jobs = self.store.notification_jobs();
                 let pending = jobs.iter().filter(|job| job.status == crate::notification::JOB_PENDING
@@ -649,7 +771,7 @@ impl TaskApp {
                 let delivered = jobs.iter().filter(|job| job.status == crate::notification::JOB_DELIVERED).count();
                 let attention = jobs.iter().filter(|job| job.status == crate::notification::JOB_FAILED
                     || job.status == crate::notification::JOB_NEEDS_REVIEW).count();
-                col().gap_1()
+                row().items_center().justify_between().gap_2().w_full()
                     .child(label(format!("{pending} pending · {delivered} delivered · {attention} need attention"), cx))
                     .child(button("retry-notifications", "Retry failed notifications")
                         .disabled(attention == 0 || self.notification_job.is_some())
@@ -771,6 +893,7 @@ mod tests {
     fn deployment_presentation_keeps_push_success_and_specific_error_visible() {
         use super::{Publication, PublicationAction, publication_action};
         let mut p = Publication { id: "a".repeat(32), topic: 1, fingerprint: "snapshot".into(), config: Default::default(),
+            path_prefix: String::new(),
             title: "Topic".into(), markdown: "Report".into(), status: "Pushed · awaiting deployment".into(), commit: Some("commit".into()), message: String::new() };
         assert!(p.presentation().0.contains("GitHub synced"));
         assert!(p.presentation().1.contains("pushed to GitHub successfully"));
@@ -787,6 +910,7 @@ mod tests {
     fn header_action_matches_publication_state_and_current_content() {
         use super::{Publication, PublicationAction, publication_action};
         let mut p = Publication { id: "a".repeat(32), topic: 1, fingerprint: "snapshot".into(), config: Default::default(),
+            path_prefix: String::new(),
             title: "Topic".into(), markdown: "Report".into(), status: "Failed".into(), commit: None, message: String::new() };
         assert_eq!(publication_action(None, false), PublicationAction::Publish(false));
         assert_eq!(publication_action(Some(&p), false), PublicationAction::Retry(p.id.clone()));
@@ -803,6 +927,7 @@ mod tests {
         use super::{claim_publication, current_publication_index, Publication};
         let config = PublishingConfig::default();
         let first = Publication { id: "a".repeat(32), topic: 1, fingerprint: "first".into(), config: config.clone(),
+            path_prefix: String::new(),
             title: "Topic".into(), markdown: "First report".into(), status: "Online".into(), commit: Some("first-commit".into()), message: String::new() };
         let mut stale = first.clone();
         stale.id = "b".repeat(32); stale.fingerprint = "second".into(); stale.markdown = "Second report".into();
@@ -839,6 +964,7 @@ mod tests {
         use super::{claim_publication, current_publication_index, Publication};
         let config = PublishingConfig::default();
         let failed = Publication { id: "a".repeat(32), topic: 1, fingerprint: "failed".into(), config: config.clone(),
+            path_prefix: String::new(),
             title: "Topic".into(), markdown: "Never pushed".into(), status: "Failed".into(), commit: None, message: String::new() };
         let mut pushed = failed.clone();
         pushed.id = "b".repeat(32); pushed.status = "Online".into(); pushed.commit = Some("commit".into());
@@ -918,6 +1044,7 @@ mod tests {
         store.last_run_mut().unwrap().status = "Succeeded".into();
         let config = PublishingConfig::default();
         store.push_publication(super::Publication { id: "a".repeat(32), topic,
+            path_prefix: String::new(),
             fingerprint: fingerprint(&config, &title, &markdown), config, title, markdown,
             status: "Interrupted".into(), commit: None, message: "Retry".into() });
         let restored: Store = serde_json::from_slice(&serde_json::to_vec(&store).unwrap()).unwrap();
@@ -928,6 +1055,56 @@ mod tests {
         let mut store = restored;
         store.create_research_goal_in_topic("Unfinished second goal".into(), "Scope".into(), 1, Some(topic)).unwrap();
         assert!(store.topic_share_content(topic).is_none());
+    }
+
+    #[test]
+    fn publication_urls_and_paths_follow_the_namespace_prefix() {
+        use super::Publication;
+        let mut publication = Publication {
+            id: "a".repeat(32),
+            topic: 1,
+            fingerprint: "snapshot".into(),
+            config: PublishingConfig::default(),
+            title: "Topic".into(),
+            markdown: "Report".into(),
+            status: "Pending".into(),
+            commit: None,
+            message: String::new(),
+            path_prefix: String::new(),
+        };
+        assert_eq!(publication.remote_dir(), publication.id);
+        assert_eq!(publication.url(), format!("https://report.krabs.wang/{}/", publication.id));
+        publication.path_prefix = "research".into();
+        assert_eq!(publication.remote_dir(), format!("research/{}", publication.id));
+        assert_eq!(publication.url(), format!("https://report.krabs.wang/research/{}/", publication.id));
+        publication.path_prefix = "automations/7/12".into();
+        assert_eq!(publication.remote_dir(), format!("automations/7/12/{}", publication.id));
+        assert_eq!(publication.url(), format!("https://report.krabs.wang/automations/7/12/{}/", publication.id));
+    }
+
+    #[test]
+    fn new_publications_are_grouped_by_origin_and_legacy_ones_keep_their_root() {
+        use super::{claim_publication, fingerprint};
+        let config = PublishingConfig::default();
+        let mut store = Store::empty();
+        let topic = store.create_topic(1, "Topic").unwrap();
+        let title = "Topic".to_string();
+        let markdown = "Report".to_string();
+        let snapshot = fingerprint(&config, &title, &markdown);
+        claim_publication(&mut store, topic, config.clone(), title.clone(), markdown.clone(), snapshot.clone()).unwrap();
+        assert_eq!(store.publications()[0].path_prefix, "research");
+
+        let next = fingerprint(&config, &title, &"Updated".to_string());
+        claim_publication(&mut store, topic, config.clone(), title, "Updated".into(), next).unwrap();
+        assert_eq!(store.publications()[0].path_prefix, "research");
+        assert_eq!(store.publications()[0].url(), format!("https://report.krabs.wang/research/{}/", store.publications()[0].id));
+
+        let automation_topic = store.create_topic(1, "Automation").unwrap();
+        store.topic_mut(automation_topic).unwrap().automation_id = Some(42);
+        claim_publication(&mut store, automation_topic, config, "Automation".into(), "Report".into(), "automation-snapshot".into()).unwrap();
+        let automation = store.publications().iter().find(|p| p.topic == automation_topic).unwrap();
+        assert_eq!(automation.path_prefix, "automations/42");
+        assert_eq!(automation.remote_dir(), format!("automations/42/{}", automation.id));
     }
 
 }

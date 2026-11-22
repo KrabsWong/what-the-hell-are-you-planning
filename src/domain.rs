@@ -3763,6 +3763,7 @@ mod tests {
             models: Default::default(),
         });
         store.push_publication(crate::report_publish::Publication {
+            path_prefix: String::new(),
             id: "pub".into(),
             topic: 1,
             fingerprint: String::new(),
@@ -3925,6 +3926,7 @@ mod tests {
         let mut store = Store::empty();
         store.clear_all_tracking();
         store.push_publication(crate::report_publish::Publication {
+            path_prefix: String::new(),
             id: "a".into(),
             topic: 1,
             fingerprint: String::new(),
@@ -3938,6 +3940,7 @@ mod tests {
         let first = store.drain_store_delta().unwrap();
         store.retire_store_delta(&first);
         store.push_publication(crate::report_publish::Publication {
+            path_prefix: String::new(),
             id: "b".into(),
             topic: 1,
             fingerprint: String::new(),

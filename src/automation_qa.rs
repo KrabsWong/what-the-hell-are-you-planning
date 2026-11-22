@@ -205,20 +205,13 @@ fn wizard_actions_check(root: &Path) {
     assert_eq!(saved, Some(("Check today's fuel prices in Shenzhen, Guangdong".into(), DefinitionStatus::Draft)));
     assert!(!creating, "saving finishes the wizard and opens the draft");
     screenshot(&mut cx, handle, &directory, "wizard-step3-saved.png");
-    // A draft keeps the lifecycle controls visible but disabled, so they do not
-    // appear to vanish before the first enable.
+    // Lifecycle actions now live on the list rows. The draft detail keeps only
+    // the review/enable path and Settings, so it stays a short dashboard.
     cx.update_window(handle, |_, w, cx| {
-        w.scroll(
-            "automation-detail-scroll",
-            ScrollDelta::Pixels(point(px(0.), px(-10_000.))),
-            cx,
-        );
         w.render_frame(cx);
-    })
-    .unwrap();
-    cx.update_window(handle, |_, w, _| {
-        assert_eq!(w.find("pause-automation").disabled(), Some(true));
-        assert_eq!(w.find("run-automation").disabled(), Some(true));
+        assert!(w.try_find("pause-automation").is_none());
+        assert!(w.try_find("run-automation").is_none());
+        assert!(w.try_find("enable-draft-automation").is_some());
     })
     .unwrap();
     screenshot(&mut cx, handle, &directory, "wizard-draft-actions.png");
@@ -4878,7 +4871,17 @@ fn ui_interaction(root: &Path) -> PathBuf {
     })
     .unwrap();
     let (id, version, status, cursor) = read_state(&mut cx, &app, |a| {
-        let id = a.automation_ui.selected.expect("enabled automation selected");
+        assert!(
+            a.automation_ui.selected.is_none(),
+            "enable returns to the automation list"
+        );
+        let id = a
+            .store
+            .automations()
+            .iter()
+            .find(|definition| definition.name == long_name)
+            .expect("enabled automation exists")
+            .id;
         let definition = a.store.automation(id).unwrap();
         (
             id,
@@ -5005,16 +5008,21 @@ fn ui_interaction(root: &Path) -> PathBuf {
     assert_eq!(status, DefinitionStatus::Enabled);
     assert!(name.ends_with(" (second version)"), "{name}");
 
-    // Pause, resume, manual run, stop current period, copy and archive.
-    cx.update_window(handle, |_, w, cx| { w.render_frame(cx); w.click("pause-automation", cx); }).unwrap();
+    // Pause, resume and manual run now live on the list rows.
+    cx.update_window(handle, |_, w, cx| {
+        w.render_frame(cx);
+        w.click(ElementId::Name(format!("pause-automation-{id}").into()), cx);
+    }).unwrap();
     assert_eq!(
         read_state(&mut cx, &app, |a| a.store.automation(id).unwrap().status),
         DefinitionStatus::Paused
     );
     assert_eq!(read_state(&mut cx, &app, |a| a.store.automation(id).unwrap().cursor), None);
-    // The next-run area lives in the Settings dialog; open it to check that a
-    // paused automation marks it instead of listing triggers.
+    // Settings stays on the detail page; open the definition explicitly.
+    // Its next-run area marks a paused automation instead of listing triggers.
     cx.update_window(handle, |_, w, cx| {
+        app.update(cx, |a, cx| a.open_automation(id, w, cx));
+        w.render_frame(cx);
         w.click("automation-settings", cx);
         w.render_frame(cx);
     })
@@ -5030,7 +5038,11 @@ fn ui_interaction(root: &Path) -> PathBuf {
         w.render_frame(cx);
     })
     .unwrap();
-    cx.update_window(handle, |_, w, cx| { w.render_frame(cx); w.click("resume-automation", cx); }).unwrap();
+    cx.update_window(handle, |_, w, cx| {
+        app.update(cx, |a, cx| a.navigate(Scope::Automations, w, cx));
+        w.render_frame(cx);
+        w.click(ElementId::Name(format!("resume-automation-{id}").into()), cx);
+    }).unwrap();
     cx.update_window(handle, |_, w, cx| {
         w.render_frame(cx);
         assert!(w.try_find("next-runs-paused").is_none());
@@ -5040,7 +5052,10 @@ fn ui_interaction(root: &Path) -> PathBuf {
         read_state(&mut cx, &app, |a| a.store.automation(id).unwrap().status),
         DefinitionStatus::Enabled
     );
-    cx.update_window(handle, |_, w, cx| { w.render_frame(cx); w.click("run-automation", cx); }).unwrap();
+    cx.update_window(handle, |_, w, cx| {
+        w.render_frame(cx);
+        w.click(ElementId::Name(format!("run-automation-{id}").into()), cx);
+    }).unwrap();
     assert!(read_state(&mut cx, &app, |a| {
         a.store
             .automation_occurrences(id)
@@ -5053,7 +5068,10 @@ fn ui_interaction(root: &Path) -> PathBuf {
         app.update(cx, |a, _| a.automation_fake_hold = true);
     })
     .unwrap();
-    cx.update_window(handle, |_, w, cx| { w.render_frame(cx); w.click("run-automation", cx); }).unwrap();
+    cx.update_window(handle, |_, w, cx| {
+        w.render_frame(cx);
+        w.click(ElementId::Name(format!("run-automation-{id}").into()), cx);
+    }).unwrap();
     let running = read_state(&mut cx, &app, |a| {
         a.store.automation_active(id).map(|o| o.id)
     });
@@ -5062,7 +5080,11 @@ fn ui_interaction(root: &Path) -> PathBuf {
         read_state(&mut cx, &app, |a| a.store.occurrence(running).unwrap().status),
         OccurrenceStatus::Running
     );
-    cx.update_window(handle, |_, w, cx| { w.render_frame(cx); w.click("stop-automation", cx); }).unwrap();
+    cx.update_window(handle, |_, w, cx| {
+        app.update(cx, |a, cx| a.open_automation(id, w, cx));
+        w.render_frame(cx);
+        w.click("stop-automation", cx);
+    }).unwrap();
     assert_eq!(
         read_state(&mut cx, &app, |a| a.store.occurrence(running).unwrap().status),
         OccurrenceStatus::Cancelled
@@ -5181,10 +5203,9 @@ fn ui_interaction(root: &Path) -> PathBuf {
             cx.notify();
         });
         w.render_frame(cx);
-        assert_ne!(
-            w.find("run-automation").disabled(),
-            Some(true),
-            "an approved automation exposes the manual trigger"
+        assert!(
+            app.read(cx).store.automation(id).unwrap().approval_current(),
+            "an approved automation exposes the manual trigger on its list row"
         );
         assert!(
             w.try_find("automation-objective").is_none(),
@@ -5195,16 +5216,11 @@ fn ui_interaction(root: &Path) -> PathBuf {
             "results stay closed until a history row is opened"
         );
         let content = w.find("automation-detail-scroll").bounds();
-        let run = w.find("run-automation").bounds();
         let settings = w.find("automation-settings").bounds();
         let expected_right = content.right() - px(24.);
         assert!(
             (settings.right() - expected_right).abs() <= px(1.),
             "detail actions should end at the content's right inset: settings={settings:?}, content={content:?}"
-        );
-        assert!(
-            run.top() == settings.top(),
-            "standard-width actions should stay on one line"
         );
     })
     .unwrap();
@@ -5841,16 +5857,11 @@ fn settings_hierarchy_fixture(root: &Path) {
                     w.render_frame(cx);
                     if width >= 1440. {
                         let content = w.find("automation-detail-scroll").bounds();
-                        let run = w.find("run-automation").bounds();
                         let settings = w.find("automation-settings").bounds();
                         let expected_right = content.right() - px(24.);
                         assert!(
                             (settings.right() - expected_right).abs() <= px(1.),
                             "detail actions should end at the content's right inset: settings={settings:?}, content={content:?}"
-                        );
-                        assert!(
-                            run.top() == settings.top(),
-                            "standard-width actions should stay on one line"
                         );
                     }
                 }).unwrap();

@@ -34,6 +34,10 @@ jobs:
           rustup toolchain install stable --profile minimal
           rustup default stable
           test "$(uname -m)" = arm64
+      - name: Sync version from release tag
+        # The tag is the single source of truth. CI writes it into Cargo.toml,
+        # Cargo.lock and Info.plist so every package matches its tag.
+        run: bash script/set_version.sh "${RELEASE_TAG#v}"
       - name: Test
         run: cargo test --locked
       - name: Fetch pinned Sparkle SDK

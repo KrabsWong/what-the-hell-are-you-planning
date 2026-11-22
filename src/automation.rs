@@ -144,6 +144,11 @@ pub struct AutomationPolicy {
     /// and therefore stay silent until the user opts in.
     #[serde(default)]
     pub notify_on_completion: bool,
+    /// Whether a completed Research period may sync its final report to the
+    /// configured GitHub repository. Legacy policies omit this field and stay
+    /// opted out until the user enables it; Quick periods never publish.
+    #[serde(default)]
+    pub sync_final_report: bool,
 }
 impl Default for AutomationPolicy {
     fn default() -> Self {
@@ -154,6 +159,7 @@ impl Default for AutomationPolicy {
             catch_up: CatchUp::LatestOnly,
             log_retention_days: DEFAULT_LOG_RETENTION_DAYS,
             notify_on_completion: false,
+            sync_final_report: false,
         }
     }
 }
@@ -1193,6 +1199,7 @@ mod tests {
         assert_eq!(AutomationPolicy::default().catch_up, CatchUp::LatestOnly);
         assert_eq!(AutomationPolicy::default().timeout_seconds, 60 * 60);
         assert!(!AutomationPolicy::default().notify_on_completion);
+        assert!(!AutomationPolicy::default().sync_final_report);
         let legacy = AutomationPolicy {
             timeout_seconds: 24 * 60 * 60,
             ..AutomationPolicy::default()
@@ -1209,6 +1216,17 @@ mod tests {
             .remove("notify_on_completion");
         let legacy: AutomationPolicy = serde_json::from_value(value).unwrap();
         assert!(!legacy.notify_on_completion);
+    }
+
+    #[test]
+    fn legacy_policy_without_publish_flag_stays_opted_out() {
+        let mut value = serde_json::to_value(AutomationPolicy::default()).unwrap();
+        value
+            .as_object_mut()
+            .unwrap()
+            .remove("sync_final_report");
+        let legacy: AutomationPolicy = serde_json::from_value(value).unwrap();
+        assert!(!legacy.sync_final_report);
     }
 
     #[test]

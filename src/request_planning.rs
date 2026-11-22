@@ -1082,6 +1082,24 @@ impl Store {
             .then_some(request.id)
     }
 
+    /// A planning attempt that failed because the primary model was unavailable
+    /// is retried once with the configured fallback pair. The loop guard keeps a
+    /// failed fallback from starting another attempt.
+    pub fn request_plan_fallback_retry(&self, run_id: u64) -> Option<u64> {
+        let request = self.request_for_run(run_id)?;
+        let run = self.runs().iter().find(|run| run.id == run_id)?;
+        (!self.request_is_archived(request)
+            && request.goal_ids.is_empty()
+            && run.status == "Failed"
+            && run.logs.iter().any(|line| crate::run_errors::model_unavailable(line))
+            && self.valid_fallback_model()
+            && run.agent != self.fallback_agent()
+            && run.model != self.fallback_model()
+            && self.request_plan_signature(request.id).ok().as_ref() == Some(&run.input_signature)
+            && self.latest_request_attempt(request.id).is_some_and(|latest| latest.id == run_id))
+            .then_some(request.id)
+    }
+
     pub fn can_regenerate_request_plan(&self, id: u64) -> bool {
         let Some(request) = self.research_requests().iter().find(|r| r.id == id) else { return false; };
         !self.request_is_archived(request) && !request.goal_ids.is_empty()
@@ -2204,6 +2222,32 @@ mod tests {
         assert_eq!(retry.agent, "Codex");
         assert_eq!(retry.model, "fallback-model");
         assert!(retry.session_id.is_none());
+    }
+
+    #[test]
+    fn availability_failure_queues_one_automatic_fallback_attempt() {
+        let mut s = store();
+        let id = s.create_research_request(1, None, "Analyze recent earnings").unwrap();
+        confirm_test_request(&mut s, id);
+        s.research_config_mut().fallback_agent = "Codex".into();
+        s.research_config_mut().fallback_model = "fallback-model".into();
+        let mut failed = s.prepare_request_plan(id).unwrap();
+        failed.status = "Failed".into();
+        failed.logs.push(r#"[error] {"status":503,"message":"overloaded"}"#.into());
+        s.request_at_mut(0).unwrap().planning_run_id = Some(failed.id);
+        let failed_id = failed.id;
+        s.push_run(failed);
+        assert_eq!(s.request_plan_fallback_retry(failed_id), Some(id));
+
+        let retry = s.prepare_request_plan(id).unwrap();
+        assert_eq!(retry.agent, "Codex");
+        assert_eq!(retry.model, "fallback-model");
+        let mut fallback_failed = retry;
+        fallback_failed.status = "Failed".into();
+        fallback_failed.logs.push(r#"[error] {"status":503,"message":"overloaded"}"#.into());
+        let fallback_id = fallback_failed.id;
+        s.push_run(fallback_failed);
+        assert_eq!(s.request_plan_fallback_retry(fallback_id), None);
     }
 
     #[test]

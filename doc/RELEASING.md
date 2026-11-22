@@ -37,19 +37,27 @@ it signs anything. Losing the private key requires a manual reinstall path.
 
 ## Publishing a release
 
-1. Set the same stable version in `Cargo.toml` and
-   `assets/brand/macos/Info.plist` (`CFBundleShortVersionString`).
-2. Commit and merge the version change into `main`.
-3. Create and push a matching tag:
+1. Commit and merge the release commit into `main`.
+2. Create and push a stable tag; the tag is the single source of truth for the
+   version:
 
    ```sh
-   git tag v0.1.0
-   git push origin v0.1.0
+   git tag v0.1.1
+   git push origin v0.1.1
    ```
 
-4. The `Release macOS app` workflow tests, builds the updater-enabled DMG,
-   signs the ZIP/appcast, creates a draft release, uploads both assets, and
-   marks it Latest only after both uploads succeed.
+3. The `Release macOS app` workflow first runs `script/set_version.sh` with the
+   tag version, which writes `Cargo.toml`, `Cargo.lock` and
+   `assets/brand/macos/Info.plist` in the runner. You do not need to edit these
+   files or commit a version bump yourself; the tag must match the release
+   commit on `main`.
+4. The workflow then tests, builds the updater-enabled DMG, signs the
+   ZIP/appcast, creates a draft release, uploads both assets, and marks it
+   Latest only after both uploads succeed.
+
+`script/set_version.sh MAJOR.MINOR.PATCH` can also be run locally when testing a
+packaging change, but its edits are runner-local during a release and are never
+pushed.
 
 An existing stable release is never replaced. Rerunning a completed release
 fails before publication rather than overwriting assets. Manual publication is

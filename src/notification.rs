@@ -400,6 +400,63 @@ impl Store {
         });
     }
 
+    /// A Research automation period that opted out of GitHub sync still gets
+    /// its completion summary, but has no public URL to wait for.
+    pub(crate) fn enqueue_direct_topic_notification_job(
+        &mut self,
+        topic: u64,
+        occurrence: u64,
+        title: String,
+        summary: String,
+        fingerprint: String,
+        now: i64,
+    ) {
+        if !self.notification_config().enabled || summary.trim().is_empty() { return; }
+        let id = format!("topic-direct-{topic}-{}", &fingerprint[..fingerprint.len().min(16)]);
+        if self.notification_jobs.iter().any(|job| job.id == id) { return; }
+        self.notification_jobs.retain_tracked(|job| {
+            job.topic != topic || !matches!(job.status.as_str(), JOB_WAITING | JOB_PENDING)
+        });
+        let cleaned_title = title.replace(['\n', '\r'], " ").trim().to_string();
+        if cleaned_title.is_empty() { return; }
+        self.notification_jobs.push_tracked(NotificationJob {
+            id,
+            topic,
+            occurrence: Some(occurrence),
+            status: JOB_PENDING.into(),
+            title: cleaned_title,
+            summary,
+            fingerprint,
+            url: String::new(),
+            destination: self.notification_config().destination.trim().to_string(),
+            attempts: 0,
+            sent_chunks: 0,
+            last_error: String::new(),
+            created_at: now,
+            updated_at: now,
+        });
+    }
+
+    /// Promote jobs that are waiting for a publication that will now never
+    /// exist, so turning sync off does not strand already-enqueued summaries.
+    pub(crate) fn promote_waiting_topic_notifications(&mut self, topics: &[u64]) {
+        if topics.is_empty() { return; }
+        for index in 0..self.notification_jobs.len() {
+            let promote = {
+                let job = &self.notification_jobs[index];
+                topics.contains(&job.topic) && job.status == JOB_WAITING
+            };
+            if promote {
+                let job = self
+                    .notification_jobs
+                    .index_mut(index)
+                    .expect("notification job index was just read");
+                job.status = JOB_PENDING.into();
+                job.url.clear();
+            }
+        }
+    }
+
     pub(crate) fn enqueue_direct_notification_job(
         &mut self,
         occurrence: u64,
@@ -602,12 +659,39 @@ mod tests {
     }
 
     #[test]
+    fn sync_opt_out_jobs_are_sent_directly_without_a_publication() {
+        let mut store = Store::empty();
+        store.enqueue_direct_topic_notification_job(
+            7, 3, "Report".into(), "Answer".into(), "a".repeat(64), 100,
+        );
+        assert_eq!(store.notification_jobs().len(), 1);
+        assert_eq!(store.notification_jobs()[0].status, JOB_PENDING);
+        assert_eq!(store.notification_jobs()[0].url, "");
+        assert_eq!(store.notification_jobs()[0].topic, 7);
+        store.enqueue_direct_topic_notification_job(
+            7, 3, "Report".into(), "Answer".into(), "a".repeat(64), 101,
+        );
+        assert_eq!(store.notification_jobs().len(), 1);
+    }
+
+    #[test]
+    fn turning_sync_off_promotes_already_waiting_summaries() {
+        let mut store = Store::empty();
+        store.enqueue_notification_job(7, Some(3), "Report".into(), "Answer".into(), "a".repeat(64), 100);
+        assert_eq!(store.notification_jobs()[0].status, JOB_WAITING);
+        store.promote_waiting_topic_notifications(&[7]);
+        assert_eq!(store.notification_jobs()[0].status, JOB_PENDING);
+        assert_eq!(store.notification_jobs()[0].url, "");
+    }
+
+    #[test]
     fn jobs_dedupe_and_activate_only_after_online() {
         let mut store = Store::empty();
         store.enqueue_notification_job(7, Some(3), "Report".into(), "Answer".into(), "a".repeat(64), 100);
         store.enqueue_notification_job(7, Some(3), "Report".into(), "Answer".into(), "a".repeat(64), 100);
         assert_eq!(store.notification_jobs().len(), 1);
         let mut publication = Publication {
+            path_prefix: String::new(),
             id: "p".into(), topic: 7, fingerprint: "b".repeat(64),
             config: crate::report_publish::PublishingConfig::default(),
             title: "Report".into(), markdown: String::new(),

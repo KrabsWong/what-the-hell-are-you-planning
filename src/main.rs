@@ -90,6 +90,7 @@ mod navigation_context_qa;
 #[cfg(feature = "qa")]
 mod navigation_qa;
 mod notification;
+mod updater;
 mod opencode;
 mod codex;
 mod persistence;
@@ -509,6 +510,7 @@ fn main() {
     });
     application.run(move |cx| {
         init(cx);
+        updater::start();
         cx.bind_keys([KeyBinding::new("cmd-q", Quit, None)]);
         appearance::apply(
             crate::workspace::load_appearance_hint().unwrap_or_default(),
@@ -563,6 +565,10 @@ fn main() {
                     cx.background_executor().timer(std::time::Duration::from_millis(500)).await;
                     if cx.update_window(window, |_, w, cx| {
                         app.update(cx, |app, cx| {
+                            if let Some(version) = crate::updater::try_recv() {
+                                app.update_available = version;
+                                cx.notify();
+                            }
                             if app.native_glass.as_ref().is_some_and(|glass| glass.refresh(app.store.liquid_glass(), w, cx)) {
                                 cx.notify();
                             }

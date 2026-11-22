@@ -1,4 +1,6 @@
 /target/
+/build/
+/dist/
 /.cargo-cache/
 /.local/
 .DS_Store

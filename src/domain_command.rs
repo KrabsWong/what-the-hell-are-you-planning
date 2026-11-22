@@ -115,6 +115,7 @@ impl CommandBase {
             | Command::Enable { id: Some(id), .. }
             | Command::AutomationPause { id, .. }
             | Command::ResumeSchedule { id, .. }
+            | Command::SetAutomationNotification { id, .. }
             | Command::Archive { id, .. } => {
                 if let Some(definition) = store.automation(*id) {
                     base.automations.insert(
@@ -349,6 +350,12 @@ pub(crate) enum Command {
         id: u64,
         now: i64,
     },
+    /// Change one automation's completion-notification opt-in without creating
+    /// a reviewed definition version.
+    SetAutomationNotification {
+        id: u64,
+        enabled: bool,
+    },
     ResumeSchedule {
         id: u64,
         now: i64,
@@ -420,6 +427,7 @@ impl Command {
             Self::SaveDraft { .. }
             | Self::Enable { .. }
             | Self::AutomationPause { .. }
+            | Self::SetAutomationNotification { .. }
             | Self::ResumeSchedule { .. }
             | Self::RetryOccurrence { .. }
             | Self::RunNow { .. }
@@ -450,6 +458,11 @@ impl Command {
             Self::AutomationPause { id, .. } => {
                 CommandId::new("automation_pause", *id, format!("automation:{id}:pause"))
             }
+            Self::SetAutomationNotification { id, enabled } => CommandId::new(
+                "automation_notification",
+                *id,
+                format!("automation:{id}:notification:{enabled}"),
+            ),
             Self::ResumeSchedule { id, .. } => {
                 CommandId::new("automation_resume", *id, format!("automation:{id}:resume"))
             }
@@ -608,6 +621,7 @@ impl Command {
             }
             Self::RunNow { .. }
             | Self::SetRead { .. }
+            | Self::SetAutomationNotification { .. }
             | Self::CleanupLogs { .. }
             | Self::StopOccurrence { .. } => Ok(()),
             Self::Copy { .. } => Err(CommandError::Conflict(
@@ -832,6 +846,28 @@ impl Store {
                     feedback: Some(CommandFeedback {
                         title: "Paused".into(),
                         detail: "Future triggers stopped; a running period can finish.".into(),
+                    }),
+                }
+            }
+            Command::SetAutomationNotification { id, enabled } => {
+                let definition = staged
+                    .automation_mut(*id)
+                    .ok_or_else(|| CommandError::Rejected("Automation not found.".into()))?;
+                definition.policy.notify_on_completion = *enabled;
+                CommandOutcome {
+                    subject: Some(*id),
+                    effects: vec![],
+                    undo: UndoDecision::NotUndoable(
+                        "Notification preferences are saved as a separate operation.",
+                    ),
+                    feedback: Some(CommandFeedback {
+                        title: if *enabled {
+                            "Completion notification enabled"
+                        } else {
+                            "Completion notification disabled"
+                        }
+                        .into(),
+                        detail: "The preference applies to future completed periods.".into(),
                     }),
                 }
             }
@@ -2539,6 +2575,26 @@ mod tests {
                 "Automation lifecycle changes are saved as a separate operation."
             )
         );
+    }
+
+    #[test]
+    fn automation_notification_command_preserves_definition_version_and_approval() {
+        let mut store = Store::mock();
+        store.push_automation(automation_definition(1, 1_000));
+        let before = store.automation(1).unwrap().clone();
+        let command = Command::SetAutomationNotification {
+            id: 1,
+            enabled: true,
+        };
+        let prepared = store
+            .prepare_command(command.id(), CommandClass::StartOrExtend, command)
+            .unwrap();
+
+        assert_eq!(store.automation(1), Some(&before), "prepare must not mutate the original");
+        let after = prepared.staged.automation(1).unwrap();
+        assert!(after.policy.notify_on_completion);
+        assert_eq!(after.version, before.version);
+        assert_eq!(after.approval, before.approval);
     }
 
     #[test]

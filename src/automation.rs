@@ -139,6 +139,11 @@ pub struct AutomationPolicy {
     pub max_consecutive_failures: u32,
     pub catch_up: CatchUp,
     pub log_retention_days: u32,
+    /// Whether a completed period may send a completion notification when the
+    /// global notification service is enabled. Legacy policies omit this field
+    /// and therefore stay silent until the user opts in.
+    #[serde(default)]
+    pub notify_on_completion: bool,
 }
 impl Default for AutomationPolicy {
     fn default() -> Self {
@@ -148,6 +153,7 @@ impl Default for AutomationPolicy {
             max_consecutive_failures: DEFAULT_MAX_CONSECUTIVE_FAILURES,
             catch_up: CatchUp::LatestOnly,
             log_retention_days: DEFAULT_LOG_RETENTION_DAYS,
+            notify_on_completion: false,
         }
     }
 }
@@ -1186,11 +1192,23 @@ mod tests {
         }
         assert_eq!(AutomationPolicy::default().catch_up, CatchUp::LatestOnly);
         assert_eq!(AutomationPolicy::default().timeout_seconds, 60 * 60);
+        assert!(!AutomationPolicy::default().notify_on_completion);
         let legacy = AutomationPolicy {
             timeout_seconds: 24 * 60 * 60,
             ..AutomationPolicy::default()
         };
         assert_eq!(legacy.effective_timeout_seconds(), 60 * 60);
+    }
+
+    #[test]
+    fn legacy_policy_without_notification_flag_stays_silent() {
+        let mut value = serde_json::to_value(AutomationPolicy::default()).unwrap();
+        value
+            .as_object_mut()
+            .unwrap()
+            .remove("notify_on_completion");
+        let legacy: AutomationPolicy = serde_json::from_value(value).unwrap();
+        assert!(!legacy.notify_on_completion);
     }
 
     #[test]

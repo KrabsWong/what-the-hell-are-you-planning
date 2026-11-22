@@ -341,6 +341,15 @@ impl Store {
         self.notification_config_value.get()
     }
 
+    /// Completion messages require both the global service switch and an
+    /// explicit opt-in on the automation that produced the period.
+    pub fn automation_notification_enabled(&self, automation: u64) -> bool {
+        self.notification_config().enabled
+            && self
+                .automation(automation)
+                .is_some_and(|definition| definition.policy.notify_on_completion)
+    }
+
     pub fn notification_jobs(&self) -> &[NotificationJob] {
         &self.notification_jobs
     }
@@ -548,6 +557,8 @@ impl TaskApp {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::automation::{AutomationPolicy, AutomationShape};
+    use crate::automation_schedule::{Schedule, ScheduleSpec};
 
     #[test]
     fn signature_matches_canonical_hmac_contract() {
@@ -628,5 +639,39 @@ mod tests {
         assert_eq!(job.occurrence, Some(12));
         assert_eq!(job.status, JOB_PENDING);
         assert!(job.url.is_empty());
+    }
+
+    #[test]
+    fn automation_notification_requires_both_switches() {
+        let mut store = Store::empty();
+        let project = store.projects()[0].id;
+        let id = store
+            .create_automation_draft(
+                project,
+                AutomationShape::Quick,
+                "Daily check".into(),
+                "Check a value".into(),
+                "One answer".into(),
+                Schedule {
+                    spec: ScheduleSpec::Daily { hour: 8, minute: 30 },
+                    timezone: "UTC".into(),
+                },
+                AutomationPolicy::default(),
+                None,
+                100,
+            )
+            .unwrap();
+
+        assert!(store.notification_config().enabled);
+        assert!(!store.automation_notification_enabled(id));
+
+        store.automation_mut(id).unwrap().policy.notify_on_completion = true;
+        assert!(store.automation_notification_enabled(id));
+
+        store.set_notification_config(NotificationConfig {
+            enabled: false,
+            destination: String::new(),
+        });
+        assert!(!store.automation_notification_enabled(id));
     }
 }

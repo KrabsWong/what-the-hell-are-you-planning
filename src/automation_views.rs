@@ -20,6 +20,7 @@ use gpui_kit::{
     component::button::ButtonVariants,
     component::input::{Input, InputState, Textarea, TextareaState},
     component::menu::{DropdownMenu, PopupMenuItem},
+    component::switch::Switch,
     prelude::*,
     *,
 };
@@ -115,6 +116,7 @@ pub struct AutomationDraft {
     pub timeout: String,
     pub failures: String,
     pub retention: String,
+    pub notify_on_completion: bool,
     pub plan: Option<AutomationTemplate>,
 }
 
@@ -139,6 +141,7 @@ impl AutomationDraft {
             timeout: "60".into(),
             failures: "3".into(),
             retention: "30".into(),
+            notify_on_completion: false,
             plan: None,
         }
     }
@@ -160,6 +163,7 @@ impl AutomationDraft {
         draft.timeout = (definition.policy.timeout_seconds / 60).to_string();
         draft.failures = definition.policy.max_consecutive_failures.to_string();
         draft.retention = definition.policy.log_retention_days.to_string();
+        draft.notify_on_completion = definition.policy.notify_on_completion;
         draft.plan = definition.template.clone();
         match &definition.schedule.spec {
             ScheduleSpec::Interval { minutes } => {
@@ -435,6 +439,8 @@ pub struct AutomationUi {
     /// completion handoff so a repeated activation cannot be submitted.
     pub(crate) automation_command_inflight: Option<AutomationCommandReceipt>,
     pub show_advanced: bool,
+    /// Task-level completion-notification opt-in shown in setup and Settings.
+    pub notify_on_completion: bool,
     pub kind: AutomationKind,
     pub interval_in_hours: bool,
     pub catch_up: CatchUp,
@@ -741,6 +747,7 @@ impl AutomationUi {
             pending_command: None,
             automation_command_inflight: None,
             show_advanced: false,
+            notify_on_completion: false,
             kind: AutomationKind::Daily,
             interval_in_hours: false,
             catch_up: CatchUp::LatestOnly,
@@ -877,6 +884,7 @@ impl AutomationUi {
             timeout: self.timeout.read(cx).value().to_string(),
             failures: self.failures.read(cx).value().to_string(),
             retention: self.retention.read(cx).value().to_string(),
+            notify_on_completion: self.notify_on_completion,
             plan: self.plan.clone(),
         }
     }
@@ -895,6 +903,7 @@ impl AutomationUi {
         self.interval_in_hours = draft.interval_in_hours;
         self.catch_up = draft.catch_up;
         self.weekdays = draft.weekdays;
+        self.notify_on_completion = draft.notify_on_completion;
         self.plan = draft.plan.clone();
         set_input(cx, &self.name, &draft.name, window);
         set_textarea(cx, &self.objective, &draft.objective, window);
@@ -1001,6 +1010,7 @@ impl AutomationUi {
             max_consecutive_failures: failures,
             catch_up: self.catch_up,
             log_retention_days: retention,
+            notify_on_completion: self.notify_on_completion,
         };
         policy.validate()?;
         Ok(policy)
@@ -2755,6 +2765,28 @@ impl TaskApp {
         cx.notify();
     }
 
+    pub fn set_automation_notification(
+        &mut self,
+        id: u64,
+        enabled: bool,
+        cx: &mut Context<Self>,
+    ) {
+        let command = crate::domain_command::Command::SetAutomationNotification { id, enabled };
+        match self.execute_command(command, cx) {
+            Ok(crate::command_app::CommandRun::Saving { .. }) => {
+                self.automation_ui.feedback =
+                    Some(Ok("Saving… completion notification preference.".into()));
+            }
+            Ok(crate::command_app::CommandRun::Durable(receipt)) => {
+                self.automation_ui.feedback = receipt.feedback.map(|feedback| {
+                    Ok(format!("{} · {}", feedback.title, feedback.detail))
+                });
+            }
+            Err(error) => self.automation_ui.feedback = Some(Err(error)),
+        }
+        cx.notify();
+    }
+
     pub fn automation_cleanup_preview(&mut self, id: u64, cx: &mut Context<Self>) {
         match self
             .store
@@ -3972,6 +4004,26 @@ impl TaskApp {
                         CatchUp::LatestOnly => format!("Catch up: latest missed run, within {}", human_duration(definition.policy.allowed_delay_seconds)),
                         CatchUp::SkipAll => "Catch up: skip all missed runs".into(),
                     }, cx)),
+            )
+            .child(
+                col().gap_2().pt_3().border_t_1().border_color(rgb(colors.subtle_line))
+                    .child(row().items_center().justify_between().gap_2()
+                        .w_full().pr_2()
+                        .child(overview_heading("Completion notification"))
+                        .child(
+                            Switch::new("automation-settings-notify-completion")
+                                .checked(definition.policy.notify_on_completion)
+                                .flex_shrink_0()
+                                .accessibility_label(crate::i18n::tr("Notify when this automation finishes"))
+                                .tooltip(crate::i18n::tr("Sends a short completion summary to the configured channel. Global completion notifications must also be enabled in Settings > Publishing."))
+                                .on_click(cx.listener(move |app, enabled, _, cx| {
+                                    app.set_automation_notification(id, *enabled, cx);
+                                }))
+                        )
+                    )
+                    .when(!self.store.notification_config().enabled, |d| {
+                        d.child(overview_note("Global completion notifications are off in Settings > Publishing; no message is sent until they are enabled.", cx))
+                    }),
             )
             .child(
                 col().gap_2().pt_3().border_t_1().border_color(rgb(colors.subtle_line))
@@ -5777,6 +5829,22 @@ impl TaskApp {
                         .child(select_button("automation-catchup-skip", "Skip all missed periods", self.automation_ui.catch_up == CatchUp::SkipAll, cx)
                             .on_click(cx.listener(|app, _, _, cx| { app.automation_ui.catch_up = CatchUp::SkipAll; cx.notify(); }))),
                 )
+                .child(row().items_center().justify_between().gap_2()
+                    .w_full().pr_2()
+                    .child(div().font_weight(FontWeight::SEMIBOLD).child(selectable("Completion notification")))
+                    .child(
+                        Switch::new("automation-notify-completion")
+                            .checked(self.automation_ui.notify_on_completion)
+                            .flex_shrink_0()
+                            .accessibility_label(crate::i18n::tr("Notify when this automation finishes"))
+                            .tooltip(crate::i18n::tr("Sends a short completion summary to the configured channel. Global completion notifications must also be enabled in Settings > Publishing."))
+                            .on_click(cx.listener(|app, enabled, _, cx| {
+                                app.automation_ui.notify_on_completion = *enabled;
+                                cx.notify();
+                            }))
+                    )
+                )
+                .child(muted("Off by default. Enable only for automations whose results should be pushed to the configured channel.", cx))
                 .child(
                     row().justify_between()
                         .child(div().font_weight(FontWeight::SEMIBOLD).child(selectable("Advanced limits")))

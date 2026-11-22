@@ -1,6 +1,6 @@
 //! Durable Topic publication snapshots. Publishing never changes research status.
 use crate::{app::TaskApp, domain::Store, research::ResearchKind, views::*};
-use gpui_kit::{component::{input::Input, Disableable}, prelude::FluentBuilder, *};
+use gpui_kit::{component::{input::Input, switch::Switch, Disableable}, prelude::FluentBuilder, *};
 use serde::{Deserialize, Serialize};
 use sha2::{Digest, Sha256};
 use std::{io::Read, sync::mpsc};
@@ -353,6 +353,12 @@ fn verify_page(publication: &Publication, commit: String) -> PublishOutcome {
 impl TaskApp {
     pub(crate) fn enqueue_topic_notification(&mut self, topic: u64, occurrence: Option<u64>) {
         if !self.store.notification_config().enabled { return; }
+        if let Some(occurrence) = occurrence {
+            let automation = self.store.occurrence(occurrence)
+                .map(|value| value.automation_id)
+                .unwrap_or_default();
+            if !self.store.automation_notification_enabled(automation) { return; }
+        }
         let allow_automation = self.store.topic(topic).is_some_and(|topic| topic.automation_id.is_some());
         if self.store.topic_publication_blocker_with_mode(topic, allow_automation).is_some() { return; }
         let Some((title, markdown)) = self.store.topic_share_content_with_mode(topic, allow_automation) else { return; };
@@ -584,45 +590,56 @@ impl TaskApp {
             .child(label("Target branch", cx)).child(Input::new(&self.publishing_inputs[1]).id("publishing-branch"))
             .child(label("Public site URL", cx)).child(Input::new(&self.publishing_inputs[2]).id("publishing-url"))
             .child(button("save-publishing", "Save publishing settings").disabled(self.publishing_job.is_some()).on_click(cx.listener(|a, _, _, cx| a.save_publishing_settings(cx))))
-            .child(select_button("automatic-publishing", "Publish completed Topics automatically", self.store.report_publishing().automatic, cx)
-                .when(self.store.report_publishing().automatic, |b| b.icon(assets::IconName::Check))
-                .disabled(self.publishing_job.is_some())
-                .on_click(cx.listener(|a, _, _, cx| {
-                    if !a.store.report_publishing().automatic {
-                        if let Err(error) = a.store.report_publishing().validate() { a.show_save_error(error, cx); return; }
-                    }
-                    let automatic = !a.store.report_publishing().automatic;
-                    if a
-                        .apply_domain_command_undoable(
-                            crate::scoped_domain::DomainCommand::PublishingAutomatic {
-                                automatic,
-                            },
-                            "Automatic publishing preference saved",
-                            cx,
-                        )
-                        .is_none()
-                    {
-                        return;
-                    }
-                    a.publishing_scan_requested = true; a.start_pump(cx); cx.notify();
-                })))
+            .child(row().items_center().justify_between().gap_2().w_full().pr_2()
+                .child(div().font_weight(FontWeight::SEMIBOLD).child(selectable("Publish completed Topics automatically")))
+                .child(
+                    Switch::new("automatic-publishing")
+                        .checked(self.store.report_publishing().automatic)
+                        .accessibility_label(crate::i18n::tr("Publish completed Topics automatically"))
+                        .disabled(self.publishing_job.is_some())
+                        .on_click(cx.listener(|a, enabled, _, cx| {
+                            if *enabled && let Err(error) = a.store.report_publishing().validate() {
+                                a.show_save_error(error, cx);
+                                return;
+                            }
+                            if a
+                                .apply_domain_command_undoable(
+                                    crate::scoped_domain::DomainCommand::PublishingAutomatic {
+                                        automatic: *enabled,
+                                    },
+                                    "Automatic publishing preference saved",
+                                    cx,
+                                )
+                                .is_none()
+                            {
+                                return;
+                            }
+                            a.publishing_scan_requested = true; a.start_pump(cx); cx.notify();
+                        }))
+                )
+            )
             .child(label("Enabling this also publishes existing completed Topics. All active goals must be complete. A Topic keeps one report URL: new content overwrites it in place so shared links keep working, retries keep the same URL, and earlier versions remain in Git history. Anyone with the link can read it.", cx))
             .child(label("Import your existing reports into the repository before connecting EdgeOne. Git pushes never force-overwrite remote history. Keep the repository private and configure EdgeOne to deploy this branch.", cx))
-            .child(div().font_weight(FontWeight::SEMIBOLD).child(selectable("Completion notifications")))
-            .child(select_button("completion-notifications", "Notify when a report is online", self.store.notification_config().enabled, cx)
-                .when(self.store.notification_config().enabled, |b| b.icon(assets::IconName::Check))
-                .on_click(cx.listener(|a, _, _, cx| {
-                    let config = crate::notification::NotificationConfig {
-                        enabled: !a.store.notification_config().enabled,
-                        destination: a.store.notification_config().destination.clone(),
-                    };
-                    let _ = a.apply_domain_command_undoable(
-                        crate::scoped_domain::DomainCommand::Notification { config },
-                        "Completion notification preference saved",
-                        cx,
-                    );
-                    cx.notify();
-                })))
+            .child(row().items_center().justify_between().gap_2().w_full().pr_2()
+                .child(div().font_weight(FontWeight::SEMIBOLD).child(selectable("Completion notifications")))
+                .child(
+                    Switch::new("completion-notifications")
+                        .checked(self.store.notification_config().enabled)
+                        .accessibility_label(crate::i18n::tr("Notify when a report is online"))
+                        .on_click(cx.listener(|a, enabled, _, cx| {
+                            let config = crate::notification::NotificationConfig {
+                                enabled: *enabled,
+                                destination: a.store.notification_config().destination.clone(),
+                            };
+                            let _ = a.apply_domain_command_undoable(
+                                crate::scoped_domain::DomainCommand::Notification { config },
+                                "Completion notification preference saved",
+                                cx,
+                            );
+                            cx.notify();
+                        }))
+                )
+            )
             .child(label("Destination override", cx)).child(Input::new(&self.notification_destination_input).id("notification-destination"))
             .child(label("Endpoint and signing key come from YOOOOO_NOTIFY_URL / YOOOOO_NOTIFY_HMAC_KEY or the shared yooooo-notifier client config. Leave the destination empty to use its default channel.", cx))
             .child({

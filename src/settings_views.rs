@@ -612,10 +612,39 @@ impl TaskApp {
                     }),
                 ),
             );
+            let updates_available = crate::updater::available();
+            let check_label = match &self.update_available {
+                Some(version) => crate::i18n::tr_string(format!("Update to v{version}")),
+                None => crate::i18n::tr_string("Check for Updates…"),
+            };
+            let updates = col()
+                .gap_2()
+                .child(div().font_weight(FontWeight::SEMIBOLD).child(selectable("App updates")))
+                .child(row().items_center().justify_between().gap_2().w_full().pr_2()
+                    .child(div().child(selectable("Automatically check for updates")))
+                    .child(
+                        Switch::new("settings-automatic-updates")
+                            .checked(crate::updater::automatic())
+                            .disabled(!updates_available)
+                            .accessibility_label(crate::i18n::tr("Automatically check for updates"))
+                            .on_click(cx.listener(|app, enabled, _, cx| {
+                                app.set_automatic_updates(*enabled, cx);
+                            })),
+                    ),
+                )
+                .child(button("check-for-updates", check_label)
+                    .disabled(!updates_available || !crate::updater::can_check())
+                    .on_click(cx.listener(|app, _, _, cx| app.check_for_updates(cx))))
+                .child(label(if updates_available {
+                    "Updates are checked every 12 hours. Installation requires your confirmation."
+                } else {
+                    "Updates are unavailable in this build."
+                }, cx));
             col().gap_6()
             .child(interface_language_settings)
             .child(content)
             .child(appearance)
+            .child(updates)
             .child(col().gap_2()
                 .child(Switch::new("settings-liquid-glass")
                     .label(crate::i18n::tr("Liquid Glass"))

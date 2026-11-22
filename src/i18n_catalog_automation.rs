@@ -507,4 +507,13 @@ pub(crate) static AUTOMATION_TRANSLATIONS: &[(&str, &str)] = &[
     ("{} · No final report yet", "{} · 暂无最终报告"),
     ("{} · published {}", "{} · 发布于 {}"),
     ("{} · {}. Results and recovery records remain.", "{} · {}。结果和恢复记录会保留。"),
+    ("Completion notification", "完成通知"),
+    ("Completion notification disabled", "完成通知已关闭"),
+    ("Completion notification enabled", "完成通知已开启"),
+    ("Global completion notifications are off in Settings > Publishing; no message is sent until they are enabled.", "Settings > Publishing 中的全局完成通知已关闭；开启前不会发送消息。"),
+    ("Notify when this automation finishes", "此自动化完成时通知"),
+    ("Off by default. Enable only for automations whose results should be pushed to the configured channel.", "默认关闭。仅为需要将结果推送到指定渠道的自动化开启。"),
+    ("Saving… completion notification preference.", "正在保存…完成通知偏好。"),
+    ("Sends a short completion summary to the configured channel. Global completion notifications must also be enabled in Settings > Publishing.", "向指定渠道发送简短的完成摘要。还需在 Settings > Publishing 中开启全局完成通知。"),
+    ("The preference applies to future completed periods.", "此偏好适用于之后完成的时段。"),
 ];

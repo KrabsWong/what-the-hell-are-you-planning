@@ -1,0 +1,50 @@
+name: Release macOS app
+
+on:
+  push:
+    tags: ['v*.*.*']
+  workflow_dispatch:
+    inputs:
+      tag:
+        description: 'Existing stable release tag (vMAJOR.MINOR.PATCH)'
+        required: true
+        type: string
+
+permissions:
+  contents: write
+
+jobs:
+  release:
+    runs-on: macos-15
+    timeout-minutes: 45
+    env:
+      RELEASE_TAG: ${{ github.event_name == 'workflow_dispatch' && inputs.tag || github.ref_name }}
+      SPARKLE_PUBLIC_ED_KEY: ${{ vars.SPARKLE_PUBLIC_ED_KEY }}
+    steps:
+      - name: Check out release commit
+        uses: actions/checkout@v5
+        with:
+          ref: ${{ github.event_name == 'workflow_dispatch' && inputs.tag || github.ref_name }}
+          persist-credentials: false
+          fetch-depth: 0
+      - name: Fetch main for ancestry validation
+        run: git fetch origin main
+      - name: Prepare Rust toolchain
+        run: |
+          rustup toolchain install stable --profile minimal
+          rustup default stable
+          test "$(uname -m)" = arm64
+      - name: Test
+        run: cargo test --locked
+      - name: Fetch pinned Sparkle SDK
+        run: bash scripts/fetch-sparkle.sh
+      - name: Package updater-enabled DMG
+        run: bash script/package_macos.sh
+      - name: Sign update archive and appcast
+        env:
+          SPARKLE_PRIVATE_ED_KEY: ${{ secrets.SPARKLE_PRIVATE_ED_KEY }}
+        run: python3 scripts/release.py --tag "$RELEASE_TAG"
+      - name: Publish release
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: python3 scripts/release.py --tag "$RELEASE_TAG" --publish

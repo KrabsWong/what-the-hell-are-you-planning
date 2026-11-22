@@ -1,10 +1,11 @@
 [package]
 name = "what-the-hell-are-you-planning"
-version = "0.0.1"
+version = "0.1.0"
 edition = "2024"
 
 [features]
 qa = ["gpui-kit/test-support"]
+sparkle = []
 
 [dependencies]
 markdown = "=1.0.0"

@@ -17,6 +17,7 @@ Keep the existing native workspace layout, system fonts and warm neutral palette
 - Danger: red outline and tint via `controls::danger_button` for stopping an active run, cancelling an active period or removing material. Ordinary Close or Cancel uses the secondary control, not danger color.
 - Disabled: keep the shape, weaken fill and text, and explain the business reason near the button; never trigger the action.
 - Focus: keep the component library's focus drawing and Tab/Enter/Space semantics; hover alone is insufficient.
+- Binary settings use the native `Switch`, including automatic publishing, completion notifications, automation completion notifications, follow-output and list display options. Keep `select_button` for mutually exclusive choices, weekdays, filters and tabs; those are segmented selections, not switches.
 
 ## Geometry and typography
 
@@ -34,6 +35,8 @@ Settings > General places a compact **Content → Output language** dropdown bef
 
 Settings > General places the compact **Interface language → Display language** dropdown above Content. English is the default and **简体中文** is the first alternative. Switching it translates application-owned labels, tooltips, status text, notices and error messages in place, including the Settings page; user-authored values and quoted material keep their original language. The control saves immediately and leaves the separate Output language unchanged.
 
+Settings > General places **App updates** after Appearance. A native switch controls automatic checks, and one labeled button performs an immediate check or opens the pending update. The control is disabled with an explanation in source builds without Sparkle. Installation is never automatic.
+
 Opening an automation result prepares the selected period's saved result bodies asynchronously before revealing the dialog. A newer selection replaces the pending destination, and navigation cancels it. Failed reads open the existing error/retry view. Cached results open immediately. A period result uses one full-width reading area. The final report is shown by default. A completed step's **View result** action replaces that reading area with the saved step result, labels it as an automation period document, and offers **View final report** to return; it does not navigate away to an ordinary research task. Unfinished steps keep their task-detail action. The dialog owns a single vertical scroll container, and wide tables can scroll horizontally inside it. Text selection and links retain their normal behavior.
 
 The sidebar brand mark and app name stay fixed above the navigation scroll area. Scrolling moves only the navigation list; the workspace switcher stays fixed below it, separated by whitespace rather than a horizontal rule or another shadow.
@@ -42,7 +45,7 @@ Result headers keep the title and actions on one line. Actions stay right-aligne
 
 Report readers fill the available content width and reflow when the window or navigation sidebar changes size. Final reports lead with the answer and reasoning. A recognized Appendix and the structured Sources list default to collapsed disclosures after the report body in both native readers and published HTML; expanding them never hides or rewrites the answer, and copy/export retain the complete report. Task details use a flexible body beside a fixed 240 px Task properties column, matching the main-branch layout; the properties column does not expand or stack below the body.
 
-Settings → Publishing keeps automatic publication on by default and shows a compact notify-online switch below the repository fields. The destination override is secondary text; endpoint and signing credentials stay in environment variables or the shared client configuration and are never shown or stored in the workspace. The panel reports pending, delivered and attention states with a direct retry action for failed notifications. A publication header action says **Publish update** for refreshed or failed snapshots, while **Check status** and **View report** retain their existing meanings.
+Settings → Publishing keeps automatic publication on by default and shows a compact notify-online switch below the repository fields. This is the global master switch for completion messages, including automation periods. The destination override is secondary text; endpoint and signing credentials stay in environment variables or the shared client configuration and are never shown or stored in the workspace. The panel reports pending, delivered and attention states with a direct retry action for failed notifications. A publication header action says **Publish update** for refreshed or failed snapshots, while **Check status** and **View report** retain their existing meanings.
 
 ## Workspace identity and status bar
 
@@ -123,6 +126,8 @@ All interface icons use [Lucide](https://lucide.dev/icons/) via the pinned gpui-
 - Automation list rows separate fixed schedule rules from live execution information. The schedule and time zone sit beside the title in secondary text, wrapping when necessary; next-run timing and the latest outcome form a distinct wrapping section. Activity timestamps stay subordinate to outcomes, while definition status and unread indicators retain their existing meaning.
 
 - Automation Settings places its schedule beside the title, keeps objective/expected result and upcoming runs above execution details, and presents approved agents/models as neutral tags. Run limits remain visible in concise form; question-mark tooltips carry explanatory prose. Quick tasks omit an empty planning-history section, and available history remains at the bottom. Long tags truncate with a full-value tooltip.
+
+- A compact **Completion notification** section in automation Settings places the heading and a native switch on one row. It is off by default, saves directly without a new definition version, and explains when the global notification master switch is off. The schedule step of the creation/edit wizard uses the same switch and wording so setup and later configuration stay recognizable.
 
 - Automation detail headers place the fixed task-type tag directly after the title, followed by lifecycle status on one wrapping row. The schedule and muted version form a compact secondary row; the task-type tooltip explains its behavior without repeating the Automations destination in body text.
 

@@ -9,7 +9,7 @@ use crate::{
 use gpui_kit::base::{h_resizable, resizable_panel};
 use gpui_kit::component::button::ButtonVariants;
 use gpui_kit::{
-    component::{Disableable, Selectable, checkbox::Checkbox, menu::DropdownMenu},
+    component::{Disableable, Selectable, menu::DropdownMenu, switch::Switch},
     prelude::FluentBuilder,
     *,
 };
@@ -1479,10 +1479,10 @@ impl TaskApp {
             )
             .when(!self.show_run_result, |d| {
                 d.child(
-                    Checkbox::new("follow-logs")
+                    Switch::new("follow-logs")
                         .label(crate::i18n::tr("Follow output"))
                         .checked(self.follow_logs)
-                        .on_change(cx.listener(|this, value, _, cx| {
+                        .on_click(cx.listener(|this, value, _, cx| {
                             this.follow_logs = *value;
                             if *value {
                                 this.log_scroll.scroll_to_bottom();

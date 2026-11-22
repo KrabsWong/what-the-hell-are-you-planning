@@ -11,8 +11,8 @@ use gpui_kit::component::menu::{ContextMenuExt, DropdownMenu, PopupMenuItem};
 use gpui_kit::component::{
     Disableable, Selectable, Sizable,
     button::ButtonVariants,
-    checkbox::Checkbox,
     input::{IndentInline, Input, OutdentInline, Textarea},
+    switch::Switch,
 };
 use gpui_kit::prelude::FluentBuilder;
 #[cfg(any(test, feature = "qa"))]
@@ -1886,20 +1886,20 @@ impl TaskApp {
                     .gap_5()
                     .when(self.scope() != Scope::All, |d| {
                         d.child(
-                            Checkbox::new("show-done")
+                            Switch::new("show-done")
                                 .label(crate::i18n::tr("Show completed"))
                                 .checked(self.show_done)
-                                .on_change(cx.listener(|this, v, _, cx| {
+                                .on_click(cx.listener(|this, v, _, cx| {
                                     this.show_done = *v;
                                     cx.notify();
                                 })),
                         )
                     })
                     .child(
-                        Checkbox::new("compact")
+                        Switch::new("compact")
                             .label(crate::i18n::tr("Compact rows"))
                             .checked(self.compact)
-                            .on_change(cx.listener(|this, v, _, cx| {
+                            .on_click(cx.listener(|this, v, _, cx| {
                                 this.compact = *v;
                                 cx.notify();
                             })),

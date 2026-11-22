@@ -2515,27 +2515,29 @@ impl TaskApp {
                 {
                     if let Some(topic) = occurrence.research_topic_id {
                         self.enqueue_topic_notification(topic, Some(occurrence_id));
-                    } else if let Some(report) = self.store.occurrence(occurrence_id)
-                        .and_then(|completed| completed.final_run_id)
-                        .and_then(|final_run| self.store.runs().iter()
-                            .find(|report| report.id == final_run)
-                            .cloned())
-                    {
-                        let title = self.store.automation(definition)
-                            .map(|definition| format!("Automation complete: {}", definition.name))
-                            .unwrap_or_else(|| "Automation complete".into());
-                        let summary = crate::notification::publication_summary(&report.output);
-                        let fingerprint = crate::notification::direct_fingerprint(
-                            occurrence_id, report.id, &summary,
-                        );
-                        self.store.enqueue_direct_notification_job(
-                            occurrence_id,
-                            report.id,
-                            title,
-                            summary,
-                            fingerprint,
-                            now,
-                        );
+                    } else if self.store.automation_notification_enabled(definition) {
+                        let report = self.store.occurrence(occurrence_id)
+                            .and_then(|completed| completed.final_run_id)
+                            .and_then(|final_run| self.store.runs().iter()
+                                .find(|report| report.id == final_run)
+                                .cloned());
+                        if let Some(report) = report {
+                            let title = self.store.automation(definition)
+                                .map(|definition| format!("Automation complete: {}", definition.name))
+                                .unwrap_or_else(|| "Automation complete".into());
+                            let summary = crate::notification::publication_summary(&report.output);
+                            let fingerprint = crate::notification::direct_fingerprint(
+                                occurrence_id, report.id, &summary,
+                            );
+                            self.store.enqueue_direct_notification_job(
+                                occurrence_id,
+                                report.id,
+                                title,
+                                summary,
+                                fingerprint,
+                                now,
+                            );
+                        }
                     }
                     let resumed = self
                         .store

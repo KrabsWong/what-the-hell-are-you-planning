@@ -8464,7 +8464,7 @@ dependencies = [
 
 [[package]]
 name = "what-the-hell-are-you-planning"
-version = "0.0.1"
+version = "0.1.0"
 dependencies = [
  "beautiful-mermaid-rs",
  "chrono",

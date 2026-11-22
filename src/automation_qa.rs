@@ -13,6 +13,29 @@ use std::{
     time::Duration,
 };
 
+fn scroll_settings_to(w: &mut gpui_kit::Window, cx: &mut gpui_kit::App, id: &str) {
+    use gpui_kit::test::TestWindowExt;
+
+    w.render_frame(cx);
+    for _ in 0..40 {
+        let target = w.find(id.to_string());
+        let area = w.find("automation-settings-body").bounds();
+        let top = area.top().max(px(110.));
+        let bottom = area.bottom().min(w.viewport_size().height - px(40.)) - px(8.);
+        let bounds = target.bounds();
+        if target.visible() && bounds.top() >= top && bounds.bottom() <= bottom {
+            return;
+        }
+        let delta = if bounds.top() < top { 120. } else { -120. };
+        w.within("automation-settings-focus").scroll(
+            "automation-settings-body",
+            ScrollDelta::Pixels(point(px(0.), px(delta))),
+            cx,
+        );
+        w.render_frame(cx);
+    }
+}
+
 pub fn run() {
     let root = std::env::current_dir()
         .unwrap()
@@ -345,6 +368,7 @@ fn planning_chain(root: &Path) {
             w.try_find(review.clone()).is_some(),
             "the owning automation lists its planning attempt"
         );
+        scroll_settings_to(w, cx, &review);
         w.click(review, cx);
         w.render_frame(cx);
     })
@@ -4338,16 +4362,7 @@ print(json.dumps({'type':'text','part':{'text':json.dumps(plan)}}), flush=True)
     .unwrap();
     for (run_id, objective, expected) in &expected_content {
         cx.update_window(handle, |_, w, cx| {
-            w.within("automation-settings-focus").scroll("automation-settings-body",
-                ScrollDelta::Pixels(point(px(0.), px(10_000.))), cx);
-            for _ in 0..20 {
-                w.render_frame(cx);
-                if w.try_find(format!("planning-attempt-{run_id}")).is_some_and(|item| item.visible()) {
-                    break;
-                }
-                w.within("automation-settings-focus").scroll("automation-settings-body",
-                    ScrollDelta::Pixels(point(px(0.), px(-120.))), cx);
-            }
+            scroll_settings_to(w, cx, &format!("planning-attempt-{run_id}"));
         }).unwrap();
         let scroll_before = read_state(&mut cx, &app, |a| a.automation_ui.settings_scroll.offset().y);
         cx.update_window(handle, |_, w, cx| {
@@ -4465,6 +4480,7 @@ print(json.dumps({'type':'text','part':{'text':json.dumps(plan)}}), flush=True)
             w.try_find(format!("legacy-planning-attempt-{legacy_id}")).is_some(),
             "ambiguous automation-project history is visible under Automations"
         );
+        scroll_settings_to(w, cx, &format!("legacy-planning-attempt-{legacy_id}"));
         w.click(format!("legacy-planning-attempt-{legacy_id}"), cx);
         w.render_frame(cx);
     })
@@ -4532,14 +4548,7 @@ print(json.dumps({'type':'text','part':{'text':json.dumps(plan)}}), flush=True)
         w.click("automation-settings", cx);
         w.render_frame(cx);
         let target = narrow_target.clone();
-        if !w.find(target.clone()).visible() {
-            w.within("automation-settings-focus").scroll(
-                "automation-settings-body",
-                ScrollDelta::Pixels(point(px(0.), px(-600.))),
-                cx,
-            );
-            w.render_frame(cx);
-        }
+        scroll_settings_to(w, cx, &target);
         w.click(target, cx);
         w.render_frame(cx);
         assert!(w.try_find("planning-attempt-focus").is_some());
@@ -5853,6 +5862,17 @@ fn settings_hierarchy_fixture(root: &Path) {
                     let schedule = w.find("automation-settings-schedule");
                     assert!(schedule.visible());
                     assert!(schedule.bounds().right() < px(width));
+                    assert!(
+                        w.try_find("automation-settings-notify-completion").is_some(),
+                        "automation settings expose the completion-notification opt-in"
+                    );
+                    let version = app.read(cx).store.automation(id).unwrap().version;
+                    scroll_settings_to(w, cx, "automation-settings-notify-completion");
+                    w.click("automation-settings-notify-completion", cx);
+                    w.render_frame(cx);
+                    let definition = app.read(cx).store.automation(id).unwrap().clone();
+                    assert!(definition.policy.notify_on_completion);
+                    assert_eq!(definition.version, version);
                     if shape == AutomationShape::Quick {
                         assert!(w.try_find("planning-attempt-history").is_none(),
                             "quick tasks should not show irrelevant empty planning history");

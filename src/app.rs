@@ -318,6 +318,8 @@ pub struct TaskApp {
     pub comment: Entity<TextareaState>,
     pub report_regeneration: Option<(u64, Entity<TextareaState>)>,
     pub toast: String,
+    /// Version offered by Sparkle, if an update is available.
+    pub update_available: Option<String>,
     pub error: String,
     pub task_start_feedback: Option<(u64, String)>,
     pub save_feedback: Option<Result<String, String>>,
@@ -960,6 +962,7 @@ impl TaskApp {
             }),
             report_regeneration: None,
             toast: "All changes saved".into(),
+            update_available: None,
             error: String::new(),
             task_start_feedback: None,
             save_feedback: None,
@@ -1080,6 +1083,26 @@ impl TaskApp {
             _subscriptions: subscriptions,
         }
     }
+    pub(crate) fn check_for_updates(&mut self, cx: &mut Context<Self>) {
+        if !crate::updater::available() {
+            self.toast = "Updates are unavailable in this build.".into();
+        } else {
+            crate::updater::check();
+            self.toast = "Checking for updates…".into();
+        }
+        cx.notify();
+    }
+
+    pub(crate) fn set_automatic_updates(&mut self, enabled: bool, cx: &mut Context<Self>) {
+        crate::updater::set_automatic(enabled);
+        self.toast = if enabled {
+            "Automatic update checks enabled".into()
+        } else {
+            "Automatic update checks disabled".into()
+        };
+        cx.notify();
+    }
+
     pub(crate) fn apply_scoped_settings(
         &mut self,
         change: crate::scoped_settings::SettingsChange,

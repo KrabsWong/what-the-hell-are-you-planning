@@ -207,6 +207,7 @@ pub(crate) static CORE_TRANSLATIONS: &[(&str, &str)] = &[
     ("Display language", "显示语言"),
     ("Display options", "显示选项"),
     ("Done", "已完成"),
+    ("All statuses", "所有状态"),
     ("Draft could not be saved. Keep this window open and retry storage saving.", "草稿无法保存。请保持此窗口打开，然后重试保存。"),
     ("Draft is saved automatically. Update understanding submits this round.", "草稿会自动保存。更新理解会提交本轮内容。"),
     ("Drop PDFs or images here, or click here and press ⌘V to paste · up to 25 MB each", "将 PDF 或图片拖放到此处，或点击此处并按 ⌘V 粘贴 · 每个文件最大 25 MB"),

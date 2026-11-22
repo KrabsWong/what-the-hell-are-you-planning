@@ -1770,7 +1770,6 @@ impl TaskApp {
                 for filter in [AllStatus::All, AllStatus::Open]
                     .into_iter()
                     .chain(Stage::WORKFLOW_ORDER.map(AllStatus::Stage))
-                    .chain(crate::workflow::ExecutionGroup::ALL.map(AllStatus::Execution))
                 {
                     let entity = entity.clone();
                     menu = menu.item(

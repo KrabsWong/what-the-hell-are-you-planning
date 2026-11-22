@@ -719,6 +719,7 @@ pub(crate) static SIMPLIFIED_CHINESE: &[(&str, &str)] = &[
     ("“{value}” is not a known IANA time zone. Choose a city time zone such as Asia/Shanghai.", "“{value}”不是已知的 IANA 时区。请选择城市时区，例如 Asia/Shanghai。"),
     ("All automations", "所有自动化"),
     ("All research", "所有研究"),
+    ("All statuses", "所有状态"),
     ("Research", "研究"),
     ("Research results", "研究结果"),
     ("Archive", "归档"),

@@ -38,6 +38,14 @@ jobs:
         run: cargo test --locked
       - name: Fetch pinned Sparkle SDK
         run: bash scripts/fetch-sparkle.sh
+      - name: Set up Python
+        uses: actions/setup-python@v6
+        with:
+          python-version: '3.13'
+      - name: Install packaging tools
+        run: |
+          python3 -m venv target/dmg-tools
+          target/dmg-tools/bin/pip install -r script/requirements-dmg.txt
       - name: Package updater-enabled DMG
         run: bash script/package_macos.sh
       - name: Sign update archive and appcast

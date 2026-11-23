@@ -26,7 +26,7 @@ When the app starts, the sidebar expands only the Project you used last and show
 | Area | What it is for |
 | --- | --- |
 | All research / Projects | Browse research goals and tasks in the list, filter by status, start new research, edit, archive |
-| Settings (workspace menu at the bottom of the sidebar) | Set the global Agent/model, overrides for the four research stages, concurrency, report publishing, completion notifications and app updates |
+| Settings (workspace menu at the bottom of the sidebar) | Set the global Agent/model, overrides for the four research stages, concurrency, report publishing, completion notifications and app updates; **About** shows the version, license and open-source dependencies |
 | Market research (opened from **New research**) | Propose a research goal and see existing research; advanced configuration opens only when you need it |
 | Settings → Agent & models | See and change the Agent and model actually used globally and by each stage |
 | Research results | Follow research progress, reports and sources; technical details show the model and logs |
@@ -37,7 +37,7 @@ Actions are grouped by purpose: the page's main advancing action uses the filled
 
 In **Settings → Publishing**, automatic publication is on by default. A completed Topic is published without a click; use **Publish update** only when its content changed or a previous push failed. **Check status** verifies an already pushed page, and **View report** opens a verified online report. The same panel turns the global completion-notification service on or off and overrides the destination channel. Once the page is verified online, the app sends a short summary with the report URL. Endpoint and signing credentials come from `YOOOOO_NOTIFY_URL` / `YOOOOO_NOTIFY_HMAC_KEY` or the shared `~/.config/yooooo-notifier/client.json`; they are never stored in the workspace. If delivery is interrupted before confirmation, the notification stays in the panel for manual review instead of being silently resent.
 
-**Settings → General → App updates** controls the updater. Automatic checks are on by default and run every 12 hours; turn the switch off to disable them. **Check for Updates…** performs a check immediately, and when an update is available the same control becomes **Update to vX.Y.Z**. Installation and restart require confirmation. Development builds without Sparkle show that updates are unavailable.
+The current version is shown at the bottom right of the window and in **Settings → About**. The updater checks silently once at every launch and then every 12 hours. **Settings → General → App updates** controls automatic checks; **Check for Updates…** performs a check immediately, and when an update is available the same control becomes **Update to vX.Y.Z**. Release notes and installation use Sparkle's standard window, and installation and restart require confirmation. Development builds without Sparkle show that updates are unavailable. **Settings → About** also lists the license (GPL-3.0) and the app's direct open-source dependencies.
 
 **All** includes every task that is not archived by default. The status dropdown to the left of the search box offers **All statuses / Open / Backlog / Todo / In progress / In review / Done / Cancelled**; Open leaves out Done and Cancelled. The status filter and search work together, and archived tasks stay in Archive. Show completed is no longer used in All, while other views such as a project still offer this display option.
 

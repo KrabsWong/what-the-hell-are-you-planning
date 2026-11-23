@@ -10,10 +10,15 @@ static void setPendingVersion(NSString *version) {
     if (changeHandler) changeHandler(pendingVersion.UTF8String);
 }
 
-@interface PlanningUpdateDelegate : NSObject <SPUStandardUserDriverDelegate>
+@interface PlanningUpdateDelegate : NSObject <SPUStandardUserDriverDelegate, SPUUpdaterDelegate>
 @end
 
 @implementation PlanningUpdateDelegate
+// Background checks never open Sparkle's window, so capture the found version
+// here as well as in the user-driver callback used by manual checks.
+- (void)updater:(SPUUpdater *)updater didFindValidUpdate:(SUAppcastItem *)item {
+    setPendingVersion(item.displayVersionString);
+}
 - (BOOL)supportsGentleScheduledUpdateReminders { return YES; }
 - (BOOL)standardUserDriverShouldHandleShowingScheduledUpdate:(SUAppcastItem *)update andInImmediateFocus:(BOOL)immediateFocus {
     return !immediateFocus;
@@ -39,7 +44,7 @@ bool planning_updater_start(void) {
     if (controller) return YES;
     delegate = [PlanningUpdateDelegate new];
     controller = [[SPUStandardUpdaterController alloc] initWithStartingUpdater:NO
-        updaterDelegate:nil userDriverDelegate:delegate];
+        updaterDelegate:delegate userDriverDelegate:delegate];
     NSError *error = nil;
     BOOL started = [controller.updater startUpdater:&error];
     if (!started) NSLog(@"Could not start updater: %@", error);
@@ -55,6 +60,13 @@ bool planning_updater_can_check(void) {
 
 void planning_updater_check(void) {
     if (planning_updater_can_check()) [controller checkForUpdates:nil];
+}
+
+// Silent check used once at launch. Sparkle's gentle scheduled reminders keep
+// this from interrupting the user; a manual check still opens its standard UI
+// with the release notes and install action.
+void planning_updater_check_in_background(void) {
+    if (controller) [controller.updater checkForUpdatesInBackground];
 }
 
 bool planning_updater_automatic(void) {

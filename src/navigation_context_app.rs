@@ -124,6 +124,7 @@ fn settings_index(tab: SettingsTab) -> usize {
         SettingsTab::General => 0,
         SettingsTab::Models => 1,
         SettingsTab::Publishing => 2,
+        SettingsTab::About => 3,
     }
 }
 
@@ -131,6 +132,7 @@ fn settings_tab(index: usize) -> SettingsTab {
     match index {
         1 => SettingsTab::Models,
         2 => SettingsTab::Publishing,
+        3 => SettingsTab::About,
         _ => SettingsTab::General,
     }
 }

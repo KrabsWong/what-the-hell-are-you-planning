@@ -771,7 +771,7 @@ fn settings_retained_invalidation(root: &Path) {
             "dismissing suggestions must not focus the window root"
         );
         assert_ne!(
-            w.find("footer-new-research").focused(),
+            w.find("footer-search").focused(),
             Some(true),
             "dismissing suggestions must not send focus to the footer"
         );
@@ -854,13 +854,7 @@ fn footer_retention_invalidation(root: &Path) {
     });
     cx.update_window(handle, |_, w, cx| {
         w.render_frame(cx);
-        w.find("footer-new-research");
         w.find("footer-search");
-        assert_eq!(
-            w.find("undo").disabled(),
-            Some(true),
-            "empty undo stack disables the cached footer command"
-        );
 
         // Cached commands keep working.
         w.click("footer-search", cx);
@@ -869,15 +863,14 @@ fn footer_retention_invalidation(root: &Path) {
         w.press("escape", cx);
         w.render_frame(cx);
         assert!(!app.read(cx).global_search_ui.open);
-        w.click("footer-new-research", cx);
+        app.update(cx, |a, cx| a.request_new_research(w, cx));
         w.render_frame(cx);
         assert!(app.read(cx).planning_project.is_some());
         w.press("escape", cx);
         w.render_frame(cx);
 
-        // A real domain edit invalidates the footer; clicking the enabled Undo
-        // must execute the scoped inverse and disable the command again. This
-        // proves interactivity instead of inferring from an absent flag.
+        // A real domain edit followed by the Undo command must execute the
+        // scoped inverse. The footer no longer hosts an Undo button.
         let topic_name = "Footer cache check";
         app.update(cx, |app, cx| {
             app.apply_domain_command_undoable(
@@ -892,17 +885,11 @@ fn footer_retention_invalidation(root: &Path) {
         });
         w.render_frame(cx);
         assert!(app.read(cx).store.topics().iter().any(|t| t.name == topic_name));
-        assert!(w.find("undo").visible());
-        w.click("undo", cx);
+        app.update(cx, |a, cx| a.undo_change(w, cx));
         w.render_frame(cx);
         assert!(
             !app.read(cx).store.topics().iter().any(|t| t.name == topic_name),
-            "cached Undo must remove the created topic"
-        );
-        assert_eq!(
-            w.find("undo").disabled(),
-            Some(true),
-            "consumed Undo disables the cached footer command"
+            "Undo must remove the created topic"
         );
 
         // Persistence errors surface through the cached footer and clear again.

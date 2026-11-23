@@ -72,6 +72,7 @@ pub(crate) enum SettingsSection {
     General,
     Models,
     Publishing,
+    About,
 }
 
 /// What owns an ordinary/task result page. Automation planning attempts are

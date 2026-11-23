@@ -580,7 +580,7 @@ pub fn run() {
         w.click("project-1", cx);
         w.render_frame(cx);
         assert_eq!(app.read(cx).scope(), Scope::Project(1));
-        w.click("footer-new-research", cx);
+        app.update(cx, |a, cx| a.request_new_research(w, cx));
         w.render_frame(cx);
         let before = app.read(cx).scope().clone();
         assert!(w.try_find("planning-destination").is_some());
@@ -795,7 +795,7 @@ pub fn run() {
     cx.update_window(handle, |_, w, cx| {
         app.update(cx, |a, cx| a.navigate(Scope::All, w, cx));
         w.render_frame(cx);
-        w.click("footer-new-research", cx);
+        app.update(cx, |a, cx| a.request_new_research(w, cx));
         w.render_frame(cx);
         w.click("project-plan-brief", cx);
         w.input("One saved request", cx);
@@ -1163,7 +1163,7 @@ fn size_theme_pass(
     cx.update_window(handle, |_, w, cx| {
         w.click("close-automation-result", cx);
         w.render_frame(cx);
-        w.click("footer-new-research", cx);
+        app.update(cx, |a, cx| a.request_new_research(w, cx));
         w.render_frame(cx);
         let before = app.read(cx).scope().clone();
         let destination = w.find("planning-destination");

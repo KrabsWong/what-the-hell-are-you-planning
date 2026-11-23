@@ -200,10 +200,11 @@ fn completed_metadata_and_title_undo(root: &Path) {
     })
     .unwrap();
     screenshot(&mut cx, handle, &directory, "completed-title-saved.png");
-    // Exercise the real footer Undo button, not only the direct seam.
+    // Exercise the real Undo command through the app seam; the footer no
+    // longer exposes an Undo button.
     cx.update_window(handle, |_, w, cx| {
         w.render_frame(cx);
-        w.click("undo", cx);
+        app.update(cx, |a, cx| a.undo_change(w, cx));
         w.render_frame(cx);
     })
     .unwrap();
@@ -240,7 +241,7 @@ fn completed_metadata_and_title_undo(root: &Path) {
     // Second Undo restores only the earlier metadata edit.
     cx.update_window(handle, |_, w, cx| {
         w.render_frame(cx);
-        w.click("undo", cx);
+        app.update(cx, |a, cx| a.undo_change(w, cx));
         w.render_frame(cx);
     })
     .unwrap();
@@ -297,7 +298,7 @@ fn combined_save_and_stage_undo(root: &Path) {
     screenshot(&mut cx, handle, &directory, "combined-saved.png");
     cx.update_window(handle, |_, w, cx| {
         w.render_frame(cx);
-        w.click("undo", cx);
+        app.update(cx, |a, cx| a.undo_change(w, cx));
         w.render_frame(cx);
         let app = app.read(cx);
         assert_eq!(app.store.task(task).unwrap().title, "Normal task");
@@ -393,7 +394,7 @@ fn comment_save_and_undo(root: &Path) {
     screenshot(&mut cx, handle, &directory, "comment-saved.png");
     cx.update_window(handle, |_, w, cx| {
         w.render_frame(cx);
-        w.click("undo", cx);
+        app.update(cx, |a, cx| a.undo_change(w, cx));
         w.render_frame(cx);
         let app = app.read(cx);
         assert!(app.store.task(goal).unwrap().comments.is_empty());
@@ -677,7 +678,7 @@ fn stage_property_and_undo(root: &Path) {
     screenshot(&mut cx, handle, &directory, "stage-property-backlog.png");
     cx.update_window(handle, |_, w, cx| {
         w.render_frame(cx);
-        w.click("undo", cx);
+        app.update(cx, |a, cx| a.undo_change(w, cx));
         w.render_frame(cx);
         let app = app.read(cx);
         assert_eq!(app.store.task(task).unwrap().stage, Stage::Planned);
@@ -714,7 +715,7 @@ fn reopen_step_and_undo(root: &Path) {
     screenshot(&mut cx, handle, &directory, "reopen-step.png");
     cx.update_window(handle, |_, w, cx| {
         w.render_frame(cx);
-        w.click("undo", cx);
+        app.update(cx, |a, cx| a.undo_change(w, cx));
         w.render_frame(cx);
         let app = app.read(cx);
         assert_eq!(app.store.task(child).unwrap().stage, Stage::Cancelled);
@@ -814,7 +815,7 @@ fn material_add_remove_undo_ui(root: &Path) {
     screenshot(&mut cx, handle, &directory, "material-removed.png");
     // Undo remove restores metadata and does not fabricate bytes.
     cx.update_window(handle, |_, w, cx| {
-        w.click("undo", cx);
+        app.update(cx, |a, cx| a.undo_change(w, cx));
         w.render_frame(cx);
     })
     .unwrap();
@@ -866,7 +867,7 @@ fn material_add_remove_undo_ui(root: &Path) {
         app.last_saved.push_run(run);
     });
     cx.update_window(handle, |_, w, cx| {
-        w.click("undo", cx);
+        app.update(cx, |a, cx| a.undo_change(w, cx));
         w.render_frame(cx);
     })
     .unwrap();
@@ -1160,7 +1161,7 @@ fn material_failure_cancel_and_retry(root: &Path) {
     cx.update_window(handle, |_, w, cx| {
         app.update(cx, |app, _| app.storage = Some(Storage::new(path.clone())));
         w.render_frame(cx);
-        w.click("undo", cx);
+        app.update(cx, |a, cx| a.undo_change(w, cx));
         w.render_frame(cx);
         let app = app.read(cx);
         assert_eq!(app.store.task(independent).unwrap().attachments.len(), 0);
@@ -1237,7 +1238,7 @@ fn material_completed_confirm_failed_undo_and_retry(root: &Path) {
             app.storage = Some(Storage::new(blocked_path.clone()))
         });
         w.render_frame(cx);
-        w.click("undo", cx);
+        app.update(cx, |a, cx| a.undo_change(w, cx));
         w.render_frame(cx);
     })
     .unwrap();
@@ -1256,7 +1257,7 @@ fn material_completed_confirm_failed_undo_and_retry(root: &Path) {
             app.storage_error = "Retry the pending material undo".into();
         });
         w.render_frame(cx);
-        w.click("undo", cx);
+        app.update(cx, |a, cx| a.undo_change(w, cx));
         w.render_frame(cx);
     })
     .unwrap();

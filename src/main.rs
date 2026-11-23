@@ -511,6 +511,11 @@ fn main() {
     application.run(move |cx| {
         init(cx);
         updater::start();
+        // Check once on every launch. The background check is silent and keeps
+        // Sparkle's standard window for the user's manual Check for updates.
+        if updater::available() {
+            updater::check_in_background();
+        }
         cx.bind_keys([KeyBinding::new("cmd-q", Quit, None)]);
         appearance::apply(
             crate::workspace::load_appearance_hint().unwrap_or_default(),

@@ -10,6 +10,7 @@ mod native {
         pub fn planning_updater_available() -> bool;
         pub fn planning_updater_can_check() -> bool;
         pub fn planning_updater_check();
+        pub fn planning_updater_check_in_background();
         pub fn planning_updater_automatic() -> bool;
         pub fn planning_updater_set_automatic(enabled: bool);
     }
@@ -70,6 +71,14 @@ pub fn check() {
     #[cfg(all(feature = "sparkle", target_os = "macos"))]
     unsafe {
         native::planning_updater_check();
+    }
+}
+
+/// Silent once-per-launch check. It never opens Sparkle's UI.
+pub fn check_in_background() {
+    #[cfg(all(feature = "sparkle", target_os = "macos"))]
+    unsafe {
+        native::planning_updater_check_in_background();
     }
 }
 

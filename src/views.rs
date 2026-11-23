@@ -695,36 +695,21 @@ impl TaskApp {
     /// tooltips so the row cannot look like clickable text that does nothing.
     fn footer_commands(&self, cx: &mut Context<Self>) -> AnyElement {
         let colors = palette(cx);
-        let blocked_reason = self.undo_block_reason();
-        let undo_hint = if let Some(reason) = blocked_reason.as_deref() {
-            reason
-        } else if self.undo.is_empty() {
-            self.undo_invalidation
-                .as_deref()
-                .unwrap_or("Nothing to undo")
-        } else {
-            "Undo the last change"
-        };
-        // The Automations area has its own New automation action and no
-        // research undo history, so those two footer commands are hidden there.
-        let automations_area = matches!(self.scope(), Scope::Automations | Scope::AutomationRuns);
+        // The footer keeps only navigation and build identity. Undo and New
+        // research are reachable from their owning pages and keyboard shortcuts.
         let mut commands = row()
             .flex_shrink_0()
             .items_center()
             .gap_1();
-        if !automations_area {
-            commands = commands
-                .child(
-                    button("undo", "Undo")
-                        .small()
-                        .h(px(24.))
-                        .px_2()
-                        .disabled(self.undo.is_empty() || blocked_reason.is_some())
-                        .tooltip(crate::i18n::tr(undo_hint))
-                        .on_click(cx.listener(|app, _, w, cx| app.undo_change(w, cx))),
-                )
-                .child(div().w(px(1.)).h(px(14.)).mx_1().bg(rgb(colors.line)));
-        }
+        commands = commands.child(
+            div()
+                .pr_2()
+                .text_color(rgb(colors.muted))
+                .child(selectable(format!(
+                    "Version {}",
+                    env!("CARGO_PKG_VERSION")
+                ))),
+        );
         commands = commands.child(
             button("footer-search", "Search")
                 .icon(assets::IconName::Search)
@@ -734,17 +719,6 @@ impl TaskApp {
                 .tooltip(crate::i18n::tr("Search all research and automations · ⌘K"))
                 .on_click(cx.listener(|app, _, w, cx| app.focus_search(w, cx))),
         );
-        if !automations_area {
-            commands = commands.child(
-                button("footer-new-research", "New research")
-                    .icon(assets::IconName::Plus)
-                    .small()
-                    .h(px(24.))
-                    .px_2()
-                    .tooltip(crate::i18n::tr("Describe a research question · ⌘N"))
-                    .on_click(cx.listener(|app, _, w, cx| app.request_new_research(w, cx))),
-            );
-        }
         commands.into_any_element()
     }
     /// Shared by the ⌘K handler and the footer Search button so the shortcut and

@@ -106,7 +106,7 @@ Distribute only the selected `.dmg`; the matching `.dmg.sha256` is optional for 
 
 These beta packages use ad-hoc signing and are **not notarized**. Testers may need to allow the app in macOS Privacy & Security after attempting to open it. For ordinary trusted distribution without this exception, use a Developer ID Application certificate and Apple notarization. The current package is arm64 only; compatibility with older macOS versions has not been fully tested.
 
-Release builds include Sparkle and check the signed GitHub appcast every 12 hours by default. Settings → General → App updates can turn automatic checks off or check manually; installation still requires confirmation. The release workflow, signing keys, and appcast format are documented in [doc/RELEASING.md](doc/RELEASING.md).
+Release builds include Sparkle and check the signed GitHub appcast silently once at each launch, then every 12 hours by default. Settings → About shows the version, GPL-3.0 license and direct open-source dependencies; Settings → General → App updates can turn automatic checks off or check manually. Release notes and installation use Sparkle's standard window, and installation still requires confirmation. The release workflow, signing keys, and appcast format are documented in [doc/RELEASING.md](doc/RELEASING.md).
 
 On macOS, Codex collection runs use an app-owned `planning_ego` stdio MCP bridge for ego(lite). Browser scripts run with desktop access while Codex shell commands retain the `workspace-write` sandbox. The bridge is configured per run, not in global Codex settings, and requires the configured local ego-browser executable. Process exit logs are separate from validated research completion or blocking.
 

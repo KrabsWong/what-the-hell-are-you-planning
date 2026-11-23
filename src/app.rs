@@ -1311,6 +1311,9 @@ impl TaskApp {
             crate::navigation_route::SettingsSection::Publishing => {
                 crate::settings_views::SettingsTab::Publishing
             }
+            crate::navigation_route::SettingsSection::About => {
+                crate::settings_views::SettingsTab::About
+            }
         }
     }
 
@@ -1320,6 +1323,7 @@ impl TaskApp {
             crate::settings_views::SettingsTab::General => SettingsSection::General,
             crate::settings_views::SettingsTab::Models => SettingsSection::Models,
             crate::settings_views::SettingsTab::Publishing => SettingsSection::Publishing,
+            crate::settings_views::SettingsTab::About => SettingsSection::About,
         };
         self.navigation.settings_section = section;
         let _ = self.nav.set_settings_tab(section);

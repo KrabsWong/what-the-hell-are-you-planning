@@ -25,10 +25,11 @@ pub enum SettingsTab {
     General,
     Models,
     Publishing,
+    About,
 }
 
 impl SettingsTab {
-    const ALL: [Self; 3] = [Self::General, Self::Models, Self::Publishing];
+    const ALL: [Self; 4] = [Self::General, Self::Models, Self::Publishing, Self::About];
 }
 
 impl TaskApp {
@@ -468,6 +469,105 @@ impl TaskApp {
         agents
     }
 
+    /// About this build: version, license, direct dependencies and updates.
+    fn about_panel(&self, cx: &mut Context<Self>) -> Div {
+        let colors = palette(cx);
+        let version = format!("Version {}", env!("CARGO_PKG_VERSION"));
+        let updates_available = crate::updater::available();
+        let check_label = match &self.update_available {
+            Some(available) => tr(format!("Update to v{available}")),
+            None => tr("Check for Updates…"),
+        };
+        let direct_dependencies: &[(&str, &str)] = &[
+            ("gpui-kit", "0.9.1"),
+            ("markdown", "1.0.0"),
+            ("rusqlite (bundled)", "0.39"),
+            ("serde / serde_json", "1"),
+            ("chrono / chrono-tz", "0.4 / 0.10"),
+            ("mermaid-rs-renderer", "0.3.1"),
+            ("beautiful-mermaid-rs", "local"),
+            ("latex-rust", "3.0.1"),
+            ("usvg", "0.46"),
+            ("sha2 / hmac", "0.10 / 0.12"),
+            ("libc", "0.2"),
+            ("objc2 family (macOS)", "0.6 / 0.3 / 0.3"),
+            ("raw-window-handle (macOS)", "0.6"),
+        ];
+        let card = |title: gpui_kit::SharedString| -> Div {
+            div()
+                .w_full()
+                .p_4()
+                .gap_2()
+                .rounded(px(crate::appearance::GROUP_RADIUS))
+                .border_1()
+                .border_color(rgb(colors.subtle_line))
+                .bg(rgb(colors.panel))
+                .child(div().font_weight(FontWeight::SEMIBOLD).child(selectable(title)))
+        };
+        col()
+            .gap_4()
+            .child(
+                card(tr("Version"))
+                    .child(div().text_sm().child(selectable(version)))
+                    .child(label(
+                        tr("Release builds take the version from the release tag; source builds show the Cargo package version."),
+                        cx,
+                    )),
+            )
+            .child(
+                card(tr("App updates"))
+                    .child(
+                        button("about-check-for-updates", check_label)
+                            .disabled(!updates_available || !crate::updater::can_check())
+                            .on_click(cx.listener(|app, _, _, cx| app.check_for_updates(cx))),
+                    )
+                    .child(label(
+                        if updates_available {
+                            tr("Updates are checked once at launch and every 12 hours. Release notes and installation use Sparkle's standard window.")
+                        } else {
+                            tr("Updates are unavailable in this build.")
+                        },
+                        cx,
+                    )),
+            )
+            .child(
+                card(tr("License"))
+                    .child(label(tr("GNU General Public License v3.0"), cx))
+                    .child(
+                        link_button("about-license-link", tr("View the license"))
+                            .on_click(cx.listener(|_, _, _, cx| {
+                                cx.open_url("https://www.gnu.org/licenses/gpl-3.0.html");
+                            })),
+                    )
+                    .child(label(
+                        tr("The full license text is bundled with the app as LICENSE.txt."),
+                        cx,
+                    )),
+            )
+            .child(
+                card(tr("Open-source dependencies"))
+                    .child(label(tr("Direct dependencies"), cx))
+                    .child(
+                        col().gap_1().children(
+                            direct_dependencies
+                                .iter()
+                                .map(|(name, version)| {
+                                    div()
+                                        .text_sm()
+                                        .child(selectable(format!("{name} · {version}")))
+                                })
+                                .collect::<Vec<_>>(),
+                        ),
+                    )
+                    .child(label(tr("Third-party components"), cx))
+                    .child(label(tr("Sparkle 2.9.3 (MIT) · Lucide icons (ISC)"), cx))
+                    .child(label(
+                        tr("Transitive dependencies and their license terms are recorded in Cargo.lock and in each upstream crate."),
+                        cx,
+                    )),
+            )
+    }
+
     pub fn model_settings(&self, cx: &mut Context<Self>) -> AnyElement {
         #[cfg(feature = "qa")]
         crate::brand::note_settings_render();
@@ -726,6 +826,7 @@ impl TaskApp {
             SettingsTab::General => build_general(),
             SettingsTab::Publishing => self.publishing_settings_panel(cx),
             SettingsTab::Models => self.research_settings_panel(cx),
+            SettingsTab::About => self.about_panel(cx),
         };
         col()
             .size_full()
@@ -748,6 +849,7 @@ impl TaskApp {
                             .child(Tab::new().label(crate::i18n::tr("General")))
                             .child(Tab::new().label(crate::i18n::tr("Agent & models")))
                             .child(Tab::new().label(crate::i18n::tr("Publishing")))
+                            .child(Tab::new().label(crate::i18n::tr("About")))
                             .on_click(cx.listener(|this, index, w, cx| {
                                 this.refresh_publishing_inputs(w, cx);
                                 this.research_model_picker = None;

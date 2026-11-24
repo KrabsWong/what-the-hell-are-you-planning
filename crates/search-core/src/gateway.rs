@@ -59,7 +59,10 @@ fn post(path: &str, body: Value) -> Result<Value, SearchError> {
     let (url, token) = credentials().ok_or_else(|| {
         SearchError::new(ErrorCode::Auth, "Search gateway is not configured.")
     })?;
-    let endpoint = format!("{}{path}", url.trim_end_matches('/'));
+    // Settings stores the MCP endpoint (…/mcp) for agent clients. The REST
+    // calls below need the gateway origin, so strip that suffix here.
+    let base = url.trim_end_matches('/').strip_suffix("/mcp").unwrap_or(url.trim_end_matches('/'));
+    let endpoint = format!("{base}{path}");
     let (_, text) = post_json(&endpoint, &token, &body.to_string(), 30)?;
     let value: Value = serde_json::from_str(&text).map_err(|error| {
         SearchError::new(ErrorCode::Transport, format!("Invalid gateway response: {error}"))

@@ -118,7 +118,11 @@ fn respond(request: &Value, registry: &Registry) -> Option<Value> {
                     }
                 }
                 "providers" => {
-                    let providers: Vec<Value> = registry.names().into_iter()
+                    let ids = match search_core::gateway::GatewayProvider::provider_ids() {
+                        Ok(ids) => ids,
+                        Err(_) => registry.names(),
+                    };
+                    let providers: Vec<Value> = ids.into_iter()
                         .map(|id| json!({ "id": id }))
                         .collect();
                     match serde_json::to_string(&json!({ "providers": providers })) {

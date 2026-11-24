@@ -90,6 +90,19 @@ fn strings(value: Option<&Value>) -> Vec<String> {
 
 pub struct GatewayProvider;
 
+impl GatewayProvider {
+    /// Returns the provider ids configured on the gateway. The MCP `providers`
+    /// tool uses this instead of local registry names so callers see real ids.
+    pub fn provider_ids() -> Result<Vec<String>, SearchError> {
+        let value = post("/v1/provider", json!({}))?;
+        Ok(value.get("providers").and_then(Value::as_array).into_iter().flatten()
+            .filter_map(|item| item.get("id").and_then(Value::as_str))
+            .filter(|id| !id.is_empty())
+            .map(str::to_owned)
+            .collect())
+    }
+}
+
 impl Provider for GatewayProvider {
     fn name(&self) -> &'static str {
         "gateway"

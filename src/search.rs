@@ -9,7 +9,8 @@ use std::{env, fs, io::Write, path::{Path, PathBuf}, process::Command};
 use std::os::unix::fs::OpenOptionsExt;
 
 /// Environment variables win so a server deployment needs no UI setup.
-pub const API_KEY_ENV: &str = "DEEPSEEK_API_KEY";
+pub const GATEWAY_URL_ENV: &str = "SEARCH_GATEWAY_URL";
+pub const GATEWAY_TOKEN_ENV: &str = "SEARCH_GATEWAY_TOKEN";
 pub const CREDENTIALS_PATH_ENV: &str = "PLANNING_SEARCH_CREDENTIALS";
 
 pub fn configured(path: &str) -> bool {
@@ -53,14 +54,19 @@ fn credentials_path() -> PathBuf {
         .unwrap_or_else(|| PathBuf::from(".config/planning-search/credentials.json"))
 }
 
-fn read_key(path: &Path) -> Option<String> {
+fn read_credentials(path: &Path) -> Option<(String, String)> {
     let raw = fs::read_to_string(path).ok()?;
     let value: serde_json::Value = serde_json::from_str(&raw).ok()?;
-    let key = value.get("api_key")?.as_str()?.trim().to_owned();
-    (!key.is_empty()).then_some(key)
+    let url = value.get("gateway_url").and_then(serde_json::Value::as_str)
+        .map(str::trim).filter(|text| !text.is_empty()).map(str::to_owned);
+    // A legacy `api_key` file still works as a token when the URL comes from env.
+    let token = value.get("token").or_else(|| value.get("api_key"))
+        .and_then(serde_json::Value::as_str)
+        .map(str::trim).filter(|text| !text.is_empty()).map(str::to_owned);
+    url.zip(token)
 }
 
-fn write_key(path: &Path, key: &str) -> Result<(), String> {
+fn write_credentials(path: &Path, url: &str, token: &str) -> Result<(), String> {
     if let Some(parent) = path.parent() {
         fs::create_dir_all(parent).map_err(|error| format!("Cannot create credentials folder: {error}"))?;
     }
@@ -69,27 +75,29 @@ fn write_key(path: &Path, key: &str) -> Result<(), String> {
     #[cfg(unix)]
     options.mode(0o600);
     let mut file = options.open(path).map_err(|error| format!("Cannot open credentials file: {error}"))?;
-    let body = serde_json::json!({ "api_key": key.trim() }).to_string();
+    let body = serde_json::json!({ "gateway_url": url.trim(), "token": token.trim() }).to_string();
     file.write_all(body.as_bytes()).map_err(|error| format!("Cannot write credentials file: {error}"))
 }
 
-/// The key shown in Settings is stored outside the workspace, never in saved research data.
-pub fn api_key() -> Option<String> {
-    env::var(API_KEY_ENV).ok()
-        .filter(|value| !value.trim().is_empty())
-        .map(|value| value.trim().to_owned())
-        .or_else(|| read_key(&credentials_path()))
+/// Gateway URL and token shown in Settings, stored outside the workspace.
+pub fn gateway_credentials() -> Option<(String, String)> {
+    let url = env::var(GATEWAY_URL_ENV).ok().filter(|value| !value.trim().is_empty());
+    let token = env::var(GATEWAY_TOKEN_ENV).ok().filter(|value| !value.trim().is_empty());
+    match (url, token) {
+        (Some(url), Some(token)) => Some((url.trim().to_owned(), token.trim().to_owned())),
+        _ => read_credentials(&credentials_path()),
+    }
 }
 
-pub fn save_api_key(key: &str) -> Result<(), String> {
+pub fn save_gateway_credentials(url: &str, token: &str) -> Result<(), String> {
     let path = credentials_path();
-    if key.trim().is_empty() {
+    if url.trim().is_empty() || token.trim().is_empty() {
         if path.exists() {
             fs::remove_file(&path).map_err(|error| format!("Cannot remove credentials file: {error}"))?;
         }
         return Ok(());
     }
-    write_key(&path, key.trim())
+    write_credentials(&path, url.trim(), token.trim())
 }
 
 pub fn credentials_location() -> String {
@@ -102,8 +110,9 @@ pub fn probe(path: &str) -> Result<String, String> {
     }
     let mut command = Command::new(path.trim());
     command.arg("--status");
-    if let Some(key) = api_key() {
-        command.env(API_KEY_ENV, key);
+    if let Some((url, token)) = gateway_credentials() {
+        command.env(GATEWAY_URL_ENV, url);
+        command.env(GATEWAY_TOKEN_ENV, token);
     }
     let output = command.output()
         .map_err(|error| format!("Cannot start planning-search-mcp: {error}"))?;
@@ -118,12 +127,12 @@ pub fn probe(path: &str) -> Result<String, String> {
 
 pub fn instructions(agent: &str) -> String {
     let transport = if agent == "Codex" {
-        "Use the planning_search MCP server: call its search tool with a query to discover sources, then its fetch tool with an original URL to verify the page. The tools return structured sources with URLs, titles, fetched Markdown content, publication dates and authority."
+        "Use the planning_search MCP server: call its search tool with a query to discover sources, then its fetch tool with an original URL to have the model read the page. The tools return structured sources with URLs, titles, model-generated page content with citations, publication dates and authority; the content is not raw page Markdown."
     } else {
-        "Use your configured search tools to discover sources, then fetch the original URL to verify the page. If a planning_search MCP server is available, prefer its search and fetch tools; they return structured sources with URLs, titles, fetched Markdown content, publication dates and authority."
+        "Use your configured search tools to discover sources, then fetch the original URL to have the model read the page. If a planning_search MCP server is available, prefer its search and fetch tools; they return structured sources with URLs, titles, model-generated page content with citations, publication dates and authority; the content is not raw page Markdown."
     };
     format!(
-        "\nSEARCH-FIRST COLLECTION\n{transport}\nTreat every search result as discovery only. Before recording a finding, fetch its original URL and take the headline, publisher, publication date/time/timezone (or explicitly unknown), event date, retrieval time, excerpt and relevance from the fetched page. Keep source titles, URLs and quotation marks unchanged. Keep original quotations separate from your explanation. A snippet alone is not a verified source; do not claim page access unless you actually fetched it.\nSOURCE FAILURE POLICY: A login wall, CAPTCHA/device verification, paywall, HTTP error, timeout or unavailable content is a skipped source, not a workflow blocker. Record the URL and reason, stop accessing that source, and seek independent accessible sources. Do not solve or bypass an access restriction. Do not hand off a whole research goal because one website is unavailable. Bound retries and report remaining evidence gaps rather than stopping. Browser escalation is only for a source that cannot be verified any other way and requires explicit user confirmation; never use another browser, background fetching or a new Space to bypass a handoff.\nIndependent evidence matters more than URL count. Deduplicate syndications, flag unverifiable dates, distinguish stated intent from actual behavior, and return partial results with explicit gaps instead of fabricated news.\n"
+        "\nSEARCH-FIRST COLLECTION\n{transport}\nTreat every search result as discovery only. Before recording a finding, fetch its original URL and take the headline, publisher, publication date/time/timezone (or explicitly unknown), event date, retrieval time, excerpt and relevance from the model-read page content. Keep source titles and URLs unchanged. Keep original quotations separate from your explanation, and label model-generated page content as model-derived rather than a verbatim page capture. A snippet alone is not a verified source; do not claim page access unless the fetch tool actually returned model-read content with citations.\nSOURCE FAILURE POLICY: A login wall, CAPTCHA/device verification, paywall, HTTP error, timeout or unavailable content is a skipped source, not a workflow blocker. Record the URL and reason, stop accessing that source, and seek independent accessible sources. Do not solve or bypass an access restriction. Do not hand off a whole research goal because one website is unavailable. Bound retries and report remaining evidence gaps rather than stopping. Browser escalation is only for a source that cannot be verified any other way and requires explicit user confirmation; never use another browser, background fetching or a new Space to bypass a handoff.\nIndependent evidence matters more than URL count. Deduplicate syndications, flag unverifiable dates, distinguish stated intent from actual behavior, and return partial results with explicit gaps instead of fabricated news.\n"
     )
 }
 
@@ -187,8 +196,11 @@ mod tests {
             std::process::id(),
             chrono::Utc::now().timestamp_nanos_opt().unwrap_or_default()
         ));
-        write_key(&path, "sk-test-key").unwrap();
-        assert_eq!(read_key(&path).as_deref(), Some("sk-test-key"));
+        write_credentials(&path, "https://gateway.example.com", "gateway-token").unwrap();
+        assert_eq!(
+            read_credentials(&path),
+            Some(("https://gateway.example.com".into(), "gateway-token".into()))
+        );
         let _ = fs::remove_file(&path);
     }
 }

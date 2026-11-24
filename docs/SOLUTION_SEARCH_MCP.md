@@ -13,24 +13,24 @@ Deployment constraints from the operator:
 
 - A Tencent Cloud SCF environment already exists and is the intended first target.
 - Call volume is low, so an idle SCF instance may be reclaimed and the next call pays a cold-start penalty. Warm-up is therefore part of the design, not an afterthought.
-- The first release connects only to DeepSeek's native Search & Fetch APIs.
+- The first release connects only through DeepSeek's model-native web tools (`deepseek_web_search`, `deepseek_read_url`) on the Anthropic Messages API. Standalone Search & Fetch REST endpoints are not used.
 - Future provider sources are DeepSeek official, Tencent TokenHub Token Plan, and OpenCode Go subscriptions.
 
 ### Terminology and capability boundary
 
-- **Native search backend**: an HTTP API that directly returns ranked sources and page content. DeepSeek Search & Fetch is the only one in scope for the first release.
+- **Model-native backend**: a model API with server-side web tools. The model decides when to search or read a URL; the gateway normalizes the returned blocks. DeepSeek Messages is the only one in scope for the first release.
 - **Tencent Token Plan / TokenHub native search**: verified 2026-11-18. TokenHub supports server-side web search on its Anthropic Messages endpoint `/v1/messages` with the tool type `web_search_20250305`, and equivalent tools on Chat (`web_search_options.enable`) and Responses (`tools: [{type:"web_search"}]`). Messages returns `server_tool_use`, `web_search_tool_result` (with `url`, `title`, `snippet`, `page_age`) and a `text` answer. Supported models for Messages web search include `deepseek-v4-pro`, `deepseek-v4-pro-0813`, `deepseek-v4.1-flash` and `deepseek-v4.1-flash-1017`; Hy4/Hy3 use Chat/Responses only. Authentication is `x-api-key` plus `anthropic-version: 2023-06-01`. This makes Token Plan a genuine `search` backend, not merely a model subscription.
 - **OpenCode Go**: an OpenAI-compatible model subscription with a curated model catalog. No native search endpoint has been verified, so it stays a `model`/`synthesis` provider until proven otherwise.
 - **Agent runtime**: OpenCode, Codex, Claude Code consume tools; they are not gateway backends. An agent's own web search stays a prompt-level capability and is not listed as a provider.
 
-The `provider` response carries `capabilities` per entry: `deepseek` → `["search", "fetch"]`, `tencent-tokenplan` → `["search"]`, `opencode-go` → `["model", "synthesis"]`. The `fetch` capability is deliberately not claimed for Token Plan because its Messages search returns snippets, not fetched page Markdown.
+Internally the catalog still tracks `capabilities` (`deepseek` → `["search", "fetch"]`, `tencent-tokenplan` → `["search"]`, `opencode-go` → `["model", "synthesis"]`), but clients only ever see provider id, name and enabled state. Both `search` and `fetch` produce model-derived content with citations; neither promises raw page Markdown.
 
 ## Goals / Non-goals
 
 **Goals**
 
 - Add a search backend by changing only gateway code and configuration, never app Settings or agent configuration.
-- Keep the MCP tool surface at two tools (`search`, `fetch`) with a stable schema; provider choice is an optional argument.
+- Keep the MCP tool surface small and stable (`search`, `fetch`, `providers`). Callers select a provider by id only. Model choice is internal to each adapter (provider default or `auto` route), with no model configuration or exposure in the API/MCP contract.
 - Keep one canonical result shape so evidence writing is unchanged.
 - Replace provider keys in the client with one gateway token owned by MCP service configuration.
 - Deploy on Tencent Cloud SCF with a concrete warm-up strategy that avoids noticeable cold-start latency at low call volume.
@@ -49,7 +49,7 @@ flowchart LR
     A[OpenCode / Codex CLI] -->|stdio MCP| M[planning-search-mcp]
     M -->|HTTPS + Bearer token| GW[API Gateway]
     GW --> SCF[Search gateway on Tencent SCF]
-    SCF --> D[DeepSeek Search & Fetch]
+    SCF --> D[DeepSeek Messages model web tools]
     SCF -.v1.1.-> T[TokenHub /v1/messages web_search_20250305]
     SCF -.fetch always routes here.-> D
     SCF -.future.-> OG[OpenCode Go model APIs]
@@ -85,35 +85,34 @@ sequenceDiagram
 ### Components
 
 - `crates/search-core` — keeps `SearchResult`, `FetchedPage`, `ProviderResponse`, `SearchError`, normalization and truncation. The `Provider` trait is replaced by a `GatewayClient` that speaks the HTTP API; canonical types stay identical.
-- `crates/search-mcp` — unchanged two-tool stdio MCP. Reads `gateway_url` and `token` from the credentials file, adds the Bearer header, maps gateway errors to MCP tool errors, and keeps `--status` as a CLI probe.
+- `crates/search-mcp` — three-tool stdio MCP (`search`, `fetch`, `providers`). Reads `gateway_url` and `token` from the credentials file, adds the Bearer header, maps gateway errors to MCP tool errors, and keeps `--status` as a CLI probe.
 - Search gateway — an SCF function behind API Gateway with a provider registry, server-side secrets, a small result cache, per-token provider allowlist and rate limits.
 - Desktop app — Settings shows only the gateway URL and token. It may display the provider list returned by `/v1/provider`, but has no provider-specific fields.
 
-### TokenHub Messages search adapter
+### Model-native adapter (DeepSeek first)
 
-The `tencent-tokenplan` adapter calls `POST /v1/messages` with `x-api-key` and `anthropic-version: 2023-06-01`, and declares:
+The `deepseek` adapter calls `POST https://api.deepseek.com/anthropic/v1/messages` with `x-api-key` and `anthropic-version: 2023-06-01`, using model `deepseek-flash`. It declares exactly one server tool per operation:
 
-```jsonc
-{ "model": "deepseek-v4-pro", "max_tokens": 4096,
-  "messages": [{ "role": "user", "content": "<research query>" }],
-  "tools": [{ "type": "web_search_20250305", "name": "web_search" }] }
-```
+- `search`: `deepseek_web_search` → `web_search_tool_result` blocks normalized into `sources[]`; `text` blocks become the optional `answer` field.
+- `fetch`: `deepseek_read_url` → `web_fetch_tool_result` for URL and title, plus `text` blocks that become `page.content`.
 
 Mapping to the canonical result:
 
-- `web_search_tool_result.content[]` → `sources[]`: `url` → `url`, `title` → `title`, `snippet` → `content`, `page_age` → best-effort `published_at` after normalizing its `YYYY/MM/DD HH:MM:SS` local form.
-- `text` blocks are the model's answer and are **discarded** by the `search` tool. The gateway returns raw sources so the research agent, not the search provider, writes the evidence record.
-- `usage.server_tool_use.web_search_requests` is recorded in gateway metrics for cost control.
+- `web_search_result`: `url`, `title`, `snippet` → `content`, `page_age` (RFC 3339) → `published_at`, `site_name`.
+- `text` blocks become `answer` on search responses; both tools carry `warnings: ["model_generated_content"]`.
+- The page text of `read_link` is encrypted in `signature` and is never returned as raw Markdown. `fetch` content is therefore model-generated and must be recorded as model-derived, not as a verbatim page capture.
 
-Three constraints shape this adapter:
+Three constraints:
 
-1. **The model decides whether to search.** TokenHub documents that the model autonomously judges whether a search is needed; empty results or a no-search decision produce no `web_search_tool_result`. The adapter must detect a missing result block and either retry with an explicit instruction to use the search tool, or return `no_results` so the gateway can fail over to `deepseek`.
-2. **Snippets are not verified evidence.** The existing Collect policy explicitly rejects a search snippet as verified evidence. After a TokenHub search, the gateway must call a fetch-capable backend (`deepseek` in the first release) for the selected original URLs before returning full `content`. This keeps the canonical shape honest: `search` may come from Token Plan, but `fetch` always routes to a provider that returns page Markdown.
-3. **Region and quota limits.** TokenHub web search is limited to the Guangzhou region at 5 QPS for the self-built service, and DeepSeek 原厂 Search/Fetch is billed separately with different rates for Token Plan points. The gateway enforces its own timeout, serialized calls and per-token quota; pricing must be rechecked before enabling this provider.
+1. **The model decides whether to search.** A missing `web_search_tool_result` means no search happened, not an empty index. The adapter returns `no_results` so the gateway can fail over.
+2. **Snippets and model answers are not verbatim evidence.** The Collect policy rejects a search snippet as verified evidence; model-derived page content must be labelled as such by the agent.
+3. **Tool declarations must be exact.** `tool_choice` cannot name these server tools, and declaring other tools together with them returns 400. Only model token usage is billed; server-side search and URL reading are not.
+
+The resulting contract matches the research need: `search` supplies discovery and source summaries, while `fetch` supplies usable plaintext generated from the original page with citations. If the model did not actually read the URL, `fetch` returns `fetch_failed` rather than unverifiable model memory.
 
 ### Tool contract
 
-The MCP tool list stays at exactly two tools; `status` is a CLI probe, not a tool.
+The MCP tool list stays at exactly three tools; `status` is a CLI probe, not a tool. The `providers` tool takes no arguments and returns only provider ids, never model names or capabilities.
 
 - `search` — `query` (required, 1–128 characters), optional `count`, `need_content`, `ori_question`, `provider` (`auto` by default).
 - `fetch` — `url` (required), optional `provider`.
@@ -157,7 +156,7 @@ All provider-specific complexity is consumed inside the gateway. The MCP client 
 - **One tool shape.** `search` and `fetch` keep the same schema for every backend. No provider-specific parameters, headers, tool names or model ids leak into the MCP tools.
 - **One response shape.** Vendor-specific fields (`search_results`, `annotations`, `web_search_tool_result`, DeepSeek `rerank_score`/`authority`) are normalized into the canonical `sources[]` / `page` envelope before the response leaves the gateway.
 - **Optional provider, `auto` by default.** The agent does not need to know which backend is healthy, cheap or capable. `auto` ordering, failover, per-token allowlists and quotas are gateway concerns.
-- **Composition is internal.** If a provider can search but cannot fetch a full page, the gateway calls a fetch-capable backend itself and still returns one canonical result. The caller never performs a two-step provider dance.
+- **Composition is internal.** If a provider can search but has no URL-reading tool, the gateway calls a fetch-capable provider itself and still returns one canonical result. The caller never performs a two-step provider dance.
 - **Settings stay provider-agnostic.** The app stores only a gateway URL and token. `/v1/provider` is informational metadata for display; adding a backend never adds a Settings field or an i18n entry.
 - **New backend = gateway change only.** A new adapter, secret and `auto` entry are deployed on SCF. No app rebuild, agent config change or prompt change is required.
 
@@ -185,7 +184,7 @@ The credentials file outside the workspace changes from a provider key to gatewa
 { "gateway_url": "https://<api-gateway-host>/", "token": "gateway-token" }
 ```
 
-Environment overrides keep server deployments UI-free: `SEARCH_GATEWAY_URL` and `SEARCH_GATEWAY_TOKEN` take precedence. Provider settings in the gateway use provider-agnostic names (`PROVIDER_CONFIG`, or `PROVIDER_<ID>_API_KEY` / `PROVIDER_<ID>_BASE_URL`, for example `PROVIDER_DEEPSEEK_API_KEY`). They exist only as SCF secrets and never appear in the app, the MCP process or run logs.
+Environment overrides keep server deployments UI-free: `SEARCH_GATEWAY_URL` and `SEARCH_GATEWAY_TOKEN` take precedence. Provider settings in the gateway use one uniform form: `PROVIDER_<ID>_API_KEY` and optional `PROVIDER_<ID>_BASE_URL`, for example `PROVIDER_DEEPSEEK_API_KEY`. They exist only as SCF secrets and never appear in the app, the MCP process or run logs.
 
 ## Deployment and configuration
 
@@ -225,8 +224,8 @@ Codex and OpenCode registration is unchanged: both start the same `planning-sear
 ## Rollout plan
 
 1. **v1 done (2026-11-24).** Local MCP with a direct DeepSeek adapter, canonical contract, app wiring, search-first prompts, opt-in ego(lite) capability.
-2. **Gateway service (next).** Implement the three HTTP endpoints on SCF behind API Gateway, DeepSeek native adapter, token auth, secrets, small cache and quotas. Configure provisioned concurrency on a published alias plus a 5-minute timer warm-up.
-3. **MCP slim client.** Replace direct provider adapters in `search-core` with the HTTP gateway client; keep the two-tool contract; update `--status` to probe the gateway.
+2. **Gateway service (next).** Implement the three HTTP endpoints on SCF behind API Gateway, the DeepSeek model-native Messages adapter, token auth, secrets, small cache and quotas. Configure provisioned concurrency on a published alias plus a 5-minute timer warm-up.
+3. **MCP slim client (done 2026-11-24).** `search-core` now uses an HTTP gateway client (`GatewayProvider`) when `SEARCH_GATEWAY_URL` / `SEARCH_GATEWAY_TOKEN` or the credentials file are configured; the old direct DeepSeek adapter remains only for local development without a gateway. The MCP keeps its three-tool contract and `--status` probes the gateway path.
 4. **Settings migration.** Replace the DeepSeek API key field with gateway URL and token, update i18n entries, keep environment overrides for servers.
 5. **Verification.** Isolated QA against a fake gateway, then one real DeepSeek research run. Compare evidence fields against the v1 baseline. Measure cold-start and warm p95 latency before and after warm-up is enabled.
 6. **Provider expansion (later, no app changes).** Add `tencent-tokenplan` as a `search` backend using the Anthropic Messages `web_search_20250305` adapter, with DeepSeek fetch for verified page content. OpenCode Go remains `model`/`synthesis` until a native search capability is verified. No app or agent configuration changes are needed for either step.
@@ -236,10 +235,10 @@ Codex and OpenCode registration is unchanged: both start the same `planning-sear
 - SCF cold starts add latency. Provisioned concurrency plus timer warm-up mitigates this; measure cold-start logs rather than assuming the warm-up works.
 - API Gateway synchronous calls do not retry. The MCP must map errors to stable tool codes and let the agent apply bounded retries.
 - Provider keys live in SCF secrets. A leaked gateway token is scoped to search and can be restricted to provider ids, rotated independently of provider keys.
-- TokenHub native search is model-autonomous: a missing `web_search_tool_result` means no search happened, not that the query had no results. The adapter detects this and fails over instead of returning a confident empty answer.
-- TokenHub Messages search returns snippets, not fetched page Markdown. Without the mandatory DeepSeek fetch step the evidence policy would be violated, so `tencent-tokenplan` is `search`-only and `fetch` is routed separately.
-- TokenHub Messages uses `x-api-key` and `anthropic-version` headers, not the Bearer header used elsewhere; `web_search_20250305` is not interchangeable with the Responses `web_search` tool. Model and protocol support must be pinned per adapter.
-- Search pricing and quotas change (self-built lite/standard versions, separate DeepSeek 原厂 Search/Fetch billing, Token Plan points, 5 QPS and Guangzhou-only). Recheck the current price sheet before enabling the provider and keep per-token quotas enforced.
+- Model-native search is model-autonomous: a missing `web_search_tool_result` means no search happened, not that the query had no results. The adapter detects this and fails over instead of returning a confident empty answer.
+- The tools return snippets and model-generated text, never raw page Markdown. The Collect prompt labels such content as model-derived; clients must not present it as a verbatim page capture.
+- Messages-style endpoints use `x-api-key` and `anthropic-version`, not the Bearer header used by the gateway itself. Server tool names are vendor-specific and must be pinned per adapter; `tool_choice` cannot force them.
+- Only model token usage is billed for DeepSeek web tools; server-side search and URL reading are not. Other providers may bill differently, so per-token quotas and current price sheets remain necessary.
 - OpenCode Go remains `model`/`synthesis` until a native search capability is verified; registering it as `search` without an adapter would overpromise.
 - Subscription quotas have windows (for example Token Plan monthly reset and OpenCode Go five-hour limits). The gateway must surface `rate_limit` cleanly rather than failing mid-research.
 - Research queries pass through the gateway operator's infrastructure; document this data path for sensitive topics.
@@ -257,4 +256,10 @@ Codex and OpenCode registration is unchanged: both start the same `planning-sear
 - 2026-11-24 — First release narrowed to Tencent Cloud SCF + API Gateway with DeepSeek only. Added the SCF warm-up design (provisioned concurrency on a published alias plus a five-minute timer `/health` trigger) and documented API Gateway synchronous error semantics. Token Plan was initially classified as a model-only subscription; the following entry corrects that after verifying the native search API.
 - 2026-11-24 — Verified TokenHub native web search on Anthropic Messages (`web_search_20250305`) and corrected the provider taxonomy: `tencent-tokenplan` is a genuine `search` backend for the next release, `opencode-go` stays `model`/`synthesis`. Documented the Messages adapter, model-autonomous search caveat, snippet-only results with mandatory DeepSeek fetch, and `x-api-key` / `anthropic-version` protocol differences.
 - 2026-11-24 — Made "provider differences stop at the gateway" an explicit design invariant: fixed MCP tool/response shapes, `auto` provider selection, internal composition of search + fetch, provider-agnostic Settings, and new backends requiring gateway-only changes.
-- 2026-11-24 — Gateway configuration became provider-agnostic: `DEEPSEEK_API_KEY` / `DEEPSEEK_BASE_URL` were replaced by `PROVIDER_CONFIG` or `PROVIDER_<ID>_API_KEY` / `PROVIDER_<ID>_BASE_URL`, with `PROVIDER_ORDER` as the auto-order variable.
+- 2026-11-24 — Gateway configuration became provider-agnostic: top-level `DEEPSEEK_API_KEY` / `DEEPSEEK_BASE_URL` were replaced by `PROVIDER_<ID>_API_KEY` / `PROVIDER_<ID>_BASE_URL` and `PROVIDER_ORDER`.
+- 2026-11-24 — Removed the alternative JSON `PROVIDER_CONFIG` form so there is exactly one way to configure a provider: one variable pair per provider id.
+- 2026-11-24 — Callers select only a provider; provider responses were trimmed to provider identity, and the MCP gained a no-argument `providers` tool returning provider ids only.
+- 2026-11-24 — Dropped the `PROVIDER_<ID>_DEFAULT_MODEL` idea: models are not configured one by one. Each adapter uses its provider's own default or `auto` route, so adding models never adds configuration.
+- 2026-11-24 — Corrected the core premise: `search` and `fetch` use model-native web tools, not provider Search & Fetch REST endpoints. First adapter uses DeepSeek Messages with `deepseek_web_search` / `deepseek_read_url`; fetch content is model-generated with citations and is labelled model-derived. MCP instructions and tool descriptions were updated to match.
+- 2026-11-24 — Made the fetch contract explicit: it returns usable plaintext derived from the original page, and fails with `fetch_failed` if the model did not actually read the URL.
+- 2026-11-24 — `planning-search-mcp` now calls the HTTP gateway: `search-core` gained a `GatewayProvider` using `SEARCH_GATEWAY_URL` / `SEARCH_GATEWAY_TOKEN` or the 0600 credentials file, app Settings edits gateway URL and token, and agent subprocesses inherit both variables. The direct DeepSeek adapter is legacy-only.

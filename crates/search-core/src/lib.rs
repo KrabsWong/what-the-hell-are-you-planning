@@ -16,13 +16,15 @@ use std::{
 #[cfg(unix)]
 use std::os::unix::fs::OpenOptionsExt;
 
+pub mod gateway;
+
 pub const DEFAULT_COUNT: usize = 8;
 pub const MAX_COUNT: usize = 10;
 pub const MAX_QUERY_CHARS: usize = 128;
 pub const MAX_SOURCE_CONTENT: usize = 16_000;
 pub const MAX_RESPONSE_BYTES: usize = 60_000;
 pub const MCP_VERSION: &str = "1";
-pub const MCP_INSTRUCTIONS: &str = "Use search to discover sources and fetch to verify an original URL. A search snippet alone is not verified evidence; only fetched content counts as page access. Record URL, publisher, publication date and gaps; skip login walls and CAPTCHA instead of bypassing them.";
+pub const MCP_INSTRUCTIONS: &str = "Use search to discover sources with summaries; use fetch to have the model read an original URL. Fetch returns usable plaintext with citations generated from that page, not a verbatim page capture; record it as model-derived. A search snippet alone is not verified evidence. Record URL, publisher, publication date and gaps; skip login walls and CAPTCHA instead of bypassing them.";
 
 #[derive(Clone, Debug, Serialize)]
 pub struct SearchResult {
@@ -47,6 +49,7 @@ pub struct ProviderResponse {
     pub provider: String,
     pub sources: Vec<SearchResult>,
     pub warnings: Vec<String>,
+    pub answer: Option<String>,
 }
 
 #[derive(Clone, Debug)]
@@ -100,6 +103,19 @@ pub trait Provider: Send + Sync {
     fn name(&self) -> &'static str;
     fn search(&self, request: &SearchRequest) -> Result<Vec<SearchResult>, SearchError>;
     fn fetch(&self, url: &str) -> Result<FetchedPage, SearchError>;
+
+    fn search_response(&self, request: &SearchRequest) -> Result<ProviderResponse, SearchError> {
+        Ok(ProviderResponse {
+            provider: self.name().to_owned(),
+            sources: self.search(request)?,
+            warnings: Vec::new(),
+            answer: None,
+        })
+    }
+
+    fn fetch_response(&self, url: &str) -> Result<(String, FetchedPage, Vec<String>), SearchError> {
+        Ok((self.name().to_owned(), self.fetch(url)?, Vec::new()))
+    }
 }
 
 pub fn truncate_chars(input: &str, limit: usize) -> String {
@@ -154,7 +170,7 @@ fn private_temp(prefix: &str, contents: &[u8]) -> Result<std::path::PathBuf, Sea
     Ok(path)
 }
 
-fn post_json(endpoint: &str, api_key: &str, body: &str, timeout_secs: u64) -> Result<(u16, String), SearchError> {
+pub(crate) fn post_json(endpoint: &str, api_key: &str, body: &str, timeout_secs: u64) -> Result<(u16, String), SearchError> {
     let body_path = private_temp("body", body.as_bytes())?;
     // Production endpoints are HTTPS-only; plain HTTP is allowed only for a
     // local compatible gateway, which needs no protocol pin at all.
@@ -341,7 +357,10 @@ impl Registry {
 
     pub fn from_env() -> Self {
         let mut registry = Self::empty();
-        if let Ok(key) = env::var("DEEPSEEK_API_KEY") {
+        if gateway::credentials().is_some() {
+            registry.add(Box::new(gateway::GatewayProvider));
+        } else if let Ok(key) = env::var("DEEPSEEK_API_KEY") {
+            // Legacy local adapter, kept only for development without a gateway.
             if !key.trim().is_empty() {
                 registry.add(Box::new(DeepSeekProvider::new(key)));
             }
@@ -372,14 +391,8 @@ impl Registry {
     pub fn search_auto(&self, request: &SearchRequest) -> Result<ProviderResponse, SearchError> {
         let mut last = None;
         for provider in self.ordered() {
-            match provider.search(request) {
-                Ok(sources) => {
-                    return Ok(ProviderResponse {
-                        provider: provider.name().to_owned(),
-                        sources,
-                        warnings: Vec::new(),
-                    });
-                }
+            match provider.search_response(request) {
+                Ok(response) => return Ok(response),
                 Err(error)
                     if matches!(
                         error.code,
@@ -392,15 +405,15 @@ impl Registry {
             }
         }
         Err(last.unwrap_or_else(|| {
-            SearchError::new(ErrorCode::Auth, "No search provider configured. Set DEEPSEEK_API_KEY.")
+            SearchError::new(ErrorCode::Auth, "No search provider configured. Set SEARCH_GATEWAY_URL and SEARCH_GATEWAY_TOKEN.")
         }))
     }
 
-    pub fn fetch_auto(&self, url: &str) -> Result<(String, FetchedPage), SearchError> {
+    pub fn fetch_auto(&self, url: &str) -> Result<(String, FetchedPage, Vec<String>), SearchError> {
         let mut last = None;
         for provider in self.ordered() {
-            match provider.fetch(url) {
-                Ok(page) => return Ok((provider.name().to_owned(), page)),
+            match provider.fetch_response(url) {
+                Ok(result) => return Ok(result),
                 Err(error)
                     if matches!(
                         error.code,
@@ -416,7 +429,7 @@ impl Registry {
             }
         }
         Err(last.unwrap_or_else(|| {
-            SearchError::new(ErrorCode::Auth, "No search provider configured. Set DEEPSEEK_API_KEY.")
+            SearchError::new(ErrorCode::Auth, "No search provider configured. Set SEARCH_GATEWAY_URL and SEARCH_GATEWAY_TOKEN.")
         }))
     }
 }

@@ -275,10 +275,11 @@ fn run_worker(
     }
     let mut cmd = command(&request.executable);
     cmd.current_dir(&request.directory).env("PWD", &request.directory);
-    // Both CLIs inherit this into their MCP children. Settings may hold the key
-    // outside the workspace; an explicit environment variable still wins.
-    if let Some(key) = crate::search::api_key() {
-        cmd.env(crate::search::API_KEY_ENV, key);
+    // Both CLIs inherit this into their MCP children. Settings may hold the
+    // gateway credentials outside the workspace; env overrides still win.
+    if let Some((url, token)) = crate::search::gateway_credentials() {
+        cmd.env(crate::search::GATEWAY_URL_ENV, url);
+        cmd.env(crate::search::GATEWAY_TOKEN_ENV, token);
     }
     let agent = if codex { "Codex" } else { "OpenCode" };
     if codex {

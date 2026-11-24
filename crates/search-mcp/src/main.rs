@@ -46,13 +46,18 @@ fn respond(request: &Value, registry: &Registry) -> Option<Value> {
             },
             {
                 "name": "fetch",
-                "description": "Fetch one original URL and return its title and page content as Markdown.",
+                "description": "Have the model read one original URL and return a usable plaintext summary with citations generated from that page. Not a verbatim page capture.",
                 "inputSchema": {
                     "type": "object",
                     "additionalProperties": false,
                     "properties": { "url": { "type": "string", "description": "HTTP(S) URL, at most 8192 characters." } },
                     "required": ["url"]
                 }
+            },
+            {
+                "name": "providers",
+                "description": "List configured search providers. Returns provider ids only; model choices stay server-side.",
+                "inputSchema": { "type": "object", "additionalProperties": false, "properties": {} }
             }
         ] }),
         "tools/call" => {
@@ -94,11 +99,11 @@ fn respond(request: &Value, registry: &Registry) -> Option<Value> {
                         tool_error(SearchError::new(ErrorCode::InvalidParams, "Provide a URL to fetch."))
                     } else {
                         match registry.fetch_auto(&url) {
-                            Ok((provider, page)) => {
+                            Ok((provider, page, warnings)) => {
                                 let response = json!({
                                     "provider": provider,
                                     "page": page,
-                                    "warnings": [],
+                                    "warnings": warnings,
                                 });
                                 match serde_json::to_string(&response) {
                                     Ok(text) => text_result(&text, false),
@@ -110,6 +115,18 @@ fn respond(request: &Value, registry: &Registry) -> Option<Value> {
                             }
                             Err(error) => tool_error(error),
                         }
+                    }
+                }
+                "providers" => {
+                    let providers: Vec<Value> = registry.names().into_iter()
+                        .map(|id| json!({ "id": id }))
+                        .collect();
+                    match serde_json::to_string(&json!({ "providers": providers })) {
+                        Ok(text) => text_result(&text, false),
+                        Err(error) => tool_error(SearchError::new(
+                            ErrorCode::Transport,
+                            format!("Cannot encode provider list: {error}"),
+                        )),
                     }
                 }
                 _ => tool_error(SearchError::new(ErrorCode::InvalidParams, "Unknown search tool.")),
@@ -213,13 +230,30 @@ mod tests {
     }
 
     #[test]
-    fn tool_list_stays_at_two_tools() {
+    fn tool_list_stays_small() {
         let response = respond(&json!({"id": 2, "method": "tools/list"}), &registry()).unwrap();
         let tools = response["result"]["tools"].as_array().unwrap();
-        assert_eq!(tools.len(), 2);
+        assert_eq!(tools.len(), 3);
         assert_eq!(tools[0]["name"], "search");
         assert_eq!(tools[1]["name"], "fetch");
+        assert_eq!(tools[2]["name"], "providers");
         assert_eq!(tools[0]["inputSchema"]["additionalProperties"], false);
+    }
+
+    #[test]
+    fn providers_tool_returns_ids_only() {
+        let request = json!({
+            "id": 6,
+            "method": "tools/call",
+            "params": { "name": "providers", "arguments": {} }
+        });
+        let response = respond(&request, &registry()).unwrap();
+        assert_eq!(response["result"]["isError"], false);
+        let text = response["result"]["content"][0]["text"].as_str().unwrap();
+        let body: Value = serde_json::from_str(text).unwrap();
+        assert_eq!(body["providers"][0]["id"], "fake");
+        assert!(body["providers"][0].get("models").is_none());
+        assert!(body["providers"][0].get("capabilities").is_none());
     }
 
     #[test]

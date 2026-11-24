@@ -304,8 +304,11 @@ impl TaskApp {
             .child(self.agent_settings_panel(cx))
             .child(div().pt_2().font_weight(FontWeight::SEMIBOLD).child(selectable("Search runtime")))
             .child(label("Search and fetch original sources through the shared MCP runtime.", cx))
-            .child(row().justify_between().gap_2().child(label("DeepSeek API key", cx)))
-            .child(Input::new(&self.api_key_input).id("search-api-key"))
+            .child(label("Gateway URL and token authenticate this app to the remote search gateway.", cx))
+            .child(row().justify_between().gap_2().child(label("Search gateway URL", cx)))
+            .child(Input::new(&self.gateway_url_input).id("search-gateway-url"))
+            .child(row().justify_between().gap_2().child(label("Search gateway token", cx)))
+            .child(Input::new(&self.gateway_token_input).id("search-gateway-token"))
             .child(label(
                 format!("Stored outside the workspace at {}.", crate::search::credentials_location()),
                 cx,

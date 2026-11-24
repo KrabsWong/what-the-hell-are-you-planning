@@ -530,7 +530,8 @@ pub struct TaskApp {
     pub research_models: [Entity<InputState>; 4],
     pub ego_input: Entity<InputState>,
     pub search_input: Entity<InputState>,
-    pub api_key_input: Entity<InputState>,
+    pub gateway_url_input: Entity<InputState>,
+    pub gateway_token_input: Entity<InputState>,
     pub ego_status: String,
     pub ego_probe: Option<mpsc::Receiver<Result<String, String>>>,
     pub research_model_picker: Option<EntityId>,
@@ -848,14 +849,33 @@ impl TaskApp {
         let search_input = cx.new(|cx| {
             InputState::new(window, cx).default_value(crate::research::default_search_mcp_path())
         });
-        let api_key_input = cx.new(|cx| {
+        let (gateway_url, gateway_token) = crate::search::gateway_credentials().unwrap_or_default();
+        let gateway_url_input = cx.new(|cx| {
             InputState::new(window, cx)
-                .default_value(crate::search::api_key().unwrap_or_default())
-                .placeholder(crate::i18n::tr("sk-…"))
+                .default_value(gateway_url)
+                .placeholder(crate::i18n::tr("https://search-gateway.example.com"))
         });
-        subscriptions.push(cx.subscribe(&api_key_input, |this, input, event, cx| {
+        let gateway_token_input = cx.new(|cx| {
+            InputState::new(window, cx)
+                .default_value(gateway_token)
+                .placeholder(crate::i18n::tr("Gateway token"))
+        });
+        subscriptions.push(cx.subscribe(&gateway_url_input, |this, _input, event, cx| {
             if matches!(event, InputEvent::Blur | InputEvent::PressEnter { .. }) {
-                match crate::search::save_api_key(&input.read(cx).value()) {
+                let url = this.gateway_url_input.read(cx).value();
+                let token = this.gateway_token_input.read(cx).value();
+                match crate::search::save_gateway_credentials(&url, &token) {
+                    Ok(()) => this.error.clear(),
+                    Err(error) => this.error = error,
+                }
+                cx.notify();
+            }
+        }));
+        subscriptions.push(cx.subscribe(&gateway_token_input, |this, _input, event, cx| {
+            if matches!(event, InputEvent::Blur | InputEvent::PressEnter { .. }) {
+                let url = this.gateway_url_input.read(cx).value();
+                let token = this.gateway_token_input.read(cx).value();
+                match crate::search::save_gateway_credentials(&url, &token) {
                     Ok(()) => this.error.clear(),
                     Err(error) => this.error = error,
                 }
@@ -1066,7 +1086,8 @@ impl TaskApp {
             research_models,
             ego_input,
             search_input,
-            api_key_input,
+            gateway_url_input,
+            gateway_token_input,
             ego_status: "Runtime not checked".into(),
             ego_probe: None,
             research_model_picker: None,

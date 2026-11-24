@@ -529,7 +529,6 @@ pub struct TaskApp {
     pub research_project: u64,
     pub research_models: [Entity<InputState>; 4],
     pub ego_input: Entity<InputState>,
-    pub search_input: Entity<InputState>,
     pub gateway_url_input: Entity<InputState>,
     pub gateway_token_input: Entity<InputState>,
     pub ego_status: String,
@@ -846,9 +845,6 @@ impl TaskApp {
                 }
             }
         }));
-        let search_input = cx.new(|cx| {
-            InputState::new(window, cx).default_value(crate::research::default_search_mcp_path())
-        });
         let (gateway_url, gateway_token) = crate::search::gateway_credentials().unwrap_or_default();
         let gateway_url_input = cx.new(|cx| {
             InputState::new(window, cx)
@@ -1085,7 +1081,6 @@ impl TaskApp {
             research_project: 1,
             research_models,
             ego_input,
-            search_input,
             gateway_url_input,
             gateway_token_input,
             ego_status: "Runtime not checked".into(),
@@ -3885,13 +3880,7 @@ impl TaskApp {
                         .owning_research_goal(run.task_id)
                         .is_some_and(|goal| self.store.research_browser_handed_off(goal)))
                 .then(|| PathBuf::from(&self.store.research_config().ego_path)),
-                search_mcp_path: (!self
-                    .store
-                    .research_config()
-                    .search_mcp_path
-                    .trim()
-                    .is_empty())
-                .then(|| PathBuf::from(&self.store.research_config().search_mcp_path)),
+                gateway_url: crate::search::gateway_credentials().map(|(url, _)| url),
                 files,
                 session_id: run.session_id.clone(),
                 executable: PathBuf::from(self.store.agent_path(&run.agent)),

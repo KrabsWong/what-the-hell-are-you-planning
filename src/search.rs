@@ -3,7 +3,7 @@
 //! The browser bridge remains available as a legacy fallback, but a configured
 //! `planning-search-mcp` makes search + fetch the default collection path.
 
-use std::{env, fs, io::Write, path::{Path, PathBuf}, process::Command};
+use std::{env, fs, io::Write, path::{Path, PathBuf}};
 
 #[cfg(unix)]
 use std::os::unix::fs::OpenOptionsExt;
@@ -12,11 +12,6 @@ use std::os::unix::fs::OpenOptionsExt;
 pub const GATEWAY_URL_ENV: &str = "SEARCH_GATEWAY_URL";
 pub const GATEWAY_TOKEN_ENV: &str = "SEARCH_GATEWAY_TOKEN";
 pub const CREDENTIALS_PATH_ENV: &str = "PLANNING_SEARCH_CREDENTIALS";
-
-pub fn configured(path: &str) -> bool {
-    let path = path.trim();
-    !path.is_empty() && Path::new(path).is_file()
-}
 
 /// Search and fetch are the baseline. ego(lite) is an opt-in advanced capability
 /// for pages that need a signed-in session, interaction or human handoff.
@@ -33,9 +28,13 @@ pub struct CollectionPlan {
     pub browser_enabled: bool,
 }
 
-pub fn collection_plan(search_path: &str, ego_path: &str, ego_lite_enabled: bool) -> CollectionPlan {
+pub fn gateway_ready() -> bool {
+    gateway_credentials().is_some()
+}
+
+pub fn collection_plan(search_ready: bool, ego_path: &str, ego_lite_enabled: bool) -> CollectionPlan {
     let browser_enabled = ego_lite_enabled && crate::ego::executable(ego_path).is_ok();
-    let runtime = if configured(search_path) {
+    let runtime = if search_ready {
         CollectionRuntime::Search
     } else if browser_enabled {
         CollectionRuntime::Browser
@@ -104,27 +103,6 @@ pub fn credentials_location() -> String {
     credentials_path().to_string_lossy().into_owned()
 }
 
-pub fn probe(path: &str) -> Result<String, String> {
-    if !configured(path) {
-        return Err("planning-search-mcp is not installed at this path. Install the search MCP binary and select it in Settings.".into());
-    }
-    let mut command = Command::new(path.trim());
-    command.arg("--status");
-    if let Some((url, token)) = gateway_credentials() {
-        command.env(GATEWAY_URL_ENV, url);
-        command.env(GATEWAY_TOKEN_ENV, token);
-    }
-    let output = command.output()
-        .map_err(|error| format!("Cannot start planning-search-mcp: {error}"))?;
-    let stdout = String::from_utf8_lossy(&output.stdout).trim().to_owned();
-    let stderr = String::from_utf8_lossy(&output.stderr).trim().to_owned();
-    if output.status.success() {
-        return Ok(format!("Search ready · {stdout}"));
-    }
-    let reason = if stderr.is_empty() { stdout } else { stderr };
-    Err(format!("Search runtime needs attention: {reason}"))
-}
-
 pub fn instructions(agent: &str) -> String {
     let transport = if agent == "Codex" {
         "Use the planning_search MCP server: call its search tool with a query to discover sources, then its fetch tool with an original URL to have the model read the page. The tools return structured sources with URLs, titles, model-generated page content with citations, publication dates and authority; the content is not raw page Markdown."
@@ -139,12 +117,6 @@ pub fn instructions(agent: &str) -> String {
 #[cfg(test)]
 mod tests {
     use super::*;
-
-    #[test]
-    fn missing_runtime_is_actionable() {
-        let error = probe("/no/such/planning-search-mcp").unwrap_err();
-        assert!(error.contains("planning-search-mcp"));
-    }
 
     #[test]
     fn instructions_keep_the_source_failure_policy() {
@@ -172,18 +144,18 @@ mod tests {
         fs::write(&path, "fake").unwrap();
         let path = path.to_string_lossy().into_owned();
         assert_eq!(
-            collection_plan(&path, &path, false),
+            collection_plan(true, &path, false),
             CollectionPlan { runtime: CollectionRuntime::Search, browser_enabled: false }
         );
-        let advanced = collection_plan(&path, &path, true);
+        let advanced = collection_plan(true, &path, true);
         assert_eq!(advanced.runtime, CollectionRuntime::Search);
         assert!(advanced.browser_enabled);
         assert_eq!(
-            collection_plan("/no/such/mcp", &path, false),
+            collection_plan(false, &path, false),
             CollectionPlan { runtime: CollectionRuntime::Unavailable, browser_enabled: false }
         );
         assert_eq!(
-            collection_plan("/no/such/mcp", &path, true).runtime,
+            collection_plan(false, &path, true).runtime,
             CollectionRuntime::Browser
         );
         let _ = fs::remove_file(&path);

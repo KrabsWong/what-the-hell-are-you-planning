@@ -32,7 +32,7 @@ pub struct Request {
     /// tool-permission policy.
     pub agent: Option<String>,
     pub browser_executable: Option<PathBuf>,
-    pub search_mcp_path: Option<PathBuf>,
+    pub gateway_url: Option<String>,
     pub executable: PathBuf,
     pub directory: PathBuf,
     pub model: String,
@@ -285,11 +285,6 @@ fn run_worker(
     if codex {
         crate::codex::configure_command(&mut cmd, &request);
     } else {
-        // OpenCode reads MCP servers from global config; expose the same path so a
-        // config template can reference {env:PLANNING_SEARCH_MCP}.
-        if let Some(path) = &request.search_mcp_path {
-            cmd.env("PLANNING_SEARCH_MCP", path);
-        }
         cmd.args(["--standalone", "run", "--format", "json", "--model", &request.model,
             "--agent", request.agent.as_deref().unwrap_or("build"), "--title", &request.title]);
         if let Some(session) = &request.session_id {
@@ -721,7 +716,7 @@ while [ "$#" -gt 0 ]; do
 done
 printf '%s\n' '{"type":"thread.started","thread_id":"codex-thread"}' '{"type":"item.completed","item":{"type":"agent_message","text":"intermediate commentary"}}' '{"type":"turn.failed","error":{"message":"quota"}}'
 "#);
-        let request = Request { agent: None, browser_executable: None, search_mcp_path: None, executable, directory: dir.clone(), model: "test-model".into(),
+        let request = Request { agent: None, browser_executable: None, gateway_url: None, executable, directory: dir.clone(), model: "test-model".into(),
             prompt: "研究\n".repeat(40_000), title: "Test".into(), files: vec![], session_id: None };
         let worker = start_codex(request.clone()).unwrap();
         let mut session = None;
@@ -749,7 +744,7 @@ printf '%s\n' '{"type":"thread.started","thread_id":"codex-thread"}' '{"type":"i
     #[test]
     fn codex_first_attempt_is_leased_and_cancelled_without_session_id() {
         let (dir, executable) = fake_script("cat >/dev/null\necho ready\nsleep 20");
-        let request = Request { agent: None, browser_executable: None, search_mcp_path: None, executable, directory: dir.clone(), model: "test-model".into(),
+        let request = Request { agent: None, browser_executable: None, gateway_url: None, executable, directory: dir.clone(), model: "test-model".into(),
             prompt: "first attempt".into(), title: "Test".into(), files: vec![], session_id: None };
         let worker = start_codex(request.clone()).unwrap();
         assert!(matches!(worker.events.recv_timeout(Duration::from_secs(3)).unwrap(), Event::Log(_)));
@@ -767,7 +762,7 @@ printf '%s\n' '{"type":"thread.started","thread_id":"codex-thread"}' '{"type":"i
         let (dir, executable) =
             fake_script("printf '%s\\n' \"$@\" > args.txt\necho ready\nsleep 20");
         let session = new_session_id();
-        let request = Request { agent: None, browser_executable: None, search_mcp_path: None,
+        let request = Request { agent: None, browser_executable: None, gateway_url: None,
             executable,
             directory: dir.clone(),
             model: "test/model".into(),
@@ -809,7 +804,7 @@ printf '%s\n' '{"type":"thread.started","thread_id":"codex-thread"}' '{"type":"i
     #[test]
     fn child_retains_session_lock_when_parent_lease_is_dropped() {
         let (dir, executable) = fake_script("sleep 20 &\necho ready\nwait");
-        let request = Request { agent: None, browser_executable: None, search_mcp_path: None,
+        let request = Request { agent: None, browser_executable: None, gateway_url: None,
             executable: executable.clone(),
             directory: dir.canonicalize().unwrap(),
             model: "test/model".into(),
@@ -861,7 +856,7 @@ printf '%s\n' '{"type":"thread.started","thread_id":"codex-thread"}' '{"type":"i
         let (dir, executable) = fake_script(
             "printf '%s\\n' '{\"type\":\"text\",\"part\":{\"text\":\"live output\"}}'\nsleep 20",
         );
-        let running = start(Request { agent: None, browser_executable: None, search_mcp_path: None,
+        let running = start(Request { agent: None, browser_executable: None, gateway_url: None,
             executable,
             directory: dir.clone(),
             model: "test/model".into(),
@@ -891,7 +886,7 @@ printf '%s\n' '{"type":"thread.started","thread_id":"codex-thread"}' '{"type":"i
     #[test]
     fn reports_failed_process_exit() {
         let (dir, executable) = fake_script("echo 'provider unavailable' >&2\nexit 7");
-        let running = start(Request { agent: None, browser_executable: None, search_mcp_path: None,
+        let running = start(Request { agent: None, browser_executable: None, gateway_url: None,
             executable,
             directory: dir.clone(),
             model: "test/model".into(),
@@ -919,7 +914,7 @@ printf '%s\n' '{"type":"thread.started","thread_id":"codex-thread"}' '{"type":"i
         let (dir, executable) = fake_script(
             "test \"$PWD\" = \"$(pwd -P)\" || exit 9\nsleep 20 &\necho 'finished parent'\nexit 0",
         );
-        let running = start(Request { agent: None, browser_executable: None, search_mcp_path: None,
+        let running = start(Request { agent: None, browser_executable: None, gateway_url: None,
             executable,
             directory: dir.clone(),
             model: "test/model".into(),
@@ -943,7 +938,7 @@ printf '%s\n' '{"type":"thread.started","thread_id":"codex-thread"}' '{"type":"i
     #[test]
     fn shutdown_waits_for_cleanup_even_when_log_queue_is_full() {
         let (dir, executable) = fake_script("while :; do echo busy; done");
-        let running = start(Request { agent: None, browser_executable: None, search_mcp_path: None,
+        let running = start(Request { agent: None, browser_executable: None, gateway_url: None,
             executable,
             directory: dir.clone(),
             model: "test/model".into(),
@@ -993,7 +988,7 @@ pub(crate) fn interrupt_session(executable: &Path, run: &crate::domain::AgentRun
         .ok_or("OpenCode did not acknowledge interruption")?;
     if !interrupted {
         // An idle server does not prove a detached CLI process has stopped.
-        let request = Request { agent: None, browser_executable: None, search_mcp_path: None,
+        let request = Request { agent: None, browser_executable: None, gateway_url: None,
             executable: executable.into(),
             directory: Path::new(&run.directory).canonicalize().map_err(|e| e.to_string())?,
             model: String::new(), prompt: String::new(), title: String::new(),

@@ -215,7 +215,6 @@ pub struct ResearchConfig {
     pub agents: [Option<String>; 4],
     pub models: [String; 4],
     pub ego_path: String,
-    pub search_mcp_path: String,
     /// Advanced browser capability for signed-in or interactive pages. Off by default.
     pub ego_lite_enabled: bool,
     pub output_language: OutputLanguage,
@@ -230,7 +229,6 @@ impl Default for ResearchConfig {
             agents: Default::default(),
             models: Default::default(),
             ego_path: default_ego_path(),
-            search_mcp_path: default_search_mcp_path(),
             ego_lite_enabled: false,
             output_language: OutputLanguage::Auto,
         }
@@ -262,23 +260,6 @@ pub fn default_ego_path() -> String {
         .unwrap_or_else(|| "ego-browser".into())
 }
 
-/// Standalone MCP binary path. `PLANNING_SEARCH_MCP` lets a server deployment
-/// override the per-user default without touching saved data.
-pub fn default_search_mcp_path() -> String {
-    if let Ok(path) = std::env::var("PLANNING_SEARCH_MCP") {
-        if !path.trim().is_empty() {
-            return path;
-        }
-    }
-    std::env::var_os("HOME")
-        .map(|home| {
-            std::path::PathBuf::from(home)
-                .join(".local/bin/planning-search-mcp")
-                .to_string_lossy()
-                .into_owned()
-        })
-        .unwrap_or_else(|| "planning-search-mcp".into())
-}
 #[derive(Debug, Deserialize)]
 #[serde(deny_unknown_fields)]
 pub struct Plan {
@@ -2442,7 +2423,7 @@ mod tests {
         store.project_at_mut(0).unwrap().directory = directory.to_string_lossy().into();
         store.research_config_mut().models[0] = "deepseek/deepseek-flash".into();
         let run = store.prepare_run(goal).unwrap();
-        let active = crate::opencode::start(crate::opencode::Request { agent: None, browser_executable: None, search_mcp_path: None,
+        let active = crate::opencode::start(crate::opencode::Request { agent: None, browser_executable: None, gateway_url: None,
             session_id: None,
             executable: crate::opencode::detect_executable().into(),
             directory,

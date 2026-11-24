@@ -547,7 +547,7 @@ impl TaskApp {
         if run.research_kind == Some(ResearchKind::Collect) && !browser_handed_off {
             let config = self.store.research_config();
             let plan = search::collection_plan(
-                &config.search_mcp_path,
+                search::gateway_ready(),
                 &config.ego_path,
                 config.ego_lite_enabled,
             );

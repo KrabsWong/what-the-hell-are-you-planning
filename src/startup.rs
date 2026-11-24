@@ -24,7 +24,7 @@ pub(crate) enum WorkspaceOpenEvent {
     Complete(Result<PreparedWorkspace, String>),
 }
 
-type Checks = [Result<String, String>; 3];
+type Checks = [Result<String, String>; 2];
 #[derive(Default)]
 pub struct Startup {
     pub required: bool,
@@ -33,7 +33,7 @@ pub struct Startup {
     pub(crate) workspace_pending: Option<mpsc::Receiver<WorkspaceOpenEvent>>,
     pub(crate) workspace_phase: Option<&'static str>,
     pub(crate) upgrade_backup: Option<std::path::PathBuf>,
-    paths: [String; 3],
+    paths: [String; 2],
     checks: Option<Checks>,
 }
 fn probe_agent(agent: &str, path: &str) -> Result<String, String> {
@@ -256,7 +256,6 @@ impl TaskApp {
         let paths = [
             self.executable_input.read(cx).value().trim().to_string(),
             self.codex_executable_input.read(cx).value().trim().to_string(),
-            self.search_input.read(cx).value().trim().to_string(),
         ];
         self.startup.paths = paths.clone();
         self.startup.checks = None;
@@ -266,8 +265,7 @@ impl TaskApp {
             let checks = std::thread::scope(|scope| {
                 let open = scope.spawn(|| probe_agent("OpenCode", &paths[0]));
                 let codex = scope.spawn(|| probe_agent("Codex", &paths[1]));
-                let search = scope.spawn(|| crate::search::probe(&paths[2]));
-                [open.join(), codex.join(), search.join()].map(|result| {
+                [open.join(), codex.join()].map(|result| {
                     result.unwrap_or_else(|_| Err("Check stopped. Please retry.".into()))
                 })
             });
@@ -304,7 +302,6 @@ impl TaskApp {
             !self.workspace_required,
             self.executable_input.read(cx).value().trim(),
             self.codex_executable_input.read(cx).value().trim(),
-            self.search_input.read(cx).value().trim(),
         )
     }
     pub fn startup_view(&self, cx: &mut Context<Self>) -> AnyElement {
@@ -336,8 +333,7 @@ impl TaskApp {
         let dependency = |index: usize| {
             let current = match index {
                 0 => self.executable_input.read(cx).value(),
-                1 => self.codex_executable_input.read(cx).value(),
-                _ => self.search_input.read(cx).value(),
+                _ => self.codex_executable_input.read(cx).value(),
             };
             let checked = &self.startup.paths[index];
             if checked.is_empty() && self.startup.checks.is_none() && self.startup.pending.is_none()
@@ -366,7 +362,6 @@ impl TaskApp {
         };
         let open = dependency(0);
         let codex = dependency(1);
-        let search = dependency(2);
         let agent_ready = open.3 || codex.3;
         let workspace = if self.workspace_setup.is_some() {
             ("Preparing…", colors.accent)
@@ -377,8 +372,7 @@ impl TaskApp {
         } else {
             ("Ready", colors.success)
         };
-        let ready =
-            usize::from(!self.workspace_required) + usize::from(agent_ready) + usize::from(search.3);
+        let ready = usize::from(!self.workspace_required) + usize::from(agent_ready);
         let badge = |text: &'static str, color: u32| {
             let icon = match text {
                 "Ready" => assets::IconName::Check,
@@ -490,13 +484,7 @@ impl TaskApp {
                     .child(row().justify_between().gap_2().child(label("Codex CLI", cx))
                         .child(link_button("install-codex", "Install").icon(assets::IconName::ExternalLink).on_click(|_,_,cx| cx.open_url("https://developers.openai.com/codex/cli"))))
                     .child(Input::new(&self.codex_executable_input).id("startup-codex"))
-                    .when(!codex.2.is_empty(), |view| view.child(div().text_xs().text_color(rgb(colors.muted)).child(selectable(codex.2.clone())))))
-                .child(card()
-                    .child(heading("3 · Search runtime", search.0, search.1))
-                    .child(row().justify_between().gap_2().child(label("Search MCP · set the API key in Settings, then select the installed binary.", cx))
-                        .when(!crate::search::configured(&self.search_input.read(cx).value()), |d| d.child(link_button("startup-search-guide", "Setup guide").icon(assets::IconName::ExternalLink).on_click(|_,_,cx| cx.open_url("https://api-docs.deepseek.com/api/search")))))
-                    .child(Input::new(&self.search_input).id("startup-search"))
-                    .when(!search.2.is_empty(), |view| view.child(div().text_xs().text_color(rgb(if search.3 { colors.muted } else { search.1 })).child(selectable(search.2.clone()))))
+                    .when(!codex.2.is_empty(), |view| view.child(div().text_xs().text_color(rgb(colors.muted)).child(selectable(codex.2.clone()))))
                     .when(!self.error.is_empty(), |view| view.child(crate::views::notice(
                         crate::views::NoticeTone::Danger,
                         self.error.clone(),
@@ -510,7 +498,6 @@ impl TaskApp {
                             if !this.startup_ready(cx) { return; }
                             this.store.set_opencode_path(this.executable_input.read(cx).value().trim().into());
                             this.store.research_config_mut().codex_path = this.codex_executable_input.read(cx).value().trim().into();
-                            this.store.research_config_mut().search_mcp_path = this.startup.paths[2].clone();
                             this.persist_if_changed(true);
                             if this.storage.is_some() && this.storage_error.is_empty() {
                                 this.startup.required = false;
@@ -529,15 +516,13 @@ impl Startup {
             self.required = !ready;
         }
     }
-    fn ready_for(&self, workspace_ready: bool, opencode: &str, codex: &str, search: &str) -> bool {
+    fn ready_for(&self, workspace_ready: bool, opencode: &str, codex: &str) -> bool {
         workspace_ready
             && self.workspace_pending.is_none()
             && self.pending.is_none()
-            && self.paths[2] == search
             && self.checks.as_ref().is_some_and(|checks| {
-                checks[2].is_ok()
-                    && ((checks[0].is_ok() && self.paths[0] == opencode)
-                        || (checks[1].is_ok() && self.paths[1] == codex))
+                (checks[0].is_ok() && self.paths[0] == opencode)
+                    || (checks[1].is_ok() && self.paths[1] == codex)
             })
     }
 
@@ -549,42 +534,36 @@ mod tests {
     #[test]
     fn all_requirements_and_current_paths_must_pass() {
         let mut startup = Startup {
-            paths: ["open".into(), "codex".into(), "ego".into()],
+            paths: ["open".into(), "codex".into()],
             ..Default::default()
         };
-        assert!(!startup.ready_for(true, "open", "codex", "ego"));
-        startup.checks = Some([Ok("ready".into()), Err("missing".into()), Err("missing".into())]);
-        assert!(!startup.ready_for(true, "open", "codex", "ego"));
-        startup.checks = Some([Ok("ready".into()), Err("missing".into()), Ok("ready".into())]);
-        assert!(!startup.ready_for(false, "open", "codex", "ego"));
-        assert!(!startup.ready_for(true, "changed", "codex", "ego"));
-        assert!(!startup.ready_for(true, "open", "codex", "changed"));
-        assert!(startup.ready_for(true, "open", "codex", "ego"));
+        assert!(!startup.ready_for(true, "open", "codex"));
+        startup.checks = Some([Ok("ready".into()), Err("missing".into())]);
+        assert!(startup.ready_for(true, "open", "codex"));
+        assert!(!startup.ready_for(false, "open", "codex"));
+        assert!(!startup.ready_for(true, "changed", "codex"));
         let (_, rx) = mpsc::channel();
         startup.pending = Some(rx);
-        assert!(!startup.ready_for(true, "open", "codex", "ego"));
+        assert!(!startup.ready_for(true, "open", "codex"));
     }
     #[test]
-    fn either_agent_is_sufficient_but_browser_and_current_success_path_are_required() {
+    fn either_agent_is_sufficient_and_the_success_path_must_match() {
         for open in [false, true] {
             for codex in [false, true] {
-                for browser in [false, true] {
-                    let result = |ready| if ready { Ok("version".into()) } else { Err("missing".into()) };
-                    let mut startup = Startup {
-                        paths: ["open".into(), "codex".into(), "ego".into()],
-                        checks: Some([result(open), result(codex), result(browser)]),
-                        ..Default::default()
-                    };
-                    assert_eq!(startup.ready_for(true, "open", "codex", "ego"), (open || codex) && browser);
-                    assert_eq!(startup.ready_for(true, "changed", "codex", "ego"), codex && browser);
-                    assert_eq!(startup.ready_for(true, "open", "changed", "ego"), open && browser);
-                    assert!(!startup.ready_for(true, "changed", "changed", "ego"));
-                    assert!(!startup.ready_for(true, "open", "codex", "changed"));
-                    startup.silent = true;
-                    let ready = startup.ready_for(true, "open", "codex", "ego");
-                    startup.finish_initial_check(ready);
-                    assert_eq!(startup.required, !((open || codex) && browser));
-                }
+                let result = |ready| if ready { Ok("version".into()) } else { Err("missing".into()) };
+                let mut startup = Startup {
+                    paths: ["open".into(), "codex".into()],
+                    checks: Some([result(open), result(codex)]),
+                    ..Default::default()
+                };
+                assert_eq!(startup.ready_for(true, "open", "codex"), open || codex);
+                assert_eq!(startup.ready_for(true, "changed", "codex"), codex);
+                assert_eq!(startup.ready_for(true, "open", "changed"), open);
+                assert!(!startup.ready_for(true, "changed", "changed"));
+                startup.silent = true;
+                let ready = startup.ready_for(true, "open", "codex");
+                startup.finish_initial_check(ready);
+                assert_eq!(startup.required, !(open || codex));
             }
         }
     }

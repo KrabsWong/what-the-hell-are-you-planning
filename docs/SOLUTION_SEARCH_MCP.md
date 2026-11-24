@@ -1,6 +1,6 @@
 # Solution: Remote search gateway behind the search MCP
 
-**Status:** Proposed · v2 accepted 2026-11-24 · first release targets Tencent Cloud SCF with DeepSeek only; Token Plan native search confirmed for the next provider
+**Status:** Accepted · v3 2026-11-24 · remote MCP on Tencent Cloud SCF with DeepSeek only; Token Plan native search confirmed for the next provider
 **Related:** `doc/RESEARCH_WORKFLOW_STRATEGY.md`, `doc/AUTOMATION_PLAN.md`, `AGENTS.md`
 
 ## Background
@@ -168,29 +168,30 @@ All endpoints except `/health` require `Authorization: Bearer <token>` and answe
 
 | Method | Path | Body | Response |
 | --- | --- | --- | --- |
-| `POST` | `/v1/provider` | `{}` or `{"id":"deepseek"}` | `{ "providers": [ { "id", "name", "capabilities": ["search","fetch"], "models": [], "default_model": null } ], "default": "deepseek" }` |
-| `POST` | `/v1/search` | `{ "provider"?, "query", "count"?, "need_content"?, "ori_question"? }` | `{ "provider", "sources": [...], "warnings": [] }` |
-| `POST` | `/v1/fetch` | `{ "provider"?, "url" }` | `{ "provider", "page": { "url", "title", "content" }, "warnings": [] }` |
+| `POST` | `/mcp` | JSON-RPC message (or batch) | Remote MCP endpoint used by agents; notifications get `202` |
+| `POST` | `/v1/provider` | `{}` | `{ "providers": [{ "id", "name", "enabled" }], "default" }` |
+| `POST` | `/v1/search` | `{ "provider"?, "query", "count"?, "need_content"?, "ori_question"? }` | `{ "provider", "sources": [...], "answer"?, "warnings": [] }` |
+| `POST` | `/v1/fetch` | `{ "provider"?, "url" }` | `{ "provider", "page": { "url", "title", "content", "citations" }, "warnings": [] }` |
 | `GET` | `/health` | — | `{ "ok": true, "providers": ["deepseek"] }` |
 
 Error mapping: `401/403` → `auth`, `429` → `rate_limit`, `400` → `invalid_params`, `5xx` or network failure → `transport`, empty results → `no_results`, fetch with no content → `fetch_failed`. API Gateway synchronous invocation does not retry errors, so the MCP maps these into its existing tool-error codes and the agent applies its own bounded retry.
 
 ### Client configuration
 
-The credentials file outside the workspace changes from a provider key to gateway settings:
+The app stores only gateway settings in a 0600 file outside the workspace and injects them into agent subprocesses:
 
 ```jsonc
 // ~/.config/planning-search/credentials.json (0600)
-{ "gateway_url": "https://<api-gateway-host>/", "token": "gateway-token" }
+{ "gateway_url": "https://<api-gateway-host>/release/mcp", "token": "gateway-token" }
 ```
 
-Environment overrides keep server deployments UI-free: `SEARCH_GATEWAY_URL` and `SEARCH_GATEWAY_TOKEN` take precedence. Provider settings in the gateway use one uniform form: `PROVIDER_<ID>_API_KEY` and optional `PROVIDER_<ID>_BASE_URL`, for example `PROVIDER_DEEPSEEK_API_KEY`. They exist only as SCF secrets and never appear in the app, the MCP process or run logs.
+Environment overrides keep server deployments UI-free: `SEARCH_GATEWAY_URL` and `SEARCH_GATEWAY_TOKEN` take precedence. The app passes them to Codex (via `mcp_servers.planning_search.url` and `bearer_token_env_var`) and OpenCode (via global `mcp.servers` remote config). **No local MCP binary is installed**, so `PLANNING_SEARCH_MCP` and the startup binary probe no longer exist. Provider settings in the gateway use `PROVIDER_<ID>_API_KEY` and optional `PROVIDER_<ID>_BASE_URL`, for example `PROVIDER_DEEPSEEK_API_KEY`; they live only as SCF secrets.
 
 ## Deployment and configuration
 
 ### Tencent Cloud SCF + API Gateway (chosen)
 
-- API Gateway exposes `/v1/search`, `/v1/fetch`, `/v1/provider` and `/health` over HTTPS and performs request throttling.
+- API Gateway exposes `/mcp` (remote MCP for agents), `/v1/search`, `/v1/fetch`, `/v1/provider` and `/health` over HTTPS and performs request throttling.
 - SCF holds one function with a published version and alias. Provider keys are stored as function environment secrets or in SSM; no key is embedded in code or client configuration.
 - Synchronous API Gateway invocation is used for MCP calls; timeouts are set above the upstream DeepSeek timeout and the gateway enforces its own shorter deadline per call.
 
@@ -219,16 +220,35 @@ Cloudflare Workers remains viable if DeepSeek egress and cost targets change; a 
 
 ### Agent wiring
 
-Codex and OpenCode registration is unchanged: both start the same `planning-search-mcp` binary. Only the credentials file contents change, so no agent config or prompt edit is needed. `--status` probes `/health` and an empty `/v1/provider` call rather than a billed search.
+No local MCP binary is installed. The app passes the gateway URL and token to each agent:
+
+- **Codex**: the app adds `-c mcp_servers.planning_search.url=<gateway_url>` and `-c mcp_servers.planning_search.bearer_token_env_var="SEARCH_GATEWAY_TOKEN"` to the CLI command. The token itself stays in the inherited environment, never in argv or saved data.
+- **OpenCode**: because the app launches it with `--standalone` and no config override, the remote server is registered once in `~/.config/opencode/opencode.jsonc`:
+
+```jsonc
+{
+  "mcp": { "servers": {
+    "planning-search": {
+      "type": "remote",
+      "url": "https://<api-gateway-host>/release/mcp",
+      "headers": { "Authorization": "Bearer {env:SEARCH_GATEWAY_TOKEN}" },
+      "codemode": false
+    }
+  }}
+}
+```
+
+The app's startup setup now checks only the workspace and at least one agent CLI; there is no third search dependency. `collection_plan` decides search-first based on whether gateway credentials exist, not on a local binary path.
 
 ## Rollout plan
 
 1. **v1 done (2026-11-24).** Local MCP with a direct DeepSeek adapter, canonical contract, app wiring, search-first prompts, opt-in ego(lite) capability.
-2. **Gateway service (next).** Implement the three HTTP endpoints on SCF behind API Gateway, the DeepSeek model-native Messages adapter, token auth, secrets, small cache and quotas. Configure provisioned concurrency on a published alias plus a 5-minute timer warm-up.
-3. **MCP slim client (done 2026-11-24).** `search-core` now uses an HTTP gateway client (`GatewayProvider`) when `SEARCH_GATEWAY_URL` / `SEARCH_GATEWAY_TOKEN` or the credentials file are configured; the old direct DeepSeek adapter remains only for local development without a gateway. The MCP keeps its three-tool contract and `--status` probes the gateway path.
-4. **Settings migration.** Replace the DeepSeek API key field with gateway URL and token, update i18n entries, keep environment overrides for servers.
-5. **Verification.** Isolated QA against a fake gateway, then one real DeepSeek research run. Compare evidence fields against the v1 baseline. Measure cold-start and warm p95 latency before and after warm-up is enabled.
-6. **Provider expansion (later, no app changes).** Add `tencent-tokenplan` as a `search` backend using the Anthropic Messages `web_search_20250305` adapter, with DeepSeek fetch for verified page content. OpenCode Go remains `model`/`synthesis` until a native search capability is verified. No app or agent configuration changes are needed for either step.
+2. **Gateway service done (2026-11-24).** HTTP endpoints on SCF behind API Gateway, DeepSeek model-native Messages adapter, token auth, SCF environment secrets, quotas, provisioned concurrency and a 5-minute timer warm-up.
+3. **MCP client done (2026-11-24).** `search-core` used an HTTP gateway client while a local `planning-search-mcp` binary still existed; this was superseded by stage 5.
+4. **Settings migration done (2026-11-24).** DeepSeek API key field replaced by gateway URL and token, with environment overrides for servers.
+5. **Remote MCP done (2026-11-24).** The gateway now exposes a sessionless Streamable HTTP MCP endpoint (`POST /mcp`) with `search` / `fetch` / `providers` tools. Codex is configured by the app with `mcp_servers.planning_search.url` + `bearer_token_env_var`; OpenCode uses a one-time global remote `mcp.servers` config. The local MCP binary, `PLANNING_SEARCH_MCP`, the local credentials-file probe, and the third startup dependency card were removed. Nothing needs to be installed on the client machine.
+6. **Verification (pending).** One real DeepSeek research run end-to-end; compare evidence fields against the v1 baseline; measure cold-start and warm p95 latency before and after warm-up.
+7. **Provider expansion (later, no app changes).** Add `tencent-tokenplan` as a `search` backend using the Anthropic Messages `web_search_20250305` adapter, with DeepSeek fetch for verified page content. OpenCode Go remains `model`/`synthesis` until a native search capability is verified.
 
 ## Risks and boundaries
 
@@ -264,3 +284,4 @@ Codex and OpenCode registration is unchanged: both start the same `planning-sear
 - 2026-11-24 — Made the fetch contract explicit: it returns usable plaintext derived from the original page, and fails with `fetch_failed` if the model did not actually read the URL.
 - 2026-11-24 — `planning-search-mcp` now calls the HTTP gateway: `search-core` gained a `GatewayProvider` using `SEARCH_GATEWAY_URL` / `SEARCH_GATEWAY_TOKEN` or the 0600 credentials file, app Settings edits gateway URL and token, and agent subprocesses inherit both variables. The direct DeepSeek adapter is legacy-only.
 - 2026-11-24 — Simplified `/v1/provider` to a single list form; the MCP `providers` tool now queries the gateway for real provider ids, with local registry names as the fallback. Gateway credentials are configured as SCF environment variables under Function configuration, with a console procedure documented in `doc/DEPLOY_SCF.md`.
+- 2026-11-24 — v3: the gateway exposes a remote Streamable HTTP MCP endpoint (`POST /mcp`) and agents connect directly. The local `planning-search-mcp` binary, `PLANNING_SEARCH_MCP` override, local binary probe and the third startup dependency card were removed; Codex gets remote MCP config via the app, OpenCode via one-time global config. Nothing needs to be installed on the client.

@@ -1436,7 +1436,6 @@ fn research_config_heap(config: &ResearchConfig) -> usize {
         agents,
         models,
         ego_path,
-        search_mcp_path,
         ego_lite_enabled: _,
         output_language: _,
     } = config;
@@ -1449,8 +1448,7 @@ fn research_config_heap(config: &ResearchConfig) -> usize {
     for model in models {
         value = text(value, model);
     }
-    value = text(value, ego_path);
-    text(value, search_mcp_path)
+    text(value, ego_path)
 }
 
 fn model_profile_heap(profile: &ModelProfile) -> usize {

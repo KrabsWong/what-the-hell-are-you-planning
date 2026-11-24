@@ -61,6 +61,7 @@ mod display_order;
 mod stop_intent;
 mod ego;
 mod ego_mcp;
+mod search;
 mod execution_status;
 mod execution_eligibility;
 mod i18n;

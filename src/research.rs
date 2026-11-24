@@ -215,6 +215,9 @@ pub struct ResearchConfig {
     pub agents: [Option<String>; 4],
     pub models: [String; 4],
     pub ego_path: String,
+    pub search_mcp_path: String,
+    /// Advanced browser capability for signed-in or interactive pages. Off by default.
+    pub ego_lite_enabled: bool,
     pub output_language: OutputLanguage,
 }
 impl Default for ResearchConfig {
@@ -227,6 +230,8 @@ impl Default for ResearchConfig {
             agents: Default::default(),
             models: Default::default(),
             ego_path: default_ego_path(),
+            search_mcp_path: default_search_mcp_path(),
+            ego_lite_enabled: false,
             output_language: OutputLanguage::Auto,
         }
     }
@@ -255,6 +260,24 @@ pub fn default_ego_path() -> String {
                 .into_owned()
         })
         .unwrap_or_else(|| "ego-browser".into())
+}
+
+/// Standalone MCP binary path. `PLANNING_SEARCH_MCP` lets a server deployment
+/// override the per-user default without touching saved data.
+pub fn default_search_mcp_path() -> String {
+    if let Ok(path) = std::env::var("PLANNING_SEARCH_MCP") {
+        if !path.trim().is_empty() {
+            return path;
+        }
+    }
+    std::env::var_os("HOME")
+        .map(|home| {
+            std::path::PathBuf::from(home)
+                .join(".local/bin/planning-search-mcp")
+                .to_string_lossy()
+                .into_owned()
+        })
+        .unwrap_or_else(|| "planning-search-mcp".into())
 }
 #[derive(Debug, Deserialize)]
 #[serde(deny_unknown_fields)]
@@ -1327,7 +1350,7 @@ pub fn prepare_run(store: &Store, id: u64) -> Result<AgentRun, String> {
         }
         match research.kind {
             ResearchKind::Goal=>prompt.push_str("\nCreate an actionable plan only; do not browse or do the research yet. Return ONLY valid JSON with this schema: {\"tasks\":[{\"title\":\"specific task\",\"instructions\":\"scope and acceptance criteria\",\"kind\":\"collect\",\"depends_on\":[]},{\"title\":\"analyze\",\"instructions\":\"...\",\"kind\":\"analyze\",\"depends_on\":[0]},{\"title\":\"Final report\",\"instructions\":\"...\",\"kind\":\"advise\",\"depends_on\":[1]}]}. Generate 3–12 focused tasks with zero-based dependency indices referring only to earlier tasks. Include collect, analyze and advise. Every analyze needs a collect ancestor; every advise needs an analyze ancestor. No shell commands, file changes, markdown fences, prose preamble or financial conclusions. Tailor tasks to this exact goal and supplemental materials."),
-            ResearchKind::Collect=>prompt.push_str("\nUse the configured ego(lite) browser to search and OPEN original pages. Prefer original records appropriate to the research type, such as official documentation, public data, filings, reproducible tests or direct observations, supplemented by independent reporting. Record for each item: headline, original URL, publisher, publication date/time/timezone (or explicitly unknown), event date, retrieval time, relevant excerpt/paraphrase, relevance to the research question, and factual significance. For each material finding, identify the question or evidence requirement it addresses, its evidence family, what it supports and what it cannot establish. Record applicable population/geography/time/version and unknowns. Summarize covered and missing evidence requirements; independent evidence matters more than URL count. Reprints of one original are one evidence chain. A pricing page proves an advertised price, not willingness to pay; distinguish stated intent from actual behavior. Use the requested time window, deduplicate syndications and flag unverifiable dates. A search snippet alone is not a verified source. Output a readable Markdown evidence record with clickable source links. Retain task-relevant excerpts, dates, measurement definitions, contradictory findings and gaps in full enough detail for downstream verification; omit decorative introductions, not evidence. Keep original quotations separate from your explanation. Do not claim browser access unless you actually used it. If an individual source fails, skip it and seek independent accessible sources without bypassing its restriction. If evidence remains incomplete, return partial with explicit gaps; do not substitute fabricated news."),
+            ResearchKind::Collect=>prompt.push_str("\nUse search to find candidate sources and fetch each original page before treating it as evidence. Prefer original records appropriate to the research type, such as official documentation, public data, filings, reproducible tests or direct observations, supplemented by independent reporting. Record for each item: headline, original URL, publisher, publication date/time/timezone (or explicitly unknown), event date, retrieval time, relevant excerpt/paraphrase, relevance to the research question, and factual significance. For each material finding, identify the question or evidence requirement it addresses, its evidence family, what it supports and what it cannot establish. Record applicable population/geography/time/version and unknowns. Summarize covered and missing evidence requirements; independent evidence matters more than URL count. Reprints of one original are one evidence chain. A pricing page proves an advertised price, not willingness to pay; distinguish stated intent from actual behavior. Use the requested time window, deduplicate syndications and flag unverifiable dates. A search snippet alone is not a verified source. Output a readable Markdown evidence record with clickable source links. Retain task-relevant excerpts, dates, measurement definitions, contradictory findings and gaps in full enough detail for downstream verification; omit decorative introductions, not evidence. Keep original quotations separate from your explanation. Do not claim page access unless you actually fetched it; a search result snippet is discovery only. If an individual source fails, skip it and seek independent accessible sources without bypassing its restriction. If evidence remains incomplete, return partial with explicit gaps; do not substitute fabricated news."),
             ResearchKind::Analyze=>prompt.push_str("\nAnalyze the collected evidence and supplied PDF/images. Cite each factual claim to the original URL or attachment name/page. Distinguish event time from publication time, and price observation from causal interpretation. Assess alternative explanations, corroboration, contradictions and missing data using methods appropriate to the research type. Evaluate each planned evidence requirement as supported, limited, missing or conflicting, with citations and reasons. If an older plan lacks explicit requirements, state a minimal set derived from its existing scope without expanding the task. Explain which conclusions or actions the evidence justifies and which it does not; distinguish further exploration from a commitment to act. Preserve source links. Output a Markdown analysis with evidence, qualitative confidence and limits. Preserve the key evidence-to-conclusion arguments, assumptions, relevant calculations, alternative explanations and counterevidence, not just the verdict; explain why each material conclusion is supported or remains uncertain. Do not compress this analysis to the final report body budget. Carry upstream uncertainty forward; do not strengthen a conclusion without new supporting evidence. For investment research, assess asset/sector impacts and expectations versus surprises, adding bull/base/bear scenarios only when useful. Do not invent current prices or claim to have read an unreadable attachment."),
             ResearchKind::Advise=>prompt.push_str("\nWrite the requested research report grounded in prior evidence and appropriate to its research type. The application supplies the report title; start with the substantive summary, not a repeated document title. Use level-two headings for major sections and level-three headings for subsections. Write evidence limitations for the reader in the configured output language, never as instructions to downstream agents. Open with the answer or supported recommendation, major unresolved questions and the most useful next evidence to obtain. Develop the decision-relevant reasoning in the main body with each claim, concise citation and material uncertainty together. Use an appendix only for selective verification detail that would interrupt the main explanation, such as contested claims, unresolved conflicts, exact attachment page references and non-obvious calculations; omit it when inline citations and the structured source list are sufficient. Keep critical unmet evidence requirements visible in the body and summarize only relevant requirements in the appendix. Keep the rest of the report flexible; do not force a business recommendation for exploratory work. Preserve upstream gaps and do not increase conclusion strength without new supporting evidence. Propose focused next steps for material gaps without executing them or expanding approved scope. For investment research only, include a source-linked thesis, conditional opportunities, downside risks, time horizon and catalysts as relevant; if holdings/horizon/risk tolerance are absent, give general conditional observations, not personalized allocation or position sizing. Separate verified facts from inference; preserve all key source links and relevant dates. Avoid guaranteed returns, unjustified price targets and claims of certainty. Output readable Markdown; never execute trades."),
         }
@@ -2419,7 +2442,7 @@ mod tests {
         store.project_at_mut(0).unwrap().directory = directory.to_string_lossy().into();
         store.research_config_mut().models[0] = "deepseek/deepseek-flash".into();
         let run = store.prepare_run(goal).unwrap();
-        let active = crate::opencode::start(crate::opencode::Request { agent: None, browser_executable: None,
+        let active = crate::opencode::start(crate::opencode::Request { agent: None, browser_executable: None, search_mcp_path: None,
             session_id: None,
             executable: crate::opencode::detect_executable().into(),
             directory,

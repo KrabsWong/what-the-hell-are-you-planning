@@ -1898,6 +1898,10 @@ impl Store {
     pub fn research_config_mut(&mut self) -> &mut crate::research::ResearchConfig {
         &mut self.research_config
     }
+
+    pub fn set_ego_lite_enabled(&mut self, enabled: bool) {
+        self.research_config_mut().ego_lite_enabled = enabled;
+    }
     pub fn appearance_mut(&mut self) -> &mut crate::appearance::Appearance {
         &mut self.appearance
     }

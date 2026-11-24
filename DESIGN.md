@@ -61,7 +61,7 @@ Non-interactive chips, task statuses and field labels keep low contrast and no b
 
 Run context selectors follow one rule: only fields with multiple choices keep a dropdown caret and menu. A single Project, Topic or Goal renders as the same-sized read-only value without hover or a caret. Copied Topics show the compact `Copy` tag inline before the title in both the selected value and menu rows, matching the sidebar.
 
-Browser launch stays internal to research execution. Settings may configure and verify the local ego(lite) runtime, but no page offers a manual launch action. During a browser handoff, explain that the browser needs attention and let the user switch to the Space the agent already opened.
+Collection uses the configured search runtime by default, and the startup setup checks its MCP binary. The local browser is an opt-in advanced capability for signed-in or interactive pages; Settings may enable and verify the ego(lite) runtime, and no page offers a manual launch action. During a browser handoff, explain that the browser needs attention and let the user switch to the Space the agent already opened.
 
 Completed task details show the written status only in the **Task → Status** property. The execution panel above it keeps Run again, Open goal and Technical details, but omits a second Done heading and generic completion sentence. Opening a task from a run result page, including a progress row, Goal details or Open task & resolve, is a drill-down, so Back restores the same run result and selected run. When Technical details is open, the global Back action and ⌘[ return to the originating result view before any route-level Back.
 

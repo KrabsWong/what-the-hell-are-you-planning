@@ -256,7 +256,7 @@ impl TaskApp {
         let paths = [
             self.executable_input.read(cx).value().trim().to_string(),
             self.codex_executable_input.read(cx).value().trim().to_string(),
-            self.ego_input.read(cx).value().trim().to_string(),
+            self.search_input.read(cx).value().trim().to_string(),
         ];
         self.startup.paths = paths.clone();
         self.startup.checks = None;
@@ -266,8 +266,8 @@ impl TaskApp {
             let checks = std::thread::scope(|scope| {
                 let open = scope.spawn(|| probe_agent("OpenCode", &paths[0]));
                 let codex = scope.spawn(|| probe_agent("Codex", &paths[1]));
-                let ego = scope.spawn(|| crate::ego::probe(&paths[2], &std::env::temp_dir()));
-                [open.join(), codex.join(), ego.join()].map(|result| {
+                let search = scope.spawn(|| crate::search::probe(&paths[2]));
+                [open.join(), codex.join(), search.join()].map(|result| {
                     result.unwrap_or_else(|_| Err("Check stopped. Please retry.".into()))
                 })
             });
@@ -304,7 +304,7 @@ impl TaskApp {
             !self.workspace_required,
             self.executable_input.read(cx).value().trim(),
             self.codex_executable_input.read(cx).value().trim(),
-            self.ego_input.read(cx).value().trim(),
+            self.search_input.read(cx).value().trim(),
         )
     }
     pub fn startup_view(&self, cx: &mut Context<Self>) -> AnyElement {
@@ -337,7 +337,7 @@ impl TaskApp {
             let current = match index {
                 0 => self.executable_input.read(cx).value(),
                 1 => self.codex_executable_input.read(cx).value(),
-                _ => self.ego_input.read(cx).value(),
+                _ => self.search_input.read(cx).value(),
             };
             let checked = &self.startup.paths[index];
             if checked.is_empty() && self.startup.checks.is_none() && self.startup.pending.is_none()
@@ -366,7 +366,7 @@ impl TaskApp {
         };
         let open = dependency(0);
         let codex = dependency(1);
-        let ego = dependency(2);
+        let search = dependency(2);
         let agent_ready = open.3 || codex.3;
         let workspace = if self.workspace_setup.is_some() {
             ("Preparing…", colors.accent)
@@ -378,7 +378,7 @@ impl TaskApp {
             ("Ready", colors.success)
         };
         let ready =
-            usize::from(!self.workspace_required) + usize::from(agent_ready) + usize::from(ego.3);
+            usize::from(!self.workspace_required) + usize::from(agent_ready) + usize::from(search.3);
         let badge = |text: &'static str, color: u32| {
             let icon = match text {
                 "Ready" => assets::IconName::Check,
@@ -492,11 +492,11 @@ impl TaskApp {
                     .child(Input::new(&self.codex_executable_input).id("startup-codex"))
                     .when(!codex.2.is_empty(), |view| view.child(div().text_xs().text_color(rgb(colors.muted)).child(selectable(codex.2.clone())))))
                 .child(card()
-                    .child(heading("3 · ego(lite)", ego.0, ego.1))
-                    .child(row().justify_between().gap_2().child(label("Browser access · finish its first launch after installing.", cx))
-                        .when(!crate::ego::is_installed(&self.ego_input.read(cx).value()), |d| d.child(link_button("startup-install-ego", "Install").icon(assets::IconName::ExternalLink).on_click(|_,_,cx| cx.open_url("https://lite.ego.app")))))
-                    .child(Input::new(&self.ego_input).id("startup-ego"))
-                    .when(!ego.2.is_empty(), |view| view.child(div().text_xs().text_color(rgb(if ego.3 { colors.muted } else { ego.1 })).child(selectable(ego.2.clone()))))
+                    .child(heading("3 · Search runtime", search.0, search.1))
+                    .child(row().justify_between().gap_2().child(label("Search MCP · set the API key in Settings, then select the installed binary.", cx))
+                        .when(!crate::search::configured(&self.search_input.read(cx).value()), |d| d.child(link_button("startup-search-guide", "Setup guide").icon(assets::IconName::ExternalLink).on_click(|_,_,cx| cx.open_url("https://api-docs.deepseek.com/api/search")))))
+                    .child(Input::new(&self.search_input).id("startup-search"))
+                    .when(!search.2.is_empty(), |view| view.child(div().text_xs().text_color(rgb(if search.3 { colors.muted } else { search.1 })).child(selectable(search.2.clone()))))
                     .when(!self.error.is_empty(), |view| view.child(crate::views::notice(
                         crate::views::NoticeTone::Danger,
                         self.error.clone(),
@@ -510,7 +510,7 @@ impl TaskApp {
                             if !this.startup_ready(cx) { return; }
                             this.store.set_opencode_path(this.executable_input.read(cx).value().trim().into());
                             this.store.research_config_mut().codex_path = this.codex_executable_input.read(cx).value().trim().into();
-                            this.store.research_config_mut().ego_path = this.startup.paths[2].clone();
+                            this.store.research_config_mut().search_mcp_path = this.startup.paths[2].clone();
                             this.persist_if_changed(true);
                             if this.storage.is_some() && this.storage_error.is_empty() {
                                 this.startup.required = false;
@@ -529,11 +529,11 @@ impl Startup {
             self.required = !ready;
         }
     }
-    fn ready_for(&self, workspace_ready: bool, opencode: &str, codex: &str, ego: &str) -> bool {
+    fn ready_for(&self, workspace_ready: bool, opencode: &str, codex: &str, search: &str) -> bool {
         workspace_ready
             && self.workspace_pending.is_none()
             && self.pending.is_none()
-            && self.paths[2] == ego
+            && self.paths[2] == search
             && self.checks.as_ref().is_some_and(|checks| {
                 checks[2].is_ok()
                     && ((checks[0].is_ok() && self.paths[0] == opencode)

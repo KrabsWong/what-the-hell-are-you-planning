@@ -7,6 +7,11 @@ edition = "2024"
 qa = ["gpui-kit/test-support"]
 sparkle = []
 
+[workspace]
+members = ["crates/search-core", "crates/search-mcp"]
+exclude = ["experiments/rust-mermaid"]
+resolver = "2"
+
 [dependencies]
 markdown = "=1.0.0"
 gpui-kit = { version = "=0.9.1", features = ["gpui-fast"] }

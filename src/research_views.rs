@@ -11,6 +11,7 @@ use gpui_kit::{
     component::{
         Disableable,
         input::{Input, Textarea},
+        switch::Switch,
     },
     prelude::FluentBuilder,
     *,
@@ -301,6 +302,28 @@ impl TaskApp {
             .child(div().pt_4().font_weight(FontWeight::SEMIBOLD).child(selectable("Agent connections")))
             .child(label("Local runtimes shared by all profiles.", cx))
             .child(self.agent_settings_panel(cx))
+            .child(div().pt_2().font_weight(FontWeight::SEMIBOLD).child(selectable("Search runtime")))
+            .child(label("Search and fetch original sources through the shared MCP runtime.", cx))
+            .child(row().justify_between().gap_2().child(label("DeepSeek API key", cx)))
+            .child(Input::new(&self.api_key_input).id("search-api-key"))
+            .child(label(
+                format!("Stored outside the workspace at {}.", crate::search::credentials_location()),
+                cx,
+            ))
+            .child(div().pt_2().font_weight(FontWeight::SEMIBOLD).child(selectable("Browser capability")))
+            .child(row().items_center().justify_between().gap_2().w_full().pr_2()
+                .child(div().child(selectable("Enable ego(lite) browser")))
+                .child(
+                    Switch::new("settings-ego-lite")
+                        .checked(self.store.research_config().ego_lite_enabled)
+                        .accessibility_label(crate::i18n::tr("Enable ego(lite) browser"))
+                        .on_click(cx.listener(|app, enabled, _, cx| {
+                            app.store.set_ego_lite_enabled(*enabled);
+                            app.persist_if_changed(true);
+                            cx.notify();
+                        })),
+                ))
+            .child(label("Advanced: use a local browser for pages that need sign-in, verification or interactive handling. Requires an installed ego(lite) runtime and manual handoff when prompted.", cx))
             .child(div().h_3().border_b_1().border_color(rgb(colors.line)))
             .child(div().pt_2().font_weight(FontWeight::SEMIBOLD).child(selectable("Browser · ego(lite)")))
             .child(Input::new(&self.ego_input).id("ego-path"))

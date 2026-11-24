@@ -4,7 +4,7 @@ Read `PRODUCT.md` and `DESIGN.md` before changing the interface. Keep implementa
 
 ## Language: English only
 
-- All app and repository content uses English only: interface strings (buttons, menus, labels, tooltips, placeholders, empty states, errors, notices), documentation (`README`, `USER_GUIDE`, `PRODUCT`, `DESIGN`, `doc/`), code comments and doc comments, test names and QA output, generated or exported content, and commit messages.
+- All app and repository content uses English only: interface strings (buttons, menus, labels, tooltips, placeholders, empty states, errors, notices), documentation (`README`, `USER_GUIDE`, `PRODUCT`, `DESIGN`, `doc/`, `docs/`), code comments and doc comments, test names and QA output, generated or exported content, and commit messages.
 - Exceptions: user-authored data, quoted source text, and content the user explicitly asks to keep in another language. Never rewrite user data to satisfy this rule.
 - Convert existing non-English content when touching that file; do not add new non-English paragraphs.
 - Identifiers (variables, functions, files) are always English.
@@ -22,3 +22,10 @@ Read `PRODUCT.md` and `DESIGN.md` before changing the interface. Keep implementa
 ## Maintained documentation
 
 When changing research behavior, keep `doc/RESEARCH_WORKFLOW_STRATEGY.md` consistent with the implementation. When changing icon conventions, update `doc/ICON_GUIDELINES.md`.
+
+## Solution documents
+
+- Architecture and implementation proposals live in `docs/SOLUTION_<TOPIC>.md`. Behavioral specifications that must track the implementation stay in `doc/` (for example `doc/RESEARCH_WORKFLOW_STRATEGY.md`); cross-link the two instead of duplicating them.
+- Every solution document uses this structure, in order: `Status` (with date), `Background`, `Goals / Non-goals`, `Design`, `Interface contract`, `Deployment and configuration`, `Rollout plan`, `Risks and boundaries`, `Update log`. Include a Mermaid diagram when topology or a call sequence matters; add images only when they carry information text cannot.
+- Keep a solution document current: when the implementation changes, edit the same document and append a dated entry to its `Update log`. Do not create a second document to revise the same solution.
+- The English-only rule applies to `docs/` as well.

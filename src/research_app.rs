@@ -4,6 +4,7 @@ use crate::{
     domain::AgentRun,
     ego,
     research::{self, ResearchKind},
+    search,
 };
 use gpui_kit::*;
 use std::{path::PathBuf, sync::mpsc};
@@ -544,15 +545,39 @@ impl TaskApp {
             run.prompt.push_str("\nBROWSER CONTROL: This goal's browser was handed to the user. Browser access remains paused. Do not use browser tools, shell browser commands, other Spaces, other browsers, or background fetching. Continue offline with supplied materials and existing evidence. Return partial with explicit gaps when evidence is insufficient, not blocked solely for this handoff. No user takeover authorization is implied by running this step.\n");
         }
         if run.research_kind == Some(ResearchKind::Collect) && !browser_handed_off {
-            let r = task.research.as_ref().unwrap();
-            let goal = self.store.task(r.goal_id).ok_or("Goal not found.")?;
-            run.prompt.push_str(&ego::instructions(
-                &self.store.research_config().ego_path,
-                &self.store.research_space(id).unwrap_or_else(|| r.space_name.clone()),
-                &goal.title,
-            )?);
-            if run.agent == "Codex" {
-                run.prompt.push_str("\nCODEX BROWSER TRANSPORT: Use the planning_ego MCP server's guide tool to read the full installed browser guide, then its run tool for browser scripts. This replaces the shell-based ego-browser invocation described above and in older session messages. Codex shell sandbox cannot connect to the macOS browser service. Pass JavaScript directly as the script argument; do not invoke ego-browser through shell, request Full Access, or change sandbox settings. All Space ownership, user handoff and access restrictions above still apply. If the bridge is unavailable, report that specific blocker.\n");
+            let config = self.store.research_config();
+            let plan = search::collection_plan(
+                &config.search_mcp_path,
+                &config.ego_path,
+                config.ego_lite_enabled,
+            );
+            match plan.runtime {
+                search::CollectionRuntime::Search => {
+                    run.prompt.push_str(&search::instructions(&run.agent));
+                    if plan.browser_enabled {
+                        run.prompt.push_str("\nBROWSER CAPABILITY AVAILABLE: A local ego(lite) browser is enabled as an advanced capability. Use search and fetch for ordinary evidence; escalate to the browser only when a source genuinely requires a signed-in session, verification, interactive navigation or human review. Never log in with credentials or submit purchases or orders. On a browser permission prompt or Space handoff, return partial with blocker browser_handoff and wait for explicit confirmation; never bypass it with another browser or background fetching. If browser evidence is unavailable, record the gap and continue.\n");
+                        if run.agent == "Codex" {
+                            run.prompt.push_str("\nCODEX BROWSER TRANSPORT: planning_ego is a shell-independent MCP bridge; use its guide and run tools for browser scripts instead of invoking ego-browser from the shell or changing sandbox settings. planning_search remains the default for collection.\n");
+                        }
+                    } else if run.agent == "Codex" {
+                        run.prompt.push_str("\nCODEX SEARCH TRANSPORT: Use only the planning_search MCP tools. Ignore any browser instructions from older sessions; the browser capability is disabled for this workspace. If the search bridge is unavailable, report that specific blocker.\n");
+                    }
+                }
+                search::CollectionRuntime::Browser => {
+                    let r = task.research.as_ref().unwrap();
+                    let goal = self.store.task(r.goal_id).ok_or("Goal not found.")?;
+                    run.prompt.push_str(&ego::instructions(
+                        &config.ego_path,
+                        &self.store.research_space(id).unwrap_or_else(|| r.space_name.clone()),
+                        &goal.title,
+                    )?);
+                    if run.agent == "Codex" {
+                        run.prompt.push_str("\nCODEX BROWSER TRANSPORT: Use the planning_ego MCP server's guide tool to read the full installed browser guide, then its run tool for browser scripts. This replaces the shell-based ego-browser invocation described above and in older session messages. Codex shell sandbox cannot connect to the macOS browser service. Pass JavaScript directly as the script argument; do not invoke ego-browser through shell, request Full Access, or change sandbox settings. All Space ownership, user handoff and access restrictions above still apply. If the bridge is unavailable, report that specific blocker.\n");
+                    }
+                }
+                search::CollectionRuntime::Unavailable => {
+                    run.prompt.push_str("\nCOLLECTION RUNTIME UNAVAILABLE: The search MCP is not installed at the configured path and the ego(lite) browser capability is not enabled. Do not use a browser or any background fetching. Continue with the supplied materials and existing evidence, record this as an evidence gap, and return partial results with explicit gaps rather than fabricating sources. The user can set up the search runtime or enable the ego(lite) capability in Settings.\n");
+                }
             }
         }
         let mut materials = vec![];

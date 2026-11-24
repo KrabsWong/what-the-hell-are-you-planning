@@ -147,7 +147,7 @@ fn inspect(executable: &Path, run: &AgentRun) -> SessionCheck {
         if active.contains_key(session) {
             return Ok(SessionCheck::Running);
         }
-        let request = opencode::Request { agent: None, browser_executable: None,
+        let request = opencode::Request { agent: None, browser_executable: None, search_mcp_path: None,
             executable: executable.into(),
             directory: directory.canonicalize().map_err(|e| e.to_string())?,
             model: String::new(),
@@ -179,7 +179,7 @@ pub(crate) fn inspect_codex(run: &AgentRun) -> SessionCheck {
         Ok(path) => path,
         Err(error) => return SessionCheck::Unknown(format!("Cannot inspect Codex working directory: {error}")),
     };
-    let request = opencode::Request { agent: None, browser_executable: None,
+    let request = opencode::Request { agent: None, browser_executable: None, search_mcp_path: None,
         executable: Default::default(), directory, model: run.model.clone(),
         prompt: run.prompt.clone(), title: run.task_title.clone(), files: vec![],
         session_id: run.session_id.clone(),
@@ -1164,7 +1164,7 @@ mod tests {
         run.agent = "Codex".into();
         run.prompt = crate::opencode::new_session_id();
         run.session_id = None;
-        let request = crate::opencode::Request { agent: None, browser_executable: None,
+        let request = crate::opencode::Request { agent: None, browser_executable: None, search_mcp_path: None,
             executable: Default::default(), directory: run.directory.clone().into(),
             model: run.model.clone(), prompt: run.prompt.clone(), title: run.task_title.clone(),
             files: vec![], session_id: None,

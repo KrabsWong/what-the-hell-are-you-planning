@@ -529,6 +529,8 @@ pub struct TaskApp {
     pub research_project: u64,
     pub research_models: [Entity<InputState>; 4],
     pub ego_input: Entity<InputState>,
+    pub search_input: Entity<InputState>,
+    pub api_key_input: Entity<InputState>,
     pub ego_status: String,
     pub ego_probe: Option<mpsc::Receiver<Result<String, String>>>,
     pub research_model_picker: Option<EntityId>,
@@ -843,6 +845,23 @@ impl TaskApp {
                 }
             }
         }));
+        let search_input = cx.new(|cx| {
+            InputState::new(window, cx).default_value(crate::research::default_search_mcp_path())
+        });
+        let api_key_input = cx.new(|cx| {
+            InputState::new(window, cx)
+                .default_value(crate::search::api_key().unwrap_or_default())
+                .placeholder(crate::i18n::tr("sk-…"))
+        });
+        subscriptions.push(cx.subscribe(&api_key_input, |this, input, event, cx| {
+            if matches!(event, InputEvent::Blur | InputEvent::PressEnter { .. }) {
+                match crate::search::save_api_key(&input.read(cx).value()) {
+                    Ok(()) => this.error.clear(),
+                    Err(error) => this.error = error,
+                }
+                cx.notify();
+            }
+        }));
         Self {
             last_saved: store.clone(),
             storage: None,
@@ -1046,6 +1065,8 @@ impl TaskApp {
             research_project: 1,
             research_models,
             ego_input,
+            search_input,
+            api_key_input,
             ego_status: "Runtime not checked".into(),
             ego_probe: None,
             research_model_picker: None,
@@ -3836,11 +3857,20 @@ impl TaskApp {
                 agent: None,
                 browser_executable: (run.agent == "Codex"
                     && run.research_kind == Some(crate::research::ResearchKind::Collect)
+                    && self.store.research_config().ego_lite_enabled
+                    && crate::ego::executable(&self.store.research_config().ego_path).is_ok()
                     && !self
                         .store
                         .owning_research_goal(run.task_id)
                         .is_some_and(|goal| self.store.research_browser_handed_off(goal)))
                 .then(|| PathBuf::from(&self.store.research_config().ego_path)),
+                search_mcp_path: (!self
+                    .store
+                    .research_config()
+                    .search_mcp_path
+                    .trim()
+                    .is_empty())
+                .then(|| PathBuf::from(&self.store.research_config().search_mcp_path)),
                 files,
                 session_id: run.session_id.clone(),
                 executable: PathBuf::from(self.store.agent_path(&run.agent)),

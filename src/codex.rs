@@ -55,6 +55,16 @@ pub(crate) fn configure_command(cmd: &mut Command, request: &Request) {
             "-c", "mcp_servers.planning_ego.tools.guide.approval_mode=\"approve\"",
             "-c", "mcp_servers.planning_ego.tools.run.approval_mode=\"approve\""]);
     }
+    if let Some(search) = &request.search_mcp_path {
+        // The browser bridge runs through this app; the search bridge is a
+        // standalone binary that can be shared by every agent on the machine.
+        let command = serde_json::to_string(&search.to_string_lossy()).unwrap();
+        cmd.args(["-c", &format!("mcp_servers.planning_search.command={command}"),
+            "-c", "mcp_servers.planning_search.args=[]",
+            "-c", "mcp_servers.planning_search.enabled=true",
+            "-c", "mcp_servers.planning_search.tools.search.approval_mode=\"approve\"",
+            "-c", "mcp_servers.planning_search.tools.fetch.approval_mode=\"approve\""]);
+    }
     if let Some(session) = &request.session_id {
         cmd.arg("resume").arg(session);
     }
@@ -198,7 +208,7 @@ mod tests {
     }
     #[test]
     fn command_resumes_only_explicit_session_and_uses_stdin() {
-        let mut request = Request { agent: None, browser_executable: None, executable: "/bin/false".into(), directory: "/tmp".into(), model: "test-model".into(), prompt: "large prompt".into(), title: "title".into(), files: vec!["/tmp/evidence.pdf".into(), "/tmp/chart.png".into()], session_id: None };
+        let mut request = Request { agent: None, browser_executable: None, search_mcp_path: None, executable: "/bin/false".into(), directory: "/tmp".into(), model: "test-model".into(), prompt: "large prompt".into(), title: "title".into(), files: vec!["/tmp/evidence.pdf".into(), "/tmp/chart.png".into()], session_id: None };
         let mut cmd = Command::new(&request.executable);
         configure_command(&mut cmd, &request);
         let args: Vec<_> = cmd.get_args().map(|a| a.to_string_lossy().into_owned()).collect();
@@ -220,6 +230,13 @@ mod tests {
         assert!(args.iter().any(|a| a.starts_with("mcp_servers.planning_ego.command=")));
         assert!(args.iter().any(|a| a.contains("--ego-browser-mcp") && a.contains("/tmp/browser path/ego-browser")));
         assert!(!args.iter().any(|a| a.contains("danger-full-access")));
+        request.search_mcp_path = Some("/opt/planning/bin/planning-search-mcp".into());
+        let mut cmd = Command::new(&request.executable);
+        configure_command(&mut cmd, &request);
+        let args: Vec<_> = cmd.get_args().map(|a| a.to_string_lossy().into_owned()).collect();
+        assert!(args.iter().any(|a| a.starts_with("mcp_servers.planning_search.command=")
+            && a.contains("/opt/planning/bin/planning-search-mcp")));
+        assert!(args.iter().any(|a| a == "mcp_servers.planning_search.tools.search.approval_mode=\"approve\""));
 
     }
 }

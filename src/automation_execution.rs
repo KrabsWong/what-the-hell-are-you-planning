@@ -876,11 +876,20 @@ impl Store {
             .template
             .clone()
             .ok_or("The automation has no approved plan.")?;
-        let label = occurrence
-            .scheduled_for
-            .and_then(|value| ScheduledTime::new(value, &occurrence.timezone).ok())
-            .map(|value| value.local)
-            .unwrap_or_else(|| "Manual run".into());
+        let label = if let Some(value) = occurrence.scheduled_for {
+            ScheduledTime::new(value, &occurrence.timezone)
+                .map(|value| value.local)
+                .unwrap_or_else(|_| "Manual run".into())
+        } else {
+            // A manual run has no scheduled slot, but its request time gives the
+            // published report title and the private report index a local date
+            // so repeated manual runs stay distinguishable.
+            occurrence
+                .requested_at
+                .and_then(|value| ScheduledTime::new(value, &occurrence.timezone).ok())
+                .map(|value| format!("Manual run · {}", value.local))
+                .unwrap_or_else(|| "Manual run".into())
+        };
         // Research periods get their own topic so each period stays a separate
         // result. Quick tasks have no topic at all; the period itself is the container.
         let topic = if definition.shape.is_quick() {
@@ -1390,6 +1399,42 @@ mod tests {
         assert!(store
             .materialize_occurrence(occurrence(&store, id, 2000))
             .is_err());
+    }
+
+    #[test]
+    fn manual_occurrence_topic_carries_request_time() {
+        let mut store = store();
+        let id = definition(&mut store);
+        store.approve_and_enable(id, vec![], 1_000).unwrap();
+
+        let stamp = 1_700_000_000;
+        let mut manual = occurrence(&store, id, stamp);
+        manual.source = TriggerSource::Manual;
+        manual.scheduled_for = None;
+        manual.requested_at = Some(stamp);
+        manual.trigger_key = "manual:test-request".into();
+
+        let expected = ScheduledTime::new(stamp, "Asia/Shanghai").unwrap().local;
+        let committed = store.materialize_occurrence(manual).unwrap();
+        let topic = store.topic(committed.research_topic_id.unwrap()).unwrap();
+        assert!(
+            topic.name.contains("Manual run"),
+            "a manual run stays identifiable: {}",
+            topic.name
+        );
+        assert!(
+            topic.name.contains(&expected),
+            "a manual run carries a local request date {expected}: {}",
+            topic.name
+        );
+        for goal_id in committed.research_goal_ids {
+            let goal = store.task(goal_id).unwrap();
+            assert!(
+                goal.title.contains(&expected),
+                "a manual run's published goal heading carries the same date: {}",
+                goal.title
+            );
+        }
     }
 
     #[test]
@@ -1982,10 +2027,16 @@ mod tests {
         let first_topic = first.research_topic_id.unwrap();
         let second_topic = second.research_topic_id.unwrap();
         assert_ne!(first_topic, second_topic, "each period has its own topic");
-        for topic in [first_topic, second_topic] {
+        for (topic, scheduled) in [(first_topic, 2_000), (second_topic, 3_000)] {
             let topic = store.topics().iter().find(|candidate| candidate.id == topic).unwrap();
             assert_eq!(topic.automation_id, Some(id));
             assert!(topic.name.starts_with("Daily topic"));
+            let expected = ScheduledTime::new(scheduled, "Asia/Shanghai").unwrap().local;
+            assert!(
+                topic.name.contains(&expected),
+                "a scheduled period carries its local date in the published title: {}",
+                topic.name
+            );
         }
         assert_ne!(first.research_goal_id, second.research_goal_id);
     }

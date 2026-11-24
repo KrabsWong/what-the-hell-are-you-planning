@@ -185,7 +185,7 @@ The credentials file outside the workspace changes from a provider key to gatewa
 { "gateway_url": "https://<api-gateway-host>/", "token": "gateway-token" }
 ```
 
-Environment overrides keep server deployments UI-free: `SEARCH_GATEWAY_URL` and `SEARCH_GATEWAY_TOKEN` take precedence. Provider keys (`DEEPSEEK_API_KEY`, and later Token Plan or OpenCode Go keys) exist only as SCF secrets and never appear in the app, the MCP process or run logs.
+Environment overrides keep server deployments UI-free: `SEARCH_GATEWAY_URL` and `SEARCH_GATEWAY_TOKEN` take precedence. Provider settings in the gateway use provider-agnostic names (`PROVIDER_CONFIG`, or `PROVIDER_<ID>_API_KEY` / `PROVIDER_<ID>_BASE_URL`, for example `PROVIDER_DEEPSEEK_API_KEY`). They exist only as SCF secrets and never appear in the app, the MCP process or run logs.
 
 ## Deployment and configuration
 
@@ -257,3 +257,4 @@ Codex and OpenCode registration is unchanged: both start the same `planning-sear
 - 2026-11-24 — First release narrowed to Tencent Cloud SCF + API Gateway with DeepSeek only. Added the SCF warm-up design (provisioned concurrency on a published alias plus a five-minute timer `/health` trigger) and documented API Gateway synchronous error semantics. Token Plan was initially classified as a model-only subscription; the following entry corrects that after verifying the native search API.
 - 2026-11-24 — Verified TokenHub native web search on Anthropic Messages (`web_search_20250305`) and corrected the provider taxonomy: `tencent-tokenplan` is a genuine `search` backend for the next release, `opencode-go` stays `model`/`synthesis`. Documented the Messages adapter, model-autonomous search caveat, snippet-only results with mandatory DeepSeek fetch, and `x-api-key` / `anthropic-version` protocol differences.
 - 2026-11-24 — Made "provider differences stop at the gateway" an explicit design invariant: fixed MCP tool/response shapes, `auto` provider selection, internal composition of search + fetch, provider-agnostic Settings, and new backends requiring gateway-only changes.
+- 2026-11-24 — Gateway configuration became provider-agnostic: `DEEPSEEK_API_KEY` / `DEEPSEEK_BASE_URL` were replaced by `PROVIDER_CONFIG` or `PROVIDER_<ID>_API_KEY` / `PROVIDER_<ID>_BASE_URL`, with `PROVIDER_ORDER` as the auto-order variable.

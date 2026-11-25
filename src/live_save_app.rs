@@ -1717,6 +1717,7 @@ impl TaskApp {
         self.dispatch_awaiting = None;
         self.dispatch_awaiting_files = None;
         self.dispatch_ack_pending = None;
+        self.dispatch_waiting = None;
         self.deferred_dispatches.clear();
         self.batch_stop_waiting.clear();
         self.batch_pending_runs.clear();

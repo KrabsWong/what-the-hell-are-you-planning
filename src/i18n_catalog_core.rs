@@ -793,4 +793,7 @@ pub(crate) static CORE_TRANSLATIONS: &[(&str, &str)] = &[
     ("{} · {status}", "{} · {status}"),
     ("{}. {question}", "{}. {question}"),
     ("{}. {title}", "{}. {title}"),
+    ("No running automation period is recorded", "未记录正在运行的自动化时段"),
+    ("Queued for an automation slot; this period starts automatically when a slot is free. {}. Research queue admission is not involved.", "正在等待自动化名额；名额空闲时此时段会自动开始。{}。研究队列准入不参与此流程。"),
+    ("Running periods: {}", "正在运行的时段：{}"),
 ];

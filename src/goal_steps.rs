@@ -1,7 +1,7 @@
 //! Goal-local execution views; step cards never approve or launch work.
 use crate::{
     app::TaskApp,
-    domain::{Stage, Store},
+    domain::{AgentRun, Stage, Store},
     execution_status::ExecutionStatus,
     views::*,
 };
@@ -20,6 +20,87 @@ pub(crate) enum StepState {
     Blocked,
     Done,
 }
+
+/// Extract the most useful diagnostic from a saved attempt without exposing
+/// the whole log. Agent logs do not consistently use an `[error]` prefix, so a
+/// generic failure used to hide the real cause from step status surfaces.
+pub(crate) fn run_failure_detail(run: &AgentRun) -> String {
+    const LIMIT: usize = 240;
+
+    fn clean(line: &str) -> Option<String> {
+        let mut value = line.trim();
+        if value.is_empty() {
+            return None;
+        }
+        for prefix in [
+            "[error] ",
+            "[workspace] ",
+            "[browser] ",
+            "[automation] ",
+            "[recovery] ",
+            "[research] ",
+            "[process] ",
+        ] {
+            if let Some(rest) = value.strip_prefix(prefix) {
+                value = rest.trim();
+                break;
+            }
+        }
+        if value.is_empty() {
+            return None;
+        }
+        let mut chars = value.chars();
+        let kept: String = chars.by_ref().take(LIMIT).collect();
+        if chars.next().is_some() {
+            Some(format!("{kept}..."))
+        } else {
+            Some(kept)
+        }
+    }
+
+    if let Some(detail) = run
+        .logs
+        .iter()
+        .rev()
+        .find_map(|line| line.strip_prefix("[error] ").and_then(|_| clean(line)))
+    {
+        return detail;
+    }
+
+    const DIAGNOSTIC_MARKERS: [&str; 14] = [
+        "error",
+        "fail",
+        "timeout",
+        "timed out",
+        "exceeded",
+        "denied",
+        "unavailable",
+        "could not",
+        "cannot",
+        "invalid",
+        "blocked",
+        "rejected",
+        "quota",
+        "rate limit",
+    ];
+    if let Some(detail) = run.logs.iter().rev().find_map(|line| {
+        let lower = line.to_ascii_lowercase();
+        DIAGNOSTIC_MARKERS
+            .iter()
+            .any(|marker| lower.contains(marker))
+            .then(|| clean(line))
+            .flatten()
+    }) {
+        return detail;
+    }
+
+    run.output
+        .lines()
+        .rev()
+        .find_map(clean)
+        .unwrap_or_else(|| "No detailed error was saved for this attempt.".into())
+}
+
 impl Store {
     /// Leaf-first chain of unfinished prerequisites, including transitive
     /// dependencies. Used only to offer an explicit rerun path; execution still
@@ -96,17 +177,24 @@ impl Store {
             return Some("Cancelled · restore this step before continuing".into());
         }
         if let Some(run) = self.runs().iter().rev().find(|r| r.task_id == id && r.project_plan.is_none()) {
+            let detail = run_failure_detail(run);
             if run.status == "Failed" && run.auto_retry_attempt >= crate::retries::MAX_AUTO_RETRIES {
-                return Some("This step still failed after 3 automatic retries. Review the attempt details before retrying manually.".into());
+                return Some(format!(
+                    "This step still failed after 3 automatic retries: {detail} Review the attempt details before retrying manually."
+                ));
             }
             let reason = match run.status.as_str() {
-                "Interrupted" => Some("Run interrupted · the previous attempt did not finish"),
-                "Failed" => Some("Last attempt failed · review the attempt details and retry this step"),
-                "Blocked" => Some("Execution blocked · review the attempt details before retrying"),
-                "Cancelled" => Some("Run cancelled · retry this step to continue"),
+                "Interrupted" => Some(format!("Run interrupted: {detail}")),
+                "Failed" => Some(format!(
+                    "Last attempt failed: {detail} Review the attempt details and retry this step."
+                )),
+                "Blocked" => Some(format!(
+                    "Execution blocked: {detail} Review the attempt details before retrying."
+                )),
+                "Cancelled" => Some(format!("Run cancelled: {detail} Retry this step to continue.")),
                 _ => None,
             };
-            if let Some(reason) = reason { return Some(reason.into()); }
+            if let Some(reason) = reason { return Some(reason); }
         }
         Some("This step needs attention. Open it to review the attempt.".into())
     }
@@ -427,7 +515,7 @@ impl TaskApp {
 
 #[cfg(test)]
 mod tests {
-    use super::StepState;
+    use super::{StepState, run_failure_detail};
     use crate::domain::{Stage, Store};
     #[test]
     fn states_follow_runs_dependencies_and_valid_results() {
@@ -464,5 +552,35 @@ mod tests {
             .push_str(" changed inputs");
         assert_eq!(s.step_state(ids[0]), StepState::Waiting);
         assert_eq!(s.research_children(goal), ids);
+    }
+
+    #[test]
+    fn blocked_step_reason_uses_the_saved_diagnostic() {
+        let mut s = Store::empty();
+        s.set_default_model("fixture/model".into());
+        s.project_at_mut(0).unwrap().directory = std::env::temp_dir().to_string_lossy().into();
+        let goal = s
+            .create_research_goal("Review".into(), "Analyze earnings".into(), 1)
+            .unwrap();
+        let ids = s
+            .apply_research_plan(
+                goal,
+                r#"{"tasks":[{"title":"Collect","instructions":"Find filings","kind":"collect","depends_on":[]},{"title":"Analyze","instructions":"Compare filings","kind":"analyze","depends_on":[0]},{"title":"Report","instructions":"Summarize","kind":"advise","depends_on":[1]}]}"#,
+            )
+            .unwrap();
+        let mut run = s.prepare_run(ids[0]).unwrap();
+        run.status = "Failed".into();
+        run.logs = vec![
+            "[step] start".into(),
+            "[workspace] Provider returned 429 rate limit".into(),
+        ];
+        s.push_run(run);
+
+        assert!(run_failure_detail(s.runs().last().unwrap()).contains("429 rate limit"));
+        let reason = s.step_block_reason(ids[0]).unwrap();
+        assert!(
+            reason.contains("Provider returned 429 rate limit"),
+            "the step status must expose the actual failure, not a generic hint"
+        );
     }
 }

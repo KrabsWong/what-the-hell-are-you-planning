@@ -929,4 +929,11 @@ pub(crate) static DOMAIN_TRANSLATIONS: &[(&str, &str)] = &[
     ("Updates are unavailable in this build.", "此构建不支持更新。"),
     ("Reopen this step before running it again.", "再次运行前，请先重新打开此步骤。"),
     ("Workspace", "工作区"),
+    ("No detailed error was saved for this attempt.", "此尝试未保存详细错误。"),
+    ("Waiting for the previous dispatch to finish saving. This intent is retained and will start automatically after that receipt; it is not in the run queue yet.", "正在等待上一次调度完成保存。此启动意图已保留，收到持久化回执后会自动开始；目前尚未进入运行队列。"),
+    ("Last attempt failed: {detail} Review the attempt details and retry this step.", "上次尝试失败：{detail} 请查看尝试详情并重试此步骤。"),
+    ("Run interrupted: {detail}", "运行已中断：{detail}"),
+    ("Execution blocked: {detail} Review the attempt details before retrying.", "执行已阻塞：{detail} 重试前请查看尝试详情。"),
+    ("Run cancelled: {detail} Retry this step to continue.", "运行已取消：{detail} 重试此步骤以继续。"),
+    ("This step still failed after 3 automatic retries: {detail} Review the attempt details before retrying manually.", "此步骤在 3 次自动重试后仍失败：{detail} 手动重试前请查看尝试详情。"),
 ];

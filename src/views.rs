@@ -626,6 +626,25 @@ impl TaskApp {
                 )
                 .into_any_element();
         }
+        if let Some(message) = &self.dispatch_waiting {
+            return row()
+                .gap_2()
+                .child(
+                    gpui_kit::component::Icon::new(assets::IconName::Check)
+                        .size(px(14.))
+                        .flex_shrink_0()
+                        .text_color(rgb(colors.success)),
+                )
+                .child(
+                    div()
+                        .min_w_0()
+                        .overflow_hidden()
+                        .text_ellipsis()
+                        .text_color(rgb(colors.success))
+                        .child(selectable(crate::i18n::tr(message.clone()))),
+                )
+                .into_any_element();
+        }
         if self.storage.is_none() {
             return row()
                 .gap_2()

@@ -3546,11 +3546,12 @@ impl TaskApp {
             if plan.queued > 0 || plan.waiting > 0 {
                 panel = panel.child(overview_note(
                     format!(
-                        "Automation slots: {} of {} running · {} queued · {} waiting to retry. Automation and research queues are independent.",
+                        "Automation slots: {} of {} running · {} queued · {} waiting to retry. {}. Automation and research queues are independent.",
                         self.automation_slots_used(),
                         self.store.automation_concurrency_limit(),
                         plan.queued,
-                        plan.waiting
+                        plan.waiting,
+                        crate::execution_eligibility::automation_slot_occupant_summary(&self.store)
                     ),
                     cx,
                 ));
@@ -4627,9 +4628,10 @@ impl TaskApp {
         if occurrence.status == OccurrenceStatus::Queued {
             panel = panel.child(overview_note(
                 format!(
-                    "Waiting for an automation slot. {} of {} slots are in use; this starts automatically.",
+                    "Waiting for an automation slot. {} of {} slots are in use; this starts automatically. {}.",
                     self.automation_slots_used(),
-                    self.store.automation_concurrency_limit()
+                    self.store.automation_concurrency_limit(),
+                    crate::execution_eligibility::automation_slot_occupant_summary(&self.store)
                 ),
                 cx,
             ));

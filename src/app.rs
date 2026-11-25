@@ -321,6 +321,9 @@ pub struct TaskApp {
     /// Version offered by Sparkle, if an update is available.
     pub update_available: Option<String>,
     pub error: String,
+    /// A retained launch that is waiting for the previous durable receipt.
+    /// This is normal in-flight state, not a failure.
+    pub(crate) dispatch_waiting: Option<String>,
     pub task_start_feedback: Option<(u64, String)>,
     pub save_feedback: Option<Result<String, String>>,
     pub show_display: bool,
@@ -999,6 +1002,7 @@ impl TaskApp {
             toast: "All changes saved".into(),
             update_available: None,
             error: String::new(),
+            dispatch_waiting: None,
             task_start_feedback: None,
             save_feedback: None,
             show_display: false,
@@ -3149,6 +3153,27 @@ impl TaskApp {
             cx.notify();
             return RunSubmission::Rejected;
         }
+        // A retained intent is not a failed task. Keep the caller waiting so a
+        // topic queue does not pause and no "could not start" warning is shown.
+        if self.dispatch_waiting.is_some() {
+            let run_id = self
+                .pending_dispatch_reserved
+                .as_ref()
+                .map(|(_, run, _)| run.id)
+                .unwrap_or(0);
+            if run_id != 0 {
+                let submission = RunSubmission::PendingAdmission {
+                    run_id,
+                    automation_owned: self
+                        .store
+                        .task(id)
+                        .and_then(|task| task.automation_id)
+                        .is_some(),
+                };
+                cx.notify();
+                return submission;
+            }
+        }
         // A live admission was accepted but has not written the run record yet.
         if let Some(awaiting) = self.dispatch_awaiting.as_ref()
             && Some(awaiting.run_id) != awaiting_before
@@ -4030,6 +4055,7 @@ impl TaskApp {
         self.enforce_active_run_deadlines(Self::automation_now(), cx);
         self.poll_research_io(cx);
         self.poll_material_jobs(cx);
+        self.reconcile_orphaned_running(cx);
         self.poll_recovery(cx);
         if let Some(result) = self
             .codex_discovery

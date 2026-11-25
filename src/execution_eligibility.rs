@@ -283,7 +283,10 @@ impl ExecutionEligibility {
             }
             EligibilityDecision::Queued => {
                 if period == Some(PeriodState::Queued) {
-                    "Queued for an automation slot; this period starts automatically when a slot is free. Research queue admission is not involved.".into()
+                    format!(
+                        "Queued for an automation slot; this period starts automatically when a slot is free. {}. Research queue admission is not involved.",
+                        automation_slot_occupant_summary(store)
+                    )
                 } else {
                     "Queued to start in this automation period as soon as its earlier step finishes.".into()
                 }
@@ -360,6 +363,51 @@ fn dependency_titles(store: &Store, ids: &[u64]) -> String {
         .map(|id| step_title(store, *id))
         .collect::<Vec<_>>()
         .join(", ")
+}
+
+/// Running periods that hold automation slots, newest activity first. Queued
+/// periods and periods waiting for a retry do not hold a slot.
+pub(crate) fn automation_slot_occupant_summary(store: &Store) -> String {
+    let mut ids = std::collections::BTreeSet::new();
+    for occurrence in store.all_occurrences() {
+        if occurrence.status == OccurrenceStatus::Running {
+            ids.insert(occurrence.id);
+        }
+    }
+    for run in store.runs() {
+        if matches!(run.status.as_str(), "Running" | "Recovering")
+            && let Some(id) = run.automation_occurrence_id
+        {
+            ids.insert(id);
+        }
+    }
+    let mut occupants: Vec<(i64, u64, String)> = ids
+        .into_iter()
+        .filter_map(|id| store.occurrence(id))
+        .map(|occurrence| {
+            let name = store
+                .automation(occurrence.automation_id)
+                .map(|automation| automation.name.clone())
+                .unwrap_or_else(|| "Unavailable automation".into());
+            (
+                crate::automation_activity::occurrence_activity(occurrence).utc,
+                occurrence.id,
+                format!("{name} #{}", occurrence.id),
+            )
+        })
+        .collect();
+    occupants.sort_by(|left, right| right.cmp(left));
+    if occupants.is_empty() {
+        return "No running automation period is recorded".into();
+    }
+    format!(
+        "Running periods: {}",
+        occupants
+            .into_iter()
+            .map(|(_, _, label)| label)
+            .collect::<Vec<_>>()
+            .join(", ")
+    )
 }
 
 impl Store {
@@ -706,8 +754,10 @@ fn period_state(status: OccurrenceStatus) -> PeriodState {
 mod tests {
     use super::*;
     use crate::automation::{
-        AutomationPolicy, AutomationTemplate, TimeWindow, TriggerSource,
+        AutomationDefinition, AutomationPolicy, AutomationShape, AutomationTemplate,
+        DefinitionStatus, TimeWindow, TriggerSource,
     };
+    use crate::automation_schedule::{Schedule, ScheduleSpec};
 
     const PLAN: &str = r#"{"tasks":[{"title":"Collect one","instructions":"Collect one.","kind":"collect","depends_on":[]},{"title":"Collect two","instructions":"Collect two.","kind":"collect","depends_on":[]},{"title":"Analyze","instructions":"Analyze.","kind":"analyze","depends_on":[0]},{"title":"Report","instructions":"Report.","kind":"advise","depends_on":[2]}]}"#;
 
@@ -1001,6 +1051,60 @@ mod tests {
         assert_eq!(status.label(), "Queued for automation slot");
         assert!(status.reason.contains("automation slot"));
         assert!(!status.reason.contains("Research queue admission is involved"));
+    }
+
+    #[test]
+    fn slot_wait_names_the_running_period() {
+        let (mut store, goal, _) = fixture();
+        store.push_automation(AutomationDefinition {
+            id: 7,
+            version: 1,
+            project_id: 1,
+            shape: AutomationShape::Research,
+            name: "Daily market review".into(),
+            objective: "Track markets".into(),
+            expected_result: "A short report".into(),
+            schedule: Schedule {
+                spec: ScheduleSpec::Daily { hour: 8, minute: 0 },
+                timezone: "UTC".into(),
+            },
+            status: DefinitionStatus::Enabled,
+            template: None,
+            plan_binding: None,
+            approval: None,
+            policy: AutomationPolicy::default(),
+            cursor: Some(120),
+            anchor: None,
+            consecutive_failures: 0,
+            attention_reason: None,
+            created_at: 80,
+            updated_at: 80,
+        });
+        let mut running = occurrence(11, OccurrenceStatus::Running, vec![goal]);
+        running.actual_started_at = Some(110);
+        store.push_occurrence(running);
+        let queued_goal = store
+            .create_research_goal_in_topic(
+                "Queued goal".into(),
+                "Wait for a slot.".into(),
+                1,
+                Some(1),
+            )
+            .unwrap();
+        let queued_ids = store.apply_research_plan(queued_goal, PLAN).unwrap();
+        for id in &queued_ids {
+            store.task_mut(*id).unwrap().automation_id = Some(7);
+        }
+        store.push_occurrence(occurrence(12, OccurrenceStatus::Queued, vec![queued_goal]));
+
+        let summary = automation_slot_occupant_summary(&store);
+        assert!(summary.contains("Daily market review"));
+        assert!(summary.contains("Daily market review #11"));
+
+        let eligibility = store.execution_eligibility(queued_ids[0]);
+        assert!(eligibility
+            .reason(&store, queued_ids[0])
+            .contains("Daily market review"));
     }
 
     #[test]

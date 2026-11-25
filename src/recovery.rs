@@ -253,6 +253,49 @@ impl Store {
             .collect()
     }
 }
+
+/// Running rows with no live child process are stale after a lost completion
+/// event. They must become recovery candidates instead of occupying a task and
+/// blocking a fresh attempt with a duplicate run ID.
+fn orphaned_running_ids(store: &Store, active: &[u64], queued: &[u64]) -> Vec<u64> {
+    store
+        .runs()
+        .iter()
+        .filter(|run| {
+            run.status == "Running"
+                && !active.contains(&run.id)
+                && !queued.contains(&run.id)
+        })
+        .map(|run| run.id)
+        .collect()
+}
+
+impl TaskApp {
+    pub(crate) fn reconcile_orphaned_running(&mut self, cx: &mut Context<Self>) {
+        if self.storage.is_none() || self.startup.workspace_pending.is_some() {
+            return;
+        }
+        let active: Vec<u64> = self.active_runs.iter().map(|run| run.id).collect();
+        let queued: Vec<u64> = self.queued_runs.iter().map(|(id, _)| *id).collect();
+        let stale = orphaned_running_ids(&self.store, &active, &queued);
+        if stale.is_empty() {
+            return;
+        }
+        for id in stale {
+            if let Some(mut run) = self.store.run_mut(id) {
+                run.status = "Interrupted".into();
+                run.ended_at = Some(crate::opencode::timestamp());
+                let message = "[interrupted] The run process is no longer active. Inspect the working folder before retrying.";
+                if !run.logs.iter().any(|line| line == message) {
+                    run.logs.push(message.into());
+                }
+            }
+        }
+        self.persist_if_changed(true);
+        self.check_interrupted_sessions(cx);
+        cx.notify();
+    }
+}
 impl TaskApp {
     pub(crate) fn resume_request_understanding(&mut self, id: u64, cx: &mut Context<Self>) {
         let eligible = self.store.latest_request_attempt(id).filter(|run| {
@@ -1049,7 +1092,7 @@ impl TaskApp {
 
 #[cfg(test)]
 mod tests {
-    use super::{SessionCheck, parse_transcript, request_matches};
+    use super::{SessionCheck, orphaned_running_ids, parse_transcript, request_matches};
     use crate::automation::{AutomationPolicy, AutomationShape};
     use crate::automation_schedule::{Schedule, ScheduleSpec};
     use crate::domain::{Stage, Store};
@@ -1263,5 +1306,27 @@ mod tests {
         s.task_mut(a).unwrap().archived = false;
         s.task_mut(a).unwrap().stage = Stage::Cancelled;
         assert!(s.paused_project_goals().is_empty());
+    }
+
+    #[test]
+    fn running_rows_without_a_child_process_are_orphaned() {
+        let mut s = Store::empty();
+        s.project_at_mut(0).unwrap().directory = std::env::temp_dir().to_string_lossy().into_owned();
+        s.set_default_model("fixture/model".into());
+        let goal = s.create_research_goal("Started".into(), "Research".into(), 1).unwrap();
+        let mut first_run = s.prepare_run(goal).unwrap();
+        let first = first_run.id;
+        first_run.status = "Running".into();
+        s.push_run(first_run);
+        let mut second_run = s.prepare_run(goal).unwrap();
+        let second = second_run.id;
+        second_run.status = "Running".into();
+        s.push_run(second_run);
+        for id in [first, second] {
+            s.run_mut(id).unwrap().status = "Running".into();
+        }
+
+        assert_eq!(orphaned_running_ids(&s, &[first], &[]), vec![second]);
+        assert_eq!(orphaned_running_ids(&s, &[first], &[second]), Vec::<u64>::new());
     }
 }

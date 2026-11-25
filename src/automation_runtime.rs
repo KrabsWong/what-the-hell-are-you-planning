@@ -2578,11 +2578,7 @@ impl TaskApp {
                         .store
                         .fail_occurrence(
                             occurrence_id,
-                            run.logs
-                                .iter()
-                                .rev()
-                                .find_map(|line| line.strip_prefix("[error] "))
-                                .unwrap_or("The automation step failed."),
+                            crate::goal_steps::run_failure_detail(&run),
                             now,
                         )
                         .unwrap_or(None);
@@ -2598,12 +2594,7 @@ impl TaskApp {
                     }
                     self.store.mark_automation_attention(
                         definition,
-                        run.logs
-                            .iter()
-                            .rev()
-                            .find(|line| line.starts_with("[browser]") || line.starts_with("[workspace]") || line.starts_with("[error]"))
-                            .cloned()
-                            .unwrap_or_else(|| "A run needs attention. Open it to see the reason.".into()),
+                        crate::goal_steps::run_failure_detail(&run),
                     );
                 } else if let Some(mut value) = self.store.occurrence_mut(occurrence_id) {
                     let _ = value.transition(

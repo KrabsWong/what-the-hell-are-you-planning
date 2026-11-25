@@ -798,9 +798,10 @@ impl TaskApp {
                     Some((intent.clone(), run.clone(), files.clone()));
             }
             self.pending_dispatch = Some(PendingDispatch { intent, files });
-            self.error =
-                "A dispatch is already waiting for durable admission. Its intent is retained; retry after it resolves."
-                    .into();
+            self.dispatch_waiting = Some(
+                "Waiting for the previous dispatch to finish saving. This intent is retained and will start automatically after that receipt; it is not in the run queue yet."
+                    .into(),
+            );
             cx.notify();
             return None;
         }
@@ -832,6 +833,7 @@ impl TaskApp {
                 self.dispatch_awaiting = Some(id);
                 self.dispatch_awaiting_files = Some(files);
                 self.dispatch_admission_error = None;
+                self.dispatch_waiting = None;
                 self.dispatch_parked = false;
                 self.toast = "Saving dispatch before launch".into();
                 // The first dispatch can begin from a completely idle runtime;
@@ -1159,6 +1161,7 @@ impl TaskApp {
                         self.dispatch_awaiting_files = None;
                         self.dispatch_ack_pending = None;
                         self.dispatch_admission_error = None;
+                        self.dispatch_waiting = None;
                         if run_id.is_some_and(|run_id| {
                             self.pending_dispatch_reserved
                                 .as_ref()

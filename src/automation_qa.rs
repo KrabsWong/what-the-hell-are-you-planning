@@ -5011,6 +5011,9 @@ fn ui_interaction(root: &Path) -> PathBuf {
     // Pause, resume and manual run now live on the list rows.
     cx.update_window(handle, |_, w, cx| {
         w.render_frame(cx);
+        let pause = w.find(ElementId::Name(format!("pause-automation-{id}").into()));
+        assert!(pause.visible());
+        assert_ne!(pause.disabled(), Some(true));
         w.click(ElementId::Name(format!("pause-automation-{id}").into()), cx);
     }).unwrap();
     assert_eq!(
@@ -5018,6 +5021,14 @@ fn ui_interaction(root: &Path) -> PathBuf {
         DefinitionStatus::Paused
     );
     assert_eq!(read_state(&mut cx, &app, |a| a.store.automation(id).unwrap().cursor), None);
+    cx.update_window(handle, |_, w, cx| {
+        w.render_frame(cx);
+        assert!(w.try_find(ElementId::Name(format!("pause-automation-{id}").into())).is_none());
+        let resume = w.find(ElementId::Name(format!("resume-automation-{id}").into()));
+        assert!(resume.visible());
+        assert_ne!(resume.disabled(), Some(true));
+    })
+    .unwrap();
     // Settings stays on the detail page; open the definition explicitly.
     // Its next-run area marks a paused automation instead of listing triggers.
     cx.update_window(handle, |_, w, cx| {
@@ -5052,6 +5063,24 @@ fn ui_interaction(root: &Path) -> PathBuf {
         read_state(&mut cx, &app, |a| a.store.automation(id).unwrap().status),
         DefinitionStatus::Enabled
     );
+    cx.update_window(handle, |_, w, cx| {
+        app.update(cx, |a, _| {
+            a.store.mark_automation_attention(id, "QA attention state");
+        });
+        w.render_frame(cx);
+        let resume = w.find(ElementId::Name(format!("resume-automation-{id}").into()));
+        assert!(resume.visible());
+        assert_ne!(resume.disabled(), Some(true));
+        w.click(ElementId::Name(format!("resume-automation-{id}").into()), cx);
+    }).unwrap();
+    assert_eq!(
+        read_state(&mut cx, &app, |a| a.store.automation(id).unwrap().status),
+        DefinitionStatus::Enabled
+    );
+    cx.update_window(handle, |_, w, cx| {
+        app.update(cx, |a, cx| a.navigate(Scope::Automations, w, cx));
+        w.render_frame(cx);
+    }).unwrap();
     cx.update_window(handle, |_, w, cx| {
         w.render_frame(cx);
         w.click(ElementId::Name(format!("run-automation-{id}").into()), cx);
@@ -5957,6 +5986,12 @@ fn list_hierarchy_fixture(root: &Path) {
             store.pause_automation(id, now()).unwrap();
         }
     }
+    let attention = draft(&mut store, "Needs attention");
+    enable(&mut store, attention);
+    store.mark_automation_attention(attention, "QA attention state");
+    let archived = draft(&mut store, "Archived automation");
+    enable(&mut store, archived);
+    store.archive_automation(archived, now()).unwrap();
     let path = directory.join("workspace.sqlite3");
     Storage::new(path.clone()).save(&store).unwrap();
     render_matrix(root, &path);
@@ -6009,7 +6044,65 @@ fn render_matrix(root: &Path, source: &Path) {
                         "schedule and runtime information occupy separate rows");
                     assert!(latest.bounds().right() <= px(width),
                         "runtime summary stays inside the compact window");
+                    let pause_id = || ElementId::Name(format!("pause-automation-{}", definition.id).into());
+                    let resume_id = || ElementId::Name(format!("resume-automation-{}", definition.id).into());
+                    match definition.status {
+                        DefinitionStatus::Enabled => {
+                            let pause = w.try_find(pause_id()).expect("enabled rows show Pause");
+                            assert_ne!(pause.disabled(), Some(true));
+                            assert!(w.try_find(resume_id()).is_none());
+                        }
+                        DefinitionStatus::Draft => {
+                            let pause = w.try_find(pause_id()).expect("drafts keep a disabled Pause");
+                            assert_eq!(pause.disabled(), Some(true));
+                            assert!(w.try_find(resume_id()).is_none());
+                        }
+                        DefinitionStatus::Paused | DefinitionStatus::NeedsAttention => {
+                            assert!(w.try_find(pause_id()).is_none(),
+                                "the single lifecycle slot switches away from Pause");
+                            let resume = w.try_find(resume_id())
+                                .expect("paused rows show Resume schedule");
+                            assert_ne!(resume.disabled(), Some(true));
+                        }
+                        DefinitionStatus::Archived => {
+                            assert!(w.try_find(pause_id()).is_none());
+                            assert!(w.try_find(resume_id()).is_none());
+                        }
+                    }
                 }
+            }).unwrap();
+            if width == 1440. && matches!(mode, Appearance::Light) {
+                let attention = read_state(&mut cx, &app, |a| {
+                    a.store.automations()
+                        .iter()
+                        .find(|definition| definition.status == DefinitionStatus::NeedsAttention)
+                        .unwrap()
+                        .id
+                });
+                cx.update_window(handle, |_, w, cx| {
+                    w.click(ElementId::Name(format!("resume-automation-{attention}").into()), cx);
+                }).unwrap();
+                assert_eq!(
+                    read_state(&mut cx, &app, |a| a.store.automation(attention).unwrap().status),
+                    DefinitionStatus::Enabled
+                );
+            }
+            let archived = read_state(&mut cx, &app, |a| {
+                a.store.automations()
+                    .iter()
+                    .find(|definition| definition.status == DefinitionStatus::Archived)
+                    .unwrap()
+                    .id
+            });
+            cx.update_window(handle, |_, w, cx| {
+                app.update(cx, |a, cx| a.navigate(Scope::Automations, w, cx));
+                app.update(cx, |a, cx| {
+                    a.automation_ui.scroll.set_offset(point(px(0.), px(-1000.)));
+                    cx.notify();
+                });
+                w.render_frame(cx);
+                assert!(w.try_find(ElementId::Name(format!("pause-automation-{archived}").into())).is_none());
+                assert!(w.try_find(ElementId::Name(format!("resume-automation-{archived}").into())).is_none());
             }).unwrap();
             if width == 1000. && std::env::var_os("PLANNING_QA_LIST_ONLY").is_some() {
                 cx.update_window(handle, |_, w, cx| {

@@ -49,6 +49,7 @@ assets::icon_assets!(
         Pencil,
         Play,
         Plus,
+        Power,
         RefreshCw,
         Search,
         Settings,

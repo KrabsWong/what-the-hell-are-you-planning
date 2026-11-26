@@ -13,6 +13,7 @@ The current `gpui-kit` dependency is 0.9.1. Its assets package records Lucide pr
 | Edit a document | `file-pen-line` / `FilePenLine` |
 | Refresh a resource | `refresh-cw` / `RefreshCw` |
 | Retry execution | `rotate-cw` / `RotateCw` |
+| Enable a paused schedule | `power` / `Power` |
 | Completed / selected | `check` / `Check` |
 | Pending / running / blocked | `Circle` / `CircleDot` / `CircleAlert` |
 | Close | `x` / `Close` |

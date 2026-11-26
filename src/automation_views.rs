@@ -3249,7 +3249,7 @@ impl TaskApp {
                                             | DefinitionStatus::NeedsAttention => d.child(
                                                 tool_icon(
                                                     format!("resume-automation-{id}"),
-                                                    assets::IconName::RotateCw,
+                                                    assets::IconName::Power,
                                                     "Resume schedule",
                                                 )
                                                 .tooltip(crate::i18n::tr("Enable again from now; paused time is not backfilled."))

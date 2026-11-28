@@ -476,7 +476,11 @@ impl TaskApp {
                 .recent_surfaces
                 .insert(task, crate::navigation_context::RecentSurface::Result);
         }
-        self.set_result_selection(pending.context, Some(pending.run_id));
+        if pending.context.is_some() {
+            self.set_result_selection(pending.context, Some(pending.run_id));
+        } else {
+            self.navigation.selected_attempt = Some(pending.run_id);
+        }
         self.reveal_selected_run();
         cx.notify();
     }
@@ -578,6 +582,7 @@ impl TaskApp {
     pub(crate) fn clear_navigation_overlays(&mut self) {
         self.save_feedback = None;
         self.draft = None;
+        self.technical_details_modal = None;
         let _ = self.close_task_editor_overlay();
         self.navigation.task_edit_baseline = None;
         self.new_project = None;

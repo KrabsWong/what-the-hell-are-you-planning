@@ -418,7 +418,11 @@ impl TaskApp {
                     self.automation_ui.planning_run = Some(run_id);
                 }
                 if navigate && let Some(dispatch) = dispatch {
-                    self.open_run_progress(dispatch);
+                    if dispatch.automation_owned {
+                        self.open_run_progress(dispatch);
+                    } else {
+                        self.show_task_result(dispatch.run_id, cx);
+                    }
                 }
                 if !self.store.runs().iter().any(|r| r.id == run_id) {
                     self.store.request_mut(id).unwrap().planning_run_id = None;

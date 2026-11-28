@@ -448,7 +448,7 @@ pub(crate) static AUTOMATION_TRANSLATIONS: &[(&str, &str)] = &[
     ("The step instructions are too long; use at most 12,000 bytes.", "步骤指令过长；最多使用 12,000 字节。"),
     ("The trigger count is too large.", "触发次数过多。"),
     ("There is no active run to stop.", "没有可停止的活动运行。"),
-    ("These saved planning attempts belong to an automation project, but their original automation could not be verified. They stay here instead of Research results and are never assigned by guesswork.", "这些已保存的规划尝试属于某个自动化项目，但无法验证其原始自动化。它们保留在此处，而不是 Research results 中，也不会通过猜测进行分配。"),
+    ("These saved planning attempts belong to an automation project, but their original automation could not be verified. They stay in automation history and are never assigned by guesswork.", "这些已保存的规划尝试属于某个自动化项目，但无法验证其原始自动化。它们保留在自动化历史中，也不会通过猜测进行分配。"),
     ("This attempt has no validated reader report. Raw output remains in Technical details.", "此尝试没有经过验证的读者报告。原始输出仍保留在技术详情中。"),
     ("This automation already has an unstarted request. Wait for it to start or stop it first.", "此自动化已有一个未开始的请求。请等待其开始或先停止它。"),
     ("This draft has a planning request that did not produce a reviewed plan. Review it and retry against the same request; the saved draft stays editable.", "此草稿的规划请求未生成经过审核的计划。请针对同一请求审核并重试；保存的草稿仍可编辑。"),

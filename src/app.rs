@@ -33,7 +33,6 @@ pub enum Scope {
     Project(u64),
     Topic(u64),
     Archive,
-    Runs,
     Recovery,
     Research,
     Automations,
@@ -260,7 +259,7 @@ pub struct TaskApp {
     pub store: Store,
     /// T12 S2: typed route identity. `scope()` is a read-only projection; no
     /// writable `scope` field exists on the app.
-    nav: crate::navigation_route::NavState,
+    pub(crate) nav: crate::navigation_route::NavState,
     pub all_status: AllStatus,
     pub sidebar_scroll: ScrollHandle,
     pub sidebar_reveal: Option<u64>,
@@ -411,6 +410,7 @@ pub struct TaskApp {
     pub planning_destination_error: Option<String>,
     /// Control that opened the research-request form, restored when it closes.
     pub(crate) planning_opener_focus: Option<gpui_kit::FocusHandle>,
+    pub(crate) technical_details_modal: Option<crate::run_views::TechnicalDetailsModal>,
     pub project_brief: Entity<TextareaState>,
     pub(crate) understanding_editor: Option<(u64, Entity<TextareaState>)>,
     pub(crate) understanding_editor_subscription: Option<Subscription>,
@@ -505,7 +505,6 @@ pub struct TaskApp {
     pub queued_runs: Vec<(u64, Vec<PathBuf>)>,
     pub expanded_run_sources: Option<u64>,
     pub expanded_run_appendix: Option<u64>,
-    pub show_planning_activity: bool,
     pub log_scroll: ScrollHandle,
     pub follow_logs: bool,
     pumping: bool,
@@ -949,7 +948,6 @@ impl TaskApp {
             queued_runs: vec![],
             expanded_run_sources: None,
             expanded_run_appendix: None,
-            show_planning_activity: false,
             log_scroll: ScrollHandle::new(),
             follow_logs: true,
             pumping: false,
@@ -1050,6 +1048,7 @@ impl TaskApp {
             planning_form_epoch: 0,
             planning_destination_error: None,
             planning_opener_focus: None,
+            technical_details_modal: None,
             understanding_editor: None,
             understanding_editor_subscription: None,
             understanding_history_expanded: None,
@@ -1290,7 +1289,7 @@ impl TaskApp {
     /// stored authority; sidebar/collection code keeps consuming `Scope` until
     /// the remaining page-state families move in S5.
     pub fn scope(&self) -> Scope {
-        self.nav.route().legacy_scope()
+        self.nav.route().legacy_scope(&self.store)
     }
 
     /// List-local filter text owned by the typed ResearchList page.
@@ -1555,43 +1554,64 @@ impl TaskApp {
         self.install_route(route)
     }
 
-    /// Select an ordinary/task/goal result page. `context` is the explicit task
-    /// or Goal identity; `None` means the global Research results page.
+    /// Select a task/goal result page. `context` is the explicit task or Goal
+    /// identity; an ownerless result is never admitted.
     pub(crate) fn set_result_selection(&mut self, context: Option<u64>, run: Option<u64>) {
         use crate::navigation_route::{ResultOwner, Route};
         let selected_run = run.and_then(|id| self.store.runs().iter().find(|run| run.id == id));
-        let owner = match context {
-            Some(context) => match self.store.task(context) {
-                None => ResultOwner::OrdinaryPage,
-                Some(task) if task.automation_id.is_some() => {
-                    match self.store.automation_period_for_task(context) {
-                        Some((automation, occurrence)) => ResultOwner::AutomationTask {
-                            automation,
-                            occurrence,
-                            task: context,
-                        },
-                        None => ResultOwner::OrdinaryPage,
-                    }
+        let Some(context) = context else {
+            let mut planning_owner = None;
+            let mut planning_run = None;
+            if let Some(run) = selected_run
+                && let Some(owner) = run.planning_owner.as_ref()
+                && owner.automation_id.is_none()
+                && self
+                    .store
+                    .research_requests()
+                    .iter()
+                    .any(|request| request.id == owner.request_id)
+            {
+                planning_owner = Some(owner.request_id);
+                planning_run = Some(run.id);
+            }
+            if let Some(request) = planning_owner {
+                self.install_route(Route::research_result(
+                    ResultOwner::PlanningProgress { request },
+                    planning_run,
+                ));
+                self.navigation.selected_attempt = planning_run;
+            }
+            return;
+        };
+        let owner = match self.store.task(context) {
+            None => return,
+            Some(task) if task.automation_id.is_some() => {
+                match self.store.automation_period_for_task(context) {
+                    Some((automation, occurrence)) => ResultOwner::AutomationTask {
+                        automation,
+                        occurrence,
+                        task: context,
+                    },
+                    None => return,
                 }
-                Some(_) => match selected_run {
-                    Some(run)
-                        if run.task_id == context && !self.store.run_is_automation_owned(run) =>
-                    {
-                        ResultOwner::Task(context)
-                    }
-                    Some(run)
-                        if !self.store.run_is_automation_owned(run)
-                            && self.store.owning_research_goal(run.task_id) == Some(context) =>
-                    {
-                        ResultOwner::Goal { goal: context }
-                    }
-                    // A stale/unrelated run must not make the explicit context
-                    // page unconstructible; keep the context and let its own
-                    // resolver choose a valid result.
-                    _ => ResultOwner::Task(context),
-                },
+            }
+            Some(_) => match selected_run {
+                Some(run)
+                    if run.task_id == context && !self.store.run_is_automation_owned(run) =>
+                {
+                    ResultOwner::Task(context)
+                }
+                Some(run)
+                    if !self.store.run_is_automation_owned(run)
+                        && self.store.owning_research_goal(run.task_id) == Some(context) =>
+                {
+                    ResultOwner::Goal { goal: context }
+                }
+                // A stale/unrelated run must not make the explicit context
+                // page unconstructible; keep the context and let its own
+                // resolver choose a valid result.
+                _ => ResultOwner::Task(context),
             },
-            None => ResultOwner::OrdinaryPage,
         };
         let run = selected_run
             .filter(|run| owner.allows_run(&self.store, run))
@@ -1812,23 +1832,6 @@ impl TaskApp {
     }
 
     fn route_for_scope(&self, scope: &Scope) -> crate::navigation_route::Route {
-        if matches!(scope, Scope::Runs) {
-            let selection = match self.nav.route() {
-                crate::navigation_route::Route::ResearchResult(page) => page.run(),
-                _ => self.navigation.selected_attempt,
-            }
-            .filter(|id| {
-                self.store
-                    .runs()
-                    .iter()
-                    .find(|run| run.id == *id)
-                    .is_some_and(|run| self.store.run_is_ordinary_result(run))
-            });
-            return crate::navigation_route::Route::research_result(
-                crate::navigation_route::ResultOwner::OrdinaryPage,
-                selection,
-            );
-        }
         if matches!(scope, Scope::Settings) {
             return crate::navigation_route::Route::Settings(
                 crate::navigation_route::SettingsPage::new(self.settings_section()),
@@ -1866,7 +1869,27 @@ impl TaskApp {
             Route::ResearchList(_) | Route::ResearchTask(_) => {
                 Route::research_list(ResearchScope::All, self.all_status)
             }
-            Route::ResearchResult(_) => Route::research_result(ResultOwner::OrdinaryPage, None),
+            Route::ResearchResult(page) => Route::research_list(
+                match page.owner() {
+                    ResultOwner::Task(task)
+                    | ResultOwner::Goal { goal: task }
+                    | ResultOwner::AutomationTask { task, .. } => self
+                        .store
+                        .task(task)
+                        .map(|task| crate::navigation_route::ResearchScope::Project(task.project_id))
+                        .unwrap_or(crate::navigation_route::ResearchScope::All),
+                    ResultOwner::PlanningProgress { request } => self
+                        .store
+                        .research_requests()
+                        .iter()
+                        .find(|value| value.id == request)
+                        .map(|request| {
+                            crate::navigation_route::ResearchScope::Project(request.project_id)
+                        })
+                        .unwrap_or(crate::navigation_route::ResearchScope::All),
+                },
+                self.all_status,
+            ),
             Route::AutomationDetail(_) | Route::AutomationEditor(_) => Route::AutomationList,
             Route::AutomationResults(_) => {
                 Route::automation_results(None, self.automation_ui.history_limit.max(1))
@@ -1905,15 +1928,11 @@ impl TaskApp {
             || self.settings_overlay()
             || self.task_editor_overlay().is_some()
             || self.previous_versions_task.is_some()
-            || self.research_save_impact.is_some();
+            || self.research_save_impact.is_some()
+            || self.technical_details_modal.is_some();
         self.clear_navigation_overlays();
         if removed_modal_focus {
             window.focus(&self.focus, cx);
-        }
-        if scope == Scope::Runs {
-            // `route_for_scope` keeps only an ordinary selected run; an
-            // automation step cannot leak into the ordinary results page.
-            self.reveal_selected_run();
         }
         self.save_feedback = None;
         self.show_run_details = false;
@@ -2034,7 +2053,8 @@ impl TaskApp {
             || self.settings_overlay()
             || self.task_editor_overlay().is_some()
             || self.previous_versions_task.is_some()
-            || self.research_save_impact.is_some();
+            || self.research_save_impact.is_some()
+            || self.technical_details_modal.is_some();
         if self.selected() != Some(id) && self.task_result_context() != Some(id) {
             self.detail_scroll.set_offset(point(px(0.), px(0.)));
         }
@@ -2086,7 +2106,6 @@ impl TaskApp {
                 .map(|t| t.display_name())
                 .unwrap_or_default(),
             Scope::Archive => crate::i18n::tr_string("Archive"),
-            Scope::Runs => crate::i18n::tr_string("Research results"),
             Scope::Recovery => crate::i18n::tr_string("Paused projects"),
             Scope::Research => crate::i18n::tr_string("Market research"),
             Scope::Automations => crate::i18n::tr_string("Automations"),
@@ -3164,8 +3183,14 @@ impl TaskApp {
         self.show_run_details = false;
         if dispatch.automation_owned {
             self.set_scope_identity(Scope::AutomationRuns);
-        } else {
-            self.set_result_selection(None, Some(dispatch.run_id));
+        } else if let Some(run) = self
+            .store
+            .runs()
+            .iter()
+            .find(|run| run.id == dispatch.run_id)
+        {
+            let task = run.task_id;
+            self.set_result_selection(Some(task), Some(dispatch.run_id));
             self.reveal_selected_run();
         }
     }
@@ -3400,7 +3425,7 @@ impl TaskApp {
             return None;
         }
         // Report regeneration for an automation period is still automation-owned;
-        // never route it to ordinary Research results or the Research slot.
+        // never route it to task result readers or the Research slot.
         let automation_owned = run_occurrence.is_some();
         let command = match &intent {
             LaunchIntent::Occurrence(occurrence) => crate::domain_command::Command::DispatchRun {

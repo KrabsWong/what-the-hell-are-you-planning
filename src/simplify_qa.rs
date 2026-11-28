@@ -271,7 +271,7 @@ fn run_checks(layout_only: bool) {
                         a.attach_storage(Storage::new(path.clone()), w, cx);
                         assert!(a.storage_error.is_empty(), "{}", a.storage_error);
                         a.note_selected_run(Some(report_id));
-                        a.navigate(Scope::Runs, w, cx);
+                        a.navigate(Scope::All, w, cx);
                         if layout_only {
                             a.set_result_selection(Some(*steps.last().unwrap()), Some(report_id));
                         }
@@ -453,7 +453,7 @@ fn run_checks(layout_only: bool) {
                     app.update(cx, |a, cx| a.open_task(steps[1], w, cx));
                     w.render_frame(cx);
                     assert!(w.find("step-run").visible());
-                    assert!(w.find("step-attempt-details").visible());
+                    assert!(w.find("task-actions-menu").visible());
                 })
                 .unwrap();
                 screenshot(&mut cx, handle, &directory, "completed-step-actions.png");
@@ -510,67 +510,18 @@ fn run_checks(layout_only: bool) {
             .unwrap();
             choose_menu(&mut cx, handle, "run-actions-menu", 0);
             cx.update_window(handle, |_, w, cx| {
-                let before = app.read(cx).store.clone();
-                assert_eq!(w.find_all("show-result").len(), 1);
-                let show_result = w.find("show-result").bounds();
-                let actions_menu = w.find("run-actions-menu").bounds();
-                assert_eq!(
-                    show_result.origin.y, actions_menu.origin.y,
-                    "same-row toolbar controls share a top edge"
-                );
-                assert_eq!(
-                    show_result.size.height, actions_menu.size.height,
-                    "same-row toolbar controls share a height"
-                );
-                assert!(
-                    show_result.right() <= w.viewport_size().width
-                        && actions_menu.right() <= w.viewport_size().width,
-                    "toolbar actions stay inside the viewport"
-                );
-                assert!(app.read(cx).show_run_details);
-                assert!(w.find("run-technical-panel").visible());
-                assert!(w.find("run-log-panel").visible());
-                w.click("show-raw-output", cx);
-                assert!(w.find("run-original-output").visible());
-                assert!(w.try_find("run-log-panel").is_none());
-                w.click("show-logs", cx);
-                assert!(w.find("run-log-panel").visible());
-                assert_eq!(app.read(cx).store, before);
+                assert!(app.read(cx).technical_details_modal.is_some());
+                assert!(w.find("technical-details-modal").visible());
+                w.click("technical-details-show-logs", cx);
+                assert!(w.find("technical-details-logs").visible());
+                w.click("technical-details-show-output", cx);
+                assert!(w.find("technical-details-output").visible());
+                w.click("technical-details-close", cx);
+                assert!(app.read(cx).technical_details_modal.is_none());
+                assert_eq!(app.read(cx).selected_run(), Some(report_id));
             })
             .unwrap();
             screenshot(&mut cx, handle, &directory, "02-technical.png");
-            cx.update_window(handle, |_, w, cx| {
-                w.click("show-result", cx);
-                assert!(!app.read(cx).show_run_details);
-                assert!(w.try_find("run-technical-panel").is_none());
-            })
-            .unwrap();
-            choose_menu(&mut cx, handle, "run-actions-menu", 0);
-            cx.update_window(handle, |_, w, cx| {
-                let state = app.read(cx);
-                assert_eq!(
-                    state.selected_run(),
-                    Some(report_id),
-                    "selected run changed before history selection"
-                );
-                let other = state
-                    .store
-                    .runs()
-                    .iter()
-                    .rev()
-                    .find(|run| run.id != report_id)
-                    .expect("another execution in the history")
-                    .id;
-                click_in(w, cx, "run-history", &format!("run-{other}"));
-                assert!(
-                    !app.read(cx).show_run_details,
-                    "Selecting another execution must reset technical view"
-                );
-                assert!(app.read(cx).show_run_result);
-                assert!(w.try_find("run-log-panel").is_none());
-            })
-            .unwrap();
-            screenshot(&mut cx, handle, &directory, "03-long-title.png");
 
             // Status-specific notices remain in the ordinary view. No raw errors required.
             for (status, output, name) in [
@@ -653,17 +604,6 @@ fn run_checks(layout_only: bool) {
                     app.read(cx).active_runs.first().unwrap().id
                 })
                 .unwrap();
-            choose_menu(&mut cx, handle, "run-topic-filter", 0); // Research goal
-            cx.update_window(handle, |_, w, cx| {
-                click_in(w, cx, "run-history", "run-1");
-                assert!(
-                    w.try_find("cancel-run").is_none(),
-                    "A history record must not stop another run"
-                );
-                assert_eq!(app.read(cx).active_runs.first().unwrap().id, active_id);
-            })
-            .unwrap();
-            choose_menu(&mut cx, handle, "run-topic-filter", 1); // Standalone task
             cx.update_window(handle, |_, w, cx| {
                 assert_eq!(app.read(cx).selected_run(), Some(active_id));
                 assert_eq!(w.find_all("cancel-run").len(), 1);
@@ -706,12 +646,12 @@ fn run_checks(layout_only: bool) {
                 let before = app.read(cx).store.clone();
                 w.click("research-task-result", cx);
                 assert_eq!(app.read(cx).selected_run(), Some(report_id));
-                assert_eq!(app.read(cx).scope(), Scope::Runs);
+                assert_eq!(app.read(cx).scope(), Scope::All);
                 assert!(w.find("research-result-scroll").visible());
                 assert_eq!(app.read(cx).store, before);
                 assert_eq!(app.read(cx).task_result_context(), Some(goal));
                 assert_eq!(app.read(cx).sidebar_scope(), Scope::Project(1));
-                assert!(w.try_find("run-navigation").is_none());
+                
                 w.click("navigation-back", cx);
                 let state = app.read(cx);
                 assert_eq!(
@@ -744,7 +684,7 @@ fn run_checks(layout_only: bool) {
                 w.click("task-view-result", cx);
                 assert_eq!(app.read(cx).task_result_context(), Some(steps[0]));
                 assert_eq!(app.read(cx).sidebar_scope(), Scope::Project(1));
-                assert!(w.try_find("run-navigation").is_none());
+                
             })
             .unwrap();
             screenshot(&mut cx, handle, &directory, "08-inline-task-result.png");
@@ -754,10 +694,9 @@ fn run_checks(layout_only: bool) {
                 w.within("popup-menu").click(1usize, cx);
                 assert_eq!(app.read(cx).selected(), Some(steps[0]));
                 assert_eq!(app.read(cx).detail_scroll.offset(), task_scroll);
-                app.update(cx, |a, cx| a.navigate(Scope::Runs, w, cx));
+                app.update(cx, |a, cx| a.navigate(Scope::All, w, cx));
                 w.render_frame(cx);
                 assert!(app.read(cx).task_result_context().is_none());
-                assert!(w.try_find("run-navigation").is_some());
                 app.update(cx, |a, cx| a.open_task(steps[0], w, cx));
             })
             .unwrap();
@@ -816,7 +755,7 @@ fn run_checks(layout_only: bool) {
                 );
                 assert_eq!(app.read(cx).selected(), None);
                 assert_eq!(app.read(cx).task_result_context(), Some(steps[0]));
-                assert_eq!(app.read(cx).scope(), Scope::Runs);
+                assert_eq!(app.read(cx).scope(), Scope::All);
                 click_in(w, cx, "sidebar-scroll", "project-1");
                 assert_eq!(app.read(cx).selected(), None);
                 assert_eq!(app.read(cx).scope(), Scope::Project(1));
@@ -1088,15 +1027,11 @@ fn run_checks(layout_only: bool) {
                         let latest_id = latest.id;
                         a.store.push_run(latest);
                         a.note_selected_run(Some(latest_id));
-                        a.navigate(Scope::Runs, w, cx);
+                        a.navigate(Scope::All, w, cx);
                         (latest_id, other_id)
                     });
                     w.render_frame(cx);
-                    assert!(
-                        w.try_find("run-topic-filter").is_some()
-                            || w.try_find("run-topic-static").is_some()
-                    );
-                    assert!(w.find("run-project-picker").visible());
+                    assert!(w.find("research-result-scroll").visible());
                     assert!(w.find(format!("run-title-{}", ids.0)).bounds().size.height >= px(16.));
                     assert!(
                         w.try_find(format!("run-{report_id}")).is_none(),
@@ -1125,36 +1060,6 @@ fn run_checks(layout_only: bool) {
                 );
             })
             .unwrap();
-            choose_menu(&mut cx, handle, "run-project-planning", 0);
-            cx.update_window(handle, |_, w, cx| {
-                assert!(app.read(cx).show_planning_activity);
-                let selected = app
-                    .read(cx)
-                    .selected_run()
-                    .expect("planning record selected");
-                let selected_run = app
-                    .read(cx)
-                    .store
-                    .runs()
-                    .iter()
-                    .find(|r| r.id == selected)
-                    .unwrap();
-                assert!(
-                    selected_run.project_plan.is_some()
-                        || selected_run.research_kind == Some(ResearchKind::Goal),
-                    "planning history must select a planning record"
-                );
-                app.update(cx, |a, cx| a.view_task_result(steps[2], cx));
-                w.render_frame(cx);
-                assert!(w.try_find(format!("run-{latest_id}")).is_some());
-                assert!(!app.read(cx).show_planning_activity);
-                assert!(w.find("run-project-picker").visible());
-                assert!(
-                    w.try_find("run-topic-filter").is_some()
-                        || w.try_find("run-topic-static").is_some()
-                );
-            })
-            .unwrap();
             screenshot(&mut cx, handle, &directory, "16-grouped-history.png");
 
             cx.update_window(handle, |_, w, cx| {
@@ -1167,14 +1072,6 @@ fn run_checks(layout_only: bool) {
                 assert!(
                     w.try_find("run-version-picker").is_some(),
                     "Historical report can switch to latest"
-                );
-                w.click("run-project-picker", cx);
-                w.within("popup-menu").click(1usize, cx); // Other project
-                assert!(w.try_find(format!("run-{other_run_id}")).is_some());
-                assert_eq!(
-                    app.read(cx).selected_run(),
-                    Some(other_run_id),
-                    "Same titles in different projects stay independent"
                 );
                 app.update(cx, |a, cx| {
                     a.navigate(Scope::All, w, cx);
@@ -1508,13 +1405,9 @@ fn run_checks(layout_only: bool) {
                     planning.status = "Failed".into();
                     a.store.push_run(planning);
                     a.note_selected_run(None);
-                    a.navigate(Scope::Runs, w, cx);
+                    a.navigate(Scope::All, w, cx);
                 });
                 w.render_frame(cx);
-                assert!(
-                    app.read(cx).show_planning_activity,
-                    "Latest planning record is revealed after reopening Progress"
-                );
             })
             .unwrap();
             screenshot(&mut cx, handle, &directory, "25-planning-activity.png");
@@ -1643,7 +1536,7 @@ fn navigation_checks(
     cx.update_window(handle, |_, w, cx| {
         app.update(cx, |a, cx| {
             a.note_selected_run(Some(report));
-            a.navigate(Scope::Runs, w, cx);
+            a.navigate(Scope::All, w, cx);
             a.expanded_run_sources = None;
             a.expanded_run_appendix = None;
             a.result_scroll.set_offset(point(px(0.), px(0.)));

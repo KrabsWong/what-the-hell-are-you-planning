@@ -136,7 +136,7 @@ pub fn run() {
         .find(|r| r.project_plan.is_none() && r.status == "Succeeded" && !r.output.is_empty());
     let goal = result.and_then(|r| store.owning_research_goal(r.task_id));
     if result.is_some() {
-        panels.push(("Report", Scope::Runs));
+        panels.push(("Report", Scope::All));
     }
     for (name, scope) in panels {
         cx.update_window(handle, |_, w, cx| {
@@ -292,7 +292,7 @@ pub fn scroll_native() {
                 ("Research list", Scope::All, "collection-table-scroll"),
                 ("Model settings", Scope::Settings, "model-settings-scroll"),
                 ("Automation results", Scope::AutomationRuns, "automation-results-scroll"),
-                ("Research report", Scope::Runs, "research-result-scroll"),
+                ("Research report", Scope::All, "research-result-scroll"),
             ] {
                 cx.update_window(handle, |_, w, cx| {
                     app.update(cx, |a, cx| a.navigate(scope, w, cx));

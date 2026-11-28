@@ -452,7 +452,15 @@ impl TaskApp {
                         .when_some(run.map(|r| r.id), |d, run| d.child(
                             quiet_button(format!("request-run-{id}"), "Planning details").h_6().text_xs()
                                 .on_click(cx.listener(move |a, _, w, cx| {
-                                    a.set_result_selection(None, Some(run));
+                                    if let Some(task) = a
+                                        .store
+                                        .runs()
+                                        .iter()
+                                        .find(|candidate| candidate.id == run)
+                                        .map(|candidate| candidate.task_id)
+                                    {
+                                        a.set_result_selection(Some(task), Some(run));
+                                    }
                                     a.show_run_result = true;
                                     cx.notify();
                                 })))))

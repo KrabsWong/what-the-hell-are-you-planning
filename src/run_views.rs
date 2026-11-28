@@ -6,13 +6,23 @@ use crate::{
     research::ResearchKind,
     views::*,
 };
-use gpui_kit::base::{h_resizable, resizable_panel};
+use gpui_kit::base::{FocusTrapElement, h_resizable, resizable_panel};
 use gpui_kit::component::button::ButtonVariants;
 use gpui_kit::{
     component::{Disableable, Selectable, menu::DropdownMenu, switch::Switch},
     prelude::FluentBuilder,
     *,
 };
+
+pub(crate) struct TechnicalDetailsModal {
+    pub(crate) run_id: u64,
+    pub(crate) show_raw_output: bool,
+    pub(crate) opener_focus: Option<gpui_kit::FocusHandle>,
+    pub(crate) log_scroll: gpui_kit::ScrollHandle,
+    pub(crate) opener_route: crate::navigation_route::Route,
+    pub(crate) opener_result: bool,
+    pub(crate) opener_details: bool,
+}
 
 // Keep the Lucide status icon in fixed bounds while its opacity pulses.
 fn running_indicator(id: &'static str, color: u32) -> AnyElement {
@@ -97,767 +107,53 @@ fn activity_label(run: &AgentRun) -> &'static str {
 }
 
 // Group by stable identities. A moved task follows its current project; missing tasks
-// keep their history in an unlinked section instead of disappearing.
-struct RunTopic<'a> {
-    id: Option<u64>,
-    runs: Vec<&'a AgentRun>,
-}
-struct RunProject<'a> {
-    id: Option<u64>,
-    topics: Vec<RunTopic<'a>>,
-}
-/// Automation periods and planning attempts stay out of the ordinary results tree.
-fn run_is_automation(store: &Store, run: &AgentRun) -> bool {
-    store.run_is_automation_owned(run)
-}
-
-fn run_projects(store: &Store) -> Vec<RunProject<'_>> {
-    let mut groups: Vec<RunProject<'_>> = vec![];
-    for run in store
-        .runs()
-        .iter()
-        .rev()
-        .filter(|r| !run_is_automation(store, r) && !store.run_is_archived(r))
-    {
-        let task = store.task(run.task_id);
-        let project = run.project_plan.or_else(|| task.map(|t| t.project_id));
-        let goal = if run.project_plan.is_some() {
-            None
-        } else {
-            Some(
-                task.and_then(|t| t.research.as_ref())
-                    .map(|r| r.goal_id)
-                    .unwrap_or(run.task_id),
-            )
-        };
-        let i = groups
-            .iter()
-            .position(|g| g.id == project)
-            .unwrap_or_else(|| {
-                groups.push(RunProject {
-                    id: project,
-                    topics: vec![],
-                });
-                groups.len() - 1
-            });
-        let topics = &mut groups[i].topics;
-        let j = topics.iter().position(|g| g.id == goal).unwrap_or_else(|| {
-            topics.push(RunTopic {
-                id: goal,
-                runs: vec![],
-            });
-            topics.len() - 1
-        });
-        topics[j].runs.push(run);
-    }
-    groups.sort_by_key(|group| {
-        store
-            .projects()
-            .iter()
-            .position(|p| Some(p.id) == group.id)
-            .unwrap_or(usize::MAX)
-    });
-    for group in &mut groups {
-        group.topics.sort_by_key(|topic| {
-            topic
-                .id
-                .and_then(|id| store.tasks().iter().position(|t| t.id == id))
-                .unwrap_or(usize::MAX)
-        });
-    }
-    groups
-}
-
-fn run_location(store: &Store, run: &AgentRun) -> (Option<u64>, Option<u64>) {
-    let task = store.task(run.task_id);
-    let project = run.project_plan.or_else(|| task.map(|t| t.project_id));
-    let topic = if run.project_plan.is_some() {
-        None
-    } else {
-        Some(
-            task.and_then(|t| t.research.as_ref())
-                .map(|r| r.goal_id)
-                .unwrap_or(run.task_id),
-        )
-    };
-    (project, topic)
-}
-
-fn context_value_field(
-    id: impl Into<ElementId>,
-    text_id: impl Into<ElementId>,
-    title: String,
-    copied: bool,
-    cx: &App,
-) -> AnyElement {
-    let colors = palette(cx);
-    let accessible = if copied {
-        format!("Copy. {title}")
-    } else {
-        title.clone()
-    };
-    let tooltip = accessible.clone();
-    div()
-        .id(id)
-        .w_full()
-        .h(px(36.))
-        .px_2()
-        .rounded(px(crate::appearance::CONTROL_RADIUS))
-        .border_1()
-        .border_color(rgb(colors.line))
-        .bg(rgb(colors.panel))
-        .aria_label(crate::i18n::tr(accessible))
-        .tooltip(move |window, cx| {
-            gpui_kit::component::tooltip::Tooltip::new(tooltip.clone()).build(window, cx)
-        })
-        .child(context_value_content(text_id, title, copied, cx))
-        .into_any_element()
-}
-
-fn context_value_content(
-    id: impl Into<ElementId>,
-    title: String,
-    copied: bool,
-    cx: &App,
-) -> AnyElement {
-    row()
-        .w_full()
-        .min_w_0()
-        .gap_1()
-        .when(copied, |row| {
-            row.child(crate::topic_views::topic_copy_tag(
-                "run-context-value-copy",
-                cx,
-            ))
-        })
-        .child(single_line_text(id, title))
-        .into_any_element()
-}
-
-fn topic_menu_item(
-    id: impl Into<ElementId>,
-    text_id: impl Into<ElementId>,
-    title: String,
-    copied: bool,
-) -> gpui_kit::component::menu::PopupMenuItem {
-    let id = id.into();
-    let text_id = text_id.into();
-    gpui_kit::component::menu::PopupMenuItem::element(move |window, _cx| {
-        let label = if copied {
-            format!("Copy. {title}")
-        } else {
-            title.clone()
-        };
-        row_button(id.clone(), "")
-            .w((window.viewport_size().width - px(100.)).min(px(440.)))
-            .h_auto()
-            .min_h(px(20.))
-            .p_0()
-            .min_w_0()
-            .tooltip(crate::i18n::tr(label.clone()))
-            .accessibility_label(crate::i18n::tr(label))
-            .child(
-                div()
-                    .w_full()
-                    .min_w_0()
-                    .child(crate::topic_views::topic_context_title(
-                        text_id.clone(),
-                        title.clone(),
-                        copied,
-                    )),
-            )
-    })
-}
-
 impl TaskApp {
     pub fn reveal_selected_run(&mut self) {
         if let Some(project) = self
             .displayed_run_id()
-            .and_then(|id| self.store.runs().iter().find(|r| r.id == id))
-            .and_then(|run| run_location(&self.store, run).0)
+            .and_then(|id| self.store.runs().iter().find(|run| run.id == id))
+            .and_then(|run| self.store.task(run.task_id))
+            .map(|task| task.project_id)
         {
             self.remember_active_project(project);
         }
         self.result_scroll.set_offset(point(px(0.), px(0.)));
         self.expanded_run_sources = None;
         self.expanded_run_appendix = None;
-        self.show_planning_activity = self
-            .displayed_run_id()
-            .and_then(|id| self.store.runs().iter().find(|r| r.id == id))
-            .is_some_and(|r| {
-                r.project_plan.is_some() || r.research_kind == Some(ResearchKind::Goal)
-            });
-    }
-
-    fn select_run(&mut self, id: u64, cx: &mut Context<Self>) {
-        let context = if self.task_result_context().is_some() {
-            self.result_context_for_run(id)
-        } else {
-            None
-        };
-        if self.defer_result_navigation(id, context, false, None, cx) {
-            return;
-        }
-        self.set_result_selection(context, Some(id));
-        self.reveal_selected_run();
-        self.show_run_details = false;
-        self.show_run_result = true;
-        self.log_scroll.scroll_to_bottom();
-        cx.notify();
     }
 
     pub(crate) fn runs(&self, cx: &mut Context<Self>) -> AnyElement {
-        let colors = palette(cx);
-        // Automation steps are reachable only from their period. Without an
-        // explicit task-result context, Research results never selects one.
         let selected = self
             .displayed_run_id()
             .and_then(|id| self.store.runs().iter().find(|run| run.id == id));
-        if self.task_result_context().is_some()
-            && let Some(run) = selected
-        {
+        if let Some(run) = selected {
             return self.run_content(run, cx);
         }
-        let groups = run_projects(&self.store);
-        let location = selected.map(|run| run_location(&self.store, run));
-        let project = groups.iter().find(|p| Some(p.id) == location.map(|l| l.0));
-        let topic = project.and_then(|p| {
-            p.topics
-                .iter()
-                .find(|t| Some(t.id) == location.map(|l| l.1))
-        });
-        // Automation periods keep their steps out of the ordinary results tree, so
-        // there is no project/topic history to put beside them. Hide the empty
-        // column instead of showing a blank pane.
-        let show_history = selected.is_some() && project.is_some() && topic.is_some();
-        let mut history = col()
-            .id("run-navigation")
-            .w_full()
-            .flex_shrink_0()
-            .h_full()
-            .min_h_0()
-            .border_r_1()
-            .border_color(rgb(colors.line));
-        if let (Some(project), Some(topic)) = (project, topic) {
-            let name = project
-                .id
-                .and_then(|id| self.store.projects().iter().find(|p| p.id == id))
-                .map(|p| p.name.clone())
-                .unwrap_or_else(|| "Unlinked history".into());
-            let topic_task = topic.id.and_then(|id| self.store.task(id));
-            let research = topic_task.is_some_and(|t| t.research.is_some());
-            let topic_title = topic_task.map(|t| t.title.clone()).unwrap_or_else(|| {
-                if topic.id.is_none() {
-                    "Project planning".into()
-                } else {
-                    topic.runs[0].task_title.clone()
-                }
-            });
-            let project_options: Vec<_> = groups
-                .iter()
-                .map(|p| {
-                    let name =
-                        p.id.and_then(|id| self.store.projects().iter().find(|p| p.id == id))
-                            .map(|p| p.name.clone())
-                            .unwrap_or_else(|| "Unlinked history".into());
-                    let run = p
-                        .topics
-                        .iter()
-                        .flat_map(|t| t.runs.iter())
-                        .max_by_key(|r| r.id)
-                        .unwrap();
-                    (p.id, name, run.id)
-                })
-                .collect();
-            let actual_topic = topic_task.and_then(|t| self.store.task_topic(t.id));
-            let selected_topic = actual_topic.map(|t| t.id);
-            let mut topic_filters = Vec::new();
-            for group in &project.topics {
-                if let Some(t) = group.id.and_then(|id| self.store.task_topic(id)) {
-                    if !topic_filters.iter().any(|(id, _, _, _)| *id == t.id) {
-                        topic_filters.push((
-                            t.id,
-                            t.display_name(),
-                            t.replanned_from.is_some(),
-                            group.runs[0].id,
-                        ));
-                    }
-                }
-            }
-            let planning_options: Vec<_> = project
-                .topics
-                .iter()
-                .flat_map(|group| group.runs.iter())
-                .filter(|run| {
-                    run.project_plan.is_some()
-                        || (topic.id.is_some()
-                            && run.task_id == topic.id.unwrap()
-                            && run.research_kind == Some(ResearchKind::Goal))
-                })
-                .map(|run| {
-                    (
-                        run.id,
-                        format!(
-                            "{} · {} · {}",
-                            if run.project_plan.is_some() {
-                                "Project plan"
-                            } else {
-                                "Goal plan"
-                            },
-                            crate::time_display::timestamp(if run.started_at.is_empty() {
-                                &run.queued_at
-                            } else {
-                                &run.started_at
-                            }),
-                            crate::i18n::tr_string(status_label(&run.status))
-                        ),
-                    )
-                })
-                .collect();
-            let planning_entity = cx.entity().downgrade();
-            let topic_options: Vec<_> = project
-                .topics
-                .iter()
-                .filter(|t| {
-                    t.id.is_some()
-                        && t.id.and_then(|id| self.store.task_topic(id)).map(|t| t.id)
-                            == selected_topic
-                })
-                .map(|t| {
-                    let name =
-                        t.id.and_then(|id| self.store.task(id))
-                            .map(|task| task.title.clone())
-                            .unwrap_or_else(|| {
-                                if t.id.is_none() {
-                                    "Project planning".into()
-                                } else {
-                                    t.runs[0].task_title.clone()
-                                }
-                            });
-                    (
-                        t.id,
-                        name,
-                        t.runs
-                            .iter()
-                            .find(|r| {
-                                r.research_kind == Some(ResearchKind::Advise)
-                                    && self
-                                        .store
-                                        .research_result(r.task_id)
-                                        .is_some_and(|valid| valid.id == r.id)
-                            })
-                            .unwrap_or(&t.runs[0])
-                            .id,
-                    )
-                })
-                .collect();
-            let pid = project.id;
-            let tid = topic.id;
-            let topic_value = actual_topic
-                .map(|topic| topic.display_name())
-                .unwrap_or_else(|| "Choose topic".into());
-            let topic_copied = actual_topic.is_some_and(|topic| topic.replanned_from.is_some());
-            let entity = cx.entity().downgrade();
-            let topic_entity = entity.clone();
-            let filter_entity = entity.clone();
-            let goal_title = topic_task.map(|t| t.title.clone()).unwrap_or(topic_title);
-            history = history.child(
-                col()
-                    .flex_shrink_0()
-                    .px_3()
-                    .py_3()
-                    .gap_2()
-                    .border_b_1()
-                    .border_color(rgb(colors.line))
-                    .child(label("Project", cx).text_xs())
-                    .child(if project_options.len() == 1 {
-                        context_value_field(
-                            "run-project-static",
-                            "run-project-static-title",
-                            name.clone(),
-                            false,
-                            cx,
-                        )
-                    } else {
-                        button("run-project-picker", name.clone())
-                            .w_full()
-                            .h(px(36.))
-                            .py_0()
-                            .px_2()
-                            .dropdown_caret(true)
-                            .tooltip(crate::i18n::tr("Choose project"))
-                            .dropdown_menu_with_anchor(Anchor::TopLeft, move |mut menu, _, _| {
-                                for (id, name, rid) in &project_options {
-                                    let entity = entity.clone();
-                                    let rid = *rid;
-                                    menu = menu.item(
-                                        task_menu_item(name.clone()).checked(*id == pid).on_click(
-                                            move |_, _, cx| {
-                                                let _ = entity
-                                                    .update(cx, |a, cx| a.select_run(rid, cx));
-                                            },
-                                        ),
-                                    );
-                                }
-                                menu
-                            })
-                            .into_any_element()
-                    })
-                    .child(label("Topic", cx).text_xs())
-                    .child(if topic_filters.len() == 1 {
-                        context_value_field(
-                            "run-topic-static",
-                            "run-topic-static-title",
-                            topic_value.clone(),
-                            topic_copied,
-                            cx,
-                        )
-                    } else {
-                        gpui_kit::component::button::Button::new("run-topic-filter")
-                            .w_full()
-                            .h(px(36.))
-                            .py_0()
-                            .px_2()
-                            .dropdown_caret(true)
-                            .disabled(topic_filters.is_empty())
-                            .tooltip(crate::i18n::tr(if topic_copied {
-                                format!("Copy. {topic_value}")
-                            } else {
-                                topic_value.clone()
-                            }))
-                            .child(context_value_content(
-                                "run-topic-selected-title",
-                                topic_value.clone(),
-                                topic_copied,
-                                cx,
-                            ))
-                            .dropdown_menu_with_anchor(Anchor::TopLeft, move |mut menu, _, _| {
-                                for (id, name, copied, rid) in &topic_filters {
-                                    let entity = filter_entity.clone();
-                                    let rid = *rid;
-                                    menu = menu.item(
-                                        topic_menu_item(
-                                            format!("run-topic-choice-{id}"),
-                                            format!("run-topic-choice-title-{id}"),
-                                            name.clone(),
-                                            *copied,
-                                        )
-                                        .checked(Some(*id) == selected_topic)
-                                        .on_click(
-                                            move |_, _, cx| {
-                                                let _ = entity
-                                                    .update(cx, |a, cx| a.select_run(rid, cx));
-                                            },
-                                        ),
-                                    );
-                                }
-                                menu
-                            })
-                            .into_any_element()
-                    })
-                    .when(topic_task.is_some(), |d| {
-                        d.child(label(if research { "Goal" } else { "Activity" }, cx).text_xs())
-                            .child(if topic_options.len() == 1 {
-                                context_value_field(
-                                    "run-goal-static",
-                                    "run-goal-static-title",
-                                    goal_title.clone(),
-                                    false,
-                                    cx,
-                                )
-                            } else {
-                                gpui_kit::component::button::Button::new("run-topic-picker")
-                                    .w_full()
-                                    .h(px(36.))
-                                    .py_0()
-                                    .px_2()
-                                    .dropdown_caret(true)
-                                    .child(context_value_content(
-                                        "run-goal-selected-title",
-                                        goal_title.clone(),
-                                        false,
-                                        cx,
-                                    ))
-                                    .tooltip(crate::i18n::tr("Choose goal or planning activity"))
-                                    .dropdown_menu_with_anchor(
-                                        Anchor::TopLeft,
-                                        move |mut menu, _, _| {
-                                            for (id, name, rid) in &topic_options {
-                                                let entity = topic_entity.clone();
-                                                let rid = *rid;
-                                                menu = menu.item(
-                                                    task_menu_item(name.clone())
-                                                        .checked(*id == tid)
-                                                        .on_click(move |_, _, cx| {
-                                                            let _ = entity.update(cx, |a, cx| {
-                                                                a.select_run(rid, cx)
-                                                            });
-                                                        }),
-                                                );
-                                            }
-                                            menu
-                                        },
-                                    )
-                                    .into_any_element()
-                            })
-                    })
-                    .child(
-                        row()
-                            .flex_wrap()
-                            .gap_3()
-                            .when_some(topic_task, |d, task| {
-                                let id = task.id;
-                                d.child(
-                                    link_button("open-run-goal", "Goal details")
-                                        .icon(assets::IconName::ArrowRight)
-                                        .h_6()
-                                        .px_0()
-                                        .text_xs()
-                                        .text_color(rgb(colors.accent))
-                                        .on_click(cx.listener(move |a, _, w, cx| {
-                                            a.record_origin();
-                                            a.open_task(id, w, cx);
-                                        })),
-                                )
-                            })
-                            .when(!planning_options.is_empty(), |d| {
-                                d.child(
-                                    quiet_button("run-project-planning", "Planning history")
-                                        .h_6()
-                                        .px_1()
-                                        .text_xs()
-                                        .text_color(rgb(colors.accent))
-                                        .dropdown_caret(true)
-                                        .tooltip(crate::i18n::tr(
-                                            "Project and current goal planning records",
-                                        ))
-                                        .dropdown_menu_with_anchor(
-                                            Anchor::TopLeft,
-                                            move |mut menu, _, _| {
-                                                for (rid, title) in &planning_options {
-                                                    let entity = planning_entity.clone();
-                                                    let rid = *rid;
-                                                    menu = menu.item(
-                                                        task_menu_item(title.clone()).on_click(
-                                                            move |_, _, cx| {
-                                                                let _ = entity
-                                                                    .update(cx, |a, cx| {
-                                                                        a.select_run(rid, cx)
-                                                                    });
-                                                            },
-                                                        ),
-                                                    );
-                                                }
-                                                menu
-                                            },
-                                        ),
-                                )
-                            }),
-                    ),
-            );
-
-            let mut latest: Vec<&AgentRun> = vec![];
-            for run in &topic.runs {
-                if !latest.iter().any(|r| r.task_id == run.task_id) {
-                    latest.push(run);
-                }
-            }
-            latest.sort_by_key(|r| {
-                self.store
-                    .tasks()
-                    .iter()
-                    .position(|t| t.id == r.task_id)
-                    .unwrap_or(usize::MAX)
-            });
-            let (planning, tasks): (Vec<_>, Vec<_>) = latest.into_iter().partition(|r| {
-                r.project_plan.is_some() || r.research_kind == Some(ResearchKind::Goal)
-            });
-            let (reports, tasks): (Vec<_>, Vec<_>) = tasks
-                .into_iter()
-                .partition(|r| r.research_kind == Some(ResearchKind::Advise));
-            let mut entries = col()
-                .id("run-history")
-                .flex_1()
-                .min_h_0()
-                .overflow_y_scroll()
-                .p_2()
-                .gap_1();
-            if !reports.is_empty() {
-                entries = entries.child(
-                    div()
-                        .px_2()
-                        .pt_1()
-                        .pb_1()
-                        .text_lg()
-                        .font_weight(FontWeight::SEMIBOLD)
-                        .child(selectable("Final report")),
-                );
-                for run in reports {
-                    entries = entries.child(self.run_history_entry(run, selected, cx));
-                }
-            }
-            if !tasks.is_empty() {
-                entries = entries.child(
-                    label(format!("Steps with activity · {}", tasks.len()), cx)
-                        .px_2()
-                        .pt_2()
-                        .pb_1(),
-                );
-            }
-            for run in tasks {
-                entries = entries.child(self.run_history_entry(run, selected, cx));
-            }
-            if topic
-                .runs
-                .iter()
-                .all(|r| r.project_plan.is_some() || r.research_kind == Some(ResearchKind::Goal))
-            {
-                entries = entries.child(
-                    label(
-                        "No task activity yet. Review the proposed tasks before starting research.",
-                        cx,
-                    )
-                    .px_2()
-                    .pb_3(),
-                );
-            }
-            if self.show_planning_activity && !planning.is_empty() {
-                entries = entries
-                    .child(label("Planning records", cx).px_2().py_2())
-                    .children(
-                        planning
-                            .iter()
-                            .map(|r| self.run_history_entry(r, selected, cx)),
-                    );
-            }
-            history = history.child(entries.map(observed));
-        }
-        let pane = if let Some(run) = selected {
-            self.run_content(run, cx)
-        } else {
-            col()
-                .flex_1()
-                .items_center()
-                .justify_center()
-                .gap_4()
-                .child(
-                    div()
-                        .text_2xl()
-                        .child(selectable("Your results will appear here")),
-                )
-                .child(muted("Choose a task in your project to get started.", cx))
-                .child(
-                    primary_button("runs-to-tasks", "Go to tasks")
-                        .on_click(cx.listener(|a, _, w, cx| a.navigate(Scope::All, w, cx))),
-                )
-                .into_any_element()
-        };
-        col()
-            .size_full()
-            .child(self.todo_batch_bar(None, cx))
-            .child(
-                div().flex_1().min_h_0().child(
-                    h_resizable("results-split")
-                        .with_state(&self.results_split)
-                        .child(
-                            resizable_panel()
-                                .size(px(260.))
-                                .size_range(px(200.)..px(520.))
-                                .fixed()
-                                .visible(show_history)
-                                .child(history.map(observed)),
-                        )
-                        .child(
-                            resizable_panel()
-                                .size_range(px(240.)..Pixels::MAX)
-                                .child(pane),
-                        ),
-                ),
-            )
-            .into_any_element()
+        self.empty_result_reader(cx)
     }
 
-    fn run_history_entry(
-        &self,
-        run: &AgentRun,
-        selected: Option<&AgentRun>,
-        cx: &mut Context<Self>,
-    ) -> AnyElement {
-        let colors = palette(cx);
-        let rid = run.id;
-        let active = selected
-            .is_some_and(|s| s.task_id == run.task_id && s.project_plan == run.project_plan);
-        let planning = run.project_plan.is_some() || run.research_kind == Some(ResearchKind::Goal);
-        let title = if crate::request_planning::is_understanding_run(run) {
-            "Understand research".into()
-        } else if run.project_plan.is_some() {
-            "Generate research topics".into()
-        } else if planning {
-            "Break down research goal".into()
-        } else {
-            run.task_title.clone()
-        };
-        let kind = match run.research_kind {
-            Some(ResearchKind::Collect) => "Evidence",
-            Some(ResearchKind::Analyze) => "Analysis",
-            Some(ResearchKind::Advise) => "Final report",
-            _ => "Task",
-        };
-        let identity = if planning { "Planning record" } else { kind };
-        row_button(format!("run-{rid}"), "")
-            .custom(
-                gpui_kit::component::button::ButtonCustomVariant::new(cx)
-                    .foreground(rgb(colors.text).into())
-                    .hover(rgb(colors.hover).into())
-                    .active(rgb(colors.hover).into()),
-            )
-            .w_full()
-            .h_auto()
-            .px_3()
-            .py_2()
-            .rounded(px(crate::appearance::CONTROL_RADIUS))
-            .selected(active)
-            .tooltip(crate::i18n::tr(title.clone()))
-            .accessibility_label(crate::i18n::tr(format!("{identity}: {title}")))
-            .when(run.research_kind == Some(ResearchKind::Advise), |b| {
-                b.border_1()
-                    .border_color(rgb(colors.line))
-                    .bg(rgb(colors.panel))
-            })
-            .when(active, |b| b.bg(rgb(colors.accent_surface)))
+    fn empty_result_reader(&self, cx: &mut Context<Self>) -> AnyElement {
+        col()
+            .id("empty-result-reader")
+            .size_full()
+            .items_center()
+            .justify_center()
+            .gap_4()
             .child(
-                col()
-                    .w_full()
-                    .min_w_0()
-                    .gap_1()
-                    .child(
-                        div()
-                            .id(format!("run-title-{rid}"))
-                            .role(Role::Label)
-                            .aria_label(crate::i18n::tr(title.clone()))
-                            .w_full()
-                            .whitespace_normal()
-                            .text_sm()
-                            .line_height(relative(1.4))
-                            .child(title)
-                            .map(observed),
-                    )
-                    .child(
-                        row()
-                            .flex_wrap()
-                            .gap_1()
-                            .child(
-                                label(identity, cx)
-                                    .px_2()
-                                    .py(px(2.))
-                                    .rounded_sm()
-                                    .text_color(rgb(colors.tag_text))
-                                    .bg(rgb(colors.tag_surface)),
-                            )
-                            .child(attempt_indicator(run, cx)),
-                    ),
+                div()
+                    .text_2xl()
+                    .child(selectable("No result selected")),
             )
-            .on_click(cx.listener(move |a, _, _, cx| a.select_run(rid, cx)))
+            .child(muted(
+                "Open a task or goal result from its details page.",
+                cx,
+            ))
+            .child(
+                primary_button("empty-result-to-tasks", "Go to tasks")
+                    .on_click(cx.listener(|app, _, window, cx| {
+                        app.navigate(Scope::All, window, cx)
+                    })),
+            )
             .into_any_element()
     }
 
@@ -911,7 +207,10 @@ impl TaskApp {
                         task_menu_item(name.clone())
                             .checked(id == selected)
                             .on_click(move |_, _, cx| {
-                                let _ = entity.update(cx, |a, cx| a.select_run(id, cx));
+                                let _ = entity.update(cx, |a, cx| {
+                                    a.set_selected_run(Some(id));
+                                    a.reveal_selected_run();
+                                });
                             }),
                     );
                 }
@@ -1246,7 +545,8 @@ impl TaskApp {
         if !inline_task_actions {
             let entity = cx.entity().downgrade();
             let copy = result_presentation.reader_text();
-            let details = self.show_run_details;
+            let details_entity = entity.clone();
+            let details_run = run.id;
             actions = actions.child(
                 crate::controls::tool_icon(
                     "run-actions-menu",
@@ -1258,22 +558,19 @@ impl TaskApp {
                 .dropdown_menu_with_anchor(
                     Anchor::TopRight,
                     move |mut menu, _, _| {
-                        if !details {
-                            let entity = entity.clone();
-                            menu = menu.item(
-                                gpui_kit::component::menu::PopupMenuItem::new(crate::i18n::tr(
-                                    "Technical details",
-                                ))
-                                .on_click(move |_, _, cx| {
-                                    let _ = entity.update(cx, |a, cx| {
-                                        a.show_run_details = true;
-                                        a.show_run_result = false;
-                                        cx.notify();
-                                    });
-                                }),
-                            );
-                        }
+                        let details_entity = details_entity.clone();
                         let entity = entity.clone();
+                        menu = menu.item(
+                            gpui_kit::component::menu::PopupMenuItem::new(crate::i18n::tr(
+                                "Technical details",
+                            ))
+                            .on_click(move |_, w, cx| {
+                                let _ = details_entity.update(cx, |a, cx| {
+                                    a.open_technical_details_for_run(details_run, w, cx);
+                                    cx.notify();
+                                });
+                            }),
+                        );
                         menu = menu.item(
                             gpui_kit::component::menu::PopupMenuItem::new(crate::i18n::tr(
                                 origin_label,
@@ -1632,10 +929,8 @@ impl TaskApp {
                                         "progress-technical-details-{task_id}"
                                     ))
                                     .on_click(cx.listener(
-                                        move |a, _, _, cx| {
-                                            a.select_run(run_id, cx);
-                                            a.show_run_details = true;
-                                            a.show_run_result = false;
+                                        move |a, _, w, cx| {
+                                            a.open_technical_details_for_run(run_id, w, cx);
                                             cx.notify();
                                         },
                                     )),
@@ -1902,5 +1197,310 @@ impl TaskApp {
                 )
             })
             .map(observed)
+    }
+}
+
+impl TaskApp {
+    pub(crate) fn open_technical_details(
+        &mut self,
+        task: u64,
+        window: &mut Window,
+        cx: &mut Context<Self>,
+    ) {
+        let Some(run) = self
+            .store
+            .runs()
+            .iter()
+            .rev()
+            .find(|run| run.task_id == task && run.project_plan.is_none())
+        else {
+            return;
+        };
+        self.open_technical_details_for_run(run.id, window, cx);
+    }
+
+    pub(crate) fn open_technical_details_for_run(
+        &mut self,
+        run_id: u64,
+        window: &mut Window,
+        cx: &mut Context<Self>,
+    ) {
+        if !self.store.runs().iter().any(|run| run.id == run_id) {
+            return;
+        }
+        self.technical_details_modal = Some(TechnicalDetailsModal {
+            run_id,
+            show_raw_output: true,
+            opener_focus: window.focused(cx),
+            log_scroll: gpui_kit::ScrollHandle::new(),
+            opener_route: self.nav.route().clone(),
+            opener_result: self.show_run_result,
+            opener_details: self.show_run_details,
+        });
+        cx.notify();
+    }
+
+    pub(crate) fn open_automation_technical_details(
+        &mut self,
+        run_id: u64,
+        window: &mut Window,
+        cx: &mut Context<Self>,
+    ) {
+        self.open_technical_details_for_run(run_id, window, cx);
+    }
+
+    pub(crate) fn close_technical_details(
+        &mut self,
+        window: &mut Window,
+        cx: &mut Context<Self>,
+    ) {
+        let modal = self.technical_details_modal.take();
+        if let Some(modal) = &modal {
+            if self.nav.route() != &modal.opener_route {
+                let _ = self.nav.replace_route(&self.store, modal.opener_route.clone());
+            }
+            self.show_run_result = modal.opener_result;
+            self.show_run_details = modal.opener_details;
+        }
+        let opener = modal.and_then(|modal| modal.opener_focus);
+        if let Some(opener) = opener {
+            window.focus(&opener, cx);
+        } else {
+            window.focus(&self.focus, cx);
+        }
+        cx.notify();
+    }
+
+    pub(crate) fn technical_details_modal(
+        &self,
+        window: &mut Window,
+        cx: &mut Context<Self>,
+    ) -> AnyElement {
+        let Some(modal) = &self.technical_details_modal else {
+            return div().into_any_element();
+        };
+        let Some(run) = self.store.runs().iter().find(|run| run.id == modal.run_id) else {
+            return div().into_any_element();
+        };
+        let entity = cx.entity().downgrade();
+        let logs_entity = entity.clone();
+        let output_entity = entity.clone();
+        let logs = run.logs.join("\n\n");
+        let output = run.output.clone();
+        let show_raw_output = modal.show_raw_output;
+        let log_scroll = modal.log_scroll.clone();
+        let copy_output = output.clone();
+        div()
+            .absolute()
+            .inset_0()
+            .occlude()
+            .bg(rgba(0x000000a0))
+            .flex()
+            .items_center()
+            .justify_center()
+            .p_4()
+            .on_mouse_down(
+                MouseButton::Left,
+                cx.listener(|this, _, window, cx| {
+                    this.close_technical_details(window, cx);
+                    cx.stop_propagation();
+                }),
+            )
+            .child(
+                col()
+                    .id("technical-details-modal")
+                    .w(px(860.))
+                    .max_w_full()
+                    .h(relative(0.9))
+                    .max_h_full()
+                    .p_6()
+                    .gap_4()
+                    .on_mouse_down(
+                        MouseButton::Left,
+                        |_, _, cx| cx.stop_propagation(),
+                    )
+                    .map(|d| crate::appearance::floating_surface(d, cx))
+                    .child(
+                        row()
+                            .justify_between()
+                            .items_center()
+                            .child(
+                                div()
+                                    .text_lg()
+                                    .font_weight(FontWeight::SEMIBOLD)
+                                    .child(selectable(crate::i18n::tr("Technical details"))),
+                            )
+                            .child(
+                                button("technical-details-close", "Close")
+                                    .icon(assets::IconName::Close)
+                                    .on_click(cx.listener(|this, _, window, cx| {
+                                        this.close_technical_details(window, cx)
+                                    })),
+                            ),
+                    )
+                    .child(
+                        col()
+                            .id("technical-details-metadata")
+                            .max_h(px(140.))
+                            .overflow_y_scroll()
+                            .flex_shrink_0()
+                            .gap_1()
+                            .text_xs()
+                            .child(crate::views::execution_metadata(
+                                format!("Run {} · {}", run.id, crate::i18n::tr_string(run.stage.label())),
+                                run.agent.to_string(),
+                                if run.model.is_empty() {
+                                    "Not recorded"
+                                } else {
+                                    run.model.as_str()
+                                },
+                                cx,
+                            ))
+                            .when_some(self.store.task(run.task_id), |details, task| {
+                                details.child(label(format!("Task: {}", self.store.identifier(task)), cx))
+                            })
+                            .child(label(format!("Folder: {}", run.directory), cx))
+                            .child(label(
+                                format!(
+                                    "Queued: {} · Started: {} · Finished: {}",
+                                    crate::time_display::timestamp(if run.queued_at.is_empty() {
+                                        "Not recorded"
+                                    } else {
+                                        &run.queued_at
+                                    }),
+                                    crate::time_display::timestamp(
+                                        if run.status == "Queued" || run.started_at.is_empty() {
+                                            "Not started"
+                                        } else {
+                                            &run.started_at
+                                        }
+                                    ),
+                                    crate::time_display::timestamp(run.ended_at.as_deref().unwrap_or(
+                                        if run.status == "Queued" {
+                                            "—"
+                                        } else if run.status == "Running" {
+                                            "In progress"
+                                        } else {
+                                            "Not recorded"
+                                        }
+                                    ))
+                                ),
+                                cx,
+                            ))
+                            .child(label(
+                                format!(
+                                    "Session: {} · Exit: {:?}",
+                                    run.session_id.as_deref().unwrap_or("Not available"),
+                                    run.exit_code
+                                ),
+                                cx,
+                            )),
+                    )
+                    .child(
+                        row()
+                            .flex_wrap()
+                            .child(
+                                crate::controls::select_button(
+                                    "technical-details-show-logs",
+                                    "Live logs",
+                                    !show_raw_output,
+                                    cx,
+                                )
+                                .on_click(move |_, _, cx| {
+                                    let _ = logs_entity.update(cx, |app, cx| {
+                                        if let Some(modal) = app.technical_details_modal.as_mut() {
+                                            modal.show_raw_output = false;
+                                        }
+                                        cx.notify();
+                                    });
+                                }),
+                            )
+                            .child(
+                                crate::controls::select_button(
+                                    "technical-details-show-output",
+                                    "Saved output",
+                                    show_raw_output,
+                                    cx,
+                                )
+                                .on_click(move |_, _, cx| {
+                                    let _ = output_entity.update(cx, |app, cx| {
+                                        if let Some(modal) = app.technical_details_modal.as_mut() {
+                                            modal.show_raw_output = true;
+                                        }
+                                        cx.notify();
+                                    });
+                                }),
+                            )
+                            .child(
+                                button("technical-details-copy-logs", "Copy logs").on_click(
+                                    move |_, _, cx| {
+                                        cx.write_to_clipboard(ClipboardItem::new_string(
+                                            logs.clone(),
+                                        ))
+                                    },
+                                ),
+                            )
+                            .child(
+                                button("technical-details-copy-output", "Copy output")
+                                    .disabled(copy_output.is_empty())
+                                    .on_click(move |_, _, cx| {
+                                        cx.write_to_clipboard(ClipboardItem::new_string(
+                                            copy_output.clone(),
+                                        ))
+                                    }),
+                            ),
+                    )
+                    .when(show_raw_output, |d| {
+                        d.child(
+                            col()
+                                .id("technical-details-output")
+                                .overflow_y_scroll()
+                                .flex_1()
+                                .min_h_0()
+                                .p_4()
+                                .bg(rgb(palette(cx).side))
+                                .rounded(px(crate::appearance::GROUP_RADIUS))
+                                .font_family("Menlo")
+                                .text_xs()
+                                .child(selectable_raw(output.clone()))
+                                .map(observed),
+                        )
+                    })
+                    .when(!show_raw_output, |d| {
+                        d.child(
+                            col()
+                                .id("technical-details-logs")
+                                .track_scroll(&log_scroll)
+                                .overflow_y_scroll()
+                                .flex_1()
+                                .min_h_0()
+                                .p_4()
+                                .gap_3()
+                                .bg(rgb(palette(cx).side))
+                                .rounded(px(crate::appearance::GROUP_RADIUS))
+                                .font_family("Menlo")
+                                .text_xs()
+                                .children(run.logs.iter().map(|line| {
+                                    div()
+                                        .text_color(rgb(if line.starts_with("[error]") {
+                                            palette(cx).danger
+                                        } else {
+                                            palette(cx).secondary
+                                        }))
+                                        .child(selectable(line.clone()))
+                                }))
+                                .map(observed),
+                        )
+                    }),
+            )
+            .track_focus(&self.modal_focus)
+            .on_key_down(cx.listener(|app, event: &KeyDownEvent, window, cx| {
+                if event.keystroke.key == "escape" {
+                    app.close_technical_details(window, cx);
+                    cx.stop_propagation();
+                }
+            }))
+            .focus_trap("technical-details-focus", &self.modal_focus)
+            .into_any_element()
     }
 }

@@ -171,9 +171,8 @@ pub fn run() {
                     result.attachments.len()
                 );
             }
-            a.set_scope_identity(Scope::Runs);
             a.fixture_select_task(None);
-            a.note_selected_run(Some(a.store.research_result(advice).unwrap().id));
+            a.show_task_result(a.store.research_result(advice).unwrap().id, cx);
             a.show_run_result = true;
             a.store.set_appearance(Appearance::Light);
             crate::appearance::apply(a.store.appearance(), Some(w), cx);

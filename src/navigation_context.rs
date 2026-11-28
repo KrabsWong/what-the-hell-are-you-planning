@@ -62,15 +62,10 @@ pub(crate) enum Origin {
         scroll: ScrollState,
     },
     ResearchResult {
-        /// Selected task/goal filter, if the caller had one.
-        task: Option<u64>,
-        /// Selected report/run. `None` is a legitimate empty or waiting results
-        /// page, not a missing owner.
-        run: Option<u64>,
-        /// Selected project filter of the results page.
-        project: Option<u64>,
-        /// Selected research-topic filter of the results page.
-        topic: Option<u64>,
+        /// Task/goal that owns the report reader.
+        task: u64,
+        /// Report/run selected inside that task.
+        run: u64,
         scroll: ScrollState,
     },
     SettingsPage {
@@ -120,10 +115,6 @@ pub(crate) enum NavigationTarget {
     ResearchTask(u64),
     /// A task click that opens its completed result when one exists.
     ResearchTaskResult(u64),
-    ResearchResult {
-        task: u64,
-        run: Option<u64>,
-    },
     SettingsPage,
     AutomationList,
     AutomationResults,
@@ -378,69 +369,13 @@ pub(crate) fn validate_origin(origin: Origin, store: &Store) -> BackResolution {
                 research_all("That task is no longer available. Returned to All research.")
             }
         }
-        Origin::ResearchResult {
-            task,
-            run,
-            project,
-            topic,
-            scroll,
-        } => {
-            // Research results is a valid page with no selected report. Keep the
-            // route even when the caller opened it empty or while a result was
-            // still loading; only clear owners that disappeared, and explain it.
-            let mut cleared = false;
-            let project = match project {
-                Some(id) if !project_exists(store, id) => {
-                    cleared = true;
-                    None
-                }
-                other => other,
-            };
-            let topic = match topic {
-                Some(id)
-                    if !store.topics().iter().any(|value| {
-                        value.id == id && project.is_none_or(|project| value.project_id == project)
-                    }) =>
-                {
-                    cleared = true;
-                    None
-                }
-                other => other,
-            };
-            let task = match task {
-                Some(id) if store.task(id).is_none() => {
-                    cleared = true;
-                    None
-                }
-                other => other,
-            };
-            let selected_run_deleted = run.is_some_and(|id| {
-                !store.runs().iter().any(|candidate| {
-                    candidate.id == id && task.is_none_or(|task| candidate.task_id == task)
-                })
-            });
-            let run = if selected_run_deleted { None } else { run };
-            let notice = if selected_run_deleted {
-                Some(
-                    "That result is no longer available. Returned to Research results.".to_string(),
-                )
-            } else if cleared {
-                Some(
-                    "Part of this results view is no longer available. Filters were cleared."
-                        .to_string(),
-                )
+        Origin::ResearchResult { task, run, scroll } => {
+            if store.task(task).is_some()
+                && store.runs().iter().any(|candidate| candidate.id == run)
+            {
+                BackResolution::route(Origin::ResearchResult { task, run, scroll })
             } else {
-                None
-            };
-            BackResolution {
-                route: Some(Origin::ResearchResult {
-                    task,
-                    run,
-                    project,
-                    topic,
-                    scroll,
-                }),
-                notice,
+                research_all("That result is no longer available. Returned to All research.")
             }
         }
         Origin::SettingsPage { tab, scroll } => {
@@ -956,41 +891,30 @@ mod tests {
     }
 
     #[test]
-    fn empty_or_waiting_results_origin_is_preserved() {
+    fn result_origin_requires_its_task_and_report() {
         let mut store = store();
+        store.replace_policies(Store::mock().policies().to_vec());
         let task = store
             .create_task("Task", 1, Stage::InProgress, None)
             .unwrap();
-        for (task, run) in [(None, None), (Some(task), None)] {
-            let resolution = validate_origin(
-                Origin::ResearchResult {
-                    task,
-                    run,
-                    project: None,
-                    topic: None,
-                    scroll: ScrollState { x: 0.0, y: 90.0 },
-                },
-                &store,
-            );
-            match resolution.route {
-                Some(Origin::ResearchResult {
-                    task: restored_task,
-                    run: restored_run,
-                    scroll,
-                    ..
-                }) => {
-                    assert_eq!(restored_task, task);
-                    assert_eq!(restored_run, run);
-                    assert_eq!(scroll.y, 90.0);
-                }
-                other => panic!("empty results must stay results, got {other:?}"),
-            }
-            assert!(resolution.notice.is_none());
-        }
+        store.simulate_run(task).unwrap();
+        let run = store.runs().last().unwrap().id;
+        let origin = Origin::ResearchResult {
+            task,
+            run,
+            scroll: ScrollState { x: 0.0, y: 90.0 },
+        };
+        let first = origin.clone();
+        let second = origin.clone();
+        assert_eq!(validate_origin(first, &store).route, Some(origin.clone()));
+        store.retain_runs(|value| value.id != run);
+        let resolution = validate_origin(second, &store);
+        assert!(matches!(resolution.route, Some(Origin::ResearchList { .. })));
+        assert!(resolution.notice.is_some());
     }
 
     #[test]
-    fn results_project_topic_and_report_selection_are_preserved() {
+    fn result_owner_and_report_selection_are_preserved() {
         let mut store = store();
         store.replace_policies(Store::mock().policies().to_vec());
         let topic = store.create_topic(1, "Topic").unwrap();
@@ -1001,19 +925,18 @@ mod tests {
         let run = store.runs().last().unwrap().id;
 
         let origin = Origin::ResearchResult {
-            task: Some(task),
-            run: Some(run),
-            project: Some(1),
-            topic: Some(topic),
+            task,
+            run,
             scroll: ScrollState { x: 0.0, y: 120.0 },
         };
         let resolution = validate_origin(origin.clone(), &store);
         assert_eq!(resolution.route, Some(origin));
         assert_eq!(resolution.notice, None);
+        assert!(store.topic(topic).is_some());
     }
 
     #[test]
-    fn deleted_selected_report_stays_on_results_with_a_notice() {
+    fn deleted_report_falls_back_to_all_research_with_a_notice() {
         let mut store = store();
         store.replace_policies(Store::mock().policies().to_vec());
         let task = store
@@ -1025,23 +948,13 @@ mod tests {
 
         let resolution = validate_origin(
             Origin::ResearchResult {
-                task: Some(task),
-                run: Some(run),
-                project: Some(1),
-                topic: None,
+                task,
+                run,
                 scroll: ScrollState::default(),
             },
             &store,
         );
-        match resolution.route {
-            Some(Origin::ResearchResult {
-                task: Some(restored_task),
-                run: None,
-                project: Some(1),
-                ..
-            }) => assert_eq!(restored_task, task),
-            other => panic!("a deleted report must not open the task detail, got {other:?}"),
-        }
+        assert!(matches!(resolution.route, Some(Origin::ResearchList { .. })));
         assert!(
             resolution
                 .notice
@@ -1052,90 +965,19 @@ mod tests {
     }
 
     #[test]
-    fn deleted_results_filters_are_cleared_but_the_page_survives() {
-        let base_store = store();
-        let resolution = validate_origin(
-            Origin::ResearchResult {
-                task: Some(404),
-                run: None,
-                project: Some(404),
-                topic: Some(404),
-                scroll: ScrollState::default(),
-            },
-            &base_store,
-        );
-        match resolution.route {
-            Some(Origin::ResearchResult {
-                task,
-                run,
-                project,
-                topic,
-                ..
-            }) => {
-                assert_eq!(task, None);
-                assert_eq!(run, None);
-                assert_eq!(project, None);
-                assert_eq!(topic, None);
-            }
-            other => panic!("results route must survive deleted filters, got {other:?}"),
-        }
-        assert!(resolution.notice.is_some());
-
-        // A topic that belongs to another project cannot stay selected.
-        let mut other_store = store();
-        let topic = other_store.create_topic(1, "Other").unwrap();
-        other_store.push_project(Project {
-            id: 2,
-            name: "Second".into(),
-            key: "P2".into(),
-            directory: std::env::temp_dir().to_string_lossy().into_owned(),
-            research_brief: String::new(),
-            kind: ProjectKind::User,
-        });
-        let resolution = validate_origin(
-            Origin::ResearchResult {
-                task: None,
-                run: None,
-                project: Some(2),
-                topic: Some(topic),
-                scroll: ScrollState::default(),
-            },
-            &other_store,
-        );
-        match resolution.route {
-            Some(Origin::ResearchResult { project, topic, .. }) => {
-                assert_eq!(project, Some(2));
-                assert_eq!(topic, None);
-            }
-            other => panic!("expected a results origin, got {other:?}"),
-        }
-        assert!(resolution.notice.is_some());
-    }
-
-    #[test]
-    fn search_from_an_empty_results_page_returns_to_empty_results() {
+    fn search_from_a_result_reader_falls_back_when_it_disappears() {
         let store = store();
         let mut stack = OriginStack::new();
         stack.apply_intent(&NavigationIntent::search(
             NavigationTarget::ResearchTask(1),
             Origin::ResearchResult {
-                task: None,
-                run: None,
-                project: None,
-                topic: None,
+                task: 1,
+                run: 2,
                 scroll: ScrollState { x: 0.0, y: 44.0 },
             },
         ));
         let resolution = stack.take_back(&store);
-        assert!(matches!(
-            resolution.route,
-            Some(Origin::ResearchResult {
-                task: None,
-                run: None,
-                ..
-            })
-        ));
-        assert_eq!(resolution.notice, None);
+        assert!(matches!(resolution.route, Some(Origin::ResearchList { .. })));
     }
 
     #[test]

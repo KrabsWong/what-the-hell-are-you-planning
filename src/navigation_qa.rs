@@ -629,7 +629,7 @@ fn exercise(
             Some(last),
             "{theme}: report navigation stays inside the period"
         );
-        assert_eq!(app.read(cx).scope(), Scope::Runs);
+        assert_eq!(app.read(cx).scope(), Scope::All);
 
         assert!(w.try_find("open-tasks-menu").is_none());
         let current_period_steps: std::collections::HashSet<_> = app

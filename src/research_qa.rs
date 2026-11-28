@@ -378,8 +378,11 @@ pub fn run() {
         // its attempt details the way a user does, which selects the run.
         click_in(w, cx, "detail-scroll", &format!("subtask-{}", children[0]));
         w.render_frame(cx);
-        click_in(w, cx, "detail-scroll", "step-attempt-details");
+        w.click("task-actions-menu", cx);
+        w.within("popup-menu").click(0usize, cx);
         w.render_frame(cx);
+        assert!(app.read(cx).technical_details_modal.is_some());
+        assert!(w.find("technical-details-modal").visible());
     })
     .unwrap();
     screenshot(&mut cx, handle, &root, "03-live-logs.png");
@@ -653,8 +656,11 @@ pub fn run() {
             .task_id;
         click_in(w, cx, "detail-scroll", &format!("subtask-{task_id}"));
         w.render_frame(cx);
-        click_in(w, cx, "detail-scroll", "step-attempt-details");
+        w.click("task-actions-menu", cx);
+        w.within("popup-menu").click(0usize, cx);
         w.render_frame(cx);
+        assert!(app.read(cx).technical_details_modal.is_some());
+        assert!(w.find("technical-details-modal").visible());
         w.click("cancel-run", cx);
     })
     .unwrap();
@@ -1282,7 +1288,7 @@ assert 'Read the attached file directly' in args[-1]
                 a.note_selected_run(Some(run_id));
                 a.show_run_details = false;
                 a.show_run_result = true;
-                a.navigate(crate::app::Scope::Runs, w, cx);
+                a.navigate(crate::app::Scope::All, w, cx);
                 steps
             })
         })

@@ -644,7 +644,7 @@ impl TaskApp {
             actions = actions.child(
                 quiet_button("view-todo-batch", "Progress")
                     .icon(assets::IconName::ArrowRight)
-                    .on_click(cx.listener(|this, _, w, cx| this.navigate(Scope::Runs, w, cx))),
+                    .on_click(cx.listener(|this, _, w, cx| this.navigate(Scope::All, w, cx))),
             );
         }
         actions = actions.child(

@@ -878,7 +878,6 @@ pub(crate) static CORE_TRANSLATIONS: &[(&str, &str)] = &[
         "Research progress · {completed}/{} steps",
         "研究进度 · {completed}/{} 个步骤",
     ),
-    ("Research results", "研究结果"),
     ("Research stage models", "Research 阶段模型"),
     ("Research steps", "研究步骤"),
     ("Research steps not planned yet", "尚未规划研究步骤"),

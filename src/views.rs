@@ -1207,13 +1207,6 @@ impl TaskApp {
                 self.store.paused_project_goals().len(),
                 cx,
             )))
-            .child(self.nav(
-                "runs",
-                "Research results",
-                Scope::Runs,
-                self.store.progress_result_task_count(),
-                cx,
-            ))
             // Archive only covers ordinary research tasks and goals. Keep it in
             // the Research group so a long sidebar never makes it look like a
             // child of the Automations section.
@@ -1295,7 +1288,6 @@ impl TaskApp {
             Scope::All => assets::IconName::Layers,
             Scope::Project(_) | Scope::Topic(_) => assets::IconName::Folder,
             Scope::Archive => assets::IconName::Archive,
-            Scope::Runs => assets::IconName::ChartNoAxesCombined,
             Scope::Recovery => assets::IconName::Pause,
             Scope::Research => assets::IconName::Search,
             Scope::Automations => assets::IconName::Clock,
@@ -1307,8 +1299,6 @@ impl TaskApp {
             .accessibility_label(crate::i18n::tr(title.to_string()))
             .tooltip(crate::i18n::tr(if scope == Scope::All {
                 "Research tasks and goals across your projects. Automations are in their own section below.".to_string()
-            } else if scope == Scope::Runs {
-                "Research tasks in progress or with saved results, counted once each. Planning and retry history do not add to this number.".to_string()
             } else if scope == Scope::Archive {
                 "Archived research tasks and goals. Automation definitions are archived from their own page.".to_string()
             } else { title.to_string() }))
@@ -1503,7 +1493,7 @@ impl TaskApp {
             );
         }
         let mut links = vec![];
-        let result = self.selected().is_none() && self.scope() == Scope::Runs;
+        let result = self.task_result_context().is_some();
         let run = result
             .then(|| self.displayed_run_id())
             .flatten()
@@ -1839,12 +1829,14 @@ impl TaskApp {
     /// Every branch is rebuilt when a real parent notification reaches the
     /// surface; animation frames reuse the retained subtree.
     pub(crate) fn main_content(&self, cx: &mut Context<Self>) -> AnyElement {
+        if self.task_result_context().is_some() {
+            return self.runs(cx);
+        }
         if let Some(id) = self.selected() {
             self.detail(id, cx)
         } else {
             match self.scope() {
                 Scope::Topic(id) => self.topic_view(id, cx),
-                Scope::Runs => self.runs(cx),
                 Scope::Recovery => self.recovery_view(cx),
                 Scope::Research => self.research_view(cx),
                 Scope::Automations => self.automations(cx),
@@ -2438,7 +2430,12 @@ impl TaskApp {
         // Automation-owned steps belong to their automation; they must not be
         // archived individually from the Research task surface.
         let automation_owned = t.automation_id.is_some();
-        let mut metadata = row()
+        let has_attempts = self
+            .store
+            .runs()
+            .iter()
+            .any(|run| run.task_id == id && run.project_plan.is_none());
+        let metadata = row()
             .gap_2()
             .items_center()
             .min_w_0()
@@ -2585,6 +2582,7 @@ impl TaskApp {
                         move |mut menu, _, _| {
                             let edit = task_menu_entity.clone();
                             let archive = task_menu_entity.clone();
+                            let details = task_menu_entity.clone();
                             menu = menu
                                 .item(
                                     PopupMenuItem::new(crate::i18n::tr("Edit task"))
@@ -2595,6 +2593,17 @@ impl TaskApp {
                                             });
                                         }),
                                 );
+                            if has_attempts {
+                                menu = menu.item(
+                                    PopupMenuItem::new(crate::i18n::tr("Technical details"))
+                                        .on_click(move |_, w, cx| {
+                                            let _ = details.update(cx, |a, cx| {
+                                                a.open_technical_details(id, w, cx);
+                                                cx.notify();
+                                            });
+                                        }),
+                                );
+                            }
                             if !automation_owned {
                                 menu = menu.separator().item(
                                     PopupMenuItem::new(crate::i18n::tr(match (archived, is_goal) {
@@ -2844,87 +2853,6 @@ impl TaskApp {
                         .child(selectable("This saved attempt remains readable but is not part of the validated completion. Restore the goal to review or run it again.")))
                     .map(observed),
             );
-        }
-        if self.task_running(id) {
-            properties = properties.child(button("task-progress", "View progress").on_click(
-                cx.listener(move |this, _, w, cx| {
-                    if this
-                        .store
-                        .task(id)
-                        .is_some_and(|task| task.automation_id.is_some())
-                        && let Some(goal) = this.store.owning_research_goal(id)
-                        && this.open_automation_progress_for_goal(goal, w, cx)
-                    {
-                        return;
-                    }
-                    if let Some(goal) = this.store.owning_research_goal(id) {
-                        this.open_task(goal, w, cx);
-                    } else {
-                        this.view_task_result(id, cx);
-                    }
-                }),
-            ));
-        }
-        if let Some((task, message)) = &self.task_start_feedback {
-            if *task == id {
-                properties =
-                    properties.child(
-                        col()
-                            .gap_1()
-                            .p_2()
-                            .border_l_2()
-                            .border_color(rgb(colors.accent))
-                            .child(div().text_sm().font_weight(FontWeight::SEMIBOLD).child(
-                                selectable(if previously_completed {
-                                    "Task could not run again"
-                                } else {
-                                    "Task could not start"
-                                }),
-                            ))
-                            .child({
-                                let related = self.store.tasks().iter().find_map(|task| {
-                                    let name =
-                                        format!("{} · {}", self.store.identifier(task), task.title);
-                                    message.split_once(&name).map(|(before, after)| {
-                                        (
-                                            before.trim().to_string(),
-                                            name.clone(),
-                                            after.trim_start_matches('.').trim().to_string(),
-                                        )
-                                    })
-                                });
-                                if let Some((before, name, after)) = related {
-                                    col()
-                                        .gap_2()
-                                        .child(
-                                            div()
-                                                .text_sm()
-                                                .text_color(rgb(colors.muted))
-                                                .child(selectable(before)),
-                                        )
-                                        .child(
-                                            div()
-                                                .text_sm()
-                                                .font_weight(FontWeight::SEMIBOLD)
-                                                .text_color(rgb(colors.accent))
-                                                .child(selectable(name)),
-                                        )
-                                        .child(
-                                            div()
-                                                .text_sm()
-                                                .text_color(rgb(colors.muted))
-                                                .child(selectable(after)),
-                                        )
-                                        .into_any_element()
-                                } else {
-                                    div()
-                                        .text_sm()
-                                        .child(selectable(message.clone()))
-                                        .into_any_element()
-                                }
-                            }),
-                    );
-            }
         }
         let missing_folder = self
             .store
@@ -3503,6 +3431,12 @@ impl Render for TaskApp {
                     cx.stop_propagation();
                 } else if event.keystroke.modifiers.platform
                     && event.keystroke.key == "["
+                    && this.technical_details_modal.is_some()
+                {
+                    this.close_technical_details(w, cx);
+                    cx.stop_propagation();
+                } else if event.keystroke.modifiers.platform
+                    && event.keystroke.key == "["
                     && this.draft.is_none()
                     && this.new_project.is_none()
                     && this.topic_editor.is_none()
@@ -3600,6 +3534,9 @@ impl Render for TaskApp {
             .child(self.retained_footer(cx));
         if self.editing() {
             root = root.child(self.editor_overlay(cx));
+        }
+        if self.technical_details_modal.is_some() {
+            root = root.child(self.technical_details_modal(window, cx));
         }
         if self.research_save_impact.is_some() {
             root = root.child(crate::research_input_views::save_impact_dialog(self, cx));

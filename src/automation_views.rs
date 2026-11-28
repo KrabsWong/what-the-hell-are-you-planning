@@ -1479,7 +1479,7 @@ impl TaskApp {
     }
 
     /// Explicit progress action for an automation-owned step: open the period
-    /// that owns it, not generic Research results.
+    /// that owns it, not generic task result readers.
     pub(crate) fn open_automation_progress_for_goal(
         &mut self,
         goal: u64,
@@ -3366,7 +3366,7 @@ impl TaskApp {
             let mut section = col().mt_4().gap_2().pt_3().border_t_1().border_color(rgb(colors.line))
                 .child(overview_heading("Legacy automation planning history"))
                 .child(overview_note(
-                    "These saved planning attempts belong to an automation project, but their original automation could not be verified. They stay here instead of Research results and are never assigned by guesswork.",
+                    "These saved planning attempts belong to an automation project, but their original automation could not be verified. They stay in automation history and are never assigned by guesswork.",
                     cx,
                 ));
             for run in unassigned {
@@ -5099,178 +5099,20 @@ impl TaskApp {
             .iter()
             .filter(|run| run.automation_occurrence_id == Some(id))
             .collect();
+        let latest_run = runs.last().map(|run| run.id);
         panel = panel.child(
             quiet_button("automation-technical", "Technical details")
                 .px_0()
                 .self_start()
-                .icon(if self.automation_ui.show_technical {
-                    assets::IconName::ChevronDown
-                } else {
-                    assets::IconName::ChevronRight
-                })
-                .on_click(cx.listener(|app, _, _, cx| {
-                    app.automation_ui.show_technical = !app.automation_ui.show_technical;
+                .icon(assets::IconName::ExternalLink)
+                .disabled(latest_run.is_none())
+                .on_click(cx.listener(move |app, _, window, cx| {
+                    if let Some(run_id) = latest_run {
+                        app.open_automation_technical_details(run_id, window, cx);
+                    }
                     cx.notify();
                 })),
         );
-        if self.automation_ui.show_technical {
-            let mut technical = col().pl_6().gap_3();
-            technical = technical.child(
-                col()
-                    .id("automation-period-diagnostics")
-                    .gap_1()
-                    .child(label(
-                        occurrence_context(
-                            self.store.automation(occurrence.automation_id),
-                            occurrence,
-                            &self.store,
-                        ),
-                        cx,
-                    ))
-                    .child(label("Saved task instructions", cx))
-                    .child(crate::views::selectable_raw(
-                        occurrence.snapshot.objective.clone(),
-                    ))
-                    .child(label("Saved expected result", cx))
-                    .child(crate::views::selectable_raw(
-                        occurrence.snapshot.expected_result.clone(),
-                    ))
-                    .map(observed),
-            );
-            for report in &presentation.reports {
-                technical = technical.child(label(report.owner_label.clone(), cx));
-            }
-            let selected = self
-                .automation_ui
-                .technical_run
-                .and_then(|id| runs.iter().copied().find(|run| run.id == id))
-                .or_else(|| runs.last().copied());
-            if runs.len() > 1 {
-                let mut tabs = row().flex_wrap().gap_1();
-                for run in &runs {
-                    let run_id = run.id;
-                    tabs = tabs.child(
-                        select_button(
-                            format!("automation-run-tab-{run_id}"),
-                            format!("Run #{run_id} · {}", run.status),
-                            selected.is_some_and(|selected| selected.id == run_id),
-                            cx,
-                        )
-                        .on_click(cx.listener(move |app, _, _, cx| {
-                            app.automation_ui.technical_run = Some(run_id);
-                            app.automation_ui.technical_scroll = ScrollHandle::new();
-                            cx.notify();
-                        })),
-                    );
-                }
-                technical = technical.child(tabs);
-            }
-            if let Some(run) = selected {
-                let logs = run
-                    .logs
-                    .iter()
-                    .rev()
-                    .take(40)
-                    .cloned()
-                    .collect::<Vec<_>>()
-                    .into_iter()
-                    .rev()
-                    .collect::<Vec<_>>()
-                    .join("\n");
-                let inner = self.automation_ui.technical_scroll.clone();
-                let outer = self.automation_ui.dialog_scroll.clone();
-                // Capture before either scroll container handles the wheel.
-                let scroll_guard = canvas(
-                    |_, _, _| (),
-                    move |bounds, _, window, _| {
-                        let visible = bounds.intersect(&window.content_mask().bounds);
-                        let inner = inner.clone();
-                        let outer = outer.clone();
-                        window.on_mouse_event(move |event: &ScrollEvent, phase, window, cx| {
-                            if phase != DispatchPhase::Capture || !visible.contains(&event.position)
-                            {
-                                return;
-                            }
-                            let delta = event.delta.pixel_delta(window.line_height());
-                            if delta.y == px(0.) || delta.x.abs() > delta.y.abs() {
-                                return;
-                            }
-                            let reveal = if delta.y < px(0.) && bounds.bottom() > visible.bottom() {
-                                delta.y.max(visible.bottom() - bounds.bottom())
-                            } else if delta.y > px(0.) && bounds.top() < visible.top() {
-                                delta.y.min(visible.top() - bounds.top())
-                            } else {
-                                px(0.)
-                            };
-                            let outer_next =
-                                (outer.offset().y + reveal).clamp(-outer.max_offset().y, px(0.));
-                            if reveal != px(0.) && outer_next != outer.offset().y {
-                                outer.set_offset(point(outer.offset().x, outer_next));
-                            } else {
-                                let offset = inner.offset();
-                                let next =
-                                    (offset.y + delta.y).clamp(-inner.max_offset().y, px(0.));
-                                if next != offset.y {
-                                    inner.set_offset(point(offset.x, next));
-                                } else {
-                                    outer.set_offset(point(
-                                        outer.offset().x,
-                                        (outer.offset().y + delta.y)
-                                            .clamp(-outer.max_offset().y, px(0.)),
-                                    ));
-                                }
-                            }
-                            window.refresh();
-                            cx.stop_propagation();
-                        });
-                    },
-                )
-                .absolute()
-                .inset_0();
-                technical = technical.child(
-                    col()
-                        .p_3()
-                        .gap_1()
-                        .rounded(px(crate::appearance::GROUP_RADIUS))
-                        .border_1()
-                        .border_color(rgb(colors.line))
-                        .child(label(
-                            format!(
-                                "Run #{} · {} · {} · {} attempt(s)",
-                                run.id,
-                                run.status,
-                                run.model,
-                                run.auto_retry_attempt + 1
-                            ),
-                            cx,
-                        ))
-                        .child(label(
-                            format!(
-                                "Session: {}",
-                                run.session_id
-                                    .clone()
-                                    .unwrap_or_else(|| "not assigned".into())
-                            ),
-                            cx,
-                        ))
-                        .child(
-                            div().relative().w_full().child(scroll_guard).child(
-                                div()
-                                    .id(format!("automation-run-logs-{}", run.id))
-                                    .w_full()
-                                    .min_h_0()
-                                    .max_h(reader_height)
-                                    .overflow_y_scroll()
-                                    .track_scroll(&self.automation_ui.technical_scroll)
-                                    .restrict_scroll_to_axis()
-                                    .child(label(logs, cx))
-                                    .map(observed),
-                            ),
-                        ),
-                );
-            }
-            panel = panel.child(technical);
-        }
         panel.map(observed).into_any_element()
     }
 

@@ -5,7 +5,7 @@ use crate::{
     persistence::Storage,
     recovery::SessionCheck,
 };
-use gpui_kit::{test::TestWindowExt, *};
+use gpui_kit::{test::{TestQueryExt, TestWindowExt}, *};
 use std::{
     path::Path,
     sync::Arc,
@@ -155,82 +155,6 @@ print(json.dumps({'type':'text','part':{'text':json.dumps(result)}}),flush=True)
         std::thread::sleep(Duration::from_millis(20));
     }
     cx.update_window(handle, |_, w, cx| {
-        app.update(cx, |a, cx| {
-            a.navigate(Scope::Runs, w, cx);
-            a.note_selected_run(Some(3));
-            a.set_result_selection(None, a.selected_run());
-            a.reveal_selected_run();
-            a.show_run_details = false;
-        });
-        w.render_frame(cx);
-        assert!(w.try_find("run-project-picker").is_some());
-        assert!(w.try_find("run-resolve-task").is_some());
-    })
-    .unwrap();
-    cx.capture_screenshot(handle)
-        .unwrap()
-        .save(root.join("interrupted-result-navigation.png"))
-        .unwrap();
-    cx.update_window(handle, |_, w, cx| {
-        w.click("run-resolve-task", cx);
-        assert_eq!(app.read(cx).selected(), Some(goals[1].1[0]));
-        app.update(cx, |a, cx| a.navigate(Scope::Recovery, w, cx));
-        w.render_frame(cx);
-    })
-    .unwrap();
-    cx.update_window(handle, |_, w, cx| {
-        app.update(cx, |a, cx| {
-            a.navigate(Scope::Runs, w, cx);
-            a.note_selected_run(Some(2));
-            a.set_result_selection(None, a.selected_run());
-        });
-        w.render_frame(cx);
-        assert!(w.try_find("run-topic-filter").is_some());
-        w.click("run-topic-filter", cx);
-    })
-    .unwrap();
-    cx.run_until_parked();
-    cx.update_window(handle, |_, w, cx| w.within("popup-menu").click(1usize, cx))
-        .unwrap();
-    cx.run_until_parked();
-    cx.update_window(handle, |_, w, cx| {
-        let a = app.read(cx);
-        let run = a
-            .store
-            .runs()
-            .iter()
-            .find(|r| Some(r.id) == a.selected_run())
-            .unwrap();
-        assert_eq!(a.store.task(run.task_id).unwrap().project_id, 1);
-        assert_ne!(
-            a.store.task_topic(run.task_id).unwrap().id,
-            a.store.task_topic(goals[0].0).unwrap().id
-        );
-        w.render_frame(cx);
-        if w.try_find("run-topic-filter").is_some() {
-            w.click("run-topic-filter", cx);
-        }
-    })
-    .unwrap();
-    cx.run_until_parked();
-    cx.update_window(handle, |_, w, cx| {
-        if w.try_find("popup-menu").is_some() {
-            assert!(w.within("popup-menu").try_find(0usize).is_some());
-            assert!(
-                w.within("popup-menu").try_find(1usize).is_some(),
-                "Topic menu keeps every topic in the project"
-            );
-            w.within("popup-menu").click(0usize, cx);
-        } else {
-            assert!(
-                w.try_find("run-topic-static").is_some(),
-                "a single topic is read-only"
-            );
-        }
-    })
-    .unwrap();
-    cx.run_until_parked();
-    cx.update_window(handle, |_, w, cx| {
         app.update(cx, |a, cx| a.navigate(Scope::Recovery, w, cx));
         w.render_frame(cx);
     })
@@ -316,7 +240,15 @@ print(json.dumps({'type':'text','part':{'text':json.dumps(result)}}),flush=True)
         w.click(format!("step-prerequisite-{}", goals[1].1[0]), cx);
         w.render_frame(cx);
         assert_eq!(app.read(cx).selected(), Some(goals[1].1[0]));
-        assert!(w.try_find("step-attempt-details").is_some());
+        w.click("task-actions-menu", cx);
+        assert!(w.find_by_label("Technical details").visible());
+        w.within("popup-menu").click(0usize, cx);
+        w.render_frame(cx);
+        assert!(app.read(cx).technical_details_modal.is_some());
+        assert!(w.find("technical-details-modal").visible());
+        assert!(w.try_find("step-execution-panel").is_some());
+        w.click("technical-details-close", cx);
+        assert!(app.read(cx).technical_details_modal.is_none());
         assert!(w.try_find("step-execution-panel").is_some());
 
     })

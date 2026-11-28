@@ -1429,7 +1429,6 @@ pub(crate) static SIMPLIFIED_CHINESE: &[(&str, &str)] = &[
     ("All research", "所有研究"),
     ("All statuses", "所有状态"),
     ("Research", "研究"),
-    ("Research results", "研究结果"),
     ("Archive", "归档"),
     (
         "Applies to generated research and automation output.",
@@ -1538,8 +1537,8 @@ pub(crate) static SIMPLIFIED_CHINESE: &[(&str, &str)] = &[
         "直接存储在 自动化 下（无主题）。",
     ),
     (
-        "These saved planning attempts belong to an automation project, but their original automation could not be verified. They stay here instead of Research results and are never assigned by guesswork.",
-        "这些已保存的规划尝试属于某个自动化项目，但无法验证其原始自动化。它们保留在此处，而不是 研究结果 中，也不会通过猜测进行分配。",
+        "These saved planning attempts belong to an automation project, but their original automation could not be verified. They stay in automation history and are never assigned by guesswork.",
+        "这些已保存的规划尝试属于某个自动化项目，但无法验证其原始自动化。它们保留在自动化历史中，也不会通过猜测进行分配。",
     ),
     ("Understand research", "理解研究"),
     (

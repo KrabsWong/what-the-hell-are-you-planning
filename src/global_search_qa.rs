@@ -557,9 +557,7 @@ fn research_result_origin(
     height: f32,
 ) {
     let (mut cx, handle, app) = with_app(&fixture.store, path, width, height, |a, _, _| {
-        a.set_scope_identity(Scope::Runs);
-        a.set_result_selection(Some(fixture.step), a.selected_run());
-        a.note_selected_run(Some(fixture.run));
+        a.set_result_selection(Some(fixture.step), Some(fixture.run));
         a.show_run_result = true;
     });
     cx.update_window(handle, |_, w, cx| {
@@ -569,11 +567,9 @@ fn research_result_origin(
         w.render_frame(cx);
         focus_search_input(w, cx);
         assert!(app.read(cx).global_search_ui.open);
-        assert_eq!(app.read(cx).scope(), Scope::Runs);
         assert_eq!(app.read(cx).selected_run(), Some(fixture.run));
         w.press("escape", cx);
         w.render_frame(cx);
-        assert_eq!(app.read(cx).scope(), Scope::Runs);
         assert_eq!(app.read(cx).task_result_context(), Some(fixture.step));
         assert_eq!(app.read(cx).selected_run(), Some(fixture.run));
         assert_eq!(w.focused(cx), opener);
@@ -618,7 +614,7 @@ fn automation_list_origin(
         assert_eq!(
             w.find("global-search-empty-title").label(),
             Some("No matches"),
-            "automation-owned steps must not appear as ordinary Research results"
+            "automation-owned steps must not appear as ordinary task result readers"
         );
         w.click("global-search-domain-all", cx);
         w.press("cmd-a", cx);

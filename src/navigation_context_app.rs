@@ -198,14 +198,11 @@ impl TaskApp {
                 },
             };
         }
-        if let Some(task) = self.task_result_context() {
-            // A report opened from a task is its own page. Its caller context is
-            // the task/run, not a filtered results list; project/topic stay
-            // unset so Back does not silently filter the results page.
-            return self.report_origin(Some(task), self.selected_run());
+        if let Some(task) = self.task_result_context()
+            && let Some(run) = self.selected_run()
+        {
+            return self.report_origin(task, run);
         }
-        // A selected task is the visible task page even when the underlying
-        // scope is Runs; capture that page rather than the results list.
         if let Some(task) = self.selected() {
             return Origin::ResearchTask {
                 task,
@@ -214,11 +211,6 @@ impl TaskApp {
                     y: pixels_y(&self.detail_scroll),
                 },
             };
-        }
-        if let Some(run) = self.selected_run()
-            && self.scope() == Scope::Runs
-        {
-            return self.results_origin(Some(run));
         }
         if self.scope() == Scope::Automations
             && self.settings_overlay()
@@ -290,63 +282,15 @@ impl TaskApp {
         }
     }
 
-    fn report_origin(&self, task: Option<u64>, run: Option<u64>) -> Origin {
+    fn report_origin(&self, task: u64, run: u64) -> Origin {
         Origin::ResearchResult {
             task,
             run,
-            project: None,
-            topic: None,
             scroll: ScrollState {
                 x: self.result_scroll.offset().x.as_f32(),
                 y: pixels_y(&self.result_scroll),
             },
         }
-    }
-
-    /// The Research results page has no separate project/topic filter state:
-    /// its pickers choose a run, and the run's task owns the displayed
-    /// project/topic. Capture that run explicitly; do not infer filters from an
-    /// unrelated task selection.
-    fn results_origin(&self, run: Option<u64>) -> Origin {
-        let (project, topic) = run
-            .and_then(|id| self.store.runs().iter().find(|value| value.id == id))
-            .and_then(|run| self.store.task(run.task_id))
-            .map(|task| {
-                (
-                    Some(task.project_id),
-                    self.store.task_topic(task.id).map(|topic| topic.id),
-                )
-            })
-            .unwrap_or((None, None));
-        Origin::ResearchResult {
-            task: None,
-            run,
-            project,
-            topic,
-            scroll: ScrollState {
-                x: self.result_scroll.offset().x.as_f32(),
-                y: pixels_y(&self.result_scroll),
-            },
-        }
-    }
-
-    fn results_run_for(&self, project: Option<u64>, topic: Option<u64>) -> Option<u64> {
-        if project.is_none() && topic.is_none() {
-            return None;
-        }
-        self.store
-            .runs()
-            .iter()
-            .rev()
-            .filter(|run| run.project_plan.is_none())
-            .find(|run| {
-                let task = self.store.task(run.task_id);
-                let actual_project = task.map(|task| task.project_id);
-                let actual_topic = task.and_then(|task| self.store.task_topic(task.id));
-                project.is_none_or(|project| actual_project == Some(project))
-                    && topic.is_none_or(|topic| actual_topic.is_some_and(|value| value.id == topic))
-            })
-            .map(|run| run.id)
     }
 
     /// Apply one validated origin. This never records another origin.
@@ -380,33 +324,16 @@ impl TaskApp {
                 self.detail_scroll
                     .set_offset(point(px(scroll.x), px(scroll.y)));
             }
-            Origin::ResearchResult {
-                task,
-                run,
-                project,
-                topic,
-                scroll,
-            } => {
-                let run = run.or_else(|| self.results_run_for(project, topic));
-                match (task, run) {
-                    (Some(task), Some(run)) => {
-                        self.open_task(task, w, cx);
-                        self.set_result_selection(Some(task), Some(run));
-                        self.show_run_result = true;
-                        self.show_run_details = false;
-                    }
-                    (Some(task), None) => {
-                        self.open_task(task, w, cx);
-                        self.set_result_selection(Some(task), None);
-                    }
-                    (None, Some(run)) => {
-                        self.set_result_selection(None, Some(run));
-                        self.show_run_result = true;
-                        self.show_run_details = false;
-                    }
-                    (None, None) => {
-                        self.navigate(Scope::Runs, w, cx);
-                    }
+            Origin::ResearchResult { task, run, scroll } => {
+                if self.store.task(task).is_some()
+                    && self.store.runs().iter().any(|candidate| candidate.id == run)
+                {
+                    self.open_task(task, w, cx);
+                    self.set_result_selection(Some(task), Some(run));
+                    self.show_run_result = true;
+                    self.show_run_details = false;
+                } else {
+                    self.navigate(Scope::All, w, cx);
                 }
                 self.result_scroll
                     .set_offset(point(px(scroll.x), px(scroll.y)));
@@ -519,14 +446,6 @@ impl TaskApp {
                 if let Some(run) = result {
                     self.show_task_result(run, cx);
                 }
-            }
-            NavigationTarget::ResearchResult { task, run } => {
-                if let Some(run) = run {
-                    if self.defer_result_navigation(run, Some(task), false, None, cx) {
-                        return;
-                    }
-                }
-                self.set_result_selection(Some(task), run);
             }
             NavigationTarget::SettingsPage => self.navigate(Scope::Settings, w, cx),
             NavigationTarget::AutomationList => self.open_automations(w, cx),
@@ -1349,6 +1268,10 @@ impl TaskApp {
     pub(crate) fn request_escape(&mut self, w: &mut Window, cx: &mut Context<Self>) -> bool {
         if self.research_save_impact.is_some() {
             self.cancel_research_save(w, cx);
+            return true;
+        }
+        if self.technical_details_modal.is_some() {
+            self.close_technical_details(w, cx);
             return true;
         }
         if self.previous_versions_task.is_some() {

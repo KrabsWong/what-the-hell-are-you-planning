@@ -383,7 +383,7 @@ fn planning_chain(root: &Path) {
         })),
         "freezing the plan must not launch another planner"
     );
-    // The attempt stays under its automation, never in ordinary Research results.
+    // The attempt stays under its automation, never in ordinary task result readers.
     cx.update_window(handle, |_, w, cx| {
         app.update(cx, |a, cx| {
             a.open_settings_overlay();
@@ -407,7 +407,7 @@ fn planning_chain(root: &Path) {
     cx.update_window(handle, |_, w, cx| {
         app.update(cx, |a, cx| {
             a.close_planning_attempt_overlay();
-            a.navigate(Scope::Runs, w, cx);
+            a.navigate(Scope::All, w, cx);
         });
         w.render_frame(cx);
     })
@@ -2076,7 +2076,7 @@ print(json.dumps({'type':'text','part':{'text':json.dumps({'status':'complete','
                 match surface {
                     "settings" => a.set_scope_identity(Scope::Settings),
                     "report" => {
-                        a.set_scope_identity(Scope::Runs);
+                        a.set_scope_identity(Scope::All);
                         a.fixture_select_task(None);
                         a.note_selected_run(Some(report_run_id));
                         a.show_run_result = true;
@@ -2197,7 +2197,7 @@ print(json.dumps({'type':'text','part':{'text':json.dumps({'status':'complete','
             })
             .unwrap();
             let manual_run = read_state(&mut cx, &app, |a| {
-                assert_eq!(a.scope(), Scope::Runs);
+                assert_eq!(a.scope(), Scope::All);
                 a.selected_run().expect("manual submission opens its run")
             });
             assert!(
@@ -2944,7 +2944,7 @@ fn completion_boundary_check(root: &Path) {
                         a.fixture_select_task(None);
                         a.note_selected_run(None);
                         if route == "progress" {
-                            a.set_scope_identity(Scope::Runs);
+                            a.set_scope_identity(Scope::All);
                             a.note_selected_run(Some(run_id));
                             a.show_run_result = true;
                             a.show_run_details = false;
@@ -4977,7 +4977,7 @@ print(json.dumps({'type':'text','part':{'text':json.dumps(plan)}}), flush=True)
             .clone())
     );
     cx.update_window(handle, |_, w, cx| {
-        app.update(cx, |a, cx| a.navigate(Scope::Runs, w, cx));
+        app.update(cx, |a, cx| a.navigate(Scope::All, w, cx));
         w.render_frame(cx);
     })
     .unwrap();
@@ -5317,7 +5317,7 @@ print(json.dumps({'type':'text','part':{'text':json.dumps(plan)}}), flush=True)
     .unwrap();
     screenshot(&mut cx, handle, &directory, "planning-history-narrow.png");
     cx.update_window(handle, |_, w, cx| {
-        app.update(cx, |a, cx| a.navigate(Scope::Runs, w, cx));
+        app.update(cx, |a, cx| a.navigate(Scope::All, w, cx));
         w.render_frame(cx);
     })
     .unwrap();
@@ -6186,13 +6186,13 @@ fn ui_interaction(root: &Path) -> PathBuf {
             .map(|run| (run.id, run.task_id))
             .expect("the automation has a run to open")
     });
-    // Switching to Research results must not keep a period step selected; the
+    // Switching to All research must not keep a period step selected; the
     // ordinary results view falls back to its own latest run.
     cx.update_window(handle, |_, w, cx| {
         app.update(cx, |a, cx| {
             a.note_selected_run(Some(automation_run));
             a.set_result_selection(Some(automation_task), a.selected_run());
-            a.navigate(Scope::Runs, w, cx);
+            a.navigate(Scope::All, w, cx);
         });
         w.render_frame(cx);
     })
@@ -6205,7 +6205,7 @@ fn ui_interaction(root: &Path) -> PathBuf {
     cx.update_window(handle, |_, w, cx| {
         app.update(cx, |a, cx| {
             a.set_result_selection(Some(automation_task), a.selected_run());
-            a.set_scope_identity(Scope::Runs);
+            a.set_scope_identity(Scope::All);
             a.note_selected_run(Some(automation_run));
             a.show_run_details = false;
             a.show_run_result = false;
@@ -6215,10 +6215,6 @@ fn ui_interaction(root: &Path) -> PathBuf {
     })
     .unwrap();
     cx.update_window(handle, |_, w, _| {
-        assert!(
-            w.try_find("run-navigation").is_none(),
-            "an automation run must not show an empty project history column"
-        );
     })
     .unwrap();
     screenshot(&mut cx, handle, &directory, "06-results-blank-column.png");
@@ -6579,7 +6575,7 @@ fn ui_interaction(root: &Path) -> PathBuf {
     assert_eq!(read_state(&mut cx, &app, |a| a.scope()), Scope::Automations);
 
     // A period waiting for its scheduled retry is cancellable directly from
-    // Research results, without pausing the automation or stopping a process.
+    // task result readers, without pausing the automation or stopping a process.
     let waiting = cx
         .update_window(handle, |_, _, cx| {
             app.update(cx, |a, cx| {

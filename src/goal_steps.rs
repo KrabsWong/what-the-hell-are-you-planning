@@ -358,7 +358,6 @@ impl TaskApp {
         else {
             return div().into_any_element();
         };
-        let colors = crate::appearance::palette(cx);
         let archived = self.store.task_is_archived(id);
         let checking = self.recovery_blocks_task(id);
         let cancelled = task.stage == Stage::Cancelled;
@@ -422,22 +421,6 @@ impl TaskApp {
                 detail,
                 cx,
             ));
-        }
-        if self.store.runs().iter().any(|r| r.task_id == id && r.project_plan.is_none()) {
-            actions = actions.child(
-                quiet_button("step-attempt-details", "Technical details")
-                    .self_start()
-                    .h_7()
-                    .px_1()
-                    .text_sm()
-                    .text_color(rgb(colors.secondary))
-                    .on_click(cx.listener(move |a, _, _, cx| {
-                        a.view_task_result(id, cx);
-                        a.show_run_details = true;
-                        a.show_run_result = false;
-                        cx.notify();
-                    })),
-            );
         }
         actions.into_any_element()
     }

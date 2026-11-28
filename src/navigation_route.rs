@@ -35,15 +35,14 @@ pub(crate) const MAX_OVERLAY_DEPTH: usize = 6;
 pub(crate) const MAX_RETURN_DEPTH: usize = 8;
 
 /// The data scope a route projects into for sidebar/collection rendering.
-/// `ResearchList` never carries a `Runs` alias: ordinary results are
-/// `ResearchResult`, and Market research/Paused are their own routes.
+/// Ordinary results are owned `ResearchResult` readers, and Market
+/// research/Paused are their own routes.
 #[derive(Clone, Debug, PartialEq, Eq)]
 pub(crate) enum DataScope {
     All,
     Project(ProjectId),
     Topic(TopicId),
     Archive,
-    Results,
     Paused,
     MarketResearch,
     Automations,
@@ -67,12 +66,10 @@ pub(crate) enum SettingsSection {
     About,
 }
 
-/// What owns an ordinary/task result page. Automation planning attempts are
-/// never admitted through `OrdinaryPage`; they stay T23-owned history.
+/// What owns a result page. Automation planning attempts stay T23-owned
+/// history and are never admitted through an ownerless page.
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub(crate) enum ResultOwner {
-    /// Global Research results. Only ordinary, non-automation results.
-    OrdinaryPage,
     /// An ordinary research task's report. The task must not be automation-owned.
     Task(TaskId),
     /// A Goal report or one of its ordinary child-step reports. The goal is a
@@ -313,7 +310,6 @@ impl Route {
                 Scope::Project(id) => DataScope::Project(*id),
                 Scope::Topic(id) => DataScope::Topic(*id),
                 Scope::Archive => DataScope::Archive,
-                Scope::Runs => DataScope::Results,
                 Scope::Recovery => DataScope::Paused,
                 Scope::Research => DataScope::MarketResearch,
                 Scope::Automations | Scope::AutomationRuns => DataScope::Automations,
@@ -325,10 +321,13 @@ impl Route {
                 | ResultOwner::AutomationTask { task, .. } => store
                     .task(task)
                     .map(|task| DataScope::Project(task.project_id))
-                    .unwrap_or(DataScope::Results),
-                ResultOwner::OrdinaryPage | ResultOwner::PlanningProgress { .. } => {
-                    DataScope::Results
-                }
+                    .unwrap_or(DataScope::All),
+                ResultOwner::PlanningProgress { request } => store
+                    .research_requests()
+                    .iter()
+                    .find(|value| value.id == request)
+                    .map(|request| DataScope::Project(request.project_id))
+                    .unwrap_or(DataScope::All),
             },
             Self::PausedProjects => DataScope::Paused,
             Self::MarketResearch => DataScope::MarketResearch,
@@ -371,7 +370,6 @@ impl Route {
             Scope::Project(id) => Self::research_list(Project(*id), all_status),
             Scope::Topic(id) => Self::research_list(Topic(*id), all_status),
             Scope::Archive => Self::research_list(Archive, all_status),
-            Scope::Runs => Self::research_result(ResultOwner::OrdinaryPage, None),
             Scope::Recovery => Self::PausedProjects,
             Scope::Research => Self::MarketResearch,
             Scope::Automations => Self::AutomationList,
@@ -382,13 +380,21 @@ impl Route {
 
     /// Read-only projection used by the still-migrating selection/overlay code.
     /// The typed route is the authority; this never gets stored beside it.
-    pub(crate) fn legacy_scope(&self) -> Scope {
+    pub(crate) fn legacy_scope(&self, store: &Store) -> Scope {
         match self {
             Self::ResearchList(page) => research_scope_legacy(page.scope()),
             Self::ResearchTask(page) => page.base().clone(),
-            // Result pages project to the results family until S3's typed
-            // selection is the only reader.
-            Self::ResearchResult(_) => Scope::Runs,
+            Self::ResearchResult(page) => match page.owner() {
+                ResultOwner::Task(task)
+                | ResultOwner::Goal { goal: task }
+                | ResultOwner::AutomationTask { task, .. } => legacy_scope_for_task(store, task),
+                ResultOwner::PlanningProgress { request } => store
+                    .research_requests()
+                    .iter()
+                    .find(|value| value.id == request)
+                    .map(|request| Scope::Project(request.project_id))
+                    .unwrap_or(Scope::All),
+            },
             Self::PausedProjects => Scope::Recovery,
             Self::MarketResearch => Scope::Research,
             Self::Settings(_) => Scope::Settings,
@@ -407,6 +413,13 @@ fn research_scope_legacy(scope: &ResearchScope) -> Scope {
         ResearchScope::Topic(id) => Scope::Topic(*id),
         ResearchScope::Archive => Scope::Archive,
     }
+}
+
+fn legacy_scope_for_task(store: &Store, task: TaskId) -> Scope {
+    store
+        .task(task)
+        .map(|task| Scope::Project(task.project_id))
+        .unwrap_or(Scope::All)
 }
 
 /// A modal/editor surface. Page identity is not stored here; the overlay stack
@@ -1458,7 +1471,6 @@ fn validate_result_page(page: &ResearchResultPage, store: &Store) -> Result<(), 
 
 fn validate_result_owner(owner: ResultOwner, store: &Store) -> Result<(), NavReject> {
     match owner {
-        ResultOwner::OrdinaryPage => Ok(()),
         ResultOwner::Task(task) => {
             let value = store
                 .task(task)
@@ -1538,15 +1550,6 @@ fn validate_result_run(owner: ResultOwner, run: RunId, store: &Store) -> Result<
         .find(|value| value.id == run)
         .ok_or_else(|| NavReject::missing("run", run))?;
     match owner {
-        ResultOwner::OrdinaryPage => {
-            if store.run_is_automation_owned(value) {
-                Err(NavReject::InvalidOwnership {
-                    reason: "automation run cannot use the ordinary results page",
-                })
-            } else {
-                Ok(())
-            }
-        }
         ResultOwner::Task(task) => {
             if value.task_id != task {
                 return Err(NavReject::InvalidOwnership {
@@ -1991,7 +1994,7 @@ fn structural_parent(route: &Route, store: &Store) -> Option<Route> {
             ResultOwner::Task(task)
             | ResultOwner::Goal { goal: task }
             | ResultOwner::AutomationTask { task, .. } => Some(Route::research_task(task)),
-            ResultOwner::OrdinaryPage | ResultOwner::PlanningProgress { .. } => None,
+            ResultOwner::PlanningProgress { .. } => None,
         },
         Route::PausedProjects | Route::MarketResearch | Route::Settings(_) => None,
         Route::AutomationList => None,
@@ -2031,11 +2034,8 @@ fn validate_frame(mut frame: ReturnFrame, store: &Store) -> Restored {
                 | ResultOwner::AutomationTask { .. } => {
                     Route::research_list(ResearchScope::All, AllStatus::All)
                 }
-                ResultOwner::OrdinaryPage => {
-                    Route::research_result(ResultOwner::OrdinaryPage, None)
-                }
                 ResultOwner::PlanningProgress { .. } => {
-                    Route::research_result(ResultOwner::OrdinaryPage, None)
+                    Route::research_list(ResearchScope::All, AllStatus::All)
                 }
             },
             Route::AutomationDetail(_) | Route::AutomationEditor(_) => Route::AutomationList,
@@ -2053,7 +2053,7 @@ fn validate_frame(mut frame: ReturnFrame, store: &Store) -> Restored {
         {
             page.selection = ResultSelection::empty();
             notice =
-                Some("That result is no longer available. Returned to Research results.".into());
+                Some("That result is no longer available. Returned to All research.".into());
         }
     }
 
@@ -2384,26 +2384,6 @@ mod tests {
             .unwrap_err();
         assert!(matches!(err, NavReject::InvalidOwnership { .. }));
         assert_eq!(state, before, "rejected command must not mutate state");
-    }
-
-    #[test]
-    fn ordinary_results_never_admit_automation_runs() {
-        let mut store = base_store();
-        let task = task(&mut store, "Automation task");
-        store.task_mut(task).unwrap().automation_id = Some(77);
-        let run = run(&mut store, task, "Succeeded", "automation output");
-        let mut state = NavState::new(&store, list_route()).unwrap();
-        let before = state.clone();
-        let err = state
-            .enter(
-                &store,
-                Destination::Route(result_route(ResultOwner::OrdinaryPage, Some(run))),
-                EnterMode::Replace,
-                scroll(0.0),
-            )
-            .unwrap_err();
-        assert!(matches!(err, NavReject::InvalidOwnership { .. }));
-        assert_eq!(state, before);
     }
 
     #[test]
@@ -3108,15 +3088,6 @@ mod tests {
     }
 
     #[test]
-    fn data_scope_has_no_runs_alias_inside_research_list() {
-        let store = base_store();
-        let list = Route::research_list(ResearchScope::All, AllStatus::All);
-        assert_eq!(list.data_scope(&store), DataScope::All);
-        let results = Route::research_result(ResultOwner::OrdinaryPage, None);
-        assert_eq!(results.data_scope(&store), DataScope::Results);
-    }
-
-    #[test]
     fn result_page_rejects_deleted_owner_without_mutation() {
         let mut store = base_store();
         let task = task(&mut store, "Task");
@@ -3240,7 +3211,6 @@ mod tests {
             Scope::All,
             Scope::Project(1),
             Scope::Archive,
-            Scope::Runs,
             Scope::Recovery,
             Scope::Research,
             Scope::Automations,
@@ -3248,8 +3218,9 @@ mod tests {
             Scope::Settings,
         ] {
             let route = Route::for_scope(&scope, AllStatus::All, Some(3), 20);
+            let store = Store::mock();
             assert_eq!(
-                route.legacy_scope(),
+                route.legacy_scope(&store),
                 scope,
                 "S2 projection must preserve the page family"
             );
@@ -3258,10 +3229,6 @@ mod tests {
 
     #[test]
     fn scope_route_adapter_uses_the_typed_result_page() {
-        assert_eq!(
-            Route::for_scope(&Scope::Runs, AllStatus::All, None, 20),
-            Route::research_result(ResultOwner::OrdinaryPage, None)
-        );
         assert_eq!(
             Route::for_scope(&Scope::AutomationRuns, AllStatus::All, Some(3), 0),
             Route::automation_results(Some(3), 1),

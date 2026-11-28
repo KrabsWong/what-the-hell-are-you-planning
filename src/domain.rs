@@ -957,7 +957,7 @@ impl Store {
     }
     /// One ownership predicate for every result-selection surface. Automation
     /// planning attempts belong to their automation; ambiguous legacy attempts
-    /// never become ordinary Research results by accident.
+    /// never become ordinary task results by accident.
     pub fn run_is_automation_owned(&self, run: &AgentRun) -> bool {
         if run.automation_occurrence_id.is_some() {
             return true;

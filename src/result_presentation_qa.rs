@@ -61,7 +61,6 @@ pub fn run() {
     }
     if std::env::var("PLANNING_TECHNICAL_QA").as_deref() == Ok("1") {
         atomic_period_navigation_check(&root);
-        technical_scroll_check(&root);
         return;
     }
     pure_checks();
@@ -1375,153 +1374,6 @@ fn screenshot_automation(
     }
 }
 
-fn technical_scroll_check(root: &Path) {
-    for (width, height) in [(1440., 920.), (1000., 680.)] {
-        for mode in [Appearance::Light, Appearance::Dark] {
-            let (mut store, occurrence) =
-                automation_fixture(root, AutomationState::ResearchComplete);
-            store.set_appearance(mode);
-            let ids: Vec<_> = store
-                .runs()
-                .iter()
-                .filter(|run| run.automation_occurrence_id == Some(occurrence))
-                .map(|run| run.id)
-                .collect();
-            assert!(ids.len() > 1);
-            for index in 0..store.runs().len() {
-                let run = store.run_at_mut(index).unwrap();
-                if ids.contains(&run.id) {
-                    run.logs = (0..40).map(|line| format!("Run #{} diagnostic line {line}: evidence collection and report processing.", run.id)).collect();
-                }
-            }
-            let first_step = store
-                .runs()
-                .iter()
-                .find(|run| run.id == ids[0])
-                .unwrap()
-                .task_id;
-            let latest = *ids.last().unwrap();
-            let first = ids[0];
-            let presentation = present_occurrence(&store, store.occurrence(occurrence).unwrap());
-            let source_run = presentation
-                .reports
-                .iter()
-                .find(|report| !report.presentation.sources.is_empty())
-                .unwrap()
-                .presentation
-                .run_id
-                .unwrap();
-            let sources_toggle = format!("automation-sources-{occurrence}-report-{source_run}");
-            let source_link = format!("automation-source-{occurrence}-report-{source_run}-0");
-            let path = root.join(format!("technical-{mode:?}-{width}.sqlite3"));
-            Storage::new(path.clone()).save(&store).unwrap();
-            let (mut cx, handle) = with_app(store, &path, width, height, |a, _, _| {
-                a.set_scope_identity(Scope::AutomationRuns);
-                a.push_period_overlay(occurrence);
-                a.automation_ui.show_technical = false;
-            });
-            screenshot(
-                &mut cx,
-                handle,
-                root,
-                &format!("result-default-{mode:?}-{width}.png"),
-            );
-            cx.update_window(handle, |root, w, cx| {
-                w.render_frame(cx);
-                let app = root
-                    .downcast::<base::Root>()
-                    .unwrap()
-                    .read(cx)
-                    .view()
-                    .clone()
-                    .downcast::<TaskApp>()
-                    .unwrap();
-                let step_row = format!("automation-step-{first_step}");
-                assert!(w.try_find(step_row.clone()).is_none());
-                w.click("automation-completed-steps", cx);
-                w.render_frame(cx);
-                w.find(step_row.clone());
-                w.click("automation-completed-steps", cx);
-                w.render_frame(cx);
-                assert!(w.try_find(step_row).is_none());
-                assert!(w.try_find(source_link.clone()).is_none());
-                w.click(sources_toggle.clone(), cx);
-                w.render_frame(cx);
-                w.find(source_link.clone());
-                w.click(sources_toggle.clone(), cx);
-                w.render_frame(cx);
-                assert!(w.try_find(source_link.clone()).is_none());
-                assert!(w.try_find("automation-period-diagnostics").is_none());
-                app.update(cx, |a, cx| {
-                    a.automation_ui.show_technical = true;
-                    cx.notify();
-                });
-                w.render_frame(cx);
-                w.find("automation-period-diagnostics");
-                app.update(cx, |a, _| {
-                    a.automation_ui
-                        .dialog_scroll
-                        .set_offset(point(px(0.), -a.automation_ui.dialog_scroll.max_offset().y));
-                });
-                w.render_frame(cx);
-                let log_id = format!("automation-run-logs-{latest}");
-                assert!(w.find(log_id.clone()).visible());
-                assert!(w.try_find(format!("automation-run-logs-{first}")).is_none());
-                let before = app.read(cx).automation_ui.dialog_scroll.offset();
-                w.scroll(
-                    log_id.clone(),
-                    ScrollDelta::Pixels(point(px(0.), px(-90.))),
-                    cx,
-                );
-                w.render_frame(cx);
-                assert!(app.read(cx).automation_ui.technical_scroll.offset().y < px(0.));
-                assert_eq!(app.read(cx).automation_ui.dialog_scroll.offset(), before);
-                w.scroll(
-                    log_id.clone(),
-                    ScrollDelta::Pixels(point(px(0.), px(40.))),
-                    cx,
-                );
-                w.render_frame(cx);
-                assert_eq!(app.read(cx).automation_ui.dialog_scroll.offset(), before);
-                w.scroll(
-                    log_id.clone(),
-                    ScrollDelta::Pixels(point(px(0.), px(1000.))),
-                    cx,
-                );
-                w.render_frame(cx);
-                assert_eq!(app.read(cx).automation_ui.dialog_scroll.offset(), before);
-                w.scroll(
-                    log_id.clone(),
-                    ScrollDelta::Pixels(point(px(0.), px(100.))),
-                    cx,
-                );
-                w.render_frame(cx);
-                assert!(app.read(cx).automation_ui.dialog_scroll.offset().y > before.y);
-                w.click(format!("automation-run-tab-{first}"), cx);
-                w.render_frame(cx);
-                assert_eq!(app.read(cx).automation_ui.technical_run, Some(first));
-                assert_eq!(
-                    app.read(cx).automation_ui.technical_scroll.offset().y,
-                    px(0.)
-                );
-                assert!(w.try_find(log_id.clone()).is_none());
-                w.find(format!("automation-run-logs-{first}"));
-            })
-            .unwrap();
-            screenshot(
-                &mut cx,
-                handle,
-                root,
-                &format!("technical-{mode:?}-{width}.png"),
-            );
-        }
-    }
-    println!(
-        "Technical run selection and scroll QA passed · {}",
-        root.display()
-    );
-}
-
 fn screenshot_ordinary(
     store: Store,
     path: &Path,
@@ -1533,9 +1385,7 @@ fn screenshot_ordinary(
     height: f32,
 ) {
     let (mut cx, handle) = with_app(store, path, width, height, |a, _, _| {
-        a.set_scope_identity(Scope::Runs);
-        a.set_result_selection(Some(task), a.selected_run());
-        a.note_selected_run(Some(run));
+        a.set_result_selection(Some(task), Some(run));
         a.show_run_details = false;
         a.show_run_result = true;
     });
@@ -2038,9 +1888,7 @@ fn copy_result_check(root: &Path) {
     let path = directory.join("copy.sqlite3");
     Storage::new(path.clone()).save(&store).unwrap();
     let (mut cx, handle) = with_app(store, &path, 1000., 680., |a, _, _| {
-        a.set_scope_identity(Scope::Runs);
-        a.set_result_selection(Some(task), a.selected_run());
-        a.note_selected_run(Some(run));
+        a.set_result_selection(Some(task), Some(run));
         a.show_run_details = false;
         a.show_run_result = true;
     });

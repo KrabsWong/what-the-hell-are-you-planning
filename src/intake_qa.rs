@@ -471,7 +471,7 @@ pub fn run() {
         });
         w.render_frame(cx);
         w.click("research-task-result", cx);
-        assert_eq!(app.read(cx).scope(), Scope::Runs);
+        assert_eq!(app.read(cx).scope(), Scope::All);
     })
     .unwrap();
     screenshot(&mut cx, handle, &root, "02-final-report.png");
@@ -742,13 +742,15 @@ fn topic_understanding_screenshots(
 
 fn compact_understanding_screenshots(cx: &mut HeadlessAppContext, store: &Store, root: &Path) {
     // Fresh windows avoid retained pane dimensions from the headless resize harness.
-    let run = store.research_requests()[0].planning_run_id;
+    let run = store.research_requests()[0].planning_run_id.unwrap();
     let window = cx
         .open_window(size(px(1000.), px(680.)), |w, cx| {
             let view = cx.new(|cx| TaskApp::new_mock(w, cx));
             view.update(cx, |a, cx| {
                 a.store = store.clone();
-                a.set_result_selection(None, run);
+                if let Some(task) = a.store.runs().iter().find(|r| r.id == run).map(|r| r.task_id) {
+                    a.set_result_selection(Some(task), Some(run));
+                }
                 a.show_run_result = true;
                 cx.notify();
             });

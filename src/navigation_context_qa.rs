@@ -887,7 +887,7 @@ pub fn run() {
 
     // 8. Search from empty results returns to the same empty results page.
     cx.update_window(handle, |_, w, cx| {
-        app.update(cx, |a, cx| a.navigate(Scope::Runs, w, cx));
+        app.update(cx, |a, cx| a.navigate(Scope::All, w, cx));
         w.render_frame(cx);
         w.click("footer-search", cx);
         w.render_frame(cx);
@@ -907,7 +907,7 @@ pub fn run() {
         w.render_frame(cx);
         w.click("navigation-back", cx);
         w.render_frame(cx);
-        assert_eq!(app.read(cx).scope(), Scope::Runs);
+        assert_eq!(app.read(cx).scope(), Scope::All);
         assert!(app.read(cx).selected().is_none());
         assert!(app.read(cx).task_result_context().is_none());
     })

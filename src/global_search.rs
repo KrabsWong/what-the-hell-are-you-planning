@@ -7,7 +7,7 @@
 //!
 //! Search is synchronous over the in-memory [`Store`]. It never reads report
 //! bodies or run logs: period hits use period metadata and whether a final run
-//! exists. Automation-owned tasks are not ordinary Research results.
+//! exists. Automation-owned tasks do not enter ordinary task result readers.
 
 use crate::app::TaskApp;
 use crate::appearance::palette;

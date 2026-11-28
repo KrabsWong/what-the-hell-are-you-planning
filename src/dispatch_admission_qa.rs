@@ -11,13 +11,13 @@ use crate::automation::{
     WindowRule,
 };
 use crate::automation_schedule::{Schedule, ScheduleSpec};
-use crate::dispatch_admission::{AdmissionId, AdmissionUpdate, DispatchAdmissionAdapter};
-use crate::domain_command::{Command, CommandClass};
-use crate::persistence_worker::WorkerOptions;
 use crate::dispatch_admission::FakeDispatchRunner;
+use crate::dispatch_admission::{AdmissionId, AdmissionUpdate, DispatchAdmissionAdapter};
 use crate::domain::{AgentRun, Store};
+use crate::domain_command::{Command, CommandClass};
 use crate::persistence::Storage;
 use crate::persistence_live;
+use crate::persistence_worker::WorkerOptions;
 use gpui_kit::test::TestWindowExt;
 use gpui_kit::*;
 use sha2::{Digest, Sha256};
@@ -51,16 +51,14 @@ const PLAN: &str = r#"{"tasks":[{"title":"Collect","instructions":"Find evidence
 const INDEPENDENT_PLAN: &str = r#"{"tasks":[{"title":"Collect A","instructions":"Find A","kind":"collect","depends_on":[]},{"title":"Collect B","instructions":"Find B","kind":"collect","depends_on":[]},{"title":"Analyze","instructions":"Analyze A","kind":"analyze","depends_on":[0]},{"title":"Report","instructions":"Report","kind":"advise","depends_on":[2]}]}"#;
 
 fn run_root() -> PathBuf {
-    std::env::current_dir()
-        .unwrap()
-        .join(format!(
-            ".local/dispatch-admission-qa/{}-{}",
-            std::process::id(),
-            std::time::SystemTime::now()
-                .duration_since(std::time::UNIX_EPOCH)
-                .unwrap_or_default()
-                .as_nanos()
-        ))
+    std::env::current_dir().unwrap().join(format!(
+        ".local/dispatch-admission-qa/{}-{}",
+        std::process::id(),
+        std::time::SystemTime::now()
+            .duration_since(std::time::UNIX_EPOCH)
+            .unwrap_or_default()
+            .as_nanos()
+    ))
 }
 
 pub fn run() {
@@ -207,11 +205,13 @@ impl AppHarness {
             let value = self
                 .cx
                 .update_window(self.handle, |_, _, cx| {
-                    self.app
-                        .update(cx, |a, cx| {
-                            a.poll_dispatch_admissions(cx);
-                            (done(a), a.qa_dispatch_fake.as_ref().map(|f| f.starts.clone()))
-                        })
+                    self.app.update(cx, |a, cx| {
+                        a.poll_dispatch_admissions(cx);
+                        (
+                            done(a),
+                            a.qa_dispatch_fake.as_ref().map(|f| f.starts.clone()),
+                        )
+                    })
                 })
                 .unwrap();
             if value.0 {
@@ -225,8 +225,9 @@ impl AppHarness {
     fn starts(&mut self) -> Vec<u64> {
         self.cx
             .update_window(self.handle, |_, _, cx| {
-                self.app
-                    .update(cx, |a, _| a.qa_dispatch_fake.as_ref().unwrap().starts.clone())
+                self.app.update(cx, |a, _| {
+                    a.qa_dispatch_fake.as_ref().unwrap().starts.clone()
+                })
             })
             .unwrap()
     }
@@ -234,18 +235,17 @@ impl AppHarness {
     fn commit(&mut self, run: AgentRun, intent: LaunchIntent) -> bool {
         self.cx
             .update_window(self.handle, |_, _, cx| {
-                self.app
-                    .update(cx, |a, cx| {
-                        a.commit_prepared_dispatch(
-                            PreparedRunDispatch {
-                                run: run.clone(),
-                                files: Vec::new(),
-                            },
-                            intent,
-                            cx,
-                        )
-                        .is_some()
-                    })
+                self.app.update(cx, |a, cx| {
+                    a.commit_prepared_dispatch(
+                        PreparedRunDispatch {
+                            run: run.clone(),
+                            files: Vec::new(),
+                        },
+                        intent,
+                        cx,
+                    )
+                    .is_some()
+                })
             })
             .unwrap()
     }
@@ -304,26 +304,19 @@ impl AppHarness {
     fn retry_dispatch(&mut self) -> bool {
         self.cx
             .update_window(self.handle, |_, _, cx| {
-                self.app
-                    .update(cx, |a, cx| a.retry_dispatch_admission(cx))
+                self.app.update(cx, |a, cx| a.retry_dispatch_admission(cx))
             })
             .unwrap()
     }
 
     /// Drive only the real executor timer. No adapter calls or manual polling.
-    fn pump_until(
-        &mut self,
-        timeout: Duration,
-        mut done: impl FnMut(&TaskApp) -> bool,
-    ) -> bool {
+    fn pump_until(&mut self, timeout: Duration, mut done: impl FnMut(&TaskApp) -> bool) -> bool {
         let deadline = Instant::now() + timeout;
         while Instant::now() < deadline {
             self.cx.advance_clock(Duration::from_millis(30));
             let value = self
                 .cx
-                .update_window(self.handle, |_, _, cx| {
-                    self.app.update(cx, |a, _| done(a))
-                })
+                .update_window(self.handle, |_, _, cx| self.app.update(cx, |a, _| done(a)))
                 .unwrap();
             if value {
                 return true;
@@ -390,11 +383,7 @@ fn independent_tasks_fixture(root: &Path) -> (Store, Vec<u64>) {
     let tasks = (0..3)
         .map(|index| {
             let goal = store
-                .create_research_goal(
-                    format!("Independent dispatch {index}"),
-                    "Scope".into(),
-                    1,
-                )
+                .create_research_goal(format!("Independent dispatch {index}"), "Scope".into(), 1)
                 .unwrap();
             let steps = store.apply_research_plan(goal, PLAN).unwrap();
             steps[0]
@@ -491,7 +480,9 @@ fn executor_driven_three_step_dispatch(root: &Path) {
     let storage = Storage::new(path.clone());
     let _ = storage.upgrade_paths(|_| {});
     let lock = storage.acquire_lock().unwrap();
-    let mut live = persistence_live::select_existing(&storage).unwrap().unwrap();
+    let mut live = persistence_live::select_existing(&storage)
+        .unwrap()
+        .unwrap();
     let loaded = live.migrated_store.take();
 
     let mut cx = HeadlessAppContext::with_platform(
@@ -505,13 +496,7 @@ fn executor_driven_three_step_dispatch(root: &Path) {
         .open_window(size(px(1000.), px(680.)), |w, cx| {
             let view = cx.new(|cx| TaskApp::new_mock(w, cx));
             view.update(cx, |a, cx| {
-                a.attach_loaded_storage_live(
-                    storage,
-                    Ok((lock, loaded)),
-                    Some(live),
-                    w,
-                    cx,
-                );
+                a.attach_loaded_storage_live(storage, Ok((lock, loaded)), Some(live), w, cx);
             });
             entity = Some(view.clone());
             cx.new(|cx| base::Root::new(view, w, cx))
@@ -595,13 +580,21 @@ fn executor_driven_three_step_dispatch(root: &Path) {
         let a = app.read(cx);
         assert!(a.storage_error.is_empty(), "{}", a.storage_error);
         for task in &steps {
-            let attempts: Vec<_> = a.store.runs().iter().filter(|run| run.task_id == *task).collect();
+            let attempts: Vec<_> = a
+                .store
+                .runs()
+                .iter()
+                .filter(|run| run.task_id == *task)
+                .collect();
             assert_eq!(attempts.len(), 1, "each step has exactly one attempt");
             assert_eq!(attempts[0].status, "Succeeded");
         }
         assert!(a.active_runs.is_empty());
         assert!(a.queued_runs.is_empty());
-        assert!(!a.runtime_pump_active(), "runtime pump settles after the durable chain");
+        assert!(
+            !a.runtime_pump_active(),
+            "runtime pump settles after the durable chain"
+        );
     });
 }
 
@@ -730,7 +723,10 @@ fn cancel_after_receipt_before_claim_never_launches(root: &Path) {
     assert!(!harness.commit(run.clone(), LaunchIntent::Task(task)));
     assert!(
         harness.pump_until(Duration::from_secs(10), |a| {
-            a.store.runs().iter().any(|candidate| candidate.id == run.id)
+            a.store
+                .runs()
+                .iter()
+                .any(|candidate| candidate.id == run.id)
                 && a.dispatch_claim_pending.is_some()
         }),
         "the durable receipt was not applied before the held claim"
@@ -816,9 +812,7 @@ fn pending_admission_defers_fanout_and_cancel_cleans_binding(root: &Path) {
     harness
         .cx
         .update_window(harness.handle, |_, _, cx| {
-            harness
-                .app
-                .update(cx, |a, cx| a.start_goal_batch(goal, cx))
+            harness.app.update(cx, |a, cx| a.start_goal_batch(goal, cx))
         })
         .unwrap();
     assert!(
@@ -1020,8 +1014,7 @@ fn material_verification_wakes_and_settles(root: &Path) {
         .cx
         .update_window(harness.handle, |_, _, cx| {
             harness.app.update(cx, |a, _| {
-                let review =
-                    a.pending_material_edit.is_some() || a.research_save_impact.is_some();
+                let review = a.pending_material_edit.is_some() || a.research_save_impact.is_some();
                 let attached = a.store.task(task).is_some_and(|value| {
                     value
                         .attachments
@@ -1090,7 +1083,9 @@ fn material_confirm_ack_closes_review(root: &Path) {
     let storage = Storage::new(path.clone());
     let _ = storage.upgrade_paths(|_| {});
     let lock = storage.acquire_lock().unwrap();
-    let mut live = persistence_live::select_existing(&storage).unwrap().unwrap();
+    let mut live = persistence_live::select_existing(&storage)
+        .unwrap()
+        .unwrap();
     let loaded = live.migrated_store.take();
 
     let mut cx = HeadlessAppContext::with_platform(
@@ -1299,7 +1294,9 @@ fn render_wake_saves_idle_legacy_edit(root: &Path) {
     let storage = Storage::new(path.clone());
     let _ = storage.upgrade_paths(|_| {});
     let lock = storage.acquire_lock().unwrap();
-    let mut live = persistence_live::select_existing(&storage).unwrap().unwrap();
+    let mut live = persistence_live::select_existing(&storage)
+        .unwrap()
+        .unwrap();
     let loaded = live.migrated_store.take();
 
     let mut cx = HeadlessAppContext::with_platform(
@@ -1450,8 +1447,7 @@ fn render_wake_saves_idle_legacy_edit(root: &Path) {
             !a.live_needs_pump()
                 && !a.runtime_pump_active()
                 && !a.store.has_tracked_changes()
-                && a
-                    .store
+                && a.store
                     .task(task)
                     .is_some_and(|value| value.labels.iter().any(|label| label == "legacy-edit"))
         });
@@ -1466,8 +1462,7 @@ fn render_wake_saves_idle_legacy_edit(root: &Path) {
             !a.live_needs_pump()
                 && !a.runtime_pump_active()
                 && !a.store.has_tracked_changes()
-                && a
-                    .store
+                && a.store
                     .task(task)
                     .is_some_and(|value| value.labels.iter().any(|label| label == "legacy-edit"))
         });
@@ -1496,15 +1491,21 @@ fn durable_before_launch(root: &Path) {
             })
         })
         .unwrap();
-    assert!(harness.starts().is_empty(), "fake runner started before ack");
+    assert!(
+        harness.starts().is_empty(),
+        "fake runner started before ack"
+    );
     assert!(
         harness.poll_until(Duration::from_secs(10), |a| {
-            a.dispatch_awaiting.is_none()
-                && a.store.runs().iter().any(|value| value.id == run.id)
+            a.dispatch_awaiting.is_none() && a.store.runs().iter().any(|value| value.id == run.id)
         }),
         "dispatch never became durable"
     );
-    assert_eq!(harness.starts(), vec![run.id], "exactly one launch after ack");
+    assert_eq!(
+        harness.starts(),
+        vec![run.id],
+        "exactly one launch after ack"
+    );
     let keys: Vec<String> = std::fs::read(&harness.intent)
         .ok()
         .and_then(|payload| serde_json::from_slice::<serde_json::Value>(&payload).ok())
@@ -1522,7 +1523,8 @@ fn durable_before_launch(root: &Path) {
         "confirmed dispatch intent was not acknowledged: {keys:?}"
     );
     assert!(
-        keys.iter().any(|key| key == "launch:dispatch:None:run:1000"),
+        keys.iter()
+            .any(|key| key == "launch:dispatch:None:run:1000"),
         "launch claim must remain until the run reaches a confirmed state: {keys:?}"
     );
     // The isolated database contains exactly one run and no duplicate link.
@@ -1531,7 +1533,11 @@ fn durable_before_launch(root: &Path) {
         .load_store()
         .unwrap();
     assert_eq!(
-        stored.runs().iter().filter(|value| value.id == run.id).count(),
+        stored
+            .runs()
+            .iter()
+            .filter(|value| value.id == run.id)
+            .count(),
         1
     );
 }
@@ -1613,9 +1619,10 @@ fn resolve_claimed_ambiguity(root: &Path) {
         .unwrap();
     assert!(
         harness.poll_until(Duration::from_secs(5), |a| {
-            a.store.runs().iter().any(|value| {
-                value.id == run.id && value.status == "Checking"
-            })
+            a.store
+                .runs()
+                .iter()
+                .any(|value| value.id == run.id && value.status == "Checking")
         }),
         "ambiguous claim did not become Checking"
     );
@@ -1659,7 +1666,12 @@ fn resolve_claimed_ambiguity(root: &Path) {
         .update_window(harness.handle, |_, _, cx| {
             harness.app.update(cx, |a, _| {
                 assert_eq!(
-                    a.store.runs().iter().find(|value| value.id == run.id).unwrap().status,
+                    a.store
+                        .runs()
+                        .iter()
+                        .find(|value| value.id == run.id)
+                        .unwrap()
+                        .status,
                     "Blocked"
                 );
                 assert!(
@@ -1754,11 +1766,7 @@ fn rerun_resolution_admits_distinct_attempt(root: &Path) {
         "the old attempt identifier must never be requeued"
     );
     assert_eq!(
-        harness
-            .starts()
-            .iter()
-            .filter(|id| **id == new_id)
-            .count(),
+        harness.starts().iter().filter(|id| **id == new_id).count(),
         1,
         "replacement attempt launched exactly once"
     );
@@ -1767,7 +1775,11 @@ fn rerun_resolution_admits_distinct_attempt(root: &Path) {
         .update_window(harness.handle, |_, _, cx| {
             harness.app.update(cx, |a, _| {
                 assert_eq!(
-                    a.store.runs().iter().find(|run| run.id == run.id).map(|r| r.status.clone()),
+                    a.store
+                        .runs()
+                        .iter()
+                        .find(|run| run.id == run.id)
+                        .map(|r| r.status.clone()),
                     Some("Blocked".into())
                 );
             })
@@ -1858,7 +1870,10 @@ fn persisted_status_gates_claim_cleanup(root: &Path) {
 fn reserved_dispatch_survives_prepare_failure(root: &Path) {
     let (store, task) = fixture(root);
     let mut run = queued_run(&store, task, 8_000);
-    run.directory = root.join("missing-directory").to_string_lossy().into_owned();
+    run.directory = root
+        .join("missing-directory")
+        .to_string_lossy()
+        .into_owned();
     let mut harness = AppHarness::new("reserved-prepare", store);
     harness
         .cx
@@ -1939,7 +1954,6 @@ fn backpressure_retains_intent(root: &Path) {
         .unwrap();
 }
 
-
 /// Subprocess crash harness for the L1b admission seams. The phase aborts the
 /// process after a real durable state transition; the parent test verifies the
 /// database, claim and launch record after restart.
@@ -1976,14 +1990,9 @@ pub fn crash_child() {
     let prepared = store
         .prepare_command(command.id(), CommandClass::StartOrExtend, command)
         .unwrap();
-    let mut adapter = DispatchAdmissionAdapter::open(
-        &path,
-        &root,
-        WORKSPACE,
-        WorkerOptions::default(),
-        intent,
-    )
-    .unwrap();
+    let mut adapter =
+        DispatchAdmissionAdapter::open(&path, &root, WORKSPACE, WorkerOptions::default(), intent)
+            .unwrap();
     for _ in 0..800 {
         adapter.poll();
         if adapter.is_ready() {
@@ -2025,9 +2034,7 @@ pub fn crash_child() {
         }
         std::process::abort();
     }
-    adapter
-        .claim_launch(&durable.id)
-        .unwrap();
+    adapter.claim_launch(&durable.id).unwrap();
     loop {
         let mut claimed = false;
         for update in adapter.poll() {
@@ -2043,11 +2050,7 @@ pub fn crash_child() {
     if phase == "resolution-failed" || phase == "resolution-rerun" {
         let rerun = phase == "resolution-rerun";
         adapter
-            .persist_resolution(
-                "dispatch:None:run:4000",
-                rerun,
-                rerun.then_some(5_000),
-            )
+            .persist_resolution("dispatch:None:run:4000", rerun, rerun.then_some(5_000))
             .unwrap();
         loop {
             let mut persisted = false;
@@ -2080,7 +2083,6 @@ pub fn crash_child() {
     }
 }
 
-
 fn recover_app_check(root: &Path) {
     let path = root.join("workspace.sqlite3");
     let launches = root.join("launches.log");
@@ -2092,19 +2094,13 @@ fn recover_app_check(root: &Path) {
         .load_store()
         .unwrap();
     assert!(
-        store
-            .runs()
-            .iter()
-            .any(|run| run.status == "Queued"),
+        store.runs().iter().any(|run| run.status == "Queued"),
         "restart fixture must contain the durable queued run"
     );
     let mut harness = AppHarness::existing(root, store);
     assert!(
         harness.poll_until(Duration::from_secs(10), |a| {
-            a.store
-                .runs()
-                .iter()
-                .any(|run| run.status == "Checking")
+            a.store.runs().iter().any(|run| run.status == "Checking")
         }),
         "app recovery did not reconcile the ambiguous claim"
     );
@@ -2117,7 +2113,6 @@ fn recover_app_check(root: &Path) {
         .unwrap_or(0);
     assert_eq!(before, after, "app restart recorded another launch");
 }
-
 
 fn restart_execute(root: &Path, rerun: bool) {
     let path = root.join("workspace.sqlite3");
@@ -2186,9 +2181,13 @@ fn restart_execute(root: &Path, rerun: bool) {
             harness
                 .cx
                 .update_window(harness.handle, |_, _, cx| {
-                    harness
-                        .app
-                        .update(cx, |a, _| a.store.runs().iter().map(|run| (run.id, run.status.clone())).collect::<Vec<_>>())
+                    harness.app.update(cx, |a, _| {
+                        a.store
+                            .runs()
+                            .iter()
+                            .map(|run| (run.id, run.status.clone()))
+                            .collect::<Vec<_>>()
+                    })
                 })
                 .unwrap(),
             harness
@@ -2206,10 +2205,7 @@ fn restart_execute(root: &Path, rerun: bool) {
                 .cx
                 .update_window(harness.handle, |_, _, cx| {
                     harness.app.update(cx, |a, _| {
-                        a.dispatch_admission
-                            .as_ref()
-                            .unwrap()
-                            .resolution(old_key)
+                        a.dispatch_admission.as_ref().unwrap().resolution(old_key)
                     })
                 })
                 .unwrap(),
@@ -2253,5 +2249,9 @@ fn restart_execute(root: &Path, rerun: bool) {
         .unwrap_or_default();
     assert!(!keys.iter().any(|key| key == old_key));
     assert!(!keys.iter().any(|key| key.starts_with("resolve:")));
-    assert!(!keys.iter().any(|key| key == "launch:dispatch:None:run:4000"));
+    assert!(
+        !keys
+            .iter()
+            .any(|key| key == "launch:dispatch:None:run:4000")
+    );
 }

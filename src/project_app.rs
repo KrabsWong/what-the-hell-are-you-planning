@@ -1,5 +1,5 @@
 use crate::{
-    app::{Scope, TaskApp},
+    app::TaskApp,
     domain::Stage,
     navigation_context::{CreationIntent, CreationMode},
 };
@@ -31,12 +31,7 @@ impl TaskApp {
 
     /// Open the request form in place. The caller's route, filters and scroll
     /// are untouched, so Cancel is an exact-origin operation.
-    fn begin_planning(
-        &mut self,
-        mode: CreationMode,
-        w: &mut Window,
-        cx: &mut Context<Self>,
-    ) {
+    fn begin_planning(&mut self, mode: CreationMode, w: &mut Window, cx: &mut Context<Self>) {
         self.bump_planning_form_epoch();
         self.planning_destination = Some(mode);
         self.planning_destination_error = None;
@@ -127,80 +122,32 @@ impl TaskApp {
         }
     }
 
-    pub(crate) fn open_topic_creation(
-        &mut self,
-        topic: u64,
-        w: &mut Window,
-        cx: &mut Context<Self>,
-    ) {
-        match crate::navigation_context::resolve_creation_destination(
-            &self.store,
-            CreationIntent::TopicNewGoal { topic },
-            &self.scope(),
-            None,
-        ) {
-            Ok(mode) => self.begin_planning(mode, w, cx),
-            Err(error) => {
-                self.error = error.message();
-                cx.notify();
-            }
-        }
-    }
-
     pub(crate) fn open_topic_replan(&mut self, topic: u64, w: &mut Window, cx: &mut Context<Self>) {
         if !self.store.can_replan_topic(topic) {
             self.error = "Complete all goals in this topic before replanning.".into();
             cx.notify();
             return;
         }
-        let Some(source) = self.store.topics().iter().find(|t| t.id == topic) else { return; };
+        let Some(source) = self.store.topics().iter().find(|t| t.id == topic) else {
+            return;
+        };
         let _ = source;
         let input = self.store.topic_replan_input(topic);
         match crate::navigation_context::resolve_creation_destination(
             &self.store,
             CreationIntent::TopicReplan { topic },
             &self.scope(),
-            None,
+            self.selected(),
         ) {
             Ok(mode) => {
                 self.begin_planning(mode, w, cx);
-                self.project_brief.update(cx, |s, cx| s.set_value(input.clone(), w, cx));
+                self.project_brief
+                    .update(cx, |s, cx| s.set_value(input.clone(), w, cx));
                 self.navigation.planning_baseline = input;
                 cx.notify();
             }
             Err(error) => {
                 self.error = error.message();
-                cx.notify();
-            }
-        }
-    }
-
-    pub(crate) fn open_research_intake(&mut self, w: &mut Window, cx: &mut Context<Self>) {
-        let context_task = self.selected().or(self.task_result_context());
-        match crate::navigation_context::resolve_creation_destination(
-            &self.store,
-            CreationIntent::Global,
-            &self.scope(),
-            context_task,
-        ) {
-            Ok(mode) => self.begin_planning(mode, w, cx),
-            Err(error) => {
-                let message = error.message();
-                self.planning_opener_focus = w.focused(cx);
-                self.clear_planning_destination();
-                self.planning_destination_error = Some(message.clone());
-                self.error = message;
-                // If another project exists, expose it in the selector instead
-                // of leaving a dead form; the error explains the replacement.
-                let fallback = self.store.visible_projects().map(|p| p.id).next();
-                if let Some(project) = fallback {
-                    self.planning_destination = Some(CreationMode::NewTopic { project });
-                    self.apply_planning_destination(CreationMode::NewTopic { project });
-                }
-                self.project_brief.update(cx, |s, cx| {
-                    s.set_value("", w, cx);
-                    s.focus(w, cx);
-                });
                 cx.notify();
             }
         }
@@ -336,7 +283,10 @@ impl TaskApp {
     }
 
     pub(crate) fn save_research_understanding(
-        &mut self, id: u64, feedback: Option<String>, cx: &mut Context<Self>,
+        &mut self,
+        id: u64,
+        feedback: Option<String>,
+        cx: &mut Context<Self>,
     ) {
         let mut staged = self.store.clone();
         let result = match feedback {
@@ -346,12 +296,21 @@ impl TaskApp {
         let result = result.and_then(|_| staged.request_plan_signature(id));
         let signature = match result {
             Ok(signature) => signature,
-            Err(error) => { self.error = error; cx.notify(); return; }
+            Err(error) => {
+                self.error = error;
+                cx.notify();
+                return;
+            }
         };
         let live = self.live_persistence_active();
         let completion = if live {
-            crate::live_save_app::LiveCompletion::ResearchUnderstanding { request: id, signature: signature.clone() }
-        } else { crate::live_save_app::LiveCompletion::None };
+            crate::live_save_app::LiveCompletion::ResearchUnderstanding {
+                request: id,
+                signature: signature.clone(),
+            }
+        } else {
+            crate::live_save_app::LiveCompletion::None
+        };
         match self.save_staged_store(&staged, completion, cx) {
             Ok(acceptance) if acceptance.is_durable() => {
                 if !live {
@@ -359,20 +318,28 @@ impl TaskApp {
                     self.continue_confirmed_understanding(id, &signature, cx);
                 }
             }
-            Ok(_) => { self.toast = "Saving research understanding…".into(); }
-            Err(error) => { self.error = error; }
+            Ok(_) => {
+                self.toast = "Saving research understanding…".into();
+            }
+            Err(error) => {
+                self.error = error;
+            }
         }
         cx.notify();
     }
 
     pub(crate) fn continue_confirmed_understanding(
-        &mut self, id: u64, signature: &str, cx: &mut Context<Self>,
+        &mut self,
+        id: u64,
+        signature: &str,
+        cx: &mut Context<Self>,
     ) {
-        if self.store.request_plan_signature(id).ok().as_deref() != Some(signature) { return; }
+        if self.store.request_plan_signature(id).ok().as_deref() != Some(signature) {
+            return;
+        }
         self.understanding_editor = None;
         self.understanding_editor_subscription = None;
         self.dispatch_research_request(id, false, cx);
-
     }
 
     /// Start a request whose save was just acknowledged without moving the
@@ -436,9 +403,17 @@ impl TaskApp {
                     cx,
                 );
                 if (self.store.runs().iter().any(|r| r.id == run_id)
-                    || self.dispatch_awaiting.as_ref().is_some_and(|pending| pending.run_id == run_id))
-                    && let Some(automation) = self.store.research_requests().iter()
-                        .find(|r| r.id == id).and_then(|r| r.automation_id) {
+                    || self
+                        .dispatch_awaiting
+                        .as_ref()
+                        .is_some_and(|pending| pending.run_id == run_id))
+                    && let Some(automation) = self
+                        .store
+                        .research_requests()
+                        .iter()
+                        .find(|r| r.id == id)
+                        .and_then(|r| r.automation_id)
+                {
                     self.automation_ui.planning_automation = Some(automation);
                     self.automation_ui.planning_run = Some(run_id);
                 }
@@ -446,8 +421,7 @@ impl TaskApp {
                     self.open_run_progress(dispatch);
                 }
                 if !self.store.runs().iter().any(|r| r.id == run_id) {
-                    self.store.request_mut(id).unwrap()
-                        .planning_run_id = None;
+                    self.store.request_mut(id).unwrap().planning_run_id = None;
                     self.persist_if_changed(true);
                 }
             }
@@ -490,18 +464,26 @@ impl TaskApp {
             if self.store.request_plan_signature(request_id).ok().as_ref()
                 != Some(&run.input_signature)
             {
-                self.store.run_mut(self.store.runs()[index].id).unwrap().status = "Stale".into();
+                self.store
+                    .run_mut(self.store.runs()[index].id)
+                    .unwrap()
+                    .status = "Stale".into();
                 Err("Research destination changed during planning. Review the saved request and generate again.".into())
             } else if (automation.is_some() || request.understanding_required)
                 && !self.store.planning_attempt_is_current(run.id)
             {
-                self.store.run_mut(self.store.runs()[index].id).unwrap().status = "Stale".into();
+                self.store
+                    .run_mut(self.store.runs()[index].id)
+                    .unwrap()
+                    .status = "Stale".into();
                 Err("A newer planning attempt or revision is current. This saved plan was kept as history and was not applied.".into())
             } else if crate::request_planning::is_understanding_run(&run) {
-                self.store.apply_request_understanding(request_id, &run.output).map(|_| {
-                    understood_request = Some((request_id, automation));
-                    vec![]
-                })
+                self.store
+                    .apply_request_understanding(request_id, &run.output)
+                    .map(|_| {
+                        understood_request = Some((request_id, automation));
+                        vec![]
+                    })
             } else if let Some(automation) = automation {
                 // The reviewed plan becomes the frozen template for this automation.
                 // No topic or goal is created here; each period instantiates them.
@@ -523,12 +505,18 @@ impl TaskApp {
                 self.store.apply_request_plan(request_id, &run.output)
             }
         } else if run.planning_owner.is_some() {
-            self.store.run_mut(self.store.runs()[index].id).unwrap().status = "Stale".into();
+            self.store
+                .run_mut(self.store.runs()[index].id)
+                .unwrap()
+                .status = "Stale".into();
             Err("The planning request for this response no longer exists. The output was kept as history and was not applied.".into())
         } else if self.store.project_plan_signature(project).as_ref().ok()
             != Some(&run.input_signature)
         {
-            self.store.run_mut(self.store.runs()[index].id).unwrap().status = "Stale".into();
+            self.store
+                .run_mut(self.store.runs()[index].id)
+                .unwrap()
+                .status = "Stale".into();
             Err(
                 "Project context changed during planning. Review the output and generate again."
                     .into(),
@@ -539,7 +527,8 @@ impl TaskApp {
         match result {
             Ok(ids) => {
                 if let Some((_, automation)) = understood_request {
-                    self.toast = "Research understanding ready · confirm it before generating goals".into();
+                    self.toast =
+                        "Research understanding ready · confirm it before generating goals".into();
                     self.error.clear();
                     if let (Some(automation), Some(cx)) = (automation, cx) {
                         self.automation_understanding_ready(automation, run.id, cx);
@@ -555,7 +544,7 @@ impl TaskApp {
                     return;
                 }
                 self.toast = format!(
-                    "{} research goals in Backlog · open the project to review and approve",
+                    "{} research goals in Backlog · open the project to review and run",
                     ids.len()
                 );
                 self.error.clear();
@@ -583,18 +572,17 @@ impl TaskApp {
         }
     }
 
-    pub fn approve_research_topic(&mut self, id: u64, cx: &mut Context<Self>) {
+    pub fn approve_and_run_research_topic(&mut self, id: u64, cx: &mut Context<Self>) {
         let Some(goal) = self
             .store
             .task(id)
-            .and_then(|t| t.research.as_ref())
-            .map(|r| r.goal_id)
+            .and_then(|task| task.research.as_ref())
+            .map(|research| research.goal_id)
         else {
             return;
         };
-        self.change_stage(goal, Stage::Planned, cx);
-        if self.error.is_empty() {
-            self.toast = "Complete goal plan approved · click Run goal when ready".into();
-        }
+        self.error.clear();
+        self.store.approve_goal_plan(goal);
+        self.run_research_next(goal, true, cx);
     }
 }

@@ -1,14 +1,16 @@
 //! Native macOS 26+ window material, with an isolated QA preview.
-use std::{cell::Cell, rc::Rc};
-#[cfg(feature = "qa")]
-use std::time::Duration;
-use gpui_kit::*;
 #[cfg(feature = "qa")]
 use gpui_kit::test::TestWindowExt;
+use gpui_kit::*;
 use objc2::{MainThreadMarker, MainThreadOnly, rc::Retained, runtime::AnyClass};
-use objc2_app_kit::{NSColor, NSGlassEffectView, NSGlassEffectViewStyle, NSView, NSWindowOrderingMode, NSWorkspace};
+use objc2_app_kit::{
+    NSColor, NSGlassEffectView, NSGlassEffectViewStyle, NSView, NSWindowOrderingMode, NSWorkspace,
+};
 use objc2_foundation::{NSPoint, NSRect, NSSize};
 use raw_window_handle::{HasWindowHandle, RawWindowHandle};
+#[cfg(feature = "qa")]
+use std::time::Duration;
+use std::{cell::Cell, rc::Rc};
 
 pub(crate) struct GlassPalette(pub bool);
 impl Global for GlassPalette {}
@@ -25,7 +27,8 @@ impl NativeGlass {
     pub fn install(window: &Window) -> Option<Rc<Self>> {
         let mtm = MainThreadMarker::new()?;
         AnyClass::get(c"NSGlassEffectView")?;
-        let RawWindowHandle::AppKit(handle) = HasWindowHandle::window_handle(window).ok()?.as_raw() else {
+        let RawWindowHandle::AppKit(handle) = HasWindowHandle::window_handle(window).ok()?.as_raw()
+        else {
             return None;
         };
         // GPUI owns this live NSView; retaining it keeps the bridge's reference valid.
@@ -33,7 +36,8 @@ impl NativeGlass {
         // Accessed on the main thread while GPUI owns the native view hierarchy.
         let parent = unsafe { native_view.superview() }?;
         let pane = {
-            let pane = NSGlassEffectView::initWithFrame(NSGlassEffectView::alloc(mtm), NSRect::ZERO);
+            let pane =
+                NSGlassEffectView::initWithFrame(NSGlassEffectView::alloc(mtm), NSRect::ZERO);
             // Regular preserves legibility over other windows when this window is active.
             pane.setStyle(NSGlassEffectViewStyle::Regular);
             // One continuous material; the native window clips its outer corners.
@@ -41,20 +45,34 @@ impl NativeGlass {
             let content = NSView::initWithFrame(NSView::alloc(mtm), NSRect::ZERO);
             pane.setContentView(Some(&content));
             // Keep GPUI hit testing, text and popovers above the native underlay.
-            parent.addSubview_positioned_relativeTo(&pane, NSWindowOrderingMode::Below, Some(&native_view));
+            parent.addSubview_positioned_relativeTo(
+                &pane,
+                NSWindowOrderingMode::Below,
+                Some(&native_view),
+            );
             pane.setHidden(true);
             pane
         };
-        Some(Rc::new(Self { native_view, pane, enabled: Cell::new(false), forced_opaque: Cell::new(false), reduced_transparency: Cell::new(false) }))
+        Some(Rc::new(Self {
+            native_view,
+            pane,
+            enabled: Cell::new(false),
+            forced_opaque: Cell::new(false),
+            reduced_transparency: Cell::new(false),
+        }))
     }
 
-    pub fn enabled(&self) -> bool { self.enabled.get() }
+    pub fn enabled(&self) -> bool {
+        self.enabled.get()
+    }
 
     pub fn unavailable_reason() -> Option<&'static str> {
         if AnyClass::get(c"NSGlassEffectView").is_none() {
             Some("Liquid Glass requires macOS 26 or later.")
         } else if NSWorkspace::sharedWorkspace().accessibilityDisplayShouldReduceTransparency() {
-            Some("Liquid Glass is unavailable while Reduce Transparency is enabled in macOS Accessibility settings.")
+            Some(
+                "Liquid Glass is unavailable while Reduce Transparency is enabled in macOS Accessibility settings.",
+            )
         } else {
             None
         }
@@ -64,7 +82,9 @@ impl NativeGlass {
         let reduced = NSWorkspace::sharedWorkspace().accessibilityDisplayShouldReduceTransparency();
         let availability_changed = self.reduced_transparency.replace(reduced) != reduced;
         let enabled = requested && !self.forced_opaque.get() && !reduced;
-        if self.enabled.replace(enabled) == enabled { return availability_changed; }
+        if self.enabled.replace(enabled) == enabled {
+            return availability_changed;
+        }
         window.set_background_appearance(if enabled {
             WindowBackgroundAppearance::Transparent
         } else {
@@ -86,21 +106,32 @@ impl NativeGlass {
     }
 
     pub fn layout(&self, bounds: Bounds<Pixels>) {
-        let Some(parent) = (unsafe { self.native_view.superview() }) else { return; };
+        let Some(parent) = (unsafe { self.native_view.superview() }) else {
+            return;
+        };
         let height = f64::from(bounds.size.height.as_f32());
         let top = f64::from(bounds.origin.y.as_f32());
-        let y = if self.native_view.isFlipped() { top } else { self.native_view.bounds().size.height - top - height };
+        let y = if self.native_view.isFlipped() {
+            top
+        } else {
+            self.native_view.bounds().size.height - top - height
+        };
         let rect = NSRect::new(
             NSPoint::new(f64::from(bounds.origin.x.as_f32()), y),
             NSSize::new(f64::from(bounds.size.width.as_f32()), height),
         );
         let rect = self.native_view.convertRect_toView(rect, Some(&parent));
-        if self.pane.frame() != rect { self.pane.setFrame(rect); }
+        if self.pane.frame() != rect {
+            self.pane.setFrame(rect);
+        }
     }
 
     #[cfg(feature = "qa")]
     fn window_number(&self) -> isize {
-        self.native_view.window().expect("preview window").windowNumber()
+        self.native_view
+            .window()
+            .expect("preview window")
+            .windowNumber()
     }
 }
 
@@ -116,7 +147,8 @@ pub fn preview() {
     let verify = std::env::args().any(|arg| arg == "--glass-verify");
     let dark = std::env::args().any(|arg| arg == "--glass-dark");
     let opaque = std::env::args().any(|arg| arg == "--glass-opaque");
-    let directory = std::path::Path::new(env!("CARGO_MANIFEST_DIR")).join(format!(".local/native-glass/{}", std::process::id()));
+    let directory = std::path::Path::new(env!("CARGO_MANIFEST_DIR"))
+        .join(format!(".local/native-glass/{}", std::process::id()));
     std::fs::create_dir_all(&directory).unwrap();
     application().with_assets(crate::ui_assets::AppAssets).run(move |cx| {
         init(cx);

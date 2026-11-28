@@ -1,9 +1,5 @@
 //! Export a completed goal's validated results without exposing runtime logs or credentials.
-use crate::{
-    app::TaskApp,
-    domain::Store,
-    research::ResearchKind,
-};
+use crate::{app::TaskApp, domain::Store, research::ResearchKind};
 use gpui_kit::Context;
 use std::os::unix::fs::{DirBuilderExt, OpenOptionsExt};
 use std::{
@@ -73,7 +69,12 @@ impl Store {
             identifier,
             crate::i18n::tr_string("Exported"),
             crate::time_display::timestamp(&crate::opencode::timestamp()),
-            crate::time_display::original_request(&task.description, self.research_requests().iter().find(|r| r.goal_ids.contains(&goal))),
+            crate::time_display::original_request(
+                &task.description,
+                self.research_requests()
+                    .iter()
+                    .find(|r| r.goal_ids.contains(&goal))
+            ),
             crate::i18n::tr_string("Documents")
         );
         let mut materials = task.attachments.clone();
@@ -134,7 +135,10 @@ impl Store {
                 result.id,
                 crate::time_display::timestamp(&result.started_at),
                 crate::time_display::timestamp(
-                    result.ended_at.as_deref().unwrap_or(&crate::i18n::tr_string("unknown"))
+                    result
+                        .ended_at
+                        .as_deref()
+                        .unwrap_or(&crate::i18n::tr_string("unknown"))
                 )
             )));
             materials.extend(step.attachments.clone());
@@ -385,7 +389,8 @@ mod tests {
             assert!(markdown.contains("https://example.com"));
             assert!(markdown.contains("## References"));
             assert!(!document.0.contains(".."));
-        }        let root = std::env::temp_dir().join(format!(
+        }
+        let root = std::env::temp_dir().join(format!(
             "research-export-test-{}",
             chrono::Utc::now().timestamp_nanos_opt().unwrap()
         ));
@@ -590,7 +595,9 @@ mod tests {
         assert!(markdown.contains("> **Evidence gaps:**"));
         assert!(markdown.contains(crate::research::EVIDENCE_GAP_NOTICE));
         assert_eq!(
-            markdown.matches(crate::research::EVIDENCE_GAP_NOTICE).count(),
+            markdown
+                .matches(crate::research::EVIDENCE_GAP_NOTICE)
+                .count(),
             1
         );
         assert!(!markdown.contains(crate::research::EVIDENCE_GAP_NOTE));

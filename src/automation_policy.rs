@@ -43,9 +43,7 @@ impl InstructionField {
 
     fn too_long_message(self) -> String {
         match self {
-            Self::Objective => {
-                "The objective is too long; use at most 12,000 bytes.".into()
-            }
+            Self::Objective => "The objective is too long; use at most 12,000 bytes.".into(),
             Self::ExpectedResult => {
                 "The expected result is too long; use at most 12,000 bytes.".into()
             }
@@ -422,7 +420,10 @@ fn clause_start(text: &str, match_start: usize) -> usize {
     let before = &text[..match_start];
     let mut start = 0;
     for (index, character) in before.char_indices() {
-        if matches!(character, '.' | '!' | '?' | ';' | '\n' | '。' | '！' | '？' | '；') {
+        if matches!(
+            character,
+            '.' | '!' | '?' | ';' | '\n' | '。' | '！' | '？' | '；'
+        ) {
             start = index + character.len_utf8();
             continue;
         }
@@ -549,8 +550,9 @@ mod tests {
 
     #[test]
     fn expected_result_is_validated_even_when_optional() {
-        let error = validate_automation_fields("Check public prices", "Send email the answer", true)
-            .expect_err("expected-only request");
+        let error =
+            validate_automation_fields("Check public prices", "Send email the answer", true)
+                .expect_err("expected-only request");
         assert!(error.starts_with("Expected result: "), "{error}");
 
         let error = validate_expected_result("Send email the answer", false)
@@ -564,21 +566,25 @@ mod tests {
 
     #[test]
     fn empty_and_length_rules_are_field_specific() {
-        assert!(validate_objective("").expect_err("empty objective").starts_with("Describe"));
-        assert!(validate_expected_result("", true)
-            .expect_err("empty required expected result")
-            .starts_with("Describe the expected result"));
-        assert!(validate_instruction_text("")
-            .expect_err("empty instructions")
-            .starts_with("Add the step instructions"));
+        assert!(
+            validate_objective("")
+                .expect_err("empty objective")
+                .starts_with("Describe")
+        );
+        assert!(
+            validate_expected_result("", true)
+                .expect_err("empty required expected result")
+                .starts_with("Describe the expected result")
+        );
+        assert!(
+            validate_instruction_text("")
+                .expect_err("empty instructions")
+                .starts_with("Add the step instructions")
+        );
 
         assert!(validate_objective(&"x".repeat(MAX_INSTRUCTION_BYTES + 1)).is_err());
         assert!(validate_objective(&"x".repeat(MAX_INSTRUCTION_BYTES)).is_ok());
-        assert!(validate_expected_result(
-            &"x".repeat(MAX_INSTRUCTION_BYTES + 1),
-            false
-        )
-        .is_err());
+        assert!(validate_expected_result(&"x".repeat(MAX_INSTRUCTION_BYTES + 1), false).is_err());
     }
 
     #[test]
@@ -643,7 +649,10 @@ mod tests {
     #[test]
     fn later_positive_request_is_not_waived_by_an_earlier_negation() {
         let text = "Do not send email about the old report. Publish the new report.";
-        assert_eq!(rejection(text).map(|value| value.action), Some("publishing or deploying"));
+        assert_eq!(
+            rejection(text).map(|value| value.action),
+            Some("publishing or deploying")
+        );
     }
 
     #[test]

@@ -18,7 +18,8 @@ use gpui_kit::{test::TestWindowExt, *};
 use std::{path::Path, sync::Arc, time::Duration};
 
 const LONG_EN: &str = "Review recurring semiconductor supply, demand and pricing reports and reconcile every cited source before publishing the final research note";
-const LONG_CJK: &str = "复核每一条来源并在发布最终研究报告前整理半导体供应链的长期变化、价格趋势与风险";
+const LONG_CJK: &str =
+    "复核每一条来源并在发布最终研究报告前整理半导体供应链的长期变化、价格趋势与风险";
 const AUTOMATION: &str = "Public semiconductor supply and pricing watch for every operating region";
 
 pub fn run() {
@@ -27,7 +28,11 @@ pub fn run() {
         .join(format!(".local/t11-qa/{}", std::process::id()));
     for (width, height) in [(1440., 920.), (1000., 680.)] {
         for mode in [Appearance::Light, Appearance::Dark] {
-            let name = if mode == Appearance::Light { "light" } else { "dark" };
+            let name = if mode == Appearance::Light {
+                "light"
+            } else {
+                "dark"
+            };
             let directory = root.join(format!("{name}-{width}"));
             std::fs::create_dir_all(&directory).unwrap();
 
@@ -65,9 +70,19 @@ fn enabled_idle(mode: Appearance, width: f32, height: f32, directory: &Path) {
         });
         w.render_frame(cx);
         // Lifecycle actions moved to the list row.
-        assert!(w.try_find(ElementId::Name(format!("run-automation-{id}").into())).is_some());
-        assert!(w.try_find(ElementId::Name(format!("resume-automation-{id}").into())).is_none());
-        let height = w.find(ElementId::Name(format!("run-automation-{id}").into())).bounds().size.height;
+        assert!(
+            w.try_find(ElementId::Name(format!("run-automation-{id}").into()))
+                .is_some()
+        );
+        assert!(
+            w.try_find(ElementId::Name(format!("resume-automation-{id}").into()))
+                .is_none()
+        );
+        let height = w
+            .find(ElementId::Name(format!("run-automation-{id}").into()))
+            .bounds()
+            .size
+            .height;
         assert!(
             height >= px(28.) && height <= px(36.),
             "Run manually height was {height:?}"
@@ -129,7 +144,7 @@ fn enabled_idle(mode: Appearance, width: f32, height: f32, directory: &Path) {
         w.render_frame(cx);
         assert!(w.try_find("task-execution-status").is_some());
         assert!(w.try_find("task-activity-toggle").is_some());
-        assert!(w.try_find("property-Stage").is_some());
+        assert!(w.try_find("property-Stage").is_none());
         let status = w.find("task-execution-status");
         assert_eq!(status.role(), Some(Role::Label));
     })
@@ -148,7 +163,10 @@ fn enabled_idle(mode: Appearance, width: f32, height: f32, directory: &Path) {
         });
         w.render_frame(cx);
         assert!(w.try_find("enable-draft-automation").is_some());
-        assert!(w.try_find(ElementId::Name(format!("run-automation-{draft}").into())).is_none());
+        assert!(
+            w.try_find(ElementId::Name(format!("run-automation-{draft}").into()))
+                .is_none()
+        );
         assert!(w.try_find("stop-automation").is_none());
     })
     .unwrap();
@@ -190,7 +208,8 @@ fn enabled_idle(mode: Appearance, width: f32, height: f32, directory: &Path) {
     .unwrap();
     screenshot(&mut cx, handle, directory, "06-selection-primary.png");
 
-    cx.update_window(handle, |_, w, _| w.remove_window()).unwrap();
+    cx.update_window(handle, |_, w, _| w.remove_window())
+        .unwrap();
     drop(app);
     drop(cx);
 }
@@ -220,7 +239,10 @@ fn recovery_active(mode: Appearance, width: f32, height: f32, directory: &Path) 
         });
         w.render_frame(cx);
         // Resume schedule now lives on the automation list row.
-        assert!(w.try_find(ElementId::Name(format!("resume-automation-{id}").into())).is_some());
+        assert!(
+            w.try_find(ElementId::Name(format!("resume-automation-{id}").into()))
+                .is_some()
+        );
     })
     .unwrap();
     cx.update_window(handle, |_, w, cx| {
@@ -252,7 +274,8 @@ fn recovery_active(mode: Appearance, width: f32, height: f32, directory: &Path) 
     .unwrap();
     screenshot(&mut cx, handle, directory, "08-recovery-cancel.png");
 
-    cx.update_window(handle, |_, w, _| w.remove_window()).unwrap();
+    cx.update_window(handle, |_, w, _| w.remove_window())
+        .unwrap();
     drop(app);
     drop(cx);
 }
@@ -270,11 +293,7 @@ fn open(
     width: f32,
     height: f32,
     mode: Appearance,
-) -> (
-    Entity<TaskApp>,
-    HeadlessAppContext,
-    AnyWindowHandle,
-) {
+) -> (Entity<TaskApp>, HeadlessAppContext, AnyWindowHandle) {
     let mut cx = HeadlessAppContext::with_platform(
         platform::current_platform(true).text_system(),
         Arc::new(crate::ui_assets::AppAssets),
@@ -330,8 +349,7 @@ fn occurrence(
             expected_result: definition.expected_result.clone(),
             shape: Some(definition.shape),
             template: definition.template.clone().unwrap(),
-            models: ["qa/planner", "qa/collector", "qa/analyst", "qa/adviser"]
-                .map(String::from),
+            models: ["qa/planner", "qa/collector", "qa/analyst", "qa/adviser"].map(String::from),
             agents: Default::default(),
             materials: vec![],
             policy: definition.policy.clone(),
@@ -403,7 +421,12 @@ fn base(
     mode: Appearance,
     name: &str,
     now: i64,
-) -> (Store, u64, AutomationTemplate, crate::automation_schedule::Schedule) {
+) -> (
+    Store,
+    u64,
+    AutomationTemplate,
+    crate::automation_schedule::Schedule,
+) {
     let mut store = Store::mock();
     store.set_appearance(mode);
     store.project_at_mut(0).unwrap().name =
@@ -443,7 +466,10 @@ fn base(
         WindowRule::Unresolved,
     );
     let schedule = crate::automation_schedule::Schedule {
-        spec: crate::automation_schedule::ScheduleSpec::Daily { hour: 10, minute: 0 },
+        spec: crate::automation_schedule::ScheduleSpec::Daily {
+            hour: 10,
+            minute: 0,
+        },
         timezone: "Asia/Shanghai".into(),
     };
     let id = store

@@ -2,7 +2,9 @@
 //!
 //! All trigger points are represented as UTC epoch seconds. Rules retain their local
 //! wall-clock time and IANA timezone. Preview and dispatch call the same functions.
-use chrono::{Datelike, Duration, LocalResult, NaiveDate, NaiveDateTime, NaiveTime, TimeZone, Utc, Weekday};
+use chrono::{
+    Datelike, Duration, LocalResult, NaiveDate, NaiveDateTime, NaiveTime, TimeZone, Utc, Weekday,
+};
 use chrono_tz::Tz;
 use serde::{Deserialize, Serialize};
 use std::str::FromStr;
@@ -94,7 +96,9 @@ fn validate_spec(spec: &ScheduleSpec) -> Result<(), String> {
                 ));
             }
             if *minutes > MAX_INTERVAL_MINUTES {
-                return Err("The interval is too long for the first version (maximum 10 years).".into());
+                return Err(
+                    "The interval is too long for the first version (maximum 10 years).".into(),
+                );
             }
             interval_seconds(*minutes)?;
         }
@@ -220,7 +224,11 @@ pub fn local_trigger(tz: Tz, date: NaiveDate, time: NaiveTime) -> Result<Option<
 
 /// Latest calendar or interval trigger at or before `now`, or `None` before the first
 /// grid point. Bounded: intervals are arithmetic, calendars search at most 16 days back.
-pub fn latest_at_or_before(spec: &ScheduleSpec, anchor: i64, now: i64) -> Result<Option<i64>, String> {
+pub fn latest_at_or_before(
+    spec: &ScheduleSpec,
+    anchor: i64,
+    now: i64,
+) -> Result<Option<i64>, String> {
     match spec {
         ScheduleSpec::Interval { minutes } => {
             let period = interval_seconds(*minutes)?;
@@ -232,9 +240,9 @@ pub fn latest_at_or_before(spec: &ScheduleSpec, anchor: i64, now: i64) -> Result
             }
             let steps = (i128::from(now) - i128::from(first)) / i128::from(period);
             let value = i128::from(first) + steps * i128::from(period);
-            Ok(Some(
-                i64::try_from(value).map_err(|_| "The schedule is out of range.".to_string())?,
-            ))
+            Ok(Some(i64::try_from(value).map_err(|_| {
+                "The schedule is out of range.".to_string()
+            })?))
         }
         ScheduleSpec::Daily { .. } | ScheduleSpec::Weekly { .. } => Ok(None),
     }
@@ -253,7 +261,9 @@ pub fn latest_due_for(schedule: &Schedule, anchor: i64, now: i64) -> Result<Opti
 }
 
 fn calendar_latest_in(tz: Tz, spec: &ScheduleSpec, now: i64) -> Option<i64> {
-    let Ok((time, days)) = calendar_parts(spec) else { return None };
+    let Ok((time, days)) = calendar_parts(spec) else {
+        return None;
+    };
     let local = Utc.timestamp_opt(now, 0).single()?.with_timezone(&tz);
     let start = local.date_naive();
     for offset in 0..=MAX_CALENDAR_SEARCH_DAYS {
@@ -316,12 +326,7 @@ pub fn count_between(schedule: &Schedule, anchor: i64, from: i64, to: i64) -> Re
     }
 }
 
-fn calendar_count_between(
-    tz: Tz,
-    spec: &ScheduleSpec,
-    from: i64,
-    to: i64,
-) -> Result<u64, String> {
+fn calendar_count_between(tz: Tz, spec: &ScheduleSpec, from: i64, to: i64) -> Result<u64, String> {
     let (time, days) = calendar_parts(spec)?;
     let start = Utc
         .timestamp_opt(from, 0)
@@ -339,7 +344,11 @@ fn calendar_count_between(
     // dates of `from` and `to` can appear reversed. Normalize the span and include
     // one buffer day on each side; the `candidate > from && candidate <= to` filter
     // keeps the count exact either way.
-    let (first_date, last_date) = if start <= end { (start, end) } else { (end, start) };
+    let (first_date, last_date) = if start <= end {
+        (start, end)
+    } else {
+        (end, start)
+    };
     let span = last_date.signed_duration_since(first_date).num_days();
     if span > MAX_EXACT_CALENDAR_DAYS {
         return Err(format!(
@@ -454,9 +463,7 @@ fn previous_trigger(schedule: &Schedule, anchor: i64, current: i64) -> Option<i6
     match &schedule.spec {
         ScheduleSpec::Interval { minutes } => {
             let period = interval_seconds(*minutes).ok()?;
-            current
-                .checked_sub(period)
-                .filter(|value| *value > anchor)
+            current.checked_sub(period).filter(|value| *value > anchor)
         }
         _ => {
             let tz = schedule.timezone().ok()?;
@@ -607,8 +614,14 @@ mod tests {
             ]
         );
         // A long run does not change the series.
-        assert_eq!(schedule.next_after(enabled, preview[0]).unwrap(), preview[1]);
-        assert_eq!(schedule.next_after(enabled, preview[1]).unwrap(), preview[2]);
+        assert_eq!(
+            schedule.next_after(enabled, preview[0]).unwrap(),
+            preview[1]
+        );
+        assert_eq!(
+            schedule.next_after(enabled, preview[1]).unwrap(),
+            preview[2]
+        );
     }
 
     #[test]
@@ -619,7 +632,9 @@ mod tests {
             text(schedule.first_after(enabled).unwrap()),
             "2027-01-01T00:30:00Z"
         );
-        let leap = daily(9, 0, "UTC").first_after(utc("2028-02-28T09:01:00Z")).unwrap();
+        let leap = daily(9, 0, "UTC")
+            .first_after(utc("2028-02-28T09:01:00Z"))
+            .unwrap();
         assert_eq!(text(leap), "2028-02-29T09:00:00Z");
         let weekly_schedule = weekly(&[4], 18, 0, "Asia/Shanghai");
         let friday = weekly_schedule
@@ -634,7 +649,10 @@ mod tests {
         for schedule in [
             interval(0, "UTC"),
             Schedule {
-                spec: ScheduleSpec::Daily { hour: 24, minute: 0 },
+                spec: ScheduleSpec::Daily {
+                    hour: 24,
+                    minute: 0,
+                },
                 timezone: "UTC".into(),
             },
             Schedule {
@@ -684,7 +702,11 @@ mod tests {
         let next = ambiguous.first_after(utc("2026-10-31T12:00:00Z")).unwrap();
         assert_eq!(text(next), "2026-11-01T05:30:00Z");
         assert_eq!(
-            text(ambiguous.next_after(utc("2026-10-31T12:00:00Z"), next).unwrap()),
+            text(
+                ambiguous
+                    .next_after(utc("2026-10-31T12:00:00Z"), next)
+                    .unwrap()
+            ),
             "2026-11-02T06:30:00Z"
         );
     }
@@ -703,17 +725,31 @@ mod tests {
         let enabled = utc("2026-11-05T00:00:00Z");
         let schedule = interval(1, "UTC");
         let now = utc("2026-11-05T00:10:00Z");
-        let decision = decide(&schedule, enabled, enabled + 60, now, 86_400, CatchUp::LatestOnly)
-            .unwrap()
-            .unwrap();
+        let decision = decide(
+            &schedule,
+            enabled,
+            enabled + 60,
+            now,
+            86_400,
+            CatchUp::LatestOnly,
+        )
+        .unwrap()
+        .unwrap();
         assert_eq!(text(decision.trigger), "2026-11-05T00:10:00Z");
         assert_eq!(decision.skipped_count, 9);
         assert_eq!(text(decision.skipped_from.unwrap()), "2026-11-05T00:01:00Z");
         assert_eq!(text(decision.skipped_to.unwrap()), "2026-11-05T00:09:00Z");
         assert_eq!(text(decision.next_cursor), "2026-11-05T00:11:00Z");
-        let skip = decide(&schedule, enabled, enabled + 60, now, 86_400, CatchUp::SkipAll)
-            .unwrap()
-            .unwrap();
+        let skip = decide(
+            &schedule,
+            enabled,
+            enabled + 60,
+            now,
+            86_400,
+            CatchUp::SkipAll,
+        )
+        .unwrap()
+        .unwrap();
         assert_eq!(skip.skipped_count, 10);
         assert_eq!(text(skip.next_cursor), "2026-11-05T00:11:00Z");
     }
@@ -742,11 +778,29 @@ mod tests {
         let schedule = interval(5, "UTC");
         let cursor = enabled + 30 * 60;
         assert_eq!(
-            decide(&schedule, enabled, cursor, cursor - 600, 86_400, CatchUp::LatestOnly).unwrap(),
+            decide(
+                &schedule,
+                enabled,
+                cursor,
+                cursor - 600,
+                86_400,
+                CatchUp::LatestOnly
+            )
+            .unwrap(),
             None
         );
         assert_eq!(
-            decide(&schedule, enabled, cursor, cursor + 10, 86_400, CatchUp::LatestOnly).unwrap().unwrap().trigger,
+            decide(
+                &schedule,
+                enabled,
+                cursor,
+                cursor + 10,
+                86_400,
+                CatchUp::LatestOnly
+            )
+            .unwrap()
+            .unwrap()
+            .trigger,
             cursor
         );
     }
@@ -795,7 +849,8 @@ mod tests {
     #[test]
     fn previous_natural_day_uses_the_task_timezone() {
         let reference = utc("2026-11-03T02:30:00Z"); // Tuesday 10:30 Shanghai
-        let window = previous_local_day(reference, parse_timezone("Asia/Shanghai").unwrap()).unwrap();
+        let window =
+            previous_local_day(reference, parse_timezone("Asia/Shanghai").unwrap()).unwrap();
         assert_eq!(window.start_utc, utc("2026-11-01T16:00:00Z"));
         assert_eq!(window.end_utc, utc("2026-11-02T16:00:00Z"));
         let ny = previous_local_day(
@@ -846,14 +901,18 @@ mod tests {
         // overflow the intermediate difference.
         let spec = ScheduleSpec::Interval { minutes: 1 };
         let tz = parse_timezone("UTC").unwrap();
-        assert!(latest_at_or_before(&spec, i64::MIN + 60, to).unwrap().unwrap() <= to);
+        assert!(
+            latest_at_or_before(&spec, i64::MIN + 60, to)
+                .unwrap()
+                .unwrap()
+                <= to
+        );
         match next_after(&spec, tz, i64::MIN + 60, to) {
             Ok(value) => assert!(value > to),
             Err(message) => assert!(message.contains("out of range"), "{message}"),
         }
         assert_eq!(
-            count_between(&schedule, i64::MIN + 60, i64::MIN + 120, i64::MIN + 180)
-                .unwrap(),
+            count_between(&schedule, i64::MIN + 60, i64::MIN + 120, i64::MIN + 180).unwrap(),
             1
         );
     }
@@ -1009,7 +1068,10 @@ mod tests {
             utc("2200-01-01T00:00:00Z"),
         );
         let message = result.unwrap_err();
-        assert!(message.contains("exact calendar counting is limited"), "{message}");
+        assert!(
+            message.contains("exact calendar counting is limited"),
+            "{message}"
+        );
         // Dispatch must fail explicitly rather than report a silently capped count.
         let schedule = Schedule {
             spec: ScheduleSpec::Daily { hour: 9, minute: 0 },

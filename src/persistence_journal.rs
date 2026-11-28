@@ -25,13 +25,13 @@
 use crate::appearance::Appearance;
 use crate::attachments::Attachment;
 use crate::automation::{
-    AutomationApproval, AutomationDefinition, AutomationOccurrence,
-    AutomationOccurrenceSnapshot, AutomationPlanBinding, AutomationTemplate, TimeWindow,
+    AutomationApproval, AutomationDefinition, AutomationOccurrence, AutomationOccurrenceSnapshot,
+    AutomationPlanBinding, AutomationTemplate, TimeWindow,
 };
 use crate::domain::{AgentRun, Project, Stage, StagePolicy, Task, Topic};
 use crate::model_profiles::ModelProfile;
-use crate::report_publish::{Publication, PublishingConfig};
 use crate::notification::{NotificationConfig, NotificationJob};
+use crate::report_publish::{Publication, PublishingConfig};
 use crate::request_planning::ResearchRequest;
 use crate::research::{ResearchConfig, ResearchTask};
 use serde::Serialize;
@@ -74,7 +74,9 @@ impl WorkTable {
 
 /// Stable identity of one changed entity. Policy rows have no numeric id, so the
 /// stage ordinal is the row identity, matching the real `policies` table.
-#[derive(Clone, Copy, Debug, PartialEq, Eq, PartialOrd, Ord, Hash, Serialize, serde::Deserialize)]
+#[derive(
+    Clone, Copy, Debug, PartialEq, Eq, PartialOrd, Ord, Hash, Serialize, serde::Deserialize,
+)]
 pub(crate) enum EntityKey {
     Task(u64),
     Project(u64),
@@ -184,9 +186,7 @@ impl EntityChange {
         match self {
             Self::Upsert(payload) => payload.key(),
             Self::Delete(key) => *key,
-            Self::PlanRequestMapping { request_id, .. } => {
-                EntityKey::ResearchRequest(*request_id)
-            }
+            Self::PlanRequestMapping { request_id, .. } => EntityKey::ResearchRequest(*request_id),
             Self::EnsureResearchRequest(request) => EntityKey::ResearchRequest(request.id),
         }
     }
@@ -199,9 +199,7 @@ impl EntityChange {
         match self {
             Self::Upsert(_) => ChangeKind::Upsert,
             Self::Delete(_) => ChangeKind::Delete,
-            Self::PlanRequestMapping { .. } | Self::EnsureResearchRequest(_) => {
-                ChangeKind::Upsert
-            }
+            Self::PlanRequestMapping { .. } | Self::EnsureResearchRequest(_) => ChangeKind::Upsert,
         }
     }
 
@@ -487,11 +485,7 @@ impl CommitSink for RecordingSink {
             generation: group.generation(),
             base: group.base(),
             keys: group.keys(),
-            kinds: group
-                .changes()
-                .iter()
-                .map(EntityChange::kind)
-                .collect(),
+            kinds: group.changes().iter().map(EntityChange::kind).collect(),
             metadata: group.metadata().iter().map(MetadataDelta::field).collect(),
             effects: group.effects().to_vec(),
             estimated_bytes: group.estimated_bytes(),
@@ -544,18 +538,12 @@ impl CommitSink for ApplyingSink {
                     let key = EntityKey::ResearchRequest(request.id);
                     match next.get(&key) {
                         None => {
-                            next.insert(
-                                key,
-                                EntityPayload::ResearchRequest(request.clone()),
-                            );
+                            next.insert(key, EntityPayload::ResearchRequest(request.clone()));
                         }
                         Some(EntityPayload::ResearchRequest(existing))
                             if existing.revision < request.revision =>
                         {
-                            next.insert(
-                                key,
-                                EntityPayload::ResearchRequest(request.clone()),
-                            );
+                            next.insert(key, EntityPayload::ResearchRequest(request.clone()));
                         }
                         Some(_) => {}
                     }
@@ -621,16 +609,9 @@ pub(crate) struct AwaitingAck {
 
 #[derive(Clone, Debug, PartialEq)]
 pub(crate) enum StepOutcome {
-    Committed {
-        generation: u64,
-    },
-    Blocked {
-        generation: u64,
-        error: String,
-    },
-    AwaitingAck {
-        generation: u64,
-    },
+    Committed { generation: u64 },
+    Blocked { generation: u64, error: String },
+    AwaitingAck { generation: u64 },
     Idle,
 }
 
@@ -693,13 +674,7 @@ impl<S: CommitSink> CommitCoordinator<S> {
         max_pending_groups: usize,
         max_pending_bytes: usize,
     ) -> Self {
-        Self::with_durable_generation(
-            sink,
-            workspace,
-            max_pending_groups,
-            max_pending_bytes,
-            0,
-        )
+        Self::with_durable_generation(sink, workspace, max_pending_groups, max_pending_bytes, 0)
     }
 
     /// Bootstrap a reopened workspace at its persisted durable generation.
@@ -842,7 +817,9 @@ impl<S: CommitSink> CommitCoordinator<S> {
             ));
         }
         if self.retained_groups() >= self.max_pending_groups
-            || self.retained_bytes().saturating_add(group.estimated_bytes())
+            || self
+                .retained_bytes()
+                .saturating_add(group.estimated_bytes())
                 > self.max_pending_bytes
         {
             return Err(reject(EnqueueError::Overflow, group));
@@ -1101,7 +1078,10 @@ fn schedule(value: usize, schedule: &crate::automation_schedule::Schedule) -> us
 }
 
 fn template(value: usize, template: &AutomationTemplate) -> usize {
-    let AutomationTemplate { goals, window_rule: _ } = template;
+    let AutomationTemplate {
+        goals,
+        window_rule: _,
+    } = template;
     let mut value = slots::<crate::automation::AutomationGoal>(value, goals.capacity());
     for goal in goals {
         let crate::automation::AutomationGoal {
@@ -1186,7 +1166,11 @@ fn time_window(value: usize, window: &TimeWindow) -> usize {
     let TimeWindow { state } = window;
     match state {
         crate::automation::TimeWindowState::Unresolved { reason } => text_str(value, reason),
-        crate::automation::TimeWindowState::Resolved { start_utc, end_utc, label } => {
+        crate::automation::TimeWindowState::Resolved {
+            start_utc,
+            end_utc,
+            label,
+        } => {
             let _ = (start_utc, end_utc);
             text_str(value, label)
         }
@@ -1230,10 +1214,7 @@ fn task_heap(task: &Task) -> usize {
         topic_id: _,
         approved_plan,
         stage: _,
-        priority: _,
         labels,
-        cycle,
-        bucket,
         due_date,
         parent_id: _,
         comments,
@@ -1248,8 +1229,6 @@ fn task_heap(task: &Task) -> usize {
     value = text(value, description);
     value = opt_text(value, approved_plan);
     value = texts(value, labels);
-    value = opt_text(value, cycle);
-    value = text(value, bucket);
     value = text(value, due_date);
     value = self::comments(value, comments);
     value = texts(value, activity);
@@ -1500,7 +1479,8 @@ fn request_heap(request: &ResearchRequest) -> usize {
     value = text(value, understanding_feedback);
     value = text(value, understanding_source_signature);
     value = text(value, understanding_draft);
-    value = slots::<crate::request_planning::UnderstandingTurn>(value, understanding_turns.capacity());
+    value =
+        slots::<crate::request_planning::UnderstandingTurn>(value, understanding_turns.capacity());
     for turn in understanding_turns {
         value = text(value, &turn.submitted_at);
         value = text(value, &turn.feedback);
@@ -1667,7 +1647,7 @@ mod tests {
     use super::*;
     use crate::automation::{AutomationPolicy, AutomationShape};
     use crate::automation_schedule::{Schedule, ScheduleSpec};
-    use crate::domain::{Priority, Store};
+    use crate::domain::Store;
     use std::collections::HashMap;
 
     const WORKSPACE: u64 = 7;
@@ -1684,10 +1664,7 @@ mod tests {
             topic_id: None,
             approved_plan: None,
             stage: Stage::Backlog,
-            priority: Priority::None,
             labels: Vec::new(),
-            cycle: None,
-            bucket: String::new(),
             due_date: String::new(),
             parent_id: None,
             comments: Vec::new(),
@@ -1714,9 +1691,7 @@ mod tests {
         journal.stage(changes).expect("group should stage")
     }
 
-    fn durable<S: CommitSink>(
-        coordinator: &mut CommitCoordinator<S>,
-    ) -> DurableReceipt {
+    fn durable<S: CommitSink>(coordinator: &mut CommitCoordinator<S>) -> DurableReceipt {
         let generation = coordinator
             .awaiting_generation()
             .expect("a group should be awaiting acknowledgement");
@@ -1741,10 +1716,7 @@ mod tests {
         ] {
             let group = stage(&mut journal, vec![change]);
             coordinator.enqueue(group).unwrap();
-            assert!(matches!(
-                coordinator.step(),
-                StepOutcome::Committed { .. }
-            ));
+            assert!(matches!(coordinator.step(), StepOutcome::Committed { .. }));
             durable(&mut coordinator);
         }
         let batches = &coordinator.sink().commits;
@@ -1816,10 +1788,7 @@ mod tests {
                 task_upsert(1, "recreated"),
             ],
         );
-        assert_eq!(
-            group.keys(),
-            vec![EntityKey::Task(2), EntityKey::Task(1)]
-        );
+        assert_eq!(group.keys(), vec![EntityKey::Task(2), EntityKey::Task(1)]);
         assert_eq!(group.changes().len(), 2);
         match &group.changes()[1] {
             EntityChange::Upsert(EntityPayload::Task(task)) => {
@@ -1836,10 +1805,7 @@ mod tests {
             ],
         );
         assert_eq!(delete_then_recreate.changes().len(), 1);
-        assert_eq!(
-            delete_then_recreate.changes()[0].kind(),
-            ChangeKind::Upsert
-        );
+        assert_eq!(delete_then_recreate.changes()[0].kind(), ChangeKind::Upsert);
     }
 
     #[test]
@@ -1929,20 +1895,21 @@ mod tests {
         );
         let mut coordinator = applying_coordinator(4);
         coordinator.enqueue(group).unwrap();
-        assert!(matches!(
-            coordinator.step(),
-            StepOutcome::Committed { .. }
-        ));
+        assert!(matches!(coordinator.step(), StepOutcome::Committed { .. }));
         assert_eq!(coordinator.sink().commits.len(), 1);
         assert_eq!(coordinator.sink().state.len(), 2);
-        assert!(coordinator
-            .sink()
-            .state
-            .contains_key(&EntityKey::Automation(automation)));
-        assert!(coordinator
-            .sink()
-            .state
-            .contains_key(&EntityKey::Occurrence(occurrence_id)));
+        assert!(
+            coordinator
+                .sink()
+                .state
+                .contains_key(&EntityKey::Automation(automation))
+        );
+        assert!(
+            coordinator
+                .sink()
+                .state
+                .contains_key(&EntityKey::Occurrence(occurrence_id))
+        );
     }
 
     fn atomic_automation_case() -> (u64, u64, AutomationDefinition, AutomationOccurrence) {
@@ -2051,10 +2018,12 @@ mod tests {
         ));
         durable(&mut coordinator);
         assert_eq!(coordinator.sink().state.len(), 2);
-        assert!(coordinator
-            .sink()
-            .state
-            .contains_key(&EntityKey::Occurrence(occurrence_id)));
+        assert!(
+            coordinator
+                .sink()
+                .state
+                .contains_key(&EntityKey::Occurrence(occurrence_id))
+        );
     }
 
     #[test]
@@ -2162,8 +2131,7 @@ mod tests {
     #[test]
     fn oversized_group_is_rejected_whole_before_acceptance() {
         let mut journal = ChangeJournal::new(WORKSPACE);
-        let mut coordinator =
-            CommitCoordinator::new(RecordingSink::default(), WORKSPACE, 8, 1_024);
+        let mut coordinator = CommitCoordinator::new(RecordingSink::default(), WORKSPACE, 8, 1_024);
         let mut large = task(1, "large");
         large.description = "x".repeat(4_096);
         let group = stage(
@@ -2186,8 +2154,12 @@ mod tests {
             ])
         }
         .unwrap();
-        let mut budget =
-            CommitCoordinator::new(RecordingSink::default(), WORKSPACE, 8, atomic.estimated_bytes());
+        let mut budget = CommitCoordinator::new(
+            RecordingSink::default(),
+            WORKSPACE,
+            8,
+            atomic.estimated_bytes(),
+        );
         // The atomic group is accepted as one unit only when the budget fits it.
         budget.enqueue(atomic.clone()).unwrap();
         assert!(matches!(
@@ -2347,11 +2319,7 @@ mod tests {
         });
         let mut metadata_journal = ChangeJournal::new(WORKSPACE);
         let metadata_group = metadata_journal
-            .stage_with_metadata(
-                Vec::new(),
-                vec![MetadataDelta::Topics(topics)],
-                Vec::new(),
-            )
+            .stage_with_metadata(Vec::new(), vec![MetadataDelta::Topics(topics)], Vec::new())
             .unwrap();
         let topic_slots = 10_000usize.saturating_mul(size_of::<Topic>());
         assert!(
@@ -2498,8 +2466,7 @@ mod tests {
                 Vec::new(),
             )
             .unwrap();
-        let mut coordinator =
-            CommitCoordinator::new(RecordingSink::default(), WORKSPACE, 8, 1_000);
+        let mut coordinator = CommitCoordinator::new(RecordingSink::default(), WORKSPACE, 8, 1_000);
         let rejection = coordinator.enqueue(overflow_group.clone()).unwrap_err();
         assert_eq!(rejection.reason, EnqueueError::Overflow);
         assert_eq!(rejection.group.metadata().len(), 1);
@@ -2509,8 +2476,7 @@ mod tests {
     #[test]
     fn retention_bytes_count_awaiting_blocked_and_reject_atomically() {
         let mut journal = ChangeJournal::new(WORKSPACE);
-        let mut coordinator =
-            CommitCoordinator::new(RecordingSink::default(), WORKSPACE, 8, 4_000);
+        let mut coordinator = CommitCoordinator::new(RecordingSink::default(), WORKSPACE, 8, 4_000);
         let large_task = |id: u64, title: &str| {
             let mut task = task(id, title);
             task.description = "x".repeat(2_000);
@@ -2539,10 +2505,7 @@ mod tests {
         let mut blocked = CommitCoordinator::new(RecordingSink::default(), WORKSPACE, 8, 4_000);
         blocked.sink_mut().fail_once.push(1);
         blocked
-            .enqueue(stage(
-                &mut blocked_journal,
-                vec![large_task(4, "blocked")],
-            ))
+            .enqueue(stage(&mut blocked_journal, vec![large_task(4, "blocked")]))
             .unwrap();
         assert!(matches!(
             blocked.step(),

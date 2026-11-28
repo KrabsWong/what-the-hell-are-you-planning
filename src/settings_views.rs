@@ -7,12 +7,11 @@ use crate::{
 };
 use gpui_kit::{
     component::{
-        Disableable,
-        switch::Switch,
-        Selectable,
+        Disableable, Selectable,
         button::{ButtonCustomVariant, ButtonVariants},
         input::Input,
         menu::{DropdownMenu, PopupMenuItem},
+        switch::Switch,
         tab::{Tab, TabBar},
     },
     prelude::FluentBuilder,
@@ -55,7 +54,9 @@ impl TaskApp {
         .w(px(240.))
         .dropdown_caret(true)
         .disabled(names.is_empty())
-        .tooltip(crate::i18n::tr("Apply a saved global and stage model configuration"))
+        .tooltip(crate::i18n::tr(
+            "Apply a saved global and stage model configuration",
+        ))
         .dropdown_menu(move |mut menu, _, _| {
             for name in &names {
                 let entity = entity.clone();
@@ -129,21 +130,25 @@ impl TaskApp {
                 )
                 .separator()
                 .item(
-                    PopupMenuItem::new(crate::i18n::tr("Delete current profile")).on_click(move |_, _, cx| {
-                        let _ = delete_entity.update(cx, |this, cx| {
-                            let name = name.clone();
-                            let saved = this
-                                .apply_domain_command_undoable(
-                                    crate::scoped_domain::DomainCommand::DeleteModelProfile { name },
-                                    "Profile deleted · current settings kept · Undo to restore",
-                                    cx,
-                                )
-                                .is_some();
-                            if saved {
-                                this.save_feedback = None;
-                            }
-                        });
-                    }),
+                    PopupMenuItem::new(crate::i18n::tr("Delete current profile")).on_click(
+                        move |_, _, cx| {
+                            let _ = delete_entity.update(cx, |this, cx| {
+                                let name = name.clone();
+                                let saved = this
+                                    .apply_domain_command_undoable(
+                                        crate::scoped_domain::DomainCommand::DeleteModelProfile {
+                                            name,
+                                        },
+                                        "Profile deleted · current settings kept · Undo to restore",
+                                        cx,
+                                    )
+                                    .is_some();
+                                if saved {
+                                    this.save_feedback = None;
+                                }
+                            });
+                        },
+                    ),
                 )
             });
         let toolbar =
@@ -189,14 +194,14 @@ impl TaskApp {
                                         return;
                                     };
                                     let saved = this
-                                        .apply_domain_command_undoable(
-                                            crate::scoped_domain::DomainCommand::UpdateModelProfile {
-                                                name,
-                                            },
-                                            "Model profile updated",
-                                            cx,
-                                        )
-                                        .is_some();
+                                    .apply_domain_command_undoable(
+                                        crate::scoped_domain::DomainCommand::UpdateModelProfile {
+                                            name,
+                                        },
+                                        "Model profile updated",
+                                        cx,
+                                    )
+                                    .is_some();
                                     if saved {
                                         this.save_feedback = None;
                                     }
@@ -321,7 +326,11 @@ impl TaskApp {
             state.set_placeholder(crate::i18n::tr("Filter this list…"), window, cx)
         });
         self.global_search.update(cx, |state, cx| {
-            state.set_placeholder(crate::i18n::tr("Search research and automations…"), window, cx)
+            state.set_placeholder(
+                crate::i18n::tr("Search research and automations…"),
+                window,
+                cx,
+            )
         });
         self.refresh_model_placeholders(window, cx);
         self.executable_input.update(cx, |state, cx| {
@@ -502,7 +511,11 @@ impl TaskApp {
                 .border_1()
                 .border_color(rgb(colors.subtle_line))
                 .bg(rgb(colors.panel))
-                .child(div().font_weight(FontWeight::SEMIBOLD).child(selectable(title)))
+                .child(
+                    div()
+                        .font_weight(FontWeight::SEMIBOLD)
+                        .child(selectable(title)),
+                )
         };
         col()
             .gap_4()
@@ -600,28 +613,25 @@ impl TaskApp {
                                 .child(selectable(tr("Display language"))),
                         )
                         .child(
-                            button(
-                                "interface-language-picker",
-                                tr(interface_language.label()),
-                            )
-                            .w(px(240.))
-                            .dropdown_caret(true)
-                            .tooltip(tr("Choose the language shown throughout the app"))
-                            .dropdown_menu(move |mut menu, _, _| {
-                                for option in InterfaceLanguage::ALL {
-                                    let entity = interface_language_entity.clone();
-                                    menu = menu.item(
-                                        PopupMenuItem::new(tr(option.label())).on_click(
-                                            move |_, w, cx| {
-                                                let _ = entity.update(cx, |app, cx| {
-                                                    app.set_interface_language(option, w, cx);
-                                                });
-                                            },
-                                        ),
-                                    );
-                                }
-                                menu
-                            }),
+                            button("interface-language-picker", tr(interface_language.label()))
+                                .w(px(240.))
+                                .dropdown_caret(true)
+                                .tooltip(tr("Choose the language shown throughout the app"))
+                                .dropdown_menu(move |mut menu, _, _| {
+                                    for option in InterfaceLanguage::ALL {
+                                        let entity = interface_language_entity.clone();
+                                        menu = menu.item(
+                                            PopupMenuItem::new(tr(option.label())).on_click(
+                                                move |_, w, cx| {
+                                                    let _ = entity.update(cx, |app, cx| {
+                                                        app.set_interface_language(option, w, cx);
+                                                    });
+                                                },
+                                            ),
+                                        );
+                                    }
+                                    menu
+                                }),
                         ),
                 );
             let content = col()
@@ -639,12 +649,19 @@ impl TaskApp {
                     row()
                         .flex_wrap()
                         .gap_2()
-                        .child(div().text_sm().w(px(140.)).child(selectable("Output language")))
+                        .child(
+                            div()
+                                .text_sm()
+                                .w(px(140.))
+                                .child(selectable("Output language")),
+                        )
                         .child(
                             button("output-language-picker", language.label())
                                 .w(px(240.))
                                 .dropdown_caret(true)
-                                .tooltip(crate::i18n::tr("Choose the language for generated research output"))
+                                .tooltip(crate::i18n::tr(
+                                    "Choose the language for generated research output",
+                                ))
                                 .dropdown_menu(move |mut menu, _, _| {
                                     for option in OutputLanguage::ALL {
                                         let entity = language_entity.clone();
@@ -663,55 +680,61 @@ impl TaskApp {
                         ),
                 );
             let appearance = col()
-            .gap_2()
-            .child(div().font_weight(FontWeight::SEMIBOLD).child(selectable("Appearance")))
-            .child(
-                row().flex_wrap().children(
-                    [
-                        (
-                            "appearance-system",
-                            "Follow system",
-                            assets::IconName::Monitor,
-                            crate::appearance::Appearance::System,
-                        ),
-                        (
-                            "appearance-light",
-                            "Light",
-                            assets::IconName::Sun,
-                            crate::appearance::Appearance::Light,
-                        ),
-                        (
-                            "appearance-dark",
-                            "Dark",
-                            assets::IconName::Moon,
-                            crate::appearance::Appearance::Dark,
-                        ),
-                    ]
-                    .into_iter()
-                    .map(|(id, name, icon, mode)| {
-                        let selected = self.store.appearance() == mode;
-                        let colors = palette(cx);
-                        tool_icon(id, icon, name)
-                            .custom(
-                                ButtonCustomVariant::new(cx)
-                                    .foreground(
-                                        rgb(if selected {
-                                            colors.accent
-                                        } else {
-                                            colors.muted
-                                        })
-                                        .into(),
-                                    )
-                                    .color(transparent_black())
-                                    .hover(rgb(colors.hover).into())
-                                    .active(rgb(colors.accent_surface).into()),
-                            )
-                            .selected(selected)
-                            .toggled(selected)
-                            .on_click(cx.listener(move |a, _, w, cx| a.set_appearance(mode, w, cx)))
-                    }),
-                ),
-            );
+                .gap_2()
+                .child(
+                    div()
+                        .font_weight(FontWeight::SEMIBOLD)
+                        .child(selectable("Appearance")),
+                )
+                .child(
+                    row().flex_wrap().children(
+                        [
+                            (
+                                "appearance-system",
+                                "Follow system",
+                                assets::IconName::Monitor,
+                                crate::appearance::Appearance::System,
+                            ),
+                            (
+                                "appearance-light",
+                                "Light",
+                                assets::IconName::Sun,
+                                crate::appearance::Appearance::Light,
+                            ),
+                            (
+                                "appearance-dark",
+                                "Dark",
+                                assets::IconName::Moon,
+                                crate::appearance::Appearance::Dark,
+                            ),
+                        ]
+                        .into_iter()
+                        .map(|(id, name, icon, mode)| {
+                            let selected = self.store.appearance() == mode;
+                            let colors = palette(cx);
+                            tool_icon(id, icon, name)
+                                .custom(
+                                    ButtonCustomVariant::new(cx)
+                                        .foreground(
+                                            rgb(if selected {
+                                                colors.accent
+                                            } else {
+                                                colors.muted
+                                            })
+                                            .into(),
+                                        )
+                                        .color(transparent_black())
+                                        .hover(rgb(colors.hover).into())
+                                        .active(rgb(colors.accent_surface).into()),
+                                )
+                                .selected(selected)
+                                .toggled(selected)
+                                .on_click(
+                                    cx.listener(move |a, _, w, cx| a.set_appearance(mode, w, cx)),
+                                )
+                        }),
+                    ),
+                );
             let updates_available = crate::updater::available();
             let check_label = match &self.update_available {
                 Some(version) => crate::i18n::tr_string(format!("Update to v{version}")),

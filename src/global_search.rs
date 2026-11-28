@@ -56,7 +56,10 @@ impl SearchDomain {
             Self::All => true,
             Self::Research => kind == SearchTargetKind::Research,
             Self::Automations => {
-                matches!(kind, SearchTargetKind::Automation | SearchTargetKind::Period)
+                matches!(
+                    kind,
+                    SearchTargetKind::Automation | SearchTargetKind::Period
+                )
             }
         }
     }
@@ -108,7 +111,6 @@ impl SearchTarget {
             Self::Research(id) | Self::Automation(id) | Self::Period(id) => id,
         }
     }
-
 }
 
 #[derive(Clone, Debug, PartialEq, Eq)]
@@ -221,11 +223,7 @@ pub(crate) fn search(
         right_score
             .cmp(left_score)
             .then_with(|| left.kind.cmp(&right.kind))
-            .then_with(|| {
-                left.title
-                    .to_lowercase()
-                    .cmp(&right.title.to_lowercase())
-            })
+            .then_with(|| left.title.to_lowercase().cmp(&right.title.to_lowercase()))
             .then_with(|| left.target.id().cmp(&right.target.id()))
     });
     scored
@@ -248,9 +246,7 @@ fn research_candidate(store: &Store, task: &Task) -> Candidate {
         .find(|project| project.id == task.project_id)
         .map(|project| project.name.clone())
         .unwrap_or_else(|| "Unknown project".into());
-    let topic = store
-        .task_topic(task.id)
-        .map(|topic| topic.display_name());
+    let topic = store.task_topic(task.id).map(|topic| topic.display_name());
     let kind = research_kind_label(task);
     let status = crate::i18n::tr_string(store.task_status(task.id, None).label());
     let detail = match &topic {
@@ -413,7 +409,13 @@ mod tests {
     use crate::domain::Stage;
 
     fn automation_definition(store: &mut Store, name: &str, objective: &str) -> u64 {
-        let id = store.automations().iter().map(|value| value.id).max().unwrap_or(0) + 1;
+        let id = store
+            .automations()
+            .iter()
+            .map(|value| value.id)
+            .max()
+            .unwrap_or(0)
+            + 1;
         store.push_automation(AutomationDefinition {
             id,
             version: 1,
@@ -423,7 +425,10 @@ mod tests {
             objective: objective.into(),
             expected_result: "A cited brief".into(),
             schedule: Schedule {
-                spec: ScheduleSpec::Daily { hour: 9, minute: 15 },
+                spec: ScheduleSpec::Daily {
+                    hour: 9,
+                    minute: 15,
+                },
                 timezone: "UTC".into(),
             },
             status: DefinitionStatus::Enabled,
@@ -498,12 +503,21 @@ mod tests {
         store.research_config_mut().models =
             ["qa/plan", "qa/collect", "qa/analyze", "qa/advise"].map(String::from);
         let goal = store
-            .create_research_goal("Semiconductor supply outlook".into(), "Compare supply".into(), 1)
+            .create_research_goal(
+                "Semiconductor supply outlook".into(),
+                "Compare supply".into(),
+                1,
+            )
             .unwrap();
         let automation = automation_definition(&mut store, "Fuel price watch", "Track fuel");
         let period = occurrence(&mut store, automation, 41, true);
         let owned = store
-            .create_task("Semiconductor automation collection", 1, Stage::Planned, None)
+            .create_task(
+                "Semiconductor automation collection",
+                1,
+                Stage::InProgress,
+                None,
+            )
             .unwrap();
         store.task_mut(owned).unwrap().automation_id = Some(automation);
         (store, goal, automation, period, owned)
@@ -519,27 +533,52 @@ mod tests {
             .create_task(
                 "Semiconductor automation container task",
                 automation_project,
-                Stage::Planned,
+                Stage::InProgress,
                 None,
             )
             .unwrap();
         let hits = search(&store, SearchDomain::Research, "semiconductor", 50);
-        assert!(hits.iter().all(|hit| hit.kind == SearchTargetKind::Research));
-        assert!(hits.iter().any(|hit| hit.target == SearchTarget::Research(goal)));
-        assert!(!hits
-            .iter()
-            .any(|hit| matches!(hit.target, SearchTarget::Automation(id) if id == automation)));
-        assert!(!hits.iter().any(|hit| hit.target == SearchTarget::Research(owned)));
-        assert!(!hits.iter().any(|hit| hit.target == SearchTarget::Research(container)));
-        assert!(hits.iter().any(|hit| hit.title.contains("Semiconductor supply outlook")));
+        assert!(
+            hits.iter()
+                .all(|hit| hit.kind == SearchTargetKind::Research)
+        );
+        assert!(
+            hits.iter()
+                .any(|hit| hit.target == SearchTarget::Research(goal))
+        );
+        assert!(
+            !hits
+                .iter()
+                .any(|hit| matches!(hit.target, SearchTarget::Automation(id) if id == automation))
+        );
+        assert!(
+            !hits
+                .iter()
+                .any(|hit| hit.target == SearchTarget::Research(owned))
+        );
+        assert!(
+            !hits
+                .iter()
+                .any(|hit| hit.target == SearchTarget::Research(container))
+        );
+        assert!(
+            hits.iter()
+                .any(|hit| hit.title.contains("Semiconductor supply outlook"))
+        );
     }
 
     #[test]
     fn automation_domain_returns_definitions_and_period_metadata() {
         let (store, _goal, automation, period, _owned) = fixture();
         let hits = search(&store, SearchDomain::Automations, "fuel", 50);
-        assert!(hits.iter().any(|hit| hit.target == SearchTarget::Automation(automation)));
-        assert!(hits.iter().any(|hit| hit.target == SearchTarget::Period(period)));
+        assert!(
+            hits.iter()
+                .any(|hit| hit.target == SearchTarget::Automation(automation))
+        );
+        assert!(
+            hits.iter()
+                .any(|hit| hit.target == SearchTarget::Period(period))
+        );
         assert!(hits.iter().all(|hit| {
             matches!(
                 hit.kind,
@@ -553,9 +592,26 @@ mod tests {
                 .any(|hit| hit.target == SearchTarget::Period(period)),
             "period number is searchable metadata"
         );
-        let result = search(&store, SearchDomain::Automations, "saved result reference", 50);
-        assert!(result.iter().any(|hit| hit.target == SearchTarget::Period(period)));
-        assert!(search(&store, SearchDomain::Automations, "final report available", 50).is_empty());
+        let result = search(
+            &store,
+            SearchDomain::Automations,
+            "saved result reference",
+            50,
+        );
+        assert!(
+            result
+                .iter()
+                .any(|hit| hit.target == SearchTarget::Period(period))
+        );
+        assert!(
+            search(
+                &store,
+                SearchDomain::Automations,
+                "final report available",
+                50
+            )
+            .is_empty()
+        );
     }
 
     #[test]
@@ -563,10 +619,10 @@ mod tests {
         let mut store = Store::empty();
         store.project_at_mut(0).unwrap().name = "Desk".into();
         let exact = store
-            .create_task("Fuel price report", 1, Stage::Planned, None)
+            .create_task("Fuel price report", 1, Stage::InProgress, None)
             .unwrap();
         let metadata = store
-            .create_task("Weekly market brief", 1, Stage::Planned, None)
+            .create_task("Weekly market brief", 1, Stage::InProgress, None)
             .unwrap();
         store.task_mut(metadata).unwrap().labels.push("fuel".into());
         let hits = search(&store, SearchDomain::All, "fuel", 50);
@@ -625,11 +681,7 @@ impl TaskApp {
         cx.notify();
     }
 
-    pub(crate) fn close_global_search(
-        &mut self,
-        window: &mut Window,
-        cx: &mut Context<Self>,
-    ) {
+    pub(crate) fn close_global_search(&mut self, window: &mut Window, cx: &mut Context<Self>) {
         if !self.global_search_ui.open {
             return;
         }
@@ -664,11 +716,7 @@ impl TaskApp {
         cx.notify();
     }
 
-    pub(crate) fn move_global_search_selection(
-        &mut self,
-        step: isize,
-        cx: &mut Context<Self>,
-    ) {
+    pub(crate) fn move_global_search_selection(&mut self, step: isize, cx: &mut Context<Self>) {
         let len = self.global_search_ui.hits.len();
         if len == 0 {
             return;
@@ -752,11 +800,7 @@ impl TaskApp {
                     self.missing_search_target(cx);
                     return;
                 };
-                if self
-                    .store
-                    .automation(occurrence.automation_id)
-                    .is_none()
-                {
+                if self.store.automation(occurrence.automation_id).is_none() {
                     self.missing_search_target(cx);
                     return;
                 }
@@ -818,8 +862,15 @@ impl TaskApp {
                 .cursor_pointer()
                 .role(Role::ListBoxOption)
                 .aria_selected(selected)
-                .aria_label(crate::i18n::tr(format!("{} · {}", crate::i18n::tr_string(hit.kind.label()), hit.title)))
-                .aria_description(crate::i18n::tr(format!("{} · {}", hit.detail, hit.destination)))
+                .aria_label(crate::i18n::tr(format!(
+                    "{} · {}",
+                    crate::i18n::tr_string(hit.kind.label()),
+                    hit.title
+                )))
+                .aria_description(crate::i18n::tr(format!(
+                    "{} · {}",
+                    hit.detail, hit.destination
+                )))
                 .border_1()
                 .border_color(rgba(0x00000000))
                 .when(selected, |this| {
@@ -827,7 +878,9 @@ impl TaskApp {
                         .border_1()
                         .border_color(rgb(colors.accent))
                 })
-                .when(!selected, |this| this.hover(|style| style.bg(rgb(colors.hover))))
+                .when(!selected, |this| {
+                    this.hover(|style| style.bg(rgb(colors.hover)))
+                })
                 .on_click(cx.listener(move |this, _, window, cx| {
                     this.activate_global_search_target(target, window, cx);
                 }))
@@ -870,13 +923,18 @@ impl TaskApp {
                                         .text_color(rgb(colors.tag_text))
                                         .text_xs()
                                         .whitespace_nowrap()
-                                        .child(crate::i18n::tr(crate::i18n::tr_string(hit.kind.label()))),
+                                        .child(crate::i18n::tr(crate::i18n::tr_string(
+                                            hit.kind.label(),
+                                        ))),
                                 )
                                 .child(
-                                    single_line_text(format!("{row_id}-detail"), hit.detail.clone())
-                                        .text_xs()
-                                        .text_color(rgb(colors.muted))
-                                        .map(observed),
+                                    single_line_text(
+                                        format!("{row_id}-detail"),
+                                        hit.detail.clone(),
+                                    )
+                                    .text_xs()
+                                    .text_color(rgb(colors.muted))
+                                    .map(observed),
                                 )
                                 .child(
                                     div()
@@ -904,52 +962,53 @@ impl TaskApp {
             .gap_3()
             .map(|d| crate::appearance::floating_surface(d, cx))
             .text_color(rgb(colors.text))
-            .capture_key_down(cx.listener(
-                |this, event: &KeyDownEvent, window, cx| {
-                    if !this.global_search_ui.open {
-                        return;
+            .capture_key_down(cx.listener(|this, event: &KeyDownEvent, window, cx| {
+                if !this.global_search_ui.open {
+                    return;
+                }
+                if event.keystroke.modifiers.platform {
+                    return;
+                }
+                match event.keystroke.key.as_str() {
+                    "up" => {
+                        this.move_global_search_selection(-1, cx);
+                        cx.stop_propagation();
                     }
-                    if event.keystroke.modifiers.platform {
-                        return;
+                    "down" => {
+                        this.move_global_search_selection(1, cx);
+                        cx.stop_propagation();
                     }
-                    match event.keystroke.key.as_str() {
-                        "up" => {
-                            this.move_global_search_selection(-1, cx);
-                            cx.stop_propagation();
-                        }
-                        "down" => {
-                            this.move_global_search_selection(1, cx);
-                            cx.stop_propagation();
-                        }
-                        "escape" => {
-                            this.close_global_search(window, cx);
-                            cx.stop_propagation();
-                        }
-                        "enter" => {
-                            // The overlay listens for Enter as well as the Input
-                            // submit path so a decision that temporarily moved
-                            // focus cannot swallow the second activation.
-                            this.activate_selected_global_search(window, cx);
-                            cx.stop_propagation();
-                        }
-                        _ => {}
+                    "escape" => {
+                        this.close_global_search(window, cx);
+                        cx.stop_propagation();
                     }
-                },
-            ))
+                    "enter" => {
+                        // The overlay listens for Enter as well as the Input
+                        // submit path so a decision that temporarily moved
+                        // focus cannot swallow the second activation.
+                        this.activate_selected_global_search(window, cx);
+                        cx.stop_propagation();
+                    }
+                    _ => {}
+                }
+            }))
             .child(
                 row()
                     .justify_between()
                     .gap_3()
                     .child(
-                        col().gap_1().child(
-                            div()
-                                .text_lg()
-                                .font_weight(FontWeight::SEMIBOLD)
-                                .child(crate::i18n::tr("Search")),
-                        ).child(muted(
-                            "Research titles, automation definitions and periods.",
-                            cx,
-                        )),
+                        col()
+                            .gap_1()
+                            .child(
+                                div()
+                                    .text_lg()
+                                    .font_weight(FontWeight::SEMIBOLD)
+                                    .child(crate::i18n::tr("Search")),
+                            )
+                            .child(muted(
+                                "Research titles, automation definitions and periods.",
+                                cx,
+                            )),
                     )
                     .child(
                         tool_icon(
@@ -982,9 +1041,11 @@ impl TaskApp {
                                 self.global_search_ui.domain == domain,
                                 cx,
                             )
-                            .on_click(cx.listener(move |this, _, window, cx| {
-                                this.set_global_search_domain(domain, window, cx);
-                            }))
+                            .on_click(cx.listener(
+                                move |this, _, window, cx| {
+                                    this.set_global_search_domain(domain, window, cx);
+                                },
+                            ))
                         }),
                     ),
             );

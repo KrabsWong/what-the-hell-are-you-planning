@@ -1,10 +1,10 @@
 use crate::app::Scope;
 use crate::appearance::{
-    CONTROL_RADIUS, GROUP_RADIUS, SHELL_INSET, SURFACE_GUTTER, SURFACE_RADIUS,
-    floating_surface, palette,
+    CONTROL_RADIUS, GROUP_RADIUS, SHELL_INSET, SURFACE_GUTTER, SURFACE_RADIUS, floating_surface,
+    palette,
 };
 pub(crate) use crate::controls::*;
-use crate::domain::{Priority, Task};
+use crate::domain::Task;
 use crate::{app::*, domain::*};
 use gpui_kit::base::{FocusTrapElement, h_resizable, resizable_panel};
 use gpui_kit::component::menu::{ContextMenuExt, DropdownMenu, PopupMenuItem};
@@ -109,14 +109,16 @@ pub(crate) fn wrapped_tooltip(text: &str) -> String {
             }
         }
         for character in word.chars() {
-            if column == 56 { output.push('\n'); column = 0; }
+            if column == 56 {
+                output.push('\n');
+                column = 0;
+            }
             output.push(character);
             column += 1;
         }
     }
     output
 }
-
 
 /// Passive execution metadata; field names remain available on hover and to accessibility.
 pub(crate) fn metadata_tag(id: String, field: &str, value: String, cx: &App) -> AnyElement {
@@ -126,8 +128,11 @@ pub(crate) fn metadata_tag(id: String, field: &str, value: String, cx: &App) -> 
     let tooltip = wrapped_tooltip(&description);
     chip(value, colors.muted, cx)
         .bg(rgb(colors.tag_surface))
-        .max_w_full().min_w_0()
-        .whitespace_nowrap().overflow_hidden().text_ellipsis()
+        .max_w_full()
+        .min_w_0()
+        .whitespace_nowrap()
+        .overflow_hidden()
+        .text_ellipsis()
         .id(id)
         .aria_label(crate::i18n::tr(description))
         .tooltip(move |w, cx| component::tooltip::Tooltip::new(tooltip.clone()).build(w, cx))
@@ -135,10 +140,20 @@ pub(crate) fn metadata_tag(id: String, field: &str, value: String, cx: &App) -> 
 }
 
 pub(crate) fn execution_metadata(context: String, agent: String, model: &str, cx: &App) -> Div {
-    row().flex_wrap().gap_2().min_w_0()
-        .when(!context.is_empty(), |row| row.child(label(context.clone(), cx)))
+    row()
+        .flex_wrap()
+        .gap_2()
+        .min_w_0()
+        .when(!context.is_empty(), |row| {
+            row.child(label(context.clone(), cx))
+        })
         .child(metadata_tag(format!("{context}-agent"), "Agent", agent, cx))
-        .child(metadata_tag(format!("{context}-model"), "Model", model.into(), cx))
+        .child(metadata_tag(
+            format!("{context}-model"),
+            "Model",
+            model.into(),
+            cx,
+        ))
 }
 
 /// Semantic tones for inline notices. Every notice uses a tinted surface of its
@@ -222,7 +237,6 @@ pub(crate) fn stage_color(stage: Stage, cx: &App) -> u32 {
     let colors = palette(cx);
     match stage {
         Stage::Backlog => colors.muted,
-        Stage::Planned => colors.secondary,
         Stage::InProgress => colors.warning,
         Stage::Review => colors.review,
         Stage::Done => colors.success,
@@ -258,8 +272,13 @@ pub(crate) fn sidebar_variant(
 }
 
 fn section(title: &str, cx: &App) -> Div {
-    label(title.to_string(), cx).text_sm().font_weight(FontWeight::SEMIBOLD)
-        .text_color(rgb(palette(cx).text)).pt_3().pb_1().px_3()
+    label(title.to_string(), cx)
+        .text_sm()
+        .font_weight(FontWeight::SEMIBOLD)
+        .text_color(rgb(palette(cx).text))
+        .pt_3()
+        .pb_1()
+        .px_3()
 }
 
 impl TaskApp {
@@ -309,13 +328,15 @@ impl TaskApp {
                         .flex_1()
                         .min_w_0()
                         .gap_1()
-                        .child(div().font_weight(FontWeight::SEMIBOLD).child(
-                            crate::i18n::tr(if tone == NoticeTone::Danger {
-                                "Not saved"
-                            } else {
-                                "Saved"
-                            }),
-                        ))
+                        .child(
+                            div()
+                                .font_weight(FontWeight::SEMIBOLD)
+                                .child(crate::i18n::tr(if tone == NoticeTone::Danger {
+                                    "Not saved"
+                                } else {
+                                    "Saved"
+                                })),
+                        )
                         .child(div().text_sm().child(selectable(message.clone()))),
                 )
                 .child(
@@ -340,10 +361,8 @@ impl TaskApp {
         window: &mut Window,
         cx: &mut Context<Self>,
     ) {
-        if self.apply_scoped_settings(
-            crate::scoped_settings::SettingsChange::Appearance(mode),
-            cx,
-        ) {
+        if self.apply_scoped_settings(crate::scoped_settings::SettingsChange::Appearance(mode), cx)
+        {
             crate::appearance::apply(mode, Some(window), cx);
             let _ = crate::workspace::save_appearance_hint(mode);
         }
@@ -353,16 +372,30 @@ impl TaskApp {
         #[cfg(target_os = "macos")]
         {
             crate::native_glass::NativeGlass::unavailable_reason().or_else(|| {
-                self.native_glass.is_none().then_some("Liquid Glass is unavailable for this window.")
+                self.native_glass
+                    .is_none()
+                    .then_some("Liquid Glass is unavailable for this window.")
             })
         }
         #[cfg(not(target_os = "macos"))]
-        { Some("Liquid Glass requires macOS 26 or later.") }
+        {
+            Some("Liquid Glass requires macOS 26 or later.")
+        }
     }
 
-    pub(crate) fn set_liquid_glass(&mut self, enabled: bool, window: &mut Window, cx: &mut Context<Self>) {
-        if self.liquid_glass_unavailable_reason().is_some() { return; }
-        if self.apply_scoped_settings(crate::scoped_settings::SettingsChange::LiquidGlass(enabled), cx) {
+    pub(crate) fn set_liquid_glass(
+        &mut self,
+        enabled: bool,
+        window: &mut Window,
+        cx: &mut Context<Self>,
+    ) {
+        if self.liquid_glass_unavailable_reason().is_some() {
+            return;
+        }
+        if self.apply_scoped_settings(
+            crate::scoped_settings::SettingsChange::LiquidGlass(enabled),
+            cx,
+        ) {
             self.refresh_liquid_glass(window, cx);
         }
         cx.notify();
@@ -377,7 +410,11 @@ impl TaskApp {
 
     fn chrome_background(&self, cx: &App) -> Hsla {
         #[cfg(target_os = "macos")]
-        if self.native_glass.as_ref().is_some_and(|glass| glass.enabled()) {
+        if self
+            .native_glass
+            .as_ref()
+            .is_some_and(|glass| glass.enabled())
+        {
             return transparent_black();
         }
         rgb(palette(cx).side).into()
@@ -385,7 +422,11 @@ impl TaskApp {
 
     fn workspace_background(&self, cx: &App) -> Hsla {
         #[cfg(target_os = "macos")]
-        if self.native_glass.as_ref().is_some_and(|glass| glass.enabled()) {
+        if self
+            .native_glass
+            .as_ref()
+            .is_some_and(|glass| glass.enabled())
+        {
             // A dense wash over the native material protects reading contrast.
             return if gpui_kit::component::Theme::global(cx).is_dark() {
                 rgba(0x3436388c).into()
@@ -398,9 +439,20 @@ impl TaskApp {
 
     fn glass_underlay(&self) -> Option<AnyElement> {
         #[cfg(target_os = "macos")]
-        if let Some(glass) = self.native_glass.as_ref().filter(|glass| glass.enabled()).cloned() {
-            return Some(canvas(move |bounds, _, _| glass.layout(bounds), |_, _, _, _| {})
-                .absolute().top_0().left_0().size_full().into_any_element());
+        if let Some(glass) = self
+            .native_glass
+            .as_ref()
+            .filter(|glass| glass.enabled())
+            .cloned()
+        {
+            return Some(
+                canvas(move |bounds, _, _| glass.layout(bounds), |_, _, _, _| {})
+                    .absolute()
+                    .top_0()
+                    .left_0()
+                    .size_full()
+                    .into_any_element(),
+            );
         }
         None
     }
@@ -412,7 +464,11 @@ impl TaskApp {
     fn workspace_switcher(&self, window: &mut Window, cx: &mut Context<Self>) -> AnyElement {
         let rotation = gpui_kit::base::motion::transition(
             "workspace-menu-chevron",
-            if self.workspace_menu_open { std::f32::consts::PI } else { 0. },
+            if self.workspace_menu_open {
+                std::f32::consts::PI
+            } else {
+                0.
+            },
             gpui_kit::base::motion::Transition::new(std::time::Duration::from_millis(180)),
             window,
             cx,
@@ -520,15 +576,13 @@ impl TaskApp {
                             }
                         }),
                 );
-                menu = menu
-                    .item(PopupMenuItem::separator())
-                    .item(
-                        PopupMenuItem::new(crate::i18n::tr(format!(
-                            "Version {}",
-                            env!("CARGO_PKG_VERSION")
-                        )))
-                        .disabled(true),
-                    );
+                menu = menu.item(PopupMenuItem::separator()).item(
+                    PopupMenuItem::new(crate::i18n::tr(format!(
+                        "Version {}",
+                        env!("CARGO_PKG_VERSION")
+                    )))
+                    .disabled(true),
+                );
                 menu
             })
             .on_open_change(cx.listener(|app, open, _, cx| {
@@ -621,7 +675,9 @@ impl TaskApp {
                         .small()
                         .h(px(24.))
                         .px_2()
-                        .tooltip(crate::i18n::tr("Write the workspace to local storage again"))
+                        .tooltip(crate::i18n::tr(
+                            "Write the workspace to local storage again",
+                        ))
                         .on_click(cx.listener(|app, _, w, cx| app.retry_save(w, cx))),
                 )
                 .into_any_element();
@@ -716,18 +772,12 @@ impl TaskApp {
         let colors = palette(cx);
         // The footer keeps only navigation and build identity. Undo and New
         // research are reachable from their owning pages and keyboard shortcuts.
-        let mut commands = row()
-            .flex_shrink_0()
-            .items_center()
-            .gap_1();
+        let mut commands = row().flex_shrink_0().items_center().gap_1();
         commands = commands.child(
             div()
                 .pr_2()
                 .text_color(rgb(colors.muted))
-                .child(selectable(format!(
-                    "Version {}",
-                    env!("CARGO_PKG_VERSION")
-                ))),
+                .child(selectable(format!("Version {}", env!("CARGO_PKG_VERSION")))),
         );
         commands = commands.child(
             button("footer-search", "Search")
@@ -746,7 +796,11 @@ impl TaskApp {
     pub(crate) fn focus_search(&mut self, window: &mut Window, cx: &mut Context<Self>) {
         self.open_global_search(window, cx);
     }
-    pub(crate) fn sidebar_surface(&self, window: &mut Window, cx: &mut Context<Self>) -> AnyElement {
+    pub(crate) fn sidebar_surface(
+        &self,
+        window: &mut Window,
+        cx: &mut Context<Self>,
+    ) -> AnyElement {
         #[cfg(feature = "qa")]
         crate::brand::note_sidebar_render();
         let colors = palette(cx);
@@ -762,10 +816,7 @@ impl TaskApp {
             .px_2()
             .gap_3()
             .child(observed(
-                div()
-                    .id("sidebar-brand-slot")
-                    .size(px(32.))
-                    .flex_shrink_0(),
+                div().id("sidebar-brand-slot").size(px(32.)).flex_shrink_0(),
             ))
             .child(
                 div()
@@ -824,26 +875,6 @@ impl TaskApp {
             })
             .count();
         side = side.child(self.nav("all", "All research", Scope::All, count, cx));
-        let cycles: std::collections::BTreeSet<_> = self
-            .store
-            .tasks()
-            .iter()
-            .filter(|t| !self.store.task_is_archived(t.id))
-            .filter_map(|t| t.cycle.as_deref())
-            .collect();
-        if !cycles.is_empty() {
-            side = side.child(section("Cycles", cx));
-        }
-        for (i, name) in cycles.into_iter().enumerate() {
-            let scope = Scope::Cycle(name.to_string());
-            let count = self
-                .store
-                .tasks()
-                .iter()
-                .filter(|t| !self.store.task_is_archived(t.id) && t.cycle.as_deref() == Some(name))
-                .count();
-            side = side.child(self.nav(format!("cycle-{i}"), name, scope, count, cx));
-        }
         // Separate navigation groups vertically without consuming title width.
         // Project rows sit one 12 px step right of the heading, and every
         // expanded level adds the same step, so the tree reads as one ladder.
@@ -854,8 +885,12 @@ impl TaskApp {
                 .pl_3()
                 .pr_3()
                 .pt_2()
-                .child(label("Projects", cx).text_sm().font_weight(FontWeight::SEMIBOLD)
-                    .text_color(rgb(colors.text)))
+                .child(
+                    label("Projects", cx)
+                        .text_sm()
+                        .font_weight(FontWeight::SEMIBOLD)
+                        .text_color(rgb(colors.text)),
+                )
                 .child(
                     tool_icon("new-project", assets::IconName::Plus, "Create project")
                         .tooltip(crate::i18n::tr("Create project"))
@@ -1032,75 +1067,82 @@ impl TaskApp {
                         let has_steps = tasks.iter().any(|t| t.parent_id == Some(tid));
                         let status = self.display_task_status(tid);
                         let execution = status.execution;
-                        let hint_heading =
-                            format!("{} · {}", self.store.identifier(task), crate::i18n::tr_string(status.label()),);
+                        let hint_heading = format!(
+                            "{} · {}",
+                            self.store.identifier(task),
+                            crate::i18n::tr_string(status.label()),
+                        );
                         let hint_title = task.title.clone();
                         let hint_reason = status.reason;
                         let active = self.selected().or(self.task_result_context()) == Some(tid);
-                        let task_button = row_button(format!("sidebar-task-{tid}"), "")
-                            .custom(sidebar_variant(active, cx))
-                            .when(active, |b| b.font_weight(FontWeight::SEMIBOLD))
-                            .flex_1()
-                            .min_w_0()
-                            .h_7()
-                            .px_3()
-                            .map(|mut button| {
-                                button.interactivity().tooltip(move |window, cx| {
-                                    let width =
-                                        px(360.).min(window.viewport_size().width - px(64.));
-                                    let heading = hint_heading.clone();
-                                    let title = hint_title.clone();
-                                    let reason = hint_reason.clone();
-                                    component::tooltip::Tooltip::element(move |_, cx| {
-                                        col()
-                                            .w(width)
-                                            .gap_2()
-                                            .whitespace_normal()
-                                            .child(label(heading.clone(), cx))
-                                            .child(
-                                                div()
-                                                    .font_weight(FontWeight::SEMIBOLD)
-                                                    .child(selectable(title.clone())),
-                                            )
-                                            .child(muted(reason.clone(), cx).text_sm())
-                                    })
-                                    .p_3()
-                                    .build(window, cx)
-                                });
-                                button
-                            })
-                            .accessibility_label(crate::i18n::tr(format!(
-                                "{} · {}",
-                                task.title,
-                                crate::i18n::tr_string(self.display_task_status(tid).label())
-                            )))
-                            .child(
-                                row()
-                                    .w_full()
-                                    .min_w_0()
-                                    .gap(px(6.))
-                                    .child(execution.compact_icon_view(format!("task-state-icon-{tid}"), cx))
-                                    .child(single_line_text(
-                                        format!("sidebar-task-title-{tid}"),
-                                        format!(
-                                            "{} · {}",
-                                            if nested {
-                                                self.store
-                                                    .identifier(task)
-                                                    .rsplit('-')
-                                                    .next()
-                                                    .unwrap_or("")
-                                                    .to_string()
-                                            } else {
-                                                self.store.identifier(task)
-                                            },
-                                            task.title
-                                        ),
-                                    )),
-                            )
-                            .on_click(cx.listener(move |a, _, w, cx| {
-                                a.request_sidebar_task(pid, tid, w, cx);
-                            }));
+                        let task_button =
+                            row_button(format!("sidebar-task-{tid}"), "")
+                                .custom(sidebar_variant(active, cx))
+                                .when(active, |b| b.font_weight(FontWeight::SEMIBOLD))
+                                .flex_1()
+                                .min_w_0()
+                                .h_7()
+                                .px_3()
+                                .map(|mut button| {
+                                    button.interactivity().tooltip(move |window, cx| {
+                                        let width =
+                                            px(360.).min(window.viewport_size().width - px(64.));
+                                        let heading = hint_heading.clone();
+                                        let title = hint_title.clone();
+                                        let reason = hint_reason.clone();
+                                        component::tooltip::Tooltip::element(move |_, cx| {
+                                            col()
+                                                .w(width)
+                                                .gap_2()
+                                                .whitespace_normal()
+                                                .child(label(heading.clone(), cx))
+                                                .child(
+                                                    div()
+                                                        .font_weight(FontWeight::SEMIBOLD)
+                                                        .child(selectable(title.clone())),
+                                                )
+                                                .child(muted(reason.clone(), cx).text_sm())
+                                        })
+                                        .p_3()
+                                        .build(window, cx)
+                                    });
+                                    button
+                                })
+                                .accessibility_label(crate::i18n::tr(format!(
+                                    "{} · {}",
+                                    task.title,
+                                    crate::i18n::tr_string(self.display_task_status(tid).label())
+                                )))
+                                .child(
+                                    row()
+                                        .w_full()
+                                        .min_w_0()
+                                        .gap(px(6.))
+                                        .child(execution.compact_icon_view(
+                                            format!("task-state-icon-{tid}"),
+                                            cx,
+                                        ))
+                                        .child(single_line_text(
+                                            format!("sidebar-task-title-{tid}"),
+                                            format!(
+                                                "{} · {}",
+                                                if nested {
+                                                    self.store
+                                                        .identifier(task)
+                                                        .rsplit('-')
+                                                        .next()
+                                                        .unwrap_or("")
+                                                        .to_string()
+                                                } else {
+                                                    self.store.identifier(task)
+                                                },
+                                                task.title
+                                            ),
+                                        )),
+                                )
+                                .on_click(cx.listener(move |a, _, w, cx| {
+                                    a.request_sidebar_task(pid, tid, w, cx);
+                                }));
                         // One 12 px ladder for every tree level: topics sit one
                         // step in, a goal two, its research steps three. The
                         // leading status icon stays inside the row's own inset so
@@ -1153,15 +1195,13 @@ impl TaskApp {
         // Give the paused bucket its own band: it is a destination for projects,
         // not another project in the list above it.
         side = side
-            .child(
-                col().w_full().mt_3().child(self.nav(
-                    "recovery",
-                    "Paused projects",
-                    Scope::Recovery,
-                    self.store.paused_project_goals().len(),
-                    cx,
-                )),
-            )
+            .child(col().w_full().mt_3().child(self.nav(
+                "recovery",
+                "Paused projects",
+                Scope::Recovery,
+                self.store.paused_project_goals().len(),
+                cx,
+            )))
             .child(self.nav(
                 "runs",
                 "Research results",
@@ -1249,7 +1289,6 @@ impl TaskApp {
         let icon = match &scope {
             Scope::All => assets::IconName::Layers,
             Scope::Project(_) | Scope::Topic(_) => assets::IconName::Folder,
-            Scope::Cycle(_) => assets::IconName::RefreshCw,
             Scope::Archive => assets::IconName::Archive,
             Scope::Runs => assets::IconName::ChartNoAxesCombined,
             Scope::Recovery => assets::IconName::Pause,
@@ -1511,7 +1550,12 @@ impl TaskApp {
                 }
                 return (links, self.task_location_label(task));
             }
-            if let Some(project) = self.store.projects().iter().find(|p| p.id == task.project_id) {
+            if let Some(project) = self
+                .store
+                .projects()
+                .iter()
+                .find(|p| p.id == task.project_id)
+            {
                 links.push((
                     "location-project".into(),
                     project.name.clone(),
@@ -1667,16 +1711,14 @@ impl TaskApp {
                         .px_1()
                         .flex_shrink_0()
                         .disabled(!back_available)
-                        .tooltip(crate::i18n::tr(
-                            if self.show_run_details {
-                                "Back to result · ⌘[".into()
-                            } else {
-                                destination
-                                    .clone()
-                                    .map(|name| format!("Back to {name} · ⌘["))
-                                    .unwrap_or_else(|| "Back to previous page · ⌘[".into())
-                            },
-                        ))
+                        .tooltip(crate::i18n::tr(if self.show_run_details {
+                            "Back to result · ⌘[".into()
+                        } else {
+                            destination
+                                .clone()
+                                .map(|name| format!("Back to {name} · ⌘["))
+                                .unwrap_or_else(|| "Back to previous page · ⌘[".into())
+                        }))
                         .on_click(cx.listener(|a, _, w, cx| a.request_back(w, cx))),
                 )
             })
@@ -1756,15 +1798,6 @@ impl TaskApp {
             .when_some(project, |d, id| {
                 d.child(self.project_toolbar_actions(id, cx))
             })
-            .when(project.is_none(), |d| {
-                d.child(
-                    button("new-task", "New research")
-                        .icon(assets::IconName::Plus)
-                        .when(project.is_some(), |b| b.ghost())
-                        .when(project.is_none(), |b| b.primary())
-                        .on_click(cx.listener(|this, _, w, cx| this.request_new_research(w, cx))),
-                )
-            })
             .into_any_element()
     }
     fn all_status_control(&self, cx: &mut Context<Self>) -> AnyElement {
@@ -1819,29 +1852,32 @@ impl TaskApp {
     fn collection(&self, cx: &mut Context<Self>) -> AnyElement {
         let colors = palette(cx);
         let tasks = self.visible_tasks();
-        let mut main = col().size_full().child(self.toolbar(tasks.len(), cx)).child(
-            row()
-                .px_6()
-                .pb_4()
-                .gap_3()
-                .when(self.scope() == Scope::All, |d| {
-                    d.child(self.all_status_control(cx))
-                })
-                .child(
-                    div()
-                        .flex_1()
-                        .min_w_0()
-                        .child(Input::new(&self.search).id("task-search")),
-                )
-                .child(
-                    tool_icon("display", assets::IconName::Settings2, "Display options")
-                        .selected(self.show_display)
-                        .on_click(cx.listener(|this, _, _, cx| {
-                            this.show_display = !this.show_display;
-                            cx.notify();
-                        })),
-                ),
-        );
+        let mut main = col()
+            .size_full()
+            .child(self.toolbar(tasks.len(), cx))
+            .child(
+                row()
+                    .px_6()
+                    .pb_4()
+                    .gap_3()
+                    .when(self.scope() == Scope::All, |d| {
+                        d.child(self.all_status_control(cx))
+                    })
+                    .child(
+                        div()
+                            .flex_1()
+                            .min_w_0()
+                            .child(Input::new(&self.search).id("task-search")),
+                    )
+                    .child(
+                        tool_icon("display", assets::IconName::Settings2, "Display options")
+                            .selected(self.show_display)
+                            .on_click(cx.listener(|this, _, _, cx| {
+                                this.show_display = !this.show_display;
+                                cx.notify();
+                            })),
+                    ),
+            );
         if self.scope() == Scope::Archive {
             main = main.child(self.topic_directory(None, cx));
         }
@@ -1878,12 +1914,14 @@ impl TaskApp {
                     .px_6()
                     .pb_3()
                     .children(Stage::ALL.into_iter().map(|stage| {
-                        button(format!("suggest-{}", stage.key()), crate::i18n::tr(stage.label())).on_click(
-                            cx.listener(move |this, _, w, cx| {
-                                let q = format!("{}{}", this.query(), stage.key());
-                                this.search.update(cx, |s, cx| s.set_value(q, w, cx));
-                            }),
+                        button(
+                            format!("suggest-{}", stage.key()),
+                            crate::i18n::tr(stage.label()),
                         )
+                        .on_click(cx.listener(move |this, _, w, cx| {
+                            let q = format!("{}{}", this.query(), stage.key());
+                            this.search.update(cx, |s, cx| s.set_value(q, w, cx));
+                        }))
                     })),
             );
         }
@@ -1941,7 +1979,13 @@ impl TaskApp {
                 .into_any_element();
         }
         let ordered = self.order_visible_tasks(&tasks);
-        let row_height = if self.scope() == Scope::Archive { 72. } else if self.compact { 32. } else { 38. };
+        let row_height = if self.scope() == Scope::Archive {
+            72.
+        } else if self.compact {
+            32.
+        } else {
+            38.
+        };
         let mut rows = Vec::new();
         let grouped = !matches!(self.scope(), Scope::Project(_));
         let mut last_project = None;
@@ -2001,7 +2045,6 @@ impl TaskApp {
                 .child(div().w(px(128.)).flex_shrink_0().child(selectable("STATUS")))
                 .when(archive, |d| d.child(div().w(px(176.)).flex_shrink_0()))
                 .when(!archive, |d| d
-                    .child(div().w(px(84.)).flex_shrink_0().child(selectable("LABELS")))
                     .child(div().w_16().flex_shrink_0().child(selectable("DUE")))
                     .child(div().w(px(156.)).flex_shrink_0().child(selectable("CREATED")))),
         )
@@ -2101,7 +2144,6 @@ impl TaskApp {
         let colors = palette(cx);
         let id = t.id;
         let archived = self.store.task_is_archived(id);
-        let priority_label = format!("{} priority", crate::i18n::tr_string(t.priority.label()));
         let status = self.display_task_status(id);
         let full_status_label = crate::i18n::tr_string(status.label());
         let status_label = status
@@ -2138,20 +2180,7 @@ impl TaskApp {
                     .w(px(if archived { 96. } else { 112. }))
                     .flex_shrink_0()
                     .id(format!("task-id-{id}"))
-                    .aria_label(crate::i18n::tr(priority_label.clone()))
-                    .tooltip(move |window, cx| {
-                        component::tooltip::Tooltip::new(priority_label.clone())
-                            .build(window, cx)
-                    })
-                    .child(
-                        label(self.store.identifier(t), cx).text_color(rgb(
-                            if t.priority == Priority::Urgent {
-                                colors.danger
-                            } else {
-                                colors.muted
-                            },
-                        )),
-                    ),
+                    .child(label(self.store.identifier(t), cx).text_color(rgb(colors.muted))),
             )
             .child(
                 row()
@@ -2172,31 +2201,16 @@ impl TaskApp {
                                         d.text_color(rgb(colors.muted))
                                     })
                                     .when(child_count > 0, |d| d.font_weight(FontWeight::MEDIUM)),
-                            ).map(observed),
+                            )
+                            .map(observed),
                     )
                     .when(child_count > 0, |d| {
-                        let step_name = format!(
-                            "Open Steps for {} · {done} of {child_count} complete",
-                            t.title
-                        );
                         d.child(
-                            quiet_button(
-                                format!("goal-steps-{id}"),
-                                format!("{done}/{child_count} steps"),
-                            )
-                                .h(px(24.))
-                                .px_1()
+                            div()
                                 .text_xs()
                                 .text_color(rgb(colors.muted))
-                                .font_weight(FontWeight::NORMAL)
                                 .flex_shrink_0()
-                                .tooltip(crate::i18n::tr(step_name.clone()))
-                                .accessibility_label(crate::i18n::tr(step_name))
-                                .on_click(cx.listener(move |this, _, w, cx| {
-                                    cx.stop_propagation();
-                                    // Typed destination survives dirty-exit replay.
-                                    this.request_goal_steps(id, w, cx);
-                                })),
+                                .child(selectable(format!("{done}/{child_count} steps"))),
                         )
                     }),
             )
@@ -2222,31 +2236,30 @@ impl TaskApp {
                         .h(px(28.))
                         .px_2()
                         .flex_shrink_0()
-                        .tooltip(crate::i18n::tr("Restore this archived research and its retained results"))
+                        .tooltip(crate::i18n::tr(
+                            "Restore this archived research and its retained results",
+                        ))
                         .on_click(cx.listener(move |this, _, _, cx| {
                             cx.stop_propagation();
                             this.restore_archived(id, cx);
                         })),
-                ).child(
+                )
+                .child(
                     danger_button(format!("delete-archived-{id}"), "Delete…")
-                        .h(px(28.)).px_2().flex_shrink_0()
-                        .tooltip(crate::i18n::tr("Permanently delete this archived research and its saved history"))
+                        .h(px(28.))
+                        .px_2()
+                        .flex_shrink_0()
+                        .tooltip(crate::i18n::tr(
+                            "Permanently delete this archived research and its saved history",
+                        ))
                         .on_click(cx.listener(move |this, _, w, cx| {
                             cx.stop_propagation();
-                            this.request_delete_archived(crate::archive_app::ArchiveTarget::Task(id), w, cx);
+                            this.request_delete_archived(
+                                crate::archive_app::ArchiveTarget::Task(id),
+                                w,
+                                cx,
+                            );
                         })),
-                )
-            })
-            .when(!archived, |d| {
-                d.child(
-                    div().w(px(84.)).flex_shrink_0().overflow_hidden().child(
-                        row().children(
-                            t.labels
-                                .iter()
-                                .take(1)
-                                .map(|l| label(l.clone(), cx).truncate()),
-                        ),
-                    ),
                 )
             })
             .when(!archived, |d| {
@@ -2274,7 +2287,8 @@ impl TaskApp {
             })
             .when(!archived, |d| {
                 d.child(
-                    div().id(format!("task-created-{id}"))
+                    div()
+                        .id(format!("task-created-{id}"))
                         .w(px(156.))
                         .flex_shrink_0()
                         .text_xs()
@@ -2300,11 +2314,11 @@ impl TaskApp {
             .store
             .task(id)
             .is_some_and(|task| task.automation_id.is_some());
-        let is_goal = self
-            .store
-            .task(id)
-            .is_some_and(|task| task.research.as_ref()
-                .is_some_and(|research| research.kind == crate::research::ResearchKind::Goal));
+        let is_goal = self.store.task(id).is_some_and(|task| {
+            task.research
+                .as_ref()
+                .is_some_and(|research| research.kind == crate::research::ResearchKind::Goal)
+        });
         let allowed_stages = Stage::ALL
             .into_iter()
             .filter(|stage| {
@@ -2318,14 +2332,18 @@ impl TaskApp {
             .child(element)
             .context_menu(move |mut menu, _, _| {
                 let target = entity.clone();
-                menu = menu.item(PopupMenuItem::new(crate::i18n::tr("Open task")).on_click(move |_, w, cx| {
-                    let _ = target.update(cx, |this, cx| this.request_task(id, false, w, cx));
-                }));
+                menu = menu.item(PopupMenuItem::new(crate::i18n::tr("Open task")).on_click(
+                    move |_, w, cx| {
+                        let _ = target.update(cx, |this, cx| this.request_task(id, false, w, cx));
+                    },
+                ));
                 if !archived {
                     let target = entity.clone();
-                    menu = menu.item(PopupMenuItem::new(crate::i18n::tr("Edit task")).on_click(move |_, w, cx| {
-                        let _ = target.update(cx, |this, cx| this.begin_draft(id, w, cx));
-                    }));
+                    menu = menu.item(PopupMenuItem::new(crate::i18n::tr("Edit task")).on_click(
+                        move |_, w, cx| {
+                            let _ = target.update(cx, |this, cx| this.begin_draft(id, w, cx));
+                        },
+                    ));
                     menu = menu.separator();
                     for stage in allowed_stages.iter().copied() {
                         let target = entity.clone();
@@ -2347,14 +2365,16 @@ impl TaskApp {
                     }
                     let target = entity.clone();
                     if !automation_owned {
-                        menu = menu
-                            .separator()
-                            .item(
-                                PopupMenuItem::new(crate::i18n::tr(if is_goal { "Archive goal" } else { "Archive task" })).on_click(move |_, w, cx| {
-                                    let _ =
-                                        target.update(cx, |this, cx| this.archive_task(id, w, cx));
-                                }),
-                            );
+                        menu = menu.separator().item(
+                            PopupMenuItem::new(crate::i18n::tr(if is_goal {
+                                "Archive goal"
+                            } else {
+                                "Archive task"
+                            }))
+                            .on_click(move |_, w, cx| {
+                                let _ = target.update(cx, |this, cx| this.archive_task(id, w, cx));
+                            }),
+                        );
                     }
                 }
                 menu
@@ -2373,8 +2393,7 @@ impl TaskApp {
             .is_some_and(|r| r.kind == crate::research::ResearchKind::Goal);
         let version_history_count = self.previous_version_entries(id).len();
         let show_version_history = version_history_count > 0
-            && (version_history_count > 1
-                || !self.store.research_result_available_or_pending(id));
+            && (version_history_count > 1 || !self.store.research_result_available_or_pending(id));
         let result_target = if self.store.task_is_archived(id) {
             crate::archive_presentation::result_target(&self.store, id, is_goal)
         } else if is_goal {
@@ -2414,47 +2433,78 @@ impl TaskApp {
         // Automation-owned steps belong to their automation; they must not be
         // archived individually from the Research task surface.
         let automation_owned = t.automation_id.is_some();
+        let mut metadata = row()
+            .gap_2()
+            .items_center()
+            .min_w_0()
+            .flex_1()
+            .overflow_hidden()
+            .child(
+                row().gap_2().items_center().child(
+                    div()
+                        .id("task-kind-badge")
+                        .flex_shrink_0()
+                        .px_2()
+                        .py_0p5()
+                        .rounded(px(4.))
+                        .bg(rgb(colors.tag_surface))
+                        .text_xs()
+                        .font_weight(FontWeight::MEDIUM)
+                        .text_color(rgb(colors.tag_text))
+                        .child(selectable(kind_label))
+                        .map(observed),
+                ),
+            )
+            .when(is_goal && t.parent_id.is_none(), |d| {
+                d.child(self.topic_picker(Some(id), t.project_id, cx))
+            })
+            .when(is_goal, |d| {
+                let status = self.display_task_status(id);
+                d.child(
+                    div()
+                        .id("task-execution-status")
+                        .role(Role::Label)
+                        .aria_label(crate::i18n::tr(status.label()))
+                        .flex()
+                        .items_center()
+                        .gap_2()
+                        .px_2()
+                        .py_0p5()
+                        .rounded(px(4.))
+                        .bg(rgb(colors.tag_surface))
+                        .text_sm()
+                        .text_color(rgb(status.execution.color(cx)))
+                        .tooltip({
+                            let reason = status.reason.clone();
+                            move |window, cx| {
+                                gpui_kit::component::tooltip::Tooltip::new(reason.clone())
+                                    .build(window, cx)
+                            }
+                        })
+                        .child(
+                            status
+                                .execution
+                                .icon_view(format!("task-status-icon-{id}"), cx),
+                        )
+                        .child(div().whitespace_nowrap().child(selectable(status.label())))
+                        .map(observed),
+                )
+            });
         let mut head = row()
             .min_h(px(44.))
             .py_2()
             .px_6()
-            .flex_wrap()
             .border_b_1()
             .border_color(rgb(colors.line))
+            .items_center()
             .justify_between()
-            .child(
-                row()
-                    .gap_3()
-                    .flex_wrap()
-                    .when(is_goal, |d| d.child(self.goal_tabs(id, cx)))
-                    .when(is_goal, |d| {
-                        d.child(
-                            div()
-                                .w(px(1.))
-                                .h_5()
-                                .flex_shrink_0()
-                                .bg(rgb(colors.border_strong)),
-                        )
-                    })
-                    .child(
-                        div()
-                            .id("task-kind-badge")
-                            .flex_shrink_0()
-                            .px_2()
-                            .py_0p5()
-                            .rounded(px(4.))
-                            .bg(rgb(colors.tag_surface))
-                            .text_xs()
-                            .font_weight(FontWeight::MEDIUM)
-                            .text_color(rgb(colors.tag_text))
-                            .child(selectable(kind_label))
-                            .map(observed),
-                    ),
-            );
+            .child(metadata);
         head = head.child(
             row()
-                .flex_wrap()
-                .when(is_goal && !archived && !self.store.research_pending_approval(id), |d| d.child(self.goal_run_button(id, "goal-resume", cx).h(px(28.)).px_2().text_sm()))
+                .gap_2()
+                .items_center()
+                .flex_shrink_0()
+                .when(is_goal && !archived, |d| d.child(self.goal_run_button(id, "approve-research-topic", cx).h(px(28.)).px_2().text_sm()))
                 .when(is_goal && !archived, |d| d.child(button("goal-export", "Export ZIP").h(px(28.)).px_2().text_sm()
                     .disabled(!self.store.goal_tasks_complete(id) || self.goal_busy(id))
                     .tooltip(crate::i18n::tr("Export completed evidence, analysis and reports as a ZIP. All steps must have current results."))
@@ -2569,25 +2619,6 @@ impl TaskApp {
                     ),
                 ),
         );
-        if is_goal && self.goal_steps_tab() == Some(id) {
-            return col()
-                .size_full()
-                .child(head)
-                .when_some(
-                    self.task_start_feedback
-                        .as_ref()
-                        .filter(|(task, _)| *task == id),
-                    |d, (_, message)| {
-                        d.child(div().px_6().py_2().child(crate::views::notice(
-                            crate::views::NoticeTone::Danger,
-                            message.clone(),
-                            cx,
-                        )))
-                    },
-                )
-                .child(self.goal_steps_view(id, cx))
-                .into_any_element();
-        }
         let mut children: Vec<_> = self
             .store
             .tasks()
@@ -2600,21 +2631,10 @@ impl TaskApp {
         let mut body = col()
             .flex_1()
             .min_w_0()
+            .w_full()
             .gap_3()
             .px_6()
             .py_4()
-            .when_some(t.parent_id, |d, parent| {
-                d.child(label(
-                    format!(
-                        "Subtask of {}",
-                        self.store
-                            .task(parent)
-                            .map(|p| p.title.clone())
-                            .unwrap_or_default()
-                    ),
-                    cx,
-                ))
-            })
             .child(
                 div()
                     .text_xl()
@@ -2629,9 +2649,52 @@ impl TaskApp {
                     .child(selectable(if t.description.is_empty() {
                         "Add a description to give this task more context.".into()
                     } else {
-                        crate::time_display::original_request(&t.description, self.store.research_requests().iter().find(|r| r.goal_ids.contains(&id)))
+                        crate::time_display::original_request(
+                            &t.description,
+                            self.store
+                                .research_requests()
+                                .iter()
+                                .find(|r| r.goal_ids.contains(&id)),
+                        )
                     })),
             )
+            .when(is_goal && t.parent_id.is_none(), |d| {
+                let project_id = t.project_id;
+                let project_name = self
+                    .store
+                    .projects()
+                    .iter()
+                    .find(|p| p.id == project_id)
+                    .map(|p| p.name.clone())
+                    .unwrap_or_default();
+                d.child(
+                    row()
+                        .flex_wrap()
+                        .gap_2()
+                        .child(label("Topic project", cx))
+                        .child(
+                            quiet_button(format!("property-Topic project"), project_name.clone())
+                                .px_2()
+                                .h(px(28.))
+                                .max_w(px(240.))
+                                .min_w_0()
+                                .font_weight(FontWeight::MEDIUM)
+                                .text_color(rgb(colors.accent))
+                                .tooltip(crate::i18n::tr(format!(
+                                    "Change topic project: {project_name}"
+                                )))
+                                .dropdown_caret(true)
+                                .disabled(self.store.task_is_archived(id) || self.task_running(id))
+                                .on_click(cx.listener(move |this, _, w, cx| {
+                                    if let Some(topic) =
+                                        this.store.task_topic(id).map(|topic| topic.id)
+                                    {
+                                        this.request_topic_move(topic, w, cx);
+                                    }
+                                })),
+                        ),
+                )
+            })
             .when(is_goal, |d| d.child(self.request_brief_view(id, cx)))
             .child(self.materials_panel(id, cx))
             .when(t.research.is_some(), |d| {
@@ -2644,19 +2707,11 @@ impl TaskApp {
                         .mt_4()
                         .justify_between()
                         .child(muted(
-                            format!(
-                                "{}  {}/{}",
-                                if is_goal {
-                                    "Research steps"
-                                } else {
-                                    "Subtasks"
-                                },
-                                children
-                                    .iter()
-                                    .filter(|t| self.display_task_status(t.id).phase == Stage::Done)
-                                    .count(),
-                                children.len()
-                            ),
+                            if is_goal {
+                                "Research steps"
+                            } else {
+                                "Subtasks"
+                            },
                             cx,
                         ))
                         .map(observed),
@@ -2763,7 +2818,10 @@ impl TaskApp {
                                         .font_weight(FontWeight::SEMIBOLD)
                                         .child(selectable_raw(comment.author.clone())),
                                 )
-                                .child(label(crate::time_display::timestamp(&comment.created_at), cx)),
+                                .child(label(
+                                    crate::time_display::timestamp(&comment.created_at),
+                                    cx,
+                                )),
                         )
                         .child(selectable_raw(comment.body.clone())),
                 );
@@ -2810,14 +2868,8 @@ impl TaskApp {
                 )
                 .when(self.show_task_activity, |d| d.child(activity_panel)),
         );
-        let mut properties = col()
-            .w(px(240.))
-            .flex_shrink_0()
-            .p_3()
-            .m_4()
-            .ml_0()
-            .gap_2()
-            .child(self.step_execution_panel(id, cx));
+        let mut properties = col().w_full().min_w_0().gap_2();
+        properties = properties.child(self.step_execution_panel(id, cx));
         let archived = self.store.task_is_archived(id);
         let has_result = t
             .research
@@ -2825,7 +2877,8 @@ impl TaskApp {
             .is_some_and(|r| r.kind != crate::research::ResearchKind::Goal)
             && if archived {
                 crate::archive_presentation::validated_history_result(&self.store, id).is_some()
-                    || crate::archive_presentation::pending_history_result(&self.store, id).is_some()
+                    || crate::archive_presentation::pending_history_result(&self.store, id)
+                        .is_some()
             } else {
                 self.store.research_result_available_or_pending(id)
             };
@@ -2881,7 +2934,7 @@ impl TaskApp {
                         return;
                     }
                     if let Some(goal) = this.store.owning_research_goal(id) {
-                        this.open_goal_steps(goal, w, cx);
+                        this.open_task(goal, w, cx);
                     } else {
                         this.view_task_result(id, cx);
                     }
@@ -2979,520 +3032,23 @@ impl TaskApp {
                         .on_click(cx.listener(|this, _, w, cx| this.open_model_settings(w, cx))),
                 );
         }
-        properties = properties.child(div().h_2()).child(
-            div()
-                .text_base()
-                .font_weight(FontWeight::SEMIBOLD)
-                .text_color(rgb(colors.text))
-                .id("task-properties-heading")
-                .child(selectable("Task"))
-                .map(observed),
-        );
-        let status = self.display_task_status(id);
-        let execution = status.execution;
-        properties = properties.child(
-            row()
-                .justify_between()
-                .w_full()
-                .min_w_0()
-                .child(label("Status", cx).id("task-status-label").flex_shrink_0().map(observed))
-                // Keep the status on one line without consuming space with button padding.
-                .child(
-                    div()
-                        .id("task-execution-status")
-                        .role(Role::Label)
-                        .aria_label(crate::i18n::tr(status.label()))
-                        .flex_1()
-                        .min_w_0()
-                        .py_0p5()
-                        .text_sm()
-                        .justify_end()
-                        .flex()
-                        .items_center()
-                        .gap_2()
-                        .text_color(rgb(execution.color(cx)))
-                        .tooltip({
-                            let reason = status.reason.clone();
-                            move |window, cx| {
-                                gpui_kit::component::tooltip::Tooltip::new(reason.clone())
-                                    .build(window, cx)
-                            }
-                        })
-                        .child(execution.icon_view(format!("task-status-icon-{id}"), cx))
-                        .child(
-                            div()
-                                .min_w_0()
-                                .text_right()
-                                .whitespace_nowrap()
-                                .line_height(relative(1.3))
-                                .child(selectable(status.label())),
-                        )
-                        .map(observed),
-                ),
-        );
-        if execution != crate::execution_status::ExecutionStatus::Done
-            || status.display_label.is_some()
-            || (status.reason != execution.hint()
-                && status.reason != format!("{} done. {}", self.store.research_children(id).len(), execution.hint()))
-        {
-            properties = properties.child(label(status.reason.clone(), cx));
-        }
-        if t.parent_id.is_none() {
-            properties = properties.child(
-                row()
-                    .justify_between()
-                    .min_w_0()
-                    .child(label("Topic", cx))
-                    .child(self.topic_picker(Some(id), t.project_id, cx)),
-            );
-        }
-        for (prop, name, value) in [
-            (
-                Property::Stage,
-                "Stage",
-                crate::workflow::phase_label(status.phase).into(),
-            ),
-            (Property::Priority, "Priority", crate::i18n::tr_string(t.priority.label())),
-            (
-                Property::Project,
-                "Topic project",
-                self.store
-                    .projects()
-                    .iter()
-                    .find(|p| p.id == t.project_id)
-                    .map(|p| p.name.clone())
-                    .unwrap_or_default(),
-            ),
-            (
-                Property::Cycle,
-                "Cycle",
-                t.cycle.clone().unwrap_or("No cycle".into()),
-            ),
-            (
-                Property::Bucket,
-                "Bucket",
-                if t.bucket.is_empty() {
-                    "No bucket".into()
-                } else {
-                    t.bucket.clone()
-                },
-            ),
-            (
-                Property::Parent,
-                "Parent",
-                t.parent_id
-                    .and_then(|pid| self.store.task(pid))
-                    .map(|p| self.store.identifier(p))
-                    .unwrap_or("No parent".into()),
-            ),
-        ] {
-            if t.parent_id.is_some() && t.research.is_some() && prop == Property::Stage {
-                continue;
-            }
-            if !self.show_task_details
-                && matches!(prop, Property::Cycle | Property::Bucket | Property::Parent)
-            {
-                continue;
-            }
-            properties = properties.child(
-                row()
-                    .flex_wrap()
-                    .justify_between()
-                    .child(label(if prop == Property::Stage {
-                        if archived { "Stage" } else { "Move to" }
-                    } else { name }, cx))
-                    .child(
-                        quiet_button(format!("property-{name}"), value.clone())
-                            .px_2()
-                            .h(px(28.))
-                            .max_w(px(164.))
-                            .min_w_0()
-                            .font_weight(FontWeight::MEDIUM)
-                            .text_color(rgb(match prop {
-                                Property::Stage => stage_color(status.phase, cx),
-                                Property::Priority if t.priority == Priority::Urgent => {
-                                    colors.danger
-                                }
-                                Property::Priority if t.priority == Priority::High => {
-                                    colors.warning
-                                }
-                                _ => colors.accent,
-                            }))
-                            .tooltip(crate::i18n::tr(if prop == Property::Stage && archived {
-                                "Stage is read-only while archived. Restore this research to change it.".to_string()
-                            } else if prop == Property::Stage {
-                                format!("Workflow stage: {value}. In progress means research has started, not necessarily that a task is running. See Execution status for current activity.")
-                            } else { format!("Change {}: {value}", name.to_lowercase()) }))
-                            .when(self.property == Some(prop), |b| {
-                                b.bg(rgb(colors.accent_surface))
-                            })
-                            .when(prop == Property::Stage && archived, |b| {
-                                b.text_color(rgb(colors.muted))
-                            })
-                            .dropdown_caret(!(prop == Property::Stage && archived))
-                            .open(self.property == Some(prop))
-                            .disabled(if prop == Property::Stage {
-                                archived || self.task_running(id)
-                            } else {
-                                t.archived || self.task_running(id)
-                            })
-                            .on_click(cx.listener(move |this, _, _, cx| {
-                                this.property = if this.property == Some(prop) {
-                                    None
-                                } else {
-                                    Some(prop)
-                                };
-                                cx.notify();
-                            })),
-                    ),
-            );
-            if self.property == Some(prop) {
-                properties = properties.child(self.property_options(id, prop, cx));
-            }
-        }
-        properties = properties.child(
-            quiet_button(
-                "task-details-toggle",
-                if self.show_task_details {
-                    "Hide details"
-                } else {
-                    "More details…"
-                },
-            )
-            .self_start()
-            .px_2()
-            .icon(if self.show_task_details {
-                assets::IconName::ChevronUp
-            } else {
-                assets::IconName::ChevronDown
-            })
-            .on_click(cx.listener(|this, _, _, cx| {
-                this.show_task_details = !this.show_task_details;
-                this.property = None;
-                cx.notify();
-            })),
-        );
-        if self.show_task_details {
-            properties = properties
-                .child(div().h_2().border_b_1().border_color(rgb(colors.line)))
-                .child(
-                    row()
-                        .justify_between()
-                        .child(
-                            div()
-                                .text_sm()
-                                .font_weight(FontWeight::SEMIBOLD)
-                                .child(selectable("Labels")),
-                        )
-                        .child(
-                            tool_icon("edit-labels", assets::IconName::Pencil, "Edit labels")
-                                .disabled(t.archived || self.task_running(id))
-                                .on_click(
-                                    cx.listener(move |this, _, w, cx| this.begin_draft(id, w, cx)),
-                                ),
-                        ),
-                )
-                .child(
-                    row()
-                        .flex_wrap()
-                        .gap_1()
-                        .children(t.labels.iter().map(|name| {
-                            div()
-                                .px_2()
-                                .py_0p5()
-                                .rounded_sm()
-                                .bg(rgb(colors.tag_surface))
-                                .text_xs()
-                                .text_color(rgb(colors.tag_text))
-                                .child(selectable(name.clone()))
-                        }))
-                        .when(t.labels.is_empty(), |d| d.child(label("No labels", cx))),
-                )
-                .child(
-                    div()
-                        .pt_2()
-                        .text_sm()
-                        .font_weight(FontWeight::SEMIBOLD)
-                        .child(selectable("Execution settings")),
-                );
-            let execution_field = |name: &str, value: String| {
-                row()
-                    .items_start()
-                    .min_w_0()
-                    .child(
-                        div()
-                            .w(px(88.))
-                            .flex_shrink_0()
-                            .child(label(name.to_string(), cx)),
-                    )
-                    .child(
-                        div()
-                            .flex_1()
-                            .min_w_0()
-                            .text_sm()
-                            .text_color(rgb(colors.text))
-                            .whitespace_normal()
-                            .overflow_hidden()
-                            .child(selectable(value)),
-                    )
-            };
-            let model_fields = |model: &str| {
-                let effective = self.store.effective_model(model);
-                col()
-                    .gap_2()
-                    .child(execution_field(
-                        "Model source",
-                        if model.is_empty() {
-                            "Global default"
-                        } else {
-                            "Stage override"
-                        }
-                        .into(),
-                    ))
-                    .child(execution_field(
-                        "Model",
-                        if effective.is_empty() {
-                            "Not configured".into()
-                        } else {
-                            effective.to_string()
-                        },
-                    ))
-            };
-            if let Some(r) = &t.research {
-                properties = properties
-                    .child(model_fields(
-                        &self.store.research_config().models[r.kind.index()],
-                    ))
-                    .child(execution_field(
-                        "Browser space",
-                        self.store
-                            .research_space(id)
-                            .unwrap_or_else(|| r.space_name.clone()),
-                    ))
-                    .child(button("configure-research", "Research settings…").on_click(
-                        cx.listener(|this, _, w, cx| {
-                            this.open_model_settings(w, cx);
-                        }),
-                    ));
-            }
-            properties = properties.child(button("task-folder", "Working folder…").on_click(
-                cx.listener(move |this, _, w, cx| this.open_directory(t.project_id, w, cx)),
-            ));
-        }
         col()
             .size_full()
             .child(head)
             .child(
-                row()
+                col()
                     .id("detail-scroll")
                     .track_scroll(&self.detail_scroll)
-                    .items_start()
                     .overflow_y_scroll()
                     .flex_1()
                     .min_h_0()
+                    .min_w_0()
+                    .w_full()
                     .child(body)
-                    .child(properties.id("task-properties").map(observed))
+                    .child(properties.map(observed))
                     .map(observed),
             )
             .into_any_element()
-    }
-    fn property_options(&self, id: u64, property: Property, cx: &mut Context<Self>) -> AnyElement {
-        let colors = palette(cx);
-        let mut options = col()
-            .p_1()
-            .gap_0()
-            .bg(rgb(colors.panel))
-            .border_1()
-            .border_color(rgb(colors.line))
-            .rounded(px(CONTROL_RADIUS));
-        match property {
-            Property::Stage => {
-                for stage in Stage::ALL {
-                    let allowed =
-                        self.store
-                            .validate_manual_transition(id, stage, self.todo_batch.as_ref());
-                    options = options.child(
-                        property_choice(
-                            format!("set-{}", stage.key()),
-                            if stage == Stage::InProgress {
-                                "Submit execution"
-                            } else {
-                                crate::workflow::phase_label(stage)
-                            },
-                            Some(crate::execution_status::ExecutionStatus::Stage(stage).icon()),
-                            self.store.task(id).is_some_and(|t| t.stage == stage),
-                        )
-                        .w_full()
-                        .justify_start()
-                        .disabled(allowed.is_err())
-                        .tooltip(crate::i18n::tr(allowed.err().unwrap_or_else(|| "Move to this phase".into())))
-                        .when(self.store.task(id).is_some_and(|t| t.stage == stage), |b| {
-                            b.bg(rgb(colors.accent_surface))
-                        })
-                        .on_click(cx.listener(move |this, _, _, cx| {
-                            this.change_stage(id, stage, cx);
-                            this.property = None;
-                        })),
-                    );
-                }
-            }
-            Property::Priority => {
-                for priority in Priority::ALL {
-                    options = options.child(
-                        property_choice(
-                            format!("priority-{}", priority.key()),
-                            crate::i18n::tr_string(priority.label()),
-                            None,
-                            self.store.task(id).is_some_and(|t| t.priority == priority),
-                        )
-                        .w_full()
-                        .justify_start()
-                        .when(
-                            self.store.task(id).is_some_and(|t| t.priority == priority),
-                            |b| b.bg(rgb(colors.accent_surface)),
-                        )
-                        .on_click(cx.listener(move |this, _, _, cx| {
-                            this.apply_task_metadata(
-                                id,
-                                crate::scoped_edit::TaskEditField::Priority,
-                                crate::scoped_edit::TaskEditValue::Priority(priority),
-                                cx,
-                            );
-                            this.property = None;
-                            cx.notify();
-                        })),
-                    );
-                }
-            }
-            Property::Project => {
-                options = options.child(button("move-entire-topic", "Move topic…").on_click(
-                    cx.listener(move |this, _, w, cx| {
-                        if let Some(topic) = this.store.task_topic(id).map(|t| t.id) {
-                            this.request_topic_move(topic, w, cx);
-                        }
-                    }),
-                ));
-            }
-            Property::Cycle => {
-                let cycles: std::collections::BTreeSet<_> = self
-                    .store
-                    .tasks()
-                    .iter()
-                    .filter_map(|t| t.cycle.clone())
-                    .collect();
-                for value in std::iter::once("No cycle".to_string()).chain(cycles) {
-                    options = options.child(
-                        property_choice(
-                            format!("set-cycle-{value}"),
-                            value.clone(),
-                            None,
-                            self.store
-                                .task(id)
-                                .is_some_and(|t| t.cycle.as_deref().unwrap_or("No cycle") == value),
-                        )
-                        .on_click(cx.listener(move |this, _, _, cx| {
-                            this.apply_task_metadata(
-                                id,
-                                crate::scoped_edit::TaskEditField::Cycle,
-                                crate::scoped_edit::TaskEditValue::OptionalText(
-                                    if value == "No cycle" {
-                                        None
-                                    } else {
-                                        Some(value.clone())
-                                    },
-                                ),
-                                cx,
-                            );
-                            this.property = None;
-                            cx.notify();
-                        })),
-                    );
-                }
-            }
-            Property::Bucket => {
-                for value in ["No bucket", "Now", "Next", "Later"] {
-                    options = options.child(
-                        property_choice(
-                            format!("set-bucket-{value}"),
-                            value,
-                            None,
-                            self.store.task(id).is_some_and(|t| {
-                                if t.bucket.is_empty() {
-                                    value == "No bucket"
-                                } else {
-                                    t.bucket == value
-                                }
-                            }),
-                        )
-                        .on_click(cx.listener(move |this, _, _, cx| {
-                            this.apply_task_metadata(
-                                id,
-                                crate::scoped_edit::TaskEditField::Bucket,
-                                crate::scoped_edit::TaskEditValue::Text(if value == "No bucket" {
-                                    String::new()
-                                } else {
-                                    value.to_string()
-                                }),
-                                cx,
-                            );
-                            this.property = None;
-                            cx.notify();
-                        })),
-                    );
-                }
-            }
-            Property::Parent => {
-                options = options.child(
-                    property_choice(
-                        "no-parent",
-                        "No parent",
-                        None,
-                        self.store.task(id).is_some_and(|t| t.parent_id.is_none()),
-                    )
-                    .on_click(cx.listener(move |this, _, _, cx| {
-                        this.apply_domain_command_undoable(
-                            crate::scoped_domain::DomainCommand::TaskParent { task: id, parent: None },
-                            "Parent updated",
-                            cx,
-                        );
-                        this.property = None;
-                    })),
-                );
-                for task in self.store.tasks().iter().filter(|t| {
-                    t.id != id
-                        && !t.archived
-                        && t.parent_id.is_none()
-                        && self
-                            .store
-                            .task(id)
-                            .is_some_and(|current| current.project_id == t.project_id)
-                }) {
-                    let parent = task.id;
-                    options = options.child(
-                        property_choice(
-                            format!("set-parent-{parent}"),
-                            task.title.clone(),
-                            None,
-                            self.store
-                                .task(id)
-                                .is_some_and(|t| t.parent_id == Some(parent)),
-                        )
-                        .on_click(cx.listener(move |this, _, _, cx| {
-                            this.apply_domain_command_undoable(
-                                crate::scoped_domain::DomainCommand::TaskParent {
-                                    task: id,
-                                    parent: Some(parent),
-                                },
-                                "Parent updated",
-                                cx,
-                            );
-                            this.property = None;
-                        })),
-                    );
-                }
-            }
-        }
-        options.into_any_element()
     }
     fn directory_overlay(&self, cx: &mut Context<Self>) -> AnyElement {
         let colors = palette(cx);
@@ -3674,15 +3230,6 @@ impl TaskApp {
                                 ))
                             })),
                     )
-                    .child(
-                        row().items_start().gap_4().child(
-                            col()
-                                .flex_1()
-                                .gap_2()
-                                .child(label("LABELS, COMMA SEPARATED", cx))
-                                .child(Input::new(&d.labels).id("draft-labels")),
-                        ),
-                    )
                     .when(!self.error.is_empty(), |v| {
                         v.child(
                             div()
@@ -3837,9 +3384,8 @@ impl Render for TaskApp {
         // context-free legacy callers (mark-read, follow-up saves, dispatch).
         // Only wake while progress is still possible; a parked/failed worker
         // waits for an explicit retry instead of looping on every frame.
-        let live_wake = self.live_needs_pump()
-            && self.live_failure.is_none()
-            && self.storage_error.is_empty();
+        let live_wake =
+            self.live_needs_pump() && self.live_failure.is_none() && self.storage_error.is_empty();
         if self.history_needs_pump()
             || live_wake
             || self.dispatch_pump_pending()
@@ -3864,7 +3410,10 @@ impl Render for TaskApp {
             self.window_close_registered = true;
             let weak = cx.weak_entity();
             window.on_window_should_close(cx, move |window, cx| {
-                if weak.update(cx, |app, cx| app.can_close_window(cx)).unwrap_or(true) {
+                if weak
+                    .update(cx, |app, cx| app.can_close_window(cx))
+                    .unwrap_or(true)
+                {
                     crate::close_workspace_window(window, cx);
                 }
                 false
@@ -4044,8 +3593,6 @@ impl Render for TaskApp {
                 {
                     this.request_back(w, cx);
                     cx.stop_propagation();
-                } else if event.keystroke.modifiers.platform && event.keystroke.key == "n" {
-                    this.request_new_research(w, cx);
                 } else if event.keystroke.key == "escape" {
                     if this.request_escape(w, cx) {
                         cx.stop_propagation();
@@ -4055,7 +3602,6 @@ impl Render for TaskApp {
                     this.save_feedback = None;
                     this.draft = None;
                     let _ = this.close_task_editor_overlay();
-                    this.property = None;
                     this.new_project = None;
                     this.topic_editor = None;
                     this.project_rename = None;
@@ -4106,19 +3652,22 @@ impl Render for TaskApp {
                                         d.child(self.save_feedback_view(cx))
                                     })
                                     .child(
-                                        div().flex_1().min_h_0().p(px(SHELL_INSET)).pt_0()
-                                            .child(
-                                                col().id("workspace-content-surface")
-                                                    .size_full().min_w_0().min_h_0()
-                                                    .rounded(px(SURFACE_RADIUS))
-                                                    .p(px(SURFACE_GUTTER))
-                                                    .bg(self.workspace_background(cx))
-                                                    .border_1().border_color(rgb(colors.subtle_line))
-                                                    .shadow(crate::appearance::workspace_shadow(cx))
-                                                    .overflow_hidden()
-                                                    .child(content)
-                                                    .map(observed),
-                                            ),
+                                        div().flex_1().min_h_0().p(px(SHELL_INSET)).pt_0().child(
+                                            col()
+                                                .id("workspace-content-surface")
+                                                .size_full()
+                                                .min_w_0()
+                                                .min_h_0()
+                                                .rounded(px(SURFACE_RADIUS))
+                                                .p(px(SURFACE_GUTTER))
+                                                .bg(self.workspace_background(cx))
+                                                .border_1()
+                                                .border_color(rgb(colors.subtle_line))
+                                                .shadow(crate::appearance::workspace_shadow(cx))
+                                                .overflow_hidden()
+                                                .child(content)
+                                                .map(observed),
+                                        ),
                                     ),
                             ),
                         ),

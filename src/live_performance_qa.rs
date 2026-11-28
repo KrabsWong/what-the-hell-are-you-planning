@@ -96,7 +96,10 @@ pub fn run() {
                     });
                     let path = root.join("report.json");
                     std::fs::write(&path, serde_json::to_vec_pretty(&partial).unwrap()).unwrap();
-                    return Err(format!("{label}: {error}; partial report at {}", path.display()));
+                    return Err(format!(
+                        "{label}: {error}; partial report at {}",
+                        path.display()
+                    ));
                 }
             }
         }
@@ -125,22 +128,40 @@ pub fn run() {
             }
             let operations = [
                 ("editor", &fixture["editor"]["main_thread_total"]),
-                ("automation_save_draft", &fixture["automation_save_draft"]["main_thread_total"]),
-                ("automation_enable", &fixture["automation_lifecycle"]["enable"]["main_thread_total"]),
-                ("automation_pause", &fixture["automation_lifecycle"]["pause"]["main_thread_total"]),
+                (
+                    "automation_save_draft",
+                    &fixture["automation_save_draft"]["main_thread_total"],
+                ),
+                (
+                    "automation_enable",
+                    &fixture["automation_lifecycle"]["enable"]["main_thread_total"],
+                ),
+                (
+                    "automation_pause",
+                    &fixture["automation_lifecycle"]["pause"]["main_thread_total"],
+                ),
                 ("settings", &fixture["settings"]["main_thread_total"]),
-                ("scoped_task_undo", &fixture["scoped_task_undo"]["main_thread_total"]),
-                ("history_page", &fixture["history_page"]["main_thread_total"]),
+                (
+                    "scoped_task_undo",
+                    &fixture["scoped_task_undo"]["main_thread_total"],
+                ),
+                (
+                    "history_page",
+                    &fixture["history_page"]["main_thread_total"],
+                ),
             ];
             let mut fixture_gates = serde_json::Map::new();
             for (name, stats) in operations {
                 let p95 = stats["p95_us"].as_u64().unwrap_or(u64::MAX);
                 let passed = p95 < TARGET_P95_UI_US;
-                fixture_gates.insert(name.to_string(), serde_json::json!({
-                    "p95_us": p95,
-                    "target_us": TARGET_P95_UI_US,
-                    "passed": passed,
-                }));
+                fixture_gates.insert(
+                    name.to_string(),
+                    serde_json::json!({
+                        "p95_us": p95,
+                        "target_us": TARGET_P95_UI_US,
+                        "passed": passed,
+                    }),
+                );
                 if !passed {
                     failures.push(format!("{label}/{name} p95 {p95}us"));
                 }
@@ -188,7 +209,8 @@ fn run_fixture(root: &Path, spec: Spec) -> Result<serde_json::Value, String> {
         .update(|cx| app.read(cx).store.tasks().iter().map(|task| task.id).max())
         .ok_or("fixture task is missing")?;
     let editor = measure_editor(&mut cx, handle, &app, task)?;
-    let automation_save = measure_automation_save_draft(&mut cx, handle, &app, automation, &path, root)?;
+    let automation_save =
+        measure_automation_save_draft(&mut cx, handle, &app, automation, &path, root)?;
     let automation_lifecycle =
         measure_automation_lifecycle(&mut cx, handle, &app, automation, &path, root)?;
     let settings = measure_settings(&mut cx, handle, &app, &path, root)?;
@@ -341,12 +363,15 @@ fn build_store(root: &Path, spec: Spec) -> Result<(Store, u64), String> {
     store.research_config_mut().models = std::array::from_fn(|_| "qa/model".into());
     store.project_mut(1).unwrap().directory = root.to_string_lossy().into_owned();
     store
-        .create_task("Live perf save", 1, Stage::Planned, None)
+        .create_task("Live perf save", 1, Stage::InProgress, None)
         .map_err(|error| error.to_string())?;
     Ok((store, automation))
 }
 
-fn open_live(root: &Path, path: &Path) -> Result<(HeadlessAppContext, AnyWindowHandle, Entity<TaskApp>), String> {
+fn open_live(
+    root: &Path,
+    path: &Path,
+) -> Result<(HeadlessAppContext, AnyWindowHandle, Entity<TaskApp>), String> {
     let storage = Storage::new(path.to_path_buf());
     let _ = storage.upgrade_paths(|_| {});
     let lock = storage.acquire_lock()?;
@@ -365,7 +390,10 @@ fn open_live(root: &Path, path: &Path) -> Result<(HeadlessAppContext, AnyWindowH
             let view = cx.new(|cx| TaskApp::new_mock(w, cx));
             view.update(cx, |a, cx| {
                 a.attach_loaded_storage_live(storage, Ok((lock, store)), Some(live.clone()), w, cx);
-                assert!(a.live_required, "live performance fixture must require live");
+                assert!(
+                    a.live_required,
+                    "live performance fixture must require live"
+                );
                 assert!(
                     a.live_persistence_active(),
                     "live performance fixture must attach the ordered worker"
@@ -483,7 +511,9 @@ fn measure_editor(
             pump_measured(cx, handle, app, PumpKind::Save, "editor durable", |a| {
                 !a.live_has_pending_receipts()
                     && a.live_primary.is_none()
-                    && a.store.task(task).is_some_and(|task| task.title == expected)
+                    && a.store
+                        .task(task)
+                        .is_some_and(|task| task.title == expected)
             })?;
         if let Err(error) = pump_err {
             return Err(error);
@@ -539,10 +569,7 @@ fn measure_editor(
     }))
 }
 
-fn read_v4_store_for(
-    cx: &mut HeadlessAppContext,
-    app: &Entity<TaskApp>,
-) -> Result<Store, String> {
+fn read_v4_store_for(cx: &mut HeadlessAppContext, app: &Entity<TaskApp>) -> Result<Store, String> {
     let (path, root, incarnation) = cx
         .update(|cx| {
             app.read(cx)
@@ -553,7 +580,6 @@ fn read_v4_store_for(
         .ok_or("live attach target is missing")?;
     crate::sqlite_v4::SqliteV4::open(&path, &root, incarnation)?.load_store()
 }
-
 
 fn definition_input(
     definition: &crate::automation::AutomationDefinition,
@@ -584,7 +610,11 @@ fn open_automation_measure_surface(
     .map_err(|error| format!("open automation failed: {error:?}"))?;
     let (scope, selected, creating) = cx.update(|cx| {
         let a = app.read(cx);
-        (a.scope(), a.automation_ui.selected, a.automation_ui.creating)
+        (
+            a.scope(),
+            a.automation_ui.selected,
+            a.automation_ui.creating,
+        )
     });
     if scope != crate::app::Scope::Automations || selected != Some(automation) || creating {
         return Err(format!(
@@ -668,13 +698,20 @@ fn measure_automation_save_draft(
         if !admitted {
             return Err(format!("automation save sample {index} was not admitted"));
         }
-        let (pump_us, pump_err) = pump_measured(cx, handle, app, PumpKind::Save, "automation save durable", |a| {
-            !a.live_has_pending_receipts()
-                && a.live_primary.is_none()
-                && a.store
-                    .automation(automation)
-                    .is_some_and(|definition| definition.name == expected)
-        })?;
+        let (pump_us, pump_err) = pump_measured(
+            cx,
+            handle,
+            app,
+            PumpKind::Save,
+            "automation save durable",
+            |a| {
+                !a.live_has_pending_receipts()
+                    && a.live_primary.is_none()
+                    && a.store
+                        .automation(automation)
+                        .is_some_and(|definition| definition.name == expected)
+            },
+        )?;
         if let Err(error) = pump_err {
             return Err(error);
         }
@@ -688,10 +725,15 @@ fn measure_automation_save_draft(
             (
                 a.error.clone(),
                 a.storage_error.clone(),
-                a.store.automation(automation).map(|definition| definition.name.clone()),
+                a.store
+                    .automation(automation)
+                    .map(|definition| definition.name.clone()),
             )
         });
-        if !error.is_empty() || !storage_error.is_empty() || name.as_deref() != Some(expected.as_str()) {
+        if !error.is_empty()
+            || !storage_error.is_empty()
+            || name.as_deref() != Some(expected.as_str())
+        {
             return Err(format!(
                 "automation save sample {index} failed after ACK: error={error:?} storage={storage_error:?} name={name:?}"
             ));
@@ -705,7 +747,9 @@ fn measure_automation_save_draft(
         }
     }
     let disk = read_v4_store_for(cx, app)?;
-    let disk_name = disk.automation(automation).map(|definition| definition.name.clone());
+    let disk_name = disk
+        .automation(automation)
+        .map(|definition| definition.name.clone());
     if disk_name.as_deref() != Some(expected_name.as_str()) {
         return Err(format!("automation disk name mismatch: {disk_name:?}"));
     }
@@ -799,9 +843,9 @@ fn measure_automation_lifecycle(
             pump_measured(cx, handle, app, PumpKind::Save, "enable durable", |a| {
                 !a.live_has_pending_receipts()
                     && a.live_primary.is_none()
-                    && a.store
-                        .automation(automation)
-                        .is_some_and(|definition| definition.status == crate::automation::DefinitionStatus::Enabled)
+                    && a.store.automation(automation).is_some_and(|definition| {
+                        definition.status == crate::automation::DefinitionStatus::Enabled
+                    })
             })?;
         if let Err(error) = enable_err {
             return Err(error);
@@ -844,9 +888,9 @@ fn measure_automation_lifecycle(
             pump_measured(cx, handle, app, PumpKind::Save, "pause durable", |a| {
                 !a.live_has_pending_receipts()
                     && a.live_primary.is_none()
-                    && a.store
-                        .automation(automation)
-                        .is_some_and(|definition| definition.status == crate::automation::DefinitionStatus::Paused)
+                    && a.store.automation(automation).is_some_and(|definition| {
+                        definition.status == crate::automation::DefinitionStatus::Paused
+                    })
             })?;
         if let Err(error) = pause_err {
             return Err(error);
@@ -870,9 +914,13 @@ fn measure_automation_lifecycle(
         }
     }
     let disk = read_v4_store_for(cx, app)?;
-    let disk_status = disk.automation(automation).map(|definition| definition.status);
+    let disk_status = disk
+        .automation(automation)
+        .map(|definition| definition.status);
     if disk_status != Some(crate::automation::DefinitionStatus::Paused) {
-        return Err(format!("lifecycle final disk status is not Paused: {disk_status:?}"));
+        return Err(format!(
+            "lifecycle final disk status is not Paused: {disk_status:?}"
+        ));
     }
     if disk.all_occurrences().len() != occurrences_before {
         return Err("lifecycle created occurrences; fixture was not future-safe".into());
@@ -918,22 +966,26 @@ fn measure_settings(
         let base = cx.update(|cx| app.read(cx).store.max_concurrent_runs());
         // Always change the value, including warmup and the base=1 case.
         let target = if base == 1 { 2 } else { 1 };
-        assert_ne!(target, base, "settings sample must change the current value");
+        assert_ne!(
+            target, base,
+            "settings sample must change the current value"
+        );
         last_target = target;
         let started = Instant::now();
         let mut inner = 0u128;
-        let accepted = cx.update_window(handle, |_, _, cx| {
-            app.update(cx, |a, cx| {
-                let ui_started = Instant::now();
-                let accepted = a.apply_scoped_settings(
-                    crate::scoped_settings::SettingsChange::ExecutionConcurrency(target),
-                    cx,
-                );
-                inner = ui_started.elapsed().as_micros();
-                accepted
+        let accepted = cx
+            .update_window(handle, |_, _, cx| {
+                app.update(cx, |a, cx| {
+                    let ui_started = Instant::now();
+                    let accepted = a.apply_scoped_settings(
+                        crate::scoped_settings::SettingsChange::ExecutionConcurrency(target),
+                        cx,
+                    );
+                    inner = ui_started.elapsed().as_micros();
+                    accepted
+                })
             })
-        })
-        .map_err(|error| format!("settings save failed: {error:?}"))?;
+            .map_err(|error| format!("settings save failed: {error:?}"))?;
         if !accepted {
             return Err(format!("settings sample {index} was rejected"));
         }
@@ -1046,7 +1098,9 @@ fn measure_scoped_task_undo(
             pump_measured(cx, handle, app, PumpKind::Save, "undo durable", |a| {
                 !a.live_has_pending_receipts()
                     && a.live_primary.is_none()
-                    && a.store.task(task).is_some_and(|task| task.title == baseline)
+                    && a.store
+                        .task(task)
+                        .is_some_and(|task| task.title == baseline)
             })?;
         if let Err(error) = pump_err {
             return Err(error);
@@ -1083,7 +1137,9 @@ fn measure_scoped_task_undo(
     let disk = read_v4_store_for(cx, app)?;
     let disk_title = disk.task(task).map(|task| task.title.clone());
     if disk_title.as_deref() != Some(baseline.as_str()) {
-        return Err(format!("scoped undo disk title mismatch: {disk_title:?} != {baseline:?}"));
+        return Err(format!(
+            "scoped undo disk title mismatch: {disk_title:?} != {baseline:?}"
+        ));
     }
     let _ = (path, root);
     Ok(serde_json::json!({
@@ -1105,17 +1161,16 @@ fn measure_append_ack_shared_snapshot(
     path: &Path,
     root: &Path,
 ) -> Result<serde_json::Value, String> {
-    let next_id = cx
-        .update(|cx| {
-            app.read(cx)
-                .store
-                .runs()
-                .iter()
-                .map(|run| run.id)
-                .max()
-                .unwrap_or(0)
-                + 1
-        });
+    let next_id = cx.update(|cx| {
+        app.read(cx)
+            .store
+            .runs()
+            .iter()
+            .map(|run| run.id)
+            .max()
+            .unwrap_or(0)
+            + 1
+    });
     let title = cx
         .update(|cx| app.read(cx).store.task(task).map(|task| task.title.clone()))
         .ok_or("append fixture task missing")?;
@@ -1186,8 +1241,13 @@ fn measure_append_ack_shared_snapshot(
         });
     })
     .map_err(|error| format!("update failed: {error:?}"))?;
-    let (update_pump, update_err) =
-        pump_measured(cx, handle, app, PumpKind::Save, "append update durable", |a| {
+    let (update_pump, update_err) = pump_measured(
+        cx,
+        handle,
+        app,
+        PumpKind::Save,
+        "append update durable",
+        |a| {
             !a.live_has_pending_receipts()
                 && a.live_primary.is_none()
                 && a.store
@@ -1197,7 +1257,8 @@ fn measure_append_ack_shared_snapshot(
                     .is_some_and(|value| {
                         value.status == "Succeeded" && value.output == "append-ack output"
                     })
-        })?;
+        },
+    )?;
     if let Err(error) = update_err {
         return Err(error);
     }
@@ -1205,9 +1266,9 @@ fn measure_append_ack_shared_snapshot(
     drop(retained);
     let disk = read_v4_store_for(cx, app)?;
     let disk_run = disk.runs().iter().find(|value| value.id == next_id);
-    if !disk_run.is_some_and(|value| {
-        value.status == "Succeeded" && value.output == "append-ack output"
-    }) {
+    if !disk_run
+        .is_some_and(|value| value.status == "Succeeded" && value.output == "append-ack output")
+    {
         return Err("append/ack run did not reach disk exactly".into());
     }
     let _ = path;
@@ -1256,7 +1317,11 @@ fn minimal_run(id: u64, task: u64, root: &Path, output: &str) -> AgentRun {
     }
 }
 
-fn measure_touched_runs(root: &Path, label: &str, count: usize) -> Result<serde_json::Value, String> {
+fn measure_touched_runs(
+    root: &Path,
+    label: &str,
+    count: usize,
+) -> Result<serde_json::Value, String> {
     let dir = root.join(label);
     std::fs::create_dir_all(&dir).map_err(|error| error.to_string())?;
     let mut base = Store::mock();
@@ -1299,11 +1364,14 @@ fn measure_touched_runs(root: &Path, label: &str, count: usize) -> Result<serde_
             });
         })
         .map_err(|error| format!("run append failed: {error:?}"))?;
-        let (append_pump, append_err) =
-            pump_measured(&mut cx, handle, &app, PumpKind::Save, "run append durable", |a| {
-                !a.live_has_pending_receipts()
-                    && a.store.runs().iter().any(|run| run.id == new_id)
-            })?;
+        let (append_pump, append_err) = pump_measured(
+            &mut cx,
+            handle,
+            &app,
+            PumpKind::Save,
+            "run append durable",
+            |a| !a.live_has_pending_receipts() && a.store.runs().iter().any(|run| run.id == new_id),
+        )?;
         if let Err(error) = append_err {
             return Err(error);
         }
@@ -1328,15 +1396,21 @@ fn measure_touched_runs(root: &Path, label: &str, count: usize) -> Result<serde_
             });
         })
         .map_err(|error| format!("run update failed: {error:?}"))?;
-        let (update_pump, update_err) =
-            pump_measured(&mut cx, handle, &app, PumpKind::Save, "run update durable", |a| {
+        let (update_pump, update_err) = pump_measured(
+            &mut cx,
+            handle,
+            &app,
+            PumpKind::Save,
+            "run update durable",
+            |a| {
                 !a.live_has_pending_receipts()
                     && a.store
                         .runs()
                         .iter()
                         .find(|run| run.id == new_id)
                         .is_some_and(|run| run.output == format!("touched-{index}"))
-            })?;
+            },
+        )?;
         if let Err(error) = update_err {
             return Err(error);
         }
@@ -1428,12 +1502,13 @@ fn choose_occurrence_near(
     })
 }
 
-fn occurrence_unread(
-    cx: &mut HeadlessAppContext,
-    app: &Entity<TaskApp>,
-    id: u64,
-) -> Option<bool> {
-    cx.update(|cx| app.read(cx).store.occurrence(id).map(|occurrence| occurrence.unread))
+fn occurrence_unread(cx: &mut HeadlessAppContext, app: &Entity<TaskApp>, id: u64) -> Option<bool> {
+    cx.update(|cx| {
+        app.read(cx)
+            .store
+            .occurrence(id)
+            .map(|occurrence| occurrence.unread)
+    })
 }
 
 fn measure_direct_mark_read_case(
@@ -1475,13 +1550,19 @@ fn measure_direct_mark_read_case(
             });
         })
         .map_err(|error| format!("{case} mark-read failed: {error:?}"))?;
-        let (pump, pump_err) =
-            pump_measured(cx, handle, app, PumpKind::Save, "direct mark-read durable", |a| {
+        let (pump, pump_err) = pump_measured(
+            cx,
+            handle,
+            app,
+            PumpKind::Save,
+            "direct mark-read durable",
+            |a| {
                 !a.live_has_pending_receipts()
                     && a.store
                         .occurrence(id)
                         .is_some_and(|occurrence| !occurrence.unread)
-            })?;
+            },
+        )?;
         if let Err(error) = pump_err {
             return Err(format!("{case}: {error}"));
         }
@@ -1517,7 +1598,9 @@ fn measure_toggle_command_case(
     let mut samples = Vec::new();
     for index in 0..5u64 {
         let (occurrence_index, id) = choose_occurrence_near(cx, app, used, false, index as usize)
-            .ok_or_else(|| format!("toggle command: no occurrence available for sample {index}"))?;
+            .ok_or_else(|| {
+            format!("toggle command: no occurrence available for sample {index}")
+        })?;
         used.push(id);
         let before = occurrence_unread(cx, app, id)
             .ok_or_else(|| format!("toggle command: occurrence {id} disappeared"))?;
@@ -1544,13 +1627,19 @@ fn measure_toggle_command_case(
                 "toggle command did not apply occurrence {id}: expected unread={expected}, got {actual:?}"
             ));
         }
-        let (pump, pump_err) =
-            pump_measured(cx, handle, app, PumpKind::Save, "toggle command durable", |a| {
+        let (pump, pump_err) = pump_measured(
+            cx,
+            handle,
+            app,
+            PumpKind::Save,
+            "toggle command durable",
+            |a| {
                 !a.live_has_pending_receipts()
                     && a.store
                         .occurrence(id)
                         .is_some_and(|occurrence| occurrence.unread == expected)
-            })?;
+            },
+        )?;
         if let Err(error) = pump_err {
             return Err(format!("toggle command: {error}"));
         }
@@ -1595,10 +1684,14 @@ fn measure_noop_form_then_direct_case(
     })
     .map_err(|error| format!("no-op form warmup failed: {error:?}"))?;
     if warmup_outcome.contains("Saving") {
-        let (_pump, pump_err) =
-            pump_measured(cx, handle, app, PumpKind::Save, "no-op form warmup durable", |a| {
-                !a.live_has_pending_receipts()
-            })?;
+        let (_pump, pump_err) = pump_measured(
+            cx,
+            handle,
+            app,
+            PumpKind::Save,
+            "no-op form warmup durable",
+            |a| !a.live_has_pending_receipts(),
+        )?;
         if let Err(error) = pump_err {
             return Err(format!("no-op form warmup: {error}"));
         }
@@ -1626,7 +1719,9 @@ fn measure_noop_form_then_direct_case(
         }
         outcomes.push(outcome.clone());
         let (occurrence_index, id) = choose_occurrence_near(cx, app, used, true, index as usize)
-            .ok_or_else(|| format!("no-op form then direct: no unread occurrence for sample {index}"))?;
+            .ok_or_else(|| {
+                format!("no-op form then direct: no unread occurrence for sample {index}")
+            })?;
         used.push(id);
         let occurrence_len = occurrence_collection_len(cx, app);
         if occurrence_len != count {
@@ -1646,13 +1741,19 @@ fn measure_noop_form_then_direct_case(
             });
         })
         .map_err(|error| format!("no-op form then direct mark-read failed: {error:?}"))?;
-        let (pump, pump_err) =
-            pump_measured(cx, handle, app, PumpKind::Save, "no-op form then direct durable", |a| {
+        let (pump, pump_err) = pump_measured(
+            cx,
+            handle,
+            app,
+            PumpKind::Save,
+            "no-op form then direct durable",
+            |a| {
                 !a.live_has_pending_receipts()
                     && a.store
                         .occurrence(id)
                         .is_some_and(|occurrence| !occurrence.unread)
-            })?;
+            },
+        )?;
         if let Err(error) = pump_err {
             return Err(format!("no-op form then direct: {error}"));
         }
@@ -1680,7 +1781,11 @@ fn measure_noop_form_then_direct_case(
     }))
 }
 
-fn measure_touched_occurrences(root: &Path, label: &str, count: usize) -> Result<serde_json::Value, String> {
+fn measure_touched_occurrences(
+    root: &Path,
+    label: &str,
+    count: usize,
+) -> Result<serde_json::Value, String> {
     let dir = root.join(label);
     std::fs::create_dir_all(&dir).map_err(|error| error.to_string())?;
     let (store, _automation) = build_store(
@@ -1821,12 +1926,13 @@ fn measure_history(
     .map_err(|error| format!("automation detail open failed: {error:?}"))?;
     let (scope, selected, creating) = cx.update(|cx| {
         let a = app.read(cx);
-        (a.scope(), a.automation_ui.selected, a.automation_ui.creating)
+        (
+            a.scope(),
+            a.automation_ui.selected,
+            a.automation_ui.creating,
+        )
     });
-    if scope != crate::app::Scope::Automations
-        || selected != Some(automation)
-        || creating
-    {
+    if scope != crate::app::Scope::Automations || selected != Some(automation) || creating {
         return Err(format!(
             "history measurement is not on the visible automation detail: scope={scope:?} selected={selected:?} creating={creating}"
         ));
@@ -1845,10 +1951,10 @@ fn measure_history(
         .map_err(|error| format!("history request failed: {error:?}"))?;
         let (pump_us, pump_err) =
             pump_measured(cx, handle, app, PumpKind::History, "history page", |a| {
-            a.history_cache.get(&automation).is_some_and(|cache| {
-                matches!(cache.state, crate::history_reader::HistoryLoad::Loaded)
-                    && cache.rows.len() >= 20
-            })
+                a.history_cache.get(&automation).is_some_and(|cache| {
+                    matches!(cache.state, crate::history_reader::HistoryLoad::Loaded)
+                        && cache.rows.len() >= 20
+                })
             })?;
         if let Err(error) = pump_err {
             return Err(error);
@@ -1877,8 +1983,10 @@ fn measure_history(
         let visible = cx
             .update_window(handle, |_, w, cx| {
                 w.render_frame(cx);
-                w.find(format!("automation-occurrence-{first_row}")).visible()
-                    && w.try_find(format!("occurrence-status-{first_row}")).is_some()
+                w.find(format!("automation-occurrence-{first_row}"))
+                    .visible()
+                    && w.try_find(format!("occurrence-status-{first_row}"))
+                        .is_some()
             })
             .map_err(|error| format!("history render failed: {error:?}"))?;
         if !visible {

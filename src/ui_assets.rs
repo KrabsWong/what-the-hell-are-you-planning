@@ -86,12 +86,26 @@ mod tests {
     #[test]
     fn every_execution_status_icon_is_embedded() {
         use crate::{domain::Stage, execution_status::ExecutionStatus as Status};
-        let statuses = [Status::Running, Status::Queued, Status::Retrying, Status::Waiting,
-            Status::Ready, Status::Paused, Status::Blocked, Status::Done, Status::Approval];
-        for status in statuses.into_iter().chain(Stage::ALL.into_iter().map(Status::Stage)) {
+        let statuses = [
+            Status::Running,
+            Status::Queued,
+            Status::Retrying,
+            Status::Waiting,
+            Status::Ready,
+            Status::Paused,
+            Status::Blocked,
+            Status::Done,
+            Status::Approval,
+        ];
+        for status in statuses
+            .into_iter()
+            .chain(Stage::ALL.into_iter().map(Status::Stage))
+        {
             let icon = status.icon();
-            assert!(matches!(AppIcons.load(icon.path().as_ref()).unwrap(), Some(Cow::Borrowed(bytes)) if !bytes.is_empty()),
-                "Missing embedded icon for {status:?}: {icon:?}");
+            assert!(
+                matches!(AppIcons.load(icon.path().as_ref()).unwrap(), Some(Cow::Borrowed(bytes)) if !bytes.is_empty()),
+                "Missing embedded icon for {status:?}: {icon:?}"
+            );
         }
         for icon in [assets::IconName::ArrowUp, assets::IconName::ArrowDown] {
             assert!(AppIcons.load(icon.path().as_ref()).unwrap().is_some());

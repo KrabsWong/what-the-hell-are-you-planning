@@ -132,7 +132,8 @@ pub fn run() {
                 a.attach_storage(Storage::new(root.join("workspace.json")), w, cx);
                 assert!(a.storage_error.is_empty(), "{}", a.storage_error);
                 a.store.project_at_mut(0).unwrap().directory = root.to_string_lossy().into_owned();
-                a.store.set_opencode_path(cli.to_string_lossy().into_owned());
+                a.store
+                    .set_opencode_path(cli.to_string_lossy().into_owned());
                 a.executable_input.update(cx, |input, cx| {
                     input.set_value(cli.to_string_lossy().into_owned(), w, cx);
                 });
@@ -165,7 +166,12 @@ pub fn run() {
         w.within("popup-menu").click(3usize, cx);
         w.within("settings-tabs").click(1usize, cx);
         for (i, model) in MODELS.iter().enumerate() {
-            click_in(w, cx, "model-settings-scroll", &format!("research-model-{i}"));
+            click_in(
+                w,
+                cx,
+                "model-settings-scroll",
+                &format!("research-model-{i}"),
+            );
             w.press("cmd-a", cx);
             w.input(model, cx);
             w.press("enter", cx);
@@ -173,7 +179,8 @@ pub fn run() {
         click_in(w, cx, "model-settings-scroll", "ego-path");
         w.press("cmd-a", cx);
         w.input(ego.to_str().unwrap(), cx);
-    }).unwrap();
+    })
+    .unwrap();
     cx.update_window(handle, |_, w, cx| {
         assert_eq!(
             app.read(cx).store.research_config().models,
@@ -224,7 +231,12 @@ pub fn run() {
         &mut cx,
         handle,
         &app,
-        |a| a.store.research_requests().iter().any(|request| request.id == request_id && request.goal_ids.len() == 1),
+        |a| {
+            a.store
+                .research_requests()
+                .iter()
+                .any(|request| request.id == request_id && request.goal_ids.len() == 1)
+        },
         "request plan goal",
     );
     let goal = cx
@@ -242,9 +254,7 @@ pub fn run() {
                 app.read(cx).store.task(id).unwrap().title,
                 "US technology news research · native acceptance"
             );
-            app.update(cx, |a, cx| {
-                a.import_attachments(id, vec![pdf.clone()], cx)
-            });
+            app.update(cx, |a, cx| a.import_attachments(id, vec![pdf.clone()], cx));
             id
         })
         .unwrap();
@@ -264,12 +274,20 @@ pub fn run() {
         cx.write_to_clipboard(ClipboardItem::new_string("ordinary text".into()));
         app.update(cx, |a, cx| assert!(!a.paste_attachments(goal, cx)));
         cx.write_to_clipboard(ClipboardItem::new_image(&Image::from_bytes(
-            ImageFormat::Png, std::fs::read(&png).unwrap(),
+            ImageFormat::Png,
+            std::fs::read(&png).unwrap(),
         )));
         click_in(w, cx, "detail-scroll", "material-drop-hint");
         w.press("cmd-v", cx);
-    }).unwrap();
-    wait_until(&mut cx, handle, &app, |a| a.attachment_import.is_none() && a.pending_material_job.is_none(), "clipboard image import");
+    })
+    .unwrap();
+    wait_until(
+        &mut cx,
+        handle,
+        &app,
+        |a| a.attachment_import.is_none() && a.pending_material_job.is_none(),
+        "clipboard image import",
+    );
     cx.update_window(handle, |_, w, cx| {
         if app.read(cx).research_save_is_pending() {
             w.render_frame(cx);
@@ -278,7 +296,10 @@ pub fn run() {
         }
     })
     .unwrap();
-    assert!(!root.join("material-cache").exists(), "Import must not compile or extract materials");
+    assert!(
+        !root.join("material-cache").exists(),
+        "Import must not compile or extract materials"
+    );
     std::fs::remove_file(&pdf).unwrap();
     std::fs::remove_file(&png).unwrap();
     cx.update_window(handle, |_, w, cx| {
@@ -290,7 +311,7 @@ pub fn run() {
         // Materials are part of the approved plan. Approve after importing
         // them, then let the user start the chain explicitly.
         app.update(cx, |a, cx| {
-            a.change_stage(goal, crate::domain::Stage::Planned, cx);
+            a.change_stage(goal, crate::domain::Stage::InProgress, cx);
             assert!(a.store.goal_execution_approved(goal), "{}", a.error);
             cx.notify();
         });
@@ -303,7 +324,11 @@ pub fn run() {
             let state = app.read(cx);
             let ids = state.store.research_children(goal);
             assert_eq!(ids.len(), 3);
-            assert_eq!(state.store.runs().len(), 1, "only planning has run before explicit execution");
+            assert_eq!(
+                state.store.runs().len(),
+                1,
+                "only planning has run before explicit execution"
+            );
             assert_eq!(state.store.runs().last().unwrap().status, "Succeeded");
             assert_eq!(state.selected(), Some(goal));
             let saved = Storage::new(root.join("workspace.json"))
@@ -370,7 +395,10 @@ pub fn run() {
             assert_eq!(run.model, model);
             assert_eq!(run.status, "Succeeded", "{:?}", run.logs);
             if run.project_plan.is_some() {
-                assert!(run.attachments.is_empty(), "planning does not receive step materials");
+                assert!(
+                    run.attachments.is_empty(),
+                    "planning does not receive step materials"
+                );
             } else {
                 assert_eq!(run.attachments.len(), 2);
             }
@@ -423,7 +451,7 @@ pub fn run() {
         // Editing the goal invalidates its approved snapshot. Re-approve the
         // edited plan before the next explicit run, as T21 requires.
         app.update(cx, |a, cx| {
-            a.change_stage(goal, crate::domain::Stage::Planned, cx);
+            a.change_stage(goal, crate::domain::Stage::InProgress, cx);
             assert!(a.store.goal_execution_approved(goal), "{}", a.error);
             cx.notify();
         });
@@ -434,7 +462,11 @@ pub fn run() {
     wait_idle(&mut cx, handle, &app);
     cx.update_window(handle, |_, _, cx| {
         assert_eq!(app.read(cx).store.runs().len(), 7);
-        assert!(app.read(cx).store.runs()[4].prompt.contains("publication dates"));
+        assert!(
+            app.read(cx).store.runs()[4]
+                .prompt
+                .contains("publication dates")
+        );
         assert!(
             children
                 .iter()
@@ -461,7 +493,13 @@ pub fn run() {
         "subtask material import",
     );
     cx.update_window(handle, |_, w, cx| {
-        let before = app.read(cx).store.task(children[1]).unwrap().attachments.len();
+        let before = app
+            .read(cx)
+            .store
+            .task(children[1])
+            .unwrap()
+            .attachments
+            .len();
         {
             let state = app.read(cx);
             assert!(
@@ -478,7 +516,12 @@ pub fn run() {
         w.click("research-save-impact-confirm", cx);
         w.render_frame(cx);
         assert_eq!(
-            app.read(cx).store.task(children[1]).unwrap().attachments.len(),
+            app.read(cx)
+                .store
+                .task(children[1])
+                .unwrap()
+                .attachments
+                .len(),
             before + 1
         );
     })
@@ -490,7 +533,7 @@ pub fn run() {
         // edited analysis and its dependent report are not.
         app.update(cx, |a, cx| {
             a.open_task(goal, w, cx);
-            a.change_stage(goal, crate::domain::Stage::Planned, cx);
+            a.change_stage(goal, crate::domain::Stage::InProgress, cx);
             assert!(a.store.goal_execution_approved(goal), "{}", a.error);
             cx.notify();
         });
@@ -524,7 +567,9 @@ pub fn run() {
         .iter()
         .find(|call| {
             call["model"] == MODELS[2]
-                && call["files"].as_array().is_some_and(|files| files.len() == 3)
+                && call["files"]
+                    .as_array()
+                    .is_some_and(|files| files.len() == 3)
         })
         .expect("analysis call with three materials");
     assert!(
@@ -543,7 +588,10 @@ pub fn run() {
         calls
             .iter()
             .filter(|call| call["model"] == MODELS[3])
-            .any(|call| call["prompt"].as_str().unwrap().contains("ANALYSIS_SENTINEL"))
+            .any(|call| call["prompt"]
+                .as_str()
+                .unwrap()
+                .contains("ANALYSIS_SENTINEL"))
     );
 
     // Blockers and cancellation both stop the remainder of a continuous chain.
@@ -612,7 +660,10 @@ pub fn run() {
     wait_idle(&mut cx, handle, &app);
     cx.update_window(handle, |_, w, cx| {
         assert_eq!(app.read(cx).store.runs().len(), 11);
-        assert_eq!(app.read(cx).store.runs().last().unwrap().status, "Cancelled");
+        assert_eq!(
+            app.read(cx).store.runs().last().unwrap().status,
+            "Cancelled"
+        );
         create_fixture_goal(&app, w, cx, "QA_BROWSER_HANDOFF");
         click_in(w, cx, "detail-scroll", "research-all");
     })
@@ -627,9 +678,19 @@ pub fn run() {
             let handoff = &state.store.runs()[11];
             let goal = state.store.owning_research_goal(handoff.task_id).unwrap();
             assert!(state.store.research_browser_handed_off(goal));
-            assert!(state.store.research_children(goal).iter().all(|id| state.store.research_result(*id).is_some()));
+            assert!(
+                state
+                    .store
+                    .research_children(goal)
+                    .iter()
+                    .all(|id| state.store.research_result(*id).is_some())
+            );
             assert!(state.store.runs()[12].prompt.contains("BROWSER CONTROL:"));
-            assert!(state.store.runs()[13].output.contains("OFFLINE_GAP_SENTINEL"));
+            assert!(
+                state.store.runs()[13]
+                    .output
+                    .contains("OFFLINE_GAP_SENTINEL")
+            );
             assert!(
                 !Path::new(&handoff.directory)
                     .join("handoff-continued")
@@ -718,7 +779,9 @@ pub fn run() {
     let reopened = reopened.unwrap();
     cx.update_window(small.into(), |_, w, cx| {
         w.render_frame(cx);
-        reopened.update(cx, |a, cx| a.navigate(Scope::Project(composer_project), w, cx));
+        reopened.update(cx, |a, cx| {
+            a.navigate(Scope::Project(composer_project), w, cx)
+        });
         w.render_frame(cx);
         w.click("saved-requests", cx);
         assert_eq!(
@@ -744,60 +807,93 @@ pub fn run() {
 
 // Focused lifecycle acceptance independent of legacy settings navigation.
 pub fn handoff_progress() {
-    let root = std::env::current_dir().unwrap().join(format!(".local/handoff-qa/{}", std::process::id()));
+    let root = std::env::current_dir()
+        .unwrap()
+        .join(format!(".local/handoff-qa/{}", std::process::id()));
     std::fs::create_dir_all(&root).unwrap();
     let cli = root.join("fake-opencode");
     let ego = root.join("ego-browser");
     write_executable(&cli, FAKE_CLI);
     write_executable(&ego, "#!/bin/sh\nexit 0\n");
-    let mut cx = HeadlessAppContext::with_platform(platform::current_platform(true).text_system(), Arc::new(assets::Assets), platform::current_headless_renderer);
+    let mut cx = HeadlessAppContext::with_platform(
+        platform::current_platform(true).text_system(),
+        Arc::new(assets::Assets),
+        platform::current_headless_renderer,
+    );
     cx.update(init);
     let mut app = None;
-    let window = cx.open_window(size(px(1000.), px(680.)), |w, cx| {
-        let view = cx.new(|cx| TaskApp::new_mock(w, cx));
-        view.update(cx, |a, cx| {
-            a.attach_storage(Storage::new(root.join("workspace.json")), w, cx);
-            a.store.project_at_mut(0).unwrap().directory = root.to_string_lossy().into_owned();
-            a.store.set_opencode_path(cli.to_string_lossy().into_owned());
-            a.store.research_config_mut().ego_path = ego.to_string_lossy().into_owned();
-            a.store.research_config_mut().models = MODELS.map(String::from);
-        });
-        app = Some(view.clone());
-        cx.new(|cx| base::Root::new(view, w, cx))
-    }).unwrap();
+    let window = cx
+        .open_window(size(px(1000.), px(680.)), |w, cx| {
+            let view = cx.new(|cx| TaskApp::new_mock(w, cx));
+            view.update(cx, |a, cx| {
+                a.attach_storage(Storage::new(root.join("workspace.json")), w, cx);
+                a.store.project_at_mut(0).unwrap().directory = root.to_string_lossy().into_owned();
+                a.store
+                    .set_opencode_path(cli.to_string_lossy().into_owned());
+                a.store.research_config_mut().ego_path = ego.to_string_lossy().into_owned();
+                a.store.research_config_mut().models = MODELS.map(String::from);
+            });
+            app = Some(view.clone());
+            cx.new(|cx| base::Root::new(view, w, cx))
+        })
+        .unwrap();
     let app = app.unwrap();
     let handle = window.into();
     for title in ["QA_BROWSER_HANDOFF", "QA_REPORTED_HANDOFF", "QA_BLOCK"] {
-        let goal = cx.update_window(handle, |_, w, cx| {
-            let goal = create_fixture_goal(&app, w, cx, title);
-            app.update(cx, |a, cx| a.run_research_next(goal, true, cx));
-            goal
-        }).unwrap();
+        let goal = cx
+            .update_window(handle, |_, w, cx| {
+                let goal = create_fixture_goal(&app, w, cx, title);
+                app.update(cx, |a, cx| a.run_research_next(goal, true, cx));
+                goal
+            })
+            .unwrap();
         wait_idle(&mut cx, handle, &app);
         cx.update_window(handle, |_, _, cx| {
             let state = app.read(cx);
-            let runs: Vec<_> = state.store.runs().iter().filter(|r| state.store.owning_research_goal(r.task_id) == Some(goal)).collect();
+            let runs: Vec<_> = state
+                .store
+                .runs()
+                .iter()
+                .filter(|r| state.store.owning_research_goal(r.task_id) == Some(goal))
+                .collect();
             assert!(state.storage_error.is_empty(), "{}", state.storage_error);
             if title == "QA_BLOCK" {
                 assert_eq!(runs.len(), 1);
                 assert_eq!(runs[0].status, "Blocked");
                 assert!(!state.store.research_browser_handed_off(goal));
             } else {
-                assert_eq!(runs.len(), 3, "{title}: {:?}", runs.iter().map(|r| (&r.status, &r.logs)).collect::<Vec<_>>());
+                assert_eq!(
+                    runs.len(),
+                    3,
+                    "{title}: {:?}",
+                    runs.iter()
+                        .map(|r| (&r.status, &r.logs))
+                        .collect::<Vec<_>>()
+                );
                 assert!(runs.iter().all(|r| r.status == "Succeeded"));
                 assert!(state.store.research_browser_handed_off(goal));
                 assert!(runs[1].prompt.contains("BROWSER CONTROL:"));
                 assert!(runs[2].output.contains("OFFLINE_GAP_SENTINEL"));
-                assert!(!Path::new(&runs[0].directory).join("handoff-continued").exists());
+                assert!(
+                    !Path::new(&runs[0].directory)
+                        .join("handoff-continued")
+                        .exists()
+                );
                 let mut next = state.store.prepare_run(runs[0].task_id).unwrap();
-                state.prepare_run_materials(runs[0].task_id, &mut next).unwrap();
+                state
+                    .prepare_run_materials(runs[0].task_id, &mut next)
+                    .unwrap();
                 assert!(next.prompt.contains("BROWSER CONTROL:"));
                 assert!(!next.prompt.contains("CODEX BROWSER TRANSPORT"));
                 assert!(!next.prompt.contains("\nBROWSER INTEGRATION"));
             }
-        }).unwrap();
+        })
+        .unwrap();
     }
-    println!("HANDOFF QA PASSED: tool handoff and reported handoff continue offline through analysis/report; browser runtime failure stops; no browser takeover. {}", root.display());
+    println!(
+        "HANDOFF QA PASSED: tool handoff and reported handoff continue offline through analysis/report; browser runtime failure stops; no browser takeover. {}",
+        root.display()
+    );
 }
 
 fn create_fixture_goal(app: &Entity<TaskApp>, w: &mut Window, cx: &mut App, title: &str) -> u64 {
@@ -854,10 +950,7 @@ fn read_calls(directory: &Path, calls: &mut Vec<serde_json::Value>) {
             read_calls(&path, calls);
         } else if path.file_name().is_some_and(|name| name == "calls.jsonl") {
             let text = std::fs::read_to_string(&path).unwrap();
-            calls.extend(
-                text.lines()
-                    .map(|line| serde_json::from_str(line).unwrap()),
-            );
+            calls.extend(text.lines().map(|line| serde_json::from_str(line).unwrap()));
         }
     }
 }
@@ -950,13 +1043,16 @@ fn write_png(path: &Path) {
     std::fs::write(path, include_bytes!("test-fixtures/supplement.png")).unwrap();
 }
 
-
 /// Focused acceptance independent of the retired research sidebar navigation.
 pub fn attachments_only() {
-    let root = std::env::current_dir().unwrap().join(format!(".local/attachment-qa/{}", std::process::id()));
+    let root = std::env::current_dir()
+        .unwrap()
+        .join(format!(".local/attachment-qa/{}", std::process::id()));
     std::fs::create_dir_all(&root).unwrap();
     let mut cx = HeadlessAppContext::with_platform(
-        platform::current_platform(true).text_system(), Arc::new(crate::ui_assets::AppAssets), platform::current_headless_renderer,
+        platform::current_platform(true).text_system(),
+        Arc::new(crate::ui_assets::AppAssets),
+        platform::current_headless_renderer,
     );
     cx.update(init);
     let mut app = None;
@@ -968,7 +1064,7 @@ pub fn attachments_only() {
             a.store.project_at_mut(0).unwrap().directory = root.to_string_lossy().into_owned();
             a.store.research_config_mut().models = MODELS.map(String::from);
             goal = a.store.apply_project_plan(1, r#"{"tasks":[{"title":"Attachment QA","brief":"Read supplied materials"}]}"#).unwrap()[0];
-            a.store.set_stage(goal, crate::domain::Stage::Planned).unwrap();
+            a.store.set_stage(goal, crate::domain::Stage::InProgress).unwrap();
             a.open_task(goal, w, cx);
         });
         app = Some(view.clone());
@@ -979,130 +1075,225 @@ pub fn attachments_only() {
     cx.update_window(handle, |_, w, cx| {
         cx.write_to_clipboard(ClipboardItem::new_string("ordinary text".into()));
         app.update(cx, |a, cx| assert!(!a.paste_attachments(goal, cx)));
-        cx.write_to_clipboard(ClipboardItem::new_image(&Image::from_bytes(ImageFormat::Png,
-            include_bytes!("test-fixtures/supplement.png").to_vec())));
+        cx.write_to_clipboard(ClipboardItem::new_image(&Image::from_bytes(
+            ImageFormat::Png,
+            include_bytes!("test-fixtures/supplement.png").to_vec(),
+        )));
         click_in(w, cx, "detail-scroll", "material-drop-hint");
         w.press("cmd-v", cx);
-    }).unwrap();
-    wait_until(&mut cx, handle, &app, |a| a.attachment_import.is_none() && a.pending_material_job.is_none(), "paste shortcut import");
+    })
+    .unwrap();
+    wait_until(
+        &mut cx,
+        handle,
+        &app,
+        |a| a.attachment_import.is_none() && a.pending_material_job.is_none(),
+        "paste shortcut import",
+    );
     cx.update_window(handle, |_, w, cx| {
         if app.read(cx).research_save_is_pending() {
             w.render_frame(cx);
             w.click("research-save-impact-confirm", cx);
             w.render_frame(cx);
         }
-    }).unwrap();
-    wait_until(&mut cx, handle, &app, |a| a.store.task(goal).unwrap().attachments.len() == 1, "paste shortcut saved");
+    })
+    .unwrap();
+    wait_until(
+        &mut cx,
+        handle,
+        &app,
+        |a| a.store.task(goal).unwrap().attachments.len() == 1,
+        "paste shortcut saved",
+    );
     let pdf = root.join("original.pdf");
     std::fs::write(&pdf, include_bytes!("test-fixtures/blank.pdf")).unwrap();
     cx.update_window(handle, |_, w, cx| {
         assert!(w.try_find("paste-attachments").is_none());
         click_in(w, cx, "detail-scroll", "material-drop-hint");
         w.press("cmd-v", cx);
-    }).unwrap();
-    wait_until(&mut cx, handle, &app, |a| a.attachment_import.is_none() && a.pending_material_job.is_none(), "repeat paste import");
+    })
+    .unwrap();
+    wait_until(
+        &mut cx,
+        handle,
+        &app,
+        |a| a.attachment_import.is_none() && a.pending_material_job.is_none(),
+        "repeat paste import",
+    );
     cx.update_window(handle, |_, w, cx| {
         if app.read(cx).research_save_is_pending() {
             w.render_frame(cx);
             w.click("research-save-impact-confirm", cx);
             w.render_frame(cx);
         }
-    }).unwrap();
-    wait_until(&mut cx, handle, &app, |a| a.store.task(goal).unwrap().attachments.len() == 2, "repeat paste saved");
+    })
+    .unwrap();
+    wait_until(
+        &mut cx,
+        handle,
+        &app,
+        |a| a.store.task(goal).unwrap().attachments.len() == 2,
+        "repeat paste saved",
+    );
     cx.update_window(handle, |_, w, cx| {
         click_in(w, cx, "detail-scroll", "material-drop-hint");
         let position = w.find("material-drop-hint").bounds().center();
-        w.dispatch_event(PlatformInput::FileDrop(FileDropEvent::Entered {
-            position, paths: ExternalPaths(vec![pdf.clone()].into()),
-        }), cx);
+        w.dispatch_event(
+            PlatformInput::FileDrop(FileDropEvent::Entered {
+                position,
+                paths: ExternalPaths(vec![pdf.clone()].into()),
+            }),
+            cx,
+        );
         w.render_frame(cx);
-        w.dispatch_event(PlatformInput::FileDrop(FileDropEvent::Submit { position }), cx);
-    }).unwrap();
-    wait_until(&mut cx, handle, &app, |a| a.attachment_import.is_none() && a.pending_material_job.is_none(), "file import");
+        w.dispatch_event(
+            PlatformInput::FileDrop(FileDropEvent::Submit { position }),
+            cx,
+        );
+    })
+    .unwrap();
+    wait_until(
+        &mut cx,
+        handle,
+        &app,
+        |a| a.attachment_import.is_none() && a.pending_material_job.is_none(),
+        "file import",
+    );
     cx.update_window(handle, |_, w, cx| {
         if app.read(cx).research_save_is_pending() {
             w.render_frame(cx);
             w.click("research-save-impact-confirm", cx);
             w.render_frame(cx);
         }
-    }).unwrap();
-    wait_until(&mut cx, handle, &app, |a| a.store.task(goal).unwrap().attachments.len() == 3, "file import saved");
-    let (run, files) = cx.update_window(handle, |_, _, cx| app.update(cx, |a, _| {
-        assert_eq!(a.store.task(goal).unwrap().attachments.len(), 3);
-        a.store.set_stage(goal, crate::domain::Stage::Planned).unwrap();
-        let mut run = a.store.prepare_run(goal).unwrap();
-        let children = a.store.apply_research_plan(goal, PLAN).unwrap();
-        a.store.set_stage(goal, crate::domain::Stage::Planned).unwrap();
-        let files = a.prepare_run_materials(children[1], &mut run).unwrap();
-        assert_eq!(files.len(), 3);
-        assert!(!run.prompt.contains("BEGIN LOCAL MATERIAL TEXT"));
-        assert!(files.iter().any(|p| std::fs::read(p).unwrap() == include_bytes!("test-fixtures/blank.pdf")));
-        assert!(!root.join("material-cache").exists());
-        (run, files)
-    })).unwrap();
+    })
+    .unwrap();
+    wait_until(
+        &mut cx,
+        handle,
+        &app,
+        |a| a.store.task(goal).unwrap().attachments.len() == 3,
+        "file import saved",
+    );
+    let (run, files) = cx
+        .update_window(handle, |_, _, cx| {
+            app.update(cx, |a, _| {
+                assert_eq!(a.store.task(goal).unwrap().attachments.len(), 3);
+                a.store
+                    .set_stage(goal, crate::domain::Stage::InProgress)
+                    .unwrap();
+                let mut run = a.store.prepare_run(goal).unwrap();
+                let children = a.store.apply_research_plan(goal, PLAN).unwrap();
+                a.store
+                    .set_stage(goal, crate::domain::Stage::InProgress)
+                    .unwrap();
+                let files = a.prepare_run_materials(children[1], &mut run).unwrap();
+                assert_eq!(files.len(), 3);
+                assert!(!run.prompt.contains("BEGIN LOCAL MATERIAL TEXT"));
+                assert!(files.iter().any(
+                    |p| std::fs::read(p).unwrap() == include_bytes!("test-fixtures/blank.pdf")
+                ));
+                assert!(!root.join("material-cache").exists());
+                (run, files)
+            })
+        })
+        .unwrap();
     let cli = root.join("files-cli.py");
-    write_executable(&cli, r#"#!/usr/bin/python3
+    write_executable(
+        &cli,
+        r#"#!/usr/bin/python3
 import pathlib,sys
 args=sys.argv[1:]
 files=[args[i+1] for i,a in enumerate(args) if a=='--file']
 assert len(files)==3 and all(pathlib.Path(f).is_file() for f in files)
 assert 'Read the attached file directly' in args[-1]
-"#);
-    let running = crate::opencode::start(crate::opencode::Request { agent: None, browser_executable: None, gateway_url: None,
-        executable: cli, directory: root.clone(), model: MODELS[2].into(), prompt: run.prompt,
-        title: "attachment QA".into(), files, session_id: None,
-    }).unwrap();
+"#,
+    );
+    let running = crate::opencode::start(crate::opencode::Request {
+        agent: None,
+        browser_executable: None,
+        gateway_url: None,
+        executable: cli,
+        directory: root.clone(),
+        model: MODELS[2].into(),
+        prompt: run.prompt,
+        title: "attachment QA".into(),
+        files,
+        session_id: None,
+    })
+    .unwrap();
     loop {
-        if let crate::opencode::Event::Finished { code, error, .. } = running.events.recv_timeout(Duration::from_secs(10)).unwrap() {
-            assert_eq!(code, Some(0), "{error:?}"); break;
+        if let crate::opencode::Event::Finished { code, error, .. } = running
+            .events
+            .recv_timeout(Duration::from_secs(10))
+            .unwrap()
+        {
+            assert_eq!(code, Some(0), "{error:?}");
+            break;
         }
     }
     cx.update_window(handle, |_, w, cx| {
         app.update(cx, |a, cx| {
-            a.store.task_mut(goal).unwrap().attachments[0].name = "4c9e204e-a566-4569-9d45-88f28b5c403e.png".into();
-            a.store.task_mut(goal).unwrap().attachments[1].name = "a-very-long-screenshot-filename-used-to-verify-that-no-line-is-cut-in-half.png".into();
+            a.store.task_mut(goal).unwrap().attachments[0].name =
+                "4c9e204e-a566-4569-9d45-88f28b5c403e.png".into();
+            a.store.task_mut(goal).unwrap().attachments[1].name =
+                "a-very-long-screenshot-filename-used-to-verify-that-no-line-is-cut-in-half.png"
+                    .into();
             cx.notify();
         });
         w.render_frame(cx);
-    }).unwrap();
+    })
+    .unwrap();
     cx.run_until_parked();
     screenshot(&mut cx, handle, &root, "materials.png");
     cx.update_window(handle, |_, w, cx| {
         w.hover("material-card-0", cx);
         w.render_frame(cx);
         w.click("material-menu-0", cx);
-    }).unwrap();
+    })
+    .unwrap();
     screenshot(&mut cx, handle, &root, "material-actions.png");
     cx.update_window(handle, |_, w, cx| {
         w.press("escape", cx);
         crate::appearance::apply(crate::appearance::Appearance::Dark, Some(w), cx);
-    }).unwrap();
+    })
+    .unwrap();
     screenshot(&mut cx, handle, &root, "materials-dark.png");
     // In-flight results show each stage's tasks; completed attempts remain report-first.
-    let steps = cx.update_window(handle, |_, w, cx| app.update(cx, |a, cx| {
-        let steps = a.store.research_children(goal);
-        a.store.set_stage(goal, crate::domain::Stage::Planned).unwrap();
-        let mut completed = a.store.prepare_run(steps[0]).unwrap();
-        completed.status = "Succeeded".into();
-        completed.output = "## Completed evidence\nReadable report fixture.".into();
-        a.store.push_run(completed);
-        a.store.set_stage(steps[0], crate::domain::Stage::Done).unwrap();
-        let mut running = a.store.prepare_run(steps[1]).unwrap();
-        running.status = "Running".into();
-        let run_id = running.id;
-        a.store.push_run(running);
-        a.queued_runs.push((run_id, vec![]));
-        a.note_selected_run(Some(run_id));
-        a.show_run_details = false;
-        a.show_run_result = true;
-        a.navigate(crate::app::Scope::Runs, w, cx);
-        steps
-    })).unwrap();
+    let steps = cx
+        .update_window(handle, |_, w, cx| {
+            app.update(cx, |a, cx| {
+                let steps = a.store.research_children(goal);
+                a.store
+                    .set_stage(goal, crate::domain::Stage::InProgress)
+                    .unwrap();
+                let mut completed = a.store.prepare_run(steps[0]).unwrap();
+                completed.status = "Succeeded".into();
+                completed.output = "## Completed evidence\nReadable report fixture.".into();
+                a.store.push_run(completed);
+                a.store
+                    .set_stage(steps[0], crate::domain::Stage::Done)
+                    .unwrap();
+                let mut running = a.store.prepare_run(steps[1]).unwrap();
+                running.status = "Running".into();
+                let run_id = running.id;
+                a.store.push_run(running);
+                a.queued_runs.push((run_id, vec![]));
+                a.note_selected_run(Some(run_id));
+                a.show_run_details = false;
+                a.show_run_result = true;
+                a.navigate(crate::app::Scope::Runs, w, cx);
+                steps
+            })
+        })
+        .unwrap();
     cx.update_window(handle, |_, w, cx| {
         w.render_frame(cx);
-        for id in &steps { assert!(w.find(format!("progress-task-{id}")).visible()); }
+        for id in &steps {
+            assert!(w.find(format!("progress-task-{id}")).visible());
+        }
         assert!(w.try_find("research-result-scroll").is_none());
-    }).unwrap();
+    })
+    .unwrap();
     screenshot(&mut cx, handle, &root, "running-stage-tasks.png");
     // Restart recovery must retain the outline and per-task actions without a local worker.
     cx.update_window(handle, |_, w, cx| {
@@ -1121,45 +1312,87 @@ assert 'Read the attached file directly' in args[-1]
         assert!(w.try_find("open-run-task").is_none());
         assert!(w.try_find("run-technical-details").is_none());
         assert!(w.try_find("run-resolve-task").is_none());
-        assert!(w.try_find(format!("progress-technical-details-{}", steps[2])).is_none());
-    }).unwrap();
+        assert!(
+            w.try_find(format!("progress-technical-details-{}", steps[2]))
+                .is_none()
+        );
+    })
+    .unwrap();
     screenshot(&mut cx, handle, &root, "recovering-stage-tasks.png");
     cx.update_window(handle, |_, w, cx| {
         let running = app.read(cx).selected_run().unwrap();
         w.click(format!("progress-task-title-{}", steps[0]), cx);
         assert!(app.read(cx).show_run_result);
         assert!(!app.read(cx).show_run_details);
-        assert_eq!(app.read(cx).store.runs().iter().find(|r| r.id == app.read(cx).selected_run().unwrap()).unwrap().task_id, steps[0]);
-        app.update(cx, |a, cx| { a.show_task_result(running, cx); });
+        assert_eq!(
+            app.read(cx)
+                .store
+                .runs()
+                .iter()
+                .find(|r| r.id == app.read(cx).selected_run().unwrap())
+                .unwrap()
+                .task_id,
+            steps[0]
+        );
+        app.update(cx, |a, cx| {
+            a.show_task_result(running, cx);
+        });
         w.render_frame(cx);
         w.click(format!("progress-task-title-{}", steps[1]), cx);
         assert_eq!(app.read(cx).selected(), Some(steps[1]));
         assert!(app.read(cx).has_return_frames());
         w.click("navigation-back", cx);
-        assert_eq!(app.read(cx).displayed_run_id(), Some(running),
-            "Back from a progress task must restore the originating run");
+        assert_eq!(
+            app.read(cx).displayed_run_id(),
+            Some(running),
+            "Back from a progress task must restore the originating run"
+        );
         assert!(app.read(cx).show_run_result);
         assert!(!app.read(cx).show_run_details);
-        app.update(cx, |a, cx| { a.show_task_result(running, cx); });
+        app.update(cx, |a, cx| {
+            a.show_task_result(running, cx);
+        });
         w.render_frame(cx);
-        assert_eq!(app.read(cx).displayed_run_id(), Some(running),
-            "Opening a run must resolve that run after visiting a task");
+        assert_eq!(
+            app.read(cx).displayed_run_id(),
+            Some(running),
+            "Opening a run must resolve that run after visiting a task"
+        );
         w.click(format!("progress-task-title-{}", steps[2]), cx);
         assert_eq!(app.read(cx).selected(), Some(steps[2]));
-        app.update(cx, |a, cx| { a.show_task_result(running, cx); });
+        app.update(cx, |a, cx| {
+            a.show_task_result(running, cx);
+        });
         w.render_frame(cx);
-        assert_eq!(app.read(cx).displayed_run_id(), Some(running),
-            "A sibling task selection must not hide the requested run");
-    }).unwrap();
+        assert_eq!(
+            app.read(cx).displayed_run_id(),
+            Some(running),
+            "A sibling task selection must not hide the requested run"
+        );
+    })
+    .unwrap();
 
     cx.update_window(handle, |_, w, cx| {
         w.click(format!("progress-technical-details-{}", steps[0]), cx);
         assert!(app.read(cx).show_run_details);
         let selected = app.read(cx).selected_run().unwrap();
-        assert_eq!(app.read(cx).displayed_run_id(), Some(selected),
-            "Technical details must display the run selected by the row");
-        assert_eq!(app.read(cx).store.runs().iter().find(|r| r.id == selected).unwrap().task_id, steps[0]);
-    }).unwrap();
+        assert_eq!(
+            app.read(cx).displayed_run_id(),
+            Some(selected),
+            "Technical details must display the run selected by the row"
+        );
+        assert_eq!(
+            app.read(cx)
+                .store
+                .runs()
+                .iter()
+                .find(|r| r.id == selected)
+                .unwrap()
+                .task_id,
+            steps[0]
+        );
+    })
+    .unwrap();
 
     cx.update_window(handle, |_, w, cx| {
         app.update(cx, |a, cx| {
@@ -1169,37 +1402,65 @@ assert 'Read the attached file directly' in args[-1]
         });
         w.render_frame(cx);
         assert!(w.find("research-result-scroll").visible());
-        for id in &steps { assert!(w.try_find(format!("progress-task-{id}")).is_none()); }
-    }).unwrap();
+        for id in &steps {
+            assert!(w.try_find(format!("progress-task-{id}")).is_none());
+        }
+    })
+    .unwrap();
     screenshot(&mut cx, handle, &root, "completed-report.png");
     cx.update_window(handle, |_, w, cx| {
         assert!(w.try_find("copy-result").is_none());
         assert!(w.try_find("open-run-task").is_none());
         assert!(w.try_find("run-technical-details").is_none());
         w.click("run-actions-menu", cx);
-    }).unwrap();
+    })
+    .unwrap();
     screenshot(&mut cx, handle, &root, "result-actions-menu.png");
     cx.update_window(handle, |_, w, cx| {
         w.within("popup-menu").click(0usize, cx);
         assert!(app.read(cx).show_run_details);
-    }).unwrap();
+    })
+    .unwrap();
     cx.run_until_parked();
-    cx.update_window(handle, |_, w, cx| { w.render_frame(cx); w.click("show-result", cx); }).unwrap();
+    cx.update_window(handle, |_, w, cx| {
+        w.render_frame(cx);
+        w.click("show-result", cx);
+    })
+    .unwrap();
     cx.run_until_parked();
-    cx.update_window(handle, |_, w, cx| { w.render_frame(cx); w.click("run-actions-menu", cx); }).unwrap();
+    cx.update_window(handle, |_, w, cx| {
+        w.render_frame(cx);
+        w.click("run-actions-menu", cx);
+    })
+    .unwrap();
     cx.run_until_parked();
     cx.update_window(handle, |_, w, cx| {
         w.render_frame(cx);
         w.within("popup-menu").click(3usize, cx);
-        assert!(cx.read_from_clipboard().unwrap().text().unwrap().contains("Readable report fixture"));
-    }).unwrap();
+        assert!(
+            cx.read_from_clipboard()
+                .unwrap()
+                .text()
+                .unwrap()
+                .contains("Readable report fixture")
+        );
+    })
+    .unwrap();
     cx.run_until_parked();
-    cx.update_window(handle, |_, w, cx| { w.render_frame(cx); w.click("run-actions-menu", cx); }).unwrap();
+    cx.update_window(handle, |_, w, cx| {
+        w.render_frame(cx);
+        w.click("run-actions-menu", cx);
+    })
+    .unwrap();
     cx.run_until_parked();
     cx.update_window(handle, |_, w, cx| {
         w.render_frame(cx);
         w.within("popup-menu").click(1usize, cx);
         assert!(app.read(cx).selected().is_some());
-    }).unwrap();
-    println!("ATTACHMENT QA PASSED: paste shortcut, file drop, original bytes, blank PDF, inheritance, CLI --file; no OCR/cache. {}", root.display());
+    })
+    .unwrap();
+    println!(
+        "ATTACHMENT QA PASSED: paste shortcut, file drop, original bytes, blank PDF, inheritance, CLI --file; no OCR/cache. {}",
+        root.display()
+    );
 }

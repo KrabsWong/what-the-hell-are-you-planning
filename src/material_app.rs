@@ -3,15 +3,15 @@
 
 use crate::app::TaskApp;
 use crate::attachments::Attachment;
-use crate::scoped_material::{
-    apply_material_add, apply_material_remove, prepare_material_add,
-    prepare_material_remove, ImportedCopy, MaterialAddPlan, MaterialRemovePlan, MaterialUndo,
-};
 use crate::material_verify::{VerifiedFile, VerifyFile};
-use crate::scoped_material::{take_cleanup_obligation, CleanupObligation};
+use crate::scoped_material::{CleanupObligation, take_cleanup_obligation};
+use crate::scoped_material::{
+    ImportedCopy, MaterialAddPlan, MaterialRemovePlan, MaterialUndo, apply_material_add,
+    apply_material_remove, prepare_material_add, prepare_material_remove,
+};
 use crate::task_edit_app::TaskSaveOutcome;
-use std::path::PathBuf;
 use gpui_kit::*;
+use std::path::PathBuf;
 
 #[derive(Clone, Debug, PartialEq)]
 pub(crate) enum PreparedMaterialSave {
@@ -118,8 +118,6 @@ pub(crate) enum PendingMaterialJob {
         root: PathBuf,
     },
 }
-
-
 
 impl TaskApp {
     fn material_data_dir(&self) -> Result<PathBuf, String> {
@@ -303,20 +301,24 @@ impl TaskApp {
         };
         let mut staged = self.store.clone();
         let (undo, impact, change_set) = match &prepared {
-            PreparedMaterialSave::Add(plan) => match apply_material_add(&mut staged, &data_dir, plan)
-            {
-                Ok(applied) => (
-                    MaterialUndo::Add(applied.undo),
-                    applied.impact,
-                    applied.change_set,
-                ),
-                Err(error) => {
-                    let message = material_error_text(error);
-                    self.pending_material_edit = Some(PendingMaterialEdit { prepared, root: data_dir.clone() });
-                    self.show_save_error(&message, cx);
-                    return TaskSaveOutcome::Rejected(message);
+            PreparedMaterialSave::Add(plan) => {
+                match apply_material_add(&mut staged, &data_dir, plan) {
+                    Ok(applied) => (
+                        MaterialUndo::Add(applied.undo),
+                        applied.impact,
+                        applied.change_set,
+                    ),
+                    Err(error) => {
+                        let message = material_error_text(error);
+                        self.pending_material_edit = Some(PendingMaterialEdit {
+                            prepared,
+                            root: data_dir.clone(),
+                        });
+                        self.show_save_error(&message, cx);
+                        return TaskSaveOutcome::Rejected(message);
+                    }
                 }
-            },
+            }
             PreparedMaterialSave::Remove(plan) => {
                 match apply_material_remove(&mut staged, &data_dir, plan) {
                     Ok(applied) => (
@@ -326,7 +328,10 @@ impl TaskApp {
                     ),
                     Err(error) => {
                         let message = material_error_text(error);
-                        self.pending_material_edit = Some(PendingMaterialEdit { prepared, root: data_dir.clone() });
+                        self.pending_material_edit = Some(PendingMaterialEdit {
+                            prepared,
+                            root: data_dir.clone(),
+                        });
                         self.show_save_error(&message, cx);
                         return TaskSaveOutcome::Rejected(message);
                     }
@@ -352,7 +357,10 @@ impl TaskApp {
             Ok(acceptance) => acceptance,
             Err(error) => {
                 self.storage_error = error.clone();
-                self.pending_material_edit = Some(PendingMaterialEdit { prepared, root: data_dir.clone() });
+                self.pending_material_edit = Some(PendingMaterialEdit {
+                    prepared,
+                    root: data_dir.clone(),
+                });
                 self.show_save_error(&error, cx);
                 return if self.storage.is_none() {
                     TaskSaveOutcome::PendingDurability(error)
@@ -427,7 +435,9 @@ impl TaskApp {
         cx: &mut Context<Self>,
     ) -> TaskSaveOutcome {
         let Some(pending) = self.pending_material_edit.clone() else {
-            return TaskSaveOutcome::Rejected("There is no pending material change to retry.".into());
+            return TaskSaveOutcome::Rejected(
+                "There is no pending material change to retry.".into(),
+            );
         };
         let prepared = match self.refresh_prepared_material(pending.prepared.clone()) {
             Ok(prepared) => prepared,
@@ -474,14 +484,13 @@ impl TaskApp {
             return false;
         };
         let mut staged = self.store.clone();
-        let effect =
-            match crate::scoped_material::undo_material_edit_verified(&mut staged, &undo) {
-                Ok(effect) => effect,
-                Err(error) => {
-                    self.error = material_error_text(error);
-                    return false;
-                }
-            };
+        let effect = match crate::scoped_material::undo_material_edit_verified(&mut staged, &undo) {
+            Ok(effect) => effect,
+            Err(error) => {
+                self.error = material_error_text(error);
+                return false;
+            }
+        };
         let completion = crate::live_save_app::LiveCompletion::MaterialUndo {
             cleanup: effect.cleanup.clone(),
         };
@@ -579,7 +588,8 @@ impl TaskApp {
         }
         if self.pending_material_job.is_some() {
             self.error = "Material verification is busy. Try again shortly.".into();
-            self.pending_cleanup_retry.push(CleanupObligation { root, copies });
+            self.pending_cleanup_retry
+                .push(CleanupObligation { root, copies });
             return false;
         }
         let files = copies
@@ -592,17 +602,14 @@ impl TaskApp {
             .collect();
         match self.material_verifier.submit(root.clone(), files) {
             Ok(job) => {
-                self.pending_material_job = Some(PendingMaterialJob::Cleanup {
-                    job,
-                    copies,
-                    root,
-                });
+                self.pending_material_job = Some(PendingMaterialJob::Cleanup { job, copies, root });
                 self.start_pump(cx);
                 true
             }
             Err(error) => {
                 self.error = error;
-                self.pending_cleanup_retry.push(CleanupObligation { root, copies });
+                self.pending_cleanup_retry
+                    .push(CleanupObligation { root, copies });
                 cx.notify();
                 false
             }
@@ -626,7 +633,8 @@ impl TaskApp {
         }
         if self.material_data_dir().ok().as_ref() != Some(&root) {
             self.error =
-                "The workspace changed before materials were verified. Nothing was attached.".into();
+                "The workspace changed before materials were verified. Nothing was attached."
+                    .into();
             cx.notify();
             return false;
         }
@@ -684,10 +692,7 @@ impl TaskApp {
                     let root_matches = self
                         .material_data_dir()
                         .is_ok_and(|root| root == response.root);
-                    let current = self
-                        .store
-                        .task(task)
-                        .map(|task| task.attachments.clone());
+                    let current = self.store.task(task).map(|task| task.attachments.clone());
                     let same_list = current.as_ref() == Some(&before);
                     let selected = before.get(index);
                     let Some(Ok(file)) = response.files.first() else {
@@ -727,10 +732,8 @@ impl TaskApp {
                         file.content_sha256(),
                     ) {
                         Ok(plan) => {
-                            let _ = self.dispatch_material_save(
-                                PreparedMaterialSave::Remove(plan),
-                                cx,
-                            );
+                            let _ =
+                                self.dispatch_material_save(PreparedMaterialSave::Remove(plan), cx);
                         }
                         Err(error) => self.error = material_error_text(error),
                     }
@@ -754,11 +757,7 @@ impl TaskApp {
                     }
                     let current_root = self.material_data_dir().ok();
                     if response.root != root || current_root.as_ref() != Some(&root) {
-                        self.submit_material_cleanup_for_root(
-                            root,
-                            imported,
-                            cx,
-                        );
+                        self.submit_material_cleanup_for_root(root, imported, cx);
                         self.error =
                             "The workspace changed while materials were being verified. Nothing was attached."
                                 .into();
@@ -774,17 +773,11 @@ impl TaskApp {
                     });
                     if verified {
                         let cleanup = imported.clone();
-                        match self.prepare_material_add_save(
-                            task,
-                            attachments,
-                            imported,
-                        ) {
+                        match self.prepare_material_add_save(task, attachments, imported) {
                             Ok(prepared) => {
                                 let outcome = self.dispatch_material_save(prepared, cx);
-                                if matches!(
-                                    outcome,
-                                    TaskSaveOutcome::Rejected(_)
-                                ) && self.pending_material_edit.is_none()
+                                if matches!(outcome, TaskSaveOutcome::Rejected(_))
+                                    && self.pending_material_edit.is_none()
                                 {
                                     self.submit_material_cleanup_for_root(
                                         root.clone(),
@@ -833,26 +826,20 @@ impl TaskApp {
                     } else {
                         self.undo.push_material(undo);
                         self.error =
-                            "The material file changed or is missing. Undo did not run."
-                                .into();
+                            "The material file changed or is missing. Undo did not run.".into();
                         cx.notify();
                     }
                 }
                 PendingMaterialJob::Cleanup { job, copies, root } => {
                     if job != response.id {
-                        self.pending_material_job = Some(PendingMaterialJob::Cleanup {
-                            job,
-                            copies,
-                            root,
-                        });
+                        self.pending_material_job =
+                            Some(PendingMaterialJob::Cleanup { job, copies, root });
                         continue;
                     }
                     let current_root = self.material_data_dir().ok();
                     if response.root != root || current_root.as_ref() != Some(&root) {
-                        self.pending_cleanup_retry.push(CleanupObligation {
-                            root,
-                            copies,
-                        });
+                        self.pending_cleanup_retry
+                            .push(CleanupObligation { root, copies });
                         self.error =
                             "Material cleanup was paused because the workspace changed; copies were retained."
                                 .into();
@@ -860,10 +847,8 @@ impl TaskApp {
                         continue;
                     }
                     if response.files.len() != copies.len() {
-                        self.pending_cleanup_retry.push(CleanupObligation {
-                            root,
-                            copies,
-                        });
+                        self.pending_cleanup_retry
+                            .push(CleanupObligation { root, copies });
                         self.error =
                             "Material verification returned an incomplete result; copies were retained."
                                 .into();
@@ -875,11 +860,13 @@ impl TaskApp {
                     let mut retry_copies = Vec::new();
                     for (copy, result) in copies.into_iter().zip(response.files.into_iter()) {
                         match result {
-                            Ok(file) if file.matches(
-                                &copy.relative_path,
-                                copy.size,
-                                &copy.content_sha256,
-                            ) => {
+                            Ok(file)
+                                if file.matches(
+                                    &copy.relative_path,
+                                    copy.size,
+                                    &copy.content_sha256,
+                                ) =>
+                            {
                                 if !extra.iter().any(|path| path == &copy.relative_path)
                                     && !crate::scoped_material::referenced_by_store(
                                         &self.store,
@@ -939,37 +926,29 @@ impl TaskApp {
                                 root,
                                 copies: delete_copies,
                             });
-                            self.error =
-                                format!("{error} Material copies were retained.");
+                            self.error = format!("{error} Material copies were retained.");
                         }
                     }
                 }
                 PendingMaterialJob::Delete { job, copies, root } => {
                     if job != response.id {
-                        self.pending_material_job = Some(PendingMaterialJob::Delete {
-                            job,
-                            copies,
-                            root,
-                        });
+                        self.pending_material_job =
+                            Some(PendingMaterialJob::Delete { job, copies, root });
                         continue;
                     }
                     self.material_cleanup_reserved.clear();
                     let current_root = self.material_data_dir().ok();
                     if response.root != root || current_root.as_ref() != Some(&root) {
-                        self.pending_cleanup_retry.push(CleanupObligation {
-                            root,
-                            copies,
-                        });
+                        self.pending_cleanup_retry
+                            .push(CleanupObligation { root, copies });
                         self.error =
                             "Material cleanup finished after the workspace changed; copies remain tracked for their original workspace."
                                 .into();
                         continue;
                     }
                     if response.files.len() != copies.len() {
-                        self.pending_cleanup_retry.push(CleanupObligation {
-                            root,
-                            copies,
-                        });
+                        self.pending_cleanup_retry
+                            .push(CleanupObligation { root, copies });
                         self.error =
                             "Material cleanup returned an incomplete result; copies were retained."
                                 .into();
@@ -1007,11 +986,7 @@ impl TaskApp {
             && let Some(obligation) =
                 take_cleanup_obligation(&mut self.pending_cleanup_retry, &current)
         {
-            self.submit_material_cleanup_for_root(
-                obligation.root,
-                obligation.copies,
-                cx,
-            );
+            self.submit_material_cleanup_for_root(obligation.root, obligation.copies, cx);
         }
     }
 
@@ -1026,8 +1001,7 @@ impl TaskApp {
                     root: pending.root,
                     copies,
                 });
-                self.error =
-                    "Material cleanup ownership is unknown; copies were retained.".into();
+                self.error = "Material cleanup ownership is unknown; copies were retained.".into();
             } else {
                 self.submit_material_cleanup_for_root(pending.root, copies, cx);
             }

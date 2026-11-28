@@ -2,9 +2,9 @@
 
 This tool breaks a research goal into tasks that depend on one another. It uses a local OpenCode or Codex agent, choosing the agent and model for each stage, and keeps run logs, materials, reports and sources. You can also turn repeated information checks into scheduled automations. Web research is carried out by the local ego(lite) Space.
 
-Everyday flow: **choose a project → review topics and move them into Todo → Run Todo → read the results in Research results**. Recurring tasks go through **Automations → New automation**, and you check each period's results in **Automation results**. When you need more evidence, open the task, add PDFs, screenshots or comments, and then continue the research.
+Everyday flow: **choose a project → review a goal → Run goal → read the results in Research results**. Recurring tasks go through **Automations → New automation**, and you check each period's results in **Automation results**. When you need more evidence, open the task, add PDFs, screenshots or comments, and then continue the research.
 
-The task page puts running, materials, status and results first. A finished research step opens its result with **View final report** or **View latest result** in the task action row, and **Run again** runs it once more. **More details…** keeps the model, working folder, Cycle, Bucket, parent task and tags. **Research settings…** at the top right of the research page opens Settings on the model and agent configuration, and does not clear a goal you have typed but not yet submitted.
+The task page puts running, materials, status and results first. A finished research step opens its result with **View final report** or **View latest result** in the task action row, and **Run again** runs it once more. The right properties panel is removed: status and topic sit in the header, and the topic project is in the goal body. The effective model stays in the bottom run metadata. Labels, stage changes, execution settings, browser Spaces, research-settings and working-folder buttons are no longer shown in task details. Priority, cycle and bucket are not shown anywhere.
 
 ## 1. First launch and the interface
 
@@ -27,19 +27,19 @@ When the app starts, the sidebar expands only the Project you used last and show
 | --- | --- |
 | All research / Projects | Browse research goals and tasks in the list, filter by status, start new research, edit, archive |
 | Settings (workspace menu at the bottom of the sidebar) | Set the global Agent/model, overrides for the four research stages, concurrency, report publishing, completion notifications and app updates; **About** shows the version, license and open-source dependencies |
-| Market research (opened from **New research**) | Propose a research goal and see existing research; advanced configuration opens only when you need it |
+| Market research (opened from a project's **New research**) | Propose a research goal and see existing research; advanced configuration opens only when you need it |
 | Settings → Agent & models | See and change the Agent and model actually used globally and by each stage |
 | Research results | Follow research progress, reports and sources; technical details show the model and logs |
 | Automations | A separate automation area: All automations manages the definitions, Automation results shows each period's results |
 | Archive | View and restore archived research; completed Goals keep their retained results and completion count |
 
-Actions are grouped by purpose: the page's main advancing action uses the filled primary button, supporting actions use bordered secondary buttons or icon controls, and lower-frequency project options such as **Rename project…** and **Working folder…** live in the ⋯ menu. On a project page, **New research** is the primary action and **Run / resume** is a secondary queue action; native light/dark and compact-layout validation of that hierarchy remains pending. Display options are tucked into the sliders icon. Selection controls are visually separate from advancing actions. Form controls keep their borders, while statuses and tags are shown as information only. Icon buttons have hover tooltips, keyboard focus and accessible names. The maintained route and action contract is in [Route and action matrix](doc/ROUTE_ACTION_MATRIX.md).
+Actions are grouped by purpose: the page's main advancing action uses the filled primary button, supporting actions use bordered secondary buttons or icon controls, and lower-frequency project options such as **Rename project…** and **Working folder…** live in the ⋯ menu. On a project page, **New research** is the primary action and **Run / resume** is a secondary queue action; topic and deeper pages do not show a New research button. Native light/dark and compact-layout validation of that hierarchy remains pending. Display options are tucked into the sliders icon. Selection controls are visually separate from advancing actions. Form controls keep their borders, while statuses and tags are shown as information only. Icon buttons have hover tooltips, keyboard focus and accessible names. The maintained route and action contract is in [Route and action matrix](doc/ROUTE_ACTION_MATRIX.md).
 
 In **Settings → Publishing**, automatic publication is on by default. A completed Topic is published without a click; use **Publish update** only when its content changed or a previous push failed. **Check status** verifies an already pushed page, and **View report** opens a verified online report. The same panel turns the global completion-notification service on or off and overrides the destination channel. Once the page is verified online, the app sends a short summary with the report URL. Endpoint and signing credentials come from `YOOOOO_NOTIFY_URL` / `YOOOOO_NOTIFY_HMAC_KEY` or the shared `~/.config/yooooo-notifier/client.json`; they are never stored in the workspace. If delivery is interrupted before confirmation, the notification stays in the panel for manual review instead of being silently resent.
 
 The current version is shown at the bottom right of the window and in **Settings → About**. The updater checks silently once at every launch and then every 12 hours. **Settings → General → App updates** controls automatic checks; **Check for Updates…** performs a check immediately, and when an update is available the same control becomes **Update to vX.Y.Z**. Release notes and installation use Sparkle's standard window, and installation and restart require confirmation. Development builds without Sparkle show that updates are unavailable. **Settings → About** also lists the license (GPL-3.0) and the app's direct open-source dependencies.
 
-**All** includes every task that is not archived by default. The status dropdown to the left of the search box offers **All statuses / Open / Backlog / Todo / In progress / In review / Done / Cancelled**; Open leaves out Done and Cancelled. The status filter and search work together, and archived tasks stay in Archive. Show completed is no longer used in All, while other views such as a project still offer this display option.
+**All** includes every task that is not archived by default. The status dropdown to the left of the search box offers **All statuses / Open / Backlog / In progress / In review / Done / Cancelled**; Open leaves out Done and Cancelled. The status filter and search work together, and archived tasks stay in Archive. Show completed is no longer used in All, while other views such as a project still offer this display option.
 
 The global list groups tasks by project, and clicking a group heading takes you into that project; the fixed **← Back** at the top returns to the parent shown in the location path. A project's own list is organized by parent task and sub-steps.
 
@@ -53,7 +53,7 @@ The single-line location path next to Back shows where you are, for example **pr
 
 **Sources · N** at the bottom of a report is collapsed by default; click it to show the source links and publication dates, and click again to collapse it. It collapses again when you switch tasks or run versions. Citations and links in the report body keep working.
 
-Properties in task details such as Stage, Priority and Topic project use text dropdowns: the arrow means the value can be changed, and the status color and hover feedback help you tell them apart. Properties of running and archived tasks stay read-only.
+The Topic project property in task details uses a text dropdown: the arrow opens the topic move dialog, while workflow stage is no longer exposed as a property. Properties of running and archived tasks stay read-only.
 
 **⋯ → Rename project…** at the top right of a project page opens an in-app rename dialog. After trimming leading and trailing spaces the name must be 1–160 characters long; cancelling changes nothing. Renaming only changes the display name: the Project ID, task numbers, working folder, Topic/task relationships and existing results stay the same. Valid plans that are running, queued or waiting to resume work with the new name straight away; plans that were already invalid do not become valid again. Old names in historical logs, prompts and reports are left as they were.
 
@@ -67,7 +67,7 @@ Run states that block a move are `Queued` (including waiting to retry), `Running
 
 Use **Tab / Shift-Tab** to move between controls and **Enter / Space** to activate buttons; in a multi-line form, Tab moves to the next control. Focus stays inside a dialog while it is open. When `Generate topics` is greyed out, the text near the button explains that you need to set a folder, choose a model or wait for the current run.
 
-**A research role is not the same as a task status**: Plan / News collection / Analysis / Investment brief decide which model does the research, while Todo / In progress / Done and so on describe the task's status. New runs start from a research goal or a research step.
+**A research role is not the same as a task status**: Plan / News collection / Analysis / Investment brief decide which model does the research, while In progress / Done and so on describe the task's status. New runs start from a research goal or a research step.
 
 ## 2. Set up a real run end to end
 
@@ -88,7 +88,7 @@ Global settings apply to every project in the workspace. You can pick a model yo
 - For a single stage, click **Use global** to go back to the global Agent and model; the button is disabled when the stage already inherits them. All changes are saved automatically.
 - **Fallback model** is one shared Agent/model pair for recovery. If a stage model reports quota, rate-limit, overload, timeout or connection trouble, the next automatic retry uses this pair in a fresh session. Content and format failures keep using the original model. Leave it empty to disable fallback. Automatic retries wait 15 seconds, and each attempt stops after one hour.
 - If planning fails because the primary model is unavailable, the next **Retry planning** or project-plan attempt uses the fallback pair. Planning does not gain extra automatic retries.
-- Saving only affects runs started afterwards. Tasks already in progress keep the Agent and model they started with, and your history, research results and Todo approvals are kept; saving never starts a task by itself.
+- Saving only affects runs started afterwards. Tasks already in progress keep the Agent and model they started with, and your history and research results are kept; saving never starts a task by itself.
 
 After saving, a **Saved** or **Not saved** message appears at the top of the page and you can dismiss it with ×. The global model, stage settings, research settings, task edits and folder changes all share this feedback; success means it was written to the local workspace, and a failed write keeps the reason. Saving again also shows the message again. Validation errors inside a dialog appear directly in the form, and saving a project's scope also shows a success message inside the dialog.
 
@@ -100,14 +100,14 @@ Create a project with **Projects → +** in the sidebar, for example "Semiconduc
 2. The project's working folder has already been assigned; set up the global Agent and model in **Settings → Agent & models**. If you want separate settings for planning, open **Research settings…** from the Market research page and choose the Plan override. Project topic planning and later research step planning share whatever configuration Plan is using.
 3. Click **Generate topics** and the Agent produces 1–8 separate research topics, each with its own scope, evidence requirements and deliverables. You can follow the generation with live logs in **Research results**, or cancel it.
 4. Planning then runs in the background. On success the app keeps your current page and reports how many research goals were added to **Backlog**, with a prompt to open the project to review and approve them. Every topic lands in **Backlog / Awaiting approval**, and no collection or analysis starts. Open a goal row to edit its scope or add comments, PDFs or screenshots.
-5. Move the topics you want to **Todo** from the status menu or the goal detail. The ones you leave stay in Backlog, and you can also move them to Cancelled or archive them. Without approval through Todo you cannot move a topic straight to In progress / In review / Done to skip review.
+5. Open the goals you want to run. **Run goal** approves the current plan and starts execution directly; goals you leave stay in Backlog. You can also cancel or archive a goal.
 6. Open an approved topic and click **Plan research steps**, and the Agent creates collection, analysis and report tasks for it, with their dependencies. Review them, then run them with **Run one step / Continue research**.
 
 ```mermaid
 flowchart LR
   P[Project name and optional scope] --> A[Agent generates candidate topics]
   A --> B[Backlog, awaiting approval]
-  B -->|User approves and moves to Todo| T[Approved research goal]
+  B -->|User clicks Run goal| T[Approved research goal]
   T --> G[Generate subtasks]
   G --> C[Collection → Analysis → Report]
 ```
@@ -132,21 +132,21 @@ The real planning model produces 3–12 sub-tasks with dependencies between them
 
 ## 4. Running and checking
 
-The list shows the main stages as **Backlog → Todo → Execution → In review → Done**, and cancelled tasks stay in **Cancelled**. Within **Execution**, the status column distinguishes **Waiting → Queued → Running**; **Paused / Blocked** appear under **Needs attention**, and **Retrying** stays in Queued with its retry count and waiting time noted. Filters only change what is shown, not the order things run in. The stage order shows what comes before what; not every task has to pass through every status.
+The list shows the main stages as **Backlog → Execution → In review → Done**, and cancelled tasks stay in **Cancelled**. Within **Execution**, the status column distinguishes **Waiting → Queued → Running**; **Paused / Blocked** appear under **Needs attention**, and **Retrying** stays in Queued with its retry count and waiting time noted. Filters only change what is shown, not the order things run in. The stage order shows what comes before what; not every task has to pass through every status.
 
-- **Ready**: the conditions are met but it has not been submitted yet, so it stays in Todo.
-- **Waiting**: the results it depends on are not ready yet; steps of a submitted goal queue up automatically once their dependencies finish. Steps of an unsubmitted goal still belong to Todo.
+- **Ready**: the conditions are met and the goal has been submitted.
+- **Waiting**: the results it depends on are not ready yet; steps queue up automatically once their dependencies finish.
 - **Queued**: submitted, waiting for its turn in the Topic order, a retry time or a free execution slot.
 - **Running**: there is a real run record. A goal is summarized across its whole task chain, so while one step is running the goal is not shown as Waiting just because its other steps are waiting.
 - **Paused / Blocked**: the queue is paused, a run was stopped, or a failure needs handling; the row shows the reason and what to do next.
 
-Move an approved research goal from Todo into Execution through its status menu to submit it and run its research steps in dependency order. It stays in the list after submission; if dependencies or resources are not ready it shows as waiting or queued, and it never pretends to be Running. Even when the current filter is Running, the action still only submits the work. An invalid change tells you why, and submitting again does not create a duplicate run.
+Use **Run goal** on the goal detail page to approve the plan and submit the goal for execution in dependency order. It stays in the list after submission; if dependencies or resources are not ready it shows as waiting or queued, and it never pretends to be Running. An invalid change tells you why, and submitting again does not create a duplicate run.
 
-You cannot move from Backlog straight into Execution, move a submitted or running task back to Todo, or mark a goal Done while skipping its research dependencies. Backlog → Todo only accepts and approves, it does not run; an unsubmitted Todo task can go back to Backlog. Pausing, continuing and stopping are done with queue or run actions. A research chain finishes automatically once every step has produced a valid result. Internal research steps are managed by the scheduler and cannot be moved by hand to bypass overall approval or dependencies.
+You cannot mark a goal Done while skipping its research dependencies. Approval and execution begin together through **Run goal**. Pausing, continuing and stopping are done with queue or run actions. A research chain finishes automatically once every step has produced a valid result. Internal research steps are managed by the scheduler and cannot be moved by hand to bypass overall approval or dependencies.
 
 The list, the task tree on the left and the details on the right all show the same stage, status and reason for a task; the list shows status as text and supports filtering by main stage and by execution category, while the sidebar uses icons with hover explanations. The status menu and the edit form follow the same rules about which changes are allowed. Runs finishing, retrying and resuming after an interruption are handled automatically and are not affected by the rules for manual changes. The results page still shows the status of the run you are looking at, so history is not overwritten by the current status.
 
-The sidebar and list share one newest-first ordering: projects and Topics by creation order, newest first, and tasks in the same group by creation time, newest first; when times are equal they go by task number, newest first, and tasks without a usable time go after those that have one, again newest first. A parent task still comes before its sub-tasks, and the same rules apply within each Topic group. Priority is shown only as a property and does not change the order. Display order does not change dependencies or the order in which a submitted queue runs.
+The sidebar and list share one newest-first ordering: projects and Topics by creation order, newest first, and tasks in the same group by creation time, newest first; when times are equal they go by task number, newest first, and tasks without a usable time go after those that have one, again newest first. A parent task still comes before its sub-tasks, and the same rules apply within each Topic group. Display order does not change dependencies or the order in which a submitted queue runs.
 
 ### Running in a queue by Topic
 
@@ -308,7 +308,7 @@ $$
 
 The local renderer supports common Mermaid and LaTeX math syntax; it is not a full TeX document engine. If the syntax is unsupported or invalid, or the preview is too large, the source is kept and block-level content also shows an error message. Copying a result and exporting Markdown both keep the original syntax.
 
-Display order: projects, Topics and Goals stay newest first. The research steps within a single Goal are ordered Evidence → Analysis → Report, and within a stage by their original planned order; Steps, Overview, the sidebar and previous/next in the details all agree. Ordinary tasks are still shown newest first, and the actual run dependencies and queue order are not affected by display order.
+Display order: projects, Topics and Goals stay newest first. The research steps within a single Goal are ordered Evidence → Analysis → Report, and within a stage by their original planned order; the goal detail, sidebar and previous/next in the details all agree. Ordinary tasks are still shown newest first, and the actual run dependencies and queue order are not affected by display order.
 
 
 ### Mixing OpenCode and Codex

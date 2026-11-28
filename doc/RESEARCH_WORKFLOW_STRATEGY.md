@@ -1,6 +1,6 @@
 # Research Workflow Strategy
 
-Last reviewed: 2026-11-26
+Last reviewed: 2026-11-28
 
 ## Purpose and status
 
@@ -53,7 +53,7 @@ Interpret relative dates against the saved request's submission time and UTC off
 
 Planning itself does not browse, run experiments or produce research conclusions. The request planner defaults to one coherent goal, splitting only when each goal can independently produce a useful result. Each goal has its own complete dependency chain. Collection can be independent; analysis must have collection ancestors; final synthesis must include the required upstream work. Request-generated goals enter Backlog and require application approval/start before execution. Transient approval state must not be embedded in the durable research instructions.
 
-A manually created child task that has no research metadata has no execution path and cannot reach Review through a run. At any parent depth, the user may move such a non-research child directly from Planned to Done to record its manual completion. This exception does not apply to research goals or research steps: they still require the normal approval, dependency, Review and validated-result checks.
+A manually created child task that has no research metadata has no execution path and cannot reach Review through a run. At any parent depth, the user may move such a non-research child directly to Done to record its manual completion. This exception does not apply to research goals or research steps: they still require the normal approval, dependency, Review and validated-result checks.
 
 ### Regenerating an unapproved request plan
 
@@ -67,7 +67,7 @@ The topic header exposes one planning action:
 | --- | --- |
 | Planning has not finished | Neither action |
 | All goals remain in Backlog with no approval or execution | Regenerate |
-| Any goal has entered Todo or execution, and some goals are unfinished | Neither action |
+| Any goal has been approved or entered execution, and some goals are unfinished | Neither action |
 | All active goals are Done | Replan |
 
 Regenerate uses a request chooser when a topic contains multiple eligible requests, keeping one header button. Replan opens a separate derived topic only after all active goals finish; the same guard applies when opening and submitting the action. Derived topics use a notebook-and-pen icon, not a refresh symbol. Archived topics expose neither action.
@@ -338,7 +338,7 @@ Browser handoff presentation recognizes all current handoff log prefixes, so the
 
 Imported material copies are still being verified until attachment and its durable save complete. The intermediate message must not claim that those materials are already included in the next run. Native confirmation/reload acceptance is tracked separately in the review ledger.
 
-Task metadata, stage changes, comments and step reopen use prepared scoped edits where their live command path is enabled. They use the reviewed T21 impact preview where that save path is enabled; final T21 UI/history acceptance remains pending. Comments are execution inputs: they enter the prompt and both research signatures, so posting one can withdraw goal approval and requires the reviewed impact before a durable write. Step reopen restores only a cancelled research step to Todo; it is not a whole-workspace snapshot replay. For those edits, scoped Undo restores only the changed fields, stage and recorded approval companion, preserves unrelated metadata and all run/log history, and conflicts when a newer owned field, approval or same-goal runtime event changed. Material add/remove task-edit QA passes at r27, but failed-material Undo, the changed-impact footer retry path, native Add Files, settings/context/archive command migration and removal of the remaining legacy whole-workspace snapshot path are not complete. Do not describe this as a full scoped Undo migration. Durable automation changes invalidate an incompatible legacy whole-workspace Undo entry rather than restoring schedules, occurrences or runtime history. Frozen automation-period inputs still reject direct metadata-exempt edits, comments and stage changes.
+Task metadata, stage changes, comments and step reopen use prepared scoped edits where their live command path is enabled. They use the reviewed T21 impact preview where that save path is enabled; final T21 UI/history acceptance remains pending. Comments are execution inputs: they enter the prompt and both research signatures, so posting one can withdraw goal approval and requires the reviewed impact before a durable write. Step reopen restores only a cancelled research step to In progress; it is not a whole-workspace snapshot replay. For those edits, scoped Undo restores only the changed fields, stage and recorded approval companion, preserves unrelated metadata and all run/log history, and conflicts when a newer owned field, approval or same-goal runtime event changed. Material add/remove task-edit QA passes at r27, but failed-material Undo, the changed-impact footer retry path, native Add Files, settings/context/archive command migration and removal of the remaining legacy whole-workspace snapshot path are not complete. Do not describe this as a full scoped Undo migration. Durable automation changes invalidate an incompatible legacy whole-workspace Undo entry rather than restoring schedules, occurrences or runtime history. Frozen automation-period inputs still reject direct metadata-exempt edits, comments and stage changes.
 
 ### Local durability and history reads
 
@@ -390,6 +390,8 @@ If an application termination cannot wait for the worker, startup reapplies a ty
 - **2026-11-23:** Added an off-by-default, Research-only GitHub sync option to each automation. Publication of an automation period's final report now requires this task-level opt-in; the repository stays shared and reports are grouped under `research/` and `automations/` while legacy root URLs keep working. Research periods that opt out send their completion summary directly without a report URL.
 - **2026-11-26:** Failed step and period reasons now surface the saved diagnostic from the attempt instead of a generic hint. Queued automation-slot status names the active periods holding the slots in task status, period details and the automation overview.
 - **2026-11-26:** Stored runs left in `Running` after a lost completion event are reconciled to recovery candidates. A retained dispatch is treated as a normal waiting state with a green status and no longer pauses a topic queue with a start failure.
+
+- **2026-11-28:** Removed the Todo stage and the separate Steps page. Goal approval and execution now start together from **Run goal** on the goal detail page. Goal status and topic moved into the header, the topic project into the goal body, and the right properties panel was removed.
 
 ## Deferred result loading
 

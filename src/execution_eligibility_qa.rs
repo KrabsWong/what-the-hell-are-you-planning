@@ -13,12 +13,17 @@ use std::{path::Path, sync::Arc, time::Duration};
 const PLAN: &str = r#"{"tasks":[{"title":"Collect one","instructions":"Collect one.","kind":"collect","depends_on":[]},{"title":"Collect two","instructions":"Collect two.","kind":"collect","depends_on":[]},{"title":"Analyze","instructions":"Analyze.","kind":"analyze","depends_on":[0]},{"title":"Report","instructions":"Report.","kind":"advise","depends_on":[2]}]}"#;
 
 pub fn run() {
-    let root = std::env::current_dir()
-        .unwrap()
-        .join(format!(".local/execution-eligibility-qa/{}", std::process::id()));
+    let root = std::env::current_dir().unwrap().join(format!(
+        ".local/execution-eligibility-qa/{}",
+        std::process::id()
+    ));
     for (width, height) in [(1440., 920.), (1000., 680.)] {
         for mode in [Appearance::Light, Appearance::Dark] {
-            let name = if mode == Appearance::Light { "light" } else { "dark" };
+            let name = if mode == Appearance::Light {
+                "light"
+            } else {
+                "dark"
+            };
             let directory = root.join(format!("{name}-{width}"));
             std::fs::create_dir_all(&directory).unwrap();
             let path = directory.join("workspace.sqlite3");
@@ -76,7 +81,8 @@ pub fn run() {
                     "the downstream analysis must name the phase barrier"
                 );
                 assert!(
-                    w.find(format!("automation-step-status-{analysis}")).visible(),
+                    w.find(format!("automation-step-status-{analysis}"))
+                        .visible(),
                     "the barrier phrase must be visibly rendered, not tooltip-only"
                 );
             })
@@ -102,43 +108,30 @@ pub fn run() {
             screenshot(&mut cx, handle, &directory, "02-task-status-label.png");
 
             cx.update_window(handle, |_, w, cx| {
-                app.update(cx, |a, cx| a.open_goal_steps(goal, w, cx));
-            })
-            .unwrap();
-            cx.update_window(handle, |_, w, cx| {
+                app.update(cx, |a, cx| a.open_task(goal, w, cx));
                 w.render_frame(cx);
-                let failed_progress = w
-                    .try_find(format!("goal-step-status-{failed}"))
-                    .unwrap_or_else(|| panic!("missing progress card for failed step {failed}"));
+                let failed_status = app.read(cx).display_task_status(failed);
                 assert!(
-                    failed_progress.label().unwrap_or_default().contains("Blocked"),
+                    failed_status.label().contains("Blocked"),
                     "progress must show the failed step as Blocked, got {:?}",
-                    failed_progress.label()
+                    failed_status.label()
                 );
-                let analysis_progress = w
-                    .try_find(format!("goal-step-status-{analysis}"))
-                    .unwrap_or_else(|| panic!("missing progress card for analysis {analysis}"));
                 assert_eq!(
-                    analysis_progress.label(),
-                    Some("Waiting for collection"),
+                    app.read(cx).display_task_status(analysis).label(),
+                    "Waiting for collection",
                     "progress must expose the same phase barrier as the period and task surfaces"
                 );
             })
             .unwrap();
-            screenshot(&mut cx, handle, &directory, "03-goal-steps-status-label.png");
+            screenshot(
+                &mut cx,
+                handle,
+                &directory,
+                "03-goal-steps-status-label.png",
+            );
 
-            let waiting = cx.update(|cx| {
-                app.read(cx)
-                    .store
-                    .task_status(analysis, None)
-                    .label()
-            });
-            let report_label = cx.update(|cx| {
-                app.read(cx)
-                    .store
-                    .task_status(report, None)
-                    .label()
-            });
+            let waiting = cx.update(|cx| app.read(cx).store.task_status(analysis, None).label());
+            let report_label = cx.update(|cx| app.read(cx).store.task_status(report, None).label());
             assert_eq!(waiting, "Waiting for collection");
             assert_eq!(
                 report_label, "Waiting for collection",
@@ -160,7 +153,11 @@ pub fn run() {
 fn ordinary_progress_matrix(root: &Path) {
     for (width, height) in [(1440., 920.), (1000., 680.)] {
         for mode in [Appearance::Light, Appearance::Dark] {
-            let name = if mode == Appearance::Light { "light" } else { "dark" };
+            let name = if mode == Appearance::Light {
+                "light"
+            } else {
+                "dark"
+            };
             let directory = root.join(format!("ordinary-{name}-{width}"));
             std::fs::create_dir_all(&directory).unwrap();
             let path = directory.join("workspace.sqlite3");
@@ -168,8 +165,13 @@ fn ordinary_progress_matrix(root: &Path) {
             store.set_appearance(mode);
             store.set_default_model("fixture/model".into());
             store.project_at_mut(0).unwrap().directory = directory.to_string_lossy().into();
-            store.research_config_mut().models = ["fixture/plan", "fixture/collect", "fixture/analyze", "fixture/report"]
-                .map(String::from);
+            store.research_config_mut().models = [
+                "fixture/plan",
+                "fixture/collect",
+                "fixture/analyze",
+                "fixture/report",
+            ]
+            .map(String::from);
             let goal = store
                 .create_research_goal("Ordinary goal".into(), "Check ordinary progress.".into(), 1)
                 .unwrap();
@@ -199,9 +201,7 @@ fn ordinary_progress_matrix(root: &Path) {
                     view.update(cx, |a, cx| {
                         a.attach_storage(Storage::new(path.clone()), w, cx);
                         assert!(a.storage_error.is_empty(), "{}", a.storage_error);
-                        if let Some(mut run) =
-                            a.store.run_mut(failed_run)
-                        {
+                        if let Some(mut run) = a.store.run_mut(failed_run) {
                             run.status = "Running".into();
                             run.ended_at = None;
                         }
@@ -222,7 +222,9 @@ fn ordinary_progress_matrix(root: &Path) {
                 w.render_frame(cx);
                 let collect_row = w
                     .try_find(format!("progress-task-{}", steps[0]))
-                    .unwrap_or_else(|| panic!("missing ordinary progress row for the running step"));
+                    .unwrap_or_else(|| {
+                        panic!("missing ordinary progress row for the running step")
+                    });
                 assert!(
                     collect_row.label().unwrap_or_default().contains("Running"),
                     "ordinary progress must show the active step, got {:?}",
@@ -244,7 +246,12 @@ fn ordinary_progress_matrix(root: &Path) {
                 true,
                 "ordinary eligibility remains dependency-only"
             );
-            screenshot(&mut cx, handle, &directory, "ordinary-progress-status-label.png");
+            screenshot(
+                &mut cx,
+                handle,
+                &directory,
+                "ordinary-progress-status-label.png",
+            );
         }
     }
 }
@@ -270,8 +277,13 @@ fn fixture(mode: Appearance, directory: &Path) -> (Store, u64, Vec<u64>, u64) {
     store.set_appearance(mode);
     store.set_default_model("fixture/model".into());
     store.project_at_mut(0).unwrap().directory = directory.to_string_lossy().into();
-    store.research_config_mut().models = ["fixture/plan", "fixture/collect", "fixture/analyze", "fixture/report"]
-        .map(String::from);
+    store.research_config_mut().models = [
+        "fixture/plan",
+        "fixture/collect",
+        "fixture/analyze",
+        "fixture/report",
+    ]
+    .map(String::from);
     let topic = store.create_topic(1, "Automation topic").unwrap();
     let goal = store
         .create_research_goal_in_topic(
@@ -336,7 +348,10 @@ fn fixture(mode: Appearance, directory: &Path) -> (Store, u64, Vec<u64>, u64) {
             objective: "Check the fixture.".into(),
             expected_result: "A result.".into(),
             shape: None,
-            template: AutomationTemplate { goals: vec![], window_rule: Default::default() },
+            template: AutomationTemplate {
+                goals: vec![],
+                window_rule: Default::default(),
+            },
             models: Default::default(),
             agents: Default::default(),
             materials: vec![],

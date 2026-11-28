@@ -33,8 +33,7 @@ use std::process::Command;
 use std::sync::{Arc, OnceLock};
 use std::time::Instant;
 
-const RETAINED_FIXTURE: &str =
-    ".local/automation-perf/51782/workspace.sqlite3";
+const RETAINED_FIXTURE: &str = ".local/automation-perf/51782/workspace.sqlite3";
 const RETAINED_FIXTURE_SHA256: &str =
     "f105d46ee44b0eceafeffff443d6b0113c37e7b97591e4dc425ba7b4299c67ec";
 
@@ -195,22 +194,18 @@ fn status_breakdown(store: &Store) -> serde_json::Value {
 }
 
 fn sqlite_user_version(path: &Path) -> Result<i64, String> {
-    let connection = rusqlite::Connection::open_with_flags(
-        path,
-        rusqlite::OpenFlags::SQLITE_OPEN_READ_ONLY,
-    )
-    .map_err(|error| format!("cannot open fixture read-only: {error}"))?;
+    let connection =
+        rusqlite::Connection::open_with_flags(path, rusqlite::OpenFlags::SQLITE_OPEN_READ_ONLY)
+            .map_err(|error| format!("cannot open fixture read-only: {error}"))?;
     connection
         .pragma_query_value(None, "user_version", |row| row.get(0))
         .map_err(|error| format!("cannot read user_version: {error}"))
 }
 
 fn distinct_snapshot_count(path: &Path) -> Result<i64, String> {
-    let connection = rusqlite::Connection::open_with_flags(
-        path,
-        rusqlite::OpenFlags::SQLITE_OPEN_READ_ONLY,
-    )
-    .map_err(|error| format!("cannot open fixture read-only: {error}"))?;
+    let connection =
+        rusqlite::Connection::open_with_flags(path, rusqlite::OpenFlags::SQLITE_OPEN_READ_ONLY)
+            .map_err(|error| format!("cannot open fixture read-only: {error}"))?;
     connection
         .query_row(
             "SELECT COUNT(DISTINCT json_extract(payload,'$.snapshot')) FROM automation_occurrences",
@@ -221,11 +216,9 @@ fn distinct_snapshot_count(path: &Path) -> Result<i64, String> {
 }
 
 fn sqlite_table_stats(path: &Path) -> Result<serde_json::Value, String> {
-    let connection = rusqlite::Connection::open_with_flags(
-        path,
-        rusqlite::OpenFlags::SQLITE_OPEN_READ_ONLY,
-    )
-    .map_err(|error| format!("cannot open fixture read-only: {error}"))?;
+    let connection =
+        rusqlite::Connection::open_with_flags(path, rusqlite::OpenFlags::SQLITE_OPEN_READ_ONLY)
+            .map_err(|error| format!("cannot open fixture read-only: {error}"))?;
     let mut result = serde_json::Map::new();
     for table in [
         "tasks",
@@ -276,9 +269,7 @@ fn occ43200(root: &Path) -> Result<(), String> {
     // Load: first (cold in this process) and two later reads.
     let storage = Storage::new(load_path.clone());
     let started = Instant::now();
-    let store = storage
-        .load()?
-        .ok_or("copied fixture returned no store")?;
+    let store = storage.load()?.ok_or("copied fixture returned no store")?;
     metrics::record_external("load.wall", started.elapsed());
     for _ in 0..2 {
         let started = Instant::now();
@@ -297,15 +288,11 @@ fn occ43200(root: &Path) -> Result<(), String> {
         metrics::measure("probe.clone", || std::hint::black_box(store.clone()));
     }
     for _ in 0..10 {
-        metrics::measure("probe.equal", || {
-            std::hint::black_box(store == comparison)
-        });
+        metrics::measure("probe.equal", || std::hint::black_box(store == comparison));
     }
     let mut reconciled = store.clone();
     for _ in 0..10 {
-        metrics::measure("probe.reconcile", || {
-            reconciled.reconcile_goal_approvals()
-        });
+        metrics::measure("probe.reconcile", || reconciled.reconcile_goal_approvals());
     }
     for _ in 0..5 {
         metrics::measure("probe.serialize", || {
@@ -480,14 +467,10 @@ fn generated(root: &Path, label: &str, spec: FixtureSpec) -> Result<(), String> 
 
     let comparison = loaded.clone();
     for _ in 0..10 {
-        metrics::measure("probe.clone", || {
-            std::hint::black_box(loaded.clone())
-        });
+        metrics::measure("probe.clone", || std::hint::black_box(loaded.clone()));
     }
     for _ in 0..10 {
-        metrics::measure("probe.equal", || {
-            std::hint::black_box(loaded == comparison)
-        });
+        metrics::measure("probe.equal", || std::hint::black_box(loaded == comparison));
     }
 
     let save_samples = match label {
@@ -617,9 +600,8 @@ fn build_fixture(project: &Path, spec: FixtureSpec) -> Result<Store, String> {
                 approval_signature: "qa".into(),
             },
             status,
-            reason: (status == OccurrenceStatus::Skipped).then(|| {
-                OccurrenceReason::new(SkipCode::Expired, "Fixture skipped period")
-            }),
+            reason: (status == OccurrenceStatus::Skipped)
+                .then(|| OccurrenceReason::new(SkipCode::Expired, "Fixture skipped period")),
             research_goal_id: None,
             research_goal_ids: vec![],
             research_topic_id: None,
@@ -721,8 +703,7 @@ fn build_fixture(project: &Path, spec: FixtureSpec) -> Result<Store, String> {
 }
 
 fn report_body(bytes: usize) -> String {
-    const UNIT: &str =
-        "Representative report paragraph used to measure stored report body cost. ";
+    const UNIT: &str = "Representative report paragraph used to measure stored report body cost. ";
     let mut body = String::with_capacity(bytes + UNIT.len());
     while body.len() < bytes {
         body.push_str(UNIT);
@@ -801,7 +782,9 @@ fn app_suite(
     if disk_after_attach.all_occurrences().len() != expected_occurrences
         || disk_after_attach.runs().len() != expected_runs
     {
-        return Err("reloaded database counts do not match the fixture; attach save is not durable".into());
+        return Err(
+            "reloaded database counts do not match the fixture; attach save is not durable".into(),
+        );
     }
     let attach_state = serde_json::json!({
         "storage_attached": attached,
@@ -830,7 +813,9 @@ fn app_suite(
     // Per-definition history: select the fixture automation and render.
     let definition = cx
         .update_window(handle, |_, _, cx| {
-            app.read_with(cx, |a, _| a.store.automations().first().map(|value| value.id))
+            app.read_with(cx, |a, _| {
+                a.store.automations().first().map(|value| value.id)
+            })
         })
         .map_err(|_| "cannot read automation id".to_string())?;
     if let Some(definition) = definition {
@@ -1080,7 +1065,14 @@ fn app_suite(
     // Synthetic presentation inference: these are copies the UI would receive
     // through `present_occurrence`, not real body-read counters. Product code has
     // no body-read counter yet; T15 must add one.
-    let (page_bytes, page_rows, materialized_bytes, materialized_rows, dialog_bytes, load_body_bytes) = cx
+    let (
+        page_bytes,
+        page_rows,
+        materialized_bytes,
+        materialized_rows,
+        dialog_bytes,
+        load_body_bytes,
+    ) = cx
         .update_window(handle, |_, _, cx| {
             app.read_with(cx, |a, _| {
                 let mut occurrences: Vec<_> = a.store.all_occurrences().iter().collect();
@@ -1091,9 +1083,9 @@ fn app_suite(
                 let page_bytes = page
                     .iter()
                     .map(|occurrence| {
-                        presentation_bytes(
-                            &crate::result_presentation::present_occurrence(&a.store, occurrence),
-                        )
+                        presentation_bytes(&crate::result_presentation::present_occurrence(
+                            &a.store, occurrence,
+                        ))
                     })
                     .sum::<usize>();
                 let materialized: Vec<_> = occurrences
@@ -1105,20 +1097,25 @@ fn app_suite(
                 let materialized_bytes = materialized
                     .iter()
                     .map(|occurrence| {
-                        presentation_bytes(
-                            &crate::result_presentation::present_occurrence(&a.store, occurrence),
-                        )
+                        presentation_bytes(&crate::result_presentation::present_occurrence(
+                            &a.store, occurrence,
+                        ))
                     })
                     .sum::<usize>();
                 let dialog_bytes = dialog_id
                     .and_then(|id| a.store.occurrence(id))
                     .map(|occurrence| {
-                        presentation_bytes(
-                            &crate::result_presentation::present_occurrence(&a.store, occurrence),
-                        )
+                        presentation_bytes(&crate::result_presentation::present_occurrence(
+                            &a.store, occurrence,
+                        ))
                     })
                     .unwrap_or(0);
-                let load_body_bytes = a.store.runs().iter().map(|run| run.output.len()).sum::<usize>();
+                let load_body_bytes = a
+                    .store
+                    .runs()
+                    .iter()
+                    .map(|run| run.output.len())
+                    .sum::<usize>();
                 (
                     page_bytes,
                     page.len(),
@@ -1238,11 +1235,7 @@ fn write_json(path: PathBuf, value: &serde_json::Value) -> Result<(), String> {
     .map_err(|error| format!("cannot write {}: {error}", path.display()))
 }
 
-fn write_report(
-    root: &Path,
-    mode: &str,
-    extra: serde_json::Value,
-) -> Result<(), String> {
+fn write_report(root: &Path, mode: &str, extra: serde_json::Value) -> Result<(), String> {
     let report = serde_json::json!({
         "mode": mode,
         "hardware": hardware(),

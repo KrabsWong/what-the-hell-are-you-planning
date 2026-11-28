@@ -129,20 +129,28 @@ pub fn run() {
             cx.update_window(handle, |_, w, cx| {
                 w.click("save-project-context", cx);
                 assert!(app.read(cx).planning_project.is_none());
-                assert!(app.read(cx).store.research_requests().iter().any(|request| request.input.contains("Global semiconductor market")));
+                assert!(
+                    app.read(cx)
+                        .store
+                        .research_requests()
+                        .iter()
+                        .any(|request| request.input.contains("Global semiconductor market"))
+                );
                 // The overlay no longer changes the route; return to the project
                 // through its real sidebar row before reopening from its toolbar.
                 w.click("project-1", cx);
                 w.render_frame(cx);
                 w.click("plan-project", cx);
-            }).unwrap();
+            })
+            .unwrap();
             cx.update_window(handle, |_, w, cx| {
                 // Close is tested as an actual icon hit target, then reopen from the project.
                 w.click("close-project-plan", cx);
                 assert!(app.read(cx).planning_project.is_none());
                 w.click("plan-project", cx);
                 app.update(cx, |a, cx| {
-                    a.store.project_at_mut(0).unwrap().directory = directory.to_string_lossy().into();
+                    a.store.project_at_mut(0).unwrap().directory =
+                        directory.to_string_lossy().into();
                     cx.notify();
                 });
                 w.render_frame(cx);
@@ -166,24 +174,34 @@ pub fn run() {
             // A reviewable plan is generated before approval. Approval then
             // covers the complete step graph; generating steps after approval
             // would invalidate the saved approval snapshot.
-            let (children, material) = cx.update_window(handle, |_, _, cx| {
-                app.update(cx, |a, cx| {
-                    let children = a.store.apply_proposed_research_plan(goal, STEPS).unwrap();
-                    let source = directory.join("supplemental-materials-industry-announcements.pdf");
-                    std::fs::write(&source, include_bytes!("test-fixtures/supplement.pdf")).unwrap();
-                    let material = crate::attachments::import_file(&directory, &source).unwrap();
-                    a.store.task_mut(goal).unwrap().attachments.push(material.clone());
-                    cx.notify();
-                    (children, material)
+            let (children, material) = cx
+                .update_window(handle, |_, _, cx| {
+                    app.update(cx, |a, cx| {
+                        let children = a.store.apply_proposed_research_plan(goal, STEPS).unwrap();
+                        let source =
+                            directory.join("supplemental-materials-industry-announcements.pdf");
+                        std::fs::write(&source, include_bytes!("test-fixtures/supplement.pdf"))
+                            .unwrap();
+                        let material =
+                            crate::attachments::import_file(&directory, &source).unwrap();
+                        a.store
+                            .task_mut(goal)
+                            .unwrap()
+                            .attachments
+                            .push(material.clone());
+                        cx.notify();
+                        (children, material)
+                    })
                 })
-            }).unwrap();
-            cx.update_window(handle, |_, w, cx| w.render_frame(cx)).unwrap();
+                .unwrap();
+            cx.update_window(handle, |_, w, cx| w.render_frame(cx))
+                .unwrap();
             screenshot(&mut cx, handle, &directory, "05-research-list.png");
             cx.update_window(handle, |_, w, cx| {
                 app.update(cx, |a, cx| a.open_task(goal, w, cx));
                 w.render_frame(cx);
                 click_in(w, cx, "detail-scroll", "approve-research-topic");
-                assert_eq!(app.read(cx).store.task(goal).unwrap().stage, Stage::Planned);
+                assert!(app.read(cx).store.goal_execution_approved(goal));
                 assert!(app.read(cx).store.runs().is_empty());
                 app.update(cx, |a, cx| {
                     let mut run = a.store.prepare_run(children[0]).unwrap();
@@ -200,22 +218,37 @@ pub fn run() {
                 });
             }).unwrap();
             screenshot(&mut cx, handle, &directory, "06-task-materials.png");
-            cx.update_window(handle, |_, w, _| assert_task_properties_layout(w)).unwrap();
+            cx.update_window(handle, |_, w, _| assert_task_properties_layout(w))
+                .unwrap();
             cx.update_window(handle, |_, w, cx| {
                 let split = app.read(cx).sidebar_split.clone();
                 split.update(cx, |s, cx| s.resize_panel(0, px(480.), w, cx));
-            }).unwrap();
-            screenshot(&mut cx, handle, &directory, "06-task-materials-wide-sidebar.png");
-            cx.update_window(handle, |_, w, _| assert_task_properties_layout(w)).unwrap();
+            })
+            .unwrap();
+            screenshot(
+                &mut cx,
+                handle,
+                &directory,
+                "06-task-materials-wide-sidebar.png",
+            );
+            cx.update_window(handle, |_, w, _| assert_task_properties_layout(w))
+                .unwrap();
             cx.update_window(handle, |_, w, cx| {
                 let split = app.read(cx).sidebar_split.clone();
                 split.update(cx, |s, cx| s.resize_panel(0, px(260.), w, cx));
-            }).unwrap();
-            screenshot(&mut cx, handle, &directory, "06-task-materials-restored.png");
-            cx.update_window(handle, |_, w, _| assert_task_properties_layout(w)).unwrap();
+            })
+            .unwrap();
+            screenshot(
+                &mut cx,
+                handle,
+                &directory,
+                "06-task-materials-restored.png",
+            );
+            cx.update_window(handle, |_, w, _| assert_task_properties_layout(w))
+                .unwrap();
             cx.update_window(handle, |_, w, cx| {
-                click_in(w, cx, "detail-scroll", "property-Stage");
-                assert!(w.try_find("set-todo").is_some());
+                click_in(w, cx, "detail-scroll", "property-Topic project");
+                assert!(w.try_find("move-entire-topic").is_some());
             })
             .unwrap();
             screenshot(&mut cx, handle, &directory, "07-task-property-menu.png");
@@ -359,29 +392,9 @@ fn click_in(w: &mut Window, cx: &mut App, scroll: &str, id: &str) {
 
 fn assert_task_properties_layout(w: &mut Window) {
     let detail = w.find("detail-scroll").bounds();
-    let properties = w.find("task-properties").bounds();
-    let status_label = w.find("task-status-label").bounds();
-    let status_value = w.find("task-execution-status").bounds();
-    assert!(
-        (status_label.center().y - status_value.center().y).abs() <= px(1.),
-        "Status label and value must share a row: {status_label:?}, {status_value:?}"
-    );
-    assert!(
-        status_value.left() >= status_label.right()
-            && (status_value.right() - (properties.right() - px(12.))).abs() <= px(1.),
-        "Status value must align to the right of its label: {status_value:?}"
-    );
     assert!(
         detail.right() <= w.viewport_size().width + px(1.),
         "Task detail must fit the available workspace: {detail:?}"
-    );
-    assert!(
-        (properties.size.width - px(240.)).abs() <= px(1.),
-        "Task properties must retain their fixed width: {properties:?}"
-    );
-    assert!(
-        (detail.right() - properties.right() - px(16.)).abs() <= px(1.),
-        "Task properties must stay aligned to the right inset: {properties:?} in {detail:?}"
     );
 }
 

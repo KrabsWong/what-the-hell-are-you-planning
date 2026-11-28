@@ -11,8 +11,8 @@ use crate::automation::{
     OccurrenceStatus, TimeWindow, TriggerSource,
 };
 use crate::automation_schedule::{DataWindow, Schedule, ScheduleSpec};
-use crate::domain::Store;
 use crate::command_app::CommandRun;
+use crate::domain::Store;
 use crate::domain_command::Command;
 use crate::persistence::Storage;
 use crate::persistence_live;
@@ -183,8 +183,7 @@ fn open_live(
         let ready = cx
             .update_window(handle, |_, _, cx| {
                 app.update(cx, |a, cx| a.poll_runtime(cx));
-                app.read(cx).live_persistence_active()
-                    && !app.read(cx).live_has_pending_receipts()
+                app.read(cx).live_persistence_active() && !app.read(cx).live_has_pending_receipts()
             })
             .map_err(|error| format!("set-read live pump failed: {error:?}"))?;
         if ready {
@@ -266,25 +265,26 @@ fn guards_and_prior_dirt(root: &Path) -> Result<(), String> {
         return Err("missing occurrence id advanced the dirty epoch".into());
     }
 
-    let busy = cx.update_window(handle, |_, _, cx| {
-        app.update(cx, |a, cx| {
-            a.live_primary = Some(crate::live_save_app::LivePending {
-                generation: 0,
-                epoch: a.store.dirty_epoch(),
-                workspace: a.live_workspace.unwrap_or(0),
-                durable: false,
-                completion: crate::live_save_app::LiveCompletion::None,
-            });
-            a.execute_command(
-                Command::SetRead {
-                    occurrence: 2,
-                    unread: false,
-                },
-                cx,
-            )
+    let busy = cx
+        .update_window(handle, |_, _, cx| {
+            app.update(cx, |a, cx| {
+                a.live_primary = Some(crate::live_save_app::LivePending {
+                    generation: 0,
+                    epoch: a.store.dirty_epoch(),
+                    workspace: a.live_workspace.unwrap_or(0),
+                    durable: false,
+                    completion: crate::live_save_app::LiveCompletion::None,
+                });
+                a.execute_command(
+                    Command::SetRead {
+                        occurrence: 2,
+                        unread: false,
+                    },
+                    cx,
+                )
+            })
         })
-    })
-    .map_err(|error| format!("busy set-read failed: {error:?}"))?;
+        .map_err(|error| format!("busy set-read failed: {error:?}"))?;
     if busy.is_ok() {
         return Err("busy primary slot accepted a read-state command".into());
     }
@@ -356,7 +356,6 @@ fn guards_and_prior_dirt(root: &Path) -> Result<(), String> {
     println!("SET_READ_QA case=guards-and-prior-dirt status=ok");
     Ok(())
 }
-
 
 fn sync_enqueue_retry(root: &Path) -> Result<(), String> {
     let (root, path) = fixture(root)?;

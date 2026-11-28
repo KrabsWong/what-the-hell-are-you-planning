@@ -171,11 +171,19 @@ fn start_adapter(mut request: Request, codex: bool) -> Result<Running, String> {
         .directory
         .canonicalize()
         .map_err(|e| format!("Cannot resolve project folder: {e}"))?;
-    if !(if codex { crate::codex::valid_model(&request.model) } else { valid_model(&request.model) }) {
+    if !(if codex {
+        crate::codex::valid_model(&request.model)
+    } else {
+        valid_model(&request.model)
+    }) {
         return Err("Choose a valid model for the selected agent.".into());
     }
     #[cfg(unix)]
-    let session_lock = if codex { crate::codex::lock_attempt(&request)? } else { lock_session(&request)? };
+    let session_lock = if codex {
+        crate::codex::lock_attempt(&request)?
+    } else {
+        lock_session(&request)?
+    };
     let (tx, rx) = mpsc::sync_channel(128);
     let cancel = Arc::new(AtomicBool::new(false));
     let worker_cancel = cancel.clone();
@@ -274,7 +282,8 @@ fn run_worker(
         return;
     }
     let mut cmd = command(&request.executable);
-    cmd.current_dir(&request.directory).env("PWD", &request.directory);
+    cmd.current_dir(&request.directory)
+        .env("PWD", &request.directory);
     // Both CLIs inherit this into their MCP children. Settings may hold the
     // gateway credentials outside the workspace; env overrides still win.
     if let Some((url, token)) = crate::search::gateway_credentials() {
@@ -285,8 +294,18 @@ fn run_worker(
     if codex {
         crate::codex::configure_command(&mut cmd, &request);
     } else {
-        cmd.args(["--standalone", "run", "--format", "json", "--model", &request.model,
-            "--agent", request.agent.as_deref().unwrap_or("build"), "--title", &request.title]);
+        cmd.args([
+            "--standalone",
+            "run",
+            "--format",
+            "json",
+            "--model",
+            &request.model,
+            "--agent",
+            request.agent.as_deref().unwrap_or("build"),
+            "--title",
+            &request.title,
+        ]);
         if let Some(session) = &request.session_id {
             cmd.arg("--session").arg(session);
         }
@@ -306,11 +325,17 @@ fn run_worker(
                 Some(output)
             }
             Err(error) => {
-                let _ = tx.send(Event::Finished { code: None, cancelled: false, error: Some(error) });
+                let _ = tx.send(Event::Finished {
+                    code: None,
+                    cancelled: false,
+                    error: Some(error),
+                });
                 return;
             }
         }
-    } else { None };
+    } else {
+        None
+    };
     let mut child = match cmd.spawn() {
         Ok(child) => child,
         Err(e) => {
@@ -327,7 +352,9 @@ fn run_worker(
         let mut stdin = child.stdin.take().unwrap();
         let prompt = crate::codex::input_prompt(&request);
         Some(thread::spawn(move || stdin.write_all(prompt.as_bytes())))
-    } else { None };
+    } else {
+        None
+    };
     let failed = Arc::new(AtomicBool::new(false));
     let out_failed = failed.clone();
     let err_failed = failed.clone();
@@ -337,10 +364,16 @@ fn run_worker(
     let err_tx = tx.clone();
     let out_cancel = cancel.clone();
     let out_pid = pid.clone();
-    let out = thread::spawn(move || read_events(stdout, false, out_tx, out_cancel, out_pid, codex, out_failed));
+    let out = thread::spawn(move || {
+        read_events(
+            stdout, false, out_tx, out_cancel, out_pid, codex, out_failed,
+        )
+    });
     let err_cancel = cancel.clone();
     let err_pid = pid.clone();
-    let err = thread::spawn(move || read_events(stderr, true, err_tx, err_cancel, err_pid, codex, err_failed));
+    let err = thread::spawn(move || {
+        read_events(stderr, true, err_tx, err_cancel, err_pid, codex, err_failed)
+    });
     let (status, cancelled) = loop {
         if cancel.load(Ordering::SeqCst) {
             terminate(&mut child);
@@ -374,15 +407,21 @@ fn run_worker(
         error = Some(format!("{agent} reported a failed turn; see run logs."));
     }
     if !streams_closed {
-        error = Some(format!("{agent} output pipes did not close; stream cleanup timed out."));
+        error = Some(format!(
+            "{agent} output pipes did not close; stream cleanup timed out."
+        ));
     }
     if let Some(output) = final_output {
         match output.read() {
-            Ok(text) if !text.trim().is_empty() => { let _ = tx.send(Event::Text(text)); }
+            Ok(text) if !text.trim().is_empty() => {
+                let _ = tx.send(Event::Text(text));
+            }
             Ok(_) if !cancelled && error.is_none() && code == Some(0) => {
                 error = Some("Codex completed without a final response.".into());
             }
-            Err(read_error) if !cancelled && error.is_none() => { error = Some(read_error); }
+            Err(read_error) if !cancelled && error.is_none() => {
+                error = Some(read_error);
+            }
             _ => {}
         }
     }
@@ -423,9 +462,13 @@ fn read_events(
                     }
                 } else {
                     let events = if codex {
-                        if crate::codex::is_failure(&line) { failed.store(true, Ordering::SeqCst); }
+                        if crate::codex::is_failure(&line) {
+                            failed.store(true, Ordering::SeqCst);
+                        }
                         crate::codex::parse_event(&line)
-                    } else { parse_event(&line) };
+                    } else {
+                        parse_event(&line)
+                    };
                     if events.iter().any(|e| matches!(e, Event::BrowserBlocked(_))) {
                         // Stop before waiting for the UI to drain its event queue.
                         cancel.store(true, Ordering::SeqCst);
@@ -434,7 +477,9 @@ fn read_events(
                     for event in events {
                         // Codex may emit commentary agent messages. Only --output-last-message
                         // supplies the final structured response consumed by the workflow.
-                        if codex && matches!(event, Event::Text(_)) { continue; }
+                        if codex && matches!(event, Event::Text(_)) {
+                            continue;
+                        }
                         if tx.send(event).is_err() {
                             return;
                         }
@@ -565,11 +610,20 @@ pub(crate) fn capture(
     capture_local(executable, directory, args, false)
 }
 
-pub(crate) fn capture_diagnostics(executable: &Path, directory: &Path, args: &[&str]) -> Result<String, String> {
+pub(crate) fn capture_diagnostics(
+    executable: &Path,
+    directory: &Path,
+    args: &[&str],
+) -> Result<String, String> {
     capture_local(executable, directory, args, true)
 }
 
-fn capture_local(executable: &Path, directory: &Path, args: &[&str], include_diagnostics: bool) -> Result<String, String> {
+fn capture_local(
+    executable: &Path,
+    directory: &Path,
+    args: &[&str],
+    include_diagnostics: bool,
+) -> Result<String, String> {
     // OpenCode can exit before flushing large piped exports. A regular file
     // makes stdout writes synchronous; unlink it immediately to keep transcripts private.
     use std::os::unix::fs::OpenOptionsExt;
@@ -632,7 +686,9 @@ fn capture_local(executable: &Path, directory: &Path, args: &[&str], include_dia
     if text.len() as u64 > MAX_OUTPUT {
         return Err("Local command output exceeds the 32 MiB capture limit.".into());
     }
-    if include_diagnostics { text.push_str(&err); }
+    if include_diagnostics {
+        text.push_str(&err);
+    }
     Ok(text)
 }
 
@@ -709,15 +765,27 @@ mod tests {
     #[cfg(unix)]
     #[test]
     fn codex_worker_streams_stdin_and_reports_failed_turn_even_with_zero_exit() {
-        let (dir, executable) = fake_script(r#"cat > prompt.txt
+        let (dir, executable) = fake_script(
+            r#"cat > prompt.txt
 while [ "$#" -gt 0 ]; do
   if [ "$1" = "--output-last-message" ]; then shift; printf 'result' > "$1"; break; fi
   shift
 done
 printf '%s\n' '{"type":"thread.started","thread_id":"codex-thread"}' '{"type":"item.completed","item":{"type":"agent_message","text":"intermediate commentary"}}' '{"type":"turn.failed","error":{"message":"quota"}}'
-"#);
-        let request = Request { agent: None, browser_executable: None, gateway_url: None, executable, directory: dir.clone(), model: "test-model".into(),
-            prompt: "研究\n".repeat(40_000), title: "Test".into(), files: vec![], session_id: None };
+"#,
+        );
+        let request = Request {
+            agent: None,
+            browser_executable: None,
+            gateway_url: None,
+            executable,
+            directory: dir.clone(),
+            model: "test-model".into(),
+            prompt: "研究\n".repeat(40_000),
+            title: "Test".into(),
+            files: vec![],
+            session_id: None,
+        };
         let worker = start_codex(request.clone()).unwrap();
         let mut session = None;
         let mut output = String::new();
@@ -725,7 +793,11 @@ printf '%s\n' '{"type":"thread.started","thread_id":"codex-thread"}' '{"type":"i
             match worker.events.recv_timeout(Duration::from_secs(5)).unwrap() {
                 Event::Session(id) => session = Some(id),
                 Event::Text(text) => output.push_str(&text),
-                Event::Finished { code, error, cancelled } => {
+                Event::Finished {
+                    code,
+                    error,
+                    cancelled,
+                } => {
                     assert_eq!(code, Some(0));
                     assert!(error.unwrap().contains("failed turn"));
                     assert!(!cancelled);
@@ -736,7 +808,10 @@ printf '%s\n' '{"type":"thread.started","thread_id":"codex-thread"}' '{"type":"i
         }
         assert_eq!(session.as_deref(), Some("codex-thread"));
         assert_eq!(output, "result");
-        assert_eq!(std::fs::read_to_string(dir.join("prompt.txt")).unwrap(), request.prompt);
+        assert_eq!(
+            std::fs::read_to_string(dir.join("prompt.txt")).unwrap(),
+            request.prompt
+        );
         std::fs::remove_dir_all(dir).unwrap();
     }
 
@@ -744,14 +819,33 @@ printf '%s\n' '{"type":"thread.started","thread_id":"codex-thread"}' '{"type":"i
     #[test]
     fn codex_first_attempt_is_leased_and_cancelled_without_session_id() {
         let (dir, executable) = fake_script("cat >/dev/null\necho ready\nsleep 20");
-        let request = Request { agent: None, browser_executable: None, gateway_url: None, executable, directory: dir.clone(), model: "test-model".into(),
-            prompt: "first attempt".into(), title: "Test".into(), files: vec![], session_id: None };
+        let request = Request {
+            agent: None,
+            browser_executable: None,
+            gateway_url: None,
+            executable,
+            directory: dir.clone(),
+            model: "test-model".into(),
+            prompt: "first attempt".into(),
+            title: "Test".into(),
+            files: vec![],
+            session_id: None,
+        };
         let worker = start_codex(request.clone()).unwrap();
-        assert!(matches!(worker.events.recv_timeout(Duration::from_secs(3)).unwrap(), Event::Log(_)));
+        assert!(matches!(
+            worker.events.recv_timeout(Duration::from_secs(3)).unwrap(),
+            Event::Log(_)
+        ));
         assert!(crate::codex::lock_attempt(&request).is_err());
         let (stopped, events) = worker.stop_and_wait(Duration::from_secs(5));
         assert!(stopped);
-        assert!(events.iter().any(|event| matches!(event, Event::Finished { cancelled: true, .. })));
+        assert!(events.iter().any(|event| matches!(
+            event,
+            Event::Finished {
+                cancelled: true,
+                ..
+            }
+        )));
         assert!(crate::codex::lock_attempt(&request).is_ok());
         std::fs::remove_dir_all(dir).unwrap();
     }
@@ -762,7 +856,10 @@ printf '%s\n' '{"type":"thread.started","thread_id":"codex-thread"}' '{"type":"i
         let (dir, executable) =
             fake_script("printf '%s\\n' \"$@\" > args.txt\necho ready\nsleep 20");
         let session = new_session_id();
-        let request = Request { agent: None, browser_executable: None, gateway_url: None,
+        let request = Request {
+            agent: None,
+            browser_executable: None,
+            gateway_url: None,
             executable,
             directory: dir.clone(),
             model: "test/model".into(),
@@ -804,7 +901,10 @@ printf '%s\n' '{"type":"thread.started","thread_id":"codex-thread"}' '{"type":"i
     #[test]
     fn child_retains_session_lock_when_parent_lease_is_dropped() {
         let (dir, executable) = fake_script("sleep 20 &\necho ready\nwait");
-        let request = Request { agent: None, browser_executable: None, gateway_url: None,
+        let request = Request {
+            agent: None,
+            browser_executable: None,
+            gateway_url: None,
             executable: executable.clone(),
             directory: dir.canonicalize().unwrap(),
             model: "test/model".into(),
@@ -856,7 +956,10 @@ printf '%s\n' '{"type":"thread.started","thread_id":"codex-thread"}' '{"type":"i
         let (dir, executable) = fake_script(
             "printf '%s\\n' '{\"type\":\"text\",\"part\":{\"text\":\"live output\"}}'\nsleep 20",
         );
-        let running = start(Request { agent: None, browser_executable: None, gateway_url: None,
+        let running = start(Request {
+            agent: None,
+            browser_executable: None,
+            gateway_url: None,
             executable,
             directory: dir.clone(),
             model: "test/model".into(),
@@ -886,7 +989,10 @@ printf '%s\n' '{"type":"thread.started","thread_id":"codex-thread"}' '{"type":"i
     #[test]
     fn reports_failed_process_exit() {
         let (dir, executable) = fake_script("echo 'provider unavailable' >&2\nexit 7");
-        let running = start(Request { agent: None, browser_executable: None, gateway_url: None,
+        let running = start(Request {
+            agent: None,
+            browser_executable: None,
+            gateway_url: None,
             executable,
             directory: dir.clone(),
             model: "test/model".into(),
@@ -914,7 +1020,10 @@ printf '%s\n' '{"type":"thread.started","thread_id":"codex-thread"}' '{"type":"i
         let (dir, executable) = fake_script(
             "test \"$PWD\" = \"$(pwd -P)\" || exit 9\nsleep 20 &\necho 'finished parent'\nexit 0",
         );
-        let running = start(Request { agent: None, browser_executable: None, gateway_url: None,
+        let running = start(Request {
+            agent: None,
+            browser_executable: None,
+            gateway_url: None,
             executable,
             directory: dir.clone(),
             model: "test/model".into(),
@@ -938,7 +1047,10 @@ printf '%s\n' '{"type":"thread.started","thread_id":"codex-thread"}' '{"type":"i
     #[test]
     fn shutdown_waits_for_cleanup_even_when_log_queue_is_full() {
         let (dir, executable) = fake_script("while :; do echo busy; done");
-        let running = start(Request { agent: None, browser_executable: None, gateway_url: None,
+        let running = start(Request {
+            agent: None,
+            browser_executable: None,
+            gateway_url: None,
             executable,
             directory: dir.clone(),
             model: "test/model".into(),
@@ -978,21 +1090,44 @@ printf '%s\n' '{"type":"thread.started","thread_id":"codex-thread"}' '{"type":"i
 }
 
 /// Stop only the associated session, including work surviving the app process.
-pub(crate) fn interrupt_session(executable: &Path, run: &crate::domain::AgentRun) -> Result<(), String> {
+pub(crate) fn interrupt_session(
+    executable: &Path,
+    run: &crate::domain::AgentRun,
+) -> Result<(), String> {
     let session = run.session_id.as_ref().ok_or("Run has no session")?;
-    let response = capture(executable, Path::new(&run.directory),
-        &["api", "session.interrupt", "--param", &format!("sessionID={session}"), "--param", "resume=false"])?;
+    let response = capture(
+        executable,
+        Path::new(&run.directory),
+        &[
+            "api",
+            "session.interrupt",
+            "--param",
+            &format!("sessionID={session}"),
+            "--param",
+            "resume=false",
+        ],
+    )?;
     let value: serde_json::Value = serde_json::from_str(&response).map_err(|e| e.to_string())?;
     let data = value.get("data").unwrap_or(&value);
-    let interrupted = data.get("interrupted").and_then(|v| v.as_bool())
+    let interrupted = data
+        .get("interrupted")
+        .and_then(|v| v.as_bool())
         .ok_or("OpenCode did not acknowledge interruption")?;
     if !interrupted {
         // An idle server does not prove a detached CLI process has stopped.
-        let request = Request { agent: None, browser_executable: None, gateway_url: None,
+        let request = Request {
+            agent: None,
+            browser_executable: None,
+            gateway_url: None,
             executable: executable.into(),
-            directory: Path::new(&run.directory).canonicalize().map_err(|e| e.to_string())?,
-            model: String::new(), prompt: String::new(), title: String::new(),
-            files: vec![], session_id: Some(session.clone()),
+            directory: Path::new(&run.directory)
+                .canonicalize()
+                .map_err(|e| e.to_string())?,
+            model: String::new(),
+            prompt: String::new(),
+            title: String::new(),
+            files: vec![],
+            session_id: Some(session.clone()),
         };
         let _lease = lock_session(&request)?;
     }

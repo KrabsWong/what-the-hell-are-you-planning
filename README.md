@@ -11,10 +11,10 @@ Define what you want to understand, let an agent propose a plan, and decide whic
 
 ## Plan with an agent, stay in control
 
-- **Start with one sentence.** Use **New research** in a Project or Topic. The original request and submission time are saved before planning; failed or interrupted planning can be retried from the saved-request history on **Market research**. Relative dates stay anchored to the original request.
+- **Start with one sentence.** Use **New research** on a project page. The original request and submission time are saved before planning; failed or interrupted planning can be retried from the saved-request history on **Market research**. Relative dates stay anchored to the original request.
 - **Required Topics.** The structure is Project → Topic → Goal → research steps. An explicit Topic is reused; otherwise the planner proposes a new Topic. Topics organize content and do not automatically share research context.
 - **Complete plans before approval.** The planner expands the request into an objective, deliverable, scope, assumptions, facts to verify, and independent Goals with complete dependency plans. Goals enter **Backlog**. Planning never starts the research.
-- **Goal-wide review.** The goal list groups Goals by Topic. Internal steps appear inside Goals, not as separate approval rows. Move a Goal to **Todo** to approve its current plan, then click **Run goal** or **Run / resume**. A stage change alone never executes work.
+- **Goal-wide review.** The goal list groups Goals by Topic. Internal steps appear inside Goals, not as separate approval rows. Open a goal and use **Run goal** to approve its current plan and start execution in one action. A stage change alone never executes work.
 - **Versioned approval.** Changes to research scope, step instructions, dependencies, comments or materials return approved research to Backlog. Existing runs remain available; reapproval and an explicit start reuse valid evidence and refresh affected downstream results.
 
 ## Execute through local agents
@@ -30,7 +30,7 @@ Interrupted or unsuccessful work can reuse an eligible existing agent session wh
 The research workflow is designed for questions such as industry trends, market developments, and investment opportunities:
 
 1. Capture a research request in one sentence.
-2. Review the complete plan in Backlog, approve selected Goals into Todo, then explicitly start them.
+2. Review the complete plan in Backlog, then use **Run goal** on the goal detail page to approve and start it.
 3. Gather evidence using the local **ego(lite)** browser integration.
 4. Analyze the findings and produce a final report.
 5. Review the report, inspect sources, and add information for a follow-up run.

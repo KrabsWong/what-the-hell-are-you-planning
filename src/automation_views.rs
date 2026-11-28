@@ -1,6 +1,8 @@
 //! Automation management surface: list, three-step creation, settings, history and results.
 use crate::appearance::palette;
-use crate::views::{chip, col, label, metadata_tag, muted, observed, row, selectable, wrapped_tooltip};
+use crate::views::{
+    chip, col, label, metadata_tag, muted, observed, row, selectable, wrapped_tooltip,
+};
 use crate::{
     app::{Scope, TaskApp},
     automation::{
@@ -24,7 +26,11 @@ use gpui_kit::{
     prelude::*,
     *,
 };
-use std::{cell::RefCell, collections::{HashMap, HashSet}, io::Read};
+use std::{
+    cell::RefCell,
+    collections::{HashMap, HashSet},
+    io::Read,
+};
 
 /// The detail page is a dashboard, not the full history. The Automation results
 /// page owns the complete timeline with its per-automation filter.
@@ -55,12 +61,10 @@ pub const DEFAULT_WEEKDAYS: [bool; 7] = [true, true, true, true, true, false, fa
 fn default_automation_result_doc(
     presentation: &crate::result_presentation::ResultPresentation,
 ) -> Option<AutomationResultDoc> {
-    if let Some(index) = presentation
-        .reports
-        .iter()
-        .position(|report| report.presentation.has_final_report
-            || report.presentation.kind == crate::result_presentation::ResultKind::FinalReport)
-    {
+    if let Some(index) = presentation.reports.iter().position(|report| {
+        report.presentation.has_final_report
+            || report.presentation.kind == crate::result_presentation::ResultKind::FinalReport
+    }) {
         return Some(AutomationResultDoc::Report(index));
     }
     if let Some(index) = presentation.reports.iter().position(|report| {
@@ -279,7 +283,12 @@ pub(crate) fn contrast_against(text_rgba: u32, background_rgb: u32) -> f32 {
 /// preferred lightness cannot reach AA contrast against the supported row
 /// surface, lightness moves only as far as needed (darker on light panels,
 /// lighter on dark panels).
-fn result_tint_color(hue: f32, saturation: f32, preferred_lightness: f32, dark: bool) -> ResultTint {
+fn result_tint_color(
+    hue: f32,
+    saturation: f32,
+    preferred_lightness: f32,
+    dark: bool,
+) -> ResultTint {
     let background = if dark {
         DARK_RESULT_PANEL_RGB
     } else {
@@ -541,7 +550,12 @@ impl ResultOrderCache {
         self.waiting = 0;
     }
 
-    pub(crate) fn refresh(&mut self, epoch: u64, filter: Option<u64>, store: &crate::domain::Store) {
+    pub(crate) fn refresh(
+        &mut self,
+        epoch: u64,
+        filter: Option<u64>,
+        store: &crate::domain::Store,
+    ) {
         if self.epoch == Some(epoch) && self.filter == filter {
             return;
         }
@@ -559,9 +573,8 @@ impl ResultOrderCache {
             self.indices.push(index);
         }
         self.filtered_total = self.indices.len();
-        self.indices.sort_by(|a, b| {
-            compare_newest_first(&occurrences[*a], &occurrences[*b])
-        });
+        self.indices
+            .sort_by(|a, b| compare_newest_first(&occurrences[*a], &occurrences[*b]));
         self.epoch = Some(epoch);
         self.filter = filter;
     }
@@ -590,9 +603,7 @@ impl RunIndexCache {
     }
 
     pub(crate) fn index(&self) -> &crate::result_presentation::RunIndex {
-        self.index
-            .as_ref()
-            .expect("run index is built before use")
+        self.index.as_ref().expect("run index is built before use")
     }
 }
 
@@ -1029,7 +1040,11 @@ impl AutomationUi {
             catch_up: self.catch_up,
             log_retention_days: retention,
             notify_on_completion: self.notify_on_completion,
-            sync_final_report: if self.shape.is_quick() { false } else { self.sync_final_report },
+            sync_final_report: if self.shape.is_quick() {
+                false
+            } else {
+                self.sync_final_report
+            },
         };
         policy.validate()?;
         Ok(policy)
@@ -1263,7 +1278,10 @@ fn occurrence_context(
         version,
         occurrence
             .research_topic_id
-            .and_then(|topic| store.topics().iter().find(|candidate| candidate.id == topic))
+            .and_then(|topic| store
+                .topics()
+                .iter()
+                .find(|candidate| candidate.id == topic))
             .map(|topic| format!("Period topic: {} (under Automations)", topic.display_name()))
             .unwrap_or_else(|| "Stored directly under Automations (no topic).".into()),
     )
@@ -1399,33 +1417,59 @@ impl TaskApp {
 
     /// Prepare only this period's retained results before revealing its dialog.
     pub(crate) fn pending_period_bodies(&self, id: u64) -> Vec<u64> {
-        let Some(occurrence) = self.store.occurrence(id) else { return vec![]; };
-        let mut runs: Vec<_> = occurrence.final_run_id
-            .or_else(|| occurrence.run_ids.last().copied()).into_iter().collect();
+        let Some(occurrence) = self.store.occurrence(id) else {
+            return vec![];
+        };
+        let mut runs: Vec<_> = occurrence
+            .final_run_id
+            .or_else(|| occurrence.run_ids.last().copied())
+            .into_iter()
+            .collect();
         let goals = if occurrence.research_goal_ids.is_empty() {
             occurrence.research_goal_id.into_iter().collect()
-        } else { occurrence.research_goal_ids.clone() };
+        } else {
+            occurrence.research_goal_ids.clone()
+        };
         for goal in goals {
             for task in self.store.research_children(goal) {
-                if let Some(run) = self.store.research_result_body_pending(task) { runs.push(run); }
+                if let Some(run) = self.store.research_result_body_pending(task) {
+                    runs.push(run);
+                }
             }
         }
         // Include earlier attempts: a historical report may be the chosen fallback.
-        runs.extend(self.store.runs().iter()
-            .filter(|run| run.automation_occurrence_id == Some(id)).map(|run| run.id));
+        runs.extend(
+            self.store
+                .runs()
+                .iter()
+                .filter(|run| run.automation_occurrence_id == Some(id))
+                .map(|run| run.id),
+        );
         runs.sort_unstable();
         runs.dedup();
-        runs.retain(|id| self.store.run_body_is_lazy(*id)
-            && self.store.runs().iter().any(|run| run.id == *id && run.output.is_empty())
-            && !matches!(self.run_body_state.get(id),
-                Some(crate::history_reader::BodyLoad::Failed { .. }
-                    | crate::history_reader::BodyLoad::Absent
-                    | crate::history_reader::BodyLoad::Loaded)));
+        runs.retain(|id| {
+            self.store.run_body_is_lazy(*id)
+                && self
+                    .store
+                    .runs()
+                    .iter()
+                    .any(|run| run.id == *id && run.output.is_empty())
+                && !matches!(
+                    self.run_body_state.get(id),
+                    Some(
+                        crate::history_reader::BodyLoad::Failed { .. }
+                            | crate::history_reader::BodyLoad::Absent
+                            | crate::history_reader::BodyLoad::Loaded
+                    )
+                )
+        });
         runs
     }
 
     pub(crate) fn apply_pending_period(&mut self, window: &mut Window, cx: &mut Context<Self>) {
-        let Some(id) = self.automation_ui.pending_period else { return; };
+        let Some(id) = self.automation_ui.pending_period else {
+            return;
+        };
         if self.store.occurrence(id).is_none() {
             self.automation_ui.pending_period = None;
         } else if self.pending_period_bodies(id).is_empty() {
@@ -1582,9 +1626,11 @@ impl TaskApp {
         let state = self.effective_planning_state(id);
         self.edit_automation(id, window, cx);
         self.automation_ui.step = 3;
-        let planning = matches!(state,
+        let planning = matches!(
+            state,
             crate::automation_planning_state::AutomationPlanningState::Planning
-                | crate::automation_planning_state::AutomationPlanningState::Understanding);
+                | crate::automation_planning_state::AutomationPlanningState::Understanding
+        );
         self.automation_ui.planning_automation = planning.then_some(id);
         // Restore the in-flight attempt token only while planning is actually
         // active; a terminal or needs-review request must show the retry path,
@@ -1718,11 +1764,15 @@ impl TaskApp {
         if self.automation_ui.shape == AutomationShape::Research
             && self.automation_ui.plan.is_some()
         {
-            let current = self.automation_ui.editing
+            let current = self
+                .automation_ui
+                .editing
                 .and_then(|id| self.store.automation(id))
                 .is_some_and(|definition| {
-                    definition.objective.trim() == self.automation_ui.objective.read(cx).value().trim()
-                        && definition.expected_result.trim() == self.automation_ui.expected.read(cx).value().trim()
+                    definition.objective.trim()
+                        == self.automation_ui.objective.read(cx).value().trim()
+                        && definition.expected_result.trim()
+                            == self.automation_ui.expected.read(cx).value().trim()
                 });
             if !current {
                 self.automation_ui.plan = None;
@@ -1846,7 +1896,8 @@ impl TaskApp {
                             self.automation_ui.preview_error.clear();
                             self.automation_ui.step = 3;
                             self.automation_ui.feedback = Some(Ok(
-                                "Saving… research preparation starts after the draft is durable.".into(),
+                                "Saving… research preparation starts after the draft is durable."
+                                    .into(),
                             ));
                         }
                         Err(error) => self.automation_ui.preview_error = error,
@@ -1979,13 +2030,22 @@ impl TaskApp {
         self.launch_run_with_intent(
             run,
             vec![],
-            crate::app::LaunchIntent::RequestPlan { request_id: request },
+            crate::app::LaunchIntent::RequestPlan {
+                request_id: request,
+            },
             cx,
         );
         // Live admission returns before its run is merged into Store. The
         // exact reserved run identity keeps this wizard attached to that ACK.
-        let accepted = self.store.runs().iter().any(|candidate| candidate.id == run_id)
-            || self.dispatch_awaiting.as_ref().is_some_and(|pending| pending.run_id == run_id);
+        let accepted = self
+            .store
+            .runs()
+            .iter()
+            .any(|candidate| candidate.id == run_id)
+            || self
+                .dispatch_awaiting
+                .as_ref()
+                .is_some_and(|pending| pending.run_id == run_id);
         if !accepted {
             return Err(if self.error.is_empty() {
                 "The plan could not start. Retry after resolving the pending change.".into()
@@ -2023,7 +2083,10 @@ impl TaskApp {
             return;
         }
         self.automation_ui.pending_planning = None;
-        let Some(id) = subject.or(pending.automation).or(self.automation_ui.editing) else {
+        let Some(id) = subject
+            .or(pending.automation)
+            .or(self.automation_ui.editing)
+        else {
             self.automation_ui.feedback = Some(Err(
                 "The durable draft did not identify an automation for planning.".into(),
             ));
@@ -2087,11 +2150,8 @@ impl TaskApp {
                 }
                 // Same-form edits after the click are not part of the saved
                 // input; keep the wizard and its dirty state.
-                let same_input = self
-                    .automation_draft_input(cx)
-                    .ok()
-                    .as_ref()
-                    == Some(&enable.input);
+                let same_input =
+                    self.automation_draft_input(cx).ok().as_ref() == Some(&enable.input);
                 if !same_input {
                     // A new Quick creation has just become durable. Keep the
                     // same open form and adopt the created identity so the next
@@ -2125,9 +2185,8 @@ impl TaskApp {
                 self.navigation.automation_baseline = None;
                 self.automation_ui.pending_planning = None;
                 self.automation_ui.planning_save_inflight = None;
-                self.automation_ui.feedback = Some(Ok(
-                    "Enabled. The first run starts after this moment.".into(),
-                ));
+                self.automation_ui.feedback =
+                    Some(Ok("Enabled. The first run starts after this moment.".into()));
                 self.toast = "Automation enabled".into();
                 self.start_pump(cx);
             }
@@ -2362,8 +2421,9 @@ impl TaskApp {
                     self.automation_ui.editing = Some(id);
                     self.automation_ui.selected = Some(id);
                 }
-                self.automation_ui.feedback =
-                    Some(Ok("Saving… the draft becomes durable after acknowledgement.".into()));
+                self.automation_ui.feedback = Some(Ok(
+                    "Saving… the draft becomes durable after acknowledgement.".into(),
+                ));
                 AutomationSaveOutcome::Saving {
                     input,
                     subject,
@@ -2482,11 +2542,14 @@ impl TaskApp {
         self.automation_ui.automation_command_inflight = Some(receipt.clone());
         match self.execute_command(command, cx) {
             Ok(crate::command_app::CommandRun::Saving { .. }) => {
-                self.automation_ui.feedback =
-                    Some(Ok("Saving… enabling finishes after the durable receipt.".into()));
+                self.automation_ui.feedback = Some(Ok(
+                    "Saving… enabling finishes after the durable receipt.".into(),
+                ));
             }
             Ok(crate::command_app::CommandRun::Durable(receipt_subject)) => {
-                let id = receipt_subject.subject.expect("enable returns a definition id");
+                let id = receipt_subject
+                    .subject
+                    .expect("enable returns a definition id");
                 self.automation_ui.pending_command = None;
                 if self.automation_ui.automation_command_inflight.is_some() {
                     self.automation_ui.automation_command_inflight = None;
@@ -2516,9 +2579,17 @@ impl TaskApp {
             .map(|run| run.id)
             .collect();
         self.queued_runs.retain(|(run, _)| !runs.contains(run));
-        let ids: Vec<u64> = self.store.runs().iter().filter(|r| runs.contains(&r.id)).map(|r| r.id).collect();
+        let ids: Vec<u64> = self
+            .store
+            .runs()
+            .iter()
+            .filter(|r| runs.contains(&r.id))
+            .map(|r| r.id)
+            .collect();
         for run_id in ids {
-            let Some(mut run) = self.store.run_mut(run_id) else { continue };
+            let Some(mut run) = self.store.run_mut(run_id) else {
+                continue;
+            };
             run.status = "Cancelled".into();
             run.ended_at = Some(crate::opencode::timestamp());
             run.logs.push(
@@ -2550,8 +2621,9 @@ impl TaskApp {
         self.automation_ui.automation_command_inflight = Some(receipt.clone());
         match self.execute_command(command, cx) {
             Ok(crate::command_app::CommandRun::Saving { .. }) => {
-                self.automation_ui.feedback =
-                    Some(Ok("Saving… the pause applies after the durable receipt.".into()));
+                self.automation_ui.feedback = Some(Ok(
+                    "Saving… the pause applies after the durable receipt.".into(),
+                ));
             }
             Ok(crate::command_app::CommandRun::Durable(_)) => {
                 self.automation_ui.pending_command = None;
@@ -2591,8 +2663,9 @@ impl TaskApp {
         self.automation_ui.automation_command_inflight = Some(receipt.clone());
         match self.execute_command(command, cx) {
             Ok(crate::command_app::CommandRun::Saving { .. }) => {
-                self.automation_ui.feedback =
-                    Some(Ok("Saving… the schedule resumes after the durable receipt.".into()));
+                self.automation_ui.feedback = Some(Ok(
+                    "Saving… the schedule resumes after the durable receipt.".into(),
+                ));
             }
             Ok(crate::command_app::CommandRun::Durable(_)) => {
                 self.automation_ui.pending_command = None;
@@ -2679,8 +2752,9 @@ impl TaskApp {
         };
         match self.execute_command(command, cx) {
             Ok(crate::command_app::CommandRun::Saving { .. }) => {
-                self.automation_ui.feedback =
-                    Some(Ok("Saving… the manual run queues after the durable receipt.".into()));
+                self.automation_ui.feedback = Some(Ok(
+                    "Saving… the manual run queues after the durable receipt.".into(),
+                ));
             }
             Ok(crate::command_app::CommandRun::Durable(_)) => {
                 self.automation_ui.feedback = Some(Ok(
@@ -2768,8 +2842,9 @@ impl TaskApp {
         };
         match self.execute_command(command, cx) {
             Ok(crate::command_app::CommandRun::Saving { .. }) => {
-                self.automation_ui.feedback =
-                    Some(Ok("Saving… the archive applies after the durable receipt.".into()));
+                self.automation_ui.feedback = Some(Ok(
+                    "Saving… the archive applies after the durable receipt.".into(),
+                ));
             }
             Ok(crate::command_app::CommandRun::Durable(_)) => {
                 self.automation_ui.selected = None;
@@ -2793,12 +2868,7 @@ impl TaskApp {
         cx.notify();
     }
 
-    pub fn set_automation_notification(
-        &mut self,
-        id: u64,
-        enabled: bool,
-        cx: &mut Context<Self>,
-    ) {
+    pub fn set_automation_notification(&mut self, id: u64, enabled: bool, cx: &mut Context<Self>) {
         let command = crate::domain_command::Command::SetAutomationNotification { id, enabled };
         match self.execute_command(command, cx) {
             Ok(crate::command_app::CommandRun::Saving { .. }) => {
@@ -2806,31 +2876,25 @@ impl TaskApp {
                     Some(Ok("Saving… completion notification preference.".into()));
             }
             Ok(crate::command_app::CommandRun::Durable(receipt)) => {
-                self.automation_ui.feedback = receipt.feedback.map(|feedback| {
-                    Ok(format!("{} · {}", feedback.title, feedback.detail))
-                });
+                self.automation_ui.feedback = receipt
+                    .feedback
+                    .map(|feedback| Ok(format!("{} · {}", feedback.title, feedback.detail)));
             }
             Err(error) => self.automation_ui.feedback = Some(Err(error)),
         }
         cx.notify();
     }
 
-    pub fn set_automation_publish(
-        &mut self,
-        id: u64,
-        enabled: bool,
-        cx: &mut Context<Self>,
-    ) {
+    pub fn set_automation_publish(&mut self, id: u64, enabled: bool, cx: &mut Context<Self>) {
         let command = crate::domain_command::Command::SetAutomationPublish { id, enabled };
         match self.execute_command(command, cx) {
             Ok(crate::command_app::CommandRun::Saving { .. }) => {
-                self.automation_ui.feedback =
-                    Some(Ok("Saving… GitHub sync preference.".into()));
+                self.automation_ui.feedback = Some(Ok("Saving… GitHub sync preference.".into()));
             }
             Ok(crate::command_app::CommandRun::Durable(receipt)) => {
-                self.automation_ui.feedback = receipt.feedback.map(|feedback| {
-                    Ok(format!("{} · {}", feedback.title, feedback.detail))
-                });
+                self.automation_ui.feedback = receipt
+                    .feedback
+                    .map(|feedback| Ok(format!("{} · {}", feedback.title, feedback.detail)));
             }
             Err(error) => self.automation_ui.feedback = Some(Err(error)),
         }
@@ -3058,8 +3122,8 @@ impl TaskApp {
                 DefinitionStatus::Archived => "Archived",
             };
             let lifecycle_status = definition.status;
-            let run_enabled = definition.approval_current()
-                && lifecycle_status != DefinitionStatus::Archived;
+            let run_enabled =
+                definition.approval_current() && lifecycle_status != DefinitionStatus::Archived;
             let (latest_label, latest_activity) = latest
                 .map(|occurrence| {
                     let activity = occurrence_activity(occurrence);
@@ -3083,8 +3147,8 @@ impl TaskApp {
                 })
                 .unwrap_or_else(|| (crate::i18n::tr_string("Not run yet"), String::new()));
             let planning_state = self.effective_planning_state(id);
-            let planning = planning_state
-                != crate::automation_planning_state::AutomationPlanningState::None;
+            let planning =
+                planning_state != crate::automation_planning_state::AutomationPlanningState::None;
             let latest_label = if planning {
                 crate::i18n::tr_string(planning_state.label())
             } else {
@@ -3093,7 +3157,8 @@ impl TaskApp {
             let latest_color = if planning {
                 colors.accent
             } else {
-                latest.map(|occurrence| occurrence_status_color(occurrence.status, &colors))
+                latest
+                    .map(|occurrence| occurrence_status_color(occurrence.status, &colors))
                     .unwrap_or(colors.secondary)
             };
             content = content.child(
@@ -3318,7 +3383,9 @@ impl TaskApp {
                         .child(
                             quiet_button(format!("legacy-planning-attempt-{run_id}"), "Review")
                                 .icon(assets::IconName::ArrowRight)
-                                .tooltip(crate::i18n::tr("Open this unassigned legacy planning attempt"))
+                                .tooltip(crate::i18n::tr(
+                                    "Open this unassigned legacy planning attempt",
+                                ))
                                 .on_click(cx.listener(move |app, _, window, cx| {
                                     app.open_planning_attempt(run_id, window, cx)
                                 }))
@@ -3352,7 +3419,11 @@ impl TaskApp {
                 .indices
                 .iter()
                 .take(self.automation_ui.history_limit)
-                .filter_map(|index| occurrences.get(*index).map(|occurrence| (occurrence.id, *index)))
+                .filter_map(|index| {
+                    occurrences
+                        .get(*index)
+                        .map(|occurrence| (occurrence.id, *index))
+                })
                 .collect::<Vec<_>>();
             std::sync::Arc::new(AutomationResultsPlan::new(
                 rows,
@@ -3392,9 +3463,10 @@ impl TaskApp {
         let reset = key != previous && !append;
         if append {
             let prefix = 1 + previous.ids.len();
-            self.automation_ui
-                .result_list
-                .splice(prefix..previous.items, plan.items.len().saturating_sub(prefix));
+            self.automation_ui.result_list.splice(
+                prefix..previous.items,
+                plan.items.len().saturating_sub(prefix),
+            );
         } else if reset {
             self.automation_ui
                 .result_list
@@ -3435,9 +3507,12 @@ impl TaskApp {
                     .result_list
                     .scroll_by(px(current - offset));
                 self.automation_ui.result_scroll_target.set(Some(offset));
-                self.automation_ui
-                    .result_scroll_attempts
-                    .set(self.automation_ui.result_scroll_attempts.get().saturating_add(1));
+                self.automation_ui.result_scroll_attempts.set(
+                    self.automation_ui
+                        .result_scroll_attempts
+                        .get()
+                        .saturating_add(1),
+                );
             }
             ResultScrollStep::Settle { handle, synced } => {
                 self.automation_ui
@@ -3487,9 +3562,7 @@ impl TaskApp {
                         let Some(entity) = entity.upgrade() else {
                             return div().into_any_element();
                         };
-                        entity.update(cx, |app, cx| {
-                            app.automation_results_item(&plan, index, cx)
-                        })
+                        entity.update(cx, |app, cx| app.automation_results_item(&plan, index, cx))
                     },
                 )
                 .w_full()
@@ -3510,38 +3583,30 @@ impl TaskApp {
             Some(_) => format!("{} / {}", plan.total, plan.all_total),
             None => plan.total.to_string(),
         };
-        let mut panel = col()
-            .w_full()
-            .min_w_0()
-            .p_6()
-            .gap_4()
-            .child(
-                row()
-                    .w_full()
-                    .min_w_0()
-                    .justify_between()
-                    .flex_wrap()
-                    .gap_3()
-                    .child(
-                        row()
-                            .min_w_0()
-                            .items_center()
-                            .gap_2()
-                            .child(
-                                div()
-                                    .id("automation-results-title")
-                                    .text_lg()
-                                    .font_weight(FontWeight::SEMIBOLD)
-                                    .child(selectable("Automation results"))
-                                    .map(observed),
-                            )
-                            .child(
-                                chip(heading, colors.muted, cx)
-                                    .id("automation-results-count"),
-                            ),
-                    )
-                    .child(self.automation_results_filter_control(cx)),
-            );
+        let mut panel = col().w_full().min_w_0().p_6().gap_4().child(
+            row()
+                .w_full()
+                .min_w_0()
+                .justify_between()
+                .flex_wrap()
+                .gap_3()
+                .child(
+                    row()
+                        .min_w_0()
+                        .items_center()
+                        .gap_2()
+                        .child(
+                            div()
+                                .id("automation-results-title")
+                                .text_lg()
+                                .font_weight(FontWeight::SEMIBOLD)
+                                .child(selectable("Automation results"))
+                                .map(observed),
+                        )
+                        .child(chip(heading, colors.muted, cx).id("automation-results-count")),
+                )
+                .child(self.automation_results_filter_control(cx)),
+        );
         if plan.total > 0 {
             if plan.queued > 0 || plan.waiting > 0 {
                 panel = panel.child(overview_note(
@@ -3688,12 +3753,10 @@ impl TaskApp {
             actions = actions.child(
                 primary_button("enable-draft-automation", "Review and enable")
                     .icon(assets::IconName::Check)
-                    .on_click(
-                        cx.listener(move |app, _, window, cx| {
-                            app.record_origin();
-                            app.edit_automation(id, window, cx)
-                        }),
-                    ),
+                    .on_click(cx.listener(move |app, _, window, cx| {
+                        app.record_origin();
+                        app.edit_automation(id, window, cx)
+                    })),
             );
         }
         // Pause/Resume and Run manually live on the automation list rows. They
@@ -3715,7 +3778,9 @@ impl TaskApp {
         actions = actions.child(
             button("automation-settings", "Settings")
                 .icon(assets::IconName::Settings2)
-                .tooltip(crate::i18n::tr("Review the task, schedule, run limits and approved execution snapshot."))
+                .tooltip(crate::i18n::tr(
+                    "Review the task, schedule, run limits and approved execution snapshot.",
+                ))
                 .on_click(
                     cx.listener(move |app, _, window, cx| app.open_automation_settings(window, cx)),
                 ),
@@ -3913,11 +3978,11 @@ impl TaskApp {
                                     assets::IconName::CircleQuestionMark,
                                     "About run conditions",
                                 )
-                                .tooltip(crate::i18n::tr(wrapped_tooltip(
-                                    AUTOMATION_RUN_CONDITIONS,
-                                ))),
+                                .tooltip(crate::i18n::tr(
+                                    wrapped_tooltip(AUTOMATION_RUN_CONDITIONS),
+                                )),
                             ),
-                    )
+                    ),
             );
             let mut history = col().gap_2().w_full().min_w_0();
             for occurrence in shown {
@@ -3958,7 +4023,8 @@ impl TaskApp {
                     .map(move |run| (request.revision, run.id, run.status.clone()))
             })
             .collect();
-        let show_plan_history = definition.shape == AutomationShape::Research || !attempts.is_empty();
+        let show_plan_history =
+            definition.shape == AutomationShape::Research || !attempts.is_empty();
         attempts.sort_by_key(|(revision, run, _)| (*revision, *run));
         let mut plan_history = col()
             .gap_2()
@@ -4156,18 +4222,41 @@ impl TaskApp {
                         "About approved execution settings")
                         .tooltip(crate::i18n::tr(wrapped_tooltip("Each period uses the approved agent and model shown here. Global model changes do not alter this automation. Editing the plan or agent creates a new version that requires approval.")))));
             for (index, stage) in ResearchKinds::labels().iter().enumerate() {
-                if index == 0 || !crate::research::ResearchKind::ALL.get(index)
-                    .is_some_and(|kind| required.contains(kind)) { continue; }
-                let agent = approval.agents[index].clone()
+                if index == 0
+                    || !crate::research::ResearchKind::ALL
+                        .get(index)
+                        .is_some_and(|kind| required.contains(kind))
+                {
+                    continue;
+                }
+                let agent = approval.agents[index]
+                    .clone()
                     .unwrap_or_else(|| self.store.research_config().default_agent.clone());
-                execution = execution.child(row().flex_wrap().items_center().gap_2()
-                    .child(label(*stage, cx))
-                    .child(metadata_tag(format!("automation-execution-agent-{index}"), "Agent", agent.to_string(), cx))
-                    .child(metadata_tag(format!("automation-execution-model-{index}"), "Model", approval.models[index].clone(), cx)));
+                execution = execution.child(
+                    row()
+                        .flex_wrap()
+                        .items_center()
+                        .gap_2()
+                        .child(label(*stage, cx))
+                        .child(metadata_tag(
+                            format!("automation-execution-agent-{index}"),
+                            "Agent",
+                            agent.to_string(),
+                            cx,
+                        ))
+                        .child(metadata_tag(
+                            format!("automation-execution-model-{index}"),
+                            "Model",
+                            approval.models[index].clone(),
+                            cx,
+                        )),
+                );
             }
             body = body.child(execution);
         }
-        if show_plan_history { body = body.child(plan_history.map(observed)); }
+        if show_plan_history {
+            body = body.child(plan_history.map(observed));
+        }
 
         let footer = row().justify_between().items_center().gap_2()
             .child(
@@ -4228,16 +4317,24 @@ impl TaskApp {
                             .gap_4()
                             .child(
                                 row()
-                                    .flex_1().min_w_0().flex_wrap().items_center()
-                                    .gap_x_3().gap_y_1()
+                                    .flex_1()
+                                    .min_w_0()
+                                    .flex_wrap()
+                                    .items_center()
+                                    .gap_x_3()
+                                    .gap_y_1()
                                     .child(
                                         div()
                                             .text_lg()
                                             .font_weight(FontWeight::SEMIBOLD)
                                             .child(selectable("Settings")),
                                     )
-                                    .child(muted(schedule_summary(&definition.schedule), cx)
-                                        .text_sm().id("automation-settings-schedule").map(observed)),
+                                    .child(
+                                        muted(schedule_summary(&definition.schedule), cx)
+                                            .text_sm()
+                                            .id("automation-settings-schedule")
+                                            .map(observed),
+                                    ),
                             )
                             .child(
                                 tool_icon(
@@ -4292,8 +4389,7 @@ impl TaskApp {
         // then actual start, manual request, scheduled trigger or reference time.
         let activity = occurrence_activity(occurrence);
         let when = format_in_zone_precise(activity.utc, &occurrence.timezone);
-        let activity_text =
-            format!("{} {when}", crate::i18n::tr_string(activity.kind.label()));
+        let activity_text = format!("{} {when}", crate::i18n::tr_string(activity.kind.label()));
         let definition = show_automation
             .then(|| self.store.automation(occurrence.automation_id))
             .flatten();
@@ -4318,9 +4414,8 @@ impl TaskApp {
         let definition_name = definition
             .map(|definition| definition.name.clone())
             .unwrap_or_else(|| "Automation period".into());
-        let row_label = crate::i18n::tr_string(&format!(
-            "{activity_text} · {status} · {definition_name}"
-        ));
+        let row_label =
+            crate::i18n::tr_string(&format!("{activity_text} · {status} · {definition_name}"));
         let trigger_hint = if occurrence.skipped_count > 0 {
             format!(
                 "{trigger_name} · {} earlier periods were summarized",
@@ -4396,10 +4491,10 @@ impl TaskApp {
                         .gap_1()
                         .text_color(rgb(colors.muted))
                         .tooltip(move |window, cx| {
-                        gpui_kit::component::tooltip::Tooltip::new(crate::i18n::tr(
-                            trigger_hint.clone(),
-                        ))
-                                .build(window, cx)
+                            gpui_kit::component::tooltip::Tooltip::new(crate::i18n::tr(
+                                trigger_hint.clone(),
+                            ))
+                            .build(window, cx)
                         })
                         .child(gpui_kit::component::Icon::new(trigger_icon).size(px(14.)))
                         .child(div().text_size(px(11.)).child(selectable(trigger_label)))
@@ -4452,9 +4547,9 @@ impl TaskApp {
                     })),
                 ),
             )
-            .on_click(cx.listener(move |app, _, window, cx| {
-                app.open_occurrence_result(id, window, cx)
-            }))
+            .on_click(
+                cx.listener(move |app, _, window, cx| app.open_occurrence_result(id, window, cx)),
+            )
             .map(observed)
             .into_any_element()
     }
@@ -4480,8 +4575,7 @@ impl TaskApp {
         markdown: String,
         cx: &mut Context<Self>,
     ) -> AnyElement {
-        let (body, appendix) =
-            crate::result_presentation::split_report_appendix(&markdown);
+        let (body, appendix) = crate::result_presentation::split_report_appendix(&markdown);
         let appendix = appendix.map(str::to_string);
         let disclosure_id = format!("automation-appendix-{key}");
         let expanded = self
@@ -4492,10 +4586,7 @@ impl TaskApp {
             .w_full()
             .min_w_0()
             .gap_2()
-            .child(self.automation_report_reader(
-                format!("{key}-body"),
-                body.to_string(),
-            ));
+            .child(self.automation_report_reader(format!("{key}-body"), body.to_string()));
         if let Some(appendix) = appendix {
             let toggle_id = disclosure_id.clone();
             section = section.child(
@@ -4522,10 +4613,8 @@ impl TaskApp {
                     })),
             );
             if expanded {
-                section = section.child(self.automation_report_reader(
-                    format!("{key}-appendix"),
-                    appendix,
-                ));
+                section = section
+                    .child(self.automation_report_reader(format!("{key}-appendix"), appendix));
             }
         }
         section.into_any_element()
@@ -4546,7 +4635,9 @@ impl TaskApp {
         presentation: &crate::result_presentation::ResultPresentation,
     ) -> Option<AutomationResultDoc> {
         if let Some(key) = &self.automation_ui.selected_result_doc {
-            if let Some(task_id) = key.strip_prefix("step-").and_then(|value| value.parse::<u64>().ok())
+            if let Some(task_id) = key
+                .strip_prefix("step-")
+                .and_then(|value| value.parse::<u64>().ok())
                 && self.store.task(task_id).is_some()
             {
                 return Some(AutomationResultDoc::Step(task_id));
@@ -4618,10 +4709,21 @@ impl TaskApp {
                 occurrence.definition_version, definition.version,
             ));
             panel = panel.child(
-                row().flex_wrap().gap_2()
-                    .child(chip(format!("Saved version {}", occurrence.definition_version), colors.muted, cx)
+                row()
+                    .flex_wrap()
+                    .gap_2()
+                    .child(
+                        chip(
+                            format!("Saved version {}", occurrence.definition_version),
+                            colors.muted,
+                            cx,
+                        )
                         .id("automation-saved-version")
-                        .tooltip(move |w, cx| gpui_kit::component::tooltip::Tooltip::new(explanation.clone()).build(w, cx)))
+                        .tooltip(move |w, cx| {
+                            gpui_kit::component::tooltip::Tooltip::new(explanation.clone())
+                                .build(w, cx)
+                        }),
+                    )
                     .child(label(format!("Current version {}", definition.version), cx)),
             );
         }
@@ -4648,10 +4750,10 @@ impl TaskApp {
         let body_state = final_run.and_then(|run_id| self.run_body_state.get(&run_id));
         let final_report_body_available = final_run.is_some_and(|run_id| {
             presentation.reports.iter().any(|report| {
-                report.presentation.run_id == Some(run_id)
-                    && report.presentation.has_reader_body()
+                report.presentation.run_id == Some(run_id) && report.presentation.has_reader_body()
             })
-        }) || (presentation.reports.len() <= 1 && presentation.has_reader_body());
+        }) || (presentation.reports.len() <= 1
+            && presentation.has_reader_body());
         let active = occurrence.status.is_active();
         let lazy_final_run = final_run
             .filter(|run_id| self.store.run_body_is_lazy(*run_id))
@@ -4704,10 +4806,8 @@ impl TaskApp {
                             })),
                     ),
             );
-        } else if matches!(
-            body_state,
-            Some(crate::history_reader::BodyLoad::Absent)
-        ) && !final_report_body_available
+        } else if matches!(body_state, Some(crate::history_reader::BodyLoad::Absent))
+            && !final_report_body_available
             && !active
         {
             panel = panel.child(
@@ -4787,17 +4887,24 @@ impl TaskApp {
                                     assets::IconName::ArrowLeft,
                                     "View final report",
                                 )
-                                .on_click(cx.listener(|app, _, _, cx| {
-                                    app.automation_ui.selected_result_doc = None;
-                                    app.automation_ui.dialog_scroll.set_offset(point(px(0.), px(0.)));
-                                    cx.notify();
-                                })),
+                                .on_click(cx.listener(
+                                    |app, _, _, cx| {
+                                        app.automation_ui.selected_result_doc = None;
+                                        app.automation_ui
+                                            .dialog_scroll
+                                            .set_offset(point(px(0.), px(0.)));
+                                        cx.notify();
+                                    },
+                                )),
                             )
-                            .child(chip(
-                                format!("{} · {}", crate::i18n::tr_string(kind), identifier),
-                                colors.text,
-                                cx,
-                            ).id("automation-step-result-kind"))
+                            .child(
+                                chip(
+                                    format!("{} · {}", crate::i18n::tr_string(kind), identifier),
+                                    colors.text,
+                                    cx,
+                                )
+                                .id("automation-step-result-kind"),
+                            )
                             .child(label(title, cx).min_w_0().max_w_full()),
                     );
                     if step.notice.is_some() {
@@ -4812,13 +4919,15 @@ impl TaskApp {
                             div()
                                 .id(format!("automation-report-body-{id}-step-{task_id}"))
                                 .aria_label(crate::i18n::tr("Retained report body"))
-                                .p_3().rounded(px(crate::appearance::GROUP_RADIUS)).bg(rgb(colors.panel)).child(
-                                self.automation_report_section(
+                                .p_3()
+                                .rounded(px(crate::appearance::GROUP_RADIUS))
+                                .bg(rgb(colors.panel))
+                                .child(self.automation_report_section(
                                     format!("automation-result-{id}-step-{task_id}"),
                                     step.reader_markdown.clone(),
                                     cx,
-                                ),
-                            ).map(observed),
+                                ))
+                                .map(observed),
                         );
                         if !step.sources.is_empty() {
                             panel = panel.child(self.automation_result_sources(
@@ -4838,13 +4947,15 @@ impl TaskApp {
             }
             Some(AutomationResultDoc::Fallback) => {
                 panel = panel.child(
-                    div().p_3().rounded(px(crate::appearance::GROUP_RADIUS)).bg(rgb(colors.panel)).child(
-                        self.automation_report_section(
+                    div()
+                        .p_3()
+                        .rounded(px(crate::appearance::GROUP_RADIUS))
+                        .bg(rgb(colors.panel))
+                        .child(self.automation_report_section(
                             format!("automation-result-{id}-fallback"),
                             presentation.reader_markdown.clone(),
                             cx,
-                        ),
-                    ),
+                        )),
                 );
                 panel = panel.child(self.automation_result_sources(
                     id,
@@ -4860,27 +4971,40 @@ impl TaskApp {
                         && result.kind == crate::result_presentation::ResultKind::None
                     {
                         panel = panel.child(muted(
-                            format!("{} · No final report yet", self.result_owner_title(&report.owner_label)),
+                            format!(
+                                "{} · No final report yet",
+                                self.result_owner_title(&report.owner_label)
+                            ),
                             cx,
                         ));
                     } else {
                         if !single_final_report {
-                            let mut heading = format!("{} · {}", self.result_owner_title(&report.owner_label), crate::i18n::tr_string(result.kind.label()));
+                            let mut heading = format!(
+                                "{} · {}",
+                                self.result_owner_title(&report.owner_label),
+                                crate::i18n::tr_string(result.kind.label())
+                            );
                             if result.notice.is_none() {
                                 if let Some(suffix) = result.status_suffix() {
                                     heading.push_str(&format!(" · {suffix}"));
                                 }
                             }
                             panel = panel.child(
-                                div().font_weight(FontWeight::SEMIBOLD).child(selectable(heading)),
+                                div()
+                                    .font_weight(FontWeight::SEMIBOLD)
+                                    .child(selectable(heading)),
                             );
                         }
                         let freshness = crate::result_presentation::Freshness {
                             previous_version: false,
                             ..result.freshness
-                        }.labels();
-                        let freshness: Vec<_> = freshness.into_iter()
-                            .filter(|label| !show_state || !presentation.freshness.labels().contains(label))
+                        }
+                        .labels();
+                        let freshness: Vec<_> = freshness
+                            .into_iter()
+                            .filter(|label| {
+                                !show_state || !presentation.freshness.labels().contains(label)
+                            })
                             .collect();
                         if !freshness.is_empty() {
                             panel = panel.child(muted(freshness.join(" · "), cx));
@@ -4898,13 +5022,15 @@ impl TaskApp {
                                 div()
                                     .id(format!("automation-report-body-{id}-{run_key}"))
                                     .aria_label(crate::i18n::tr("Retained report body"))
-                                    .p_3().rounded(px(crate::appearance::GROUP_RADIUS)).bg(rgb(colors.panel)).child(
-                                    self.automation_report_section(
+                                    .p_3()
+                                    .rounded(px(crate::appearance::GROUP_RADIUS))
+                                    .bg(rgb(colors.panel))
+                                    .child(self.automation_report_section(
                                         format!("automation-result-{id}-{run_key}"),
                                         result.reader_markdown.clone(),
                                         cx,
-                                    ),
-                                ).map(observed),
+                                    ))
+                                    .map(observed),
                             );
                             if !result.sources.is_empty() {
                                 panel = panel.child(self.automation_result_sources(
@@ -4914,12 +5040,15 @@ impl TaskApp {
                                     cx,
                                 ));
                             }
-                        } else if result.quality == crate::result_presentation::EvidenceQuality::Rejected {
+                        } else if result.quality
+                            == crate::result_presentation::EvidenceQuality::Rejected
+                        {
                             panel = panel.child(muted(
                                 "The saved output did not pass report validation. Raw output remains in Technical details.",
                                 cx,
                             ));
-                        } else if result.quality == crate::result_presentation::EvidenceQuality::NotValidated
+                        } else if result.quality
+                            == crate::result_presentation::EvidenceQuality::NotValidated
                             && result.kind != crate::result_presentation::ResultKind::LiveProgress
                         {
                             panel = panel.child(muted(
@@ -4947,7 +5076,11 @@ impl TaskApp {
                             .border_1()
                             .border_color(rgb(colors.line))
                             .child(label(
-                                format!("{} · {}", self.result_owner_title(&progress.owner_label), crate::i18n::tr_string(&progress.step_label)),
+                                format!(
+                                    "{} · {}",
+                                    self.result_owner_title(&progress.owner_label),
+                                    crate::i18n::tr_string(&progress.step_label)
+                                ),
                                 cx,
                             ))
                             .child(selectable(progress.text.clone())),
@@ -4983,36 +5116,52 @@ impl TaskApp {
         if self.automation_ui.show_technical {
             let mut technical = col().pl_6().gap_3();
             technical = technical.child(
-                col().id("automation-period-diagnostics").gap_1()
-                    .child(label(occurrence_context(
-                        self.store.automation(occurrence.automation_id), occurrence, &self.store,
-                    ), cx))
+                col()
+                    .id("automation-period-diagnostics")
+                    .gap_1()
+                    .child(label(
+                        occurrence_context(
+                            self.store.automation(occurrence.automation_id),
+                            occurrence,
+                            &self.store,
+                        ),
+                        cx,
+                    ))
                     .child(label("Saved task instructions", cx))
-                    .child(crate::views::selectable_raw(occurrence.snapshot.objective.clone()))
+                    .child(crate::views::selectable_raw(
+                        occurrence.snapshot.objective.clone(),
+                    ))
                     .child(label("Saved expected result", cx))
-                    .child(crate::views::selectable_raw(occurrence.snapshot.expected_result.clone()))
+                    .child(crate::views::selectable_raw(
+                        occurrence.snapshot.expected_result.clone(),
+                    ))
                     .map(observed),
             );
             for report in &presentation.reports {
                 technical = technical.child(label(report.owner_label.clone(), cx));
             }
-            let selected = self.automation_ui.technical_run
+            let selected = self
+                .automation_ui
+                .technical_run
                 .and_then(|id| runs.iter().copied().find(|run| run.id == id))
                 .or_else(|| runs.last().copied());
             if runs.len() > 1 {
                 let mut tabs = row().flex_wrap().gap_1();
                 for run in &runs {
                     let run_id = run.id;
-                    tabs = tabs.child(select_button(
-                        format!("automation-run-tab-{run_id}"),
-                        format!("Run #{run_id} · {}", run.status),
-                        selected.is_some_and(|selected| selected.id == run_id),
-                        cx,
-                    ).on_click(cx.listener(move |app, _, _, cx| {
-                        app.automation_ui.technical_run = Some(run_id);
-                        app.automation_ui.technical_scroll = ScrollHandle::new();
-                        cx.notify();
-                    })));
+                    tabs = tabs.child(
+                        select_button(
+                            format!("automation-run-tab-{run_id}"),
+                            format!("Run #{run_id} · {}", run.status),
+                            selected.is_some_and(|selected| selected.id == run_id),
+                            cx,
+                        )
+                        .on_click(cx.listener(move |app, _, _, cx| {
+                            app.automation_ui.technical_run = Some(run_id);
+                            app.automation_ui.technical_scroll = ScrollHandle::new();
+                            cx.notify();
+                        })),
+                    );
                 }
                 technical = technical.child(tabs);
             }
@@ -5031,36 +5180,53 @@ impl TaskApp {
                 let inner = self.automation_ui.technical_scroll.clone();
                 let outer = self.automation_ui.dialog_scroll.clone();
                 // Capture before either scroll container handles the wheel.
-                let scroll_guard = canvas(|_, _, _| (), move |bounds, _, window, _| {
-                    let visible = bounds.intersect(&window.content_mask().bounds);
-                    let inner = inner.clone();
-                    let outer = outer.clone();
-                    window.on_mouse_event(move |event: &ScrollEvent, phase, window, cx| {
-                        if phase != DispatchPhase::Capture || !visible.contains(&event.position) { return; }
-                        let delta = event.delta.pixel_delta(window.line_height());
-                        if delta.y == px(0.) || delta.x.abs() > delta.y.abs() { return; }
-                        let reveal = if delta.y < px(0.) && bounds.bottom() > visible.bottom() {
-                            delta.y.max(visible.bottom() - bounds.bottom())
-                        } else if delta.y > px(0.) && bounds.top() < visible.top() {
-                            delta.y.min(visible.top() - bounds.top())
-                        } else { px(0.) };
-                        let outer_next = (outer.offset().y + reveal).clamp(-outer.max_offset().y, px(0.));
-                        if reveal != px(0.) && outer_next != outer.offset().y {
-                            outer.set_offset(point(outer.offset().x, outer_next));
-                        } else {
-                            let offset = inner.offset();
-                            let next = (offset.y + delta.y).clamp(-inner.max_offset().y, px(0.));
-                            if next != offset.y {
-                                inner.set_offset(point(offset.x, next));
-                            } else {
-                                outer.set_offset(point(outer.offset().x,
-                                    (outer.offset().y + delta.y).clamp(-outer.max_offset().y, px(0.))));
+                let scroll_guard = canvas(
+                    |_, _, _| (),
+                    move |bounds, _, window, _| {
+                        let visible = bounds.intersect(&window.content_mask().bounds);
+                        let inner = inner.clone();
+                        let outer = outer.clone();
+                        window.on_mouse_event(move |event: &ScrollEvent, phase, window, cx| {
+                            if phase != DispatchPhase::Capture || !visible.contains(&event.position)
+                            {
+                                return;
                             }
-                        }
-                        window.refresh();
-                        cx.stop_propagation();
-                    });
-                }).absolute().inset_0();
+                            let delta = event.delta.pixel_delta(window.line_height());
+                            if delta.y == px(0.) || delta.x.abs() > delta.y.abs() {
+                                return;
+                            }
+                            let reveal = if delta.y < px(0.) && bounds.bottom() > visible.bottom() {
+                                delta.y.max(visible.bottom() - bounds.bottom())
+                            } else if delta.y > px(0.) && bounds.top() < visible.top() {
+                                delta.y.min(visible.top() - bounds.top())
+                            } else {
+                                px(0.)
+                            };
+                            let outer_next =
+                                (outer.offset().y + reveal).clamp(-outer.max_offset().y, px(0.));
+                            if reveal != px(0.) && outer_next != outer.offset().y {
+                                outer.set_offset(point(outer.offset().x, outer_next));
+                            } else {
+                                let offset = inner.offset();
+                                let next =
+                                    (offset.y + delta.y).clamp(-inner.max_offset().y, px(0.));
+                                if next != offset.y {
+                                    inner.set_offset(point(offset.x, next));
+                                } else {
+                                    outer.set_offset(point(
+                                        outer.offset().x,
+                                        (outer.offset().y + delta.y)
+                                            .clamp(-outer.max_offset().y, px(0.)),
+                                    ));
+                                }
+                            }
+                            window.refresh();
+                            cx.stop_propagation();
+                        });
+                    },
+                )
+                .absolute()
+                .inset_0();
                 technical = technical.child(
                     col()
                         .p_3()
@@ -5088,15 +5254,18 @@ impl TaskApp {
                             cx,
                         ))
                         .child(
-                            div().relative().w_full().child(scroll_guard).child(div()
-                                .id(format!("automation-run-logs-{}", run.id))
-                                .w_full()
-                                .min_h_0()
-                                .max_h(reader_height)
-                                .overflow_y_scroll()
-                                .track_scroll(&self.automation_ui.technical_scroll)
-                                .restrict_scroll_to_axis()
-                                .child(label(logs, cx)).map(observed)),
+                            div().relative().w_full().child(scroll_guard).child(
+                                div()
+                                    .id(format!("automation-run-logs-{}", run.id))
+                                    .w_full()
+                                    .min_h_0()
+                                    .max_h(reader_height)
+                                    .overflow_y_scroll()
+                                    .track_scroll(&self.automation_ui.technical_scroll)
+                                    .restrict_scroll_to_axis()
+                                    .child(label(logs, cx))
+                                    .map(observed),
+                            ),
                         ),
                 );
             }
@@ -5120,8 +5289,13 @@ impl TaskApp {
         let toggle_id = disclosure_id.clone();
         let mut section = col().gap_1().child(
             quiet_button(disclosure_id, format!("Sources · {}", sources.len()))
-                .px_0().self_start()
-                .icon(if expanded { assets::IconName::ChevronDown } else { assets::IconName::ChevronRight })
+                .px_0()
+                .self_start()
+                .icon(if expanded {
+                    assets::IconName::ChevronDown
+                } else {
+                    assets::IconName::ChevronRight
+                })
                 .on_click(cx.listener(move |app, _, _, cx| {
                     if !app.automation_ui.expanded_sources.remove(&toggle_id) {
                         app.automation_ui.expanded_sources.insert(toggle_id.clone());
@@ -5129,7 +5303,9 @@ impl TaskApp {
                     cx.notify();
                 })),
         );
-        if !expanded { return section.into_any_element(); }
+        if !expanded {
+            return section.into_any_element();
+        }
         let mut list = col().pl_6().gap_1();
         for (index, source) in sources.iter().enumerate() {
             let url = source.url.clone();
@@ -5143,7 +5319,11 @@ impl TaskApp {
                             .on_click(move |_, _, cx| cx.open_url(&url)),
                     )
                     .child(muted(
-                        format!("{} · published {}", source.url, crate::time_display::timestamp(&source.published_at)),
+                        format!(
+                            "{} · published {}",
+                            source.url,
+                            crate::time_display::timestamp(&source.published_at)
+                        ),
                         cx,
                     )),
             );
@@ -5244,17 +5424,17 @@ impl TaskApp {
                                 .build(window, cx)
                         }
                     })
-                    .on_click(
-                        cx.listener(move |app, _, window, cx| {
-                            if has_result {
-                                app.automation_ui.selected_result_doc = Some(format!("step-{task_id}"));
-                                app.automation_ui.dialog_scroll.set_offset(point(px(0.), px(0.)));
-                                cx.notify();
-                            } else {
-                                app.request_task(task_id, false, window, cx)
-                            }
-                        }),
-                    )
+                    .on_click(cx.listener(move |app, _, window, cx| {
+                        if has_result {
+                            app.automation_ui.selected_result_doc = Some(format!("step-{task_id}"));
+                            app.automation_ui
+                                .dialog_scroll
+                                .set_offset(point(px(0.), px(0.)));
+                            cx.notify();
+                        } else {
+                            app.request_task(task_id, false, window, cx)
+                        }
+                    }))
                     .child(execution.icon_view(format!("automation-step-icon-{task_id}"), cx))
                     .child(
                         div()
@@ -5266,7 +5446,10 @@ impl TaskApp {
                             .child(selectable(status.label()))
                             .map(observed),
                     )
-                    .child(label(crate::i18n::tr(format!("{kind} · {identifier}")), cx).flex_shrink_0())
+                    .child(
+                        label(crate::i18n::tr(format!("{kind} · {identifier}")), cx)
+                            .flex_shrink_0(),
+                    )
                     .child(
                         div()
                             .id(format!("automation-step-title-{task_id}"))
@@ -5287,27 +5470,40 @@ impl TaskApp {
                     .child(
                         quiet_button(
                             format!("automation-step-{task_id}"),
-                            if has_result { "View result" } else { "Open" }
+                            if has_result { "View result" } else { "Open" },
                         )
-                            .icon(assets::IconName::ChevronRight)
-                            .accessibility_label(crate::i18n::tr(format!(
-                                "{} {identifier} · {title}",
-                                if has_result { "View result for" } else { "Open" }
-                            )))
-                            .tooltip(crate::i18n::tr(format!(
-                                "{} {identifier} · {title}",
-                                if has_result { "View result for" } else { "Open" }
-                            )))
-                            .on_click(cx.listener(move |app, _, window, cx| {
+                        .icon(assets::IconName::ChevronRight)
+                        .accessibility_label(crate::i18n::tr(format!(
+                            "{} {identifier} · {title}",
+                            if has_result {
+                                "View result for"
+                            } else {
+                                "Open"
+                            }
+                        )))
+                        .tooltip(crate::i18n::tr(format!(
+                            "{} {identifier} · {title}",
+                            if has_result {
+                                "View result for"
+                            } else {
+                                "Open"
+                            }
+                        )))
+                        .on_click(cx.listener(
+                            move |app, _, window, cx| {
                                 cx.stop_propagation();
                                 if has_result {
-                                    app.automation_ui.selected_result_doc = Some(format!("step-{task_id}"));
-                                    app.automation_ui.dialog_scroll.set_offset(point(px(0.), px(0.)));
+                                    app.automation_ui.selected_result_doc =
+                                        Some(format!("step-{task_id}"));
+                                    app.automation_ui
+                                        .dialog_scroll
+                                        .set_offset(point(px(0.), px(0.)));
                                     cx.notify();
                                 } else {
                                     app.request_task(task_id, false, window, cx)
                                 }
-                            })),
+                            },
+                        )),
                     ),
             );
         }
@@ -5390,7 +5586,9 @@ impl TaskApp {
         let Some(occurrence) = self.store.occurrence(id) else {
             return div().into_any_element();
         };
-        let title = self.store.automation(occurrence.automation_id)
+        let title = self
+            .store
+            .automation(occurrence.automation_id)
             .map(|definition| definition.name.clone())
             .unwrap_or_else(|| "Automation result".into());
         let publish_topic = occurrence.research_topic_id;
@@ -5403,11 +5601,9 @@ impl TaskApp {
                 .topic_publication_blocker_with_mode(topic, allow_automation)
         });
         let publish_state = publish_topic.map(|topic| {
-            let publication = crate::report_publish::current_publication_index(
-                &self.store.publications(),
-                topic,
-            )
-            .map(|index| self.store.publications()[index].clone());
+            let publication =
+                crate::report_publish::current_publication_index(&self.store.publications(), topic)
+                    .map(|index| self.store.publications()[index].clone());
             crate::report_publish::publication_action(publication.as_ref(), false)
         });
         let publish_label = publish_state
@@ -5446,11 +5642,19 @@ impl TaskApp {
                             .child(
                                 col()
                                     .gap_1()
-                                    .child(div().text_lg().font_weight(FontWeight::SEMIBOLD).child(
-                                        selectable(title),
-                                    ))
+                                    .child(
+                                        div()
+                                            .text_lg()
+                                            .font_weight(FontWeight::SEMIBOLD)
+                                            .child(selectable(title)),
+                                    )
                                     .child(muted(
-                        format!("#{} · {} · {}", occurrence.id, crate::i18n::tr_string(occurrence.status.label()), activity_text),
+                                        format!(
+                                            "#{} · {} · {}",
+                                            occurrence.id,
+                                            crate::i18n::tr_string(occurrence.status.label()),
+                                            activity_text
+                                        ),
                                         cx,
                                     )),
                             )
@@ -5465,7 +5669,9 @@ impl TaskApp {
                                                 "Cancel period",
                                             )
                                             .icon(assets::IconName::CircleX)
-                                            .tooltip(crate::i18n::tr("Cancel this period and its scheduled retry"))
+                                            .tooltip(crate::i18n::tr(
+                                                "Cancel this period and its scheduled retry",
+                                            ))
                                             .on_click(
                                                 cx.listener(move |app, _, _, cx| {
                                                     app.cancel_automation_occurrence_ui(id, cx)
@@ -5491,11 +5697,16 @@ impl TaskApp {
                                                         .clone()
                                                         .unwrap_or_else(|| help.to_string()),
                                                 ))
-                                                .on_click(cx.listener(move |app, _, window, cx| {
-                                                    app.perform_publication_action(
-                                                        topic, action.clone(), window, cx,
-                                                    );
-                                                })),
+                                                .on_click(cx.listener(
+                                                    move |app, _, window, cx| {
+                                                        app.perform_publication_action(
+                                                            topic,
+                                                            action.clone(),
+                                                            window,
+                                                            cx,
+                                                        );
+                                                    },
+                                                )),
                                         )
                                     })
                                     .child(
@@ -5546,16 +5757,23 @@ impl TaskApp {
                             // a newly installed cached overlay. Request a paint,
                             // not a semantic app update: keep report/status caches.
                             .on_scroll(|_, window, _| window.refresh())
-                            .child(self.automation_occurrence_detail(id, presentation, reader_height, cx))
+                            .child(self.automation_occurrence_detail(
+                                id,
+                                presentation,
+                                reader_height,
+                                cx,
+                            ))
                             .map(observed),
                     )
-                    .child(row().justify_end().child(
-                        button("close-automation-result-footer", "Close")
-                            .track_focus(&self.dialog_first_focus)
-                            .on_click(cx.listener(
-                                |app, _, window, cx| app.close_occurrence_result(window, cx),
-                            )),
-                    )),
+                    .child(
+                        row().justify_end().child(
+                            button("close-automation-result-footer", "Close")
+                                .track_focus(&self.dialog_first_focus)
+                                .on_click(cx.listener(|app, _, window, cx| {
+                                    app.close_occurrence_result(window, cx)
+                                })),
+                        ),
+                    ),
             )
             .track_focus(&self.modal_focus)
             .on_key_down(cx.listener(|app, event: &KeyDownEvent, window, cx| {
@@ -5603,7 +5821,9 @@ impl TaskApp {
         } else {
             let mut text: String = run.output.chars().take(20_000).collect();
             if run.output.chars().count() > 20_000 {
-                text.push_str(&crate::i18n::tr_string("\n\n[Output truncated for display]"));
+                text.push_str(&crate::i18n::tr_string(
+                    "\n\n[Output truncated for display]",
+                ));
             }
             text
         };
@@ -5694,7 +5914,11 @@ impl TaskApp {
             .and_then(|id| self.store.latest_planning_request(id))
             .filter(|request| {
                 request.input.trim() == self.automation_ui.objective.read(cx).value().trim()
-                    && request.expected_result.as_deref().unwrap_or_default().trim()
+                    && request
+                        .expected_result
+                        .as_deref()
+                        .unwrap_or_default()
+                        .trim()
                         == self.automation_ui.expected.read(cx).value().trim()
                     && self.store.request_needs_understanding(request.id)
             })
@@ -6113,10 +6337,12 @@ impl TaskApp {
                                         match step.kind {
                                             crate::research::ResearchKind::Collect =>
                                                 crate::i18n::tr_string("Evidence collection"),
-                                            crate::research::ResearchKind::Analyze => crate::i18n::tr_string("Analysis"),
+                                            crate::research::ResearchKind::Analyze =>
+                                                crate::i18n::tr_string("Analysis"),
                                             crate::research::ResearchKind::Advise =>
                                                 crate::i18n::tr_string("Final report"),
-                                            crate::research::ResearchKind::Goal => crate::i18n::tr_string("Plan"),
+                                            crate::research::ResearchKind::Goal =>
+                                                crate::i18n::tr_string("Plan"),
                                         }
                                     ))))
                                     .child(muted(step.instructions.clone(), cx))
@@ -6389,16 +6615,11 @@ impl ResearchKinds {
 
 #[cfg(test)]
 mod tests {
+    use super::default_automation_result_doc;
     use super::{
-        contrast_against, format_in_zone_precise, result_tint_color, ResultTints,
-        DARK_RESULT_PANEL_RGB, LIGHT_RESULT_PANEL_RGB, RESULT_NAME_MIN_CONTRAST,
+        DARK_RESULT_PANEL_RGB, LIGHT_RESULT_PANEL_RGB, RESULT_NAME_MIN_CONTRAST, ResultTints,
+        contrast_against, format_in_zone_precise, result_tint_color,
     };
-    use gpui_kit::{
-        div, init, list, point, px, size, AppContext as _, Context, Entity, IntoElement,
-        ListAlignment, ListOffset, ListState, ParentElement as _, Render, ScrollDelta,
-        ScrollEvent, Styled as _, TestAppContext, VisualTestContext, Window,
-    };
-    use gpui_kit::test::TestWindowExt;
     use crate::app::TaskApp;
     use crate::automation::{
         AutomationOccurrence, AutomationOccurrenceSnapshot, AutomationPolicy, AutomationShape,
@@ -6409,11 +6630,16 @@ mod tests {
     use crate::result_presentation::{
         OwnedReportPresentation, ProgressPresentation, ResultKind, ResultPresentation,
     };
-    use super::default_automation_result_doc;
+    use gpui_kit::test::TestWindowExt;
+    use gpui_kit::{
+        AppContext as _, Context, Entity, IntoElement, ListAlignment, ListOffset, ListState,
+        ParentElement as _, Render, ScrollDelta, ScrollEvent, Styled as _, TestAppContext,
+        VisualTestContext, Window, div, init, list, point, px, size,
+    };
 
     #[test]
     fn result_scroll_bridge_keeps_list_offset_authoritative() {
-        use super::{result_scroll_step, ResultScrollStep};
+        use super::{ResultScrollStep, result_scroll_step};
 
         // External restore, including a large item_ix=0 offset.
         assert_eq!(
@@ -6484,12 +6710,9 @@ mod tests {
             false,
             "Evidence body",
         ));
-        presentation.reports.push(owned_report(
-            9,
-            ResultKind::FinalReport,
-            true,
-            "Final body",
-        ));
+        presentation
+            .reports
+            .push(owned_report(9, ResultKind::FinalReport, true, "Final body"));
         assert_eq!(
             default_automation_result_doc(&presentation),
             Some(super::AutomationResultDoc::Report(1))
@@ -6578,11 +6801,8 @@ mod tests {
     }
 
     fn results_store() -> Store {
-        let template = crate::automation_execution::build_template(
-            "Capacity check",
-            "Short report",
-        )
-        .unwrap();
+        let template =
+            crate::automation_execution::build_template("Capacity check", "Short report").unwrap();
         let mut seed = Store::empty();
         seed.project_mut(1).unwrap().directory = "/tmp".into();
         seed.set_default_model("qa/model".into());
@@ -6728,9 +6948,7 @@ mod tests {
     }
 
     #[gpui_kit::test]
-    fn results_page_renders_header_rows_and_load_more_after_scroll(
-        cx: &mut TestAppContext,
-    ) {
+    fn results_page_renders_header_rows_and_load_more_after_scroll(cx: &mut TestAppContext) {
         let cx = cx.add_empty_window();
         cx.update(|_, cx| init(cx));
         let store = results_store();
@@ -6746,19 +6964,33 @@ mod tests {
         let app = cx.update(|_, cx| harness.read(cx).0.clone());
         cx.run_until_parked();
         cx.update(|window, cx| window.render_frame(cx));
-        assert!(cx
-            .update(|window, _| window.try_find("automation-results-title"))
-            .is_some(), "results title must render");
-        assert!(cx
-            .update(|window, _| window.try_find("automation-occurrence-25"))
-            .is_some(), "first result row must render");
-        let first_row = cx
-            .update(|window, _| window.try_find("automation-occurrence-25").unwrap().bounds());
-        assert!(cx
-            .update(|window, _| window.try_find("load-more-automation-results"))
-            .is_none(), "Load more starts below the viewport");
-        let body = cx
-            .update(|window, _| window.try_find("automation-results-scroll").unwrap().bounds());
+        assert!(
+            cx.update(|window, _| window.try_find("automation-results-title"))
+                .is_some(),
+            "results title must render"
+        );
+        assert!(
+            cx.update(|window, _| window.try_find("automation-occurrence-25"))
+                .is_some(),
+            "first result row must render"
+        );
+        let first_row = cx.update(|window, _| {
+            window
+                .try_find("automation-occurrence-25")
+                .unwrap()
+                .bounds()
+        });
+        assert!(
+            cx.update(|window, _| window.try_find("load-more-automation-results"))
+                .is_none(),
+            "Load more starts below the viewport"
+        );
+        let body = cx.update(|window, _| {
+            window
+                .try_find("automation-results-scroll")
+                .unwrap()
+                .bounds()
+        });
         let wheel = point(body.center().x, body.center().y);
         let offset = |cx: &mut VisualTestContext| {
             cx.update(|_, cx| {
@@ -6797,12 +7029,21 @@ mod tests {
                 .unwrap_or(true)
         });
         assert!(moved, "wheel must displace or unmount the top rows");
-        assert!(cx
-            .update(|window, _| window.try_find("load-more-automation-results"))
-            .is_some(), "Load more must render after scrolling");
+        assert!(
+            cx.update(|window, _| window.try_find("load-more-automation-results"))
+                .is_some(),
+            "Load more must render after scrolling"
+        );
 
         let list_top = |cx: &mut VisualTestContext| {
-            cx.update(|window, _| window.try_find("automation-results-scroll").unwrap().bounds().top().as_f32())
+            cx.update(|window, _| {
+                window
+                    .try_find("automation-results-scroll")
+                    .unwrap()
+                    .bounds()
+                    .top()
+                    .as_f32()
+            })
         };
         let top_visible = |cx: &mut VisualTestContext| {
             let top = list_top(cx);
@@ -6812,8 +7053,7 @@ mod tests {
                     cx.update(|window, _| window.try_find(format!("automation-occurrence-{id}")))
                 {
                     let candidate = snapshot.bounds().top().as_f32();
-                    if candidate >= top - 1.0
-                        && best.is_none_or(|(_, current)| candidate < current)
+                    if candidate >= top - 1.0 && best.is_none_or(|(_, current)| candidate < current)
                     {
                         best = Some((id, candidate));
                     }
@@ -6825,7 +7065,10 @@ mod tests {
         cx.update(|window, cx| window.click("load-more-automation-results", cx));
         cx.update(|window, cx| window.render_frame(cx));
         let after_append = top_visible(cx).expect("a row must remain visible after Load more");
-        assert_eq!(anchored.0, after_append.0, "Load more must keep the same top row");
+        assert_eq!(
+            anchored.0, after_append.0,
+            "Load more must keep the same top row"
+        );
         assert!(
             (anchored.1 - after_append.1).abs() <= 2.0,
             "Load more must keep the top row anchored: {} -> {}",
@@ -6841,11 +7084,7 @@ mod tests {
         state.reset_with_uniform_height(40, px(40.));
         struct TestView(ListState);
         impl Render for TestView {
-            fn render(
-                &mut self,
-                _: &mut Window,
-                _: &mut Context<Self>,
-            ) -> impl IntoElement {
+            fn render(&mut self, _: &mut Window, _: &mut Context<Self>) -> impl IntoElement {
                 list(self.0.clone(), |_, _, _| {
                     div().h(px(40.)).w_full().into_any_element()
                 })
@@ -6854,11 +7093,9 @@ mod tests {
             }
         }
         let draw = |cx: &mut VisualTestContext| {
-            let _ = cx.draw(
-                point(px(0.), px(0.)),
-                size(px(100.), px(200.)),
-                |_, cx| cx.new(|_| TestView(state.clone())).into_any_element(),
-            );
+            let _ = cx.draw(point(px(0.), px(0.)), size(px(100.), px(200.)), |_, cx| {
+                cx.new(|_| TestView(state.clone())).into_any_element()
+            });
         };
         draw(cx);
         // Arbitrary pixel restore uses scroll_by; item_ix 0 with a large
@@ -7049,8 +7286,12 @@ mod tests {
             });
         });
         cx.update(|window, cx| window.render_frame(cx));
-        let body = cx
-            .update(|window, _| window.try_find("automation-results-scroll").unwrap().bounds());
+        let body = cx.update(|window, _| {
+            window
+                .try_find("automation-results-scroll")
+                .unwrap()
+                .bounds()
+        });
         let before = cx.update(|_, cx| {
             app.read(cx)
                 .automation_ui
@@ -7089,15 +7330,20 @@ mod tests {
         assert!(matches!(empty.items[1], AutomationResultsItem::EmptyAll));
 
         let filtered = AutomationResultsPlan::new(vec![], 0, 10, 0, 0, Some(1), 20);
-        assert!(matches!(filtered.items[1], AutomationResultsItem::EmptyFiltered));
+        assert!(matches!(
+            filtered.items[1],
+            AutomationResultsItem::EmptyFiltered
+        ));
 
         let rows: Vec<(u64, usize)> = (0..20).map(|index| (index as u64 + 1, index)).collect();
         let first_page = AutomationResultsPlan::new(rows.clone(), 20, 20, 0, 0, None, 20);
         assert_eq!(first_page.items.len(), 21);
-        assert!(first_page
-            .items
-            .iter()
-            .all(|item| !matches!(item, AutomationResultsItem::LoadMore)));
+        assert!(
+            first_page
+                .items
+                .iter()
+                .all(|item| !matches!(item, AutomationResultsItem::LoadMore))
+        );
 
         let more = AutomationResultsPlan::new(rows, 40, 40, 2, 1, None, 20);
         assert_eq!(more.items.len(), 22);
@@ -7178,8 +7424,13 @@ mod tests {
         assert!((super::contrast_against(0x000000ff, 0xffffff) - 21.0).abs() < 1e-4);
         assert!((super::contrast_against(0x123456ff, 0x123456) - 1.0).abs() < 1e-6);
         // the supported light panel must decode as white, not cyan
-        assert_eq!(super::relative_luminance((LIGHT_RESULT_PANEL_RGB << 8) | 0xff), 1.0);
-        assert!((super::relative_luminance((DARK_RESULT_PANEL_RGB << 8) | 0xff) - 0.0152).abs() < 0.002);
+        assert_eq!(
+            super::relative_luminance((LIGHT_RESULT_PANEL_RGB << 8) | 0xff),
+            1.0
+        );
+        assert!(
+            (super::relative_luminance((DARK_RESULT_PANEL_RGB << 8) | 0xff) - 0.0152).abs() < 0.002
+        );
     }
 
     #[test]
@@ -7189,7 +7440,10 @@ mod tests {
         for automation in 1..=30 {
             let light = tints.tint(automation, false);
             let ratio = contrast_against(light.text, LIGHT_RESULT_PANEL_RGB);
-            assert!(ratio >= RESULT_NAME_MIN_CONTRAST, "assignment {automation}: {ratio:.2}");
+            assert!(
+                ratio >= RESULT_NAME_MIN_CONTRAST,
+                "assignment {automation}: {ratio:.2}"
+            );
             assert_eq!(light.text & 0xff, 0xff);
             assert_eq!(light.text, tints.tint(automation, false).text);
             assert!(

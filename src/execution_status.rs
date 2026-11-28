@@ -23,8 +23,18 @@ pub enum ExecutionStatus {
     Stage(Stage),
 }
 impl ExecutionStatus {
-    pub(crate) const ALL: [Self; 10] = [Self::Running, Self::Stopping, Self::Queued, Self::Retrying,
-        Self::Waiting, Self::Ready, Self::Paused, Self::Blocked, Self::Approval, Self::Done];
+    pub(crate) const ALL: [Self; 10] = [
+        Self::Running,
+        Self::Stopping,
+        Self::Queued,
+        Self::Retrying,
+        Self::Waiting,
+        Self::Ready,
+        Self::Paused,
+        Self::Blocked,
+        Self::Approval,
+        Self::Done,
+    ];
     pub(crate) fn label(self) -> &'static str {
         match self {
             Self::Running => "Running",
@@ -36,7 +46,7 @@ impl ExecutionStatus {
             Self::Paused => "Paused",
             Self::Blocked => "Blocked",
             Self::Done => "Done",
-            Self::Approval => "Review plan",
+            Self::Approval => "Approval",
             Self::Stage(stage) => stage.label(),
         }
     }
@@ -123,7 +133,13 @@ impl ExecutionStatus {
         // Reserve the ripple's full reach inside the frame. Parent cards and
         // buttons clip their content box, so a ripple that overflows a 16 px box
         // gets sliced at the edge; 24 px keeps the animation whole everywhere.
-        let frame = div().w(px(24.)).h(px(24.)).flex_shrink_0().flex().items_center().justify_center()
+        let frame = div()
+            .w(px(24.))
+            .h(px(24.))
+            .flex_shrink_0()
+            .flex()
+            .items_center()
+            .justify_center()
             .text_color(rgb(color));
         let icon = self.icon();
         match self {
@@ -189,9 +205,7 @@ impl ExecutionStatus {
             Self::Stopping => {
                 "The period has ended; a background session from this step is still shutting down. It cannot extend the period."
             }
-            Self::Ready => {
-                "Ready to run; not currently queued. Run the goal or add its topic to the queue."
-            }
+            Self::Ready => "Ready to run. Run the goal to continue.",
             Self::Paused => {
                 "The topic queue is paused. Review the queue message and continue when ready."
             }
@@ -199,7 +213,7 @@ impl ExecutionStatus {
                 "This task or one of its prerequisites needs attention. Open the task for details."
             }
             Self::Done => "Completed result is available.",
-            Self::Approval => "Review and approve the research plan before running.",
+            Self::Approval => "Run goal to approve and start.",
             Self::Stage(_) => "Workflow stage; no active execution.",
         }
     }
@@ -264,9 +278,6 @@ impl Store {
             return Done;
         }
         let pending = batch.filter(|b| b.contains_pending(goal));
-        if pending.is_some_and(|b| matches!(b.state, BatchState::Paused(_))) {
-            return Paused;
-        }
         if latest
             .iter()
             .any(|r| r.status == "Queued" && r.auto_retry_attempt > 0)
@@ -276,12 +287,22 @@ impl Store {
         if latest.iter().any(|r| r.status == "Queued") {
             return Queued;
         }
-        if (is_goal || task.research.is_none()) && pending.is_some_and(|b| !b.current_items(self).contains(&goal)) {
+        if !is_goal
+            && task.research.is_none()
+            && pending.is_some_and(|b| !b.current_items(self).contains(&goal))
+        {
             return Queued;
         }
         if is_goal {
             if !self.goal_execution_approved(id) {
                 return Approval;
+            }
+            let queued = pending.is_some_and(|batch| {
+                batch.contains_pending(id)
+                    && batch.pending_topics(self).first() != Some(&self.execution_topic(id))
+            });
+            if queued {
+                return Queued;
             }
             let children = self.research_children(id);
             if children
@@ -300,9 +321,12 @@ impl Store {
                 Waiting
             };
         }
-        if task.research.is_some() {
+        if !is_goal && task.research.is_some() {
             if self.step_state(id) == StepState::Blocked {
                 return Blocked;
+            }
+            if pending.is_some_and(|batch| matches!(batch.state, BatchState::Paused(_))) {
+                return Paused;
             }
             if self.research_pending_approval(id) {
                 return Approval;
@@ -321,14 +345,30 @@ impl Store {
             {
                 return Waiting;
             }
-            return if pending.is_some() { Queued } else { Ready };
+            return if pending.is_some_and(|batch| batch.contains_pending(goal)) {
+                Queued
+            } else {
+                Ready
+            };
         }
-        if pending.is_some() { return Queued; }
-        if !task.stage.is_closed() && latest.iter().any(|r| matches!(r.status.as_str(), "Failed" | "Blocked" | "Interrupted" | "Cancelled")) {
+        if pending.is_some() {
+            return Queued;
+        }
+        if !task.stage.is_closed()
+            && latest.iter().any(|r| {
+                matches!(
+                    r.status.as_str(),
+                    "Failed" | "Blocked" | "Interrupted" | "Cancelled"
+                )
+            })
+        {
             return Blocked;
         }
-        if matches!(task.stage, crate::domain::Stage::Planned | crate::domain::Stage::InProgress)
-            && latest.iter().any(|r| r.status == "Succeeded" && r.stage == task.stage) {
+        if matches!(task.stage, crate::domain::Stage::InProgress)
+            && latest
+                .iter()
+                .any(|r| r.status == "Succeeded" && r.stage == task.stage)
+        {
             return Stage(crate::domain::Stage::Review);
         }
         Stage(task.stage)
@@ -336,12 +376,24 @@ impl Store {
 }
 impl crate::app::TaskApp {
     pub(crate) fn execution_summary(&self, goal: u64) -> String {
-        let states: Vec<_> = self.store.research_children(goal).into_iter()
-            .map(|id| self.display_task_status(id).execution).collect();
+        let states: Vec<_> = self
+            .store
+            .research_children(goal)
+            .into_iter()
+            .map(|id| self.display_task_status(id).execution)
+            .collect();
         let mut parts = vec![format!("{} steps", states.len())];
-        for status in ExecutionStatus::ALL.into_iter().chain(Stage::ALL.into_iter().map(ExecutionStatus::Stage)) {
+        for status in ExecutionStatus::ALL
+            .into_iter()
+            .chain(Stage::ALL.into_iter().map(ExecutionStatus::Stage))
+        {
             let count = states.iter().filter(|state| **state == status).count();
-            if count > 0 { parts.push(format!("{count} {}", crate::i18n::tr_string(status.label()).to_lowercase())); }
+            if count > 0 {
+                parts.push(format!(
+                    "{count} {}",
+                    crate::i18n::tr_string(status.label()).to_lowercase()
+                ));
+            }
         }
         parts.join(" · ")
     }
@@ -352,10 +404,14 @@ impl crate::app::TaskApp {
         let status = state.execution;
         // A status is not an action: no button label slot, content gap or hover fill.
         // Reserve a non-shrinking 24px box for the shared 16px icon in cards and list rows.
-        div().id(format!("execution-status-{id}"))
+        div()
+            .id(format!("execution-status-{id}"))
             .aria_label(crate::i18n::tr(state.label()))
-            .size(px(24.)).flex_shrink_0()
-            .flex().items_center().justify_center()
+            .size(px(24.))
+            .flex_shrink_0()
+            .flex()
+            .items_center()
+            .justify_center()
             .child(status.icon_view(format!("execution-status-icon-{id}"), cx))
             .tooltip(move |window, cx| {
                 component::tooltip::Tooltip::new(crate::i18n::tr_string(state.label()))
@@ -363,7 +419,6 @@ impl crate::app::TaskApp {
             })
             .into_any_element()
     }
-
 }
 
 #[cfg(test)]
@@ -395,6 +450,7 @@ mod tests {
     fn distinguishes_admission_dependencies_runs_retries_and_pause() {
         use ExecutionStatus::*;
         let (mut s, goal, ids, mut batch) = fixture();
+        s.set_stage(goal, crate::domain::Stage::InProgress).unwrap();
         assert_eq!(s.execution_status(ids[0], None), Ready);
         assert_eq!(s.execution_status(ids[1], None), Waiting);
         assert_eq!(s.execution_status(goal, Some(&batch)), Queued);

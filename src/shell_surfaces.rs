@@ -78,12 +78,21 @@ impl Render for AutomationResultSurface {
             let presentation = self.presentation.get_or_insert_with(|| {
                 #[cfg(feature = "qa")]
                 RESULT_PRESENTATIONS.fetch_add(1, std::sync::atomic::Ordering::Relaxed);
-                app.automation_ui.run_index.borrow_mut().ensure(app.store.dirty_epoch(), &app.store);
+                app.automation_ui
+                    .run_index
+                    .borrow_mut()
+                    .ensure(app.store.dirty_epoch(), &app.store);
                 crate::result_presentation::present_occurrence_indexed(
-                    &app.store, occurrence, app.automation_ui.run_index.borrow().index(),
+                    &app.store,
+                    occurrence,
+                    app.automation_ui.run_index.borrow().index(),
                 )
             });
-            app.automation_result_dialog(presentation, px((window.viewport_size().height.as_f32() * 0.45).clamp(180., 420.)), cx)
+            app.automation_result_dialog(
+                presentation,
+                px((window.viewport_size().height.as_f32() * 0.45).clamp(180., 420.)),
+                cx,
+            )
         })
     }
 }
@@ -214,15 +223,13 @@ impl TaskApp {
     pub(crate) fn retained_sidebar(&mut self, cx: &mut Context<Self>) -> AnyElement {
         if self.sidebar_surface.is_none() {
             let parent = cx.entity();
-            self.sidebar_surface = Some(
-                cx.new(|cx| crate::shell_surfaces::SidebarSurface::new(parent, cx)),
-            );
+            self.sidebar_surface =
+                Some(cx.new(|cx| crate::shell_surfaces::SidebarSurface::new(parent, cx)));
         }
         if self.brand_overlay.is_none() {
             let parent = cx.entity();
-            self.brand_overlay = Some(
-                cx.new(|cx| crate::shell_surfaces::BrandOverlay::new(parent, cx)),
-            );
+            self.brand_overlay =
+                Some(cx.new(|cx| crate::shell_surfaces::BrandOverlay::new(parent, cx)));
         }
         col()
             .relative()
@@ -254,9 +261,12 @@ impl TaskApp {
     pub(crate) fn retained_automation_result(&mut self, cx: &mut Context<Self>) -> AnyElement {
         if self.automation_result_surface.is_none() {
             let parent = cx.entity();
-            self.automation_result_surface = Some(cx.new(|cx| AutomationResultSurface::new(parent, cx)));
+            self.automation_result_surface =
+                Some(cx.new(|cx| AutomationResultSurface::new(parent, cx)));
         }
-        self.automation_result_surface.clone().expect("result surface initialized")
+        self.automation_result_surface
+            .clone()
+            .expect("result surface initialized")
             .cached(StyleRefinement::default().absolute().inset_0().size_full())
             .into_any_element()
     }
@@ -264,9 +274,8 @@ impl TaskApp {
     pub(crate) fn retained_content(&mut self, cx: &mut Context<Self>) -> AnyElement {
         if self.content_surface.is_none() {
             let parent = cx.entity();
-            self.content_surface = Some(
-                cx.new(|cx| crate::shell_surfaces::ContentSurface::new(parent, cx)),
-            );
+            self.content_surface =
+                Some(cx.new(|cx| crate::shell_surfaces::ContentSurface::new(parent, cx)));
         }
         self.content_surface
             .clone()
@@ -281,8 +290,7 @@ impl TaskApp {
     pub(crate) fn retained_footer(&mut self, cx: &mut Context<Self>) -> AnyElement {
         if self.footer_bar.is_none() {
             let parent = cx.entity();
-            self.footer_bar =
-                Some(cx.new(|cx| crate::shell_surfaces::FooterBar::new(parent, cx)));
+            self.footer_bar = Some(cx.new(|cx| crate::shell_surfaces::FooterBar::new(parent, cx)));
         }
         self.footer_bar
             .clone()

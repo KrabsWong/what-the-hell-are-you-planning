@@ -6,9 +6,9 @@ use sha2::{Digest, Sha256};
 use std::fs::File;
 use std::io::Read;
 use std::path::{Path, PathBuf};
+use std::sync::Arc;
 use std::sync::atomic::{AtomicU64, Ordering};
 use std::sync::mpsc::{self, Receiver, SyncSender, TryRecvError, TrySendError};
-use std::sync::Arc;
 use std::thread;
 use std::time::SystemTime;
 
@@ -101,9 +101,7 @@ impl MaterialVerifier {
                                 if file.expected_sha256.as_deref()
                                     != Some(verified.content_sha256.as_str())
                                 {
-                                    return Err(
-                                        "The material changed before cleanup.".into(),
-                                    );
+                                    return Err("The material changed before cleanup.".into());
                                 }
                                 let attachment = attachments::Attachment {
                                     name: String::new(),
@@ -148,11 +146,7 @@ impl MaterialVerifier {
         self.test_delay_ms.store(delay_ms, Ordering::Relaxed);
     }
 
-    pub(crate) fn submit(
-        &mut self,
-        root: PathBuf,
-        files: Vec<VerifyFile>,
-    ) -> Result<u64, String> {
+    pub(crate) fn submit(&mut self, root: PathBuf, files: Vec<VerifyFile>) -> Result<u64, String> {
         self.submit_mode(root, files, VerifyMode::Verify)
     }
 
@@ -220,8 +214,8 @@ fn verify_one(root: &Path, file: &VerifyFile) -> Result<VerifiedFile, String> {
         content_sha256: String::new(),
     };
     let path = attachments::resolve(root, &attachment)?;
-    let before = std::fs::metadata(&path)
-        .map_err(|error| format!("Cannot inspect material: {error}"))?;
+    let before =
+        std::fs::metadata(&path).map_err(|error| format!("Cannot inspect material: {error}"))?;
     if !before.is_file() || before.len() != file.expected_size {
         return Err("The material size or file type changed.".into());
     }
@@ -257,8 +251,8 @@ fn verify_one(root: &Path, file: &VerifyFile) -> Result<VerifiedFile, String> {
     let handle_after = input
         .metadata()
         .map_err(|error| format!("Cannot inspect material: {error}"))?;
-    let after = std::fs::metadata(&path)
-        .map_err(|error| format!("Cannot inspect material: {error}"))?;
+    let after =
+        std::fs::metadata(&path).map_err(|error| format!("Cannot inspect material: {error}"))?;
     if after.len() != before.len()
         || after.modified().ok() != modified
         || handle_after.len() != before.len()
@@ -337,16 +331,18 @@ mod tests {
             attachment.size,
             &attachment.content_sha256
         ));
-        assert!(verifier
-            .submit(
-                root.clone(),
-                vec![VerifyFile {
-                    relative_path: attachment.relative_path,
-                    expected_size: attachment.size + 1,
-                    expected_sha256: None,
-                }],
-            )
-            .is_ok());
+        assert!(
+            verifier
+                .submit(
+                    root.clone(),
+                    vec![VerifyFile {
+                        relative_path: attachment.relative_path,
+                        expected_size: attachment.size + 1,
+                        expected_sha256: None,
+                    }],
+                )
+                .is_ok()
+        );
         let _ = std::fs::remove_dir_all(root);
     }
 

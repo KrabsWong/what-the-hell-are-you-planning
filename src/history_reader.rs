@@ -45,10 +45,15 @@ pub(crate) enum ReaderResponse {
 #[derive(Clone, Debug, PartialEq, Eq)]
 pub(crate) enum HistoryLoad {
     NotRequested,
-    Loading { request_id: u64 },
+    Loading {
+        request_id: u64,
+    },
     Loaded,
     LoadedEmpty,
-    Failed { error: String, retry_at: std::time::Instant },
+    Failed {
+        error: String,
+        retry_at: std::time::Instant,
+    },
 }
 
 impl Default for HistoryLoad {
@@ -103,7 +108,10 @@ pub(crate) enum BodyLoad {
     },
     Loaded,
     Absent,
-    Failed { error: String, retry_at: std::time::Instant },
+    Failed {
+        error: String,
+        retry_at: std::time::Instant,
+    },
 }
 
 impl Default for BodyLoad {
@@ -132,11 +140,7 @@ pub(crate) struct HistoryReader {
 }
 
 impl HistoryReader {
-    pub(crate) fn start(
-        database: &Path,
-        root: &Path,
-        incarnation: u64,
-    ) -> Result<Self, String> {
+    pub(crate) fn start(database: &Path, root: &Path, incarnation: u64) -> Result<Self, String> {
         let (request_tx, request_rx) = mpsc::sync_channel(REQUEST_CAPACITY);
         let (response_tx, response_rx) = mpsc::sync_channel(RESPONSE_CAPACITY);
         let database = database.to_path_buf();
@@ -280,7 +284,6 @@ impl Drop for HistoryReader {
     }
 }
 
-
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -331,7 +334,11 @@ mod tests {
             live.output = "newer streaming output".into();
             live.status = "Running".into();
         }
-        let live = store.runs().iter().find(|value| value.id == run.id).unwrap();
+        let live = store
+            .runs()
+            .iter()
+            .find(|value| value.id == run.id)
+            .unwrap();
         assert!(!body_reply_is_current(live, &expected));
     }
 
@@ -343,7 +350,11 @@ mod tests {
             let mut live = store.run_mut(run.id).unwrap();
             live.output.clear();
         }
-        let live = store.runs().iter().find(|value| value.id == run.id).unwrap();
+        let live = store
+            .runs()
+            .iter()
+            .find(|value| value.id == run.id)
+            .unwrap();
         assert!(body_reply_is_current(live, &expected));
     }
 
@@ -356,7 +367,11 @@ mod tests {
             live.output.clear();
             live.logs.push("[research] Regenerating".into());
         }
-        let live = store.runs().iter().find(|value| value.id == run.id).unwrap();
+        let live = store
+            .runs()
+            .iter()
+            .find(|value| value.id == run.id)
+            .unwrap();
         assert!(!body_reply_is_current(live, &expected));
     }
 }

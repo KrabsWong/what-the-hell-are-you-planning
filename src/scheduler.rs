@@ -11,8 +11,12 @@ pub const DEFAULT_CONCURRENT_RUNS: usize = 3;
 pub const DEFAULT_CONCURRENT_AUTOMATIONS: usize = 2;
 pub const MAX_CONCURRENT_RUNS: usize = 10;
 
-pub fn default_concurrent_runs() -> usize { DEFAULT_CONCURRENT_RUNS }
-pub fn default_concurrent_automations() -> usize { DEFAULT_CONCURRENT_AUTOMATIONS }
+pub fn default_concurrent_runs() -> usize {
+    DEFAULT_CONCURRENT_RUNS
+}
+pub fn default_concurrent_automations() -> usize {
+    DEFAULT_CONCURRENT_AUTOMATIONS
+}
 
 impl Store {
     pub fn concurrency_limit(&self) -> usize {
@@ -20,19 +24,30 @@ impl Store {
     }
     /// Running automation periods are limited independently from research tasks.
     pub fn automation_concurrency_limit(&self) -> usize {
-        self.max_concurrent_automations().clamp(1, MAX_CONCURRENT_RUNS)
+        self.max_concurrent_automations()
+            .clamp(1, MAX_CONCURRENT_RUNS)
     }
 
     /// New one-sentence plans isolate each step; legacy goals retain their shared workspace.
     pub fn uses_step_workspace(&self, task_id: u64) -> bool {
-        self.task(task_id).and_then(|t| t.research.as_ref()).is_some_and(|r| {
-            r.kind != ResearchKind::Goal && self.research_requests().iter().any(|request| request.goal_ids.contains(&r.goal_id))
-        })
+        self.task(task_id)
+            .and_then(|t| t.research.as_ref())
+            .is_some_and(|r| {
+                r.kind != ResearchKind::Goal
+                    && self
+                        .research_requests()
+                        .iter()
+                        .any(|request| request.goal_ids.contains(&r.goal_id))
+            })
     }
 
     pub fn research_space(&self, task_id: u64) -> Option<String> {
         let research = self.task(task_id)?.research.as_ref()?;
-        Some(if self.uses_step_workspace(task_id) { format!("{} · step {task_id}", research.space_name) } else { research.space_name.clone() })
+        Some(if self.uses_step_workspace(task_id) {
+            format!("{} · step {task_id}", research.space_name)
+        } else {
+            research.space_name.clone()
+        })
     }
     /// Keep an existing research workspace stable; isolate new goals from one another.
     pub fn previous_execution_directory(&self, task_id: u64) -> Result<PathBuf, String> {
@@ -49,8 +64,15 @@ impl Store {
             return Ok(PathBuf::from(&project.directory));
         };
         if self.uses_step_workspace(task_id) {
-            if let Some(run) = self.runs().iter().rev().find(|r| r.task_id == task_id && r.project_plan.is_none() && r.status != "Simulated" && !r.directory.is_empty()) {
-                return Ok(PathBuf::from(run.workspace_source.as_ref().unwrap_or(&run.directory)));
+            if let Some(run) = self.runs().iter().rev().find(|r| {
+                r.task_id == task_id
+                    && r.project_plan.is_none()
+                    && r.status != "Simulated"
+                    && !r.directory.is_empty()
+            }) {
+                return Ok(PathBuf::from(
+                    run.workspace_source.as_ref().unwrap_or(&run.directory),
+                ));
             }
             return self.execution_directory(task_id);
         }
@@ -79,7 +101,12 @@ impl Store {
                     .find(|r| research.kind == ResearchKind::Goal || r.status != "Succeeded")
             });
         if let Some(previous) = previous {
-            return Ok(PathBuf::from(previous.workspace_source.as_ref().unwrap_or(&previous.directory)));
+            return Ok(PathBuf::from(
+                previous
+                    .workspace_source
+                    .as_ref()
+                    .unwrap_or(&previous.directory),
+            ));
         }
         Ok(PathBuf::from(&project.directory)
             .join(".research")
@@ -88,13 +115,25 @@ impl Store {
 
     pub fn execution_directory(&self, task_id: u64) -> Result<PathBuf, String> {
         let task = self.task(task_id).ok_or("Task not found.")?;
-        let project = self.projects().iter().find(|p| p.id == task.project_id).ok_or("Project not found.")?;
-        if project.directory.is_empty() { return Err("Set this project's working folder before running.".into()); }
+        let project = self
+            .projects()
+            .iter()
+            .find(|p| p.id == task.project_id)
+            .ok_or("Project not found.")?;
+        if project.directory.is_empty() {
+            return Err("Set this project's working folder before running.".into());
+        }
         Ok(match &task.research {
             Some(research) => {
-                let directory = PathBuf::from(&project.directory).join(".research").join(format!("goal-{}", research.goal_id));
-                if self.uses_step_workspace(task_id) { directory.join(format!("step-{task_id}")) } else { directory }
-            },
+                let directory = PathBuf::from(&project.directory)
+                    .join(".research")
+                    .join(format!("goal-{}", research.goal_id));
+                if self.uses_step_workspace(task_id) {
+                    directory.join(format!("step-{task_id}"))
+                } else {
+                    directory
+                }
+            }
             None => PathBuf::from(&project.directory),
         })
     }
@@ -102,12 +141,20 @@ impl Store {
     pub fn workspace_source(&self, task_id: u64) -> Result<Option<String>, String> {
         let target = self.execution_directory(task_id)?;
         // A queued/failed migration still owns its original source, even after restart.
-        if let Some(run) = self.runs().iter().rev().find(|r| r.task_id == task_id && r.project_plan.is_none()) {
-            if let Some(source) = &run.workspace_source { return Ok(Some(source.clone())); }
+        if let Some(run) = self
+            .runs()
+            .iter()
+            .rev()
+            .find(|r| r.task_id == task_id && r.project_plan.is_none())
+        {
+            if let Some(source) = &run.workspace_source {
+                return Ok(Some(source.clone()));
+            }
         }
         let previous = self.previous_execution_directory(task_id)?;
-        Ok((normalized_path(&previous.to_string_lossy()) != normalized_path(&target.to_string_lossy()))
-            .then(|| previous.to_string_lossy().into_owned()))
+        Ok((normalized_path(&previous.to_string_lossy())
+            != normalized_path(&target.to_string_lossy()))
+        .then(|| previous.to_string_lossy().into_owned()))
     }
 
     /// Only the latest attempt may resume: never reach past a completed or stale attempt.
@@ -133,9 +180,12 @@ impl Store {
             && previous.research_kind == request.research_kind
             && (request.research_kind.is_some() || previous.stage == request.stage)
             && (normalized_path(&previous.directory) == normalized_path(&request.directory)
-                || request.workspace_source.as_ref().is_some_and(|source| normalized_path(source) == normalized_path(&previous.directory))
-                || migrated_workspace_source(Path::new(&request.directory))
-                    .is_some_and(|source| normalized_path(&source) == normalized_path(&previous.directory))))
+                || request.workspace_source.as_ref().is_some_and(|source| {
+                    normalized_path(source) == normalized_path(&previous.directory)
+                })
+                || migrated_workspace_source(Path::new(&request.directory)).is_some_and(
+                    |source| normalized_path(&source) == normalized_path(&previous.directory),
+                )))
         .then_some(previous)
     }
 
@@ -143,37 +193,62 @@ impl Store {
         self.run_conflict_reason(candidate, active).is_some()
     }
 
-    pub fn run_conflict_reason(&self, candidate: &AgentRun, active: &AgentRun) -> Option<&'static str> {
-        if same_task(candidate, active) { return Some("same task"); }
+    pub fn run_conflict_reason(
+        &self,
+        candidate: &AgentRun,
+        active: &AgentRun,
+    ) -> Option<&'static str> {
+        if same_task(candidate, active) {
+            return Some("same task");
+        }
         if let (Some(a), Some(b)) = (&candidate.session_id, &active.session_id) {
-            if candidate.agent == active.agent && a == b { return Some("same agent session"); }
+            if candidate.agent == active.agent && a == b {
+                return Some("same agent session");
+            }
         }
         if candidate.project_plan.is_none() && active.project_plan.is_none() {
             if let (Some(a), Some(b)) = (
-                self.task(candidate.task_id).and_then(|t| t.research.as_ref()),
+                self.task(candidate.task_id)
+                    .and_then(|t| t.research.as_ref()),
                 self.task(active.task_id).and_then(|t| t.research.as_ref()),
             ) {
-                if a.goal_id == b.goal_id && !(self.uses_step_workspace(candidate.task_id) && self.uses_step_workspace(active.task_id)) { return Some("same research goal"); }
-                if !a.space_name.is_empty() && self.research_space(candidate.task_id) == self.research_space(active.task_id) { return Some("same browser Space"); }
+                if a.goal_id == b.goal_id
+                    && !(self.uses_step_workspace(candidate.task_id)
+                        && self.uses_step_workspace(active.task_id))
+                {
+                    return Some("same research goal");
+                }
+                if !a.space_name.is_empty()
+                    && self.research_space(candidate.task_id) == self.research_space(active.task_id)
+                {
+                    return Some("same browser Space");
+                }
             }
         }
         let overlaps = |a: &str, b: &str| {
-            let a = normalized_path(a); let b = normalized_path(b);
+            let a = normalized_path(a);
+            let b = normalized_path(b);
             a.starts_with(&b) || b.starts_with(&a)
         };
         if let Some(source) = &candidate.workspace_source {
-            if overlaps(source, &active.directory) { return Some("waiting to copy legacy research files: the original folder is still in use"); }
+            if overlaps(source, &active.directory) {
+                return Some(
+                    "waiting to copy legacy research files: the original folder is still in use",
+                );
+            }
         }
-        if overlaps(&candidate.directory, &active.directory) { return Some("overlapping working folders"); }
+        if overlaps(&candidate.directory, &active.directory) {
+            return Some("overlapping working folders");
+        }
         None
     }
-
 }
 
 pub(crate) fn same_task(a: &AgentRun, b: &AgentRun) -> bool {
     match (a.project_plan, b.project_plan) {
-        (Some(project_a), Some(project_b)) => project_a == project_b
-            && a.planning_owner == b.planning_owner,
+        (Some(project_a), Some(project_b)) => {
+            project_a == project_b && a.planning_owner == b.planning_owner
+        }
         (None, None) => a.task_id == b.task_id,
         _ => false,
     }
@@ -208,15 +283,22 @@ mod tests {
     #[test]
     fn concurrency_setting_preserves_legacy_defaults_and_bounds() {
         let mut legacy = serde_json::to_value(Store::empty()).unwrap();
-        legacy.as_object_mut().unwrap().remove("max_concurrent_runs");
-        legacy.as_object_mut().unwrap().remove("max_concurrent_automations");
+        legacy
+            .as_object_mut()
+            .unwrap()
+            .remove("max_concurrent_runs");
+        legacy
+            .as_object_mut()
+            .unwrap()
+            .remove("max_concurrent_automations");
         let mut store: Store = serde_json::from_value(legacy).unwrap();
         assert_eq!(store.concurrency_limit(), 3);
         assert_eq!(store.automation_concurrency_limit(), 2);
         for (configured, effective) in [(0, 1), (1, 1), (5, 5), (10, 10), (11, 10)] {
             store.set_max_concurrent_runs(configured);
             store.set_max_concurrent_automations(configured);
-            let restored: Store = serde_json::from_str(&serde_json::to_string(&store).unwrap()).unwrap();
+            let restored: Store =
+                serde_json::from_str(&serde_json::to_string(&store).unwrap()).unwrap();
             assert_eq!(restored.concurrency_limit(), effective);
             assert_eq!(restored.automation_concurrency_limit(), effective);
         }
@@ -224,7 +306,8 @@ mod tests {
 
     fn setup() -> (Store, u64, u64) {
         let mut store = Store::empty();
-        store.project_at_mut(0).unwrap().directory = std::env::temp_dir().to_string_lossy().into_owned();
+        store.project_at_mut(0).unwrap().directory =
+            std::env::temp_dir().to_string_lossy().into_owned();
         store.set_default_model("fixture/model".into());
         let project = store.project_at_mut(0).unwrap().id;
         let a = store
@@ -248,20 +331,35 @@ mod tests {
     fn request_steps_have_independent_resources_and_keep_retry_paths() {
         let (mut store, goal, _) = setup();
         let steps = store.apply_research_plan(goal, r#"{"tasks":[{"title":"Official","instructions":"Find filings","kind":"collect","depends_on":[]},{"title":"Market","instructions":"Find market evidence","kind":"collect","depends_on":[]},{"title":"Analyze","instructions":"Compare","kind":"analyze","depends_on":[0,1]},{"title":"Report","instructions":"Conclude","kind":"advise","depends_on":[2]}]}"#).unwrap();
-        let request_id = store.create_research_request(1, None, "Analyze earnings").unwrap();
+        let request_id = store
+            .create_research_request(1, None, "Analyze earnings")
+            .unwrap();
         store.request_mut(request_id).unwrap().goal_ids.push(goal);
         let first = request(&store, steps[0]);
         let second = request(&store, steps[1]);
         assert_ne!(first.directory, second.directory);
-        assert_ne!(store.research_space(steps[0]), store.research_space(steps[1]));
+        assert_ne!(
+            store.research_space(steps[0]),
+            store.research_space(steps[1])
+        );
         assert!(!store.run_conflicts(&first, &second));
         assert_eq!(store.workspace_source(steps[0]).unwrap(), None);
         let mut failed = first.clone();
         failed.status = "Failed".into();
         failed.session_id = Some("isolated-retry".into());
         store.push_run(failed);
-        assert_eq!(store.previous_execution_directory(steps[0]).unwrap(), PathBuf::from(&first.directory));
-        assert_eq!(store.resume_candidate(&first).unwrap().session_id.as_deref(), Some("isolated-retry"));
+        assert_eq!(
+            store.previous_execution_directory(steps[0]).unwrap(),
+            PathBuf::from(&first.directory)
+        );
+        assert_eq!(
+            store
+                .resume_candidate(&first)
+                .unwrap()
+                .session_id
+                .as_deref(),
+            Some("isolated-retry")
+        );
         assert!(!store.run_conflicts(&first, &second));
     }
 
@@ -275,19 +373,32 @@ mod tests {
         legacy.session_id = Some("existing-session".into());
         store.push_run(legacy.clone());
         let mut next = legacy.clone();
-        next.directory = store.execution_directory(a).unwrap().to_string_lossy().into_owned();
+        next.directory = store
+            .execution_directory(a)
+            .unwrap()
+            .to_string_lossy()
+            .into_owned();
         next.workspace_source = store.workspace_source(a).unwrap();
         assert_eq!(next.workspace_source.as_ref(), Some(&legacy.directory));
         assert!(store.resume_candidate(&next).is_some());
         let independent = request(&store, b);
-        assert!(store.run_conflict_reason(&next, &independent).unwrap().contains("copy legacy"));
+        assert!(
+            store
+                .run_conflict_reason(&next, &independent)
+                .unwrap()
+                .contains("copy legacy")
+        );
         next.workspace_source = None;
         assert!(!store.run_conflicts(&next, &independent));
         // Pending migration remains discoverable after persistence/restart.
         next.workspace_source = Some(legacy.directory.clone());
         store.push_run(next);
-        let restored: Store = serde_json::from_str(&serde_json::to_string(&store).unwrap()).unwrap();
-        assert_eq!(restored.workspace_source(a).unwrap(), Some(legacy.directory));
+        let restored: Store =
+            serde_json::from_str(&serde_json::to_string(&store).unwrap()).unwrap();
+        assert_eq!(
+            restored.workspace_source(a).unwrap(),
+            Some(legacy.directory)
+        );
     }
 
     #[test]
@@ -299,12 +410,18 @@ mod tests {
         std::fs::write(root.join(".research/goal-other/report.md"), "other goal").unwrap();
         let target = root.join(".research/goal-new");
         migrate_workspace(root.to_str().unwrap(), target.to_str().unwrap()).unwrap();
-        assert_eq!(std::fs::read_to_string(target.join("evidence/source.txt")).unwrap(), "verified evidence");
+        assert_eq!(
+            std::fs::read_to_string(target.join("evidence/source.txt")).unwrap(),
+            "verified evidence"
+        );
         assert!(root.join("evidence/source.txt").exists());
         assert!(!target.join(".research").exists());
         std::fs::write(target.join("evidence/source.txt"), "continued research").unwrap();
         migrate_workspace(root.to_str().unwrap(), target.to_str().unwrap()).unwrap();
-        assert_eq!(std::fs::read_to_string(target.join("evidence/source.txt")).unwrap(), "continued research");
+        assert_eq!(
+            std::fs::read_to_string(target.join("evidence/source.txt")).unwrap(),
+            "continued research"
+        );
         let collision = root.join(".research/collision");
         std::fs::create_dir_all(&collision).unwrap();
         assert!(migrate_workspace(root.to_str().unwrap(), collision.to_str().unwrap()).is_err());
@@ -360,8 +477,12 @@ mod tests {
     #[test]
     fn understanding_resume_isolates_requests_revisions_inputs_and_phase() {
         let (mut store, _, _) = setup();
-        let first = store.create_research_request(1, None, "Compare storage engines").unwrap();
-        let second = store.create_research_request(1, None, "Compare network protocols").unwrap();
+        let first = store
+            .create_research_request(1, None, "Compare storage engines")
+            .unwrap();
+        let second = store
+            .create_research_request(1, None, "Compare network protocols")
+            .unwrap();
         let mut interrupted = store.prepare_request_plan(first).unwrap();
         interrupted.status = "Interrupted".into();
         interrupted.session_id = Some("first-understanding-session".into());
@@ -371,8 +492,10 @@ mod tests {
         unrelated.session_id = Some("second-understanding-session".into());
         store.push_run(unrelated);
         let next = store.prepare_request_plan(first).unwrap();
-        assert_eq!(store.resume_candidate(&next).unwrap().session_id.as_deref(),
-            Some("first-understanding-session"));
+        assert_eq!(
+            store.resume_candidate(&next).unwrap().session_id.as_deref(),
+            Some("first-understanding-session")
+        );
         let mut changed = next.clone();
         changed.planning_owner.as_mut().unwrap().revision += 1;
         assert!(store.resume_candidate(&changed).is_none());
@@ -478,16 +601,29 @@ mod tests {
         std::fs::create_dir_all(&source).unwrap();
         std::fs::write(source.join("report.md"), "preserved").unwrap();
         migrate_workspace(source.to_str().unwrap(), destination.to_str().unwrap()).unwrap();
-        assert_eq!(std::fs::read_to_string(destination.join(".workspace-migrated")).unwrap(), "../..");
+        assert_eq!(
+            std::fs::read_to_string(destination.join(".workspace-migrated")).unwrap(),
+            "../.."
+        );
         migrate_workspace(source.to_str().unwrap(), destination.to_str().unwrap()).unwrap();
         let moved = base.join("moved");
         std::fs::rename(&original, &moved).unwrap();
         let source = moved.join("project");
         let destination = source.join(".research/goal-1");
-        assert_eq!(migrated_workspace_source(&destination).unwrap(), source.canonicalize().unwrap().to_string_lossy());
+        assert_eq!(
+            migrated_workspace_source(&destination).unwrap(),
+            source.canonicalize().unwrap().to_string_lossy()
+        );
         migrate_workspace(source.to_str().unwrap(), destination.to_str().unwrap()).unwrap();
-        assert_eq!(std::fs::read_to_string(destination.join("report.md")).unwrap(), "preserved");
-        std::fs::write(destination.join(".workspace-migrated"), source.to_string_lossy().as_bytes()).unwrap();
+        assert_eq!(
+            std::fs::read_to_string(destination.join("report.md")).unwrap(),
+            "preserved"
+        );
+        std::fs::write(
+            destination.join(".workspace-migrated"),
+            source.to_string_lossy().as_bytes(),
+        )
+        .unwrap();
         migrate_workspace(source.to_str().unwrap(), destination.to_str().unwrap()).unwrap();
         std::fs::remove_dir_all(base).unwrap();
     }
@@ -496,10 +632,20 @@ mod tests {
 /// New markers are relative to their containing execution folder; old absolute markers remain readable.
 pub fn migrated_workspace_source(directory: &Path) -> Option<String> {
     let source = std::fs::read_to_string(directory.join(".workspace-migrated")).ok()?;
-    if source.is_empty() { return None; }
+    if source.is_empty() {
+        return None;
+    }
     let source = Path::new(&source);
-    let resolved = if source.is_absolute() { source.to_path_buf() } else { directory.join(source) };
-    Some(normalized_path(&resolved.to_string_lossy()).to_string_lossy().into_owned())
+    let resolved = if source.is_absolute() {
+        source.to_path_buf()
+    } else {
+        directory.join(source)
+    };
+    Some(
+        normalized_path(&resolved.to_string_lossy())
+            .to_string_lossy()
+            .into_owned(),
+    )
 }
 
 pub(crate) fn relative_migration_source(source: &Path, destination: &Path) -> PathBuf {
@@ -507,13 +653,25 @@ pub(crate) fn relative_migration_source(source: &Path, destination: &Path) -> Pa
     let destination = normalized_path(&destination.to_string_lossy());
     let source_parts: Vec<_> = source.components().collect();
     let destination_parts: Vec<_> = destination.components().collect();
-    let shared = source_parts.iter().zip(&destination_parts).take_while(|(a, b)| a == b).count();
+    let shared = source_parts
+        .iter()
+        .zip(&destination_parts)
+        .take_while(|(a, b)| a == b)
+        .count();
     // Different volume roots cannot be represented by a relative path.
-    if shared == 0 { return source; }
+    if shared == 0 {
+        return source;
+    }
     let mut relative = PathBuf::new();
-    for _ in shared..destination_parts.len() { relative.push(".."); }
-    for part in &source_parts[shared..] { relative.push(part.as_os_str()); }
-    if relative.as_os_str().is_empty() { relative.push("."); }
+    for _ in shared..destination_parts.len() {
+        relative.push("..");
+    }
+    for part in &source_parts[shared..] {
+        relative.push(part.as_os_str());
+    }
+    if relative.as_os_str().is_empty() {
+        relative.push(".");
+    }
     relative
 }
 
@@ -521,32 +679,61 @@ pub(crate) fn relative_migration_source(source: &Path, destination: &Path) -> Pa
 pub fn migrate_workspace(source: &str, destination: &str) -> Result<(), String> {
     let source = Path::new(source);
     let destination = Path::new(destination);
-    if migrated_workspace_source(destination).is_some_and(|previous| normalized_path(&previous) == normalized_path(&source.to_string_lossy())) { return Ok(()); }
-    if destination.exists() { return Err("The isolated workspace already exists without a migration marker; original files were preserved. Review the folder before retrying.".into()); }
-    let parent = destination.parent().ok_or("Invalid workspace destination")?;
+    if migrated_workspace_source(destination).is_some_and(|previous| {
+        normalized_path(&previous) == normalized_path(&source.to_string_lossy())
+    }) {
+        return Ok(());
+    }
+    if destination.exists() {
+        return Err("The isolated workspace already exists without a migration marker; original files were preserved. Review the folder before retrying.".into());
+    }
+    let parent = destination
+        .parent()
+        .ok_or("Invalid workspace destination")?;
     std::fs::create_dir_all(parent).map_err(|e| e.to_string())?;
-    let staging = parent.join(format!(".migration-{}-{}", std::process::id(), crate::opencode::new_session_id()));
+    let staging = parent.join(format!(
+        ".migration-{}-{}",
+        std::process::id(),
+        crate::opencode::new_session_id()
+    ));
     fn copy(source: &Path, target: &Path) -> std::io::Result<()> {
         std::fs::create_dir_all(target)?;
         for entry in std::fs::read_dir(source)? {
             let entry = entry?;
             let name = entry.file_name();
             // Do not recursively copy isolated workspaces or repository metadata.
-            if name == ".research" || name == ".git" { continue; }
+            if name == ".research" || name == ".git" {
+                continue;
+            }
             let kind = entry.file_type()?;
             if kind.is_symlink() {
-                return Err(std::io::Error::other(format!("Cannot safely migrate symbolic link: {}", entry.path().display())));
+                return Err(std::io::Error::other(format!(
+                    "Cannot safely migrate symbolic link: {}",
+                    entry.path().display()
+                )));
             }
-            if kind.is_dir() { copy(&entry.path(), &target.join(name))?; }
-            else if kind.is_file() { std::fs::copy(entry.path(), target.join(name))?; }
+            if kind.is_dir() {
+                copy(&entry.path(), &target.join(name))?;
+            } else if kind.is_file() {
+                std::fs::copy(entry.path(), target.join(name))?;
+            }
         }
         Ok(())
     }
     let result = (|| -> std::io::Result<()> {
         copy(source, &staging)?;
-        std::fs::write(staging.join(".workspace-migrated"), relative_migration_source(source, destination).to_string_lossy().as_bytes())?;
+        std::fs::write(
+            staging.join(".workspace-migrated"),
+            relative_migration_source(source, destination)
+                .to_string_lossy()
+                .as_bytes(),
+        )?;
         std::fs::rename(&staging, destination)
     })();
-    if result.is_err() { let _ = std::fs::remove_dir_all(&staging); }
-    result.map_err(|e| format!("Could not copy legacy workspace: {e}. Original files were preserved."))
+    if result.is_err() {
+        let _ = std::fs::remove_dir_all(&staging);
+    }
+    result.map_err(|e| {
+        format!("Could not copy legacy workspace: {e}. Original files were preserved.")
+    })
 }

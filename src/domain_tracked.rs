@@ -94,7 +94,10 @@ impl<T> TrackedVec<T> {
     where
         T: Clone,
     {
-        let index = self.items.iter().position(|item| (self.identity)(item) == key)?;
+        let index = self
+            .items
+            .iter()
+            .position(|item| (self.identity)(item) == key)?;
         self.dirty.mark_upsert(key);
         Some(&mut Arc::make_mut(&mut self.items)[index])
     }
@@ -118,7 +121,11 @@ impl<T> TrackedVec<T> {
         T: Clone,
     {
         let key = (self.identity)(&item);
-        if self.items.iter().any(|existing| (self.identity)(existing) == key) {
+        if self
+            .items
+            .iter()
+            .any(|existing| (self.identity)(existing) == key)
+        {
             self.dirty.violation = Some(format!(
                 "tracked collection already contains identity {key:?}"
             ));
@@ -133,7 +140,11 @@ impl<T> TrackedVec<T> {
         T: Clone,
     {
         let key = (self.identity)(&item);
-        if self.items.iter().any(|existing| (self.identity)(existing) == key) {
+        if self
+            .items
+            .iter()
+            .any(|existing| (self.identity)(existing) == key)
+        {
             self.dirty.violation = Some(format!(
                 "tracked collection already contains identity {key:?}"
             ));
@@ -155,9 +166,12 @@ impl<T> TrackedVec<T> {
     where
         T: Clone,
     {
-        if self.items.iter().enumerate().any(|(other, item)| {
-            other != index && (self.identity)(item) == key
-        }) {
+        if self
+            .items
+            .iter()
+            .enumerate()
+            .any(|(other, item)| other != index && (self.identity)(item) == key)
+        {
             self.dirty.violation = Some(format!(
                 "identity repair would duplicate tracked identity {key:?}"
             ));
@@ -196,7 +210,10 @@ impl<T> TrackedVec<T> {
     where
         T: Clone,
     {
-        let index = self.items.iter().position(|item| (self.identity)(item) == key)?;
+        let index = self
+            .items
+            .iter()
+            .position(|item| (self.identity)(item) == key)?;
         let item = Arc::make_mut(&mut self.items).remove(index);
         self.dirty.mark_delete(key);
         Some(item)
@@ -929,7 +946,9 @@ pub(crate) fn run_new() -> TrackedVec<crate::domain::AgentRun> {
     )
 }
 
-pub(crate) fn automation_from(items: Vec<crate::automation::AutomationDefinition>) -> Result<TrackedVec<crate::automation::AutomationDefinition>, String> {
+pub(crate) fn automation_from(
+    items: Vec<crate::automation::AutomationDefinition>,
+) -> Result<TrackedVec<crate::automation::AutomationDefinition>, String> {
     TrackedVec::from_vec(
         items,
         |definition| EntityKey::Automation(definition.id),
@@ -937,7 +956,9 @@ pub(crate) fn automation_from(items: Vec<crate::automation::AutomationDefinition
     )
 }
 
-pub(crate) fn occurrence_from(items: Vec<crate::automation::AutomationOccurrence>) -> Result<TrackedVec<crate::automation::AutomationOccurrence>, String> {
+pub(crate) fn occurrence_from(
+    items: Vec<crate::automation::AutomationOccurrence>,
+) -> Result<TrackedVec<crate::automation::AutomationOccurrence>, String> {
     TrackedVec::from_vec(
         items,
         |occurrence| EntityKey::Occurrence(occurrence.id),
@@ -945,7 +966,9 @@ pub(crate) fn occurrence_from(items: Vec<crate::automation::AutomationOccurrence
     )
 }
 
-pub(crate) fn run_from(items: Vec<crate::domain::AgentRun>) -> Result<TrackedVec<crate::domain::AgentRun>, String> {
+pub(crate) fn run_from(
+    items: Vec<crate::domain::AgentRun>,
+) -> Result<TrackedVec<crate::domain::AgentRun>, String> {
     TrackedVec::from_vec(
         items,
         |run| EntityKey::Run(run.id),
@@ -956,7 +979,7 @@ pub(crate) fn run_from(items: Vec<crate::domain::AgentRun>) -> Result<TrackedVec
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::domain::{Priority, Stage, Task};
+    use crate::domain::{Stage, Task};
 
     fn task(id: u64, title: &str) -> Task {
         Task {
@@ -969,10 +992,7 @@ mod tests {
             topic_id: None,
             approved_plan: None,
             stage: Stage::Backlog,
-            priority: Priority::None,
             labels: Vec::new(),
-            cycle: None,
-            bucket: String::new(),
             due_date: String::new(),
             parent_id: None,
             comments: Vec::new(),
@@ -1030,7 +1050,11 @@ mod tests {
             vec![EntityChange::Delete(EntityKey::Task(2))]
         );
         assert!(clone.epoch() > base_epoch);
-        assert_eq!(base.epoch(), base_epoch, "clone mutation must not advance base epoch");
+        assert_eq!(
+            base.epoch(),
+            base_epoch,
+            "clone mutation must not advance base epoch"
+        );
     }
 
     #[test]
@@ -1100,12 +1124,20 @@ mod tests {
         let mut clone = base.clone();
         assert!(clone.swap_tracked(0, 2));
         clone.retain_tracked(|task| task.id != 2);
-        assert_eq!(base.iter().map(|task| task.id).collect::<Vec<_>>(), vec![1, 2, 3]);
-        assert_eq!(clone.iter().map(|task| task.id).collect::<Vec<_>>(), vec![3, 1]);
-        assert!(clone
-            .pending_changes()
-            .unwrap()
-            .contains(&EntityChange::Delete(EntityKey::Task(2))));
+        assert_eq!(
+            base.iter().map(|task| task.id).collect::<Vec<_>>(),
+            vec![1, 2, 3]
+        );
+        assert_eq!(
+            clone.iter().map(|task| task.id).collect::<Vec<_>>(),
+            vec![3, 1]
+        );
+        assert!(
+            clone
+                .pending_changes()
+                .unwrap()
+                .contains(&EntityChange::Delete(EntityKey::Task(2)))
+        );
         assert!(base.pending_changes().unwrap().is_empty());
     }
 
@@ -1184,7 +1216,10 @@ mod tests {
             guard.id = 2;
         }
         assert!(vec.pending_changes().is_err());
-        assert!(vec.pending_changes().is_err(), "violation must remain sticky");
+        assert!(
+            vec.pending_changes().is_err(),
+            "violation must remain sticky"
+        );
         vec.clear_dirty();
         assert!(vec.pending_changes().is_ok());
     }
@@ -1200,12 +1235,12 @@ mod tests {
         vec.replace_tracked(vec![task(1, "renamed"), task(3, "third")]);
         let changes = vec.pending_changes().unwrap();
         assert!(changes.contains(&EntityChange::Delete(EntityKey::Task(2))));
-        assert!(changes.contains(&EntityChange::Upsert(EntityPayload::Task(task(
-            1, "renamed"
-        )))));
-        assert!(changes.contains(&EntityChange::Upsert(EntityPayload::Task(task(
-            3, "third"
-        )))));
+        assert!(
+            changes.contains(&EntityChange::Upsert(EntityPayload::Task(task(
+                1, "renamed"
+            ))))
+        );
+        assert!(changes.contains(&EntityChange::Upsert(EntityPayload::Task(task(3, "third")))));
     }
 
     #[test]
@@ -1219,7 +1254,10 @@ mod tests {
         vec.replace_tracked(vec![task(2, "second"), task(2, "duplicate")]);
         assert_eq!(vec.len(), 1);
         assert_eq!(vec[0].id, 1);
-        assert!(vec.is_dirty(), "duplicate replacement is a sticky violation");
+        assert!(
+            vec.is_dirty(),
+            "duplicate replacement is a sticky violation"
+        );
         assert!(vec.pending_changes().is_err());
     }
 

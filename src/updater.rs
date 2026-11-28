@@ -105,7 +105,11 @@ pub fn version() -> Option<String> {
     unsafe {
         let value = native::planning_updater_version();
         if !value.is_null() {
-            return Some(std::ffi::CStr::from_ptr(value).to_string_lossy().into_owned());
+            return Some(
+                std::ffi::CStr::from_ptr(value)
+                    .to_string_lossy()
+                    .into_owned(),
+            );
         }
     }
     None
@@ -116,7 +120,11 @@ extern "C" fn changed(value: *const std::ffi::c_char) {
     let version = if value.is_null() {
         None
     } else {
-        Some(unsafe { std::ffi::CStr::from_ptr(value) }.to_string_lossy().into_owned())
+        Some(
+            unsafe { std::ffi::CStr::from_ptr(value) }
+                .to_string_lossy()
+                .into_owned(),
+        )
     };
     if let Ok(guard) = SENDER.lock()
         && let Some(sender) = guard.as_ref()

@@ -15,10 +15,16 @@ impl ArchiveTarget {
                 let mut current = Some(id);
                 let mut seen = std::collections::HashSet::new();
                 while let Some(id) = current {
-                    if id == root { return true; }
-                    if !seen.insert(id) { break; }
-                    current = store.task(id).and_then(|t| t.parent_id.or_else(||
-                        t.research.as_ref().map(|r| r.goal_id).filter(|g| *g != id)));
+                    if id == root {
+                        return true;
+                    }
+                    if !seen.insert(id) {
+                        break;
+                    }
+                    current = store.task(id).and_then(|t| {
+                        t.parent_id
+                            .or_else(|| t.research.as_ref().map(|r| r.goal_id).filter(|g| *g != id))
+                    });
                 }
                 false
             }
@@ -40,9 +46,12 @@ impl TaskApp {
         if !self.storage_error.is_empty() {
             return Err(self.storage_error.clone());
         }
-        if self.live_has_pending_receipts() || self.pending_dispatch.is_some()
-            || self.pending_dispatch_reserved.is_some() || self.dispatch_awaiting.is_some()
-            || self.pending_material_job.is_some() || self.pending_material_edit.is_some()
+        if self.live_has_pending_receipts()
+            || self.pending_dispatch.is_some()
+            || self.pending_dispatch_reserved.is_some()
+            || self.dispatch_awaiting.is_some()
+            || self.pending_material_job.is_some()
+            || self.pending_material_edit.is_some()
             || self.publishing_job.is_some()
         {
             return Err("Wait for pending saves, submissions, material changes and publishing to finish before deleting.".into());
@@ -50,12 +59,25 @@ impl TaskApp {
         Ok(())
     }
 
-    pub(crate) fn request_delete_archived(&mut self, target: ArchiveTarget, w: &mut Window, cx: &mut Context<Self>) {
-        let reviewed = match self.deletion_ready().and_then(|_| self.store.archive_deletion(target)) {
+    pub(crate) fn request_delete_archived(
+        &mut self,
+        target: ArchiveTarget,
+        w: &mut Window,
+        cx: &mut Context<Self>,
+    ) {
+        let reviewed = match self
+            .deletion_ready()
+            .and_then(|_| self.store.archive_deletion(target))
+        {
             Ok(reviewed) => reviewed,
-            Err(error) => { self.show_save_error(error, cx); return; }
+            Err(error) => {
+                self.show_save_error(error, cx);
+                return;
+            }
         };
-        if w.has_active_prompt() { return; }
+        if w.has_active_prompt() {
+            return;
+        }
         let topic_note = if reviewed.empty_topics.is_empty() {
             String::new()
         } else if reviewed.empty_topics.len() == 1 {
@@ -67,8 +89,14 @@ impl TaskApp {
                 " The archived topics left empty by this deletion are removed as well.",
             )
         };
-        let detail = crate::i18n::tr_string(format!("{}\nPermanently delete {} tasks, {} planning requests and {} runs, including saved results and local publication snapshots. This cannot be undone. Exported files, original materials and remote pages are not removed.{}",
-            reviewed.name, reviewed.tasks.len(), reviewed.requests.len(), reviewed.runs.len(), topic_note));
+        let detail = crate::i18n::tr_string(format!(
+            "{}\nPermanently delete {} tasks, {} planning requests and {} runs, including saved results and local publication snapshots. This cannot be undone. Exported files, original materials and remote pages are not removed.{}",
+            reviewed.name,
+            reviewed.tasks.len(),
+            reviewed.requests.len(),
+            reviewed.runs.len(),
+            topic_note
+        ));
         let cancel = crate::i18n::tr_string("Cancel");
         let delete = crate::i18n::tr_string("Delete permanently");
         let answers = [cancel.as_str(), delete.as_str()];
@@ -80,21 +108,35 @@ impl TaskApp {
             cx,
         );
         let workspace = self.live_workspace;
-        let path = self.storage.as_ref().map(|storage| storage.path().to_path_buf());
+        let path = self
+            .storage
+            .as_ref()
+            .map(|storage| storage.path().to_path_buf());
         cx.spawn(async move |this, cx| {
             if answer.await == Ok(1) {
                 let _ = this.update(cx, |a, cx| {
-                    if a.live_workspace != workspace || a.storage.as_ref().map(|storage| storage.path().to_path_buf()) != path {
+                    if a.live_workspace != workspace
+                        || a.storage
+                            .as_ref()
+                            .map(|storage| storage.path().to_path_buf())
+                            != path
+                    {
                         a.show_save_error("The workspace changed. Review the deletion again.", cx);
                         return;
                     }
                     a.confirm_delete_archived(target, reviewed, cx);
                 });
             }
-        }).detach();
+        })
+        .detach();
     }
 
-    pub(crate) fn confirm_delete_archived(&mut self, target: ArchiveTarget, reviewed: crate::archive_delete::ArchiveDeletion, cx: &mut Context<Self>) {
+    pub(crate) fn confirm_delete_archived(
+        &mut self,
+        target: ArchiveTarget,
+        reviewed: crate::archive_delete::ArchiveDeletion,
+        cx: &mut Context<Self>,
+    ) {
         if let Err(error) = self.deletion_ready() {
             self.show_save_error(error, cx);
             return;
@@ -104,12 +146,22 @@ impl TaskApp {
             self.show_save_error(error, cx);
             return;
         }
-        let acceptance = match self.save_staged_store(&staged, crate::live_save_app::LiveCompletion::ArchiveDeleted, cx) {
+        let acceptance = match self.save_staged_store(
+            &staged,
+            crate::live_save_app::LiveCompletion::ArchiveDeleted,
+            cx,
+        ) {
             Ok(acceptance) => acceptance,
-            Err(error) => { self.show_save_error(error, cx); return; }
+            Err(error) => {
+                self.show_save_error(error, cx);
+                return;
+            }
         };
-        if !self.live_persistence_active() { self.adopt_saved_store(staged); }
-        self.research_sequences.retain(|id| !reviewed.tasks.contains(id));
+        if !self.live_persistence_active() {
+            self.adopt_saved_store(staged);
+        }
+        self.research_sequences
+            .retain(|id| !reviewed.tasks.contains(id));
         if let Some(batch) = &mut self.todo_batch {
             batch.items.retain(|id| !reviewed.tasks.contains(id));
             batch.done_items.retain(|id| !reviewed.tasks.contains(id));
@@ -117,10 +169,13 @@ impl TaskApp {
             batch.failed_tasks.retain(|id| !reviewed.tasks.contains(id));
             batch.completed = batch.done_items.len();
         }
-        self.run_body_state.retain(|id, _| !reviewed.runs.contains(id));
+        self.run_body_state
+            .retain(|id, _| !reviewed.runs.contains(id));
         self.pending_result_navigation = None;
         self.set_scope_identity(crate::app::Scope::Archive);
-        if !acceptance.is_durable() { self.toast = "Deleting archived research…".into(); }
+        if !acceptance.is_durable() {
+            self.toast = "Deleting archived research…".into();
+        }
         cx.notify();
     }
 
@@ -131,11 +186,19 @@ impl TaskApp {
             cx,
         );
     }
-    pub(crate) fn request_archive(&mut self, target: ArchiveTarget, w: &mut Window, cx: &mut Context<Self>) {
+    pub(crate) fn request_archive(
+        &mut self,
+        target: ArchiveTarget,
+        w: &mut Window,
+        cx: &mut Context<Self>,
+    ) {
         // Automation periods and their steps are owned by the automation, not by
         // Research. They are archived with their automation, never individually.
         if let ArchiveTarget::Task(id) = target
-            && self.store.task(id).is_some_and(|task| task.automation_id.is_some())
+            && self
+                .store
+                .task(id)
+                .is_some_and(|task| task.automation_id.is_some())
         {
             self.toast = "Automation steps are archived with their automation.".into();
             cx.notify();
@@ -146,12 +209,23 @@ impl TaskApp {
             self.confirm_archive(target, cx);
             return;
         }
-        if w.has_active_prompt() { return; }
+        if w.has_active_prompt() {
+            return;
+        }
         let name = match target {
-            ArchiveTarget::Topic(id) => self.store.topics().iter().find(|t| t.id == id).map(|t| t.display_name()),
+            ArchiveTarget::Topic(id) => self
+                .store
+                .topics()
+                .iter()
+                .find(|t| t.id == id)
+                .map(|t| t.display_name()),
             ArchiveTarget::Task(id) => self.store.task(id).map(|t| t.title.clone()),
-        }.unwrap_or_default();
-        let detail = crate::i18n::tr_string(format!("{name}\n{} running, queued or interrupted attempts will be stopped. Pending steps will not start. Saved results will be retained.", runs.len()));
+        }
+        .unwrap_or_default();
+        let detail = crate::i18n::tr_string(format!(
+            "{name}\n{} running, queued or interrupted attempts will be stopped. Pending steps will not start. Saved results will be retained.",
+            runs.len()
+        ));
         let cancel = crate::i18n::tr_string("Cancel");
         let stop = crate::i18n::tr_string("Stop and archive");
         let answers = [cancel.as_str(), stop.as_str()];
@@ -166,7 +240,8 @@ impl TaskApp {
             if answer.await == Ok(1) {
                 let _ = this.update(cx, |a, cx| a.confirm_archive(target, cx));
             }
-        }).detach();
+        })
+        .detach();
     }
     pub(crate) fn confirm_archive(&mut self, target: ArchiveTarget, cx: &mut Context<Self>) {
         // Re-evaluate after confirmation: execution may have advanced while the dialog was open.
@@ -191,15 +266,20 @@ impl TaskApp {
         if outcome.is_none() {
             return;
         }
-        self.research_sequences.retain(|g| !target.contains(&self.store, *g));
+        self.research_sequences
+            .retain(|g| !target.contains(&self.store, *g));
         if let Some(batch) = &mut self.todo_batch {
             batch.items.retain(|g| !target.contains(&self.store, *g));
             batch.run_ids.retain(|id, _| !runs.contains(id));
             batch.done_items.retain(|g| batch.items.contains(g));
             batch.failed_items.retain(|g| batch.items.contains(g));
-            batch.failed_tasks.retain(|id| !target.contains(&self.store, *id));
+            batch
+                .failed_tasks
+                .retain(|id| !target.contains(&self.store, *id));
             batch.completed = batch.done_items.len();
-            if batch.items.is_empty() { batch.state = crate::batch::BatchState::Finished; }
+            if batch.items.is_empty() {
+                batch.state = crate::batch::BatchState::Finished;
+            }
         }
         self.prune_archived_recovery_queue();
         if let Err(error) = self.live_can_accept_auxiliary() {
@@ -211,24 +291,39 @@ impl TaskApp {
         let mut remote = vec![];
         for id in runs {
             let owned = self.active_runs.iter().any(|a| a.id == id);
-            if owned { self.cancel_run_id(id, cx); }
+            if owned {
+                self.cancel_run_id(id, cx);
+            }
             let mut run = self.store.run_mut(id).unwrap();
-            if !run.started_at.is_empty() && (run.session_id.is_some() || run.agent == "Codex")
-                && !(owned && run.agent == "Codex") { remote.push(run.clone()); }
-            run.status = if owned || remote.last().is_some_and(|r| r.id == id) { "Cancelling" } else { "Cancelled" }.into();
-            if run.status == "Cancelled" { run.ended_at = Some(opencode::timestamp()); }
-            run.logs.push("[archive] Stop requested; queued and subsequent work disabled.".into());
+            if !run.started_at.is_empty()
+                && (run.session_id.is_some() || run.agent == "Codex")
+                && !(owned && run.agent == "Codex")
+            {
+                remote.push(run.clone());
+            }
+            run.status = if owned || remote.last().is_some_and(|r| r.id == id) {
+                "Cancelling"
+            } else {
+                "Cancelled"
+            }
+            .into();
+            if run.status == "Cancelled" {
+                run.ended_at = Some(opencode::timestamp());
+            }
+            run.logs
+                .push("[archive] Stop requested; queued and subsequent work disabled.".into());
         }
         // Persist the stop intents together with the durable archive decision.
         // Stopping a live process remains a safety action even while the write
         // is pending; it never claims that the archive decision is saved.
-        if let Err(error) = self.save_current_store_durably(
-            crate::live_save_app::LiveCompletion::None,
-            cx,
-        ) {
+        if let Err(error) =
+            self.save_current_store_durably(crate::live_save_app::LiveCompletion::None, cx)
+        {
             self.storage_error = error;
         }
-        if remote.is_empty() { return; }
+        if remote.is_empty() {
+            return;
+        }
         let executable = std::path::PathBuf::from(&self.store.opencode_path());
         let work = cx.background_executor().spawn(async move {
             remote.into_iter().map(|run| {
@@ -276,17 +371,32 @@ mod tests {
     #[test]
     fn archive_scope_includes_descendants_and_planning_but_not_other_topics() {
         let mut store = Store::empty();
-        let goal = store.create_research_goal("Goal".into(), "Brief".into(), 1).unwrap();
+        let goal = store
+            .create_research_goal("Goal".into(), "Brief".into(), 1)
+            .unwrap();
         let topic = store.task_topic(goal).unwrap().id;
-        let child = store.create_task("Child", 1, crate::domain::Stage::Planned, Some(goal)).unwrap();
-        let nested = store.create_task("Nested", 1, crate::domain::Stage::Planned, Some(child)).unwrap();
-        let other = store.create_research_goal("Other".into(), "Brief".into(), 1).unwrap();
+        let child = store
+            .create_task("Child", 1, crate::domain::Stage::InProgress, Some(goal))
+            .unwrap();
+        let nested = store
+            .create_task("Nested", 1, crate::domain::Stage::InProgress, Some(child))
+            .unwrap();
+        let other = store
+            .create_research_goal("Other".into(), "Brief".into(), 1)
+            .unwrap();
         assert!(ArchiveTarget::Task(goal).contains(&store, nested));
         assert!(ArchiveTarget::Topic(topic).contains(&store, nested));
         assert!(!ArchiveTarget::Topic(topic).contains(&store, other));
-        let request = store.create_research_request(1, Some(topic), "Research this topic").unwrap();
+        let request = store
+            .create_research_request(1, Some(topic), "Research this topic")
+            .unwrap();
         store.set_topic_archived(topic, true).unwrap();
-        assert!(store.prepare_request_plan(request).unwrap_err().contains("archived"));
+        assert!(
+            store
+                .prepare_request_plan(request)
+                .unwrap_err()
+                .contains("archived")
+        );
         assert!(store.prepare_run(nested).is_err());
         assert!(store.ready_research_tasks(goal).is_err());
         store.set_topic_archived(topic, false).unwrap();

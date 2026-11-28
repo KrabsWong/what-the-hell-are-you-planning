@@ -152,7 +152,6 @@ pub(crate) struct TaskFields {
     pub title: String,
     pub description: String,
     pub labels: Vec<String>,
-    pub cycle: Option<String>,
     pub due_date: String,
 }
 
@@ -162,7 +161,6 @@ impl TaskFields {
             title: task.title.clone(),
             description: task.description.clone(),
             labels: task.labels.clone(),
-            cycle: task.cycle.clone(),
             due_date: task.due_date.clone(),
         }
     }
@@ -171,7 +169,6 @@ impl TaskFields {
         task.title = self.title.clone();
         task.description = self.description.clone();
         task.labels = self.labels.clone();
-        task.cycle = self.cycle.clone();
         task.due_date = self.due_date.clone();
     }
 }
@@ -522,9 +519,7 @@ impl Command {
                 format!("dispatch:{occurrence:?}:run:{}", run.id),
             ),
             Self::RequeueRun {
-                run_id,
-                occurrence,
-                ..
+                run_id, occurrence, ..
             } => CommandId::new(
                 "requeue_run",
                 *occurrence,
@@ -902,7 +897,8 @@ impl Store {
                         .ok_or_else(|| CommandError::Rejected("Automation not found.".into()))?;
                     if definition.shape.is_quick() {
                         return Err(CommandError::Rejected(
-                            "Quick tasks do not publish reports. Choose a Research automation.".into(),
+                            "Quick tasks do not publish reports. Choose a Research automation."
+                                .into(),
                         ));
                     }
                     definition.policy.sync_final_report = *enabled;
@@ -1138,7 +1134,12 @@ fn cancel_queued_runs(store: &mut Store, occurrences: &[u64]) -> Vec<u64> {
         })
         .map(|run| run.id)
         .collect();
-    let ids: Vec<u64> = store.runs().iter().filter(|run| runs.contains(&run.id)).map(|run| run.id).collect();
+    let ids: Vec<u64> = store
+        .runs()
+        .iter()
+        .filter(|run| runs.contains(&run.id))
+        .map(|run| run.id)
+        .collect();
     for run_id in ids {
         let mut run = store.run_mut(run_id).unwrap();
         run.status = "Cancelled".into();
@@ -1229,7 +1230,6 @@ fn apply_edit(staged: &mut Store, edit: &EditCommand) -> Result<CommandOutcome, 
                 title: title.trim().to_string(),
                 description: description.clone(),
                 labels: labels.clone(),
-                cycle: before.cycle.clone(),
                 due_date: due_date.trim().to_string(),
             };
             if before == after {
@@ -1554,7 +1554,9 @@ fn apply_dispatch_request_plan(
         .research_requests()
         .iter()
         .find(|request| request.id == request_id)
-        .ok_or_else(|| CommandError::Rejected("The planning request is no longer available.".into()))?;
+        .ok_or_else(|| {
+            CommandError::Rejected("The planning request is no longer available.".into())
+        })?;
     let owner = run.planning_owner.as_ref().ok_or_else(|| {
         CommandError::Rejected("The planning run has no immutable request owner.".into())
     })?;
@@ -1577,9 +1579,11 @@ fn apply_dispatch_request_plan(
             "The planning project is no longer available.".into(),
         ));
     }
-    if staged.request_attempts(request_id).iter().any(|attempt| {
-        matches!(attempt.status.as_str(), "Queued" | "Running" | "Cancelling")
-    }) {
+    if staged
+        .request_attempts(request_id)
+        .iter()
+        .any(|attempt| matches!(attempt.status.as_str(), "Queued" | "Running" | "Cancelling"))
+    {
         return Err(CommandError::Rejected(
             "This request already has an active planning attempt.".into(),
         ));
@@ -1589,8 +1593,7 @@ fn apply_dispatch_request_plan(
         .map_err(CommandError::Rejected)?;
     if run.input_signature != signature {
         return Err(CommandError::Rejected(
-            "The planning request inputs changed before dispatch; generate the plan again."
-                .into(),
+            "The planning request inputs changed before dispatch; generate the plan again.".into(),
         ));
     }
     if let Some(automation) = request.automation_id
@@ -1609,8 +1612,7 @@ fn apply_dispatch_request_plan(
     }
     let run_id = run.id;
     staged.push_run(run);
-    if let Some(request) = staged.request_mut(request_id)
-    {
+    if let Some(request) = staged.request_mut(request_id) {
         request.planning_run_id = Some(run_id);
     }
     Ok(CommandOutcome {
@@ -1638,7 +1640,9 @@ fn apply_dispatch_regeneration(
         .runs()
         .iter()
         .find(|source| source.id == source_id)
-        .ok_or_else(|| CommandError::Rejected("The report source is no longer available.".into()))?;
+        .ok_or_else(|| {
+            CommandError::Rejected("The report source is no longer available.".into())
+        })?;
     if source.status != "Succeeded"
         || source.research_kind != Some(ResearchKind::Advise)
         || source.output.trim().is_empty()
@@ -1656,8 +1660,7 @@ fn apply_dispatch_regeneration(
         && !crate::research::is_historical_report_regeneration(&run)
     {
         return Err(CommandError::Rejected(
-            "The report inputs changed; complete the updated research before regenerating."
-                .into(),
+            "The report inputs changed; complete the updated research before regenerating.".into(),
         ));
     }
     if staged.research_pending_approval(source.task_id) {
@@ -1751,7 +1754,10 @@ fn apply_requeue_run(
             "The committed run is older than the allowed start delay.".into(),
         ));
     }
-    if occurrence.deadline_at.is_some_and(|deadline| now >= deadline) {
+    if occurrence
+        .deadline_at
+        .is_some_and(|deadline| now >= deadline)
+    {
         return Err(CommandError::Rejected(
             "The committed run has reached its execution time limit.".into(),
         ));
@@ -1786,8 +1792,7 @@ fn apply_requeue_run(
     let goal = staged
         .owning_research_goal(run.task_id)
         .ok_or_else(|| CommandError::Rejected("The committed run's task has no goal.".into()))?;
-    if !(occurrence.research_goal_id == Some(goal)
-        || occurrence.research_goal_ids.contains(&goal))
+    if !(occurrence.research_goal_id == Some(goal) || occurrence.research_goal_ids.contains(&goal))
     {
         return Err(CommandError::Rejected(
             "The committed run's task belongs to another automation period.".into(),
@@ -2121,7 +2126,8 @@ mod tests {
     fn fixture_store() -> Store {
         let mut store = Store::empty();
         store.set_default_model("test/model".into());
-        store.project_at_mut(0).unwrap().directory = std::env::temp_dir().to_string_lossy().into_owned();
+        store.project_at_mut(0).unwrap().directory =
+            std::env::temp_dir().to_string_lossy().into_owned();
         store.research_config_mut().models = [
             "test/model".into(),
             "test/model".into(),
@@ -2264,7 +2270,7 @@ mod tests {
         let goal = live
             .create_research_goal("Goal".into(), "Brief".into(), 1)
             .unwrap();
-        live.set_stage(goal, Stage::Planned).unwrap();
+        live.set_stage(goal, Stage::InProgress).unwrap();
         live.simulate_run(1).unwrap();
         let history = live.runs().to_vec();
         let before_stage = live.task(goal).unwrap().stage;
@@ -2389,7 +2395,11 @@ mod tests {
         let fresh = reprepare(pending, &live).unwrap();
         commit_prepared(&sink, &mut live, &mut last_saved, fresh).unwrap();
         assert_eq!(live.task(1).unwrap().title, "Queued edit");
-        assert_eq!(live.runs(), history, "reprepare must not drop the newer run");
+        assert_eq!(
+            live.runs(),
+            history,
+            "reprepare must not drop the newer run"
+        );
     }
 
     #[test]
@@ -2433,7 +2443,11 @@ mod tests {
         let history = store.runs().to_vec();
         let prepared = prepare_dispatch(&store, Some(occ.id), run.clone()).unwrap();
 
-        assert_eq!(store.runs(), history, "prepare must not mutate the original");
+        assert_eq!(
+            store.runs(),
+            history,
+            "prepare must not mutate the original"
+        );
         assert_eq!(prepared.staged.runs().len(), history.len() + 1);
         assert_eq!(
             prepared.staged.occurrence(occ.id).unwrap().run_ids,
@@ -2581,7 +2595,13 @@ mod tests {
 
         let prepared = prepare_dispatch(&store, Some(occ.id), retry.clone()).unwrap();
         assert_eq!(
-            prepared.staged.runs().iter().find(|run| run.id == interrupted_id).unwrap().status,
+            prepared
+                .staged
+                .runs()
+                .iter()
+                .find(|run| run.id == interrupted_id)
+                .unwrap()
+                .status,
             "Cancelled"
         );
         assert_eq!(
@@ -2644,7 +2664,11 @@ mod tests {
             .prepare_command(command.id(), CommandClass::StartOrExtend, command)
             .unwrap();
 
-        assert_eq!(store.automation(1), Some(&before), "prepare must not mutate the original");
+        assert_eq!(
+            store.automation(1),
+            Some(&before),
+            "prepare must not mutate the original"
+        );
         let after = prepared.staged.automation(1).unwrap();
         assert!(after.policy.notify_on_completion);
         assert_eq!(after.version, before.version);
@@ -2676,9 +2700,11 @@ mod tests {
             id: 2,
             enabled: true,
         };
-        assert!(store
-            .prepare_command(command.id(), CommandClass::StartOrExtend, command)
-            .is_err());
+        assert!(
+            store
+                .prepare_command(command.id(), CommandClass::StartOrExtend, command)
+                .is_err()
+        );
     }
 
     #[test]

@@ -122,7 +122,10 @@ pub fn run() {
                     app.read(cx).store.interface_language(),
                     crate::i18n::InterfaceLanguage::SimplifiedChinese
                 );
-                assert_eq!(crate::i18n::active(), crate::i18n::InterfaceLanguage::SimplifiedChinese);
+                assert_eq!(
+                    crate::i18n::active(),
+                    crate::i18n::InterfaceLanguage::SimplifiedChinese
+                );
                 assert_eq!(
                     Storage::new(path.clone())
                         .load()
@@ -139,14 +142,22 @@ pub fn run() {
                 assert_eq!(crate::i18n::tr("Settings"), "设置");
             })
             .unwrap();
-            screenshot(&mut cx, handle, &directory, "00-settings-simplified-chinese.png");
+            screenshot(
+                &mut cx,
+                handle,
+                &directory,
+                "00-settings-simplified-chinese.png",
+            );
             profile_menu(&mut cx, handle, "interface-language-picker", 0);
             cx.update_window(handle, |_, w, cx| {
                 assert_eq!(
                     app.read(cx).store.interface_language(),
                     crate::i18n::InterfaceLanguage::English
                 );
-                assert_eq!(crate::i18n::active(), crate::i18n::InterfaceLanguage::English);
+                assert_eq!(
+                    crate::i18n::active(),
+                    crate::i18n::InterfaceLanguage::English
+                );
                 w.render_frame(cx);
                 assert_eq!(w.find("interface-language-picker").label(), Some("English"));
                 w.scroll(
@@ -182,7 +193,14 @@ pub fn run() {
                 for limit in 4..=10 {
                     click(w, cx, "model-settings-scroll", "concurrency-increase");
                     assert_eq!(app.read(cx).store.concurrency_limit(), limit);
-                    assert_eq!(Storage::new(path.clone()).load().unwrap().unwrap().concurrency_limit(), limit);
+                    assert_eq!(
+                        Storage::new(path.clone())
+                            .load()
+                            .unwrap()
+                            .unwrap()
+                            .concurrency_limit(),
+                        limit
+                    );
                 }
                 click(w, cx, "model-settings-scroll", "concurrency-increase");
                 assert_eq!(app.read(cx).store.concurrency_limit(), 10);
@@ -194,7 +212,14 @@ pub fn run() {
                 assert_eq!(app.read(cx).store.concurrency_limit(), 1);
                 click(w, cx, "model-settings-scroll", "concurrency-increase");
                 click(w, cx, "model-settings-scroll", "concurrency-increase");
-                assert_eq!(Storage::new(path.clone()).load().unwrap().unwrap().concurrency_limit(), 3);
+                assert_eq!(
+                    Storage::new(path.clone())
+                        .load()
+                        .unwrap()
+                        .unwrap()
+                        .concurrency_limit(),
+                    3
+                );
                 // Automation periods have their own persisted pool.
                 w.scroll(
                     "model-settings-scroll",
@@ -203,7 +228,12 @@ pub fn run() {
                 );
                 assert_eq!(app.read(cx).store.automation_concurrency_limit(), 2);
                 for limit in 3..=10 {
-                    click(w, cx, "model-settings-scroll", "automation-concurrency-increase");
+                    click(
+                        w,
+                        cx,
+                        "model-settings-scroll",
+                        "automation-concurrency-increase",
+                    );
                     assert_eq!(app.read(cx).store.automation_concurrency_limit(), limit);
                     assert_eq!(
                         Storage::new(path.clone())
@@ -214,15 +244,35 @@ pub fn run() {
                         limit
                     );
                 }
-                click(w, cx, "model-settings-scroll", "automation-concurrency-increase");
+                click(
+                    w,
+                    cx,
+                    "model-settings-scroll",
+                    "automation-concurrency-increase",
+                );
                 assert_eq!(app.read(cx).store.automation_concurrency_limit(), 10);
                 for limit in (1..10).rev() {
-                    click(w, cx, "model-settings-scroll", "automation-concurrency-decrease");
+                    click(
+                        w,
+                        cx,
+                        "model-settings-scroll",
+                        "automation-concurrency-decrease",
+                    );
                     assert_eq!(app.read(cx).store.automation_concurrency_limit(), limit);
                 }
-                click(w, cx, "model-settings-scroll", "automation-concurrency-decrease");
+                click(
+                    w,
+                    cx,
+                    "model-settings-scroll",
+                    "automation-concurrency-decrease",
+                );
                 assert_eq!(app.read(cx).store.automation_concurrency_limit(), 1);
-                click(w, cx, "model-settings-scroll", "automation-concurrency-increase");
+                click(
+                    w,
+                    cx,
+                    "model-settings-scroll",
+                    "automation-concurrency-increase",
+                );
                 assert_eq!(
                     Storage::new(path.clone())
                         .load()
@@ -231,7 +281,8 @@ pub fn run() {
                         .automation_concurrency_limit(),
                     2
                 );
-            }).unwrap();
+            })
+            .unwrap();
             cx.update_window(handle, |_, w, cx| {
                 w.within("settings-tabs").click(1usize, cx);
                 w.render_frame(cx);
@@ -245,7 +296,10 @@ pub fn run() {
                 click(w, cx, "model-settings-scroll", "research-global-model");
                 assert!(app.read(cx).research_model_picker.is_some());
                 w.click("research-global-model", cx);
-                assert!(app.read(cx).research_model_picker.is_some(), "Input clicks keep its menu open");
+                assert!(
+                    app.read(cx).research_model_picker.is_some(),
+                    "Input clicks keep its menu open"
+                );
                 w.input("missing-provider", cx);
                 w.press("escape", cx);
                 assert!(w.try_find("save-research-settings").is_none());
@@ -255,9 +309,17 @@ pub fn run() {
                 w.press("cmd-a", cx);
                 w.input("qa/original", cx);
                 w.press("enter", cx);
-            }).unwrap();
+            })
+            .unwrap();
             cx.update_window(handle, |_, w, cx| {
-                assert_eq!(Storage::new(path.clone()).load().unwrap().unwrap().default_model(), "qa/original");
+                assert_eq!(
+                    Storage::new(path.clone())
+                        .load()
+                        .unwrap()
+                        .unwrap()
+                        .default_model(),
+                    "qa/original"
+                );
                 app.update(cx, |a, _| {
                     a.available_models
                         .extend((0..30).map(|i| format!("qa/scroll-{i:02}")));
@@ -330,7 +392,8 @@ pub fn run() {
                     "settings must not expose a manual browser launch"
                 );
                 assert!(w.try_find("research-model-0").is_some());
-            }).unwrap();
+            })
+            .unwrap();
             screenshot(&mut cx, handle, &directory, "02-research-model-fields.png");
             cx.update_window(handle, |_, w, cx| {
                 assert!(w.try_find("model-agent-fallback").is_some());
@@ -350,38 +413,74 @@ pub fn run() {
                 click(w, cx, "model-settings-scroll", "model-agent-0");
                 w.within("popup-menu").click(1usize, cx);
                 w.render_frame(cx);
-                assert_eq!(app.read(cx).store.research_agent(crate::research::ResearchKind::Goal), "Codex");
-                assert_eq!(w.find("research-model-0").placeholder(), Some("Choose a model"));
-                assert!(app.read(cx).store.research_model(crate::research::ResearchKind::Goal).is_empty());
+                assert_eq!(
+                    app.read(cx)
+                        .store
+                        .research_agent(crate::research::ResearchKind::Goal),
+                    "Codex"
+                );
+                assert_eq!(
+                    w.find("research-model-0").placeholder(),
+                    Some("Choose a model")
+                );
+                assert!(
+                    app.read(cx)
+                        .store
+                        .research_model(crate::research::ResearchKind::Goal)
+                        .is_empty()
+                );
                 click(w, cx, "model-settings-scroll", "research-model-0");
                 assert!(w.try_find("research-model-option-qa/other").is_none());
                 assert!(w.try_find("research-model-option-qa-codex-model").is_some());
                 w.click("research-model-option-qa-codex-model", cx);
                 let persisted = Storage::new(path.clone()).load().unwrap().unwrap();
-                assert_eq!(persisted.research_config().agents[0].as_deref(), Some("Codex"));
+                assert_eq!(
+                    persisted.research_config().agents[0].as_deref(),
+                    Some("Codex")
+                );
                 assert_eq!(persisted.research_config().models[0], "qa-codex-model");
                 assert_eq!(persisted.prepare_project_plan(1).unwrap().agent, "Codex");
-                assert_eq!(persisted.prepare_project_plan(1).unwrap().model, "qa-codex-model");
-                assert!(app.read(cx).codex_discovery.is_none(), "Fixture choices never start live discovery");
-            }).unwrap();
+                assert_eq!(
+                    persisted.prepare_project_plan(1).unwrap().model,
+                    "qa-codex-model"
+                );
+                assert!(
+                    app.read(cx).codex_discovery.is_none(),
+                    "Fixture choices never start live discovery"
+                );
+            })
+            .unwrap();
             screenshot(&mut cx, handle, &directory, "02-codex-stage.png");
             cx.update_window(handle, |_, w, cx| {
                 click(w, cx, "model-settings-scroll", "research-use-global-0");
                 let persisted = Storage::new(path.clone()).load().unwrap().unwrap();
                 assert!(persisted.research_config().agents[0].is_none());
                 assert!(persisted.research_config().models[0].is_empty());
-                assert_eq!(persisted.research_agent(crate::research::ResearchKind::Goal), "OpenCode");
-                assert_eq!(persisted.research_model(crate::research::ResearchKind::Goal), MODEL);
+                assert_eq!(
+                    persisted.research_agent(crate::research::ResearchKind::Goal),
+                    "OpenCode"
+                );
+                assert_eq!(
+                    persisted.research_model(crate::research::ResearchKind::Goal),
+                    MODEL
+                );
                 w.render_frame(cx);
-                assert_eq!(w.find("research-model-0").placeholder(), Some("Global default"));
-            }).unwrap();
+                assert_eq!(
+                    w.find("research-model-0").placeholder(),
+                    Some("Global default")
+                );
+            })
+            .unwrap();
             cx.update_window(handle, |_, w, cx| {
                 click(w, cx, "model-settings-scroll", "research-global-model");
                 w.press("cmd-a", cx);
                 w.input("OTH", cx);
                 assert_eq!(app.read(cx).store.default_model(), MODEL);
                 w.click("research-model-option-qa/other", cx);
-                assert_eq!(app.read(cx).global_model.read(cx).value().as_ref(), "qa/other");
+                assert_eq!(
+                    app.read(cx).global_model.read(cx).value().as_ref(),
+                    "qa/other"
+                );
                 assert_eq!(app.read(cx).store.default_model(), "qa/other");
                 click(w, cx, "model-settings-scroll", "research-model-0");
                 assert!(w.try_find("research-model-option-qa/other").is_some());
@@ -390,13 +489,17 @@ pub fn run() {
                 w.render_frame(cx);
                 assert!(w.try_find("research-model-option-qa/scroll-00").is_none());
                 w.click("research-model-option-qa/other", cx);
-                assert_eq!(app.read(cx).research_models[0].read(cx).value().as_ref(), "qa/other");
+                assert_eq!(
+                    app.read(cx).research_models[0].read(cx).value().as_ref(),
+                    "qa/other"
+                );
                 assert!(app.read(cx).research_model_picker.is_none());
                 click(w, cx, "model-settings-scroll", "research-use-global-0");
                 click(w, cx, "model-settings-scroll", "ego-path");
                 w.press("cmd-a", cx);
                 w.input("/tmp/qa-ego", cx);
-            }).unwrap();
+            })
+            .unwrap();
             cx.update_window(handle, |_, w, cx| {
                 assert_eq!(app.read(cx).store.research_config().ego_path, "/tmp/qa-ego");
                 assert!(app.read(cx).store.research_config().models[0].is_empty());
@@ -418,7 +521,12 @@ pub fn run() {
                 w.render_frame(cx);
                 w.within("popup-menu").click(3usize, cx);
                 click(w, cx, "model-settings-scroll", "global-model-all-stages");
-                assert!(app.read(cx).research_models.iter().all(|m| m.read(cx).value().is_empty()));
+                assert!(
+                    app.read(cx)
+                        .research_models
+                        .iter()
+                        .all(|m| m.read(cx).value().is_empty())
+                );
                 let tab_top = w.within("settings-tabs").find(0usize).bounds().top();
                 w.scroll(
                     "model-settings-scroll",
@@ -426,10 +534,18 @@ pub fn run() {
                     cx,
                 );
                 w.render_frame(cx);
-                assert_eq!(w.within("settings-tabs").find(0usize).bounds().top(), tab_top);
+                assert_eq!(
+                    w.within("settings-tabs").find(0usize).bounds().top(),
+                    tab_top
+                );
                 w.within("settings-tabs").click(0usize, cx);
                 w.within("settings-tabs").click(1usize, cx);
-                assert!(app.read(cx).research_models.iter().all(|m| m.read(cx).value().is_empty()));
+                assert!(
+                    app.read(cx)
+                        .research_models
+                        .iter()
+                        .all(|m| m.read(cx).value().is_empty())
+                );
                 assert_eq!(
                     app.read(cx).store.research_config().models[1],
                     "",
@@ -455,28 +571,33 @@ pub fn run() {
             cx.update_window(handle, |_, w, cx| {
                 w.click("close-project-plan", cx);
                 app.update(cx, |a, cx| a.open_model_settings(w, cx));
-            }).unwrap();
+            })
+            .unwrap();
             cx.run_until_parked();
             cx.update_window(handle, |_, w, cx| {
                 w.render_frame(cx);
                 w.click("model-profile-new", cx);
-            }).unwrap();
+            })
+            .unwrap();
             screenshot(&mut cx, handle, &directory, "05-new-profile.png");
             cx.update_window(handle, |_, w, cx| {
                 click(w, cx, "model-settings-scroll", "model-profile-cancel");
                 w.render_frame(cx);
                 assert!(w.try_find("model-profile-name").is_none());
-            }).unwrap();
+            })
+            .unwrap();
             cx.run_until_parked();
             cx.update_window(handle, |_, w, cx| {
                 w.render_frame(cx);
                 w.click("model-profile-new", cx);
-            }).unwrap();
+            })
+            .unwrap();
             cx.update_window(handle, |_, w, cx| {
                 click(w, cx, "model-settings-scroll", "model-profile-create");
                 assert!(app.read(cx).store.model_profiles().is_empty());
                 app.update(cx, |a, cx| {
-                    a.model_profile_name.update(cx, |s, cx| s.set_value("Common Research", w, cx));
+                    a.model_profile_name
+                        .update(cx, |s, cx| s.set_value("Common Research", w, cx));
                 });
                 click(w, cx, "model-settings-scroll", "model-profile-create");
                 assert_eq!(app.read(cx).store.model_profiles().len(), 1);
@@ -484,12 +605,14 @@ pub fn run() {
                 assert!(w.try_find("model-profile-name").is_none());
                 assert_eq!(w.find("model-profile-update").disabled(), Some(true));
                 assert!(app.read(cx).save_feedback.is_none());
-            }).unwrap();
+            })
+            .unwrap();
             cx.run_until_parked();
             cx.update_window(handle, |_, w, cx| {
                 w.render_frame(cx);
                 w.click("model-profile-new", cx);
-            }).unwrap();
+            })
+            .unwrap();
             cx.update_window(handle, |_, w, cx| {
                 app.update(cx, |a, cx| {
                     a.set_model_agent(Some(1), "Codex", w, cx);
@@ -500,23 +623,40 @@ pub fn run() {
                     let fallback = a.fallback_model.clone();
                     fallback.update(cx, |s, cx| s.set_value("qa-codex-other", w, cx));
                     a.finish_model_edit(&fallback, true, w, cx);
-                    a.model_profile_name.update(cx, |s, cx| s.set_value("深度研究 · 多 Agent 协作方案", w, cx));
+                    a.model_profile_name.update(cx, |s, cx| {
+                        s.set_value("深度研究 · 多 Agent 协作方案", w, cx)
+                    });
                 });
                 click(w, cx, "model-settings-scroll", "model-profile-create");
-            }).unwrap();
+            })
+            .unwrap();
             cx.run_until_parked();
             profile_menu(&mut cx, handle, "model-profile-picker", 0);
             cx.update_window(handle, |_, _, cx| {
-                assert!(app.read(cx).store.research_config().agents.iter().all(Option::is_none));
+                assert!(
+                    app.read(cx)
+                        .store
+                        .research_config()
+                        .agents
+                        .iter()
+                        .all(Option::is_none)
+                );
                 assert!(app.read(cx).research_models[1].read(cx).value().is_empty());
                 assert_eq!(app.read(cx).store.fallback_agent(), "Codex");
                 assert_eq!(app.read(cx).store.fallback_model(), "qa-codex-model");
-            }).unwrap();
+            })
+            .unwrap();
             cx.run_until_parked();
             profile_menu(&mut cx, handle, "model-profile-picker", 1);
             cx.update_window(handle, |_, w, cx| {
-                assert_eq!(app.read(cx).research_models[1].read(cx).value().as_ref(), "qa-codex-model");
-                assert_eq!(app.read(cx).store.research_config().agents[1].as_deref(), Some("Codex"));
+                assert_eq!(
+                    app.read(cx).research_models[1].read(cx).value().as_ref(),
+                    "qa-codex-model"
+                );
+                assert_eq!(
+                    app.read(cx).store.research_config().agents[1].as_deref(),
+                    Some("Codex")
+                );
                 assert_eq!(app.read(cx).store.fallback_agent(), "Codex");
                 assert_eq!(app.read(cx).store.fallback_model(), "qa-codex-other");
                 w.render_frame(cx);
@@ -526,27 +666,44 @@ pub fn run() {
                 w.render_frame(cx);
                 assert_eq!(w.find("model-profile-update").bounds(), save_bounds);
                 assert_ne!(w.find("model-profile-update").disabled(), Some(true));
-                w.scroll("model-settings-scroll", ScrollDelta::Pixels(point(px(0.), px(-400.))), cx);
+                w.scroll(
+                    "model-settings-scroll",
+                    ScrollDelta::Pixels(point(px(0.), px(-400.))),
+                    cx,
+                );
                 w.render_frame(cx);
-                assert_eq!(w.find("model-profile-update").bounds(), save_bounds, "Profile actions stay fixed while scrolling");
+                assert_eq!(
+                    w.find("model-profile-update").bounds(),
+                    save_bounds,
+                    "Profile actions stay fixed while scrolling"
+                );
                 app.update(cx, |a, cx| {
                     a.settings_scroll.set_offset(point(px(0.), px(0.)));
                     cx.notify();
                 });
-            }).unwrap();
+            })
+            .unwrap();
             screenshot(&mut cx, handle, &directory, "06-modified-profile.png");
             profile_menu(&mut cx, handle, "model-profile-menu", 0);
             cx.update_window(handle, |_, w, cx| {
-                assert_eq!(app.read(cx).store.research_config().models[1], "qa-codex-model");
-                assert_eq!(app.read(cx).research_models[1].read(cx).value().as_ref(), "qa-codex-model");
+                assert_eq!(
+                    app.read(cx).store.research_config().models[1],
+                    "qa-codex-model"
+                );
+                assert_eq!(
+                    app.read(cx).research_models[1].read(cx).value().as_ref(),
+                    "qa-codex-model"
+                );
                 w.render_frame(cx);
                 assert_eq!(w.find("model-profile-update").disabled(), Some(true));
                 app.update(cx, |a, cx| a.use_global_for_stage(1, w, cx));
-            }).unwrap();
+            })
+            .unwrap();
             cx.update_window(handle, |_, w, cx| {
                 click(w, cx, "model-settings-scroll", "model-profile-update");
                 assert!(app.read(cx).store.model_profiles()[1].models[1].is_empty());
-            }).unwrap();
+            })
+            .unwrap();
             cx.run_until_parked();
             profile_menu(&mut cx, handle, "model-profile-menu", 2);
             cx.update_window(handle, |_, w, cx| {
@@ -554,10 +711,13 @@ pub fn run() {
                 assert_eq!(app.read(cx).store.default_model(), "qa/other");
                 app.update(cx, |a, cx| a.undo_change(w, cx));
                 assert_eq!(app.read(cx).store.model_profiles().len(), 2);
-            }).unwrap();
+            })
+            .unwrap();
             cx.run_until_parked();
             profile_menu(&mut cx, handle, "model-profile-picker", 0);
-            let expected = cx.update_window(handle, |_, _, cx| app.read(cx).store.clone()).unwrap();
+            let expected = cx
+                .update_window(handle, |_, _, cx| app.read(cx).store.clone())
+                .unwrap();
             assert_eq!(
                 Storage::new(path.clone()).load().unwrap().unwrap(),
                 expected
@@ -590,16 +750,24 @@ pub fn run() {
             .unwrap();
             cx.update_window(window.into(), |_, w, cx| {
                 click(w, cx, "model-settings-scroll", "model-profile-picker");
-            }).unwrap();
+            })
+            .unwrap();
             screenshot(&mut cx, window.into(), &directory, "07-profile-picker.png");
             cx.update_window(window.into(), |_, w, cx| {
                 w.within("popup-menu").click(0usize, cx);
-            }).unwrap();
+            })
+            .unwrap();
             cx.run_until_parked();
             cx.update_window(window.into(), |_, w, cx| {
                 click(w, cx, "model-settings-scroll", "model-profile-menu");
-            }).unwrap();
-            screenshot(&mut cx, window.into(), &directory, "08-profile-management.png");
+            })
+            .unwrap();
+            screenshot(
+                &mut cx,
+                window.into(),
+                &directory,
+                "08-profile-management.png",
+            );
             cx.update_window(window.into(), |_, w, _| w.remove_window())
                 .unwrap();
         }
@@ -620,12 +788,14 @@ fn context() -> HeadlessAppContext {
     cx
 }
 fn profile_menu(cx: &mut HeadlessAppContext, handle: AnyWindowHandle, id: &str, index: usize) {
-    cx.update_window(handle, |_, w, cx| click(w, cx, "model-settings-scroll", id)).unwrap();
+    cx.update_window(handle, |_, w, cx| click(w, cx, "model-settings-scroll", id))
+        .unwrap();
     cx.run_until_parked();
     cx.update_window(handle, |_, w, cx| {
         w.render_frame(cx);
         w.within("popup-menu").click(index, cx);
-    }).unwrap();
+    })
+    .unwrap();
     cx.run_until_parked();
 }
 fn click(w: &mut Window, cx: &mut App, scroll: &str, id: &str) {

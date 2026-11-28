@@ -59,7 +59,6 @@ pub(crate) enum Origin {
     },
     ResearchTask {
         task: u64,
-        steps_tab: Option<u64>,
         scroll: ScrollState,
     },
     ResearchResult {
@@ -119,8 +118,6 @@ pub(crate) enum NavigationTarget {
         scope: Scope,
     },
     ResearchTask(u64),
-    /// Open a goal directly on its Steps panel; survives pending dirty-exit replay.
-    ResearchSteps(u64),
     /// A task click that opens its completed result when one exists.
     ResearchTaskResult(u64),
     ResearchResult {
@@ -353,13 +350,8 @@ pub(crate) fn validate_origin(origin: Origin, store: &Store) -> BackResolution {
             Scope::Topic(id) if !topic_exists(store, *id) => {
                 research_all("That topic is no longer available. Returned to All research.")
             }
-            Scope::Settings => BackResolution::route(Origin::SettingsPage {
-                tab: 0,
-                scroll,
-            }),
-            Scope::Automations => BackResolution::route(Origin::AutomationList {
-                scroll,
-            }),
+            Scope::Settings => BackResolution::route(Origin::SettingsPage { tab: 0, scroll }),
+            Scope::Automations => BackResolution::route(Origin::AutomationList { scroll }),
             Scope::AutomationRuns => BackResolution::route(Origin::AutomationResults {
                 filter: None,
                 history_limit: DEFAULT_RESULTS_LIMIT,
@@ -372,30 +364,16 @@ pub(crate) fn validate_origin(origin: Origin, store: &Store) -> BackResolution {
                 scroll,
             }),
         },
-        Origin::ResearchTopic {
-            topic,
-            scroll,
-        } => {
+        Origin::ResearchTopic { topic, scroll } => {
             if topic_exists(store, topic) {
-                BackResolution::route(Origin::ResearchTopic {
-                    topic,
-                    scroll,
-                })
+                BackResolution::route(Origin::ResearchTopic { topic, scroll })
             } else {
                 research_all("That topic is no longer available. Returned to All research.")
             }
         }
-        Origin::ResearchTask {
-            task,
-            steps_tab,
-            scroll,
-        } => {
+        Origin::ResearchTask { task, scroll } => {
             if store.task(task).is_some() {
-                BackResolution::route(Origin::ResearchTask {
-                    task,
-                    steps_tab,
-                    scroll,
-                })
+                BackResolution::route(Origin::ResearchTask { task, scroll })
             } else {
                 research_all("That task is no longer available. Returned to All research.")
             }
@@ -443,7 +421,9 @@ pub(crate) fn validate_origin(origin: Origin, store: &Store) -> BackResolution {
             });
             let run = if selected_run_deleted { None } else { run };
             let notice = if selected_run_deleted {
-                Some("That result is no longer available. Returned to Research results.".to_string())
+                Some(
+                    "That result is no longer available. Returned to Research results.".to_string(),
+                )
             } else if cleared {
                 Some(
                     "Part of this results view is no longer available. Filters were cleared."
@@ -512,9 +492,9 @@ pub(crate) fn validate_origin(origin: Origin, store: &Store) -> BackResolution {
             under,
             dialog_scroll,
         } => {
-            let occurrence_valid = store.occurrence(occurrence).is_some_and(|value| {
-                value.automation_id == automation
-            });
+            let occurrence_valid = store
+                .occurrence(occurrence)
+                .is_some_and(|value| value.automation_id == automation);
             if occurrence_valid && store.automation(automation).is_some() {
                 let under = match under {
                     PeriodUnder::Detail { scroll } => PeriodUnder::Detail { scroll },
@@ -755,7 +735,8 @@ mod tests {
 
     fn store() -> Store {
         let mut store = Store::empty();
-        store.project_at_mut(0).unwrap().directory = std::env::temp_dir().to_string_lossy().into_owned();
+        store.project_at_mut(0).unwrap().directory =
+            std::env::temp_dir().to_string_lossy().into_owned();
         store.set_default_model("test/model".into());
         store.research_config_mut().models =
             ["test/plan", "test/collect", "test/analyze", "test/advise"].map(String::from);
@@ -881,10 +862,7 @@ mod tests {
             NavigationKind::DrillDown
         );
         assert_eq!(
-            NavigationIntent::structural(NavigationTarget::Research {
-                scope: Scope::All
-            })
-            .kind(),
+            NavigationIntent::structural(NavigationTarget::Research { scope: Scope::All }).kind(),
             NavigationKind::Structural
         );
     }
@@ -956,12 +934,13 @@ mod tests {
     #[test]
     fn deleted_task_falls_back_to_all_research() {
         let mut store = store();
-        let task = store.create_task("Task", 1, Stage::Planned, None).unwrap();
+        let task = store
+            .create_task("Task", 1, Stage::InProgress, None)
+            .unwrap();
         store.retain_tasks(|value| value.id != task);
         let resolution = validate_origin(
             Origin::ResearchTask {
                 task,
-                steps_tab: None,
                 scroll: ScrollState::default(),
             },
             &store,
@@ -979,7 +958,9 @@ mod tests {
     #[test]
     fn empty_or_waiting_results_origin_is_preserved() {
         let mut store = store();
-        let task = store.create_task("Task", 1, Stage::Planned, None).unwrap();
+        let task = store
+            .create_task("Task", 1, Stage::InProgress, None)
+            .unwrap();
         for (task, run) in [(None, None), (Some(task), None)] {
             let resolution = validate_origin(
                 Origin::ResearchResult {
@@ -1013,7 +994,9 @@ mod tests {
         let mut store = store();
         store.replace_policies(Store::mock().policies().to_vec());
         let topic = store.create_topic(1, "Topic").unwrap();
-        let task = store.create_task("Task", 1, Stage::Planned, None).unwrap();
+        let task = store
+            .create_task("Task", 1, Stage::InProgress, None)
+            .unwrap();
         store.simulate_run(task).unwrap();
         let run = store.runs().last().unwrap().id;
 
@@ -1033,7 +1016,9 @@ mod tests {
     fn deleted_selected_report_stays_on_results_with_a_notice() {
         let mut store = store();
         store.replace_policies(Store::mock().policies().to_vec());
-        let task = store.create_task("Task", 1, Stage::Planned, None).unwrap();
+        let task = store
+            .create_task("Task", 1, Stage::InProgress, None)
+            .unwrap();
         store.simulate_run(task).unwrap();
         let run = store.runs().last().unwrap().id;
         store.retain_runs(|value| value.id != run);
@@ -1118,9 +1103,7 @@ mod tests {
             &other_store,
         );
         match resolution.route {
-            Some(Origin::ResearchResult {
-                project, topic, ..
-            }) => {
+            Some(Origin::ResearchResult { project, topic, .. }) => {
                 assert_eq!(project, Some(2));
                 assert_eq!(topic, None);
             }
@@ -1248,7 +1231,9 @@ mod tests {
     fn destination_prefers_the_context_task_then_the_scope() {
         let mut store = store();
         add_project(&mut store, 2, "Second");
-        let task = store.create_task("Task", 2, Stage::Planned, None).unwrap();
+        let task = store
+            .create_task("Task", 2, Stage::InProgress, None)
+            .unwrap();
         let destination = resolve_creation_destination(
             &store,
             CreationIntent::Global,
@@ -1258,13 +1243,9 @@ mod tests {
         .unwrap();
         assert_eq!(destination, CreationMode::NewTopic { project: 2 });
 
-        let destination = resolve_creation_destination(
-            &store,
-            CreationIntent::Global,
-            &Scope::Project(2),
-            None,
-        )
-        .unwrap();
+        let destination =
+            resolve_creation_destination(&store, CreationIntent::Global, &Scope::Project(2), None)
+                .unwrap();
         assert_eq!(destination, CreationMode::NewTopic { project: 2 });
     }
 
@@ -1274,12 +1255,14 @@ mod tests {
         add_project(&mut store, 2, "Second");
         store.set_last_active_project(Some(2));
         let destination =
-            resolve_creation_destination(&store, CreationIntent::Global, &Scope::All, None).unwrap();
+            resolve_creation_destination(&store, CreationIntent::Global, &Scope::All, None)
+                .unwrap();
         assert_eq!(destination, CreationMode::NewTopic { project: 2 });
 
         store.set_last_active_project(Some(9_999));
         let destination =
-            resolve_creation_destination(&store, CreationIntent::Global, &Scope::All, None).unwrap();
+            resolve_creation_destination(&store, CreationIntent::Global, &Scope::All, None)
+                .unwrap();
         assert_eq!(destination, CreationMode::NewTopic { project: 1 });
     }
 
@@ -1294,9 +1277,8 @@ mod tests {
 
         let mut empty = Store::empty();
         empty.clear_projects();
-        let error =
-            resolve_creation_destination(&empty, CreationIntent::Global, &Scope::All, None)
-                .unwrap_err();
+        let error = resolve_creation_destination(&empty, CreationIntent::Global, &Scope::All, None)
+            .unwrap_err();
         assert_eq!(error, CreationDestinationError::NoProjects);
         assert!(!error.message().is_empty());
     }
@@ -1313,10 +1295,7 @@ mod tests {
                 None
             )
             .unwrap(),
-            CreationMode::ExistingTopic {
-                project: 1,
-                topic
-            }
+            CreationMode::ExistingTopic { project: 1, topic }
         );
         let replan = resolve_creation_destination(
             &store,
@@ -1395,7 +1374,6 @@ mod tests {
         let resolution = validate_origin(
             Origin::ResearchTask {
                 task,
-                steps_tab: None,
                 scroll: ScrollState::default(),
             },
             &store,

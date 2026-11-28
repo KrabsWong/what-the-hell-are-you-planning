@@ -105,11 +105,7 @@ pub fn header_layout() {
             screenshot(&mut cx, handle, &directory, "deep-report-header.png");
             cx.update_window(handle, |_, w, _| {
                 let viewport = w.viewport_size().width;
-                for id in [
-                    "navigation-back",
-                    "location-trail",
-                    "location-current",
-                ] {
+                for id in ["navigation-back", "location-trail", "location-current"] {
                     let bounds = w.find(id).bounds();
                     assert!(
                         bounds.right() <= viewport,
@@ -138,11 +134,7 @@ pub fn header_layout() {
                     &format!("deep-report-header-{label}.png"),
                 );
                 cx.update_window(handle, |_, w, _| {
-                    for id in [
-                        "navigation-back",
-                        "location-trail",
-                        "location-current",
-                    ] {
+                    for id in ["navigation-back", "location-trail", "location-current"] {
                         let bounds = w.find(id).bounds();
                         assert!(
                             bounds.right() <= w.viewport_size().width,
@@ -200,7 +192,11 @@ fn run_checks(layout_only: bool) {
     let root = std::env::current_dir()
         .unwrap()
         .join(format!(".local/simplify-qa/{}", std::process::id()));
-    let sizes = if layout_only { vec![(1440., 920.), (1000., 680.), (2672., 920.)] } else { vec![(1440., 920.), (1000., 680.)] };
+    let sizes = if layout_only {
+        vec![(1440., 920.), (1000., 680.), (2672., 920.)]
+    } else {
+        vec![(1440., 920.), (1000., 680.)]
+    };
     for (width, height) in sizes {
         for mode in [Appearance::Light, Appearance::Dark] {
             let directory = root.join(format!("{mode:?}-{width}"));
@@ -229,7 +225,12 @@ fn run_checks(layout_only: bool) {
                     run.task_title = "Write the final research report with supporting evidence, scenario comparisons, observations, and clearly disclosed uncertainties".into();
                 }
                 run.output = if layout_only {
-                    format!("{}\n\n| Field | Value |\n| --- | --- |\n| File | `/Users/fixture/workspace/research/attachments/2026-11-09-evidence-source-document-with-a-long-filename-and-original-metadata.pdf` |\n\n{}\n\n{}", REPORT, REPORT.repeat(12), APPENDIX)
+                    format!(
+                        "{}\n\n| Field | Value |\n| --- | --- |\n| File | `/Users/fixture/workspace/research/attachments/2026-11-09-evidence-source-document-with-a-long-filename-and-original-metadata.pdf` |\n\n{}\n\n{}",
+                        REPORT,
+                        REPORT.repeat(12),
+                        APPENDIX
+                    )
                 } else {
                     REPORT.into()
                 };
@@ -250,7 +251,7 @@ fn run_checks(layout_only: bool) {
                 .create_task(
                     "Real child-process UI acceptance: starts only a local waiting script and calls no model or browser",
                     1,
-                    Stage::Planned,
+                    Stage::InProgress,
                     None,
                 )
                 .unwrap();
@@ -309,8 +310,14 @@ fn run_checks(layout_only: bool) {
                         let sidebar = app.read(cx).sidebar_split.clone();
                         sidebar.update(cx, |s, cx| s.resize_panel(0, px(sidebar_width), w, cx));
                         w.render_frame(cx);
-                    }).unwrap();
-                    screenshot(&mut cx, handle, &directory, &format!("report-sidebar-{sidebar_width}.png"));
+                    })
+                    .unwrap();
+                    screenshot(
+                        &mut cx,
+                        handle,
+                        &directory,
+                        &format!("report-sidebar-{sidebar_width}.png"),
+                    );
                     cx.update_window(handle, |_, w, _| {
                         let viewport = w.find("research-result-viewport").bounds();
                         let scroll = w.find("research-result-scroll").bounds();
@@ -379,21 +386,25 @@ fn run_checks(layout_only: bool) {
                             .push_str("\nChanged after the report finished.");
                         cx.notify();
                     });
-                    assert!(crate::research::report_regeneration_input_notice(
-                        &app.read(cx).store,
-                        report_id,
-                    )
-                    .is_some());
+                    assert!(
+                        crate::research::report_regeneration_input_notice(
+                            &app.read(cx).store,
+                            report_id,
+                        )
+                        .is_some()
+                    );
                     w.render_frame(cx);
                     w.click("regenerate-report", cx);
                     w.render_frame(cx);
                     let source = app.read(cx).report_regeneration.as_ref().unwrap().0;
                     assert_eq!(source, report_id);
-                    assert!(crate::research::report_regeneration_input_notice(
-                        &app.read(cx).store,
-                        source,
-                    )
-                    .is_some());
+                    assert!(
+                        crate::research::report_regeneration_input_notice(
+                            &app.read(cx).store,
+                            source,
+                        )
+                        .is_some()
+                    );
                     assert_ne!(w.find("confirm-regenerate-report").disabled(), Some(true));
                 })
                 .unwrap();
@@ -406,8 +417,7 @@ fn run_checks(layout_only: bool) {
                 cx.update_window(handle, |_, w, cx| {
                     w.click("cancel-regenerate-report", cx);
                     app.update(cx, |a, cx| {
-                        a.store.task_mut(stale_task).unwrap().description =
-                            original_description;
+                        a.store.task_mut(stale_task).unwrap().description = original_description;
                         cx.notify();
                     });
                 })
@@ -609,7 +619,7 @@ fn run_checks(layout_only: bool) {
                         )
                         .unwrap();
                     let cancel_steps = a.store.apply_research_plan(planner, PLAN).unwrap();
-                    a.store.set_stage(planner, Stage::Planned).unwrap();
+                    a.store.set_stage(planner, Stage::InProgress).unwrap();
                     a.start_run(cancel_steps[0], cx);
                     a.poll_runtime(cx);
                     assert!(!a.active_runs.is_empty(), "{}", a.error);
@@ -872,30 +882,23 @@ fn run_checks(layout_only: bool) {
                 assert!(w.try_find("comment-input").is_some());
                 click_in(w, cx, "detail-scroll", "task-activity-toggle");
                 assert!(w.try_find("comment-input").is_none());
-                assert!(!app.read(cx).show_task_details);
                 assert_eq!(
                     w.find("task-view-result").label(),
                     Some("View latest result")
                 );
                 assert_eq!(w.find("step-run").label(), Some("Run again"));
-                assert!(w.try_find("configure-research").is_none());
                 assert!(
                     w.try_find("task-open-ego").is_none(),
                     "task details must not expose a manual ego(lite) launch"
                 );
-                assert!(w.try_find("property-Cycle").is_none());
+                assert!(w.try_find("task-details-toggle").is_none());
                 assert!(
                     w.try_find("property-Stage").is_none(),
                     "research steps do not expose manual stage controls"
                 );
-                assert!(w.try_find("property-Priority").is_some());
                 let before = app.read(cx).store.clone();
-                click_in(w, cx, "detail-scroll", "task-details-toggle");
-                assert!(app.read(cx).show_task_details);
-                assert!(w.try_find("configure-research").is_some());
-                assert!(w.try_find("property-Cycle").is_some());
+                w.render_frame(cx);
                 assert_eq!(app.read(cx).store, before);
-                scroll_to(w, cx, "detail-scroll", "configure-research");
             })
             .unwrap();
             screenshot(&mut cx, handle, &directory, "09-task-details.png");
@@ -1095,8 +1098,11 @@ fn run_checks(layout_only: bool) {
                         (latest_id, other_id)
                     });
                     w.render_frame(cx);
+                    assert!(
+                        w.try_find("run-topic-filter").is_some()
+                            || w.try_find("run-topic-static").is_some()
+                    );
                     assert!(w.find("run-project-picker").visible());
-                    assert!(w.find("run-topic-picker").visible());
                     assert!(w.find(format!("run-title-{}", ids.0)).bounds().size.height >= px(16.));
                     assert!(
                         w.try_find(format!("run-{report_id}")).is_none(),
@@ -1128,7 +1134,10 @@ fn run_checks(layout_only: bool) {
             choose_menu(&mut cx, handle, "run-project-planning", 0);
             cx.update_window(handle, |_, w, cx| {
                 assert!(app.read(cx).show_planning_activity);
-                let selected = app.read(cx).selected_run().expect("planning record selected");
+                let selected = app
+                    .read(cx)
+                    .selected_run()
+                    .expect("planning record selected");
                 let selected_run = app
                     .read(cx)
                     .store
@@ -1146,32 +1155,13 @@ fn run_checks(layout_only: bool) {
                 assert!(w.try_find(format!("run-{latest_id}")).is_some());
                 assert!(!app.read(cx).show_planning_activity);
                 assert!(w.find("run-project-picker").visible());
-                assert!(w.find("run-topic-picker").visible());
+                assert!(
+                    w.try_find("run-topic-filter").is_some()
+                        || w.try_find("run-topic-static").is_some()
+                );
             })
             .unwrap();
             screenshot(&mut cx, handle, &directory, "16-grouped-history.png");
-            for (control, file) in [
-                ("run-topic-picker", "26-topic-menu.png"),
-            ] {
-                cx.update_window(handle, |_, w, cx| {
-                    w.click(control, cx);
-                })
-                .unwrap();
-                for _ in 0..12 {
-                    cx.advance_clock(Duration::from_millis(100));
-                    cx.run_until_parked();
-                    cx.update_window(handle, |_, w, cx| w.render_frame(cx))
-                        .unwrap();
-                }
-                screenshot(&mut cx, handle, &directory, file);
-                cx.update_window(handle, |_, w, cx| {
-                    w.press("escape", cx);
-                })
-                .unwrap();
-                cx.run_until_parked();
-                cx.update_window(handle, |_, w, cx| w.render_frame(cx))
-                    .unwrap();
-            }
 
             cx.update_window(handle, |_, w, cx| {
                 app.update(cx, |a, cx| {
@@ -1217,7 +1207,10 @@ fn run_checks(layout_only: bool) {
                     "Idle projects have no batch banner"
                 );
                 w.click("project-actions", cx);
-                assert_eq!(w.within("popup-menu").find(1usize).label(), Some("Working folder…"));
+                assert_eq!(
+                    w.within("popup-menu").find(1usize).label(),
+                    Some("Working folder…")
+                );
             })
             .unwrap();
             screenshot(&mut cx, handle, &directory, "18-project-menu.png");
@@ -1266,7 +1259,11 @@ fn run_checks(layout_only: bool) {
             assert!(original_result.is_some());
             choose_menu(&mut cx, handle, "run-actions-menu", 1);
             cx.update_window(handle, |_, w, cx| {
-                println!("Result origin before Back: {:?}; history: {:?}", app.read(cx).capture_origin(), app.read(cx).return_frames());
+                println!(
+                    "Result origin before Back: {:?}; history: {:?}",
+                    app.read(cx).capture_origin(),
+                    app.read(cx).return_frames()
+                );
                 assert_eq!(app.read(cx).selected(), Some(steps[2]));
                 w.render_frame(cx);
                 w.click("navigation-back", cx);
@@ -1274,7 +1271,14 @@ fn run_checks(layout_only: bool) {
             .unwrap();
             cx.run_until_parked();
             cx.update_window(handle, |_, w, cx| {
-                assert!(app.read(cx).selected().is_none(), "Back must restore result; selected={:?}, origin={:?}, history={:?}, notice={}", app.read(cx).selected(), app.read(cx).capture_origin(), app.read(cx).return_frames(), app.read(cx).toast);
+                assert!(
+                    app.read(cx).selected().is_none(),
+                    "Back must restore result; selected={:?}, origin={:?}, history={:?}, notice={}",
+                    app.read(cx).selected(),
+                    app.read(cx).capture_origin(),
+                    app.read(cx).return_frames(),
+                    app.read(cx).toast
+                );
                 assert_eq!(app.read(cx).selected_run(), original_result);
                 assert_eq!(app.read(cx).task_result_context(), Some(steps[2]));
                 assert!(app.read(cx).show_run_result);
@@ -1431,28 +1435,18 @@ fn run_checks(layout_only: bool) {
             .unwrap();
             cx.run_until_parked();
             cx.update_window(handle, |_, w, cx| {
-                click_in(w, cx, "detail-scroll", "property-Priority");
-                click_in(w, cx, "detail-scroll", "priority-high");
-                assert_eq!(
-                    app.read(cx).store.task(ordinary).unwrap().priority,
-                    crate::domain::Priority::High
-                );
-                click_in(w, cx, "detail-scroll", "property-Stage");
-                click_in(w, cx, "detail-scroll", "set-backlog");
-                assert_eq!(
-                    app.read(cx).store.task(ordinary).unwrap().stage,
-                    Stage::Backlog
-                );
+                click_in(w, cx, "detail-scroll", "property-Topic project");
+                assert!(w.try_find("move-entire-topic").is_some());
             })
             .unwrap();
             screenshot(&mut cx, handle, &directory, "22-text-properties.png");
             cx.update_window(handle, |_, w, cx| {
-                w.click("property-Stage", cx);
+                w.click("property-Topic project", cx);
             })
             .unwrap();
-            screenshot(&mut cx, handle, &directory, "28-stage-options.png");
+            screenshot(&mut cx, handle, &directory, "28-topic-project-options.png");
             cx.update_window(handle, |_, w, cx| {
-                w.click("property-Stage", cx);
+                w.click("property-Topic project", cx);
             })
             .unwrap();
 
@@ -1632,7 +1626,7 @@ fn navigation_checks(
                 .create_task(
                     "Nested navigation check",
                     project,
-                    Stage::Planned,
+                    Stage::InProgress,
                     Some(child),
                 )
                 .unwrap();

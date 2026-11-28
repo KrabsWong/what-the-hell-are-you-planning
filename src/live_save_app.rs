@@ -17,7 +17,6 @@ use gpui_kit::{Context, Window};
 pub(crate) struct TaskEditorInstance {
     pub title: gpui_kit::EntityId,
     pub description: gpui_kit::EntityId,
-    pub labels: gpui_kit::EntityId,
     pub due: gpui_kit::EntityId,
 }
 
@@ -53,7 +52,9 @@ impl LiveCompletion {
 
     pub(crate) fn automation_save(&self) -> Option<&AutomationSaveReceipt> {
         match self {
-            Self::Command { automation_save, .. } => automation_save.as_ref(),
+            Self::Command {
+                automation_save, ..
+            } => automation_save.as_ref(),
             _ => None,
         }
     }
@@ -65,7 +66,10 @@ pub(crate) enum LiveCompletion {
     None,
     Status(String),
     ArchiveDeleted,
-    ResearchUnderstanding { request: u64, signature: String },
+    ResearchUnderstanding {
+        request: u64,
+        signature: String,
+    },
     TaskEdit {
         task: u64,
         /// Form identity captured at submit. The editor closes only if the same
@@ -186,8 +190,13 @@ pub(crate) struct StoppedRun {
 
 #[derive(Clone, Debug)]
 pub(crate) enum DeferredUiAction {
-    ClearComment { task: u64, body: String },
-    FinishSavedExit { open: u64 },
+    ClearComment {
+        task: u64,
+        body: String,
+    },
+    FinishSavedExit {
+        open: u64,
+    },
     /// Close the material impact modal only if it still belongs to this exact
     /// durable receipt, then restore the opener/root focus.
     CloseMaterialImpact {
@@ -268,7 +277,9 @@ impl LiveCompletion {
             Self::None => 0,
             Self::ArchiveDeleted => base,
             Self::Status(message) => base.saturating_add(message.capacity()),
-            Self::ResearchUnderstanding { signature, .. } => base.saturating_add(signature.capacity()),
+            Self::ResearchUnderstanding { signature, .. } => {
+                base.saturating_add(signature.capacity())
+            }
             Self::AutomationTicks {
                 queued,
                 superseded,
@@ -284,15 +295,21 @@ impl LiveCompletion {
             Self::ClearStopIntent { .. } => base.saturating_add(8),
             // Form/command completions are primary-only; count a conservative
             // slot if one is ever retained as an auxiliary effect.
-            Self::Command { effects, .. } => base
-                .saturating_add(effects.capacity().saturating_mul(std::mem::size_of::<crate::domain_command::CommandEffect>())),
+            Self::Command { effects, .. } => base.saturating_add(
+                effects
+                    .capacity()
+                    .saturating_mul(std::mem::size_of::<crate::domain_command::CommandEffect>()),
+            ),
             Self::TaskEdit { expected, .. } => base
                 .saturating_add(expected.title.capacity())
                 .saturating_add(expected.description.capacity()),
             Self::Comment { body, .. } => base.saturating_add(body.capacity()),
             Self::Material { message, .. } => base.saturating_add(message.capacity()),
-            Self::MaterialUndo { cleanup } => base
-                .saturating_add(cleanup.capacity().saturating_mul(std::mem::size_of::<crate::scoped_material::ImportedCopy>())),
+            Self::MaterialUndo { cleanup } => base.saturating_add(
+                cleanup
+                    .capacity()
+                    .saturating_mul(std::mem::size_of::<crate::scoped_material::ImportedCopy>()),
+            ),
             Self::Settings { message, .. } => base.saturating_add(message.capacity()),
             Self::Domain { message, .. } => base.saturating_add(message.capacity()),
             Self::Request { input, .. } => base.saturating_add(input.capacity()),
@@ -315,7 +332,9 @@ impl TaskApp {
     /// navigation uses this to show Pending rather than a false failure.
     pub(crate) fn live_task_edit_pending(&self) -> bool {
         matches!(
-            self.live_primary.as_ref().map(|pending| &pending.completion),
+            self.live_primary
+                .as_ref()
+                .map(|pending| &pending.completion),
             Some(LiveCompletion::TaskEdit { .. })
         )
     }
@@ -352,9 +371,7 @@ impl TaskApp {
             && (self
                 .dispatch_admission
                 .as_ref()
-                .is_some_and(|adapter| {
-                    !adapter.is_started() && adapter.startup_error().is_none()
-                })
+                .is_some_and(|adapter| !adapter.is_started() && adapter.startup_error().is_none())
                 || self.live_has_pending_receipts()
                 || self.live_has_deferred_runtime()
                 || self.history_needs_pump()
@@ -460,10 +477,7 @@ impl TaskApp {
     /// Append a completion to the pending (not yet submitted) group, or open a
     /// new reserved group. Callers must run `live_can_accept_auxiliary` before
     /// mutating; this function never drops an accepted effect.
-    fn retain_completion(
-        &mut self,
-        completion: LiveCompletion,
-    ) {
+    fn retain_completion(&mut self, completion: LiveCompletion) {
         let workspace = self.live_workspace.unwrap_or(0);
         let epoch = self.store.dirty_epoch();
         if let Some(group) = self
@@ -532,11 +546,12 @@ impl TaskApp {
         }
     }
 
-    fn submit_pending_followups(
-        &mut self,
-        cx: Option<&mut Context<Self>>,
-    ) -> Result<(), String> {
-        if !self.live_followups.iter().any(|group| group.generation == 0) {
+    fn submit_pending_followups(&mut self, cx: Option<&mut Context<Self>>) -> Result<(), String> {
+        if !self
+            .live_followups
+            .iter()
+            .any(|group| group.generation == 0)
+        {
             return Ok(());
         }
         let delta = self.store.drain_store_delta()?;
@@ -547,7 +562,8 @@ impl TaskApp {
         let Some(adapter) = self.dispatch_admission.as_mut() else {
             return Err("Live persistence is unavailable.".into());
         };
-        let generation = match adapter.submit_live_group(delta.changes, delta.metadata, delta.epoch) {
+        let generation = match adapter.submit_live_group(delta.changes, delta.metadata, delta.epoch)
+        {
             Ok(generation) => generation,
             Err(error) if error.contains("not ready") => {
                 self.live_pending_reason =
@@ -585,7 +601,11 @@ impl TaskApp {
             return false;
         }
         if !self.store.has_tracked_changes() {
-            if self.live_followups.iter().any(|group| group.generation == 0) {
+            if self
+                .live_followups
+                .iter()
+                .any(|group| group.generation == 0)
+            {
                 let _ = self.submit_pending_followups(None);
             }
             if self
@@ -670,8 +690,14 @@ impl TaskApp {
             self.storage_error = error;
         }
         if self.store.has_tracked_changes()
-            && self.live_primary.as_ref().is_none_or(|pending| pending.durable)
-            && !self.live_followups.iter().any(|group| group.generation == 0)
+            && self
+                .live_primary
+                .as_ref()
+                .is_none_or(|pending| pending.durable)
+            && !self
+                .live_followups
+                .iter()
+                .any(|group| group.generation == 0)
         {
             self.persist_if_changed(true);
         }
@@ -681,12 +707,7 @@ impl TaskApp {
     /// Called for every live receipt after the adapter has validated its
     /// workspace, generation and empty effect list. Runs only continuations
     /// whose captured epoch is covered by this acknowledgement.
-    pub(crate) fn on_live_durable(
-        &mut self,
-        generation: u64,
-        epoch: u64,
-        cx: &mut Context<Self>,
-    ) {
+    pub(crate) fn on_live_durable(&mut self, generation: u64, epoch: u64, cx: &mut Context<Self>) {
         if generation == 0 {
             return;
         }
@@ -726,7 +747,10 @@ impl TaskApp {
         }
         self.finish_primary_if_ready(cx);
         if self.store.has_tracked_changes()
-            && self.live_primary.as_ref().is_none_or(|pending| pending.durable)
+            && self
+                .live_primary
+                .as_ref()
+                .is_none_or(|pending| pending.durable)
         {
             // A newer edit landed while groups were in flight. Write it next;
             // the form still does not close until every current edit is durable.
@@ -736,7 +760,10 @@ impl TaskApp {
             .live_primary
             .as_ref()
             .is_some_and(|pending| pending.durable)
-            || self.live_followups.iter().any(|group| group.generation == 0)
+            || self
+                .live_followups
+                .iter()
+                .any(|group| group.generation == 0)
         {
             let _ = self.submit_pending_followups(Some(cx));
         }
@@ -800,7 +827,8 @@ impl TaskApp {
         }
         self.live_failure = Some(reason.clone());
         self.storage_error = reason;
-        self.live_retry_at = Some(std::time::Instant::now() + std::time::Duration::from_millis(300));
+        self.live_retry_at =
+            Some(std::time::Instant::now() + std::time::Duration::from_millis(300));
         cx.notify();
     }
 
@@ -864,15 +892,17 @@ impl TaskApp {
     }
 
     pub(crate) fn defer_after_run(&mut self, occurrence: u64, run_id: u64) {
-        if !self
-            .live_deferred_after_run
-            .contains(&(occurrence, run_id))
-        {
+        if !self.live_deferred_after_run.contains(&(occurrence, run_id)) {
             self.live_deferred_after_run.push_back((occurrence, run_id));
         }
     }
 
-    pub(crate) fn start_history_reader(&mut self, path: &std::path::Path, root: &std::path::Path, incarnation: u64) {
+    pub(crate) fn start_history_reader(
+        &mut self,
+        path: &std::path::Path,
+        root: &std::path::Path,
+        incarnation: u64,
+    ) {
         match crate::history_reader::HistoryReader::start(path, root, incarnation) {
             Ok(reader) => self.history_reader = Some(reader),
             Err(error) => {
@@ -900,9 +930,7 @@ impl TaskApp {
             .unwrap_or((None, None, true));
         let request_id = self.next_history_request();
         let result = match self.history_reader.as_ref() {
-            Some(reader) => {
-                reader.request_page(request_id, automation, cursor, watermark, 20)
-            }
+            Some(reader) => reader.request_page(request_id, automation, cursor, watermark, 20),
             None => return,
         };
         match result {
@@ -916,28 +944,20 @@ impl TaskApp {
                 let cache = self.history_cache.entry(automation).or_default();
                 cache.state = crate::history_reader::HistoryLoad::Failed {
                     error,
-                    retry_at: std::time::Instant::now()
-                        + std::time::Duration::from_secs(2),
+                    retry_at: std::time::Instant::now() + std::time::Duration::from_secs(2),
                 };
             }
         }
     }
 
-    pub(crate) fn load_more_automation_history(
-        &mut self,
-        automation: u64,
-        cx: &mut Context<Self>,
-    ) {
-        let can = self
-            .history_cache
-            .get(&automation)
-            .is_some_and(|cache| {
-                cache.next.is_some()
-                    && !matches!(
-                        cache.state,
-                        crate::history_reader::HistoryLoad::Loading { .. }
-                    )
-            });
+    pub(crate) fn load_more_automation_history(&mut self, automation: u64, cx: &mut Context<Self>) {
+        let can = self.history_cache.get(&automation).is_some_and(|cache| {
+            cache.next.is_some()
+                && !matches!(
+                    cache.state,
+                    crate::history_reader::HistoryLoad::Loading { .. }
+                )
+        });
         if can {
             self.request_history_page(automation, cx);
         }
@@ -949,8 +969,13 @@ impl TaskApp {
         if self.history_reader.is_none() {
             return false;
         }
-        if self.pending_result_navigation.is_some() || self.automation_ui.pending_period.is_some() { return true; }
-        if self.todo_batch.as_ref().is_some_and(|batch| batch.state == crate::batch::BatchState::Running)
+        if self.pending_result_navigation.is_some() || self.automation_ui.pending_period.is_some() {
+            return true;
+        }
+        if self
+            .todo_batch
+            .as_ref()
+            .is_some_and(|batch| batch.state == crate::batch::BatchState::Running)
             && !self.batch_result_bodies_pending().is_empty()
         {
             return true;
@@ -960,8 +985,7 @@ impl TaskApp {
             Some(crate::history_reader::BodyLoad::Loading { .. }) => true,
             Some(crate::history_reader::BodyLoad::Failed { .. }) => true,
             Some(
-                crate::history_reader::BodyLoad::Loaded
-                | crate::history_reader::BodyLoad::Absent,
+                crate::history_reader::BodyLoad::Loaded | crate::history_reader::BodyLoad::Absent,
             ) => false,
         };
         if let Some(run_id) = self.displayed_run_id() {
@@ -1043,11 +1067,11 @@ impl TaskApp {
     }
 
     pub(crate) fn retry_occurrence_body(&mut self, occurrence: u64) -> bool {
-        let Some(run_id) = self.store.occurrence(occurrence).and_then(|value| {
-            value
-                .final_run_id
-                .or_else(|| value.run_ids.last().copied())
-        }) else {
+        let Some(run_id) = self
+            .store
+            .occurrence(occurrence)
+            .and_then(|value| value.final_run_id.or_else(|| value.run_ids.last().copied()))
+        else {
             return false;
         };
         self.retry_run_body(run_id);
@@ -1131,9 +1155,15 @@ impl TaskApp {
         };
         let mut bodies = Vec::new();
         for step in self.store.research_children(goal) {
-            let Some(task) = self.store.task(step) else { continue };
-            if task.stage == Stage::Done { continue; }
-            let Some(research) = task.research.as_ref() else { continue };
+            let Some(task) = self.store.task(step) else {
+                continue;
+            };
+            if task.stage == Stage::Done {
+                continue;
+            }
+            let Some(research) = task.research.as_ref() else {
+                continue;
+            };
             for dep in &research.depends_on {
                 if let Some(run_id) = self.store.research_result_body_pending(*dep) {
                     bodies.push(run_id);
@@ -1289,14 +1319,16 @@ impl TaskApp {
         if let Some(automation) = self.current_history_automation() {
             let request = match self.history_cache.get(&automation) {
                 None => true,
-                Some(cache) => matches!(
-                    cache.state,
-                    crate::history_reader::HistoryLoad::NotRequested
-                ) || matches!(
-                    cache.state,
-                    crate::history_reader::HistoryLoad::Failed { retry_at, .. }
-                        if retry_at <= std::time::Instant::now()
-                ),
+                Some(cache) => {
+                    matches!(
+                        cache.state,
+                        crate::history_reader::HistoryLoad::NotRequested
+                    ) || matches!(
+                        cache.state,
+                        crate::history_reader::HistoryLoad::Failed { retry_at, .. }
+                            if retry_at <= std::time::Instant::now()
+                    )
+                }
             };
             if request {
                 self.request_history_page(automation, cx);
@@ -1306,7 +1338,9 @@ impl TaskApp {
         if let Some(id) = self.automation_ui.pending_period {
             body_targets.extend(self.pending_period_bodies(id));
         }
-        if let Some(pending) = &self.pending_result_navigation { body_targets.push(pending.run_id); }
+        if let Some(pending) = &self.pending_result_navigation {
+            body_targets.push(pending.run_id);
+        }
         if let Some(run_id) = self.displayed_run_id() {
             body_targets.push(run_id);
         }
@@ -1365,11 +1399,7 @@ impl TaskApp {
         cx: &mut Context<Self>,
     ) {
         let same_form = self.automation_ui.form_epoch == target.form_epoch
-            && self
-                .automation_draft_input(cx)
-                .ok()
-                .as_ref()
-                == Some(&target.input);
+            && self.automation_draft_input(cx).ok().as_ref() == Some(&target.input);
         let planning_receipt = self
             .automation_ui
             .planning_save_inflight
@@ -1486,8 +1516,9 @@ impl TaskApp {
                 let stopped = runs
                     .into_iter()
                     .map(|mut active| {
-                        let (stopped, events) =
-                            active.handle.stop_and_wait(std::time::Duration::from_secs(5));
+                        let (stopped, events) = active
+                            .handle
+                            .stop_and_wait(std::time::Duration::from_secs(5));
                         StoppedRun {
                             id: active.id,
                             stopped,
@@ -1550,7 +1581,11 @@ impl TaskApp {
             && pending.generation == 0
         {
             let _ = self.submit_primary_group(Some(cx));
-        } else if self.live_followups.iter().any(|group| group.generation == 0) {
+        } else if self
+            .live_followups
+            .iter()
+            .any(|group| group.generation == 0)
+        {
             let _ = self.submit_pending_followups(Some(cx));
         }
         self.start_pump(cx);
@@ -1590,7 +1625,11 @@ impl TaskApp {
         {
             let _ = self.submit_primary_group(Some(cx));
         }
-        if self.live_followups.iter().any(|group| group.generation == 0) {
+        if self
+            .live_followups
+            .iter()
+            .any(|group| group.generation == 0)
+        {
             let _ = self.submit_pending_followups(Some(cx));
         }
         if self.live_clean_for_quit() {
@@ -1665,13 +1704,14 @@ impl TaskApp {
                     .map(|value| value.as_nanos())
                     .unwrap_or_default(),
             );
-            let tail = self.store.drain_store_delta().unwrap_or(
-                crate::domain::StoreDelta {
+            let tail = self
+                .store
+                .drain_store_delta()
+                .unwrap_or(crate::domain::StoreDelta {
                     changes: Vec::new(),
                     metadata: Vec::new(),
                     epoch: 0,
-                },
-            );
+                });
             let plan = crate::persistence_live::build_recovery_plan(
                 incarnation,
                 durable_generation,
@@ -1679,9 +1719,7 @@ impl TaskApp {
                 accepted,
                 tail,
             );
-            if let Err(error) =
-                crate::persistence_live::write_recovery(storage.path(), &plan)
-            {
+            if let Err(error) = crate::persistence_live::write_recovery(storage.path(), &plan) {
                 self.storage_error = format!(
                     "Emergency recovery snapshot could not be written; unacknowledged changes may be lost: {error}"
                 );
@@ -1766,11 +1804,7 @@ impl TaskApp {
         self.complete_live_now(pending.completion, cx);
     }
 
-    pub(crate) fn complete_live_now(
-        &mut self,
-        completion: LiveCompletion,
-        cx: &mut Context<Self>,
-    ) {
+    pub(crate) fn complete_live_now(&mut self, completion: LiveCompletion, cx: &mut Context<Self>) {
         match completion {
             LiveCompletion::None => {}
             LiveCompletion::ResearchUnderstanding { request, signature } => {
@@ -1778,7 +1812,8 @@ impl TaskApp {
             }
             LiveCompletion::ArchiveDeleted => {
                 self.undo.clear();
-                self.undo_invalidation = Some("Permanently deleted research cannot be restored with Undo.".into());
+                self.undo_invalidation =
+                    Some("Permanently deleted research cannot be restored with Undo.".into());
                 self.toast = "Archived research permanently deleted".into();
                 self.error.clear();
             }
@@ -1838,7 +1873,8 @@ impl TaskApp {
                 self.pending_comment_edit = None;
                 self.undo_invalidation = None;
                 self.undo.push_comment(undo);
-                self.deferred_ui.push(DeferredUiAction::ClearComment { task, body });
+                self.deferred_ui
+                    .push(DeferredUiAction::ClearComment { task, body });
                 self.error.clear();
                 self.toast = "Comment added".into();
                 self.save_feedback = Some(Ok("Comment added".into()));
@@ -1912,12 +1948,14 @@ impl TaskApp {
                     self.planning_opener_focus = None;
                     self.navigation.planning_baseline.clear();
                     self.error.clear();
-                    self.toast = "Request saved · review the research understanding when ready".into();
+                    self.toast =
+                        "Request saved · review the research understanding when ready".into();
                 } else if self.planning_destination.is_none() {
                     // The original form is gone and nothing newer owns the
                     // surface; a passive acknowledgement is safe.
                     self.error.clear();
-                    self.toast = "Request saved · review the research understanding when ready".into();
+                    self.toast =
+                        "Request saved · review the research understanding when ready".into();
                 }
                 if start {
                     // Starting a saved request never moves the user's route.
@@ -2004,7 +2042,8 @@ impl TaskApp {
                     self.stop_intents
                         .retain(|value| value.occurrence != occurrence);
                 }
-                if resume_recovery && (self.stop_intents.is_empty() && self.stop_journal_error.is_none())
+                if resume_recovery
+                    && (self.stop_intents.is_empty() && self.stop_journal_error.is_none())
                 {
                     self.recover_automations(cx);
                 }
@@ -2102,7 +2141,6 @@ impl TaskApp {
         self.draft.as_ref().map(|draft| TaskEditorInstance {
             title: draft.title.entity_id(),
             description: draft.description.entity_id(),
-            labels: draft.labels.entity_id(),
             due: draft.due.entity_id(),
         })
     }
@@ -2114,7 +2152,6 @@ impl TaskApp {
         self.planning_form_epoch = self.planning_form_epoch.wrapping_add(1).max(1);
     }
 }
-
 
 #[cfg(test)]
 mod tests {
@@ -2153,29 +2190,49 @@ mod tests {
 
     #[test]
     fn idle_live_workspace_is_clean_for_quit() {
-        assert!(quit_state_is_clean(true, true, false, false, false, false, false));
-        assert!(quit_state_is_clean(false, false, false, false, false, false, false));
+        assert!(quit_state_is_clean(
+            true, true, false, false, false, false, false
+        ));
+        assert!(quit_state_is_clean(
+            false, false, false, false, false, false, false
+        ));
     }
 
     #[test]
     fn pending_write_or_stop_worker_is_never_clean() {
-        assert!(!quit_state_is_clean(true, true, true, false, false, false, false));
-        assert!(!quit_state_is_clean(true, true, false, true, false, false, false));
-        assert!(!quit_state_is_clean(true, true, false, false, true, false, false));
-        assert!(!quit_state_is_clean(true, true, false, false, false, true, false));
-        assert!(!quit_state_is_clean(true, true, false, false, false, false, true));
+        assert!(!quit_state_is_clean(
+            true, true, true, false, false, false, false
+        ));
+        assert!(!quit_state_is_clean(
+            true, true, false, true, false, false, false
+        ));
+        assert!(!quit_state_is_clean(
+            true, true, false, false, true, false, false
+        ));
+        assert!(!quit_state_is_clean(
+            true, true, false, false, false, true, false
+        ));
+        assert!(!quit_state_is_clean(
+            true, true, false, false, false, false, true
+        ));
     }
 
     #[test]
     fn unavailable_backend_with_dirty_edits_is_not_clean() {
-        assert!(!quit_state_is_clean(true, false, true, false, false, false, false));
-        assert!(quit_state_is_clean(true, false, false, false, false, false, false));
+        assert!(!quit_state_is_clean(
+            true, false, true, false, false, false, false
+        ));
+        assert!(quit_state_is_clean(
+            true, false, false, false, false, false, false
+        ));
     }
 
     #[test]
     fn capacity_bounds_total_retained_completions_not_just_groups() {
         let completions: Vec<_> = (0..MAX_RETAINED_COMPLETIONS)
-            .map(|id| LiveCompletion::EnqueueNext { occurrence: id as u64 })
+            .map(|id| LiveCompletion::EnqueueNext {
+                occurrence: id as u64,
+            })
             .collect();
         let mut groups = std::collections::VecDeque::new();
         groups.push_back(group(completions));
@@ -2191,6 +2248,9 @@ mod tests {
         assert!(!followup_has_capacity(&groups, 1));
         let mut appended = std::collections::VecDeque::new();
         appended.push_back(group(Vec::new()));
-        assert!(followup_has_capacity(&appended, MAX_RETAINED_COMPLETION_BYTES));
+        assert!(followup_has_capacity(
+            &appended,
+            MAX_RETAINED_COMPLETION_BYTES
+        ));
     }
 }

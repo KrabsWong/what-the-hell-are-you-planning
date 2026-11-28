@@ -32,7 +32,6 @@ pub enum Scope {
     All,
     Project(u64),
     Topic(u64),
-    Cycle(String),
     Archive,
     Runs,
     Recovery,
@@ -56,10 +55,7 @@ pub(crate) struct RunDispatch {
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub(crate) enum RunSubmission {
     Dispatched(RunDispatch),
-    PendingAdmission {
-        run_id: u64,
-        automation_owned: bool,
-    },
+    PendingAdmission { run_id: u64, automation_owned: bool },
     Rejected,
 }
 
@@ -210,7 +206,6 @@ impl UndoStack {
             .flatten()
             .collect()
     }
-
 }
 
 #[derive(Clone, Copy, Debug, PartialEq)]
@@ -239,23 +234,12 @@ impl AllStatus {
         }
     }
 }
-#[derive(Clone, Copy, PartialEq)]
-pub enum Property {
-    Stage,
-    Priority,
-    Project,
-    Cycle,
-    Bucket,
-    Parent,
-}
 pub struct Draft {
     pub id: u64,
     pub project: u64,
     pub stage: Stage,
-    pub cycle: Option<String>,
     pub title: Entity<InputState>,
     pub description: Entity<TextareaState>,
-    pub labels: Entity<InputState>,
     pub due: Entity<InputState>,
 }
 #[derive(Clone, Debug)]
@@ -314,7 +298,6 @@ pub struct TaskApp {
     pub(crate) dialog_opener_focus: Option<gpui_kit::WeakFocusHandle>,
     pub(crate) research_save_opener: Option<FocusHandle>,
     pub(crate) previous_versions_opener: Option<FocusHandle>,
-    pub property: Option<Property>,
     pub comment: Entity<TextareaState>,
     pub report_regeneration: Option<(u64, Entity<TextareaState>)>,
     pub toast: String,
@@ -468,9 +451,8 @@ pub struct TaskApp {
     /// mutation is durable. The window is not closed on failure.
     pub(crate) quit_requested: bool,
     pub(crate) quit_sender: Option<std::sync::mpsc::Sender<bool>>,
-    pub(crate) quit_stopping: Option<
-        std::sync::mpsc::Receiver<Vec<crate::live_save_app::StoppedRun>>,
-    >,
+    pub(crate) quit_stopping:
+        Option<std::sync::mpsc::Receiver<Vec<crate::live_save_app::StoppedRun>>>,
     pub(crate) window_close_requested: bool,
     pub(crate) window_close_ready: bool,
     pub(crate) window_close_registered: bool,
@@ -479,10 +461,8 @@ pub struct TaskApp {
     pub(crate) live_recovery_path: Option<PathBuf>,
     /// T15 off-thread indexed history and on-demand report bodies.
     pub(crate) history_reader: Option<crate::history_reader::HistoryReader>,
-    pub(crate) history_cache:
-        std::collections::BTreeMap<u64, crate::history_reader::HistoryCache>,
-    pub(crate) run_body_state:
-        std::collections::BTreeMap<u64, crate::history_reader::BodyLoad>,
+    pub(crate) history_cache: std::collections::BTreeMap<u64, crate::history_reader::HistoryCache>,
+    pub(crate) run_body_state: std::collections::BTreeMap<u64, crate::history_reader::BodyLoad>,
     pub(crate) history_request_seq: u64,
     pub(crate) pending_result_navigation: Option<crate::navigation::PendingResultNavigation>,
     /// Window-dependent acknowledgements (focus/navigation/draft cleanup).
@@ -517,7 +497,10 @@ pub struct TaskApp {
     pub notification_destination_input: Entity<InputState>,
     pub publishing_scan_requested: bool,
     pub publishing_job: Option<(String, mpsc::Receiver<crate::report_publish::PublishEvent>)>,
-    pub notification_job: Option<(String, mpsc::Receiver<crate::notification::NotificationEvent>)>,
+    pub notification_job: Option<(
+        String,
+        mpsc::Receiver<crate::notification::NotificationEvent>,
+    )>,
     discovery: Option<mpsc::Receiver<(PathBuf, Discovery)>>,
     pub active_runs: Vec<ActiveRun>,
     pub queued_runs: Vec<(u64, Vec<PathBuf>)>,
@@ -545,7 +528,8 @@ pub struct TaskApp {
     pub(crate) sidebar_surface: Option<Entity<crate::shell_surfaces::SidebarSurface>>,
     pub(crate) brand_overlay: Option<Entity<crate::shell_surfaces::BrandOverlay>>,
     pub(crate) content_surface: Option<Entity<crate::shell_surfaces::ContentSurface>>,
-    pub(crate) automation_result_surface: Option<Entity<crate::shell_surfaces::AutomationResultSurface>>,
+    pub(crate) automation_result_surface:
+        Option<Entity<crate::shell_surfaces::AutomationResultSurface>>,
     pub(crate) footer_bar: Option<Entity<crate::shell_surfaces::FooterBar>>,
     pub materials_focus: FocusHandle,
     pub attachment_status: String,
@@ -553,12 +537,12 @@ pub struct TaskApp {
     pub attachment_import: Option<mpsc::Receiver<AttachmentImport>>,
     pub show_run_result: bool,
     pub show_run_details: bool,
-    pub show_task_details: bool,
     pub expanded_request_brief: Option<u64>,
     pub render_statuses:
         std::cell::RefCell<std::collections::HashMap<u64, crate::workflow::TaskStatus>>,
-    pub render_executions:
-        std::cell::RefCell<std::collections::HashMap<u64, crate::execution_status::ExecutionStatus>>,
+    pub render_executions: std::cell::RefCell<
+        std::collections::HashMap<u64, crate::execution_status::ExecutionStatus>,
+    >,
     pub render_status_epoch: std::cell::Cell<u64>,
     pub show_task_activity: bool,
     pub automation_ui: crate::automation_views::AutomationUi,
@@ -714,15 +698,19 @@ impl TaskApp {
         #[cfg(feature = "qa")]
         crate::brand::start_render_probe_logging();
         let nav = Self::initial_nav(&store);
-        let search = cx.new(|cx| InputState::new(window, cx).placeholder(crate::i18n::tr("Filter this list…")));
+        let search = cx.new(|cx| {
+            InputState::new(window, cx).placeholder(crate::i18n::tr("Filter this list…"))
+        });
         let sub = cx.subscribe(&search, |this, state, event, cx| {
             if matches!(event, InputEvent::Change) {
                 this.set_query(state.read(cx).value().to_string());
                 cx.notify();
             }
         });
-        let global_search = cx
-            .new(|cx| InputState::new(window, cx).placeholder(crate::i18n::tr("Search research and automations…")));
+        let global_search = cx.new(|cx| {
+            InputState::new(window, cx)
+                .placeholder(crate::i18n::tr("Search research and automations…"))
+        });
         let global_search_sub = cx.subscribe_in(
             &global_search,
             window,
@@ -812,7 +800,10 @@ impl TaskApp {
                 }
             }));
         }
-        for input in research_models.iter().chain([&global_model, &fallback_model]) {
+        for input in research_models
+            .iter()
+            .chain([&global_model, &fallback_model])
+        {
             subscriptions.push(
                 cx.subscribe_in(input, window, move |this, input, event, w, cx| {
                     match event {
@@ -870,17 +861,19 @@ impl TaskApp {
                 cx.notify();
             }
         }));
-        subscriptions.push(cx.subscribe(&gateway_token_input, |this, _input, event, cx| {
-            if matches!(event, InputEvent::Blur | InputEvent::PressEnter { .. }) {
-                let url = this.gateway_url_input.read(cx).value();
-                let token = this.gateway_token_input.read(cx).value();
-                match crate::search::save_gateway_credentials(&url, &token) {
-                    Ok(()) => this.error.clear(),
-                    Err(error) => this.error = error,
+        subscriptions.push(
+            cx.subscribe(&gateway_token_input, |this, _input, event, cx| {
+                if matches!(event, InputEvent::Blur | InputEvent::PressEnter { .. }) {
+                    let url = this.gateway_url_input.read(cx).value();
+                    let token = this.gateway_token_input.read(cx).value();
+                    match crate::search::save_gateway_credentials(&url, &token) {
+                        Ok(()) => this.error.clear(),
+                        Err(error) => this.error = error,
+                    }
+                    cx.notify();
                 }
-                cx.notify();
-            }
-        }));
+            }),
+        );
         Self {
             last_saved: store.clone(),
             storage: None,
@@ -992,7 +985,6 @@ impl TaskApp {
             dialog_opener_focus: None,
             research_save_opener: None,
             previous_versions_opener: None,
-            property: None,
             comment: cx.new(|cx| {
                 TextareaState::new(window, cx)
                     .placeholder(crate::i18n::tr("Leave a comment…"))
@@ -1106,7 +1098,6 @@ impl TaskApp {
             attachment_import: None,
             show_run_result: true,
             show_run_details: false,
-            show_task_details: false,
             expanded_request_brief: None,
             render_statuses: Default::default(),
             render_executions: Default::default(),
@@ -1217,8 +1208,7 @@ impl TaskApp {
         // The continuation owns the inverse and the durable toast. A pending
         // receipt must not push Undo or claim saved state yet.
         let completion = crate::live_save_app::LiveCompletion::Domain {
-            undo: (undoable && outcome.undo.changed_entities() > 0)
-                .then(|| outcome.undo.clone()),
+            undo: (undoable && outcome.undo.changed_entities() > 0).then(|| outcome.undo.clone()),
             message: message.into(),
         };
         let acceptance = match self.save_current_store_durably(completion, cx) {
@@ -1336,13 +1326,15 @@ impl TaskApp {
 
     /// Active Settings section, or the last preference when another page is
     /// visible. The active Settings page owns its tab in the typed route.
-    pub(crate) fn settings_section(&self) -> crate::navigation_route::SettingsSection {        match self.nav.route() {
+    pub(crate) fn settings_section(&self) -> crate::navigation_route::SettingsSection {
+        match self.nav.route() {
             crate::navigation_route::Route::Settings(page) => page.tab(),
             _ => self.navigation.settings_section,
         }
     }
 
-    pub(crate) fn settings_tab(&self) -> crate::settings_views::SettingsTab {        match self.settings_section() {
+    pub(crate) fn settings_tab(&self) -> crate::settings_views::SettingsTab {
+        match self.settings_section() {
             crate::navigation_route::SettingsSection::General => {
                 crate::settings_views::SettingsTab::General
             }
@@ -1368,34 +1360,6 @@ impl TaskApp {
         };
         self.navigation.settings_section = section;
         let _ = self.nav.set_settings_tab(section);
-    }
-
-    /// Goal whose Steps tab is active; this is the typed Task panel, not a
-    /// second global selection.
-    pub(crate) fn goal_steps_tab(&self) -> Option<u64> {
-        match self.nav.route() {
-            crate::navigation_route::Route::ResearchTask(page)
-                if page.panel() == crate::navigation_route::TaskPanel::Steps =>
-            {
-                Some(page.task())
-            }
-            _ => None,
-        }
-    }
-
-    pub(crate) fn set_goal_steps_tab(&mut self, goal: Option<u64>) {
-        use crate::navigation_route::{Route, TaskPanel};
-        let crate::navigation_route::Route::ResearchTask(page) = self.nav.route() else {
-            return;
-        };
-        let task = page.task();
-        let base = self.scope();
-        let panel = if goal == Some(task) {
-            TaskPanel::Steps
-        } else {
-            TaskPanel::Overview
-        };
-        self.install_route(Route::research_task_from(task, base, panel));
     }
 
     /// Task detail identity is the typed `ResearchTask` route; there is no
@@ -1436,7 +1400,14 @@ impl TaskApp {
         scroll.set(
             ScrollKey::TaskList,
             0.0,
-            self.navigation.task_list_scroll.0.borrow().base_handle.offset().y.as_f32(),
+            self.navigation
+                .task_list_scroll
+                .0
+                .borrow()
+                .base_handle
+                .offset()
+                .y
+                .as_f32(),
         );
         scroll.set(
             ScrollKey::Topic,
@@ -1541,7 +1512,8 @@ impl TaskApp {
         }
         let query = frame.page.query.clone();
         let _ = self.nav.set_research_query(query.clone());
-        self.search.update(cx, |state, cx| state.set_value(query, window, cx));
+        self.search
+            .update(cx, |state, cx| state.set_value(query, window, cx));
         if let Some((x, y)) = frame.scroll.get(ScrollKey::TaskList) {
             self.navigation
                 .task_list_scroll
@@ -1585,13 +1557,9 @@ impl TaskApp {
 
     /// Open one task detail over the current page family. Selection is the
     /// typed route identity, so no writable `selected` field survives.
-    pub(crate) fn set_task_identity(
-        &mut self,
-        task: u64,
-        panel: crate::navigation_route::TaskPanel,
-    ) -> bool {
+    pub(crate) fn set_task_identity(&mut self, task: u64) -> bool {
         let base = self.scope();
-        let route = crate::navigation_route::Route::research_task_from(task, base, panel);
+        let route = crate::navigation_route::Route::research_task_from(task, base);
         self.install_route(route)
     }
 
@@ -1615,8 +1583,7 @@ impl TaskApp {
                 }
                 Some(_) => match selected_run {
                     Some(run)
-                        if run.task_id == context
-                            && !self.store.run_is_automation_owned(run) =>
+                        if run.task_id == context && !self.store.run_is_automation_owned(run) =>
                     {
                         ResultOwner::Task(context)
                     }
@@ -1779,10 +1746,7 @@ impl TaskApp {
         }
         let _ = self.close_period_overlay();
         self.nav
-            .push_overlay(
-                &self.store,
-                Overlay::AutomationSettings { automation },
-            )
+            .push_overlay(&self.store, Overlay::AutomationSettings { automation })
             .is_ok()
     }
 
@@ -1809,7 +1773,10 @@ impl TaskApp {
         self.pending_result_navigation = None;
         self.automation_ui.pending_period = None;
         let from_settings = self.settings_overlay();
-        match self.nav.with_planning_attempt(&self.store, run, from_settings) {
+        match self
+            .nav
+            .with_planning_attempt(&self.store, run, from_settings)
+        {
             Ok(nav) => {
                 self.nav = nav;
                 self.automation_ui.planning_attempt_origin_settings = from_settings;
@@ -1832,7 +1799,7 @@ impl TaskApp {
     pub(crate) fn fixture_select_task(&mut self, task: Option<u64>) {
         match task {
             Some(task) => {
-                self.set_task_identity(task, crate::navigation_route::TaskPanel::Overview);
+                self.set_task_identity(task);
             }
             None => {
                 if let crate::navigation_route::Route::ResearchTask(page) = self.nav.route() {
@@ -1845,12 +1812,7 @@ impl TaskApp {
 
     fn initial_nav(store: &Store) -> crate::navigation_route::NavState {
         use crate::navigation_route::{NavState, Route};
-        let preferred = Route::for_scope(
-            &Scope::Project(1),
-            AllStatus::All,
-            None,
-            20,
-        );
+        let preferred = Route::for_scope(&Scope::Project(1), AllStatus::All, None, 20);
         NavState::new(store, preferred).unwrap_or_else(|_| {
             let fallback = Route::for_scope(&Scope::All, AllStatus::All, None, 20);
             NavState::new(store, fallback).expect("All research is always a valid route")
@@ -1903,22 +1865,24 @@ impl TaskApp {
         false
     }
 
-    fn fallback_route(&self, route: &crate::navigation_route::Route) -> crate::navigation_route::Route {
+    fn fallback_route(
+        &self,
+        route: &crate::navigation_route::Route,
+    ) -> crate::navigation_route::Route {
         use crate::navigation_route::{ResearchScope, ResultOwner, Route};
         match route {
             Route::ResearchList(_) | Route::ResearchTask(_) => {
                 Route::research_list(ResearchScope::All, self.all_status)
             }
-            Route::ResearchResult(_) => {
-                Route::research_result(ResultOwner::OrdinaryPage, None)
-            }
+            Route::ResearchResult(_) => Route::research_result(ResultOwner::OrdinaryPage, None),
             Route::AutomationDetail(_) | Route::AutomationEditor(_) => Route::AutomationList,
             Route::AutomationResults(_) => {
                 Route::automation_results(None, self.automation_ui.history_limit.max(1))
             }
-            Route::PausedProjects | Route::MarketResearch | Route::Settings(_) | Route::AutomationList => {
-                Route::research_list(ResearchScope::All, self.all_status)
-            }
+            Route::PausedProjects
+            | Route::MarketResearch
+            | Route::Settings(_)
+            | Route::AutomationList => Route::research_list(ResearchScope::All, self.all_status),
         }
     }
 
@@ -1988,7 +1952,6 @@ impl TaskApp {
         }
         let _ = self.close_task_editor_overlay();
         self.draft = None;
-        self.property = None;
         self.error.clear();
         self.clear_query();
         self.search.update(cx, |s, cx| s.set_value("", window, cx));
@@ -2096,14 +2059,9 @@ impl TaskApp {
         }
         self.tabs.retain(|task| *task != id);
         self.tabs.push(id);
-        self.show_task_details = false;
         self.expanded_request_brief = None;
         self.show_task_activity = false;
-        let panel = match self.nav.route() {
-            crate::navigation_route::Route::ResearchTask(page) if page.task() == id => page.panel(),
-            _ => crate::navigation_route::TaskPanel::Overview,
-        };
-        self.set_task_identity(id, panel);
+        self.set_task_identity(id);
         if self.selected() != Some(id) {
             self.toast = "That task is no longer available. Returned to a safe parent.".into();
         }
@@ -2114,7 +2072,6 @@ impl TaskApp {
         self.sidebar_reveal = (!self.store.task_is_archived(id)).then_some(id);
         let _ = self.close_task_editor_overlay();
         self.draft = None;
-        self.property = None;
         self.error.clear();
         self.restore_task_comment(id, window, cx);
         // A research step may need lazy prerequisite bodies before its retry can
@@ -2142,7 +2099,6 @@ impl TaskApp {
                 .find(|t| t.id == *id)
                 .map(|t| t.display_name())
                 .unwrap_or_default(),
-            Scope::Cycle(c) => c.clone(),
             Scope::Archive => crate::i18n::tr_string("Archive"),
             Scope::Runs => crate::i18n::tr_string("Research results"),
             Scope::Recovery => crate::i18n::tr_string("Paused projects"),
@@ -2161,14 +2117,17 @@ impl TaskApp {
             return false;
         }
         match self.scope() {
-            Scope::All => self.all_status == AllStatus::All
-                || self.all_status.matches(&self.store.task_status(t.id, self.todo_batch.as_ref())),
+            Scope::All => {
+                self.all_status == AllStatus::All
+                    || self
+                        .all_status
+                        .matches(&self.store.task_status(t.id, self.todo_batch.as_ref()))
+            }
             Scope::Project(id) => t.project_id == id,
             Scope::Topic(id) => self
                 .store
                 .task_topic(t.id)
                 .is_some_and(|topic| topic.id == id),
-            Scope::Cycle(c) => t.cycle.as_ref() == Some(&c),
             _ => true,
         }
     }
@@ -2235,20 +2194,16 @@ impl TaskApp {
         });
         self.draft = Some(Draft {
             id,
-            cycle: task.cycle.clone(),
             project: task.project_id,
             stage: task.stage,
             title: title.clone(),
             description: cx.new(|cx| {
                 TextareaState::new(window, cx)
-                    .placeholder(crate::i18n::tr("Describe the outcome, context, and acceptance criteria…"))
+                    .placeholder(crate::i18n::tr(
+                        "Describe the outcome, context, and acceptance criteria…",
+                    ))
                     .default_value(task.description.clone())
                     .rows(6)
-            }),
-            labels: cx.new(|cx| {
-                InputState::new(window, cx)
-                    .placeholder(crate::i18n::tr("Feature, UI"))
-                    .default_value(task.labels.join(", "))
             }),
             due: cx.new(|cx| {
                 InputState::new(window, cx)
@@ -2419,7 +2374,9 @@ impl TaskApp {
                     cx.notify();
                     return;
                 }
-                if let Err(error) = self.save_staged_store(&staged, crate::live_save_app::LiveCompletion::None, cx) {
+                if let Err(error) =
+                    self.save_staged_store(&staged, crate::live_save_app::LiveCompletion::None, cx)
+                {
                     self.undo.push_task_edit(undo);
                     self.storage_error = error.clone();
                     self.show_save_error(error, cx);
@@ -2437,7 +2394,6 @@ impl TaskApp {
                 self.reconcile_nav_after_store_change();
                 self.draft = None;
                 let _ = self.close_task_editor_overlay();
-                self.property = None;
                 self.refresh_research_inputs(window, cx);
                 self.refresh_global_model_input(window, cx);
                 self.toast = "Last change undone".into();
@@ -2455,7 +2411,9 @@ impl TaskApp {
                     cx.notify();
                     return;
                 }
-                if let Err(error) = self.save_staged_store(&staged, crate::live_save_app::LiveCompletion::None, cx) {
+                if let Err(error) =
+                    self.save_staged_store(&staged, crate::live_save_app::LiveCompletion::None, cx)
+                {
                     self.undo.push_comment(undo);
                     self.storage_error = error.clone();
                     self.show_save_error(error, cx);
@@ -2477,18 +2435,19 @@ impl TaskApp {
             }
             UndoRecord::Settings(undo) => {
                 let mut staged = self.store.clone();
-                if let Err(error) = crate::scoped_settings::undo_settings_change(&mut staged, &undo) {
+                if let Err(error) = crate::scoped_settings::undo_settings_change(&mut staged, &undo)
+                {
                     self.undo.push_settings(undo);
                     self.error = match error {
                         crate::scoped_settings::SettingsError::Rejected(message) => message.into(),
-                        crate::scoped_settings::SettingsError::NoChange => {
-                            "Nothing to undo".into()
-                        }
+                        crate::scoped_settings::SettingsError::NoChange => "Nothing to undo".into(),
                     };
                     cx.notify();
                     return;
                 }
-                if let Err(error) = self.save_staged_store(&staged, crate::live_save_app::LiveCompletion::None, cx) {
+                if let Err(error) =
+                    self.save_staged_store(&staged, crate::live_save_app::LiveCompletion::None, cx)
+                {
                     self.undo.push_settings(undo);
                     self.storage_error = error.clone();
                     self.show_save_error(error, cx);
@@ -2534,10 +2493,9 @@ impl TaskApp {
                     cx.notify();
                     return;
                 }
-                let acceptance = match self.save_current_store_durably(
-                    crate::live_save_app::LiveCompletion::None,
-                    cx,
-                ) {
+                let acceptance = match self
+                    .save_current_store_durably(crate::live_save_app::LiveCompletion::None, cx)
+                {
                     Ok(acceptance) => acceptance,
                     Err(error) => {
                         // Restore the state the inverse just replaced; the entry
@@ -2565,7 +2523,6 @@ impl TaskApp {
                 }
                 self.draft = None;
                 let _ = self.close_task_editor_overlay();
-                self.property = None;
                 self.refresh_research_inputs(window, cx);
                 self.refresh_global_model_input(window, cx);
                 self.toast = if acceptance.is_durable() {
@@ -2644,11 +2601,7 @@ impl TaskApp {
                         Ok(()) => {
                             self.live_save_enabled = true;
                             self.live_workspace = Some(live.incarnation);
-                            self.start_history_reader(
-                                &live.path,
-                                &live.root,
-                                live.incarnation,
-                            );
+                            self.start_history_reader(&live.path, &live.root, live.incarnation);
                             self.storage_error.clear();
                             self.start_pump(cx);
                         }
@@ -2657,7 +2610,8 @@ impl TaskApp {
                             self.storage_error = format!(
                                 "Incremental persistence could not start. The workspace is read-only until the worker reattaches; legacy writes are disabled: {error}"
                             );
-                            self.toast = "Persistence unavailable · changes are not being saved".into();
+                            self.toast =
+                                "Persistence unavailable · changes are not being saved".into();
                         }
                     }
                     self.storage = Some(storage);
@@ -2672,8 +2626,8 @@ impl TaskApp {
                     self.hydrate_loaded_store(store, window, cx);
                     match storage.save(&self.store) {
                         Ok(()) => {
-                            self.store =
-                                std::mem::replace(&mut self.store, Store::empty()).into_durably_saved();
+                            self.store = std::mem::replace(&mut self.store, Store::empty())
+                                .into_durably_saved();
                             self.last_saved = self.store.clone();
                             self.toast = "All changes saved".into();
                         }
@@ -3061,7 +3015,8 @@ impl TaskApp {
             cx.notify();
             return;
         }
-        self.store.set_opencode_path(executable.to_string_lossy().into_owned());
+        self.store
+            .set_opencode_path(executable.to_string_lossy().into_owned());
         let directory = self
             .store
             .projects()
@@ -3727,8 +3682,7 @@ impl TaskApp {
                             == Some(&run.input_signature)
                             && !self.store.research_pending_approval(run.task_id)
                             && self.store.task(run.task_id).is_some_and(|t| {
-                                !t.archived
-                                    && !matches!(t.stage, Stage::Backlog | Stage::Cancelled)
+                                !t.archived && !matches!(t.stage, Stage::Backlog | Stage::Cancelled)
                             })
                     }
                 } else {
@@ -4203,7 +4157,11 @@ impl TaskApp {
         self.persist_if_changed(true);
     }
 }
-pub(crate) fn record_events(run: &mut AgentRun, had_error: &mut bool, events: Vec<opencode::Event>) -> bool {
+pub(crate) fn record_events(
+    run: &mut AgentRun,
+    had_error: &mut bool,
+    events: Vec<opencode::Event>,
+) -> bool {
     let mut finished = false;
     for event in events {
         match event {
@@ -4310,7 +4268,7 @@ mod tests {
         let mut store = crate::domain::Store::empty();
         store.project_at_mut(0).unwrap().directory = directory.to_string_lossy().into_owned();
         let task = store
-            .create_task("Mixed task", 1, crate::domain::Stage::Planned, None)
+            .create_task("Mixed task", 1, crate::domain::Stage::InProgress, None)
             .unwrap();
         let input = crate::scoped_edit::TaskEditInput {
             id: task,
@@ -4318,11 +4276,8 @@ mod tests {
             description: String::new(),
             labels: vec![],
             due_date: String::new(),
-            cycle: None,
-            priority: crate::domain::Priority::None,
-            bucket: String::new(),
             project: Some(1),
-            stage: Some(crate::domain::Stage::Planned),
+            stage: Some(crate::domain::Stage::InProgress),
             stage_intent: crate::scoped_edit::StageIntent::Editor,
         };
         let plan = crate::scoped_edit::prepare_task_edit(&store, &input).unwrap();
@@ -4395,7 +4350,12 @@ mod tests {
         // The captured domain change removes only the topic the fixture created.
         let mut restored = store;
         crate::scoped_domain::apply_undo(&mut restored, &domain).unwrap();
-        assert!(!restored.topics().iter().any(|candidate| candidate.id == topic));
+        assert!(
+            !restored
+                .topics()
+                .iter()
+                .any(|candidate| candidate.id == topic)
+        );
         let _ = std::fs::remove_dir_all(directory);
     }
 

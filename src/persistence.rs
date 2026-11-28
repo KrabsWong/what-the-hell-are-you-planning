@@ -54,7 +54,10 @@ fn normalize_automation_schema(store: &mut Store) -> Result<(), String> {
 
 impl Storage {
     pub fn new(path: PathBuf) -> Self {
-        let parent = path.parent().filter(|p| !p.as_os_str().is_empty()).unwrap_or(Path::new("."));
+        let parent = path
+            .parent()
+            .filter(|p| !p.as_os_str().is_empty())
+            .unwrap_or(Path::new("."));
         let workspace_root = std::path::absolute(parent).unwrap_or_else(|_| parent.to_path_buf());
         Self {
             path,
@@ -73,21 +76,29 @@ impl Storage {
     pub fn default_path() -> Result<PathBuf, String> {
         for variable in ["WTHAYP_DATA_DIR", "TASK_MANAGER_DATA_DIR"] {
             if let Some(directory) = std::env::var_os(variable) {
-                if directory.is_empty() { return Err(format!("{variable} must name a directory.")); }
+                if directory.is_empty() {
+                    return Err(format!("{variable} must name a directory."));
+                }
                 return Ok(PathBuf::from(directory).join("workspace.sqlite3"));
             }
         }
-        crate::workspace::configured()?.map(|root| root.join("workspace/workspace.sqlite3"))
+        crate::workspace::configured()?
+            .map(|root| root.join("workspace/workspace.sqlite3"))
             .ok_or_else(|| "Choose a workspace in the app before continuing.".into())
     }
 
     /// Upgrade existing SQLite data before attachment or transfer. Caller holds the workspace lock.
     /// Returns the retained old-format backup, or None when no upgrade is needed.
-    pub fn upgrade_paths(&self, progress: impl FnMut(&'static str)) -> Result<Option<PathBuf>, String> {
-        if self.path.extension().is_some_and(|extension| extension == "sqlite3") {
-            if self.path.is_file()
-                && crate::sqlite_v4::schema_version(&self.path)? == 4
-            {
+    pub fn upgrade_paths(
+        &self,
+        progress: impl FnMut(&'static str),
+    ) -> Result<Option<PathBuf>, String> {
+        if self
+            .path
+            .extension()
+            .is_some_and(|extension| extension == "sqlite3")
+        {
+            if self.path.is_file() && crate::sqlite_v4::schema_version(&self.path)? == 4 {
                 // Incremental v4 is migrated/validated by persistence_live after
                 // the workspace lock is held; the v1/v2 path writer must not run.
                 return Ok(None);
@@ -105,7 +116,6 @@ impl Storage {
     pub(crate) fn workspace_root(&self) -> &Path {
         &self.workspace_root
     }
-
 
     /// Keep the returned file alive for the application's lifetime. Never unlink the lock file:
     /// other instances must lock the same inode even after the current holder exits.
@@ -175,7 +185,9 @@ impl Storage {
             ));
             let migrated = (|| {
                 crate::sqlite_storage::save(&temporary, &self.workspace_root, &store)?;
-                if crate::sqlite_storage::load(&temporary, &self.workspace_root)? != Some(store.clone()) {
+                if crate::sqlite_storage::load(&temporary, &self.workspace_root)?
+                    != Some(store.clone())
+                {
                     return Err("SQLite migration verification failed".into());
                 }
                 fs::rename(&temporary, &self.path)
@@ -483,12 +495,22 @@ mod tests {
         let directory = TestDirectory::new();
         let database = Storage::new(directory.0.join("workspace.sqlite3"));
         let mut original = Store::empty();
-        let goal = original.create_research_goal("Quarterly review".into(), "Analyze earnings".into(), 1).unwrap();
+        let goal = original
+            .create_research_goal("Quarterly review".into(), "Analyze earnings".into(), 1)
+            .unwrap();
         original.normalize_topics();
         database.save(&original).unwrap();
         let db = rusqlite::Connection::open(database.path()).unwrap();
-        db.execute("UPDATE workspace SET payload=json_remove(payload, '$.topics')", []).unwrap();
-        db.execute("UPDATE tasks SET payload=json_remove(payload, '$.topic_id')", []).unwrap();
+        db.execute(
+            "UPDATE workspace SET payload=json_remove(payload, '$.topics')",
+            [],
+        )
+        .unwrap();
+        db.execute(
+            "UPDATE tasks SET payload=json_remove(payload, '$.topic_id')",
+            [],
+        )
+        .unwrap();
         drop(db);
         let mut loaded = database.load().unwrap().unwrap();
         assert_eq!(loaded, original);
@@ -675,7 +697,10 @@ mod tests {
         expected_loaded.normalize_topics();
         let loaded = storage.load().unwrap().unwrap();
         assert_eq!(loaded, expected_loaded);
-        assert_eq!(loaded.task(real_id).unwrap().stage, store.task(real_id).unwrap().stage);
+        assert_eq!(
+            loaded.task(real_id).unwrap().stage,
+            store.task(real_id).unwrap().stage
+        );
         assert!(loaded.goal_execution_approved(real_id));
         assert_eq!(
             storage
@@ -715,7 +740,11 @@ mod tests {
         let mut data: serde_json::Value =
             serde_json::from_slice(&fs::read(storage.path()).unwrap()).unwrap();
         data["version"] = serde_json::json!(4);
-        for key in ["automations", "automation_occurrences", "automation_schema_version"] {
+        for key in [
+            "automations",
+            "automation_occurrences",
+            "automation_schema_version",
+        ] {
             data["workspace"].as_object_mut().unwrap().remove(key);
         }
         fs::write(storage.path(), serde_json::to_vec(&data).unwrap()).unwrap();
@@ -770,7 +799,10 @@ mod tests {
         assert!(storage.load().unwrap().unwrap().liquid_glass());
         let mut data: serde_json::Value =
             serde_json::from_slice(&fs::read(storage.path()).unwrap()).unwrap();
-        data["workspace"].as_object_mut().unwrap().remove("liquid_glass");
+        data["workspace"]
+            .as_object_mut()
+            .unwrap()
+            .remove("liquid_glass");
         fs::write(storage.path(), serde_json::to_vec(&data).unwrap()).unwrap();
         assert!(!storage.load().unwrap().unwrap().liquid_glass());
     }
@@ -888,15 +920,30 @@ mod tests {
             .as_object_mut()
             .unwrap()
             .remove("requires_approval");
-        file["workspace"]["tasks"][0].as_object_mut().unwrap().remove("approved_plan");
+        file["workspace"]["tasks"][0]
+            .as_object_mut()
+            .unwrap()
+            .remove("approved_plan");
         fs::create_dir_all(storage.path().parent().unwrap()).unwrap();
         let original_bytes = serde_json::to_vec(&file).unwrap();
         fs::write(storage.path(), &original_bytes).unwrap();
         let loaded = storage.load().unwrap().unwrap();
         original.normalize_topics();
         assert_eq!(loaded, original);
-        assert_eq!(fs::read(storage.path()).unwrap(), original_bytes, "Loading must not rewrite the legacy source");
-        assert!(loaded.task(goal).unwrap().research.as_ref().unwrap().requires_approval);
+        assert_eq!(
+            fs::read(storage.path()).unwrap(),
+            original_bytes,
+            "Loading must not rewrite the legacy source"
+        );
+        assert!(
+            loaded
+                .task(goal)
+                .unwrap()
+                .research
+                .as_ref()
+                .unwrap()
+                .requires_approval
+        );
         assert!(loaded.task(goal).unwrap().approved_plan.is_some());
         assert!(!loaded.research_pending_approval(goal));
         storage.save(&loaded).unwrap();

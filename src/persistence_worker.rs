@@ -8,17 +8,17 @@
 
 #![allow(dead_code)]
 
-use crate::persistence_journal::{
-    Ack, AckOutcome, CommitCoordinator, CommitSink, DurableReceipt, EnqueueError,
-    EnqueueRejection, StagedGroup, StepOutcome,
-};
 use crate::dispatch_intent::AdmissionParts;
+use crate::persistence_journal::{
+    Ack, AckOutcome, CommitCoordinator, CommitSink, DurableReceipt, EnqueueError, EnqueueRejection,
+    StagedGroup, StepOutcome,
+};
 use crate::sqlite_v4::{Fault, SqliteV4};
 use std::collections::{BTreeMap, HashMap};
 use std::fs;
 use std::path::{Path, PathBuf};
 use std::sync::atomic::{AtomicBool, Ordering};
-use std::sync::mpsc::{sync_channel, Receiver, RecvTimeoutError, SyncSender, TrySendError};
+use std::sync::mpsc::{Receiver, RecvTimeoutError, SyncSender, TrySendError, sync_channel};
 use std::sync::{Arc, Mutex};
 use std::thread::{self, JoinHandle};
 use std::time::{Duration, Instant};
@@ -109,9 +109,15 @@ impl WorkerEvent {
             Self::Durable { receipt, .. } => {
                 receipt.workspace != workspace || receipt.generation <= durable_generation
             }
-            Self::Started { workspace: event, .. }
-            | Self::Blocked { workspace: event, .. }
-            | Self::Shutdown { workspace: event, .. } => *event != workspace,
+            Self::Started {
+                workspace: event, ..
+            }
+            | Self::Blocked {
+                workspace: event, ..
+            }
+            | Self::Shutdown {
+                workspace: event, ..
+            } => *event != workspace,
             Self::Holdings { .. }
             | Self::Rejected { .. }
             | Self::Returned { .. }
@@ -175,21 +181,17 @@ impl IntentStore {
                     items: BTreeMap::new(),
                     bytes: 0,
                     max_bytes,
-                })
+                });
             }
             Err(error) => {
                 return Err(format!(
                     "cannot read dispatch intent {}: {error}",
                     path.display()
-                ))
+                ));
             }
         };
-        let file: IntentFile = serde_json::from_slice(&payload).map_err(|error| {
-            format!(
-                "cannot parse dispatch intent {}: {error}",
-                path.display()
-            )
-        })?;
+        let file: IntentFile = serde_json::from_slice(&payload)
+            .map_err(|error| format!("cannot parse dispatch intent {}: {error}", path.display()))?;
         let mut items = BTreeMap::new();
         let mut bytes = 0usize;
         for item in file.items {
@@ -197,10 +199,13 @@ impl IntentStore {
                 .map_err(|error| format!("cannot measure dispatch intent: {error}"))?
                 .len();
             bytes = bytes.saturating_add(size);
-            items.insert(item.key, StoredIntent {
-                parts: item.parts.map(Arc::new),
-                bytes: size,
-            });
+            items.insert(
+                item.key,
+                StoredIntent {
+                    parts: item.parts.map(Arc::new),
+                    bytes: size,
+                },
+            );
         }
         if bytes > max_bytes {
             return Err(format!(
@@ -237,7 +242,13 @@ impl IntentStore {
                 self.max_bytes
             ));
         }
-        self.items.insert(key, StoredIntent { parts: None, bytes: size });
+        self.items.insert(
+            key,
+            StoredIntent {
+                parts: None,
+                bytes: size,
+            },
+        );
         self.bytes = next;
         self.persist()
     }
@@ -254,7 +265,7 @@ impl IntentStore {
                     return Err(format!(
                         "cannot remove dispatch intent {}: {error}",
                         path.display()
-                    ))
+                    ));
                 }
             }
             sync_parent(path)?;
@@ -280,7 +291,13 @@ impl IntentStore {
                 self.max_bytes
             ));
         }
-        self.items.insert(key, StoredIntent { parts: Some(parts), bytes: size });
+        self.items.insert(
+            key,
+            StoredIntent {
+                parts: Some(parts),
+                bytes: size,
+            },
+        );
         self.bytes = next;
         if let Err(error) = self.persist() {
             // Keep the in-memory obligation so a later retry can finish it.
@@ -329,16 +346,15 @@ fn write_intents_atomic<'a>(
     })
     .map_err(|error| format!("cannot encode dispatch intent: {error}"))?;
     let temp = path.with_extension("json.tmp");
-    let mut file =
-        fs::File::create(&temp).map_err(|error| format!("cannot create dispatch intent: {error}"))?;
+    let mut file = fs::File::create(&temp)
+        .map_err(|error| format!("cannot create dispatch intent: {error}"))?;
     use std::io::Write;
     file.write_all(&payload)
         .map_err(|error| format!("cannot write dispatch intent: {error}"))?;
     file.sync_all()
         .map_err(|error| format!("cannot sync dispatch intent: {error}"))?;
     drop(file);
-    fs::rename(&temp, path)
-        .map_err(|error| format!("cannot install dispatch intent: {error}"))?;
+    fs::rename(&temp, path).map_err(|error| format!("cannot install dispatch intent: {error}"))?;
     sync_parent(path)
 }
 
@@ -386,7 +402,10 @@ impl Reservation {
         if self.released || bytes >= self.bytes {
             return;
         }
-        let mut budget = self.budget.lock().unwrap_or_else(|error| error.into_inner());
+        let mut budget = self
+            .budget
+            .lock()
+            .unwrap_or_else(|error| error.into_inner());
         budget.bytes = budget.bytes.saturating_sub(self.bytes - bytes);
         self.bytes = bytes;
     }
@@ -396,7 +415,10 @@ impl Reservation {
             return;
         }
         self.released = true;
-        let mut budget = self.budget.lock().unwrap_or_else(|error| error.into_inner());
+        let mut budget = self
+            .budget
+            .lock()
+            .unwrap_or_else(|error| error.into_inner());
         budget.groups = budget.groups.saturating_sub(1);
         budget.bytes = budget.bytes.saturating_sub(self.bytes);
     }
@@ -841,10 +863,7 @@ fn worker_main(
                 }
                 if hold.load(Ordering::Acquire) {
                     let generation = submitted.group.generation();
-                    if events
-                        .send(WorkerEvent::Holdings { generation })
-                        .is_err()
-                    {
+                    if events.send(WorkerEvent::Holdings { generation }).is_err() {
                         return;
                     }
                     while hold.load(Ordering::Acquire) && !shutdown.load(Ordering::Acquire) {
@@ -896,7 +915,11 @@ fn worker_main(
             Ok(WorkerRequest::SetDelay(value)) => delay = value,
             #[cfg(any(test, feature = "qa"))]
             Ok(WorkerRequest::SetFault(value)) => {
-                fault = if value == Fault::None { None } else { Some(value) };
+                fault = if value == Fault::None {
+                    None
+                } else {
+                    Some(value)
+                };
                 coordinator.sink_mut().fault = fault;
             }
             Err(RecvTimeoutError::Timeout) => {}
@@ -917,7 +940,9 @@ fn worker_main(
         &mut last_blocked,
         &mut reservations,
     );
-    let blocked = coordinator.blocked().map(|blocked| blocked.group.generation());
+    let blocked = coordinator
+        .blocked()
+        .map(|blocked| blocked.group.generation());
     let mut returned = 0usize;
     while let Ok(request) = submissions.try_recv() {
         match request {
@@ -993,7 +1018,8 @@ fn drain(
                             bytes: 0,
                             released: true,
                         });
-                        reservation.shrink_to(receipt.effects.capacity() * std::mem::size_of::<u64>());
+                        reservation
+                            .shrink_to(receipt.effects.capacity() * std::mem::size_of::<u64>());
                         if events
                             .send(WorkerEvent::Durable {
                                 receipt,
@@ -1025,7 +1051,8 @@ fn drain(
                             bytes: 0,
                             released: true,
                         });
-                        reservation.shrink_to(receipt.effects.capacity() * std::mem::size_of::<u64>());
+                        reservation
+                            .shrink_to(receipt.effects.capacity() * std::mem::size_of::<u64>());
                         if events
                             .send(WorkerEvent::Durable {
                                 receipt,
@@ -1059,7 +1086,6 @@ fn drain(
         }
     }
 }
-
 
 #[cfg(test)]
 mod tests {
@@ -1194,7 +1220,10 @@ mod tests {
         ));
         let elapsed = started.elapsed();
         assert_eq!(outcome, SubmitOutcome::Accepted);
-        assert!(elapsed < Duration::from_millis(50), "submit blocked {elapsed:?}");
+        assert!(
+            elapsed < Duration::from_millis(50),
+            "submit blocked {elapsed:?}"
+        );
         eprintln!("worker_submit_us={}", elapsed.as_micros());
         let commit_started = Instant::now();
         wait_for(&mut worker, |events| {
@@ -1202,7 +1231,10 @@ mod tests {
                 .iter()
                 .any(|event| matches!(event, WorkerEvent::Durable { .. }))
         });
-        eprintln!("worker_commit_including_delay_us={}", commit_started.elapsed().as_micros());
+        eprintln!(
+            "worker_commit_including_delay_us={}",
+            commit_started.elapsed().as_micros()
+        );
         assert_eq!(worker.durable_generation(), 1);
         worker.request_shutdown();
         let _ = collect_until_shutdown(&mut worker, Duration::from_secs(5));
@@ -1246,7 +1278,11 @@ mod tests {
         };
         worker.set_hold(false);
         wait_for(&mut worker, |events| {
-            events.iter().filter(|event| matches!(event, WorkerEvent::Durable { .. })).count() >= 2
+            events
+                .iter()
+                .filter(|event| matches!(event, WorkerEvent::Durable { .. }))
+                .count()
+                >= 2
         });
         assert_eq!(worker.submit(retained), SubmitOutcome::Accepted);
         wait_for(&mut worker, |events| {
@@ -1286,7 +1322,11 @@ mod tests {
         worker.set_fault(Fault::None).unwrap();
         worker.retry().unwrap();
         let events = wait_for(&mut worker, |events| {
-            events.iter().filter(|event| matches!(event, WorkerEvent::Durable { .. })).count() >= 2
+            events
+                .iter()
+                .filter(|event| matches!(event, WorkerEvent::Durable { .. }))
+                .count()
+                >= 2
         });
         let receipts: Vec<_> = events
             .iter()
@@ -1360,7 +1400,11 @@ mod tests {
         worker.submit(group(&mut journal, &store, 1, "one", vec![1]));
         worker.submit(group(&mut journal, &store, 2, "two", vec![2]));
         wait_for(&mut worker, |events| {
-            events.iter().filter(|event| matches!(event, WorkerEvent::Durable { .. })).count() >= 2
+            events
+                .iter()
+                .filter(|event| matches!(event, WorkerEvent::Durable { .. }))
+                .count()
+                >= 2
         });
         worker.request_shutdown();
         let _ = collect_until_shutdown(&mut worker, Duration::from_secs(5));
@@ -1369,7 +1413,8 @@ mod tests {
         wait_started(&mut reopened);
         assert_eq!(reopened.durable_generation(), 2);
         let mut wrong =
-            PersistenceWorker::start(&path, &root, WORKSPACE + 1, WorkerOptions::default()).unwrap();
+            PersistenceWorker::start(&path, &root, WORKSPACE + 1, WorkerOptions::default())
+                .unwrap();
         let deadline = Instant::now() + Duration::from_secs(5);
         while wrong.startup_error().is_none() && Instant::now() < deadline {
             let _ = wrong.poll();
@@ -1492,7 +1537,10 @@ mod tests {
         assert_eq!(worker.durable_generation(), 1);
         let second = group(&mut journal, &store, 2, "second", (0..100).collect());
         assert!(
-            matches!(worker.submit(second.clone()), SubmitOutcome::Backpressure(_)),
+            matches!(
+                worker.submit(second.clone()),
+                SubmitOutcome::Backpressure(_)
+            ),
             "unconsumed durable receipt must keep its reservation"
         );
         drop(held);
@@ -1565,7 +1613,8 @@ mod tests {
         worker.request_shutdown();
         let (events, joined) = collect_until_shutdown(&mut worker, Duration::from_secs(10));
         assert!(joined);
-        let mut outcomes: std::collections::HashMap<u64, Vec<u64>> = std::collections::HashMap::new();
+        let mut outcomes: std::collections::HashMap<u64, Vec<u64>> =
+            std::collections::HashMap::new();
         for event in &events {
             match event {
                 WorkerEvent::Durable { receipt, .. } => {
@@ -1589,7 +1638,11 @@ mod tests {
                 .unwrap_or_else(|| panic!("accepted generation {generation} vanished"));
             assert_eq!(recorded, &vec![*effect], "effects changed or duplicated");
         }
-        assert_eq!(outcomes.len(), accepted.len(), "unexpected duplicate outcome");
+        assert_eq!(
+            outcomes.len(),
+            accepted.len(),
+            "unexpected duplicate outcome"
+        );
     }
 
     #[test]
@@ -1616,9 +1669,6 @@ mod tests {
             "not ready",
             vec![1],
         );
-        assert!(matches!(
-            missing.submit(group),
-            SubmitOutcome::NotReady(_)
-        ));
+        assert!(matches!(missing.submit(group), SubmitOutcome::NotReady(_)));
     }
 }

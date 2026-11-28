@@ -21,22 +21,20 @@ impl Store {
         agent: &str,
         model: &str,
     ) -> (String, String) {
-        let use_fallback = failed
-            .is_some_and(|run| {
-                run.status == "Failed"
-                    && run.logs.iter().any(|line| crate::run_errors::model_unavailable(line))
-            })
-            && self.valid_fallback_model();
+        let use_fallback = failed.is_some_and(|run| {
+            run.status == "Failed"
+                && run
+                    .logs
+                    .iter()
+                    .any(|line| crate::run_errors::model_unavailable(line))
+        }) && self.valid_fallback_model();
         if use_fallback {
             (
                 self.fallback_agent().to_owned(),
                 self.fallback_model().to_owned(),
             )
         } else {
-            (
-                agent.to_owned(),
-                model.to_owned(),
-            )
+            (agent.to_owned(), model.to_owned())
         }
     }
 
@@ -88,7 +86,12 @@ impl Store {
         retry.started_at.clear();
         retry.ended_at = None;
         retry.exit_code = None;
-        if let Some(error) = failed.logs.iter().rev().find_map(|line| line.strip_prefix("[error] [validation] ")) {
+        if let Some(error) = failed
+            .logs
+            .iter()
+            .rev()
+            .find_map(|line| line.strip_prefix("[error] [validation] "))
+        {
             retry.prompt.push_str(&format!("\nAPPLICATION VALIDATION FEEDBACK (attempt {}):\n{}\nCorrect the report using the existing evidence and return the required JSON. Do not repeat the rejected format or invent sources.\n", retry.auto_retry_attempt, error));
         }
         retry.output.clear();
@@ -122,7 +125,8 @@ impl Store {
                 retry.session_id = None;
             } else if !self.valid_fallback_model() {
                 retry.logs.push(
-                    "[fallback] No valid fallback model is configured; retrying the primary model.".into(),
+                    "[fallback] No valid fallback model is configured; retrying the primary model."
+                        .into(),
                 );
             }
         }
@@ -140,9 +144,12 @@ mod tests {
 
     fn failed_task() -> (Store, u64) {
         let mut store = Store::empty();
-        store.project_at_mut(0).unwrap().directory = std::env::temp_dir().to_string_lossy().into_owned();
+        store.project_at_mut(0).unwrap().directory =
+            std::env::temp_dir().to_string_lossy().into_owned();
         store.set_default_model("test/model".into());
-        let goal = store.create_research_goal("Goal".into(), "Scope".into(), 1).unwrap();
+        let goal = store
+            .create_research_goal("Goal".into(), "Scope".into(), 1)
+            .unwrap();
         store.push_run(store.prepare_run(goal).unwrap());
         let id = {
             let mut run = store.last_run_mut().unwrap();
@@ -157,7 +164,8 @@ mod tests {
 
     fn failed_automation_run(shape: AutomationShape) -> (Store, u64) {
         let mut store = Store::empty();
-        store.project_at_mut(0).unwrap().directory = std::env::temp_dir().to_string_lossy().into_owned();
+        store.project_at_mut(0).unwrap().directory =
+            std::env::temp_dir().to_string_lossy().into_owned();
         store.set_default_model("test/model".into());
         store.research_config_mut().fallback_agent = "Codex".into();
         store.research_config_mut().fallback_model = "fallback-model".into();
@@ -174,7 +182,10 @@ mod tests {
                 "Check a value".into(),
                 "A sourced answer".into(),
                 Schedule {
-                    spec: ScheduleSpec::Daily { hour: 10, minute: 0 },
+                    spec: ScheduleSpec::Daily {
+                        hour: 10,
+                        minute: 0,
+                    },
                     timezone: "Asia/Shanghai".into(),
                 },
                 AutomationPolicy::default(),
@@ -183,11 +194,14 @@ mod tests {
             )
             .unwrap();
         store.approve_and_enable(id, vec![], 1_000).unwrap();
-        let occurrence = store.request_manual_occurrence(id, "fallback", 1_000).unwrap();
+        let occurrence = store
+            .request_manual_occurrence(id, "fallback", 1_000)
+            .unwrap();
         let mut run = store.prepare_occurrence_run(&occurrence, 1_010).unwrap();
         run.status = "Failed".into();
         run.logs.push(
-            r#"[error] {"type":"provider.quota","message":"Insufficient balance","status":402}"#.into(),
+            r#"[error] {"type":"provider.quota","message":"Insufficient balance","status":402}"#
+                .into(),
         );
         store.push_run(run.clone());
         (store, run.id)
@@ -212,7 +226,11 @@ mod tests {
     #[test]
     fn validation_retry_explains_rejection_and_preserves_context() {
         let (mut store, id) = failed_task();
-        store.last_run_mut().unwrap().logs.push("[error] [validation] Source 2 has an unsupported URL.".into());
+        store
+            .last_run_mut()
+            .unwrap()
+            .logs
+            .push("[error] [validation] Source 2 has an unsupported URL.".into());
         let original = store.runs().last().unwrap().clone();
         let retry = store.prepare_auto_retry(id, 100).unwrap();
         assert!(retry.prompt.starts_with(&original.prompt));
@@ -221,7 +239,10 @@ mod tests {
         assert_eq!(retry.agent, original.agent);
         assert_eq!(retry.model, original.model);
         assert_eq!(retry.attachments, original.attachments);
-        assert_eq!(crate::run_errors::user_message("[error] [validation] Invalid source"), "Invalid source");
+        assert_eq!(
+            crate::run_errors::user_message("[error] [validation] Invalid source"),
+            "Invalid source"
+        );
     }
 
     #[test]
@@ -282,7 +303,12 @@ mod tests {
         assert_eq!(second.model, "fallback-model");
         assert!(second.session_id.is_none());
         assert_eq!(second.input_signature, original.input_signature);
-        assert!(second.logs.iter().all(|line| !line.starts_with("[fallback]")));
+        assert!(
+            second
+                .logs
+                .iter()
+                .all(|line| !line.starts_with("[fallback]"))
+        );
         let mut third = second.clone();
         third.status = "Failed".into();
         id = third.id;
@@ -312,7 +338,12 @@ mod tests {
         assert_eq!(second.agent, original.agent);
         assert_eq!(second.model, original.model);
         assert_eq!(second.session_id, original.session_id);
-        assert!(!second.logs.iter().any(|line| line.starts_with("[fallback]")));
+        assert!(
+            !second
+                .logs
+                .iter()
+                .any(|line| line.starts_with("[fallback]"))
+        );
     }
 
     #[test]

@@ -71,7 +71,7 @@ mod tests {
             task_id: 1,
             agent: "OpenCode".into(),
             model: "fixture/model".into(),
-            stage: Stage::Planned,
+            stage: Stage::InProgress,
             status: "Queued".into(),
             logs: Vec::new(),
             output: String::new(),
@@ -94,14 +94,8 @@ mod tests {
             request_snapshot: None,
         };
         let mut value = serde_json::to_value(&parts).unwrap();
-        value
-            .as_object_mut()
-            .unwrap()
-            .remove("planning_request");
-        value
-            .as_object_mut()
-            .unwrap()
-            .remove("request_snapshot");
+        value.as_object_mut().unwrap().remove("planning_request");
+        value.as_object_mut().unwrap().remove("request_snapshot");
         let old: AdmissionParts = serde_json::from_value(value).unwrap();
         assert!(old.planning_request.is_none());
         assert!(old.request_snapshot.is_none());

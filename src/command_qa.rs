@@ -242,31 +242,30 @@ fn stop_store(directory: &Path) -> Store {
         input_signature: String::new(),
     });
     store.push_occurrence(occurrence(10, run_id));
-    store
-        .push_automation(crate::automation::AutomationDefinition {
-            id: 1,
-            version: 1,
-            project_id: 1,
-            shape: AutomationShape::Quick,
-            name: "QA stop automation".into(),
-            objective: "QA".into(),
-            expected_result: "QA".into(),
-            schedule: Schedule {
-                spec: ScheduleSpec::Interval { minutes: 10 },
-                timezone: "UTC".into(),
-            },
-            status: crate::automation::DefinitionStatus::Enabled,
-            template: None,
-            plan_binding: None,
-            approval: None,
-            policy: AutomationPolicy::default(),
-            cursor: Some(now() + 60),
-            anchor: Some(now()),
-            consecutive_failures: 0,
-            attention_reason: None,
-            created_at: now(),
-            updated_at: now(),
-        });
+    store.push_automation(crate::automation::AutomationDefinition {
+        id: 1,
+        version: 1,
+        project_id: 1,
+        shape: AutomationShape::Quick,
+        name: "QA stop automation".into(),
+        objective: "QA".into(),
+        expected_result: "QA".into(),
+        schedule: Schedule {
+            spec: ScheduleSpec::Interval { minutes: 10 },
+            timezone: "UTC".into(),
+        },
+        status: crate::automation::DefinitionStatus::Enabled,
+        template: None,
+        plan_binding: None,
+        approval: None,
+        policy: AutomationPolicy::default(),
+        cursor: Some(now() + 60),
+        anchor: Some(now()),
+        consecutive_failures: 0,
+        attention_reason: None,
+        created_at: now(),
+        updated_at: now(),
+    });
     store
 }
 
@@ -511,8 +510,7 @@ fn executor_checks(root: &Path) {
     cx.update(|cx| {
         app.update(cx, |a, _| {
             a.automation_fake = Some(crate::automation_runtime::FakeAutomationRunner::default());
-            a.automation_started
-                .insert(10, std::time::Instant::now());
+            a.automation_started.insert(10, std::time::Instant::now());
         });
     });
     fail_automation_writes(&path);
@@ -850,7 +848,13 @@ fn dispatch_checks(root: &Path) {
                 Some(prepared) => prepared,
                 None => panic!("dispatch preparation failed: {}", a.error),
             };
-            let dispatch = a.commit_prepared_dispatch(prepared, crate::app::LaunchIntent::Occurrence(occ.id), cx).unwrap();
+            let dispatch = a
+                .commit_prepared_dispatch(
+                    prepared,
+                    crate::app::LaunchIntent::Occurrence(occ.id),
+                    cx,
+                )
+                .unwrap();
             (
                 dispatch.run_id,
                 a.qa_storage_writes.get(),
@@ -892,11 +896,8 @@ fn dispatch_checks(root: &Path) {
                 run.status = "Interrupted".into();
                 run.started_at.clear();
             }
-            a.save_current_store_durably(
-                crate::live_save_app::LiveCompletion::None,
-                cx,
-            )
-            .unwrap();
+            a.save_current_store_durably(crate::live_save_app::LiveCompletion::None, cx)
+                .unwrap();
             a.queued_runs.clear();
             a.qa_storage_writes.set(0);
             a.enqueue_automation_occurrence(occ.id, cx);
@@ -933,7 +934,14 @@ fn dispatch_checks(root: &Path) {
         app.update(cx, |a, cx| {
             a.qa_storage_writes.set(0);
             let prepared = a.prepare_run_dispatch(run, vec![], cx).unwrap();
-            assert!(a.commit_prepared_dispatch(prepared, crate::app::LaunchIntent::Occurrence(occ.id), cx).is_none());
+            assert!(
+                a.commit_prepared_dispatch(
+                    prepared,
+                    crate::app::LaunchIntent::Occurrence(occ.id),
+                    cx
+                )
+                .is_none()
+            );
             (a.pending_dispatch.is_some(), a.store.runs().len())
         })
     });
@@ -978,7 +986,14 @@ fn dispatch_checks(root: &Path) {
             newer.task_id = 1;
             newer.status = "Simulated".into();
             a.store.push_run(newer);
-            assert!(a.commit_prepared_dispatch(prepared, crate::app::LaunchIntent::Occurrence(occ.id), cx).is_none());
+            assert!(
+                a.commit_prepared_dispatch(
+                    prepared,
+                    crate::app::LaunchIntent::Occurrence(occ.id),
+                    cx
+                )
+                .is_none()
+            );
             (a.pending_dispatch.is_some(), a.store.runs().len())
         })
     });
@@ -1013,7 +1028,8 @@ fn dispatch_checks(root: &Path) {
     cx.update(|cx| {
         app.update(cx, |a, cx| {
             let prepared = a.prepare_run_dispatch(run, vec![], cx).unwrap();
-            a.commit_prepared_dispatch(prepared, crate::app::LaunchIntent::Occurrence(occ.id), cx).unwrap();
+            a.commit_prepared_dispatch(prepared, crate::app::LaunchIntent::Occurrence(occ.id), cx)
+                .unwrap();
             a.queued_runs.clear();
             if let Some(mut value) = a.store.occurrence_mut(occ.id) {
                 value.reference_time = now() - value.snapshot.policy.allowed_delay_seconds - 1;
@@ -1044,7 +1060,8 @@ fn dispatch_checks(root: &Path) {
     cx.update(|cx| {
         app.update(cx, |a, cx| {
             let prepared = a.prepare_run_dispatch(run, vec![], cx).unwrap();
-            a.commit_prepared_dispatch(prepared, crate::app::LaunchIntent::Occurrence(occ.id), cx).unwrap();
+            a.commit_prepared_dispatch(prepared, crate::app::LaunchIntent::Occurrence(occ.id), cx)
+                .unwrap();
             a.queued_runs.clear();
             if let Some(mut value) = a.store.occurrence_mut(occ.id) {
                 value.deadline_at = Some(now() - 1);
@@ -1059,7 +1076,10 @@ fn dispatch_checks(root: &Path) {
             a.queued_runs.len(),
         )
     });
-    assert!(status.is_terminal(), "a past-deadline committed run must time out");
+    assert!(
+        status.is_terminal(),
+        "a past-deadline committed run must time out"
+    );
     assert_eq!(queued, 0, "past-deadline committed work must not dispatch");
 }
 
@@ -1093,7 +1113,14 @@ fn pending_dispatch_preserves_prior_intent(root: &Path) {
     let (dispatch_pending, run_count, queued) = cx.update(|cx| {
         app.update(cx, |a, cx| {
             let prepared = a.prepare_run_dispatch(run, vec![], cx).unwrap();
-            assert!(a.commit_prepared_dispatch(prepared, crate::app::LaunchIntent::Occurrence(occ.id), cx).is_none());
+            assert!(
+                a.commit_prepared_dispatch(
+                    prepared,
+                    crate::app::LaunchIntent::Occurrence(occ.id),
+                    cx
+                )
+                .is_none()
+            );
             (
                 a.pending_dispatch.is_some(),
                 a.store.runs().len(),
@@ -1101,10 +1128,18 @@ fn pending_dispatch_preserves_prior_intent(root: &Path) {
             )
         })
     });
-    assert!(!dispatch_pending, "the earlier user intent must remain authoritative");
+    assert!(
+        !dispatch_pending,
+        "the earlier user intent must remain authoritative"
+    );
     assert_eq!(run_count, 0, "no dispatch run may be staged");
     assert_eq!(queued, 0, "no queue effect may run");
-    let pending_kind = cx.update(|cx| app.read(cx).pending_commit.as_ref().map(|value| value.id.kind));
+    let pending_kind = cx.update(|cx| {
+        app.read(cx)
+            .pending_commit
+            .as_ref()
+            .map(|value| value.id.kind)
+    });
     assert_eq!(pending_kind, Some("automation_read"));
     allow_automation_writes(&path);
     let (pending, read) = cx.update(|cx| {
@@ -1149,9 +1184,14 @@ fn pending_dispatch_defers_until_saved(root: &Path) {
     let (deferred, runs, queued) = cx.update(|cx| {
         app.update(cx, |a, cx| {
             let prepared = a.prepare_run_dispatch(run, vec![], cx).unwrap();
-            assert!(a
-                .commit_prepared_dispatch(prepared, crate::app::LaunchIntent::Occurrence(occ.id), cx)
-                .is_none());
+            assert!(
+                a.commit_prepared_dispatch(
+                    prepared,
+                    crate::app::LaunchIntent::Occurrence(occ.id),
+                    cx
+                )
+                .is_none()
+            );
             (
                 a.deferred_dispatches.len(),
                 a.store.runs().len(),
@@ -1187,11 +1227,11 @@ fn pending_dispatch_defers_until_saved(root: &Path) {
 fn install_material(store: &mut Store, directory: &Path, task_id: u64) -> std::path::PathBuf {
     // A real 1x1 PNG, not only a magic-byte prefix.
     const PNG: &[u8] = &[
-        0x89, 0x50, 0x4e, 0x47, 0x0d, 0x0a, 0x1a, 0x0a, 0x00, 0x00, 0x00, 0x0d, 0x49, 0x48,
-        0x44, 0x52, 0x00, 0x00, 0x00, 0x01, 0x00, 0x00, 0x00, 0x01, 0x08, 0x06, 0x00, 0x00,
-        0x00, 0x1f, 0x15, 0xc4, 0x89, 0x00, 0x00, 0x00, 0x0d, 0x49, 0x44, 0x41, 0x54, 0x78,
-        0x9c, 0x63, 0x00, 0x01, 0x00, 0x00, 0x05, 0x00, 0x01, 0x0d, 0x0a, 0x2d, 0xb4, 0x00,
-        0x00, 0x00, 0x00, 0x49, 0x45, 0x4e, 0x44, 0xae, 0x42, 0x60, 0x82,
+        0x89, 0x50, 0x4e, 0x47, 0x0d, 0x0a, 0x1a, 0x0a, 0x00, 0x00, 0x00, 0x0d, 0x49, 0x48, 0x44,
+        0x52, 0x00, 0x00, 0x00, 0x01, 0x00, 0x00, 0x00, 0x01, 0x08, 0x06, 0x00, 0x00, 0x00, 0x1f,
+        0x15, 0xc4, 0x89, 0x00, 0x00, 0x00, 0x0d, 0x49, 0x44, 0x41, 0x54, 0x78, 0x9c, 0x63, 0x00,
+        0x01, 0x00, 0x00, 0x05, 0x00, 0x01, 0x0d, 0x0a, 0x2d, 0xb4, 0x00, 0x00, 0x00, 0x00, 0x49,
+        0x45, 0x4e, 0x44, 0xae, 0x42, 0x60, 0x82,
     ];
     let attachment = crate::attachments::import_bytes(directory, "evidence.png", PNG).unwrap();
     let path = crate::attachments::resolve(directory, &attachment).unwrap();
@@ -1227,7 +1267,9 @@ fn typed_intent_checks(root: &Path) {
             assert!(
                 a.commit_prepared_dispatch(
                     prepared,
-                    crate::app::LaunchIntent::RequestPlan { request_id: request },
+                    crate::app::LaunchIntent::RequestPlan {
+                        request_id: request
+                    },
                     cx,
                 )
                 .is_none()
@@ -1269,15 +1311,15 @@ fn typed_intent_checks(root: &Path) {
         app.update(cx, |a, cx| {
             let run = a.store.prepare_request_plan(request).unwrap();
             let prepared = a.prepare_run_dispatch(run, vec![], cx).unwrap();
-            if let Some(value) = a
-                .store.request_mut(request)
-            {
+            if let Some(value) = a.store.request_mut(request) {
                 value.input = "A different request after preparation.".into();
             }
             let rejected = a
                 .commit_prepared_dispatch(
                     prepared,
-                    crate::app::LaunchIntent::RequestPlan { request_id: request },
+                    crate::app::LaunchIntent::RequestPlan {
+                        request_id: request,
+                    },
                     cx,
                 )
                 .is_none();
@@ -1337,7 +1379,9 @@ fn typed_intent_checks(root: &Path) {
                 a.store
                     .runs()
                     .iter()
-                    .find(|run| run.research_kind == Some(ResearchKind::Advise) && run.id != source_id)
+                    .find(|run| {
+                        run.research_kind == Some(ResearchKind::Advise) && run.id != source_id
+                    })
                     .and_then(|run| run.automation_occurrence_id)
                     .is_some(),
                 a.toast.clone(),
@@ -1354,8 +1398,7 @@ fn typed_intent_checks(root: &Path) {
     let directory = root.join("regeneration-materials");
     std::fs::create_dir_all(&directory).unwrap();
     let path = directory.join("workspace.sqlite3");
-    let (mut store, source_id, _, _) =
-        regeneration_fixture(&directory, false, true);
+    let (mut store, source_id, _, _) = regeneration_fixture(&directory, false, true);
     store
         .run_mut(source_id)
         .unwrap()
@@ -1428,8 +1471,7 @@ fn typed_intent_checks(root: &Path) {
     let directory = root.join("regeneration-material-missing");
     std::fs::create_dir_all(&directory).unwrap();
     let path = directory.join("workspace.sqlite3");
-    let (mut store, source_id, _, material_path) =
-        regeneration_fixture(&directory, false, true);
+    let (mut store, source_id, _, material_path) = regeneration_fixture(&directory, false, true);
     let baseline_runs = store.runs().len();
     let attachment_path = material_path.expect("material fixture path");
     Storage::new(path.clone()).save(&store).unwrap();
@@ -1529,7 +1571,10 @@ fn typed_intent_checks(root: &Path) {
     assert!(owned, "period regeneration must remain automation-owned");
     assert!(toast.contains("automation slot"));
     assert!(linked);
-    assert_eq!(run_id, cx.update(|cx| app.read(cx).store.runs().last().unwrap().id));
+    assert_eq!(
+        run_id,
+        cx.update(|cx| app.read(cx).store.runs().last().unwrap().id)
+    );
     cx.update(|cx| app.update(cx, |a, _| a.queued_runs.clear()));
 
     // Stale regeneration source is rejected, then the pending intent is discardable.
@@ -1589,8 +1634,8 @@ fn automation_command_invalidates_undo_check(root: &Path) {
         .unwrap();
     let (undo_len, reason, status) = cx.update(|cx| {
         app.update(cx, |a, cx| {
-            assert!(a
-                .apply_domain_command_undoable(
+            assert!(
+                a.apply_domain_command_undoable(
                     crate::scoped_domain::DomainCommand::TopicCreate {
                         project: 1,
                         name: "Undo guard".into(),
@@ -1598,36 +1643,35 @@ fn automation_command_invalidates_undo_check(root: &Path) {
                     "Topic created",
                     cx,
                 )
-                .is_some());
+                .is_some()
+            );
             assert_eq!(a.undo.len(), 1, "ordinary scoped edit is undoable");
-            a.store.push_automation(crate::automation::AutomationDefinition {
-                id: 99,
-                version: 1,
-                project_id: 1,
-                shape: AutomationShape::Quick,
-                name: "Undo guard".into(),
-                objective: "Check a value.".into(),
-                expected_result: "One answer.".into(),
-                schedule: Schedule {
-                    spec: ScheduleSpec::Interval { minutes: 10 },
-                    timezone: "UTC".into(),
-                },
-                status: crate::automation::DefinitionStatus::Enabled,
-                template: None,
-                plan_binding: None,
-                approval: None,
-                policy: AutomationPolicy::default(),
-                cursor: Some(now()),
-                anchor: Some(now()),
-                consecutive_failures: 0,
-                attention_reason: None,
-                created_at: now(),
-                updated_at: now(),
-            });
-            let command = crate::domain_command::Command::AutomationPause {
-                id: 99,
-                now: now(),
-            };
+            a.store
+                .push_automation(crate::automation::AutomationDefinition {
+                    id: 99,
+                    version: 1,
+                    project_id: 1,
+                    shape: AutomationShape::Quick,
+                    name: "Undo guard".into(),
+                    objective: "Check a value.".into(),
+                    expected_result: "One answer.".into(),
+                    schedule: Schedule {
+                        spec: ScheduleSpec::Interval { minutes: 10 },
+                        timezone: "UTC".into(),
+                    },
+                    status: crate::automation::DefinitionStatus::Enabled,
+                    template: None,
+                    plan_binding: None,
+                    approval: None,
+                    policy: AutomationPolicy::default(),
+                    cursor: Some(now()),
+                    anchor: Some(now()),
+                    consecutive_failures: 0,
+                    attention_reason: None,
+                    created_at: now(),
+                    updated_at: now(),
+                });
+            let command = crate::domain_command::Command::AutomationPause { id: 99, now: now() };
             a.execute_command(command, cx).unwrap();
             (
                 a.undo.len(),

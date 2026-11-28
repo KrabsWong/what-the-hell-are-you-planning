@@ -4,17 +4,16 @@
 //! and browser Space. Normal research approval, dependency and result validation are
 //! reused unchanged; automation approval is a separate snapshot.
 use crate::{
+    automation::TimeWindow,
     automation::{
         AutomationApproval, AutomationDefinition, AutomationGoal, AutomationMaterial,
-        AutomationOccurrence, AutomationShape, AutomationTemplate,
-        AutomationTemplateStep, DefinitionStatus, WindowRule,
+        AutomationOccurrence, AutomationShape, AutomationTemplate, AutomationTemplateStep,
+        DefinitionStatus, WindowRule,
     },
-    automation::{TimeWindow},
-    automation_schedule::{previous_local_day, Schedule, ScheduledTime},
+    automation_schedule::{Schedule, ScheduledTime, previous_local_day},
     domain::{AgentRun, Stage, Store},
     research::ResearchKind,
 };
-
 
 /// Deterministic, reviewable template. The user's objective is not re-planned each
 /// period; the app only substitutes the occurrence time window at dispatch.
@@ -31,12 +30,49 @@ pub fn infer_window_rule(text: &str) -> crate::automation::WindowRule {
     // Mixed or comparative requests need more than one window and must not be
     // narrowed to a single previous day.
     const OTHER_RANGES: &[&str] = &[
-        "今天", "今日", "明天", "前天", "上周", "上星期", "本周", "这周", "上月", "上个月",
-        "去年", "前年", "前一周", "上一周", "上一个月", "上一年", "前一个月", "前一年",
-        "上一个交易日", "交易日", "季度", "同比", "环比", "对比", "比较",
-        "trading day", "today", "tomorrow", "last week", "this week", "last month",
-        "last year", "quarter", "year-over-year", "month-over-month", "compare", "versus",
-        " vs ", "过去", "最近", "minutes", "分钟", "hours",
+        "今天",
+        "今日",
+        "明天",
+        "前天",
+        "上周",
+        "上星期",
+        "本周",
+        "这周",
+        "上月",
+        "上个月",
+        "去年",
+        "前年",
+        "前一周",
+        "上一周",
+        "上一个月",
+        "上一年",
+        "前一个月",
+        "前一年",
+        "上一个交易日",
+        "交易日",
+        "季度",
+        "同比",
+        "环比",
+        "对比",
+        "比较",
+        "trading day",
+        "today",
+        "tomorrow",
+        "last week",
+        "this week",
+        "last month",
+        "last year",
+        "quarter",
+        "year-over-year",
+        "month-over-month",
+        "compare",
+        "versus",
+        " vs ",
+        "过去",
+        "最近",
+        "minutes",
+        "分钟",
+        "hours",
     ];
     if OTHER_RANGES.iter().any(|needle| lower.contains(needle)) {
         return crate::automation::WindowRule::Unresolved;
@@ -68,7 +104,7 @@ pub fn infer_window_rule(text: &str) -> crate::automation::WindowRule {
 }
 
 /// Research-shaped template used by QA fixtures and by drafts saved before plans
-/// were generated from the planner. New research automations use `template_from_plan`.
+/// were generated from the planner. Research automations use `template_from_plan`.
 #[allow(dead_code)]
 pub fn build_template(objective: &str, expected: &str) -> Result<AutomationTemplate, String> {
     let (objective, expected) = validated_instruction(objective, expected)?;
@@ -281,7 +317,10 @@ impl Store {
         let mut template = template_from_plan(&plan)?;
         if let Some(understanding) = &request.understanding {
             for goal in &mut template.goals {
-                goal.brief = format!("{}\n\nConfirmed research understanding\n{}", goal.brief, understanding.summary);
+                goal.brief = format!(
+                    "{}\n\nConfirmed research understanding\n{}",
+                    goal.brief, understanding.summary
+                );
             }
             template.validate(crate::automation::AutomationShape::Research)?;
         }
@@ -330,7 +369,9 @@ impl Store {
                 .map(|occurrence| occurrence.id)
                 .collect();
             for id in ids {
-                let Some(mut occurrence) = self.occurrence_mut(id) else { continue };
+                let Some(mut occurrence) = self.occurrence_mut(id) else {
+                    continue;
+                };
                 let _ = occurrence.transition(
                     crate::automation::OccurrenceStatus::Skipped,
                     Some(crate::automation::OccurrenceReason::new(
@@ -403,7 +444,9 @@ impl Store {
         let occurrence_ids: Vec<u64> = self
             .all_occurrences()
             .iter()
-            .filter(|o| o.automation_id == automation && o.created_at < before && o.status.is_terminal())
+            .filter(|o| {
+                o.automation_id == automation && o.created_at < before && o.status.is_terminal()
+            })
             .map(|o| o.id)
             .collect();
         let mut occurrences = 0;
@@ -418,7 +461,9 @@ impl Store {
                 .map(|run| run.id)
                 .collect();
             for run_id in run_ids {
-                let Some(mut run) = self.run_mut(run_id) else { continue };
+                let Some(mut run) = self.run_mut(run_id) else {
+                    continue;
+                };
                 if !run.logs.is_empty() {
                     bytes += run.logs.iter().map(String::len).sum::<usize>();
                     if apply {
@@ -481,15 +526,16 @@ impl Store {
         now: i64,
         shape: Option<AutomationShape>,
     ) -> Result<(), String> {
-        let definition = self
-            .automation(id)
-            .ok_or("Automation not found.")?
-            .clone();
+        let definition = self.automation(id).ok_or("Automation not found.")?.clone();
         if definition.status == DefinitionStatus::Archived {
             return Err("Restore the archived automation before editing it.".into());
         }
         let mut staged = definition;
-        if !self.projects().iter().any(|candidate| candidate.id == project) {
+        if !self
+            .projects()
+            .iter()
+            .any(|candidate| candidate.id == project)
+        {
             return Err("Choose an existing project.".into());
         }
         let next_shape = shape.unwrap_or(staged.shape);
@@ -533,13 +579,14 @@ impl Store {
             .all_occurrences()
             .iter()
             .filter(|o| {
-                o.automation_id == id
-                    && o.status == crate::automation::OccurrenceStatus::Queued
+                o.automation_id == id && o.status == crate::automation::OccurrenceStatus::Queued
             })
             .map(|o| o.id)
             .collect();
         for occurrence_id in ids {
-            let Some(mut occurrence) = self.occurrence_mut(occurrence_id) else { continue };
+            let Some(mut occurrence) = self.occurrence_mut(occurrence_id) else {
+                continue;
+            };
             let _ = occurrence.transition(
                 crate::automation::OccurrenceStatus::Skipped,
                 Some(crate::automation::OccurrenceReason::new(
@@ -587,7 +634,6 @@ impl Store {
         Ok(())
     }
 
-
     /// Enable only with an explicit approved snapshot. The cursor starts strictly
     /// after this instant; enabling never backfills history.
     pub fn approve_and_enable(
@@ -600,7 +646,11 @@ impl Store {
         if definition.status == DefinitionStatus::Archived {
             return Err("Restore the archived automation before enabling it.".into());
         }
-        if !self.projects().iter().any(|p| p.id == definition.project_id) {
+        if !self
+            .projects()
+            .iter()
+            .any(|p| p.id == definition.project_id)
+        {
             return Err("Choose an existing project.".into());
         }
         let approval = approval_for(self, &definition, now, materials)?;
@@ -628,13 +678,14 @@ impl Store {
             .all_occurrences()
             .iter()
             .filter(|o| {
-                o.automation_id == id
-                    && o.status == crate::automation::OccurrenceStatus::Queued
+                o.automation_id == id && o.status == crate::automation::OccurrenceStatus::Queued
             })
             .map(|o| o.id)
             .collect();
         for occurrence_id in ids {
-            let Some(mut occurrence) = self.occurrence_mut(occurrence_id) else { continue };
+            let Some(mut occurrence) = self.occurrence_mut(occurrence_id) else {
+                continue;
+            };
             let _ = occurrence.transition(
                 crate::automation::OccurrenceStatus::Skipped,
                 Some(crate::automation::OccurrenceReason::new(
@@ -662,8 +713,14 @@ impl Store {
         if !definition.approval_current() {
             return Err("Review and approve the current version before resuming.".into());
         }
-        if !self.projects().iter().any(|p| p.id == definition.project_id) {
-            return Err("The automation's project is unavailable. Choose another project first.".into());
+        if !self
+            .projects()
+            .iter()
+            .any(|p| p.id == definition.project_id)
+        {
+            return Err(
+                "The automation's project is unavailable. Choose another project first.".into(),
+            );
         }
         let first = definition.schedule.first_after(now)?;
         let mut definition = self.automation_mut(id).unwrap();
@@ -688,13 +745,14 @@ impl Store {
             .all_occurrences()
             .iter()
             .filter(|o| {
-                o.automation_id == id
-                    && o.status == crate::automation::OccurrenceStatus::Queued
+                o.automation_id == id && o.status == crate::automation::OccurrenceStatus::Queued
             })
             .map(|o| o.id)
             .collect();
         for occurrence_id in ids {
-            let Some(mut occurrence) = self.occurrence_mut(occurrence_id) else { continue };
+            let Some(mut occurrence) = self.occurrence_mut(occurrence_id) else {
+                continue;
+            };
             let _ = occurrence.transition(
                 crate::automation::OccurrenceStatus::Skipped,
                 Some(crate::automation::OccurrenceReason::new(
@@ -784,9 +842,9 @@ impl Store {
             return Err("Describe the research scope and questions first.".into());
         }
         let id = if topicless {
-            self.create_root_task_without_topic(title, project, Stage::Planned)?
+            self.create_root_task_without_topic(title, project, Stage::InProgress)?
         } else {
-            self.create_task_in_topic(title, project, Stage::Planned, None, topic)?
+            self.create_task_in_topic(title, project, Stage::InProgress, None, topic)?
         };
         let task = self.task_mut(id).unwrap();
         task.description = brief;
@@ -813,7 +871,11 @@ impl Store {
     ) -> Result<u64, String> {
         let goal_task = self
             .task(goal)
-            .filter(|task| task.research.as_ref().is_some_and(|r| r.kind == ResearchKind::Goal))
+            .filter(|task| {
+                task.research
+                    .as_ref()
+                    .is_some_and(|r| r.kind == ResearchKind::Goal)
+            })
             .ok_or("Choose an active research goal.")?;
         if self.tasks().iter().any(|task| {
             task.research
@@ -828,7 +890,7 @@ impl Store {
             .as_ref()
             .map(|research| research.space_name.clone())
             .unwrap_or_default();
-        let id = self.create_task(step.title.clone(), project, Stage::Planned, Some(goal))?;
+        let id = self.create_task(step.title.clone(), project, Stage::InProgress, Some(goal))?;
         let task = self.task_mut(id).unwrap();
         task.description = step.instructions.clone();
         task.labels = vec!["Research".into(), step.kind.label().into()];
@@ -869,7 +931,11 @@ impl Store {
         if definition.version != occurrence.definition_version {
             return Err("The automation changed before this occurrence was committed.".into());
         }
-        if !self.projects().iter().any(|p| p.id == definition.project_id) {
+        if !self
+            .projects()
+            .iter()
+            .any(|p| p.id == definition.project_id)
+        {
             return Err("The automation's project is not available.".into());
         }
         let template = definition
@@ -899,8 +965,7 @@ impl Store {
                 definition.project_id,
                 format!("{} · {}", definition.name, label),
             )?;
-            self.topic_mut(topic).unwrap()
-                .automation_id = Some(definition.id);
+            self.topic_mut(topic).unwrap().automation_id = Some(definition.id);
             Some(topic)
         };
         let mut goals = Vec::with_capacity(template.goals.len());
@@ -930,7 +995,7 @@ impl Store {
             {
                 let goal_task = self.task_mut(goal).unwrap();
                 goal_task.automation_id = Some(definition.id);
-                goal_task.stage = Stage::Planned;
+                goal_task.stage = Stage::InProgress;
                 goal_task
                     .research
                     .as_mut()
@@ -954,7 +1019,7 @@ impl Store {
                 let id = self.apply_single_step(goal, &step)?;
                 let step = self.task_mut(id).unwrap();
                 step.automation_id = Some(definition.id);
-                step.stage = Stage::Planned;
+                step.stage = Stage::InProgress;
             } else {
                 // The approved template is instantiated verbatim; no planning run is
                 // prepared for a period, so a reviewed plan never changes silently.
@@ -962,7 +1027,7 @@ impl Store {
                 for id in &ids {
                     let step = self.task_mut(*id).unwrap();
                     step.automation_id = Some(definition.id);
-                    step.stage = Stage::Planned;
+                    step.stage = Stage::InProgress;
                 }
             }
             let approval_signature = self.goal_plan_signature(goal);
@@ -970,9 +1035,9 @@ impl Store {
                 let goal_task = self.task_mut(goal).unwrap();
                 goal_task.research.as_mut().unwrap().requires_approval = true;
                 goal_task.approved_plan = approval_signature;
-                goal_task
-                    .activity
-                    .push(crate::domain::activity_event("Automation occurrence approved"));
+                goal_task.activity.push(crate::domain::activity_event(
+                    "Automation occurrence approved",
+                ));
             }
             goals.push(goal);
         }
@@ -1104,13 +1169,14 @@ pub(crate) fn window_for(
     }
 }
 
-
 pub fn resolved_previous_day(reference: i64, timezone: &str) -> Result<TimeWindow, String> {
     let tz = crate::automation_schedule::parse_timezone(timezone)?;
     let window = previous_local_day(reference, tz)?;
     Ok(TimeWindow::resolved(
         window,
-        format!("Previous local day in {timezone} (start inclusive, end exclusive); business-day validity is verified by the collection step"),
+        format!(
+            "Previous local day in {timezone} (start inclusive, end exclusive); business-day validity is verified by the collection step"
+        ),
     ))
 }
 
@@ -1118,8 +1184,8 @@ pub fn resolved_previous_day(reference: i64, timezone: &str) -> Result<TimeWindo
 mod tests {
     use super::*;
     use crate::automation::{
-        AutomationOccurrenceSnapshot, AutomationPolicy, OccurrenceStatus, TriggerSource,
-        TimeWindow, DEFAULT_EXECUTION_TIMEOUT_SECONDS,
+        AutomationOccurrenceSnapshot, AutomationPolicy, DEFAULT_EXECUTION_TIMEOUT_SECONDS,
+        OccurrenceStatus, TimeWindow, TriggerSource,
     };
     use crate::automation_schedule::ScheduleSpec;
     use crate::domain::Store;
@@ -1133,7 +1199,10 @@ mod tests {
     fn definition(store: &mut Store) -> u64 {
         let template = build_template("追踪昨天的公开信息", "A sourced note").unwrap();
         let schedule = Schedule {
-            spec: ScheduleSpec::Daily { hour: 8, minute: 30 },
+            spec: ScheduleSpec::Daily {
+                hour: 8,
+                minute: 30,
+            },
             timezone: "Asia/Shanghai".into(),
         };
         let id = store.next_automation_id().unwrap();
@@ -1214,13 +1283,18 @@ mod tests {
                 .unwrap()
                 .signature()
         );
-        assert!(template
-            .goals
-            .iter()
-            .flat_map(|goal| &goal.steps)
-            .any(|step| step.kind == ResearchKind::Advise));
+        assert!(
+            template
+                .goals
+                .iter()
+                .flat_map(|goal| &goal.steps)
+                .any(|step| step.kind == ResearchKind::Advise)
+        );
         for text in ["send email to the team", "自动交易 BTC", "git push"] {
-            assert!(crate::automation_policy::rejection(text).is_some(), "{text}");
+            assert!(
+                crate::automation_policy::rejection(text).is_some(),
+                "{text}"
+            );
             assert!(build_template(text, "Result").is_err());
         }
     }
@@ -1233,11 +1307,13 @@ mod tests {
             assert!(error.starts_with("Expected result:"), "{error}");
             assert!(error.contains("input validation"), "{error}");
         }
-        assert!(build_quick_template(
-            "Check public prices",
-            "Current price with source; do not send email"
-        )
-        .is_ok());
+        assert!(
+            build_quick_template(
+                "Check public prices",
+                "Current price with source; do not send email"
+            )
+            .is_ok()
+        );
     }
 
     #[test]
@@ -1245,7 +1321,10 @@ mod tests {
         let instruction_action = r#"{"topic_name":"Publishing industry","brief":{"objective":"Track publishing","deliverable":"Note","scope":"Latest","assumptions":[],"facts_to_verify":[]},"goals":[{"title":"Publishing industry and order backlog","brief":"Track public announcements","tasks":[{"title":"Collect public sources","instructions":"Send email the finished summary","kind":"collect","depends_on":[]},{"title":"Analyze","instructions":"Compare the collected evidence","kind":"analyze","depends_on":[0]},{"title":"Report","instructions":"Write the local report","kind":"advise","depends_on":[1]}]}]}"#;
         let plan = crate::request_planning::parse_request_plan(instruction_action).unwrap();
         let error = template_from_plan(&plan).expect_err("positive plan instruction");
-        assert!(error.starts_with("Step \"Collect public sources\""), "{error}");
+        assert!(
+            error.starts_with("Step \"Collect public sources\""),
+            "{error}"
+        );
 
         let title_action = instruction_action
             .replace("Send email the finished summary", "Collect public sources")
@@ -1255,13 +1334,15 @@ mod tests {
             );
         let plan = crate::request_planning::parse_request_plan(&title_action).unwrap();
         let error = template_from_plan(&plan).expect_err("positive plan title");
-        assert!(error.starts_with("Step title \"Publish the report\""), "{error}");
+        assert!(
+            error.starts_with("Step title \"Publish the report\""),
+            "{error}"
+        );
 
-        let negated = instruction_action
-            .replace(
-                "Send email the finished summary",
-                "Do not send email; collect public sources and record gaps",
-            );
+        let negated = instruction_action.replace(
+            "Send email the finished summary",
+            "Do not send email; collect public sources and record gaps",
+        );
         let plan = crate::request_planning::parse_request_plan(&negated).unwrap();
         template_from_plan(&plan).expect("negated restriction is not a request");
     }
@@ -1272,7 +1353,10 @@ mod tests {
         store.research_config_mut().models =
             ["test/plan", "test/collect", "test/analyze", "test/advise"].map(String::from);
         let schedule = Schedule {
-            spec: ScheduleSpec::Daily { hour: 8, minute: 30 },
+            spec: ScheduleSpec::Daily {
+                hour: 8,
+                minute: 30,
+            },
             timezone: "Asia/Shanghai".into(),
         };
 
@@ -1326,37 +1410,39 @@ mod tests {
             .expect_err("legacy expected-only action");
         assert!(error.starts_with("Expected result:"), "{error}");
         assert_eq!(store.automation(id).unwrap(), &before);
-        assert_eq!(store.runs().len(), runs_before, "rejection must not dispatch");
+        assert_eq!(
+            store.runs().len(),
+            runs_before,
+            "rejection must not dispatch"
+        );
     }
 
     #[test]
     fn approval_resolves_models_and_invalidates_on_version_change() {
         let mut store = store();
-        store.research_config_mut().models = ["test/plan", "test/collect", "test/analyze", "test/advise"]
-            .map(String::from);
+        store.research_config_mut().models =
+            ["test/plan", "test/collect", "test/analyze", "test/advise"].map(String::from);
         let id = definition(&mut store);
-        let approval = store
-            .approve_and_enable(
+        let approval = store.approve_and_enable(id, vec![], 1_000).unwrap();
+        assert_eq!(approval.models[1], "test/collect");
+        assert_eq!(
+            store.automation(id).unwrap().status,
+            DefinitionStatus::Enabled
+        );
+        assert!(store.automation(id).unwrap().cursor.unwrap() > 1_000);
+        store
+            .revise_automation(
                 id,
-                vec![],
-                1_000,
+                1,
+                "Renamed".into(),
+                "Track a public topic".into(),
+                "A sourced note".into(),
+                store.automation(id).unwrap().schedule.clone(),
+                AutomationPolicy::default(),
+                store.automation(id).unwrap().template.clone(),
+                2_000,
             )
             .unwrap();
-        assert_eq!(approval.models[1], "test/collect");
-        assert_eq!(store.automation(id).unwrap().status, DefinitionStatus::Enabled);
-        assert!(store.automation(id).unwrap().cursor.unwrap() > 1_000);
-        store.revise_automation(
-            id,
-            1,
-            "Renamed".into(),
-            "Track a public topic".into(),
-            "A sourced note".into(),
-            store.automation(id).unwrap().schedule.clone(),
-            AutomationPolicy::default(),
-            store.automation(id).unwrap().template.clone(),
-            2_000,
-        )
-        .unwrap();
         let revised = store.automation(id).unwrap();
         assert_eq!(revised.version, 2);
         assert_eq!(revised.status, DefinitionStatus::Draft);
@@ -1367,13 +1453,7 @@ mod tests {
     fn occurrence_materializes_isolated_research_entities() {
         let mut store = store();
         let id = definition(&mut store);
-        store
-            .approve_and_enable(
-                id,
-                vec![],
-                1_000,
-            )
-            .unwrap();
+        store.approve_and_enable(id, vec![], 1_000).unwrap();
         let first = store
             .materialize_occurrence(occurrence(&store, id, 2000))
             .unwrap();
@@ -1385,8 +1465,20 @@ mod tests {
         let second_goal = second.research_goal_id.unwrap();
         assert_eq!(store.task(first_goal).unwrap().automation_id, Some(id));
         assert_ne!(
-            store.task(first_goal).unwrap().research.as_ref().unwrap().space_name,
-            store.task(second_goal).unwrap().research.as_ref().unwrap().space_name
+            store
+                .task(first_goal)
+                .unwrap()
+                .research
+                .as_ref()
+                .unwrap()
+                .space_name,
+            store
+                .task(second_goal)
+                .unwrap()
+                .research
+                .as_ref()
+                .unwrap()
+                .space_name
         );
         assert_eq!(store.research_children(first_goal).len(), 3);
         assert!(store.goal_execution_approved(first_goal));
@@ -1394,11 +1486,19 @@ mod tests {
             assert!(!store.research_pending_approval(child));
             assert_eq!(store.task(child).unwrap().automation_id, Some(id));
         }
-        assert!(store.topics().iter().any(|topic| topic.id == first.research_topic_id.unwrap() && topic.automation_id == Some(id)));
+        assert!(
+            store
+                .topics()
+                .iter()
+                .any(|topic| topic.id == first.research_topic_id.unwrap()
+                    && topic.automation_id == Some(id))
+        );
         // Duplicate trigger keys never create a second goal.
-        assert!(store
-            .materialize_occurrence(occurrence(&store, id, 2000))
-            .is_err());
+        assert!(
+            store
+                .materialize_occurrence(occurrence(&store, id, 2000))
+                .is_err()
+        );
     }
 
     #[test]
@@ -1440,8 +1540,8 @@ mod tests {
     #[test]
     fn research_planning_request_creates_no_topic_and_no_goals() {
         let mut store = store();
-        store.research_config_mut().models = ["test/plan", "test/collect", "test/analyze", "test/advise"]
-            .map(String::from);
+        store.research_config_mut().models =
+            ["test/plan", "test/collect", "test/analyze", "test/advise"].map(String::from);
         let id = store
             .create_automation_draft(
                 1,
@@ -1450,7 +1550,10 @@ mod tests {
                 "Track the topic".into(),
                 "A cited note".into(),
                 Schedule {
-                    spec: ScheduleSpec::Daily { hour: 8, minute: 30 },
+                    spec: ScheduleSpec::Daily {
+                        hour: 8,
+                        minute: 30,
+                    },
                     timezone: "Asia/Shanghai".into(),
                 },
                 AutomationPolicy::default(),
@@ -1463,16 +1566,26 @@ mod tests {
         let request = store
             .create_automation_request(id, 1, "Track semiconductor capacity", "A cited note")
             .unwrap();
-        assert_eq!(store.topics().len(), topics_before, "planning must not create a topic");
-        assert_eq!(store.tasks().len(), tasks_before, "planning must not create goals");
+        assert_eq!(
+            store.topics().len(),
+            topics_before,
+            "planning must not create a topic"
+        );
+        assert_eq!(
+            store.tasks().len(),
+            tasks_before,
+            "planning must not create goals"
+        );
         let run = store.prepare_request_plan(request).unwrap();
         assert_eq!(run.project_plan, Some(1));
         assert_eq!(run.task_id, 0);
-        assert!(store
-            .research_requests()
-            .iter()
-            .find(|candidate| candidate.id == request)
-            .is_some_and(|candidate| candidate.automation_id == Some(id)));
+        assert!(
+            store
+                .research_requests()
+                .iter()
+                .find(|candidate| candidate.id == request)
+                .is_some_and(|candidate| candidate.automation_id == Some(id))
+        );
         // The same automation reuses one saved request instead of planning twice.
         assert_eq!(
             store
@@ -1493,7 +1606,10 @@ mod tests {
                 "Objective A".into(),
                 "Expected A".into(),
                 Schedule {
-                    spec: ScheduleSpec::Daily { hour: 8, minute: 30 },
+                    spec: ScheduleSpec::Daily {
+                        hour: 8,
+                        minute: 30,
+                    },
                     timezone: "UTC".into(),
                 },
                 AutomationPolicy::default(),
@@ -1535,7 +1651,10 @@ mod tests {
                 "Objective A".into(),
                 "Expected A".into(),
                 Schedule {
-                    spec: ScheduleSpec::Daily { hour: 8, minute: 30 },
+                    spec: ScheduleSpec::Daily {
+                        hour: 8,
+                        minute: 30,
+                    },
                     timezone: "UTC".into(),
                 },
                 AutomationPolicy::default(),
@@ -1548,8 +1667,12 @@ mod tests {
             .unwrap();
         let plan = r#"{"topic_name":"Plan","brief":{"objective":"A","deliverable":"A","scope":"A","assumptions":[],"facts_to_verify":[]},"goals":[{"title":"Goal","brief":"Brief","tasks":[{"title":"Collect","instructions":"Collect","kind":"collect","depends_on":[]},{"title":"Analyze","instructions":"Analyze","kind":"analyze","depends_on":[0]},{"title":"Report","instructions":"Report","kind":"advise","depends_on":[1]}]}]}"#;
         let unconfirmed_signature = store.request_plan_signature(request).unwrap();
-        assert!(store.apply_automation_template(id, request, 1, &unconfirmed_signature, plan, 2_000)
-            .unwrap_err().contains("Confirm the research understanding"));
+        assert!(
+            store
+                .apply_automation_template(id, request, 1, &unconfirmed_signature, plan, 2_000)
+                .unwrap_err()
+                .contains("Confirm the research understanding")
+        );
         assert!(store.automation(id).unwrap().template.is_none());
         crate::request_planning::confirm_test_request(&mut store, request);
         let signature = store.request_plan_signature(request).unwrap();
@@ -1580,9 +1703,11 @@ mod tests {
             )
             .unwrap();
         assert!(store.automation(id).unwrap().plan_binding.is_some());
-        assert!(store
-            .plan_binding_problem(store.automation(id).unwrap())
-            .is_none());
+        assert!(
+            store
+                .plan_binding_problem(store.automation(id).unwrap())
+                .is_none()
+        );
         let schedule_before_text = store.automation(id).unwrap().schedule.clone();
         store
             .revise_automation_with_shape(
@@ -1599,9 +1724,11 @@ mod tests {
             )
             .unwrap();
         assert!(store.automation(id).unwrap().plan_binding.is_none());
-        assert!(store
-            .plan_binding_problem(store.automation(id).unwrap())
-            .is_some());
+        assert!(
+            store
+                .plan_binding_problem(store.automation(id).unwrap())
+                .is_some()
+        );
         assert!(approval_for(&store, store.automation(id).unwrap(), 5_000, vec![]).is_err());
     }
 
@@ -1618,7 +1745,10 @@ mod tests {
                 "Objective A".into(),
                 "Expected A".into(),
                 Schedule {
-                    spec: ScheduleSpec::Daily { hour: 8, minute: 30 },
+                    spec: ScheduleSpec::Daily {
+                        hour: 8,
+                        minute: 30,
+                    },
                     timezone: "UTC".into(),
                 },
                 AutomationPolicy::default(),
@@ -1671,18 +1801,34 @@ mod tests {
         let error = store
             .approve_and_enable(id, vec![], 6_000)
             .expect_err("Expected B without a reviewed plan must not enable");
-        assert!(error.contains("reviewed plan") || error.contains("Replan"), "{error}");
+        assert!(
+            error.contains("reviewed plan") || error.contains("Replan"),
+            "{error}"
+        );
         assert_eq!(store.automation(id).unwrap(), &before_failure);
         assert_eq!(store.all_occurrences(), occurrences_before);
         assert_eq!(store.automation(id).unwrap().approval, None);
-        assert_eq!(store.automation(id).unwrap().status, DefinitionStatus::Draft);
+        assert_eq!(
+            store.automation(id).unwrap().status,
+            DefinitionStatus::Draft
+        );
         assert_eq!(store.automation(id).unwrap().cursor, None);
         assert_eq!(
-            store.research_requests().iter().find(|request| request.id == request_a).unwrap().expected_result.as_deref(),
+            store
+                .research_requests()
+                .iter()
+                .find(|request| request.id == request_a)
+                .unwrap()
+                .expected_result
+                .as_deref(),
             Some("Expected A")
         );
         assert_eq!(
-            store.occurrence(period_a.id).unwrap().snapshot.expected_result,
+            store
+                .occurrence(period_a.id)
+                .unwrap()
+                .snapshot
+                .expected_result,
             "Expected A"
         );
 
@@ -1703,20 +1849,36 @@ mod tests {
         let enabled = store.automation(id).unwrap();
         assert_eq!(enabled.status, DefinitionStatus::Enabled);
         assert_eq!(
-            enabled.plan_binding.as_ref().map(|binding| binding.request_id),
+            enabled
+                .plan_binding
+                .as_ref()
+                .map(|binding| binding.request_id),
             Some(request_b)
         );
         assert_eq!(
-            enabled.approval.as_ref().and_then(|approval| approval.plan_request_id),
+            enabled
+                .approval
+                .as_ref()
+                .and_then(|approval| approval.plan_request_id),
             Some(request_b)
         );
         assert_eq!(
-            store.research_requests().iter().find(|request| request.id == request_a).unwrap().expected_result.as_deref(),
+            store
+                .research_requests()
+                .iter()
+                .find(|request| request.id == request_a)
+                .unwrap()
+                .expected_result
+                .as_deref(),
             Some("Expected A"),
             "the prior revision keeps its original expected result"
         );
         assert_eq!(
-            store.occurrence(period_a.id).unwrap().snapshot.expected_result,
+            store
+                .occurrence(period_a.id)
+                .unwrap()
+                .snapshot
+                .expected_result,
             "Expected A",
             "the previously saved period keeps its frozen snapshot"
         );
@@ -1814,7 +1976,10 @@ mod tests {
         let mut run = store.prepare_occurrence_run(&occurrence, 2_060).unwrap();
         run.status = "Failed".into();
         store.push_run(run);
-        assert_eq!(store.step_state(collect), crate::goal_steps::StepState::Blocked);
+        assert_eq!(
+            store.step_state(collect),
+            crate::goal_steps::StepState::Blocked
+        );
         assert_eq!(
             store.step_state(analyze),
             crate::goal_steps::StepState::Waiting,
@@ -1836,7 +2001,10 @@ mod tests {
                 "Run phases in order".into(),
                 "A sourced note".into(),
                 Schedule {
-                    spec: ScheduleSpec::Daily { hour: 8, minute: 30 },
+                    spec: ScheduleSpec::Daily {
+                        hour: 8,
+                        minute: 30,
+                    },
                     timezone: "Asia/Shanghai".into(),
                 },
                 AutomationPolicy::default(),
@@ -1885,8 +2053,8 @@ mod tests {
     #[test]
     fn multi_goal_period_runs_goals_in_order_without_replanning() {
         let mut store = store();
-        store.research_config_mut().models = ["test/plan", "test/collect", "test/analyze", "test/advise"]
-            .map(String::from);
+        store.research_config_mut().models =
+            ["test/plan", "test/collect", "test/analyze", "test/advise"].map(String::from);
         let plan = r#"{"topic_name":"Supply chain","brief":{"objective":"Track supply","deliverable":"Sourced note","scope":"Latest quarter","assumptions":[],"facts_to_verify":[]},"goals":[{"title":"Foundry capacity","brief":"Track announced capacity","tasks":[{"title":"Collect","instructions":"Collect filings","kind":"collect","depends_on":[]},{"title":"Analyze","instructions":"Compare capacity","kind":"analyze","depends_on":[0]},{"title":"Report","instructions":"Write the note","kind":"advise","depends_on":[1]}]},{"title":"Equipment orders","brief":"Track equipment bookings","tasks":[{"title":"Collect","instructions":"Collect orders","kind":"collect","depends_on":[]},{"title":"Analyze","instructions":"Compare orders","kind":"analyze","depends_on":[0]},{"title":"Report","instructions":"Write the note","kind":"advise","depends_on":[1]}]}]}"#;
         let parsed = crate::request_planning::parse_request_plan(plan).unwrap();
         let template = template_from_plan(&parsed).unwrap();
@@ -1898,7 +2066,10 @@ mod tests {
                 "Track supply".into(),
                 "A sourced note".into(),
                 Schedule {
-                    spec: ScheduleSpec::Daily { hour: 8, minute: 30 },
+                    spec: ScheduleSpec::Daily {
+                        hour: 8,
+                        minute: 30,
+                    },
                     timezone: "Asia/Shanghai".into(),
                 },
                 AutomationPolicy::default(),
@@ -1906,13 +2077,7 @@ mod tests {
                 1_000,
             )
             .unwrap();
-        store
-            .approve_and_enable(
-                id,
-                vec![],
-                1_000,
-            )
-            .unwrap();
+        store.approve_and_enable(id, vec![], 1_000).unwrap();
         let occurrence = store
             .materialize_occurrence(occurrence(&store, id, 2_000))
             .unwrap();
@@ -1936,10 +2101,9 @@ mod tests {
         let run = store.prepare_occurrence_run(&occurrence, 2_060).unwrap();
         assert_eq!(store.owning_research_goal(run.task_id), Some(second));
         assert_eq!(run.research_kind, Some(ResearchKind::Collect));
-        assert!(store
-            .runs()
-            .iter()
-            .all(|candidate| candidate.research_kind != Some(ResearchKind::Goal) || candidate.task_id != 0));
+        assert!(store.runs().iter().all(|candidate| candidate.research_kind
+            != Some(ResearchKind::Goal)
+            || candidate.task_id != 0));
     }
 
     #[test]
@@ -1947,7 +2111,12 @@ mod tests {
         let mut store = store();
         // Only the report step is configured; a quick task must not demand
         // collection or analysis models it will never use.
-        store.research_config_mut().models = ["test/plan".into(), String::new(), String::new(), "test/advise".into()];
+        store.research_config_mut().models = [
+            "test/plan".into(),
+            String::new(),
+            String::new(),
+            "test/advise".into(),
+        ];
         let template = build_quick_template(
             "Check today's fuel price in Shenzhen",
             "Current price with source",
@@ -1961,7 +2130,10 @@ mod tests {
                 "Check today's fuel price in Shenzhen".into(),
                 "Current price with source".into(),
                 Schedule {
-                    spec: ScheduleSpec::Daily { hour: 10, minute: 0 },
+                    spec: ScheduleSpec::Daily {
+                        hour: 10,
+                        minute: 0,
+                    },
                     timezone: "Asia/Shanghai".into(),
                 },
                 AutomationPolicy::default(),
@@ -1969,18 +2141,15 @@ mod tests {
                 1_000,
             )
             .unwrap();
-        store
-            .approve_and_enable(
-                id,
-                vec![],
-                1_000,
-            )
-            .unwrap();
+        store.approve_and_enable(id, vec![], 1_000).unwrap();
         let topics_before = store.topics().len();
         let occurrence = store
             .materialize_occurrence(occurrence(&store, id, 2_000))
             .unwrap();
-        assert!(occurrence.research_topic_id.is_none(), "quick tasks have no topic");
+        assert!(
+            occurrence.research_topic_id.is_none(),
+            "quick tasks have no topic"
+        );
         assert_eq!(store.topics().len(), topics_before);
         let goal = occurrence.research_goal_id.unwrap();
         assert_eq!(occurrence.research_goal_ids, vec![goal]);
@@ -2011,13 +2180,7 @@ mod tests {
     fn research_periods_get_their_own_topic_and_the_plan_is_frozen() {
         let mut store = store();
         let id = definition(&mut store);
-        store
-            .approve_and_enable(
-                id,
-                vec![],
-                1_000,
-            )
-            .unwrap();
+        store.approve_and_enable(id, vec![], 1_000).unwrap();
         let first = store
             .materialize_occurrence(occurrence(&store, id, 2_000))
             .unwrap();
@@ -2028,10 +2191,16 @@ mod tests {
         let second_topic = second.research_topic_id.unwrap();
         assert_ne!(first_topic, second_topic, "each period has its own topic");
         for (topic, scheduled) in [(first_topic, 2_000), (second_topic, 3_000)] {
-            let topic = store.topics().iter().find(|candidate| candidate.id == topic).unwrap();
+            let topic = store
+                .topics()
+                .iter()
+                .find(|candidate| candidate.id == topic)
+                .unwrap();
             assert_eq!(topic.automation_id, Some(id));
             assert!(topic.name.starts_with("Daily topic"));
-            let expected = ScheduledTime::new(scheduled, "Asia/Shanghai").unwrap().local;
+            let expected = ScheduledTime::new(scheduled, "Asia/Shanghai")
+                .unwrap()
+                .local;
             assert!(
                 topic.name.contains(&expected),
                 "a scheduled period carries its local date in the published title: {}",
@@ -2052,7 +2221,10 @@ mod tests {
                 "Track the topic".into(),
                 "A cited note".into(),
                 Schedule {
-                    spec: ScheduleSpec::Daily { hour: 8, minute: 30 },
+                    spec: ScheduleSpec::Daily {
+                        hour: 8,
+                        minute: 30,
+                    },
                     timezone: "Asia/Shanghai".into(),
                 },
                 AutomationPolicy::default(),
@@ -2063,7 +2235,12 @@ mod tests {
         let request = store
             .create_automation_request(id, 1, "Track the topic", "A cited note")
             .unwrap();
-        let revision = store.research_requests().iter().find(|r| r.id == request).unwrap().revision;
+        let revision = store
+            .research_requests()
+            .iter()
+            .find(|r| r.id == request)
+            .unwrap()
+            .revision;
         crate::request_planning::confirm_test_request(&mut store, request);
         let signature = store.request_plan_signature(request).unwrap();
         let plan = r#"{"topic_name":"Semiconductor supply","brief":{"objective":"Track supply","deliverable":"Sourced note","scope":"Latest quarter","assumptions":[],"facts_to_verify":[]},"goals":[{"title":"Foundry capacity","brief":"Track announced capacity","tasks":[{"title":"Collect","instructions":"Collect filings","kind":"collect","depends_on":[]},{"title":"Analyze","instructions":"Compare capacity","kind":"analyze","depends_on":[0]},{"title":"Report","instructions":"Write the note","kind":"advise","depends_on":[1]}]},{"title":"Equipment orders","brief":"Track equipment bookings","tasks":[{"title":"Collect","instructions":"Collect orders","kind":"collect","depends_on":[]},{"title":"Analyze","instructions":"Compare orders","kind":"analyze","depends_on":[0]},{"title":"Report","instructions":"Write the note","kind":"advise","depends_on":[1]}]}]}"#;
@@ -2079,13 +2256,7 @@ mod tests {
         assert_eq!(frozen.template.as_ref().unwrap().goals.len(), 2);
         assert_eq!(frozen.status, DefinitionStatus::Draft);
         // The frozen plan can be approved and instantiated without planning again.
-        store
-            .approve_and_enable(
-                id,
-                vec![],
-                2_100,
-            )
-            .unwrap();
+        store.approve_and_enable(id, vec![], 2_100).unwrap();
         let occurrence = store
             .materialize_occurrence(occurrence(&store, id, 3_600))
             .unwrap();
@@ -2106,22 +2277,16 @@ mod tests {
     #[test]
     fn occurrence_run_uses_snapshot_model_and_time_window() {
         let mut store = store();
-        store.research_config_mut().models = ["test/plan", "test/collect", "test/analyze", "test/advise"]
-            .map(String::from);
+        store.research_config_mut().models =
+            ["test/plan", "test/collect", "test/analyze", "test/advise"].map(String::from);
         store.set_output_language(crate::research::OutputLanguage::English);
         let id = definition(&mut store);
-        store
-            .approve_and_enable(
-                id,
-                vec![],
-                1_000,
-            )
-            .unwrap();
+        store.approve_and_enable(id, vec![], 1_000).unwrap();
         let mut occurrence = store
             .materialize_occurrence(occurrence(&store, id, 1_700_000_000))
             .unwrap();
-        occurrence.snapshot.models = ["test/plan", "test/collect", "test/analyze", "test/advise"]
-            .map(String::from);
+        occurrence.snapshot.models =
+            ["test/plan", "test/collect", "test/analyze", "test/advise"].map(String::from);
         occurrence.snapshot.agents = std::array::from_fn(|_| Some("OpenCode".to_string()));
         *store.occurrence_mut(occurrence.id).unwrap() = occurrence.clone();
         occurrence.mark_running(1_700_000_060).unwrap();
@@ -2135,9 +2300,8 @@ mod tests {
         assert!(run.prompt.contains("Reference time:"));
         assert!(run.prompt.contains("Previous local day"));
         assert!(
-            run.prompt.contains(
-                "Write every generated field and all reader-facing output in English"
-            ),
+            run.prompt
+                .contains("Write every generated field and all reader-facing output in English"),
             "automation steps must use the global output language"
         );
         assert_eq!(run.research_kind, Some(ResearchKind::Collect));
@@ -2178,17 +2342,23 @@ mod tests {
         let resolved = window_for(&yesterday, 1_700_000_000, "Asia/Shanghai").unwrap();
         assert!(resolved.is_resolved());
         let minutes = build_template("过去五分钟的信息", "简报").unwrap();
-        assert!(!window_for(&minutes, 1_700_000_000, "Asia/Shanghai")
-            .unwrap()
-            .is_resolved());
+        assert!(
+            !window_for(&minutes, 1_700_000_000, "Asia/Shanghai")
+                .unwrap()
+                .is_resolved()
+        );
         let week = build_template("上周总结", "简报").unwrap();
-        assert!(!window_for(&week, 1_700_000_000, "Asia/Shanghai")
-            .unwrap()
-            .is_resolved());
+        assert!(
+            !window_for(&week, 1_700_000_000, "Asia/Shanghai")
+                .unwrap()
+                .is_resolved()
+        );
         let trading_day = build_template("上一个交易日的公告", "简报").unwrap();
-        assert!(!window_for(&trading_day, 1_700_000_000, "Asia/Shanghai")
-            .unwrap()
-            .is_resolved());
+        assert!(
+            !window_for(&trading_day, 1_700_000_000, "Asia/Shanghai")
+                .unwrap()
+                .is_resolved()
+        );
     }
 
     #[test]
@@ -2213,8 +2383,8 @@ mod tests {
         let mut occurrence = store
             .materialize_occurrence(occurrence(&store, id, 1_700_000_000))
             .unwrap();
-        occurrence.snapshot.models = ["test/plan", "test/collect", "test/analyze", "test/advise"]
-            .map(String::from);
+        occurrence.snapshot.models =
+            ["test/plan", "test/collect", "test/analyze", "test/advise"].map(String::from);
         occurrence.snapshot.agents = std::array::from_fn(|_| Some("OpenCode".to_string()));
         *store.occurrence_mut(occurrence.id).unwrap() = occurrence.clone();
         occurrence.mark_running(1_700_000_000).unwrap();
@@ -2231,16 +2401,10 @@ mod tests {
     #[test]
     fn two_periods_have_distinct_reference_windows_paths_and_sessions() {
         let mut store = store();
-        store.research_config_mut().models = ["test/plan", "test/collect", "test/analyze", "test/advise"]
-            .map(String::from);
+        store.research_config_mut().models =
+            ["test/plan", "test/collect", "test/analyze", "test/advise"].map(String::from);
         let id = definition(&mut store);
-        store
-            .approve_and_enable(
-                id,
-                vec![],
-                1_700_000_000,
-            )
-            .unwrap();
+        store.approve_and_enable(id, vec![], 1_700_000_000).unwrap();
         let first_time = 1_700_000_000;
         let second_time = first_time + 86_400;
         let first = store
@@ -2268,8 +2432,20 @@ mod tests {
         assert!(first_run.session_id.is_none());
         assert!(second_run.session_id.is_none());
         assert_ne!(
-            store.task(first_goal).unwrap().research.as_ref().unwrap().space_name,
-            store.task(second_goal).unwrap().research.as_ref().unwrap().space_name
+            store
+                .task(first_goal)
+                .unwrap()
+                .research
+                .as_ref()
+                .unwrap()
+                .space_name,
+            store
+                .task(second_goal)
+                .unwrap()
+                .research
+                .as_ref()
+                .unwrap()
+                .space_name
         );
         assert!(first_run.prompt.contains("Reference time:"));
         assert!(!first_run.prompt.contains(&format!(
@@ -2291,23 +2467,36 @@ mod tests {
         let mut failed = first_run.clone();
         failed.status = "Failed".into();
         store.push_run(failed.clone());
-        let retry = store.prepare_auto_retry(failed.id, first_time + 120).unwrap();
+        let retry = store
+            .prepare_auto_retry(failed.id, first_time + 120)
+            .unwrap();
         assert_eq!(retry.automation_occurrence_id, Some(first.id));
         assert!(retry.prompt.contains("Reference time:"));
         assert_eq!(
-            retry.prompt.matches("AUTOMATION OCCURRENCE CONTEXT").count(),
-            first_run.prompt.matches("AUTOMATION OCCURRENCE CONTEXT").count()
+            retry
+                .prompt
+                .matches("AUTOMATION OCCURRENCE CONTEXT")
+                .count(),
+            first_run
+                .prompt
+                .matches("AUTOMATION OCCURRENCE CONTEXT")
+                .count()
         );
         assert_ne!(retry.id, failed.id);
         // Complete both periods independently with the observable fake runner.
         let mut runner = crate::automation_runtime::FakeAutomationRunner::default();
         for (occurrence, at) in [(&first, first_time), (&second, second_time)] {
             runner.start(occurrence);
-            runner.complete(&mut store, occurrence.id, at + 300).unwrap();
+            runner
+                .complete(&mut store, occurrence.id, at + 300)
+                .unwrap();
         }
         for occurrence in [&first, &second] {
             let stored = store.occurrence(occurrence.id).unwrap();
-            assert_eq!(stored.status, crate::automation::OccurrenceStatus::Succeeded);
+            assert_eq!(
+                stored.status,
+                crate::automation::OccurrenceStatus::Succeeded
+            );
             assert!(stored.unread);
             assert!(stored.final_run_id.is_some());
         }
@@ -2317,23 +2506,23 @@ mod tests {
     #[test]
     fn automation_topics_are_excluded_from_normal_publication() {
         let mut store = store();
-        store.research_config_mut().models = ["test/plan", "test/collect", "test/analyze", "test/advise"]
-            .map(String::from);
+        store.research_config_mut().models =
+            ["test/plan", "test/collect", "test/analyze", "test/advise"].map(String::from);
         let id = definition(&mut store);
-        store
-            .approve_and_enable(
-                id,
-                vec![],
-                1_700_000_000,
-            )
-            .unwrap();
+        store.approve_and_enable(id, vec![], 1_700_000_000).unwrap();
         let occurrence = store
             .materialize_occurrence(occurrence(&store, id, 1_700_000_000))
             .unwrap();
         let topic = occurrence.research_topic_id.unwrap();
         let mut runner = crate::automation_runtime::FakeAutomationRunner::default();
-        store.occurrence_mut(occurrence.id).unwrap().mark_running(1_700_000_060).unwrap();
-        runner.complete(&mut store, occurrence.id, 1_700_000_100).unwrap();
+        store
+            .occurrence_mut(occurrence.id)
+            .unwrap()
+            .mark_running(1_700_000_060)
+            .unwrap();
+        runner
+            .complete(&mut store, occurrence.id, 1_700_000_100)
+            .unwrap();
         assert_eq!(
             store.occurrence(occurrence.id).unwrap().status,
             crate::automation::OccurrenceStatus::Succeeded
@@ -2349,9 +2538,7 @@ mod tests {
         store.research_config_mut().agents[1] = Some("Codex".into());
         store.research_config_mut().models[1] = "fixture-codex".into();
         let id = definition(&mut store);
-        let approval = store
-            .approve_and_enable(id, vec![], 1_700_000_000)
-            .unwrap();
+        let approval = store.approve_and_enable(id, vec![], 1_700_000_000).unwrap();
         assert_eq!(approval.agents[1].as_deref(), Some("Codex"));
         assert_eq!(approval.models[1], "fixture-codex");
     }
@@ -2359,18 +2546,14 @@ mod tests {
     #[test]
     fn renaming_alone_keeps_the_approved_version() {
         let mut store = store();
-        store.research_config_mut().models = ["test/plan", "test/collect", "test/analyze", "test/advise"]
-            .map(String::from);
+        store.research_config_mut().models =
+            ["test/plan", "test/collect", "test/analyze", "test/advise"].map(String::from);
         let id = definition(&mut store);
-        store
-            .approve_and_enable(
-                id,
-                vec![],
-                1_700_000_000,
-            )
-            .unwrap();
+        store.approve_and_enable(id, vec![], 1_700_000_000).unwrap();
         let cursor = store.automation(id).unwrap().cursor;
-        store.rename_automation(id, "Renamed only", 1_700_000_100).unwrap();
+        store
+            .rename_automation(id, "Renamed only", 1_700_000_100)
+            .unwrap();
         let definition = store.automation(id).unwrap();
         assert_eq!(definition.name, "Renamed only");
         assert_eq!(definition.version, 1);
@@ -2381,16 +2564,10 @@ mod tests {
     #[test]
     fn verified_recovery_resumes_schedule_but_never_user_pause() {
         let mut store = store();
-        store.research_config_mut().models = ["test/plan", "test/collect", "test/analyze", "test/advise"]
-            .map(String::from);
+        store.research_config_mut().models =
+            ["test/plan", "test/collect", "test/analyze", "test/advise"].map(String::from);
         let id = definition(&mut store);
-        store
-            .approve_and_enable(
-                id,
-                vec![],
-                1_700_000_000,
-            )
-            .unwrap();
+        store.approve_and_enable(id, vec![], 1_700_000_000).unwrap();
         store.mark_automation_attention(id, "The previous session's state cannot be confirmed. Check the result before continuing; no work was replayed.");
         assert!(store.automation(id).unwrap().cursor.is_none());
         assert!(store.resume_after_verified_recovery(id, 1_700_000_100));
@@ -2401,12 +2578,18 @@ mod tests {
         // An unrelated attention reason is not cleared by a normal completion.
         store.mark_automation_attention(id, "The automation's project is unavailable.");
         assert!(!store.resume_after_verified_recovery(id, 1_700_000_200));
-        assert_eq!(store.automation(id).unwrap().status, DefinitionStatus::NeedsAttention);
+        assert_eq!(
+            store.automation(id).unwrap().status,
+            DefinitionStatus::NeedsAttention
+        );
         // A user pause is preserved.
         store.automation_mut(id).unwrap().status = DefinitionStatus::Paused;
         store.automation_mut(id).unwrap().attention_reason = None;
         assert!(!store.resume_after_verified_recovery(id, 1_700_000_300));
-        assert_eq!(store.automation(id).unwrap().status, DefinitionStatus::Paused);
+        assert_eq!(
+            store.automation(id).unwrap().status,
+            DefinitionStatus::Paused
+        );
     }
 
     #[test]

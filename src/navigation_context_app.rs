@@ -55,7 +55,8 @@ pub(crate) enum PendingSavedExitForm {
     },
 }
 
-pub(crate) struct NavigationState {    /// Last surface opened for each task tab, so Recently opened can reopen a
+pub(crate) struct NavigationState {
+    /// Last surface opened for each task tab, so Recently opened can reopen a
     /// report instead of always dropping to the detail page.
     pub recent_surfaces: BTreeMap<u64, RecentSurface>,
     /// Virtualized task list scroll.
@@ -211,7 +212,6 @@ impl TaskApp {
         if let Some(task) = self.selected() {
             return Origin::ResearchTask {
                 task,
-                steps_tab: self.goal_steps_tab(),
                 scroll: ScrollState {
                     x: self.detail_scroll.offset().x.as_f32(),
                     y: pixels_y(&self.detail_scroll),
@@ -372,22 +372,14 @@ impl TaskApp {
                     .base_handle
                     .set_offset(point(px(0.), px(scroll.y)));
             }
-            Origin::ResearchTopic {
-                topic,
-                scroll,
-            } => {
+            Origin::ResearchTopic { topic, scroll } => {
                 self.navigate(Scope::Topic(topic), w, cx);
                 self.navigation
                     .topic_scroll
                     .set_offset(point(px(scroll.x), px(scroll.y)));
             }
-            Origin::ResearchTask {
-                task,
-                steps_tab,
-                scroll,
-            } => {
+            Origin::ResearchTask { task, scroll } => {
                 self.open_task(task, w, cx);
-                self.set_goal_steps_tab(steps_tab);
                 self.detail_scroll
                     .set_offset(point(px(scroll.x), px(scroll.y)));
             }
@@ -511,16 +503,10 @@ impl TaskApp {
         cx.notify();
     }
 
-    fn apply_target(
-        &mut self,
-        target: NavigationTarget,
-        w: &mut Window,
-        cx: &mut Context<Self>,
-    ) {
+    fn apply_target(&mut self, target: NavigationTarget, w: &mut Window, cx: &mut Context<Self>) {
         match target {
             NavigationTarget::Research { scope } => self.navigate(scope, w, cx),
             NavigationTarget::ResearchTask(task) => self.open_task(task, w, cx),
-            NavigationTarget::ResearchSteps(goal) => self.open_goal_steps(goal, w, cx),
             NavigationTarget::ResearchTaskResult(task) => {
                 let result = if self.task_running(task) || self.goal_busy(task) {
                     None
@@ -528,7 +514,9 @@ impl TaskApp {
                     self.store.completed_sidebar_result(task)
                 };
                 if let Some(run) = result {
-                    if self.defer_result_navigation(run, Some(task), true, None, cx) { return; }
+                    if self.defer_result_navigation(run, Some(task), true, None, cx) {
+                        return;
+                    }
                 }
                 self.open_task(task, w, cx);
                 if let Some(run) = result {
@@ -537,7 +525,9 @@ impl TaskApp {
             }
             NavigationTarget::ResearchResult { task, run } => {
                 if let Some(run) = run {
-                    if self.defer_result_navigation(run, Some(task), false, None, cx) { return; }
+                    if self.defer_result_navigation(run, Some(task), false, None, cx) {
+                        return;
+                    }
                 }
                 self.set_result_selection(Some(task), run);
             }
@@ -558,9 +548,7 @@ impl TaskApp {
                 self.open_automation(automation, w, cx);
                 self.open_occurrence_result(occurrence, w, cx);
             }
-            NavigationTarget::Recent { task, surface } => {
-                self.open_recent(task, surface, w, cx)
-            }
+            NavigationTarget::Recent { task, surface } => self.open_recent(task, surface, w, cx),
         }
     }
 
@@ -588,7 +576,9 @@ impl TaskApp {
                         .map(|run| run.id)
                 });
             if let Some(run) = run {
-                if self.defer_result_navigation(run, Some(task), true, None, cx) { return; }
+                if self.defer_result_navigation(run, Some(task), true, None, cx) {
+                    return;
+                }
                 self.open_task(task, w, cx);
                 self.show_task_result(run, cx);
                 return;
@@ -613,12 +603,11 @@ impl TaskApp {
         self.navigation.automation_baseline = Some(self.automation_ui.form_draft(cx));
     }
 
-    /// Capture the editor's initial values, including project/stage/cycle, so
+    /// Capture the editor's initial values, including project/stage, so
     /// only user edits (not unrelated runtime changes) make it dirty.
     pub(crate) fn begin_task_edit_baseline(&mut self, cx: &App) {
         if let Some(draft) = &self.draft {
-            self.navigation.task_edit_baseline =
-                Some((draft.id, draft_values(draft, cx)));
+            self.navigation.task_edit_baseline = Some((draft.id, draft_values(draft, cx)));
         }
     }
 
@@ -637,11 +626,9 @@ impl TaskApp {
                     self.store.task(draft.id).map(|task| TaskEditValues {
                         title: task.title.clone(),
                         description: task.description.clone(),
-                        labels: task.labels.clone(),
                         due_date: task.due_date.clone(),
                         project: task.project_id,
                         stage: task.stage,
-                        cycle: task.cycle.clone(),
                     })
                 });
             if baseline
@@ -653,21 +640,17 @@ impl TaskApp {
         }
         if self.automation_ui.creating {
             let current = self.automation_ui.form_draft(cx);
-            let dirty = self
-                .navigation
-                .automation_baseline
-                .as_ref()
-                .map_or_else(
-                    || {
-                        self.automation_ui.editing.is_some()
-                            || self.automation_ui.step > 1
-                            || self.automation_ui.plan.is_some()
-                            || !current.name.trim().is_empty()
-                            || !current.objective.trim().is_empty()
-                            || !current.expected.trim().is_empty()
-                    },
-                    |baseline| crate::draft_exit::automation_draft_dirty(baseline, &current),
-                );
+            let dirty = self.navigation.automation_baseline.as_ref().map_or_else(
+                || {
+                    self.automation_ui.editing.is_some()
+                        || self.automation_ui.step > 1
+                        || self.automation_ui.plan.is_some()
+                        || !current.name.trim().is_empty()
+                        || !current.objective.trim().is_empty()
+                        || !current.expected.trim().is_empty()
+                },
+                |baseline| crate::draft_exit::automation_draft_dirty(baseline, &current),
+            );
             if dirty {
                 return Some(DraftSurface::AutomationWizard {
                     editing: self.automation_ui.editing,
@@ -911,9 +894,7 @@ impl TaskApp {
                                 epoch: form_epoch,
                             },
                         });
-                        SaveOutcome::Pending(
-                            "Saving… leaving after the draft is durable.".into(),
-                        )
+                        SaveOutcome::Pending("Saving… leaving after the draft is durable.".into())
                     }
                     crate::automation_views::AutomationSaveOutcome::Rejected(message) => {
                         SaveOutcome::Rejected(message)
@@ -931,13 +912,8 @@ impl TaskApp {
                     CreationMode::ExistingTopic { topic, .. } => Some(topic),
                     _ => None,
                 };
-                match self.capture_research_request_outcome(
-                    mode.project(),
-                    topic,
-                    input,
-                    false,
-                    cx,
-                ) {
+                match self.capture_research_request_outcome(mode.project(), topic, input, false, cx)
+                {
                     crate::project_app::RequestCaptureOutcome::Saved => SaveOutcome::Saved,
                     crate::project_app::RequestCaptureOutcome::Pending {
                         id,
@@ -963,9 +939,7 @@ impl TaskApp {
                                 replan_source,
                             },
                         });
-                        SaveOutcome::Pending(
-                            "Saving… leaving after the request is durable.".into(),
-                        )
+                        SaveOutcome::Pending("Saving… leaving after the request is durable.".into())
                     }
                     crate::project_app::RequestCaptureOutcome::Rejected(message) => {
                         SaveOutcome::Rejected(message)
@@ -1031,11 +1005,12 @@ impl TaskApp {
                 self.structural_navigation();
                 self.apply_target(target, w, cx);
             }
-            ExitTarget::NewResearch => self.open_research_intake(w, cx),
             ExitTarget::SidebarTask { project, task } => {
                 if !self.task_running(task) && !self.goal_busy(task) {
                     if let Some(run) = self.store.completed_sidebar_result(task) {
-                        if self.defer_result_navigation(run, Some(task), true, Some(project), cx) { return; }
+                        if self.defer_result_navigation(run, Some(task), true, Some(project), cx) {
+                            return;
+                        }
                     }
                 }
                 self.structural_navigation();
@@ -1172,12 +1147,7 @@ impl TaskApp {
         }
     }
 
-    pub(crate) fn dirty_exit_failed(
-        &mut self,
-        token: u64,
-        reason: String,
-        cx: &mut Context<Self>,
-    ) {
+    pub(crate) fn dirty_exit_failed(&mut self, token: u64, reason: String, cx: &mut Context<Self>) {
         let matches = self
             .navigation
             .pending_saved_exit
@@ -1224,8 +1194,7 @@ impl TaskApp {
                         .ok()
                         .as_ref()
                         .is_some_and(|current| current == input);
-                let subject_exists =
-                    subject.is_none_or(|id| self.store.automation(id).is_some());
+                let subject_exists = subject.is_none_or(|id| self.store.automation(id).is_some());
                 input_matches && subject_exists
             }
             PendingSavedExitForm::Task {
@@ -1312,14 +1281,6 @@ impl TaskApp {
         );
     }
 
-    pub(crate) fn request_goal_steps(&mut self, goal: u64, w: &mut Window, cx: &mut Context<Self>) {
-        self.request_exit(
-            ExitTarget::Navigate(NavigationTarget::ResearchSteps(goal)),
-            w,
-            cx,
-        );
-    }
-
     pub(crate) fn request_task(
         &mut self,
         task: u64,
@@ -1370,10 +1331,6 @@ impl TaskApp {
         self.request_exit(ExitTarget::Recent { task, surface }, w, cx);
     }
 
-    pub(crate) fn request_new_research(&mut self, w: &mut Window, cx: &mut Context<Self>) {
-        self.request_exit(ExitTarget::NewResearch, w, cx);
-    }
-
     pub(crate) fn request_cancel_planning(&mut self, w: &mut Window, cx: &mut Context<Self>) {
         self.request_exit(ExitTarget::CancelPlanning, w, cx);
     }
@@ -1412,31 +1369,30 @@ impl TaskApp {
             return true;
         }
         use crate::navigation_context::DismissibleSurface as D;
-        let target = if self.planning_destination.is_some()
-            || self.planning_destination_error.is_some()
-        {
-            ExitTarget::Dismiss(D::PlanningComposer)
-        } else if self.draft.is_some() {
-            ExitTarget::Dismiss(D::TaskEditor)
-        } else if self.planning_attempt_overlay().is_some() {
-            ExitTarget::Dismiss(D::PlanningAttempt)
-        } else if self.period_overlay().is_some() {
-            ExitTarget::Dismiss(D::TaskResult)
-        } else if self.settings_overlay() {
-            ExitTarget::Dismiss(D::AutomationSettings)
-        } else if self.project_rename.is_some() {
-            ExitTarget::Dismiss(D::ProjectRename)
-        } else if self.topic_editor.is_some() {
-            ExitTarget::Dismiss(D::TopicEditor)
-        } else if self.topic_move.is_some() {
-            ExitTarget::Dismiss(D::TopicMove)
-        } else if self.directory_project.is_some() {
-            ExitTarget::Dismiss(D::FolderDialog)
-        } else if self.new_project.is_some() {
-            ExitTarget::Dismiss(D::NewProject)
-        } else {
-            return false;
-        };
+        let target =
+            if self.planning_destination.is_some() || self.planning_destination_error.is_some() {
+                ExitTarget::Dismiss(D::PlanningComposer)
+            } else if self.draft.is_some() {
+                ExitTarget::Dismiss(D::TaskEditor)
+            } else if self.planning_attempt_overlay().is_some() {
+                ExitTarget::Dismiss(D::PlanningAttempt)
+            } else if self.period_overlay().is_some() {
+                ExitTarget::Dismiss(D::TaskResult)
+            } else if self.settings_overlay() {
+                ExitTarget::Dismiss(D::AutomationSettings)
+            } else if self.project_rename.is_some() {
+                ExitTarget::Dismiss(D::ProjectRename)
+            } else if self.topic_editor.is_some() {
+                ExitTarget::Dismiss(D::TopicEditor)
+            } else if self.topic_move.is_some() {
+                ExitTarget::Dismiss(D::TopicMove)
+            } else if self.directory_project.is_some() {
+                ExitTarget::Dismiss(D::FolderDialog)
+            } else if self.new_project.is_some() {
+                ExitTarget::Dismiss(D::NewProject)
+            } else {
+                return false;
+            };
         self.request_exit(target, w, cx);
         true
     }
@@ -1474,8 +1430,10 @@ impl TaskApp {
 
     pub(crate) fn discard_parked_composer(&mut self, w: &mut Window, cx: &mut Context<Self>) {
         self.navigation.composer = None;
-        self.research_title.update(cx, |s, cx| s.set_value("", w, cx));
-        self.research_brief.update(cx, |s, cx| s.set_value("", w, cx));
+        self.research_title
+            .update(cx, |s, cx| s.set_value("", w, cx));
+        self.research_brief
+            .update(cx, |s, cx| s.set_value("", w, cx));
         cx.notify();
     }
 
@@ -1541,18 +1499,8 @@ fn draft_values(draft: &crate::app::Draft, cx: &App) -> TaskEditValues {
     TaskEditValues {
         title: draft.title.read(cx).value().to_string(),
         description: draft.description.read(cx).value().to_string(),
-        labels: draft
-            .labels
-            .read(cx)
-            .value()
-            .split(',')
-            .map(str::trim)
-            .filter(|label| !label.is_empty())
-            .map(str::to_string)
-            .collect(),
         due_date: draft.due.read(cx).value().to_string(),
         project: draft.project,
         stage: draft.stage,
-        cycle: draft.cycle.clone(),
     }
 }

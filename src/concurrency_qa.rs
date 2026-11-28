@@ -209,7 +209,13 @@ pub fn run() {
     cx.update_window(handle, |_, _, cx| {
         app.update(cx, |a, cx| {
             let task = a.store.research_children(cancel)[0];
-            let id = a.store.runs().iter().find(|r| r.task_id == task).unwrap().id;
+            let id = a
+                .store
+                .runs()
+                .iter()
+                .find(|r| r.task_id == task)
+                .unwrap()
+                .id;
             a.cancel_run_id(id, cx);
         })
     })
@@ -264,7 +270,12 @@ pub fn run() {
     idle(&mut cx, handle, &app);
     cx.update_window(handle, |_, _, cx| {
         let a = app.read(cx);
-        let runs: Vec<_> = a.store.runs().iter().filter(|r| r.task_id == task).collect();
+        let runs: Vec<_> = a
+            .store
+            .runs()
+            .iter()
+            .filter(|r| r.task_id == task)
+            .collect();
         assert_eq!(runs.len(), 5); // Initial failure, three retries, then explicit recovery.
         assert_eq!(runs[4].status, "Succeeded");
         assert_eq!(runs[4].session_id.as_deref(), Some(session.as_str()));
@@ -277,10 +288,10 @@ pub fn run() {
             let blocked_goal = goal(&mut a.store, "Blocked dependency feedback");
             let other_goal = goal(&mut a.store, "Independent manual start");
             a.store
-                .set_stage(blocked_goal, crate::domain::Stage::Planned)
+                .set_stage(blocked_goal, crate::domain::Stage::InProgress)
                 .unwrap();
             a.store
-                .set_stage(other_goal, crate::domain::Stage::Planned)
+                .set_stage(other_goal, crate::domain::Stage::InProgress)
                 .unwrap();
             let blocked = a.store.research_children(blocked_goal)[1];
             let ready = a.store.research_children(other_goal)[0];
@@ -335,12 +346,16 @@ event('complete')
 print(json.dumps({'type':'text','part':{'text':json.dumps({'status':'complete','report':'Verified local fixture','sources':[{'title':'Fixture','url':'https://example.com','published_at':'unknown'}]})}}),flush=True)
 "#;
     for limit in [5, 10] {
-        let root = std::env::temp_dir().join(format!("planning-limit-qa-{}-{limit}", std::process::id()));
+        let root =
+            std::env::temp_dir().join(format!("planning-limit-qa-{}-{limit}", std::process::id()));
         std::fs::create_dir_all(&root).unwrap();
         let cli = root.join("fake-opencode");
         executable(&cli, GATED_CLI);
         let ego = root.join("fake-ego");
-        executable(&ego, "#!/bin/sh\nprintf '%s\\n' 'Local QA guide' '[ego-browser:skill] end of guide'\n");
+        executable(
+            &ego,
+            "#!/bin/sh\nprintf '%s\\n' 'Local QA guide' '[ego-browser:skill] end of guide'\n",
+        );
         let mut store = Store::empty();
         store.set_max_concurrent_runs(limit);
         store.set_default_model("fixture/model".into());
@@ -349,89 +364,184 @@ print(json.dumps({'type':'text','part':{'text':json.dumps({'status':'complete','
         store.research_config_mut().ego_path = ego.to_string_lossy().into_owned();
         let topic = store.create_topic(1, "Limit fixture").unwrap();
         for i in 0..(2 * limit + 2) {
-            let goal = store.create_research_goal_in_topic(format!("Goal {i}"), "Local fixture".into(), 1, Some(topic)).unwrap();
+            let goal = store
+                .create_research_goal_in_topic(
+                    format!("Goal {i}"),
+                    "Local fixture".into(),
+                    1,
+                    Some(topic),
+                )
+                .unwrap();
             store.apply_research_plan(goal, PLAN).unwrap();
-            store.set_stage(goal, crate::domain::Stage::Planned).unwrap();
+            store
+                .set_stage(goal, crate::domain::Stage::InProgress)
+                .unwrap();
         }
         let path = root.join("workspace.sqlite3");
         Storage::new(path.clone()).save(&store).unwrap();
-        let mut cx = HeadlessAppContext::with_platform(platform::current_platform(true).text_system(), Arc::new(assets::Assets), platform::current_headless_renderer);
+        let mut cx = HeadlessAppContext::with_platform(
+            platform::current_platform(true).text_system(),
+            Arc::new(assets::Assets),
+            platform::current_headless_renderer,
+        );
         cx.update(init);
         let mut app = None;
-        let window = cx.open_window(size(px(1000.), px(720.)), |w, cx| {
-            let view = cx.new(|cx| TaskApp::new_mock(w, cx));
-            view.update(cx, |a, cx| a.attach_storage(Storage::new(path), w, cx));
-            app = Some(view.clone());
-            cx.new(|cx| base::Root::new(view, w, cx))
-        }).unwrap();
+        let window = cx
+            .open_window(size(px(1000.), px(720.)), |w, cx| {
+                let view = cx.new(|cx| TaskApp::new_mock(w, cx));
+                view.update(cx, |a, cx| a.attach_storage(Storage::new(path), w, cx));
+                app = Some(view.clone());
+                cx.new(|cx| base::Root::new(view, w, cx))
+            })
+            .unwrap();
         let app = app.unwrap();
         let handle: AnyWindowHandle = window.into();
-        cx.update_window(handle, |_, _, cx| app.update(cx, |a, cx| a.start_todo_batch(1, cx))).unwrap();
-        let ready = |a: &TaskApp| a.active_runs.iter().filter(|active| a.store.runs().iter().any(|r| r.id == active.id && r.logs.iter().any(|l| l.contains("LIMIT_GATE_READY")))).count();
+        cx.update_window(handle, |_, _, cx| {
+            app.update(cx, |a, cx| a.start_todo_batch(1, cx))
+        })
+        .unwrap();
+        let ready = |a: &TaskApp| {
+            a.active_runs
+                .iter()
+                .filter(|active| {
+                    a.store.runs().iter().any(|r| {
+                        r.id == active.id && r.logs.iter().any(|l| l.contains("LIMIT_GATE_READY"))
+                    })
+                })
+                .count()
+        };
         wait_limit(&mut cx, handle, &app, limit, |a| ready(a) == limit);
         cx.update_window(handle, |_, _, cx| {
             app.update(cx, |a, cx| {
                 a.set_execution_concurrency(1, cx);
                 a.poll_runtime(cx);
-                assert_eq!(a.active_runs.len(), limit, "Lowering the limit must not cancel active work");
-                let running: Vec<_> = a.store.runs().iter().filter(|r| r.status == "Running").collect();
+                assert_eq!(
+                    a.active_runs.len(),
+                    limit,
+                    "Lowering the limit must not cancel active work"
+                );
+                let running: Vec<_> = a
+                    .store
+                    .runs()
+                    .iter()
+                    .filter(|r| r.status == "Running")
+                    .collect();
                 for run in running.iter().take(limit - 1) {
                     std::fs::write(Path::new(&run.directory).join("release"), "").unwrap();
                 }
             });
-        }).unwrap();
+        })
+        .unwrap();
         wait_limit(&mut cx, handle, &app, limit, |a| a.active_runs.len() == 1);
         cx.update_window(handle, |_, _, cx| {
             app.update(cx, |a, cx| {
-                for _ in 0..3 { a.poll_runtime(cx); }
+                for _ in 0..3 {
+                    a.poll_runtime(cx);
+                }
                 assert_eq!(a.active_runs.len(), 1);
-                assert_eq!(a.store.runs().iter().filter(|r| !r.started_at.is_empty()).count(), limit, "No replacement may start while the reduced limit is full");
-                assert!(a.store.runs().iter().all(|r| r.status != "Cancelled" && r.status != "Cancelling"));
+                assert_eq!(
+                    a.store
+                        .runs()
+                        .iter()
+                        .filter(|r| !r.started_at.is_empty())
+                        .count(),
+                    limit,
+                    "No replacement may start while the reduced limit is full"
+                );
+                assert!(
+                    a.store
+                        .runs()
+                        .iter()
+                        .all(|r| r.status != "Cancelled" && r.status != "Cancelling")
+                );
                 a.set_execution_concurrency(limit, cx);
             });
-        }).unwrap();
+        })
+        .unwrap();
         wait_limit(&mut cx, handle, &app, limit, |a| ready(a) == limit);
         std::fs::write(root.join("release-all"), "").unwrap();
-        wait_limit(&mut cx, handle, &app, limit, |a| a.active_runs.is_empty() && a.queued_runs.is_empty());
+        wait_limit(&mut cx, handle, &app, limit, |a| {
+            a.active_runs.is_empty() && a.queued_runs.is_empty()
+        });
         cx.update_window(handle, |_, w, cx| {
-            assert!(app.read(cx).store.runs().iter().all(|r| r.status == "Succeeded"));
+            assert!(
+                app.read(cx)
+                    .store
+                    .runs()
+                    .iter()
+                    .all(|r| r.status == "Succeeded")
+            );
             w.remove_window();
-        }).unwrap();
+        })
+        .unwrap();
         let mut live = std::collections::BTreeSet::new();
         let mut peak = 0;
-        for line in std::fs::read_to_string(root.join("events.jsonl")).unwrap().lines() {
+        for line in std::fs::read_to_string(root.join("events.jsonl"))
+            .unwrap()
+            .lines()
+        {
             let event: serde_json::Value = serde_json::from_str(line).unwrap();
             let directory = event["directory"].as_str().unwrap().to_owned();
-            if event["event"] == "start" { assert!(live.insert(directory)); }
-            else { assert!(live.remove(&directory)); }
+            if event["event"] == "start" {
+                assert!(live.insert(directory));
+            } else {
+                assert!(live.remove(&directory));
+            }
             peak = peak.max(live.len());
-            assert!(live.len() <= limit, "Child process overlap exceeded configured limit");
+            assert!(
+                live.len() <= limit,
+                "Child process overlap exceeded configured limit"
+            );
         }
         assert_eq!(peak, limit);
         assert!(live.is_empty());
-        println!("Configured concurrency {limit} passed: actual child overlap, lowering without cancellation, raising refills slots.");
+        println!(
+            "Configured concurrency {limit} passed: actual child overlap, lowering without cancellation, raising refills slots."
+        );
     }
 }
 
-fn wait_limit(cx: &mut HeadlessAppContext, h: AnyWindowHandle, app: &Entity<TaskApp>, maximum: usize, done: impl Fn(&TaskApp) -> bool) {
+fn wait_limit(
+    cx: &mut HeadlessAppContext,
+    h: AnyWindowHandle,
+    app: &Entity<TaskApp>,
+    maximum: usize,
+    done: impl Fn(&TaskApp) -> bool,
+) {
     let deadline = Instant::now() + Duration::from_secs(60);
     loop {
-        let finished = cx.update_window(h, |_, _, cx| {
-            app.update(cx, |a, cx| a.poll_runtime(cx));
-            assert!(app.read(cx).active_runs.len() <= maximum);
-            done(app.read(cx))
-        }).unwrap();
-        if finished { return; }
-        assert!(Instant::now() < deadline, "Timed out validating configured concurrency");
+        let finished = cx
+            .update_window(h, |_, _, cx| {
+                app.update(cx, |a, cx| a.poll_runtime(cx));
+                assert!(app.read(cx).active_runs.len() <= maximum);
+                done(app.read(cx))
+            })
+            .unwrap();
+        if finished {
+            return;
+        }
+        assert!(
+            Instant::now() < deadline,
+            "Timed out validating configured concurrency"
+        );
         std::thread::sleep(Duration::from_millis(20));
     }
 }
 
 fn goal(store: &mut Store, title: &str) -> u64 {
-    let topic = store.topics().iter().find(|t| t.name == "Concurrent fixture topic").map(|t| t.id)
+    let topic = store
+        .topics()
+        .iter()
+        .find(|t| t.name == "Concurrent fixture topic")
+        .map(|t| t.id)
         .unwrap_or_else(|| store.create_topic(1, "Concurrent fixture topic").unwrap());
     let id = store
-        .create_research_goal_in_topic(title.into(), format!("Isolated concurrency QA. {title}"), 1, Some(topic))
+        .create_research_goal_in_topic(
+            title.into(),
+            format!("Isolated concurrency QA. {title}"),
+            1,
+            Some(topic),
+        )
         .unwrap();
     store.apply_research_plan(id, PLAN).unwrap();
     store
@@ -441,7 +551,9 @@ fn goal(store: &mut Store, title: &str) -> u64 {
         .as_mut()
         .unwrap()
         .requires_approval = true;
-    store.set_stage(id, crate::domain::Stage::Planned).unwrap();
+    store
+        .set_stage(id, crate::domain::Stage::InProgress)
+        .unwrap();
     id
 }
 fn idle(cx: &mut HeadlessAppContext, h: AnyWindowHandle, a: &Entity<TaskApp>) {

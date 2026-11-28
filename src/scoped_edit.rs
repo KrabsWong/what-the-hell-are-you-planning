@@ -20,7 +20,7 @@
 //! the signatures here.
 
 use crate::automation::{DefinitionStatus, OccurrenceReason, OccurrenceStatus};
-use crate::domain::{activity_event, AgentRun, Priority, Stage, Store, Task};
+use crate::domain::{AgentRun, Stage, Store, Task, activity_event};
 use crate::research::ResearchKind;
 use crate::research_input::{self, ResearchInputImpact, TaskEditIntent};
 
@@ -37,9 +37,6 @@ pub(crate) enum TaskEditField {
     Description,
     Labels,
     DueDate,
-    Cycle,
-    Priority,
-    Bucket,
 }
 
 #[derive(Clone, Debug, PartialEq, Eq)]
@@ -47,7 +44,6 @@ pub(crate) enum TaskEditValue {
     Text(String),
     Labels(Vec<String>),
     OptionalText(Option<String>),
-    Priority(Priority),
 }
 
 /// One exact changed field. Construction and values are private; only checked
@@ -97,21 +93,8 @@ impl TaskFieldChange {
             (TaskEditField::Description, TaskEditValue::Text(value)) => {
                 task.description = value.clone()
             }
-            (TaskEditField::Labels, TaskEditValue::Labels(value)) => {
-                task.labels = value.clone()
-            }
-            (TaskEditField::DueDate, TaskEditValue::Text(value)) => {
-                task.due_date = value.clone()
-            }
-            (TaskEditField::Cycle, TaskEditValue::OptionalText(value)) => {
-                task.cycle = value.clone()
-            }
-            (TaskEditField::Priority, TaskEditValue::Priority(value)) => {
-                task.priority = *value
-            }
-            (TaskEditField::Bucket, TaskEditValue::Text(value)) => {
-                task.bucket = value.clone()
-            }
+            (TaskEditField::Labels, TaskEditValue::Labels(value)) => task.labels = value.clone(),
+            (TaskEditField::DueDate, TaskEditValue::Text(value)) => task.due_date = value.clone(),
             _ => unreachable!("checked field/value pair"),
         }
     }
@@ -121,10 +104,10 @@ impl TaskEditField {
     fn accepts(&self, value: &TaskEditValue) -> bool {
         matches!(
             (self, value),
-            (Self::Title | Self::Description | Self::DueDate | Self::Bucket, TaskEditValue::Text(_))
-                | (Self::Labels, TaskEditValue::Labels(_))
-                | (Self::Cycle, TaskEditValue::OptionalText(_))
-                | (Self::Priority, TaskEditValue::Priority(_))
+            (
+                Self::Title | Self::Description | Self::DueDate,
+                TaskEditValue::Text(_)
+            ) | (Self::Labels, TaskEditValue::Labels(_))
         )
     }
 }
@@ -135,9 +118,6 @@ fn value_for(task: &Task, field: &TaskEditField) -> TaskEditValue {
         TaskEditField::Description => TaskEditValue::Text(task.description.clone()),
         TaskEditField::Labels => TaskEditValue::Labels(task.labels.clone()),
         TaskEditField::DueDate => TaskEditValue::Text(task.due_date.clone()),
-        TaskEditField::Cycle => TaskEditValue::OptionalText(task.cycle.clone()),
-        TaskEditField::Priority => TaskEditValue::Priority(task.priority),
-        TaskEditField::Bucket => TaskEditValue::Text(task.bucket.clone()),
     }
 }
 
@@ -149,9 +129,6 @@ pub(crate) struct TaskEditInput {
     pub description: String,
     pub labels: Vec<String>,
     pub due_date: String,
-    pub cycle: Option<String>,
-    pub priority: Priority,
-    pub bucket: String,
     /// Requested project context. `None` preserves the current project. A
     /// differing value is rejected by the existing topic/project-move policy.
     pub project: Option<u64>,
@@ -360,7 +337,9 @@ pub(crate) fn prepare_task_edit(
     }
     let target_project = input.project.unwrap_or(task.project_id);
     if target_project != task.project_id {
-        return Err(ScopedEditError::Rejected(research_input::MOVE_PROJECT_MESSAGE.into()));
+        return Err(ScopedEditError::Rejected(
+            research_input::MOVE_PROJECT_MESSAGE.into(),
+        ));
     }
     let target_stage = input.stage.unwrap_or(task.stage);
     if target_stage != task.stage {
@@ -371,13 +350,11 @@ pub(crate) fn prepare_task_edit(
         description: input.description.clone(),
         labels: input.labels.clone(),
         due_date: input.due_date.clone(),
-        cycle: input.cycle.clone(),
-        bucket: task.bucket.clone(),
         stage: target_stage,
         project: target_project,
     };
-    let impact =
-        research_input::preview_task_edit(store, input.id, &intent).map_err(ScopedEditError::Rejected)?;
+    let impact = research_input::preview_task_edit(store, input.id, &intent)
+        .map_err(ScopedEditError::Rejected)?;
 
     let mut changes = Vec::new();
     push_change(
@@ -403,24 +380,6 @@ pub(crate) fn prepare_task_edit(
         task,
         TaskEditField::DueDate,
         TaskEditValue::Text(input.due_date.trim().to_string()),
-    );
-    push_change(
-        &mut changes,
-        task,
-        TaskEditField::Cycle,
-        TaskEditValue::OptionalText(input.cycle.clone()),
-    );
-    push_change(
-        &mut changes,
-        task,
-        TaskEditField::Priority,
-        TaskEditValue::Priority(input.priority),
-    );
-    push_change(
-        &mut changes,
-        task,
-        TaskEditField::Bucket,
-        TaskEditValue::Text(input.bucket.clone()),
     );
     let stage = (target_stage != task.stage).then_some(TaskStageChange {
         before: task.stage,
@@ -467,8 +426,6 @@ fn effective_intent(store: &Store, plan: &TaskEditPlan) -> Option<TaskEditIntent
         description: task.description.clone(),
         labels: task.labels.clone(),
         due_date: task.due_date.clone(),
-        cycle: task.cycle.clone(),
-        bucket: task.bucket.clone(),
         stage: task.stage,
         project: task.project_id,
     };
@@ -480,10 +437,6 @@ fn effective_intent(store: &Store, plan: &TaskEditPlan) -> Option<TaskEditIntent
             }
             (TaskEditField::Labels, TaskEditValue::Labels(value)) => intent.labels = value.clone(),
             (TaskEditField::DueDate, TaskEditValue::Text(value)) => intent.due_date = value.clone(),
-            (TaskEditField::Cycle, TaskEditValue::OptionalText(value)) => {
-                intent.cycle = value.clone()
-            }
-            (TaskEditField::Priority | TaskEditField::Bucket, _) => {}
             _ => unreachable!("checked field/value pair"),
         }
     }
@@ -531,9 +484,8 @@ pub(crate) fn rebase_task_edit(
             "The task stage changed after the edit was prepared.".into(),
         ));
     }
-    let intent = effective_intent(store, plan).ok_or_else(|| {
-        ScopedEditError::Rejected("Task not found.".into())
-    })?;
+    let intent = effective_intent(store, plan)
+        .ok_or_else(|| ScopedEditError::Rejected("Task not found.".into()))?;
     let impact = research_input::preview_task_edit(store, plan.id, &intent)
         .map_err(ScopedEditError::Conflict)?;
     let mut approval_before = Vec::new();
@@ -600,9 +552,8 @@ pub(crate) fn apply_task_edit(
 
     // T21 remains the authority. A sibling, dependency, approval, project or
     // frozen-period change after preparation must not apply a stale preview.
-    let intent = effective_intent(store, plan).ok_or_else(|| {
-        ScopedEditError::Rejected("Task not found.".into())
-    })?;
+    let intent = effective_intent(store, plan)
+        .ok_or_else(|| ScopedEditError::Rejected("Task not found.".into()))?;
     let current_impact = research_input::preview_task_edit(store, plan.id, &intent)
         .map_err(ScopedEditError::Conflict)?;
     if current_impact != plan.impact {
@@ -625,7 +576,9 @@ pub(crate) fn apply_task_edit(
             .runtime_before
             .iter()
             .find(|stamp| stamp.goal == before.goal)
-            .ok_or_else(|| ScopedEditError::Rejected("The edit plan is missing runtime evidence.".into()))?;
+            .ok_or_else(|| {
+                ScopedEditError::Rejected("The edit plan is missing runtime evidence.".into())
+            })?;
         if &runtime_stamp(store, before.goal) != runtime {
             return Err(ScopedEditError::Conflict(
                 "A run or automation period changed for this goal after the edit was prepared."
@@ -649,8 +602,7 @@ pub(crate) fn apply_task_edit(
         for change in &plan.changes {
             change.apply(task, &change.after);
         }
-        task.activity
-            .push(activity_event("Task details updated"));
+        task.activity.push(activity_event("Task details updated"));
     }
 
     let mut activity = Vec::new();
@@ -668,8 +620,8 @@ pub(crate) fn apply_task_edit(
         if reconcile_goal_scope(store, before.goal) {
             activity.push(before.goal);
         }
-        let after = approval_state(store, before.goal)
-            .expect("approval goal validated before writes");
+        let after =
+            approval_state(store, before.goal).expect("approval goal validated before writes");
         approvals.push(GoalApprovalCompanion {
             goal: before.goal,
             before: before.clone(),
@@ -782,8 +734,7 @@ pub(crate) fn restore_scoped_inverse(
     for change in changes {
         if !change.matches_after(current) {
             return Err(ScopedEditError::Conflict(
-                "This field changed after the edit. Undo would overwrite a newer value."
-                    .into(),
+                "This field changed after the edit. Undo would overwrite a newer value.".into(),
             ));
         }
     }
@@ -791,8 +742,7 @@ pub(crate) fn restore_scoped_inverse(
         && current.stage != stage.after
     {
         return Err(ScopedEditError::Conflict(
-            "The task stage changed after the edit. Undo would overwrite a newer stage."
-                .into(),
+            "The task stage changed after the edit. Undo would overwrite a newer stage.".into(),
         ));
     }
     if !companions_prevalidated {
@@ -849,7 +799,11 @@ fn restore_changes(store: &mut Store, id: u64, changes: &[TaskFieldChange], befo
         return;
     };
     for change in changes {
-        let value = if before { change.before() } else { change.after() };
+        let value = if before {
+            change.before()
+        } else {
+            change.after()
+        };
         change.apply(task, value);
     }
 }
@@ -944,8 +898,8 @@ pub(crate) fn prepare_comment_edit(
             "Write a comment before posting.".into(),
         ));
     }
-    let impact = research_input::preview_comment(store, id, body)
-        .map_err(ScopedEditError::Rejected)?;
+    let impact =
+        research_input::preview_comment(store, id, body).map_err(ScopedEditError::Rejected)?;
     let needs_approval = impact
         .as_ref()
         .is_some_and(|impact| !impact.presentation_only);
@@ -1007,9 +961,7 @@ pub(crate) fn apply_comment_edit(
             .iter()
             .find(|stamp| stamp.goal == before.goal)
             .ok_or_else(|| {
-                ScopedEditError::Rejected(
-                    "The comment plan is missing runtime evidence.".into(),
-                )
+                ScopedEditError::Rejected("The comment plan is missing runtime evidence.".into())
             })?;
         if &runtime_stamp(store, before.goal) != runtime {
             return Err(ScopedEditError::Conflict(
@@ -1041,8 +993,8 @@ pub(crate) fn apply_comment_edit(
         if reconcile_goal_scope(store, before.goal) {
             activity.push(before.goal);
         }
-        let after = approval_state(store, before.goal)
-            .expect("approval goal validated before writes");
+        let after =
+            approval_state(store, before.goal).expect("approval goal validated before writes");
         approvals.push(GoalApprovalCompanion {
             goal: before.goal,
             before: before.clone(),
@@ -1096,8 +1048,7 @@ pub(crate) fn undo_comment_edit(
     }
     let comment = task.comments.get(undo.index).ok_or_else(|| {
         ScopedEditError::Conflict(
-            "The comment changed after it was posted. Undo would remove a newer comment."
-                .into(),
+            "The comment changed after it was posted. Undo would remove a newer comment.".into(),
         )
     })?;
     if comment.author != undo.author
@@ -1105,8 +1056,7 @@ pub(crate) fn undo_comment_edit(
         || comment.created_at != undo.created_at
     {
         return Err(ScopedEditError::Conflict(
-            "The comment changed after it was posted. Undo would remove a newer comment."
-                .into(),
+            "The comment changed after it was posted. Undo would remove a newer comment.".into(),
         ));
     }
 
@@ -1257,9 +1207,7 @@ pub(crate) fn runtime_stamp(store: &Store, goal: u64) -> GoalRuntimeStamp {
     let mut relevant: Vec<&AgentRun> = store
         .runs()
         .iter()
-        .filter(|run| {
-            run.task_id == goal || store.owning_research_goal(run.task_id) == Some(goal)
-        })
+        .filter(|run| run.task_id == goal || store.owning_research_goal(run.task_id) == Some(goal))
         .collect();
     relevant.sort_by_key(|run| (run.task_id, run.id));
     let mut latest_by_task: std::collections::BTreeMap<u64, u64> = Default::default();
@@ -1288,7 +1236,8 @@ pub(crate) fn runtime_stamp(store: &Store, goal: u64) -> GoalRuntimeStamp {
         .all_occurrences()
         .iter()
         .filter(|occurrence| {
-            occurrence.research_goal_id == Some(goal) || occurrence.research_goal_ids.contains(&goal)
+            occurrence.research_goal_id == Some(goal)
+                || occurrence.research_goal_ids.contains(&goal)
         })
         .collect();
     occurrences.sort_by_key(|occurrence| occurrence.id);
@@ -1358,46 +1307,40 @@ pub(crate) fn reconcile_goal_scope(store: &mut Store, goal: u64) -> bool {
     let Some(task) = store.task(goal) else {
         return false;
     };
-    let should_withdraw = task
-        .research
-        .as_ref()
-        .is_some_and(|research| research.kind == ResearchKind::Goal && research.requires_approval)
-        && !task.archived
-        && !matches!(task.stage, Stage::Backlog | Stage::Cancelled)
-        && task.approved_plan != store.goal_plan_signature(goal);
+    let should_withdraw =
+        task.research.as_ref().is_some_and(|research| {
+            research.kind == ResearchKind::Goal && research.requires_approval
+        }) && !task.archived
+            && !matches!(task.stage, Stage::Backlog | Stage::Cancelled)
+            && task.approved_plan != store.goal_plan_signature(goal);
     if !should_withdraw {
         return false;
     }
     let task = store.task_mut(goal).expect("validated goal");
     task.approved_plan = None;
     task.stage = Stage::Backlog;
-    task.activity
-        .push(activity_event("Research plan changed · review before execution"));
+    task.activity.push(activity_event(
+        "Research plan changed · review before execution",
+    ));
     true
 }
 
-/// The task-detail editor is not the execution submission path. Reject a
-/// forged InProgress intent and every transition the live manual workflow
-/// rejects. The live boundary must additionally pass its pending batch context.
+/// The task-detail editor accepts explicit stage edits when the live manual
+/// workflow allows them. The live boundary must additionally pass its pending
+/// batch context.
 fn validate_stage_intent(
     store: &Store,
     id: u64,
     stage: Stage,
     intent: StageIntent,
 ) -> Result<(), ScopedEditError> {
-    if stage == Stage::InProgress {
-        return Err(ScopedEditError::Rejected(
-            "Save task details first, then submit execution from the status menu."
-                .into(),
-        ));
-    }
     if intent == StageIntent::Reopen {
-        let task = store.task(id).ok_or_else(|| {
-            ScopedEditError::Rejected("Task not found.".into())
-        })?;
-        if stage != Stage::Planned {
+        let task = store
+            .task(id)
+            .ok_or_else(|| ScopedEditError::Rejected("Task not found.".into()))?;
+        if stage != Stage::InProgress {
             return Err(ScopedEditError::Rejected(
-                "Reopen only restores a cancelled research step to Planned.".into(),
+                "Reopen only restores a cancelled research step to In progress.".into(),
             ));
         }
         let Some(research) = task.research.as_ref() else {
@@ -1433,7 +1376,7 @@ fn validate_stage_intent(
 }
 
 /// Stage paths for an inverse. A completed goal reopened by an execution-input
-/// edit must go through the approved Planned state before Done; a direct
+/// edit must go through the approved In progress state before Done; a direct
 /// Backlog -> Done write would violate the shared lifecycle policy.
 fn undo_stage_paths(
     store: &Store,
@@ -1453,9 +1396,11 @@ fn undo_stage_paths(
             Err(message) => {
                 let needs_approval_path = *target == Stage::Done
                     && matches!(current, Stage::Backlog | Stage::Cancelled)
-                    && store.validate_stage_transition(*id, Stage::Planned).is_ok();
+                    && store
+                        .validate_stage_transition(*id, Stage::InProgress)
+                        .is_ok();
                 if needs_approval_path {
-                    paths.push((*id, vec![Stage::Planned, *target]));
+                    paths.push((*id, vec![Stage::InProgress, *target]));
                 } else {
                     return Err(ScopedEditError::Conflict(message));
                 }
@@ -1492,7 +1437,6 @@ fn inverse_stage_targets(
     Ok(targets.into_iter().collect())
 }
 
-
 struct StageSnapshot {
     id: u64,
     stage: Stage,
@@ -1526,7 +1470,7 @@ mod tests {
         WindowRule,
     };
     use crate::automation_schedule::{Schedule, ScheduleSpec};
-    use crate::domain::{Priority, ProjectKind};
+    use crate::domain::ProjectKind;
 
     const BRANCHED: &str = r#"{"tasks":[
         {"title":"Collect A","instructions":"Collect from source A","kind":"collect","depends_on":[]},
@@ -1537,7 +1481,8 @@ mod tests {
 
     fn store_with_goal() -> (Store, u64, Vec<u64>) {
         let mut store = Store::empty();
-        store.project_at_mut(0).unwrap().directory = std::env::temp_dir().to_string_lossy().into_owned();
+        store.project_at_mut(0).unwrap().directory =
+            std::env::temp_dir().to_string_lossy().into_owned();
         store.research_config_mut().models = [
             "test/model".into(),
             "test/model".into(),
@@ -1556,7 +1501,7 @@ mod tests {
             .as_mut()
             .unwrap()
             .requires_approval = true;
-        store.set_stage(goal, Stage::Planned).unwrap();
+        store.set_stage(goal, Stage::InProgress).unwrap();
         (store, goal, steps)
     }
 
@@ -1568,9 +1513,6 @@ mod tests {
             description: task.description.clone(),
             labels: task.labels.clone(),
             due_date: task.due_date.clone(),
-            cycle: task.cycle.clone(),
-            priority: task.priority,
-            bucket: task.bucket.clone(),
             project: Some(task.project_id),
             stage: Some(task.stage),
             stage_intent: StageIntent::Editor,
@@ -1705,7 +1647,10 @@ mod tests {
         let before = store.task(goal).unwrap().clone();
         let runs = store.runs().to_vec();
         let result_before = store.research_result(steps[0]).map(|run| run.id);
-        assert!(result_before.is_some(), "fixture must have a current result");
+        assert!(
+            result_before.is_some(),
+            "fixture must have a current result"
+        );
 
         let mut input = input_for(&store, goal);
         input.labels = vec!["Metadata".into()];
@@ -1721,7 +1666,10 @@ mod tests {
             before.approved_plan
         );
         assert_eq!(store.runs(), runs);
-        assert_eq!(store.research_result(steps[0]).map(|run| run.id), result_before);
+        assert_eq!(
+            store.research_result(steps[0]).map(|run| run.id),
+            result_before
+        );
         assert!(store.goal_execution_approved(goal));
     }
 
@@ -1843,7 +1791,9 @@ mod tests {
     #[test]
     fn frozen_membership_change_between_prepare_and_apply_is_rejected() {
         let mut store = Store::empty();
-        let task = store.create_task("Normal", 1, Stage::Planned, None).unwrap();
+        let task = store
+            .create_task("Normal", 1, Stage::InProgress, None)
+            .unwrap();
         let mut input = input_for(&store, task);
         input.title = "Changed".into();
         let plan = prepare_task_edit(&store, &input).unwrap();
@@ -1859,7 +1809,9 @@ mod tests {
     #[test]
     fn frozen_period_rejects_execution_input_but_allows_metadata() {
         let mut store = Store::empty();
-        let task = store.create_task("Frozen", 1, Stage::Planned, None).unwrap();
+        let task = store
+            .create_task("Frozen", 1, Stage::InProgress, None)
+            .unwrap();
         store.task_mut(task).unwrap().automation_id = Some(1);
         let mut input = input_for(&store, task);
         input.title = "Changed".into();
@@ -1871,7 +1823,10 @@ mod tests {
         metadata.labels = vec!["Allowed".to_string()];
         let plan = prepare_task_edit(&store, &metadata).unwrap();
         apply_task_edit(&mut store, &plan).unwrap();
-        assert_eq!(store.task(task).unwrap().labels, vec!["Allowed".to_string()]);
+        assert_eq!(
+            store.task(task).unwrap().labels,
+            vec!["Allowed".to_string()]
+        );
     }
 
     #[test]
@@ -1903,9 +1858,7 @@ mod tests {
         other_run.id = 500;
         other_run.status = "Succeeded".into();
         other_run.output = "other history".into();
-        other_run.input_signature = store
-            .research_signature(other_child)
-            .unwrap_or_default();
+        other_run.input_signature = store.research_signature(other_child).unwrap_or_default();
         store.push_run(other_run.clone());
         store.push_occurrence(occurrence(7, 99, other, 2_000));
 
@@ -2057,7 +2010,7 @@ mod tests {
         input.stage = Some(Stage::Backlog);
         let plan = prepare_task_edit(&store, &input).unwrap();
         let applied = apply_task_edit(&mut store, &plan).unwrap();
-        store.set_stage(goal, Stage::Planned).unwrap();
+        store.set_stage(goal, Stage::InProgress).unwrap();
         let before = store.clone();
         assert!(matches!(
             undo_task_edit(&mut store, &applied.undo),
@@ -2091,13 +2044,23 @@ mod tests {
     }
 
     #[test]
-    fn editor_rejects_forged_inprogress_and_research_child_stage_intents() {
-        let (store, goal, steps) = store_with_goal();
+    fn editor_rejects_unapproved_execution_and_research_child_stage_intents() {
+        let (mut store, goal, steps) = store_with_goal();
+        store
+            .task_mut(goal)
+            .unwrap()
+            .research
+            .as_mut()
+            .unwrap()
+            .requires_approval = true;
+        store.task_mut(goal).unwrap().approved_plan = None;
+        store.task_mut(goal).unwrap().stage = Stage::Backlog;
+        store.task_mut(goal).unwrap().parent_id = None;
         let mut in_progress = input_for(&store, goal);
         in_progress.stage = Some(Stage::InProgress);
         assert!(matches!(
             prepare_task_edit(&store, &in_progress),
-            Err(ScopedEditError::Rejected(message)) if message.contains("submit execution")
+            Err(ScopedEditError::Rejected(message)) if message.contains("Review and run this research goal from its detail page")
         ));
         let mut child_stage = input_for(&store, steps[0]);
         child_stage.stage = Some(Stage::Review);
@@ -2177,7 +2140,7 @@ mod tests {
             .unwrap()
             .requires_approval = true;
         store.task_mut(other).unwrap().approved_plan = Some("stale".into());
-        store.task_mut(other).unwrap().stage = Stage::Planned;
+        store.task_mut(other).unwrap().stage = Stage::InProgress;
         let other_before = store.task(other).unwrap().clone();
 
         let mut input = input_for(&store, goal);
@@ -2204,7 +2167,10 @@ mod tests {
 
         apply_task_edit(&mut store, &rebased).unwrap();
         assert_eq!(store.task(goal).unwrap().title, "Newer title");
-        assert_eq!(store.task(goal).unwrap().labels, vec!["Only metadata".to_string()]);
+        assert_eq!(
+            store.task(goal).unwrap().labels,
+            vec!["Only metadata".to_string()]
+        );
     }
 
     #[test]
@@ -2216,7 +2182,10 @@ mod tests {
         store.task_mut(goal).unwrap().description = "Newer description".into();
         let rebased = rebase_task_edit(&store, &plan).unwrap();
         let impact = rebased.impact().unwrap();
-        assert!(impact.signature_changed, "the current description is an input");
+        assert!(
+            impact.signature_changed,
+            "the current description is an input"
+        );
 
         apply_task_edit(&mut store, &rebased).unwrap();
         assert_eq!(store.task(goal).unwrap().title, "Edited title");
@@ -2236,7 +2205,10 @@ mod tests {
         assert!(plan.impact().is_some());
         let applied = apply_comment_edit(&mut store, &plan).unwrap();
         assert_eq!(store.task(goal).unwrap().stage, Stage::Backlog);
-        assert_eq!(store.task(goal).unwrap().comments.len(), comments_before.len() + 1);
+        assert_eq!(
+            store.task(goal).unwrap().comments.len(),
+            comments_before.len() + 1
+        );
         assert_eq!(store.runs(), runs);
 
         let undo = applied.undo.clone();
@@ -2327,11 +2299,11 @@ mod tests {
         let child = steps[0];
         store.set_stage(child, Stage::Cancelled).unwrap();
         let mut input = input_for(&store, child);
-        input.stage = Some(Stage::Planned);
+        input.stage = Some(Stage::InProgress);
         input.stage_intent = StageIntent::Reopen;
         let plan = prepare_task_edit(&store, &input).unwrap();
         let applied = apply_task_edit(&mut store, &plan).unwrap();
-        assert_eq!(store.task(child).unwrap().stage, Stage::Planned);
+        assert_eq!(store.task(child).unwrap().stage, Stage::InProgress);
         undo_task_edit(&mut store, &applied.undo).unwrap();
         assert_eq!(store.task(child).unwrap().stage, Stage::Cancelled);
 
@@ -2345,22 +2317,24 @@ mod tests {
 
         store.set_stage(child, Stage::Review).unwrap();
         let mut not_cancelled = input_for(&store, child);
-        not_cancelled.stage = Some(Stage::Planned);
+        not_cancelled.stage = Some(Stage::InProgress);
         not_cancelled.stage_intent = StageIntent::Reopen;
         assert!(matches!(
             prepare_task_edit(&store, &not_cancelled),
             Err(ScopedEditError::Rejected(_))
         ));
 
-        let ordinary = store.create_task("Ordinary", 1, Stage::Cancelled, None).unwrap();
+        let ordinary = store
+            .create_task("Ordinary", 1, Stage::Cancelled, None)
+            .unwrap();
         let mut ordinary_reopen = input_for(&store, ordinary);
-        ordinary_reopen.stage = Some(Stage::Planned);
+        ordinary_reopen.stage = Some(Stage::InProgress);
         ordinary_reopen.stage_intent = StageIntent::Reopen;
         assert!(matches!(
             prepare_task_edit(&store, &ordinary_reopen),
             Err(ScopedEditError::Rejected(_))
         ));
-        assert_eq!(store.task(goal).unwrap().stage, Stage::Planned);
+        assert_eq!(store.task(goal).unwrap().stage, Stage::InProgress);
     }
 
     #[test]
@@ -2371,13 +2345,18 @@ mod tests {
         store.task_mut(goal).unwrap().labels = vec!["Later label".into()];
         undo_comment_edit(&mut store, &applied.undo).unwrap();
         assert!(store.task(goal).unwrap().comments.is_empty());
-        assert_eq!(store.task(goal).unwrap().labels, vec!["Later label".to_string()]);
+        assert_eq!(
+            store.task(goal).unwrap().labels,
+            vec!["Later label".to_string()]
+        );
     }
 
     #[test]
     fn frozen_automation_comment_is_rejected() {
         let mut store = Store::empty();
-        let task = store.create_task("Frozen", 1, Stage::Planned, None).unwrap();
+        let task = store
+            .create_task("Frozen", 1, Stage::InProgress, None)
+            .unwrap();
         store.task_mut(task).unwrap().automation_id = Some(1);
         assert!(matches!(
             prepare_comment_edit(&store, task, "Frozen comment"),
@@ -2460,6 +2439,5 @@ mod tests {
             ProjectKind::User,
             "fixture uses a user project"
         );
-        let _ = Priority::Low;
     }
 }

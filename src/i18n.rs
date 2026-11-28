@@ -17,8 +17,8 @@ use serde::{Deserialize, Serialize};
 use std::{
     collections::HashMap,
     sync::{
-        atomic::{AtomicU8, Ordering},
         OnceLock,
+        atomic::{AtomicU8, Ordering},
     },
 };
 
@@ -213,14 +213,16 @@ mod tests {
     static LANGUAGE_LOCK: Mutex<()> = Mutex::new(());
 
     fn lock_language() -> std::sync::MutexGuard<'static, ()> {
-        LANGUAGE_LOCK.lock().unwrap_or_else(|error| error.into_inner())
+        LANGUAGE_LOCK
+            .lock()
+            .unwrap_or_else(|error| error.into_inner())
     }
 
     #[test]
     fn english_is_the_default_and_unknown_text_passes_through() {
         let _guard = lock_language();
         set_active(InterfaceLanguage::English);
-        assert_eq!(tr("New research"), "New research");
+        assert_eq!(tr("Create research"), "Create research");
         assert_eq!(tr("User authored title"), "User authored title");
     }
 
@@ -228,20 +230,27 @@ mod tests {
     fn simplified_chinese_translates_known_text() {
         let _guard = lock_language();
         set_active(InterfaceLanguage::SimplifiedChinese);
-        assert_eq!(tr("New research"), "新建研究");
+        assert_eq!(tr("Create research"), "创建研究");
         assert_eq!(tr("29 sources · 0 materials"), "29 个来源 · 0 份资料");
-        assert_eq!(tr("1 research goal"), "1 个研究目标");
+        assert_eq!(tr("Your research goals"), "你的研究目标");
         assert_eq!(
-            tr("The research browser needs your attention. Switch to it and handle its prompt; return to the task when you are ready to continue."),
+            tr(
+                "The research browser needs your attention. Switch to it and handle its prompt; return to the task when you are ready to continue."
+            ),
             "研究浏览器需要你处理。请切换到该浏览器并处理提示，完成后返回任务继续。"
         );
         assert_eq!(
-            tr("The research browser needs your attention. Switch to it to complete any sign-in or confirmation, then retry this step."),
+            tr(
+                "The research browser needs your attention. Switch to it to complete any sign-in or confirmation, then retry this step."
+            ),
             "研究浏览器需要你处理。请切换到该浏览器完成登录或确认，然后重试此步骤。"
         );
         assert_eq!(tr("Log storage"), "日志存储");
         assert_eq!(tr("Log retention: 30 days"), "日志保留：30 天");
-        assert_eq!(tr("No old detailed logs to clear."), "没有可清除的旧详细日志。");
+        assert_eq!(
+            tr("No old detailed logs to clear."),
+            "没有可清除的旧详细日志。"
+        );
         assert_eq!(tr("User authored title"), "User authored title");
         set_active(InterfaceLanguage::English);
     }

@@ -4,7 +4,7 @@
 use crate::app::{Scope, TaskApp};
 use crate::appearance::Appearance;
 use crate::batch::{BatchState, TodoBatch};
-use crate::domain::{Priority, Stage, Store};
+use crate::domain::{Stage, Store};
 use crate::persistence::Storage;
 use crate::research::Source;
 use gpui_kit::{test::TestWindowExt, *};
@@ -24,7 +24,7 @@ pub fn run() {
         .join(format!(".local/task-edit-qa/{}", std::process::id()));
     let _ = std::fs::remove_dir_all(&root);
     std::fs::create_dir_all(&root).unwrap();
-    completed_metadata_and_title_undo(&root);
+    completed_noop_and_title_undo(&root);
     combined_save_and_stage_undo(&root);
     dirty_save_waits_for_confirmation(&root);
     comment_save_and_undo(&root);
@@ -134,12 +134,7 @@ fn set_title(app: &mut TaskApp, value: &str, w: &mut Window, cx: &mut Context<Ta
     title.update(cx, |state, cx| state.set_value(value, w, cx));
 }
 
-fn set_labels(app: &mut TaskApp, value: &str, w: &mut Window, cx: &mut Context<TaskApp>) {
-    let labels = app.draft.as_ref().unwrap().labels.clone();
-    labels.update(cx, |state, cx| state.set_value(value, w, cx));
-}
-
-fn completed_metadata_and_title_undo(root: &Path) {
+fn completed_noop_and_title_undo(root: &Path) {
     let directory = root.join("completed-und");
     std::fs::create_dir_all(&directory).unwrap();
     let (store, goal, steps) = workspace(&directory);
@@ -148,7 +143,6 @@ fn completed_metadata_and_title_undo(root: &Path) {
     let runs: Vec<_> = store.runs().to_vec();
     let (mut cx, handle, app) = with_app(store, &path, |app, w, cx| {
         app.begin_draft(goal, w, cx);
-        set_labels(app, "Metadata only", w, cx);
     });
     cx.update_window(handle, |_, w, cx| {
         w.render_frame(cx);
@@ -160,11 +154,14 @@ fn completed_metadata_and_title_undo(root: &Path) {
         assert!(app.store.research_result(steps[0]).is_some());
         assert!(app.draft.is_none());
         let loaded = Storage::new(path.clone()).load().unwrap().unwrap();
-        assert_eq!(loaded.task(goal).unwrap().labels, vec!["Metadata only".to_string()]);
+        assert_eq!(
+            loaded.task(goal).unwrap().labels,
+            vec!["Research".to_string()]
+        );
         assert_eq!(loaded.task(goal).unwrap().stage, Stage::Done);
     })
     .unwrap();
-    screenshot(&mut cx, handle, &directory, "metadata-save.png");
+    screenshot(&mut cx, handle, &directory, "noop-save.png");
 
     cx.update_window(handle, |_, w, cx| {
         app.update(cx, |app, cx| {
@@ -189,11 +186,7 @@ fn completed_metadata_and_title_undo(root: &Path) {
         let app = app.read(cx);
         assert_eq!(app.store.task(goal).unwrap().stage, Stage::Backlog);
         assert!(app.draft.is_none());
-        assert_eq!(
-            app.undo.len(),
-            2,
-            "metadata and title edits are two chronological scoped entries"
-        );
+        assert_eq!(app.undo.len(), 1, "the title edit is one scoped entry");
         let loaded = Storage::new(path.clone()).load().unwrap().unwrap();
         assert_eq!(loaded.task(goal).unwrap().title, "Completed title edit");
         assert_eq!(loaded.task(goal).unwrap().stage, Stage::Backlog);
@@ -226,38 +219,24 @@ fn completed_metadata_and_title_undo(root: &Path) {
     assert_eq!(title, "Branched research");
     assert_eq!(
         labels,
-        vec!["Metadata only".to_string()],
-        "title undo must not consume the older metadata entry"
+        vec!["Research".to_string()],
+        "title undo leaves stored labels unchanged"
     );
     assert_eq!(results, steps.len());
     assert_eq!(runs_after, runs);
-    assert_eq!(undo_len, 1, "the metadata entry remains");
+    assert_eq!(
+        undo_len, 0,
+        "the no-change metadata save adds no undo entry"
+    );
     let loaded = Storage::new(path.clone()).load().unwrap().unwrap();
     assert_eq!(loaded.task(goal).unwrap().stage, Stage::Done);
     assert_eq!(loaded.task(goal).unwrap().title, "Branched research");
-    assert_eq!(loaded.task(goal).unwrap().labels, vec!["Metadata only".to_string()]);
+    assert_eq!(
+        loaded.task(goal).unwrap().labels,
+        vec!["Research".to_string()]
+    );
     assert_eq!(loaded.runs(), runs);
 
-    // Second Undo restores only the earlier metadata edit.
-    cx.update_window(handle, |_, w, cx| {
-        w.render_frame(cx);
-        app.update(cx, |a, cx| a.undo_change(w, cx));
-        w.render_frame(cx);
-    })
-    .unwrap();
-    let (labels, title, stage) = cx.update(|cx| {
-        let app = app.read(cx);
-        (
-            app.store.task(goal).unwrap().labels.clone(),
-            app.store.task(goal).unwrap().title.clone(),
-            app.store.task(goal).unwrap().stage,
-        )
-    });
-    assert_eq!(labels, vec!["Research".to_string()]);
-    assert_eq!(title, "Branched research");
-    assert_eq!(stage, Stage::Done);
-    let loaded = Storage::new(path.clone()).load().unwrap().unwrap();
-    assert_eq!(loaded.task(goal).unwrap().labels, vec!["Research".to_string()]);
     screenshot(&mut cx, handle, &directory, "completed-title-undone.png");
     cx.update_window(handle, |_, w, _| w.remove_window())
         .unwrap();
@@ -268,14 +247,13 @@ fn combined_save_and_stage_undo(root: &Path) {
     std::fs::create_dir_all(&directory).unwrap();
     let (mut store, _, _) = workspace(&directory);
     let task = store
-        .create_task("Normal task", 1, Stage::Planned, None)
+        .create_task("Normal task", 1, Stage::InProgress, None)
         .unwrap();
     let path = directory.join("workspace.sqlite3");
     Storage::new(path.clone()).save(&store).unwrap();
     let (mut cx, handle, app) = with_app(store, &path, |app, w, cx| {
         begin_editor(app, task, w, cx);
         set_title(app, "Combined task", w, cx);
-        set_labels(app, "One, Two", w, cx);
         app.draft.as_mut().unwrap().stage = Stage::Backlog;
     });
     cx.update_window(handle, |_, w, cx| {
@@ -284,10 +262,7 @@ fn combined_save_and_stage_undo(root: &Path) {
         w.render_frame(cx);
         let app = app.read(cx);
         assert_eq!(app.store.task(task).unwrap().title, "Combined task");
-        assert_eq!(
-            app.store.task(task).unwrap().labels,
-            vec!["One".to_string(), "Two".to_string()]
-        );
+        assert!(app.store.task(task).unwrap().labels.is_empty());
         assert_eq!(app.store.task(task).unwrap().stage, Stage::Backlog);
         assert_eq!(app.undo.len(), 1);
         let loaded = Storage::new(path.clone()).load().unwrap().unwrap();
@@ -303,10 +278,10 @@ fn combined_save_and_stage_undo(root: &Path) {
         let app = app.read(cx);
         assert_eq!(app.store.task(task).unwrap().title, "Normal task");
         assert!(app.store.task(task).unwrap().labels.is_empty());
-        assert_eq!(app.store.task(task).unwrap().stage, Stage::Planned);
+        assert_eq!(app.store.task(task).unwrap().stage, Stage::InProgress);
         let loaded = Storage::new(path.clone()).load().unwrap().unwrap();
         assert_eq!(loaded.task(task).unwrap().title, "Normal task");
-        assert_eq!(loaded.task(task).unwrap().stage, Stage::Planned);
+        assert_eq!(loaded.task(task).unwrap().stage, Stage::InProgress);
     })
     .unwrap();
     cx.update_window(handle, |_, w, _| w.remove_window())
@@ -400,7 +375,11 @@ fn comment_save_and_undo(root: &Path) {
         assert!(app.store.task(goal).unwrap().comments.is_empty());
         assert_eq!(app.store.task(goal).unwrap().stage, Stage::Done);
         assert_eq!(app.store.runs().to_vec(), runs);
-        assert!(steps.iter().all(|id| app.store.research_result(*id).is_some()));
+        assert!(
+            steps
+                .iter()
+                .all(|id| app.store.research_result(*id).is_some())
+        );
         let loaded = Storage::new(path.clone()).load().unwrap().unwrap();
         assert!(loaded.task(goal).unwrap().comments.is_empty());
         assert_eq!(loaded.task(goal).unwrap().stage, Stage::Done);
@@ -449,7 +428,13 @@ fn comment_failed_save_retry(root: &Path) {
             app.storage = Some(Storage::new(path.clone()));
             app.persist_if_changed(true);
         });
-        let before = app.read(cx).research_save_impact.as_ref().unwrap().impact.clone();
+        let before = app
+            .read(cx)
+            .research_save_impact
+            .as_ref()
+            .unwrap()
+            .impact
+            .clone();
         // The visible confirmation button re-reviews the changed impact first.
         w.click("research-save-impact-confirm", cx);
         w.render_frame(cx);
@@ -457,7 +442,10 @@ fn comment_failed_save_retry(root: &Path) {
         assert!(app.research_save_is_pending());
         assert_eq!(app.store.task(goal).unwrap().comments.len(), 0);
         let reviewed = app.research_save_impact.as_ref().unwrap().impact.clone();
-        assert_ne!(reviewed, before, "changed impact must be shown before writing");
+        assert_ne!(
+            reviewed, before,
+            "changed impact must be shown before writing"
+        );
         let loaded = Storage::new(path.clone()).load().unwrap().unwrap();
         assert_eq!(loaded.task(goal).unwrap().comments.len(), 0);
     })
@@ -484,7 +472,10 @@ fn comment_failed_save_retry(root: &Path) {
         );
         let loaded = Storage::new(path.clone()).load().unwrap().unwrap();
         assert_eq!(loaded.task(goal).unwrap().comments.len(), 1);
-        assert_eq!(loaded.task(goal).unwrap().comments[0].body, "Retry this comment");
+        assert_eq!(
+            loaded.task(goal).unwrap().comments[0].body,
+            "Retry this comment"
+        );
     })
     .unwrap();
     cx.update_window(handle, |_, w, _| w.remove_window())
@@ -496,7 +487,7 @@ fn comment_footer_retry_new_impact(root: &Path) {
     std::fs::create_dir_all(&directory).unwrap();
     let (mut store, _, _) = workspace(&directory);
     let task = store
-        .create_task("Ordinary comment task", 1, Stage::Planned, None)
+        .create_task("Ordinary comment task", 1, Stage::InProgress, None)
         .unwrap();
     let activity_before = store.task(task).unwrap().activity.len();
     let path = directory.join("workspace.sqlite3");
@@ -504,8 +495,9 @@ fn comment_footer_retry_new_impact(root: &Path) {
     let (mut cx, handle, app) = with_app(store, &path, |app, w, cx| {
         app.open_task(task, w, cx);
         app.show_task_activity = true;
-        app.comment
-            .update(cx, |state, cx| state.set_value("Footer retry comment", w, cx));
+        app.comment.update(cx, |state, cx| {
+            state.set_value("Footer retry comment", w, cx)
+        });
     });
     cx.update_window(handle, |_, w, cx| {
         app.update(cx, |app, _| app.storage = None);
@@ -546,8 +538,7 @@ fn comment_footer_retry_new_impact(root: &Path) {
                 .as_mut()
                 .unwrap()
                 .requires_approval = true;
-            app.store.task_mut(goal).unwrap().approved_plan =
-                app.store.goal_plan_signature(goal);
+            app.store.task_mut(goal).unwrap().approved_plan = app.store.goal_plan_signature(goal);
             app.storage = Some(Storage::new(path.clone()));
             app.storage_error = "Retry the pending comment save".into();
         });
@@ -579,7 +570,10 @@ fn comment_footer_retry_new_impact(root: &Path) {
         );
         let loaded = Storage::new(path.clone()).load().unwrap().unwrap();
         assert_eq!(loaded.task(task).unwrap().comments.len(), 1);
-        assert_eq!(loaded.task(task).unwrap().comments[0].body, "Footer retry comment");
+        assert_eq!(
+            loaded.task(task).unwrap().comments[0].body,
+            "Footer retry comment"
+        );
     })
     .unwrap();
     cx.update_window(handle, |_, w, _| w.remove_window())
@@ -590,8 +584,12 @@ fn comment_retry_cross_task_cache(root: &Path) {
     let directory = root.join("comment-cross-task");
     std::fs::create_dir_all(&directory).unwrap();
     let (mut store, _, _) = workspace(&directory);
-    let task_a = store.create_task("Comment task A", 1, Stage::Planned, None).unwrap();
-    let task_b = store.create_task("Comment task B", 1, Stage::Planned, None).unwrap();
+    let task_a = store
+        .create_task("Comment task A", 1, Stage::InProgress, None)
+        .unwrap();
+    let task_b = store
+        .create_task("Comment task B", 1, Stage::InProgress, None)
+        .unwrap();
     let path = directory.join("workspace.sqlite3");
     Storage::new(path.clone()).save(&store).unwrap();
     let (mut cx, handle, app) = with_app(store, &path, |app, w, cx| {
@@ -656,7 +654,9 @@ fn stage_property_and_undo(root: &Path) {
     let directory = root.join("stage-property");
     std::fs::create_dir_all(&directory).unwrap();
     let (mut store, _, _) = workspace(&directory);
-    let task = store.create_task("Stage task", 1, Stage::Planned, None).unwrap();
+    let task = store
+        .create_task("Stage task", 1, Stage::InProgress, None)
+        .unwrap();
     let path = directory.join("workspace.sqlite3");
     Storage::new(path.clone()).save(&store).unwrap();
     let (mut cx, handle, app) = with_app(store, &path, |app, w, cx| {
@@ -664,9 +664,7 @@ fn stage_property_and_undo(root: &Path) {
     });
     cx.update_window(handle, |_, w, cx| {
         w.render_frame(cx);
-        click_in(w, cx, "detail-scroll", "property-Stage");
-        w.render_frame(cx);
-        w.click("set-backlog", cx);
+        app.update(cx, |a, cx| a.change_stage(task, Stage::Backlog, cx));
         w.render_frame(cx);
         let app = app.read(cx);
         assert_eq!(app.store.task(task).unwrap().stage, Stage::Backlog);
@@ -675,15 +673,15 @@ fn stage_property_and_undo(root: &Path) {
         assert_eq!(loaded.task(task).unwrap().stage, Stage::Backlog);
     })
     .unwrap();
-    screenshot(&mut cx, handle, &directory, "stage-property-backlog.png");
+    screenshot(&mut cx, handle, &directory, "stage-change-backlog.png");
     cx.update_window(handle, |_, w, cx| {
         w.render_frame(cx);
         app.update(cx, |a, cx| a.undo_change(w, cx));
         w.render_frame(cx);
         let app = app.read(cx);
-        assert_eq!(app.store.task(task).unwrap().stage, Stage::Planned);
+        assert_eq!(app.store.task(task).unwrap().stage, Stage::InProgress);
         let loaded = Storage::new(path.clone()).load().unwrap().unwrap();
-        assert_eq!(loaded.task(task).unwrap().stage, Stage::Planned);
+        assert_eq!(loaded.task(task).unwrap().stage, Stage::InProgress);
     })
     .unwrap();
     cx.update_window(handle, |_, w, _| w.remove_window())
@@ -706,10 +704,10 @@ fn reopen_step_and_undo(root: &Path) {
         click_in(w, cx, "detail-scroll", "step-reopen");
         w.render_frame(cx);
         let app = app.read(cx);
-        assert_eq!(app.store.task(child).unwrap().stage, Stage::Planned);
+        assert_eq!(app.store.task(child).unwrap().stage, Stage::InProgress);
         assert_eq!(app.undo.len(), 1);
         let loaded = Storage::new(path.clone()).load().unwrap().unwrap();
-        assert_eq!(loaded.task(child).unwrap().stage, Stage::Planned);
+        assert_eq!(loaded.task(child).unwrap().stage, Stage::InProgress);
     })
     .unwrap();
     screenshot(&mut cx, handle, &directory, "reopen-step.png");
@@ -751,7 +749,9 @@ fn material_add_remove_undo_ui(root: &Path) {
     let directory = root.join("material-ui");
     std::fs::create_dir_all(&directory).unwrap();
     let (mut store, _, _) = workspace(&directory);
-    let task = store.create_task("Material task", 1, Stage::Planned, None).unwrap();
+    let task = store
+        .create_task("Material task", 1, Stage::InProgress, None)
+        .unwrap();
     let path = directory.join("workspace.sqlite3");
     Storage::new(path.clone()).save(&store).unwrap();
     let source_a = directory.join("material-a.pdf");
@@ -848,7 +848,7 @@ fn material_add_remove_undo_ui(root: &Path) {
             exit_code: None,
             agent: "test".into(),
             model: "test".into(),
-            stage: Stage::Planned,
+            stage: Stage::InProgress,
             status: "Succeeded".into(),
             logs: vec![],
             output: String::new(),
@@ -913,7 +913,9 @@ fn material_failure_cancel_and_retry(root: &Path) {
     let directory = root.join("material-failure");
     std::fs::create_dir_all(&directory).unwrap();
     let (mut store, goal, _) = workspace(&directory);
-    let task = store.create_task("Material retry task", 1, Stage::Planned, None).unwrap();
+    let task = store
+        .create_task("Material retry task", 1, Stage::InProgress, None)
+        .unwrap();
     let path = directory.join("workspace.sqlite3");
     Storage::new(path.clone()).save(&store).unwrap();
     let pdf = directory.join("retry-material.pdf");
@@ -956,7 +958,10 @@ fn material_failure_cancel_and_retry(root: &Path) {
         let app = app.read(cx);
         assert!(app.store.task(goal).unwrap().attachments.is_empty());
         assert!(app.pending_material_edit.is_none());
-        assert!(!copied.exists(), "cancel removes the unreferenced imported copy");
+        assert!(
+            !copied.exists(),
+            "cancel removes the unreferenced imported copy"
+        );
     })
     .unwrap();
 
@@ -1123,7 +1128,9 @@ fn material_failure_cancel_and_retry(root: &Path) {
     settle_material_jobs(&mut cx, handle, &app);
     // A failed Add B survives an unrelated Undo of Add A, including its copy.
     let independent = app.update(&mut cx, |app, _| {
-        app.store.create_task("Independent material", 1, Stage::Planned, None).unwrap()
+        app.store
+            .create_task("Independent material", 1, Stage::InProgress, None)
+            .unwrap()
     });
     cx.update_window(handle, |_, w, cx| {
         app.update(cx, |app, cx| {
@@ -1179,7 +1186,9 @@ fn material_failure_cancel_and_retry(root: &Path) {
 
     // Archived target after import: drop attachment/clean copy, never report success.
     let archived_task = app.update(&mut cx, |app, _| {
-        app.store.create_task("Archive import", 1, Stage::Planned, None).unwrap()
+        app.store
+            .create_task("Archive import", 1, Stage::InProgress, None)
+            .unwrap()
     });
     let archive_source = directory.join("archived-material.pdf");
     std::fs::write(&archive_source, b"%PDF-1.4\narchived material\n").unwrap();
@@ -1194,7 +1203,13 @@ fn material_failure_cancel_and_retry(root: &Path) {
     wait_material_import(&mut cx, handle, &app);
     cx.update_window(handle, |_, _, cx| {
         let app = app.read(cx);
-        assert!(app.store.task(archived_task).unwrap().attachments.is_empty());
+        assert!(
+            app.store
+                .task(archived_task)
+                .unwrap()
+                .attachments
+                .is_empty()
+        );
         assert!(app.pending_material_edit.is_none());
     })
     .unwrap();
@@ -1216,7 +1231,9 @@ fn material_completed_confirm_failed_undo_and_retry(root: &Path) {
         app.open_task(goal, w, cx);
     });
     cx.update_window(handle, |_, _, cx| {
-        app.update(cx, |app, cx| app.import_attachments(goal, vec![pdf.clone()], cx));
+        app.update(cx, |app, cx| {
+            app.import_attachments(goal, vec![pdf.clone()], cx)
+        });
     })
     .unwrap();
     wait_material_import(&mut cx, handle, &app);
@@ -1274,7 +1291,9 @@ fn material_completed_confirm_failed_undo_and_retry(root: &Path) {
     // Footer Retry after a no-modal failed Add must re-review a newly research
     // impact before writing, then save exactly once.
     let task = app.update(&mut cx, |app, _| {
-        app.store.create_task("Retry material task", 1, Stage::Planned, None).unwrap()
+        app.store
+            .create_task("Retry material task", 1, Stage::InProgress, None)
+            .unwrap()
     });
     let retry_pdf = directory.join("retry-impact-material.pdf");
     std::fs::write(&retry_pdf, b"%PDF-1.4\nretry impact material\n").unwrap();
@@ -1313,8 +1332,7 @@ fn material_completed_confirm_failed_undo_and_retry(root: &Path) {
                 .as_mut()
                 .unwrap()
                 .requires_approval = true;
-            app.store.task_mut(goal).unwrap().approved_plan =
-                app.store.goal_plan_signature(goal);
+            app.store.task_mut(goal).unwrap().approved_plan = app.store.goal_plan_signature(goal);
             app.storage = Some(Storage::new(path.clone()));
             app.storage_error = "Retry the pending material save".into();
             app.qa_storage_writes.set(0);
@@ -1323,7 +1341,10 @@ fn material_completed_confirm_failed_undo_and_retry(root: &Path) {
         w.click("retry-save", cx);
         w.render_frame(cx);
         let app = app.read(cx);
-        assert!(app.has_material_review(), "changed material impact needs review");
+        assert!(
+            app.has_material_review(),
+            "changed material impact needs review"
+        );
         assert_eq!(app.store.task(task).unwrap().attachments.len(), 0);
         let loaded = Storage::new(path.clone()).load().unwrap().unwrap();
         assert_eq!(loaded.task(task).unwrap().attachments.len(), 0);
@@ -1348,7 +1369,9 @@ fn material_stale_remove_verification(root: &Path) {
     let directory = root.join("material-stale-remove");
     std::fs::create_dir_all(&directory).unwrap();
     let (mut store, _, _) = workspace(&directory);
-    let task = store.create_task("Stale remove task", 1, Stage::Planned, None).unwrap();
+    let task = store
+        .create_task("Stale remove task", 1, Stage::InProgress, None)
+        .unwrap();
     let path = directory.join("workspace.sqlite3");
     Storage::new(path.clone()).save(&store).unwrap();
     let a = directory.join("stale-a.pdf");
@@ -1360,13 +1383,17 @@ fn material_stale_remove_verification(root: &Path) {
     });
     for source in [&a, &b] {
         cx.update_window(handle, |_, _, cx| {
-            app.update(cx, |app, cx| app.import_attachments(task, vec![source.clone()], cx));
+            app.update(cx, |app, cx| {
+                app.import_attachments(task, vec![source.clone()], cx)
+            });
         })
         .unwrap();
         wait_material_import(&mut cx, handle, &app);
     }
     app.update(&mut cx, |app, _| {
-        app.store.task_mut(task).unwrap().attachments[0].content_sha256.clear();
+        app.store.task_mut(task).unwrap().attachments[0]
+            .content_sha256
+            .clear();
     });
     let undo_before = cx.update(|cx| app.read(cx).undo.len());
     cx.update_window(handle, |_, w, cx| {
@@ -1382,9 +1409,7 @@ fn material_stale_remove_verification(root: &Path) {
         w.render_frame(cx);
     })
     .unwrap();
-    let stable = cx.update(|cx| {
-        app.read(cx).store.task(task).unwrap().attachments.clone()
-    });
+    let stable = cx.update(|cx| app.read(cx).store.task(task).unwrap().attachments.clone());
     settle_material_jobs(&mut cx, handle, &app);
     cx.update_window(handle, |_, _, cx| {
         let app = app.read(cx);
@@ -1393,7 +1418,11 @@ fn material_stale_remove_verification(root: &Path) {
             stable,
             "stale remove completion must not retarget or remove metadata"
         );
-        assert_eq!(app.undo.len(), undo_before, "stale completion must not add undo");
+        assert_eq!(
+            app.undo.len(),
+            undo_before,
+            "stale completion must not add undo"
+        );
         assert!(app.error.contains("changed while it was being verified"));
     })
     .unwrap();
@@ -1405,7 +1434,9 @@ fn material_background_tamper_boundary(root: &Path) {
     let directory = root.join("material-tamper");
     std::fs::create_dir_all(&directory).unwrap();
     let (mut store, _, _) = workspace(&directory);
-    let task = store.create_task("Tamper task", 1, Stage::Planned, None).unwrap();
+    let task = store
+        .create_task("Tamper task", 1, Stage::InProgress, None)
+        .unwrap();
     let path = directory.join("workspace.sqlite3");
     Storage::new(path.clone()).save(&store).unwrap();
     let source = directory.join("tamper.pdf");
@@ -1486,9 +1517,13 @@ fn material_workspace_switch_during_verify(root: &Path) {
     std::fs::create_dir_all(&directory_a).unwrap();
     std::fs::create_dir_all(&directory_b).unwrap();
     let (mut store_a, _, _) = workspace(&directory_a);
-    let task_a = store_a.create_task("Switch task", 1, Stage::Planned, None).unwrap();
+    let task_a = store_a
+        .create_task("Switch task", 1, Stage::InProgress, None)
+        .unwrap();
     let (mut store_b, _, _) = workspace(&directory_b);
-    let task_b = store_b.create_task("Switch task", 1, Stage::Planned, None).unwrap();
+    let task_b = store_b
+        .create_task("Switch task", 1, Stage::InProgress, None)
+        .unwrap();
     assert_eq!(task_a, task_b);
     let path_a = directory_a.join("workspace.sqlite3");
     let path_b = directory_b.join("workspace.sqlite3");
@@ -1503,7 +1538,9 @@ fn material_workspace_switch_during_verify(root: &Path) {
         app.material_verifier.set_test_delay_ms(250);
     });
     cx.update_window(handle, |_, _, cx| {
-        app.update(cx, |app, cx| app.import_attachments(task_a, vec![source], cx));
+        app.update(cx, |app, cx| {
+            app.import_attachments(task_a, vec![source], cx)
+        });
     })
     .unwrap();
     let mut waited = 0;
@@ -1609,10 +1646,7 @@ fn material_workspace_switch_during_verify(root: &Path) {
     let unreferenced = crate::scoped_material::ImportedCopy {
         relative_path: unreferenced_relative.into(),
         size: unreferenced_bytes.len() as u64,
-        content_sha256: format!(
-            "{:x}",
-            sha2::Sha256::digest(unreferenced_bytes)
-        ),
+        content_sha256: format!("{:x}", sha2::Sha256::digest(unreferenced_bytes)),
         owner_task: task_a,
     };
     store_a_reconnect
@@ -1626,7 +1660,9 @@ fn material_workspace_switch_during_verify(root: &Path) {
             size: bytes.len() as u64,
             content_sha256: sha.clone(),
         });
-    Storage::new(path_a.clone()).save(&store_a_reconnect).unwrap();
+    Storage::new(path_a.clone())
+        .save(&store_a_reconnect)
+        .unwrap();
     cx.update_window(handle, |_, _, cx| {
         app.update(cx, |app, _| {
             app.pending_cleanup_retry
@@ -1659,7 +1695,10 @@ fn material_workspace_switch_during_verify(root: &Path) {
     cx.update_window(handle, |_, _, cx| {
         let app = app.read(cx);
         assert!(copied_a.exists(), "referenced original copy is retained");
-        assert!(!unreferenced_path.exists(), "unreferenced owned copy is deleted");
+        assert!(
+            !unreferenced_path.exists(),
+            "unreferenced owned copy is deleted"
+        );
         assert!(copied_b.exists(), "workspace B copy remains untouched");
         assert_eq!(app.store.task(task_a).unwrap().attachments.len(), 1);
         let loaded = Storage::new(path_a.clone()).load().unwrap().unwrap();
@@ -1699,7 +1738,10 @@ fn confirm_retry_preserves_unrelated_fields(root: &Path) {
         assert_eq!(app.store.task(goal).unwrap().title, "Branched research");
         let loaded = Storage::new(path.clone()).load().unwrap().unwrap();
         assert_eq!(loaded.task(goal).unwrap().title, "Branched research");
-        assert_eq!(loaded.task(goal).unwrap().labels, vec!["Research".to_string()]);
+        assert_eq!(
+            loaded.task(goal).unwrap().labels,
+            vec!["Research".to_string()]
+        );
         assert_eq!(loaded.task(goal).unwrap().activity.len(), activity_before);
         app.qa_storage_writes.set(0);
     })
@@ -1707,7 +1749,6 @@ fn confirm_retry_preserves_unrelated_fields(root: &Path) {
     cx.update_window(handle, |_, w, cx| {
         app.update(cx, |app, _| {
             app.store.task_mut(goal).unwrap().labels = vec!["Later label".into()];
-            app.store.task_mut(goal).unwrap().priority = Priority::Urgent;
             app.storage = Some(Storage::new(path.clone()));
         });
         // The same visible confirmation button is used again after the failed write.
@@ -1720,7 +1761,6 @@ fn confirm_retry_preserves_unrelated_fields(root: &Path) {
             app.store.task(goal).unwrap().labels,
             vec!["Later label".to_string()]
         );
-        assert_eq!(app.store.task(goal).unwrap().priority, Priority::Urgent);
         assert_eq!(
             app.qa_storage_writes.get(),
             1,
@@ -1783,13 +1823,14 @@ fn confirm_reviews_new_impact(root: &Path) {
         begin_editor(app, goal, w, cx);
         set_title(app, "Impact title", w, cx);
     });
-    let first_impact = cx.update_window(handle, |_, w, cx| {
-        app.update(cx, |app, cx| {
-            assert!(!app.request_save_draft(w, cx));
-            app.research_save_impact.as_ref().unwrap().impact.clone()
+    let first_impact = cx
+        .update_window(handle, |_, w, cx| {
+            app.update(cx, |app, cx| {
+                assert!(!app.request_save_draft(w, cx));
+                app.research_save_impact.as_ref().unwrap().impact.clone()
+            })
         })
-    })
-    .unwrap();
+        .unwrap();
     cx.update_window(handle, |_, w, cx| {
         app.update(cx, |app, _| {
             app.store.task_mut(steps[1]).unwrap().title = "Sibling changed".into();
@@ -1815,7 +1856,7 @@ fn pending_batch_rejects_stage(root: &Path) {
     let path = directory.join("workspace.sqlite3");
     Storage::new(path.clone()).save(&store).unwrap();
     let (mut cx, handle, app) = with_app(store, &path, |app, w, cx| {
-        app.store.set_stage(goal, Stage::Planned).unwrap();
+        app.store.set_stage(goal, Stage::InProgress).unwrap();
         app.todo_batch = Some(TodoBatch {
             project_id: 1,
             items: vec![goal],
@@ -1834,7 +1875,7 @@ fn pending_batch_rejects_stage(root: &Path) {
         app.update(cx, |app, cx| {
             assert!(!app.request_save_draft(w, cx));
             assert!(app.error.contains("submitted") || app.error.contains("running"));
-            assert_eq!(app.store.task(goal).unwrap().stage, Stage::Planned);
+            assert_eq!(app.store.task(goal).unwrap().stage, Stage::InProgress);
             assert!(app.draft.is_some());
         });
     })
@@ -1946,7 +1987,11 @@ fn automation_barrier_keeps_scoped_undo(root: &Path) {
     cx.update_window(handle, |_, w, cx| {
         app.update(cx, |app, cx| {
             app.invalidate_undo_for_automation();
-            assert_eq!(app.undo.len(), 1, "scoped entry is unaffected by automation");
+            assert_eq!(
+                app.undo.len(),
+                1,
+                "scoped entry is unaffected by automation"
+            );
             app.undo_change(w, cx);
         });
         let app = app.read(cx);
@@ -1964,8 +2009,8 @@ fn mixed_legacy_scoped_order(root: &Path) {
     let path = directory.join("workspace.sqlite3");
     Storage::new(path.clone()).save(&store).unwrap();
     let (mut cx, handle, app) = with_app(store, &path, |app, w, cx| {
-        assert!(app
-            .apply_domain_command_undoable(
+        assert!(
+            app.apply_domain_command_undoable(
                 crate::scoped_domain::DomainCommand::TaskLabels {
                     task: goal,
                     labels: vec!["Legacy change".into()],
@@ -1973,7 +2018,8 @@ fn mixed_legacy_scoped_order(root: &Path) {
                 "Labels updated",
                 cx,
             )
-            .is_some());
+            .is_some()
+        );
         begin_editor(app, goal, w, cx);
         set_title(app, "Scoped change", w, cx);
     });
@@ -1999,7 +2045,10 @@ fn mixed_legacy_scoped_order(root: &Path) {
     cx.update_window(handle, |_, w, cx| {
         app.update(cx, |app, cx| app.undo_change(w, cx));
         let app = app.read(cx);
-        assert_eq!(app.store.task(goal).unwrap().labels, vec!["Research".to_string()]);
+        assert_eq!(
+            app.store.task(goal).unwrap().labels,
+            vec!["Research".to_string()]
+        );
         assert!(app.undo.is_empty());
     })
     .unwrap();

@@ -49,9 +49,7 @@ fn search_fixture(directory: &Path) -> Store {
     store
 }
 
-fn automation_results_fixture(
-    directory: &Path,
-) -> (Store, Vec<u64>, Vec<String>) {
+fn automation_results_fixture(directory: &Path) -> (Store, Vec<u64>, Vec<String>) {
     use crate::automation::{
         AutomationOccurrence, AutomationOccurrenceSnapshot, AutomationShape, OccurrenceStatus,
         TimeWindow, TriggerSource,
@@ -59,7 +57,10 @@ fn automation_results_fixture(
     use crate::automation_schedule::{Schedule, ScheduleSpec};
     let mut store = fixture(directory);
     let schedule = Schedule {
-        spec: ScheduleSpec::Daily { hour: 10, minute: 0 },
+        spec: ScheduleSpec::Daily {
+            hour: 10,
+            minute: 0,
+        },
         timezone: "Asia/Shanghai".into(),
     };
     let shapes = [
@@ -82,7 +83,9 @@ fn automation_results_fixture(
         let name = if index % 2 == 0 {
             format!("Shenzhen fuel price and refinery outage watch number {index}")
         } else {
-            format!("Long research automation for regional refinery maintenance and price impact {index}")
+            format!(
+                "Long research automation for regional refinery maintenance and price impact {index}"
+            )
         };
         let objective = "Check today's fuel prices and summarize the change with sources.";
         let expected = "Current price, change and source.";
@@ -129,8 +132,13 @@ fn automation_results_fixture(
                 expected_result: definition.expected_result.clone(),
                 shape: Some(definition.shape),
                 template: definition.template.clone().unwrap(),
-                models: ["fixture/plan", "fixture/collect", "fixture/analyze", "fixture/advise"]
-                    .map(String::from),
+                models: [
+                    "fixture/plan",
+                    "fixture/collect",
+                    "fixture/analyze",
+                    "fixture/advise",
+                ]
+                .map(String::from),
                 agents: Default::default(),
                 materials: vec![],
                 policy: definition.policy.clone(),
@@ -138,13 +146,12 @@ fn automation_results_fixture(
                 approval_signature: "T19 compact results".into(),
             },
             status,
-            reason: (status == OccurrenceStatus::Failed)
-                .then(|| {
-                    crate::automation::OccurrenceReason::new(
-                        crate::automation::SkipCode::ExecutionFailed,
-                        "T19 fixture failure",
-                    )
-                }),
+            reason: (status == OccurrenceStatus::Failed).then(|| {
+                crate::automation::OccurrenceReason::new(
+                    crate::automation::SkipCode::ExecutionFailed,
+                    "T19 fixture failure",
+                )
+            }),
             research_goal_id: None,
             research_goal_ids: vec![],
             research_topic_id: None,
@@ -187,8 +194,7 @@ fn visual_surface(root: &Path, mode: Appearance, width: f32, height: f32, surfac
     store.set_appearance(mode);
     if surface == "project-rename" {
         store.project_at_mut(0).unwrap().name =
-            "A deliberately long English project name used to verify readable disclosure"
-                .into();
+            "A deliberately long English project name used to verify readable disclosure".into();
     }
     let path = directory.join("workspace.sqlite3");
     Storage::new(path.clone()).save(&store).unwrap();
@@ -643,7 +649,10 @@ fn visual_settings(root: &Path, mode: Appearance, width: f32, height: f32) {
             app.show_save_error("Could not save settings. Check the workspace folder.", cx)
         });
         w.render_frame(cx);
-        assert!(w.find("save-feedback").visible(), "error banner must render");
+        assert!(
+            w.find("save-feedback").visible(),
+            "error banner must render"
+        );
         assert!(
             w.find("dismiss-save-feedback").visible(),
             "error banner keeps its dismiss action"
@@ -759,8 +768,8 @@ fn settings_retained_invalidation(root: &Path) {
             .expect("base TabPrev action registered");
         w.dispatch_action(tab_prev, cx);
         w.render_frame(cx);
-        let retained = w.focused(cx) == model_focus
-            || w.find("model-agent-0").focused() == Some(true);
+        let retained =
+            w.focused(cx) == model_focus || w.find("model-agent-0").focused() == Some(true);
         assert!(
             retained,
             "TabPrev after dismissing suggestions must keep settings focus"
@@ -810,7 +819,10 @@ fn settings_retained_invalidation(root: &Path) {
         assert!(app.read(cx).ego_probe.is_none());
         assert_eq!(app.read(cx).ego_status, "Runtime ready · T19 probe");
         assert_eq!(
-            w.find("ego-status").label().map(str::to_string).unwrap_or_default(),
+            w.find("ego-status")
+                .label()
+                .map(str::to_string)
+                .unwrap_or_default(),
             "Runtime ready · T19 probe"
         );
 
@@ -863,7 +875,7 @@ fn footer_retention_invalidation(root: &Path) {
         w.press("escape", cx);
         w.render_frame(cx);
         assert!(!app.read(cx).global_search_ui.open);
-        app.update(cx, |a, cx| a.request_new_research(w, cx));
+        app.update(cx, |a, cx| a.open_project_plan(1, w, cx));
         w.render_frame(cx);
         assert!(app.read(cx).planning_project.is_some());
         w.press("escape", cx);
@@ -884,11 +896,21 @@ fn footer_retention_invalidation(root: &Path) {
             cx.notify();
         });
         w.render_frame(cx);
-        assert!(app.read(cx).store.topics().iter().any(|t| t.name == topic_name));
+        assert!(
+            app.read(cx)
+                .store
+                .topics()
+                .iter()
+                .any(|t| t.name == topic_name)
+        );
         app.update(cx, |a, cx| a.undo_change(w, cx));
         w.render_frame(cx);
         assert!(
-            !app.read(cx).store.topics().iter().any(|t| t.name == topic_name),
+            !app.read(cx)
+                .store
+                .topics()
+                .iter()
+                .any(|t| t.name == topic_name),
             "Undo must remove the created topic"
         );
 
@@ -1014,7 +1036,8 @@ fn sidebar_retained_surface(root: &Path) {
 
 /// Exercise the workspace menu through real pointer and keyboard dismissal.
 pub fn workspace_menu() {
-    let root = std::env::current_dir().unwrap()
+    let root = std::env::current_dir()
+        .unwrap()
         .join(format!(".local/workspace-menu-qa/{}", std::process::id()));
     for mode in [Appearance::Light, Appearance::Dark] {
         let directory = root.join(format!("{mode:?}"));
@@ -1030,7 +1053,8 @@ pub fn workspace_menu() {
             w.click("workspace-menu", cx);
             w.render_frame(cx);
             assert!(app.read(cx).workspace_menu_open);
-        }).unwrap();
+        })
+        .unwrap();
         cx.advance_clock(Duration::from_millis(60));
         screenshot(&mut cx, handle, &directory, "opening.png");
         cx.advance_clock(Duration::from_millis(200));
@@ -1038,12 +1062,14 @@ pub fn workspace_menu() {
         cx.update_window(handle, |_, w, cx| {
             w.press("escape", cx);
             w.render_frame(cx);
-        }).unwrap();
+        })
+        .unwrap();
         cx.run_until_parked();
         cx.update_window(handle, |_, w, cx| {
             w.render_frame(cx);
             assert!(!app.read(cx).workspace_menu_open);
-        }).unwrap();
+        })
+        .unwrap();
         cx.advance_clock(Duration::from_millis(60));
         screenshot(&mut cx, handle, &directory, "closing.png");
         // Reopen during the closing transition, then dismiss via the trigger.
@@ -1051,14 +1077,16 @@ pub fn workspace_menu() {
             w.click("workspace-menu", cx);
             w.render_frame(cx);
             assert!(app.read(cx).workspace_menu_open);
-        }).unwrap();
+        })
+        .unwrap();
         cx.advance_clock(Duration::from_millis(200));
         screenshot(&mut cx, handle, &directory, "reopened.png");
         cx.update_window(handle, |_, w, cx| {
             w.click("workspace-menu", cx);
             w.render_frame(cx);
             assert!(!app.read(cx).workspace_menu_open);
-        }).unwrap();
+        })
+        .unwrap();
         cx.advance_clock(Duration::from_millis(200));
         screenshot(&mut cx, handle, &directory, "closed-again.png");
         cx.update_window(handle, |_, w, cx| {
@@ -1066,9 +1094,11 @@ pub fn workspace_menu() {
             w.click("workspace-menu", cx);
             w.render_frame(cx);
             assert!(app.read(cx).workspace_menu_open);
-        }).unwrap();
+        })
+        .unwrap();
         screenshot(&mut cx, handle, &directory, "reduced-motion-open.png");
-        cx.update_window(handle, |_, w, _| w.remove_window()).unwrap();
+        cx.update_window(handle, |_, w, _| w.remove_window())
+            .unwrap();
     }
     println!("Workspace menu QA passed: {}", root.display());
 }
@@ -1090,33 +1120,38 @@ fn startup_completion_scheduled(root: &Path) {
         let _ = w;
     });
     let count = Arc::new(std::sync::atomic::AtomicUsize::new(0));
-    let probe = cx.update(|cx| cx.new(|_| NotifyProbe { count: count.clone(), _subscription: None }));
+    let probe = cx.update(|cx| {
+        cx.new(|_| NotifyProbe {
+            count: count.clone(),
+            _subscription: None,
+        })
+    });
     probe.update(&mut cx, |this, cx| {
         this._subscription = Some(cx.observe(&app, |this, _, _| {
             this.count.fetch_add(1, Ordering::SeqCst);
         }));
     });
-    let before = cx.update_window(handle, |_, w, cx| {
-        let (tx, rx) = std::sync::mpsc::channel();
-        app.update(cx, |app, cx| {
-            app.startup.pending = Some(rx);
-            app.startup.required = true;
-            app.startup.silent = true;
-            app.start_pump(cx);
-        });
-        w.render_frame(cx);
-        w.find("startup-checking");
-        let before = count.load(Ordering::SeqCst);
-        tx.send([
-            Ok("1.0".to_string()),
-            Err("Codex not configured".to_string()),
-            Err("ego not configured".to_string()),
-        ])
+    let before = cx
+        .update_window(handle, |_, w, cx| {
+            let (tx, rx) = std::sync::mpsc::channel();
+            app.update(cx, |app, cx| {
+                app.startup.pending = Some(rx);
+                app.startup.required = true;
+                app.startup.silent = true;
+                app.start_pump(cx);
+            });
+            w.render_frame(cx);
+            w.find("startup-checking");
+            let before = count.load(Ordering::SeqCst);
+            tx.send([
+                Ok("1.0".to_string()),
+                Err("Codex not configured".to_string()),
+            ])
+            .unwrap();
+            drop(tx);
+            before
+        })
         .unwrap();
-        drop(tx);
-        before
-    })
-    .unwrap();
     // Drive the headless executor outside the App/window update borrow.
     // No manual pump tick, click, resize, or render happens here.
     for _ in 0..8 {
@@ -1817,9 +1852,11 @@ fn screenshot(cx: &mut HeadlessAppContext, handle: AnyWindowHandle, directory: &
 
 /// Exercise real wheel dispatch and retained report invalidation in both themes.
 pub fn automation_dialog_scroll() {
-    use std::sync::atomic::Ordering;
     use crate::shell_surfaces::RESULT_PRESENTATIONS;
-    let root = std::env::current_dir().unwrap().join(".local/automation-dialog-scroll");
+    use std::sync::atomic::Ordering;
+    let root = std::env::current_dir()
+        .unwrap()
+        .join(".local/automation-dialog-scroll");
     for mode in [Appearance::Light, Appearance::Dark] {
         for (width, height) in [(1000., 680.), (1440., 920.)] {
             let directory = root.join(format!("{mode:?}-{width}"));
@@ -1842,44 +1879,80 @@ pub fn automation_dialog_scroll() {
                     cx.update_window(handle, |_, w, cx| {
                         // A logo notification dirties ancestors but must not
                         // rebuild the report presentation.
-                        app.read(cx).brand_overlay.clone().unwrap().update(cx, |_, cx| cx.notify());
+                        app.read(cx)
+                            .brand_overlay
+                            .clone()
+                            .unwrap()
+                            .update(cx, |_, cx| cx.notify());
                         let position = w.find("automation-result-body").bounds().center();
-                        w.dispatch_event(MouseMoveEvent { position, ..Default::default() }.to_platform_input(), cx);
-                        w.dispatch_event(ScrollEvent {
-                            position,
-                            delta: ScrollDelta::Pixels(point(px(0.), px(direction * 16.))),
-                            ..Default::default()
-                        }.to_platform_input(), cx);
+                        w.dispatch_event(
+                            MouseMoveEvent {
+                                position,
+                                ..Default::default()
+                            }
+                            .to_platform_input(),
+                            cx,
+                        );
+                        w.dispatch_event(
+                            ScrollEvent {
+                                position,
+                                delta: ScrollDelta::Pixels(point(px(0.), px(direction * 16.))),
+                                ..Default::default()
+                            }
+                            .to_platform_input(),
+                            cx,
+                        );
                         w.draw(cx).clear(cx);
-                    }).unwrap();
+                    })
+                    .unwrap();
                     cx.run_until_parked();
                     samples.push(started.elapsed().as_secs_f64() * 1000.);
                 }
                 cx.update_window(handle, |_, _, cx| {
                     let offset = app.read(cx).automation_ui.dialog_scroll.offset().y.as_f32();
-                    if direction < 0. { assert!(offset < -100., "wheel must move the report"); }
-                    else { assert!(offset.abs() < 1., "reverse wheel must return to top: {offset}"); }
-                }).unwrap();
+                    if direction < 0. {
+                        assert!(offset < -100., "wheel must move the report");
+                    } else {
+                        assert!(
+                            offset.abs() < 1.,
+                            "reverse wheel must return to top: {offset}"
+                        );
+                    }
+                })
+                .unwrap();
             }
-            assert_eq!(initial, RESULT_PRESENTATIONS.load(Ordering::Relaxed), "wheel and logo frames must reuse the presentation");
+            assert_eq!(
+                initial,
+                RESULT_PRESENTATIONS.load(Ordering::Relaxed),
+                "wheel and logo frames must reuse the presentation"
+            );
             cx.update_window(handle, |_, w, cx| {
                 app.update(cx, |app, cx| {
-                    app.store.occurrence_mut(occurrence).unwrap().status = crate::automation::OccurrenceStatus::Failed;
+                    app.store.occurrence_mut(occurrence).unwrap().status =
+                        crate::automation::OccurrenceStatus::Failed;
                     cx.notify();
                 });
                 w.render_frame(cx);
-            }).unwrap();
+            })
+            .unwrap();
             cx.run_until_parked();
-            assert!(RESULT_PRESENTATIONS.load(Ordering::Relaxed) > initial, "semantic changes must refresh the report");
+            assert!(
+                RESULT_PRESENTATIONS.load(Ordering::Relaxed) > initial,
+                "semantic changes must refresh the report"
+            );
             screenshot(&mut cx, handle, &directory, "after.png");
             samples.sort_by(f64::total_cmp);
-            println!("DIALOG_SCROLL {mode:?} {width}x{height}: wheel+frame p50={:.2} p95={:.2} max={:.2} ms; presentation reuse and invalidation passed", samples[60], samples[114], samples[119]);
+            println!(
+                "DIALOG_SCROLL {mode:?} {width}x{height}: wheel+frame p50={:.2} p95={:.2} max={:.2} ms; presentation reuse and invalidation passed",
+                samples[60], samples[114], samples[119]
+            );
             cx.update_window(handle, |_, w, cx| {
                 w.press("escape", cx);
                 w.render_frame(cx);
                 assert!(app.read(cx).period_overlay().is_none());
                 w.remove_window();
-            }).unwrap();
+            })
+            .unwrap();
         }
     }
     automation_result_keyboard(&root);
@@ -1889,30 +1962,54 @@ pub fn automation_dialog_scroll() {
 /// Native-window counterpart to the deterministic retained-surface regression.
 /// Uses only a generated fixture and exits after a timed bidirectional gesture.
 pub fn automation_dialog_native() {
-    let root = std::env::current_dir().unwrap().join(".local/automation-dialog-native");
+    let root = std::env::current_dir()
+        .unwrap()
+        .join(".local/automation-dialog-native");
     std::fs::create_dir_all(&root).unwrap();
     let (mut store, automation, occurrence) = automation_result_fixture(&root);
     let run_id = store.occurrence(occurrence).unwrap().final_run_id.unwrap();
-    let mut output: serde_json::Value = serde_json::from_str(&store.run_mut(run_id).unwrap().output).unwrap();
+    let mut output: serde_json::Value =
+        serde_json::from_str(&store.run_mut(run_id).unwrap().output).unwrap();
     output["report"] = serde_json::Value::String(format!(
-        "# Fuel price report\n\n| Grade | Price |\n| --- | --- |\n| 92 | 8.85 |\n| 95 | 9.42 |\n\n{}", output["report"].as_str().unwrap()
+        "# Fuel price report\n\n| Grade | Price |\n| --- | --- |\n| 92 | 8.85 |\n| 95 | 9.42 |\n\n{}",
+        output["report"].as_str().unwrap()
     ));
     store.run_mut(run_id).unwrap().output = output.to_string();
     let snapshot = std::env::var_os("PLANNING_DIALOG_WORKSPACE");
     let (store, automation, occurrence) = if let Some(path) = snapshot.as_ref() {
         let store = crate::render_qa::load_workspace(Path::new(path)).unwrap();
-        let id = std::env::var("PLANNING_DIALOG_PERIOD").unwrap().parse::<u64>().unwrap();
+        let id = std::env::var("PLANNING_DIALOG_PERIOD")
+            .unwrap()
+            .parse::<u64>()
+            .unwrap();
         let automation = store.occurrence(id).unwrap().automation_id;
         let started = std::time::Instant::now();
-        for _ in 0..10 { std::hint::black_box(store.progress_result_task_count()); }
-        println!("WORKSPACE_REPRO tasks={} runs={} period={id} sidebar_count_ms={:.2}", store.tasks().len(), store.runs().len(), started.elapsed().as_secs_f64() * 100.);
+        for _ in 0..10 {
+            std::hint::black_box(store.progress_result_task_count());
+        }
+        println!(
+            "WORKSPACE_REPRO tasks={} runs={} period={id} sidebar_count_ms={:.2}",
+            store.tasks().len(),
+            store.runs().len(),
+            started.elapsed().as_secs_f64() * 100.
+        );
         (store, automation, id)
-    } else { (store, automation, occurrence) };
+    } else {
+        (store, automation, occurrence)
+    };
     let semantic_updates = snapshot.is_some();
     let dark = std::env::var("PLANNING_DIALOG_DARK").as_deref() == Ok("1");
     let compact = std::env::var("PLANNING_DIALOG_COMPACT").as_deref() == Ok("1");
-    let mode = if dark { Appearance::Dark } else { Appearance::Light };
-    let dimensions = if compact { size(px(1000.), px(680.)) } else { size(px(1440.), px(920.)) };
+    let mode = if dark {
+        Appearance::Dark
+    } else {
+        Appearance::Light
+    };
+    let dimensions = if compact {
+        size(px(1000.), px(680.))
+    } else {
+        size(px(1440.), px(920.))
+    };
     application().with_assets(crate::ui_assets::AppAssets).run(move |cx| {
         init(cx);
         let (handle, app) = open_window(WindowOptions {
@@ -1976,14 +2073,23 @@ pub fn automation_dialog_native() {
 pub fn automation_dialog_first_scroll() {
     let path = std::env::var("PLANNING_DIALOG_WORKSPACE").unwrap();
     let mut store = crate::render_qa::load_workspace(Path::new(&path)).unwrap();
-    let occurrence = std::env::var("PLANNING_DIALOG_PERIOD").unwrap_or("11".into()).parse::<u64>().unwrap();
-    let repeat = std::env::var("PLANNING_DIALOG_REPORT_REPEAT").ok().and_then(|v| v.parse::<usize>().ok()).unwrap_or(1);
+    let occurrence = std::env::var("PLANNING_DIALOG_PERIOD")
+        .unwrap_or("11".into())
+        .parse::<u64>()
+        .unwrap();
+    let repeat = std::env::var("PLANNING_DIALOG_REPORT_REPEAT")
+        .ok()
+        .and_then(|v| v.parse::<usize>().ok())
+        .unwrap_or(1);
     let run_ids = store.occurrence(occurrence).unwrap().run_ids.clone();
     if repeat > 1 {
         for id in &run_ids {
-            let Some(mut run) = store.run_mut(*id) else { continue; };
+            let Some(mut run) = store.run_mut(*id) else {
+                continue;
+            };
             if let Ok(mut value) = serde_json::from_str::<serde_json::Value>(&run.output)
-                && let Some(report) = value.get("report").and_then(|v| v.as_str()) {
+                && let Some(report) = value.get("report").and_then(|v| v.as_str())
+            {
                 value["report"] = serde_json::Value::String(report.repeat(repeat));
                 run.output = value.to_string();
             } else {
@@ -1991,7 +2097,12 @@ pub fn automation_dialog_first_scroll() {
             }
         }
     }
-    let bytes: usize = store.runs().iter().filter(|r| run_ids.contains(&r.id)).map(|r| r.output.len()).sum();
+    let bytes: usize = store
+        .runs()
+        .iter()
+        .filter(|r| run_ids.contains(&r.id))
+        .map(|r| r.output.len())
+        .sum();
     println!("FIRST_SCROLL period={occurrence} stored_body_bytes={bytes} repeat={repeat}");
     application().with_assets(crate::ui_assets::AppAssets).run(move |cx| {
         init(cx);

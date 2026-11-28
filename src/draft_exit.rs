@@ -17,14 +17,20 @@ use crate::navigation_context::{DismissibleSurface, NavigationTarget};
 /// A surface that can hold user input the user did not commit yet.
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub(crate) enum DraftSurface {
-    TaskEdit { task: u64 },
+    TaskEdit {
+        task: u64,
+    },
     /// `editing` is `Some(id)` for an existing definition, `None` for a new one.
-    AutomationWizard { editing: Option<u64> },
-    /// The project/topic research request composer (New research, topic New
-    /// research, topic Replan).
+    AutomationWizard {
+        editing: Option<u64>,
+    },
+    /// The project research request composer, topic replan and automation
+    /// request composer.
     PlanningRequest,
     /// The inline comment composer of one task. Preserved per task.
-    Comment { task: u64 },
+    Comment {
+        task: u64,
+    },
     /// The inline composer on the Market research page. Preserved as a page
     /// draft (destination + text).
     ResearchComposer,
@@ -73,12 +79,9 @@ pub(crate) fn decision_surface(surface: DraftSurface) -> Option<DecisionSurface>
 pub(crate) struct TaskEditValues {
     pub title: String,
     pub description: String,
-    /// Normalized: trimmed, empty entries removed, order as entered.
-    pub labels: Vec<String>,
     pub due_date: String,
     pub project: u64,
     pub stage: crate::domain::Stage,
-    pub cycle: Option<String>,
 }
 
 /// Any difference in a task-editor field is unsaved user input.
@@ -89,7 +92,10 @@ pub(crate) fn task_edit_dirty(stored: &TaskEditValues, current: &TaskEditValues)
 /// A whole automation form, including the reviewed plan. `AutomationDraft`
 /// excludes the wizard step, so moving between steps is not dirt. The caller
 /// must rebase the baseline when the wizard accepts a plan for its own attempt.
-pub(crate) fn automation_draft_dirty(baseline: &AutomationDraft, current: &AutomationDraft) -> bool {
+pub(crate) fn automation_draft_dirty(
+    baseline: &AutomationDraft,
+    current: &AutomationDraft,
+) -> bool {
     baseline != current
 }
 
@@ -157,11 +163,18 @@ pub(crate) enum ExitTarget {
     Navigate(NavigationTarget),
     /// Clear return history and go to the structural target.
     Structural(NavigationTarget),
-    NewResearch,
     Dismiss(DismissibleSurface),
-    SidebarTask { project: u64, task: u64 },
-    Recent { task: u64, surface: crate::navigation_context::RecentSurface },
-    CancelWizard { editing: Option<u64> },
+    SidebarTask {
+        project: u64,
+        task: u64,
+    },
+    Recent {
+        task: u64,
+        surface: crate::navigation_context::RecentSurface,
+    },
+    CancelWizard {
+        editing: Option<u64>,
+    },
     CancelPlanning,
 }
 
@@ -218,9 +231,7 @@ pub(crate) fn resolve_decision(
             SaveOutcome::Saved => DecisionOutcome::Proceed(pending.target.clone()),
             SaveOutcome::Pending(message) => DecisionOutcome::Pending { message },
             SaveOutcome::Rejected(error) | SaveOutcome::Unavailable(error) => {
-                DecisionOutcome::Stay {
-                    error: Some(error),
-                }
+                DecisionOutcome::Stay { error: Some(error) }
             }
         },
     }
@@ -289,8 +300,8 @@ pub(crate) fn decision_explanation(surface: DecisionSurface) -> &'static str {
 mod tests {
     use super::*;
     use crate::automation::AutomationShape;
-    use crate::automation_views::AutomationDraftDefaults;
     use crate::automation_schedule::CatchUp;
+    use crate::automation_views::AutomationDraftDefaults;
 
     fn baseline() -> AutomationDraft {
         AutomationDraft::new(&AutomationDraftDefaults {
@@ -302,11 +313,9 @@ mod tests {
         TaskEditValues {
             title: "Title".into(),
             description: "Description".into(),
-            labels: vec!["one".into(), "two".into()],
             due_date: "2026-11-08".into(),
             project: 1,
-            stage: crate::domain::Stage::Planned,
-            cycle: None,
+            stage: crate::domain::Stage::InProgress,
         }
     }
 
@@ -322,9 +331,6 @@ mod tests {
         value.description = "Other".into();
         cases.push(value);
         let mut value = stored.clone();
-        value.labels = vec!["one".into()];
-        cases.push(value);
-        let mut value = stored.clone();
         value.due_date = "2026-12-01".into();
         cases.push(value);
         let mut value = stored.clone();
@@ -332,9 +338,6 @@ mod tests {
         cases.push(value);
         let mut value = stored.clone();
         value.stage = crate::domain::Stage::Done;
-        cases.push(value);
-        let mut value = stored.clone();
-        value.cycle = Some("Sprint".into());
         cases.push(value);
         for value in cases {
             assert!(task_edit_dirty(&stored, &value));
@@ -379,9 +382,7 @@ mod tests {
         assert!(automation_draft_dirty(&base, &changed));
 
         let mut changed = base.clone();
-        changed.plan = Some(
-            crate::automation_execution::build_template("Plan", "Output").unwrap(),
-        );
+        changed.plan = Some(crate::automation_execution::build_template("Plan", "Output").unwrap());
         assert!(automation_draft_dirty(&base, &changed));
     }
 
@@ -443,14 +444,8 @@ mod tests {
             draft_class(DraftSurface::ResearchComposer),
             DraftClass::Preserved
         );
-        assert_eq!(
-            decision_surface(DraftSurface::Comment { task: 1 }),
-            None
-        );
-        assert_eq!(
-            decision_surface(DraftSurface::ResearchComposer),
-            None
-        );
+        assert_eq!(decision_surface(DraftSurface::Comment { task: 1 }), None);
+        assert_eq!(decision_surface(DraftSurface::ResearchComposer), None);
     }
 
     #[test]

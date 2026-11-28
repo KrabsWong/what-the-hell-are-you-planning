@@ -84,7 +84,7 @@ pub(crate) struct ResearchInputImpact {
     pub steps: Vec<StepImpact>,
     /// Goals outside this goal whose approval changed. Normal edits return empty.
     pub other_goals_affected: Vec<u64>,
-    /// No approval or input change; labels, due date, cycle or no-op only.
+    /// No approval or input change; labels, due date or no-op only.
     pub presentation_only: bool,
     /// A pre-commit confirmation is warranted because retained results exist and
     /// actual inputs changed.
@@ -97,8 +97,6 @@ pub(crate) struct TaskEditIntent {
     pub description: String,
     pub labels: Vec<String>,
     pub due_date: String,
-    pub cycle: Option<String>,
-    pub bucket: String,
     pub stage: Stage,
     pub project: u64,
 }
@@ -111,8 +109,6 @@ impl TaskEditIntent {
             description: task.description.clone(),
             labels: task.labels.clone(),
             due_date: task.due_date.clone(),
-            cycle: task.cycle.clone(),
-            bucket: task.bucket.clone(),
             stage: task.stage,
             project: task.project_id,
         })
@@ -231,7 +227,7 @@ pub(crate) fn automation_edit_decision(
 /// Preview a task-detail edit exactly as the editor would apply it.
 ///
 /// Title, description, stage and research context are execution inputs. Labels,
-/// due date and cycle are presentation metadata and keep completion intact.
+/// due date are presentation metadata and keep completion intact.
 /// Project changes are rejected here because the editor already requires the
 /// topic/property move path.
 pub(crate) fn preview_task_edit(
@@ -254,8 +250,6 @@ pub(crate) fn preview_task_edit(
                 let task = after.task_mut(id).expect("validated task");
                 task.labels = intent.labels.clone();
                 task.due_date = intent.due_date.trim().into();
-                task.cycle = intent.cycle.clone();
-                task.bucket = intent.bucket.clone();
             }
             after.reconcile_goal_approvals();
             return Ok(impact(store, &after, id, false));
@@ -278,7 +272,6 @@ pub(crate) fn preview_task_edit(
         task.description = intent.description.clone();
         task.labels = intent.labels.clone();
         task.due_date = intent.due_date.trim().into();
-        task.cycle = intent.cycle.clone();
     }
     after.reconcile_goal_approvals();
     Ok(impact(store, &after, id, false))
@@ -409,8 +402,7 @@ pub(crate) fn preview_directory_change(
         });
     }
     let mut after = store.clone();
-    after.project_mut(project).unwrap()
-        .directory = new_directory.into();
+    after.project_mut(project).unwrap().directory = new_directory.into();
     let mut goals = Vec::new();
     let mut current_results = 0;
     let mut retained_matching_results = 0;
@@ -816,7 +808,7 @@ fn force_goal_approval(store: &Store, goal: u64) -> Store {
     {
         let task = forced.task_mut(goal).expect("validated goal");
         if matches!(task.stage, Stage::Backlog | Stage::Cancelled) {
-            task.stage = Stage::Planned;
+            task.stage = Stage::InProgress;
         }
         if let Some(research) = task.research.as_mut() {
             research.requires_approval = true;
@@ -899,7 +891,6 @@ fn automation_owned(store: &Store, task: &Task) -> bool {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::domain::Priority;
 
     const BRANCHED: &str = r#"{"tasks":[
         {"title":"Collect A","instructions":"Collect from source A","kind":"collect","depends_on":[]},
@@ -1024,12 +1015,11 @@ mod tests {
     }
 
     #[test]
-    fn labels_due_date_cycle_and_priority_are_presentation_only() {
+    fn labels_and_due_date_are_presentation_only() {
         let (mut store, goal, steps, _, _) = fixture();
         let mut intent = TaskEditIntent::from_task(&store, steps[0]).unwrap();
         intent.labels = vec!["Presentation".into()];
         intent.due_date = "2026-12-01".into();
-        intent.cycle = Some("Q4".into());
         let impact = preview_task_edit(&store, steps[0], &intent)
             .unwrap()
             .unwrap();
@@ -1042,11 +1032,9 @@ mod tests {
         assert_eq!(impact.retained_matching_results, 4);
         assert!(store.goal_execution_approved(goal));
 
-        store.task_mut(steps[0]).unwrap().priority = Priority::Urgent;
-        store.reconcile_goal_approvals();
         assert!(store.goal_execution_approved(goal));
         assert!(store.research_result(steps[0]).is_some());
-        assert_eq!(store.task(goal).unwrap().stage, Stage::Planned);
+        assert_eq!(store.task(goal).unwrap().stage, Stage::InProgress);
     }
 
     #[test]
@@ -1059,8 +1047,6 @@ mod tests {
             let task = metadata.task_mut(steps[0]).unwrap();
             task.labels = vec!["Metadata".into()];
             task.due_date = "2026-12-31".into();
-            task.cycle = Some("Q4".into());
-            task.priority = Priority::Low;
         }
         assert_eq!(metadata.prepare_run(steps[0]).unwrap().prompt, base);
 
@@ -1112,7 +1098,7 @@ mod tests {
             step(&impact, steps[1]).input_state,
             StepInputState::Unchanged
         );
-        assert_eq!(store.task(goal).unwrap().stage, Stage::Planned);
+        assert_eq!(store.task(goal).unwrap().stage, Stage::InProgress);
         assert!(store.goal_execution_approved(goal));
         assert!(store.research_result(steps[1]).is_some());
     }
@@ -1248,7 +1234,12 @@ mod tests {
         assert!(!versions[0].execution_admissible);
         assert!(versions[0].revision_digest.is_some());
         assert_eq!(
-            store.runs().iter().find(|run| run.id == original_run.id).unwrap().output,
+            store
+                .runs()
+                .iter()
+                .find(|run| run.id == original_run.id)
+                .unwrap()
+                .output,
             original_run.output
         );
     }
@@ -1322,7 +1313,7 @@ mod tests {
         let (mut store, goal, _, _, _) = fixture();
         store.reconcile_goal_approvals();
         assert!(store.goal_execution_approved(goal));
-        assert_eq!(store.task(goal).unwrap().stage, Stage::Planned);
+        assert_eq!(store.task(goal).unwrap().stage, Stage::InProgress);
         let before = store.clone();
         store.reconcile_goal_approvals();
         assert_eq!(store, before);
@@ -1471,10 +1462,7 @@ mod tests {
             .find(|run| run.task_id == steps[0])
             .unwrap()
             .id;
-        store
-            .run_mut(base_id)
-            .unwrap()
-            .started_at = "2026-11-08 10:00:00 +08:00".into();
+        store.run_mut(base_id).unwrap().started_at = "2026-11-08 10:00:00 +08:00".into();
         let base = store
             .runs()
             .iter()

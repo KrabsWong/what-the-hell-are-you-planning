@@ -25,7 +25,9 @@ pub fn run() {
             initial.set_appearance(appearance);
             initial.set_default_model("test/model".into());
             initial.project_at_mut(0).unwrap().directory = directory.to_string_lossy().into();
-            let topic = initial.create_topic(1, "Gold research and investment observations").unwrap();
+            let topic = initial
+                .create_topic(1, "Gold research and investment observations")
+                .unwrap();
             let goal = initial
                 .create_research_goal_in_topic(
                     "Research gold trends".into(),
@@ -83,7 +85,14 @@ pub fn run() {
                     "https://reports.example.com"
                 );
                 click(w, cx, "automatic-publishing");
-                assert!(!Storage::new(path.clone()).load().unwrap().unwrap().report_publishing().automatic);
+                assert!(
+                    !Storage::new(path.clone())
+                        .load()
+                        .unwrap()
+                        .unwrap()
+                        .report_publishing()
+                        .automatic
+                );
                 assert!(
                     app.read(cx).publishing_job.is_none(),
                     "Incomplete topics must not start publishing"
@@ -122,15 +131,16 @@ pub fn run() {
                 let publish_bounds = w.find("publish-topic-report").bounds();
                 assert!(publish_bounds.size.width < px(220.), "Publish must remain a compact action");
                 if width >= 1440. {
-                    assert_eq!(publish_bounds.top(), w.find("topic-new-goal").bounds().top());
-                    assert!(publish_bounds.right() <= w.find("topic-new-goal").bounds().left());
+                    let topic_actions = w.find("topic-actions-menu").bounds();
+                    assert_eq!(publish_bounds.top(), topic_actions.top());
+                    assert!(publish_bounds.right() <= topic_actions.left());
                 }
                 // Exercise the real enabled click handler, but reject configuration before any IO.
                 let repository = app.read(cx).store.report_publishing().repository.clone();
                 app.update(cx, |a, cx| {
                     let steps = a.store.apply_research_plan(goal, r#"{"tasks":[{"title":"Collect evidence","instructions":"Collect","kind":"collect","depends_on":[]},{"title":"Analyze evidence","instructions":"Analyze","kind":"analyze","depends_on":[0]},{"title":"Write report","instructions":"Report","kind":"advise","depends_on":[1]}]}"#).unwrap();
                     let goal_task = a.store.task_mut(goal).unwrap();
-                    goal_task.stage = Stage::Planned;
+                    goal_task.stage = Stage::InProgress;
                     goal_task.approved_plan = None;
                     goal_task.research.as_mut().unwrap().requires_approval = false;
                     for (index, step) in steps.iter().enumerate() {
@@ -152,7 +162,7 @@ pub fn run() {
                 assert!(app.read(cx).publishing_job.is_none());
                 assert!(app.read(cx).store.publications().is_empty());
                 app.update(cx, |a, cx| {
-                    a.store.task_mut(goal).unwrap().stage = Stage::Planned;
+                    a.store.task_mut(goal).unwrap().stage = Stage::InProgress;
                     a.store.report_publishing_mut().repository = repository;
                     a.error.clear();
                     a.save_feedback = None;

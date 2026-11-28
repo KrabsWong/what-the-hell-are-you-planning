@@ -43,7 +43,10 @@ impl AutomationPlanningState {
     }
 
     pub(crate) fn is_actionable(self) -> bool {
-        matches!(self, Self::UnderstandingReady | Self::PlanReady | Self::RetryNeeded)
+        matches!(
+            self,
+            Self::UnderstandingReady | Self::PlanReady | Self::RetryNeeded
+        )
     }
 }
 
@@ -62,10 +65,7 @@ fn attempt_is_active(status: &str) -> bool {
 ///   be the current attempt for its immutable request, and the stored template
 ///   must carry a valid binding for that exact request/revision/signature/owner.
 /// - `approval_current()` alone never hides a failed or unapplied newer request.
-pub(crate) fn automation_planning_state(
-    store: &Store,
-    automation: u64,
-) -> AutomationPlanningState {
+pub(crate) fn automation_planning_state(store: &Store, automation: u64) -> AutomationPlanningState {
     let Some(definition) = store.automation(automation) else {
         return AutomationPlanningState::None;
     };
@@ -132,7 +132,8 @@ mod tests {
 
     fn store() -> Store {
         let mut store = Store::empty();
-        store.project_at_mut(0).unwrap().directory = std::env::temp_dir().to_string_lossy().into_owned();
+        store.project_at_mut(0).unwrap().directory =
+            std::env::temp_dir().to_string_lossy().into_owned();
         store.set_default_model("test/model".into());
         store.research_config_mut().models =
             ["test/plan", "test/collect", "test/analyze", "test/advise"].map(String::from);
@@ -173,9 +174,9 @@ mod tests {
     }
 
     fn request(store: &mut Store, automation: u64) -> u64 {
-        let id = store.create_automation_request(
-            automation, 1, "Track public filings", "A cited note",
-        ).unwrap();
+        let id = store
+            .create_automation_request(automation, 1, "Track public filings", "A cited note")
+            .unwrap();
         confirm_understanding(store, id);
         id
     }
@@ -184,14 +185,15 @@ mod tests {
         let run = store.prepare_request_plan(request).unwrap();
         let id = run.id;
         store.push_run(run);
-        store.request_mut(request).unwrap()
-            .planning_run_id = Some(id);
+        store.request_mut(request).unwrap().planning_run_id = Some(id);
         id
     }
 
     fn request_with(store: &mut Store, automation: u64, input: &str) -> u64 {
         store.automation_mut(automation).unwrap().objective = input.into();
-        let id = store.create_automation_request(automation, 1, input, "A cited note").unwrap();
+        let id = store
+            .create_automation_request(automation, 1, input, "A cited note")
+            .unwrap();
         confirm_understanding(store, id);
         id
     }
@@ -214,8 +216,7 @@ mod tests {
         store
             .apply_automation_template(automation, request, revision, &signature, PLAN, 2_000)
             .unwrap();
-        store.request_mut(request).unwrap()
-            .planning_run_id = Some(id);
+        store.request_mut(request).unwrap().planning_run_id = Some(id);
         id
     }
 
@@ -229,17 +230,17 @@ mod tests {
         {
             let mut definition = store.automation_mut(automation).unwrap();
             let template = definition.template.clone().unwrap();
-        definition.approval = Some(AutomationApproval {
-            version: definition.version,
-            approved_at: 2_000,
-            template_signature: template.signature(),
-            schedule_signature: definition.schedule.signature(),
-            plan_request_id: Some(request),
-            plan_revision: Some(revision),
-            models: ["test/plan", "test/collect", "test/analyze", "test/advise"]
-                .map(String::from),
-            agents: Default::default(),
-            materials: vec![],
+            definition.approval = Some(AutomationApproval {
+                version: definition.version,
+                approved_at: 2_000,
+                template_signature: template.signature(),
+                schedule_signature: definition.schedule.signature(),
+                plan_request_id: Some(request),
+                plan_revision: Some(revision),
+                models: ["test/plan", "test/collect", "test/analyze", "test/advise"]
+                    .map(String::from),
+                agents: Default::default(),
+                materials: vec![],
             });
         }
         assert!(store.automation(automation).unwrap().approval_current());
@@ -253,16 +254,22 @@ mod tests {
     fn understanding_is_reviewable_before_any_goal_plan_exists() {
         let mut store = store();
         let id = automation(&mut store);
-        let request = store.create_automation_request(
-            id, 1, "Track public filings", "A cited note",
-        ).unwrap();
+        let request = store
+            .create_automation_request(id, 1, "Track public filings", "A cited note")
+            .unwrap();
         let run = attempt(&mut store, request);
-        assert_eq!(automation_planning_state(&store, id), AutomationPlanningState::Understanding);
+        assert_eq!(
+            automation_planning_state(&store, id),
+            AutomationPlanningState::Understanding
+        );
         set_status(&mut store, run, "Succeeded");
         store.apply_request_understanding(request,
             r#"{"summary":"Track filings and explain material changes with sources.","questions":[]}"#,
         ).unwrap();
-        assert_eq!(automation_planning_state(&store, id), AutomationPlanningState::UnderstandingReady);
+        assert_eq!(
+            automation_planning_state(&store, id),
+            AutomationPlanningState::UnderstandingReady
+        );
         assert!(AutomationPlanningState::UnderstandingReady.is_actionable());
         assert!(store.automation(id).unwrap().template.is_none());
         assert!(store.prepare_request_plan(request).is_err());
@@ -278,14 +285,22 @@ mod tests {
         let original = request(&mut store, id);
         apply_plan(&mut store, id, original);
         approve_current(&mut store, id, original);
-        let revised = store.create_automation_request(
-            id, 1, "Compare filing risks", "A comparison",
-        ).unwrap();
+        let revised = store
+            .create_automation_request(id, 1, "Compare filing risks", "A comparison")
+            .unwrap();
         assert!(store.request_needs_understanding(revised));
-        assert_eq!(automation_planning_state(&store, id), AutomationPlanningState::RetryNeeded);
+        assert_eq!(
+            automation_planning_state(&store, id),
+            AutomationPlanningState::RetryNeeded
+        );
         let run = attempt(&mut store, revised);
-        assert!(crate::request_planning::is_understanding_run(store.runs().iter().find(|r| r.id == run).unwrap()));
-        assert_eq!(automation_planning_state(&store, id), AutomationPlanningState::Understanding);
+        assert!(crate::request_planning::is_understanding_run(
+            store.runs().iter().find(|r| r.id == run).unwrap()
+        ));
+        assert_eq!(
+            automation_planning_state(&store, id),
+            AutomationPlanningState::Understanding
+        );
     }
 
     #[test]
@@ -356,7 +371,11 @@ mod tests {
         let request = request(&mut store, id);
         let run = apply_plan(&mut store, id, request);
         assert!(store.planning_attempt_is_current(run));
-        assert!(store.plan_binding_problem(store.automation(id).unwrap()).is_none());
+        assert!(
+            store
+                .plan_binding_problem(store.automation(id).unwrap())
+                .is_none()
+        );
         assert!(!store.automation(id).unwrap().approval_current());
         assert_eq!(
             automation_planning_state(&store, id),
@@ -415,7 +434,11 @@ mod tests {
         let newer = request_with(&mut store, id, "A completely changed objective");
         let unapplied = attempt(&mut store, newer);
         set_status(&mut store, unapplied, "Succeeded");
-        assert!(store.plan_binding_problem(store.automation(id).unwrap()).is_some());
+        assert!(
+            store
+                .plan_binding_problem(store.automation(id).unwrap())
+                .is_some()
+        );
         assert_eq!(
             automation_planning_state(&store, id),
             AutomationPlanningState::RetryNeeded
@@ -430,7 +453,11 @@ mod tests {
         let run = attempt(&mut store, request);
         set_status(&mut store, run, "Succeeded");
         store.automation_mut(id).unwrap().template = Some(template());
-        assert!(store.plan_binding_problem(store.automation(id).unwrap()).is_some());
+        assert!(
+            store
+                .plan_binding_problem(store.automation(id).unwrap())
+                .is_some()
+        );
         assert_eq!(
             automation_planning_state(&store, id),
             AutomationPlanningState::RetryNeeded

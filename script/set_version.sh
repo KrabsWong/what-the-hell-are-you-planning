@@ -41,7 +41,32 @@ path.write_text(text, encoding="utf-8")
 PY
 
 # The root package version is also stored in Cargo.lock, and later build steps
-# use --locked, so refresh it here without compiling or the lockfile guard.
-cargo metadata --format-version 1 > /dev/null
+# use --locked. Update that entry directly so this step neither resolves the
+# dependency graph nor downloads the registry index.
+python3 - "$version" <<'PY'
+import re
+import sys
+from pathlib import Path
+
+version = sys.argv[1]
+path = Path("Cargo.lock")
+text = path.read_text(encoding="utf-8")
+marker = 'name = "what-the-hell-are-you-planning"'
+blocks = text.split("[[package]]\n")
+updated = False
+for index, block in enumerate(blocks[1:], start=1):
+    if not re.search(rf"^{re.escape(marker)}$", block, flags=re.MULTILINE):
+        continue
+    blocks[index], count = re.subn(
+        r'^version = "[^"]+"$', f'version = "{version}"', block, count=1, flags=re.MULTILINE
+    )
+    if count != 1:
+        raise SystemExit("could not update the root package version in Cargo.lock")
+    updated = True
+    break
+if not updated:
+    raise SystemExit("root package entry not found in Cargo.lock")
+path.write_text("[[package]]\n".join(blocks), encoding="utf-8")
+PY
 
 echo "Version set to $version"

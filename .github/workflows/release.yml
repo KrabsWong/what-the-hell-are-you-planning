@@ -18,6 +18,7 @@ jobs:
     runs-on: macos-15
     timeout-minutes: 45
     env:
+      RUST_VERSION: 1.100.1
       RELEASE_TAG: ${{ github.event_name == 'workflow_dispatch' && inputs.tag || github.ref_name }}
       SPARKLE_PUBLIC_ED_KEY: ${{ vars.SPARKLE_PUBLIC_ED_KEY }}
     steps:
@@ -31,15 +32,36 @@ jobs:
         run: git fetch origin main
       - name: Prepare Rust toolchain
         run: |
-          rustup toolchain install stable --profile minimal
-          rustup default stable
+          rustup toolchain install "$RUST_VERSION" --profile minimal
+          rustup default "$RUST_VERSION"
           test "$(uname -m)" = arm64
+      - name: Restore Rust cache
+        id: cache
+        uses: actions/cache/restore@v5
+        with:
+          path: |
+            ~/.cargo/registry
+            ~/.cargo/git
+            target/release
+          key: macOS-arm64-rust-${{ env.RUST_VERSION }}-v3-${{ hashFiles('Cargo.lock') }}
+          restore-keys: |
+            macOS-arm64-rust-${{ env.RUST_VERSION }}-v3-
+      - name: Restore test build cache
+        uses: actions/cache/restore@v5
+        with:
+          path: target/debug
+          key: macOS-arm64-rust-${{ env.RUST_VERSION }}-test-v3-${{ hashFiles('.github/workflows/release.yml', 'build.rs', 'rust-toolchain.toml') }}
+          restore-keys: |
+            macOS-arm64-rust-${{ env.RUST_VERSION }}-test-v3-
       - name: Sync version from release tag
         # The tag is the single source of truth. CI writes it into Cargo.toml,
         # Cargo.lock and Info.plist so every package matches its tag.
         run: bash script/set_version.sh "${RELEASE_TAG#v}"
       - name: Test
-        run: cargo test --locked
+        run: |
+          cargo test --locked \
+            --config 'profile.dev.opt-level=0' \
+            --config 'profile.dev.package."*".opt-level=0'
       - name: Fetch pinned Sparkle SDK
         run: bash scripts/fetch-sparkle.sh
       - name: Set up Python

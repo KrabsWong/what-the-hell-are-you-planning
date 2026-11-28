@@ -1,0 +1,58 @@
+name: Warm macOS Rust cache
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - Cargo.toml
+      - Cargo.lock
+      - build.rs
+      - rust-toolchain.toml
+      - .github/workflows/cache-macos-rust.yml
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  warm:
+    runs-on: macos-15
+    timeout-minutes: 45
+    env:
+      RUST_VERSION: 1.100.1
+    steps:
+      - name: Check out main
+        uses: actions/checkout@v5
+      - name: Prepare Rust toolchain
+        run: |
+          rustup toolchain install "$RUST_VERSION" --profile minimal
+          rustup default "$RUST_VERSION"
+          test "$(uname -m)" = arm64
+      - name: Restore Rust cache
+        id: cache
+        uses: actions/cache@v5
+        with:
+          path: |
+            ~/.cargo/registry
+            ~/.cargo/git
+            target/release
+          key: macOS-arm64-rust-${{ env.RUST_VERSION }}-v3-${{ hashFiles('Cargo.lock') }}
+          restore-keys: |
+            macOS-arm64-rust-${{ env.RUST_VERSION }}-v3-
+      - name: Restore test build cache
+        id: test-cache
+        uses: actions/cache@v5
+        with:
+          path: target/debug
+          key: macOS-arm64-rust-${{ env.RUST_VERSION }}-test-v3-${{ hashFiles('.github/workflows/release.yml', 'build.rs', 'rust-toolchain.toml') }}
+          restore-keys: |
+            macOS-arm64-rust-${{ env.RUST_VERSION }}-test-v3-
+      - name: Warm test artifacts
+        if: steps.test-cache.outputs.cache-hit != 'true'
+        run: |
+          cargo test --locked --no-run \
+            --config 'profile.dev.opt-level=0' \
+            --config 'profile.dev.package."*".opt-level=0'
+      - name: Warm release artifacts
+        if: steps.cache.outputs.cache-hit != 'true'
+        run: cargo build --release --locked
